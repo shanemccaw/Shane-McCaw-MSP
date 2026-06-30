@@ -386,9 +386,20 @@ const CARD_JOB_STATUS_CFG: Record<string, { cls: string; dot: string; label: str
   "Suspended": { cls: "bg-orange-500/15 text-orange-400", dot: "bg-orange-400", label: "Suspended" },
 };
 
-function ScriptCardBody({ m }: { m: ScriptMetadata }) {
+function ScriptCardBody({
+  m,
+  onRunScript,
+  onViewResults,
+  onOpenScript,
+}: {
+  m: ScriptMetadata;
+  onRunScript?: () => void;
+  onViewResults?: () => void;
+  onOpenScript?: () => void;
+}) {
   const jobStatus = m.lastJobStatus ?? "Never run";
   const cfg = CARD_JOB_STATUS_CFG[jobStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
+  const hasRun = jobStatus !== "Never run";
   return (
     <div className="space-y-1">
       {m.runbookName && (
@@ -398,11 +409,28 @@ function ScriptCardBody({ m }: { m: ScriptMetadata }) {
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
         {cfg.label}
       </span>
+      <div className="flex gap-1 flex-wrap pt-0.5">
+        {hasRun ? (
+          <>
+            <ActionBtn label="Re-Run Script" onClick={onRunScript} />
+            <ActionBtn label="View Script Results" onClick={onViewResults} />
+            <ActionBtn label="Open Script" onClick={onOpenScript} />
+          </>
+        ) : (
+          <ActionBtn label="Run Script" onClick={onRunScript} />
+        )}
+      </div>
     </div>
   );
 }
 
 function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
+  // Guard: if this metadata contains script-specific fields it has been
+  // mis-categorised — do not render discovery actions on a script card.
+  const raw = m as Record<string, unknown>;
+  if (raw.runbookName !== undefined || raw.lastJobStatus !== undefined || raw.credentialId !== undefined) {
+    return null;
+  }
   const recs = m.recommendations ?? [];
   const riskCfg = m.riskScore ? RISK_CFG[m.riskScore] : null;
   return (
@@ -445,9 +473,15 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
 export function TypedCardContent({
   taskType,
   metadata,
+  onRunScript,
+  onViewResults,
+  onOpenScript,
 }: {
   taskType: string | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
+  onRunScript?: () => void;
+  onViewResults?: () => void;
+  onOpenScript?: () => void;
 }) {
   if (!taskType) return null;
   const cfg = TASK_TYPE_CONFIG[taskType as TaskType];
@@ -472,7 +506,14 @@ export function TypedCardContent({
           {taskType === "automationBuild" && <AutomationBody m={metadata as AutomationMetadata} />}
           {taskType === "documentDelivery" && <DocumentBody m={metadata as DocumentMetadata} />}
           {taskType === "discovery" && <DiscoveryBody m={metadata as DiscoveryMetadata} />}
-          {taskType === "script" && <ScriptCardBody m={metadata as ScriptMetadata} />}
+          {taskType === "script" && (
+            <ScriptCardBody
+              m={metadata as ScriptMetadata}
+              onRunScript={onRunScript}
+              onViewResults={onViewResults}
+              onOpenScript={onOpenScript}
+            />
+          )}
         </div>
       )}
     </div>

@@ -202,6 +202,7 @@ function DraggableCard({
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(() => isActiveForTask(task.id));
+  const [, setLocation] = useLocation();
 
   // Re-sync with poller activity — catches scripts started from KanbanCardModal or other surfaces
   useEffect(() => {
@@ -211,6 +212,10 @@ function DraggableCard({
     }, 2000);
     return () => clearInterval(id);
   }, [task.id]);
+
+  const handleRunScript = () => { if (!scriptRunning) setConfirmRunOpen(true); };
+  const handleViewResults = () => onCardClick(task);
+  const handleOpenScript = () => { setLocation("/command/scripts"); };
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -314,7 +319,13 @@ function DraggableCard({
               </p>
             )}
 
-            <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
+            <TypedCardContent
+              taskType={task.taskType}
+              metadata={task.taskMetadata}
+              onRunScript={handleRunScript}
+              onViewResults={handleViewResults}
+              onOpenScript={handleOpenScript}
+            />
 
             {task.statusReportId && (
               <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/100/10 px-2.5 py-2">
@@ -511,7 +522,7 @@ function DraggableCard({
             )}
 
             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-              {linkedRunbook?.azureRunbookName && (
+              {linkedRunbook?.azureRunbookName && task.taskType !== "script" && (
                 <button
                   onClick={e => { e.stopPropagation(); if (!scriptRunning) setConfirmRunOpen(true); }}
                   disabled={scriptRunning}
