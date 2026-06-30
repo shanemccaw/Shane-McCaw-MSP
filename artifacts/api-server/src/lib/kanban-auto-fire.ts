@@ -24,8 +24,11 @@ import {
   projectsTable,
   clientAppRegistrationsTable,
   workflowStepsTable,
+  workflowTemplateStepTasksTable,
+  scriptModulesTable,
+  powershellScriptsTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
@@ -47,6 +50,12 @@ interface EligibleCard {
   linkedRunbook: LinkedRunbook;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function filenameSlug(filename: string): string {
+  return filename.replace(/\.ps1$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "script";
+}
+
 async function findFirstBacklogScriptCard(clientUserId: number): Promise<EligibleCard | null> {
   const projects = await db
     .select({ id: projectsTable.id })
@@ -56,9 +65,9 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   if (projects.length === 0) return null;
   const projectIds = projects.map(p => p.id);
 
-  // Only look at tasks inside currently in_progress workflow steps
+  // Fetch in_progress workflow steps, including their template step id for fallback resolution
   const activeSteps = await db
-    .select({ id: workflowStepsTable.id })
+    .select({ id: workflowStepsTable.id, templateStepId: workflowStepsTable.workflowTemplateStepId })
     .from(workflowStepsTable)
     .where(
       and(
@@ -70,10 +79,13 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   const activeStepIds = activeSteps.map(s => s.id);
   if (activeStepIds.length === 0) return null;
 
-  // Fetch backlog script cards ordered by (stepId asc, order asc)
+  const stepToTemplateStep = new Map(activeSteps.map(s => [s.id, s.templateStepId]));
+
+  // Fetch backlog cards ordered by (stepId asc, order asc)
   const candidates = await db
     .select({
       id:             kanbanTasksTable.id,
+      title:          kanbanTasksTable.title,
       projectId:      kanbanTasksTable.projectId,
       workflowStepId: kanbanTasksTable.workflowStepId,
       taskMetadata:   kanbanTasksTable.taskMetadata,
@@ -87,19 +99,104 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     )
     .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
 
+  // First pass: return immediately if any card already has linkedRunbook in its stored metadata
   for (const card of candidates) {
     const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
     const lr = meta.linkedRunbook as LinkedRunbook | null | undefined;
     if (lr?.azureRunbookName) {
-      return {
-        id:             card.id,
-        projectId:      card.projectId,
-        workflowStepId: card.workflowStepId,
-        linkedRunbook:  lr,
-      };
+      return { id: card.id, projectId: card.projectId, workflowStepId: card.workflowStepId, linkedRunbook: lr };
     }
   }
 
+  // Second pass (fallback): metadata.linkedRunbook is null for all cards — this happens when
+  // provisioning ran before the dual-format fix was deployed, so the stored metadata has
+  // linkedRunbook: null even though the template tasks have runbook_id set.
+  // Resolve via: workflowStepId → workflowTemplateStepId → workflow_template_step_tasks.runbook_id
+  const templateStepIds = [...new Set(
+    candidates.map(c => (c.workflowStepId != null ? stepToTemplateStep.get(c.workflowStepId) : undefined))
+      .filter((id): id is number => id != null),
+  )];
+
+  if (templateStepIds.length === 0) {
+    logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template steps)");
+    return null;
+  }
+
+  // Fetch all template tasks that have a runbook_id for these steps
+  const templateTasks = await db
+    .select({
+      workflowTemplateStepId: workflowTemplateStepTasksTable.workflowTemplateStepId,
+      runbookId:              workflowTemplateStepTasksTable.runbookId,
+      title:                  workflowTemplateStepTasksTable.title,
+      order:                  workflowTemplateStepTasksTable.order,
+    })
+    .from(workflowTemplateStepTasksTable)
+    .where(
+      and(
+        inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, templateStepIds),
+        isNotNull(workflowTemplateStepTasksTable.runbookId),
+      ),
+    )
+    .orderBy(asc(workflowTemplateStepTasksTable.order));
+
+  if (templateTasks.length === 0) {
+    logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found (no template runbook tasks)");
+    return null;
+  }
+
+  // Batch-resolve all runbook_ids (UUID → scriptModules, slug → powershellScripts)
+  const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId!))];
+  const uuidIds = allRunbookIds.filter(id => UUID_RE.test(id));
+  const slugIds = allRunbookIds.filter(id => !UUID_RE.test(id));
+
+  const [moduleRows, scriptRows] = await Promise.all([
+    uuidIds.length > 0
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
+          .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidIds))
+      : Promise.resolve([]),
+    slugIds.length > 0
+      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugIds))
+      : Promise.resolve([]),
+  ]);
+
+  const moduleMap = new Map(moduleRows.map(m => [m.id, m]));
+  const scriptMap = new Map(scriptRows.map(s => [s.azureRunbookName as string, s]));
+
+  function resolveRunbook(runbookId: string): LinkedRunbook | null {
+    if (UUID_RE.test(runbookId)) {
+      const mod = moduleMap.get(runbookId);
+      if (!mod) return null;
+      return { scriptId: mod.id, azureRunbookName: filenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+    }
+    const script = scriptMap.get(runbookId);
+    if (!script?.azureRunbookName) return null;
+    return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+  }
+
+  // Build a map: templateStepId → first resolved runbook (ordered by task order)
+  const stepRunbookMap = new Map<number, LinkedRunbook>();
+  for (const tt of templateTasks) {
+    if (stepRunbookMap.has(tt.workflowTemplateStepId)) continue;
+    const resolved = resolveRunbook(tt.runbookId!);
+    if (resolved) stepRunbookMap.set(tt.workflowTemplateStepId, resolved);
+  }
+
+  logger.info({ clientUserId, uuidIds, slugIds, moduleRows: moduleRows.length, scriptRows: scriptRows.length, stepRunbookMap: Object.fromEntries(stepRunbookMap) },
+    "kanban-auto-fire: fallback template resolution");
+
+  // Return the first candidate whose step resolves to a runbook
+  for (const card of candidates) {
+    if (card.workflowStepId == null) continue;
+    const tStepId = stepToTemplateStep.get(card.workflowStepId);
+    if (!tStepId) continue;
+    const lr = stepRunbookMap.get(tStepId);
+    if (lr) {
+      return { id: card.id, projectId: card.projectId, workflowStepId: card.workflowStepId, linkedRunbook: lr };
+    }
+  }
+
+  logger.info({ clientUserId }, "kanban-auto-fire: no eligible backlog script card found");
   return null;
 }
 

@@ -208,16 +208,24 @@ async function resolveTemplateTaskMetadata(
   const linkedClIds = [...new Set(templateTasks.map(t => t.checklistId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedArtIds = [...new Set(templateTasks.map(t => t.artifactsId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedDelIds = [...new Set(templateTasks.map(t => t.deliverablesId).filter((id): id is number => id !== null && id !== undefined))];
-  const linkedRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
+  // runbook_id stores either a UUID (→ script_modules) or an azure-runbook-name slug (→ powershell_scripts)
+  const PROV_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
+  const uuidRunbookIds = allRunbookIds.filter(id => PROV_UUID_RE.test(id));
+  const slugRunbookIds = allRunbookIds.filter(id => !PROV_UUID_RE.test(id));
 
-  const [instrRows, clRows, artRows, delRows, runbookRows] = await Promise.all([
+  const [instrRows, clRows, artRows, delRows, moduleRunbookRows, scriptRunbookRows] = await Promise.all([
     linkedInstrIds.length > 0 ? db.select().from(instructionSetsTable).where(inArray(instructionSetsTable.id, linkedInstrIds)) : Promise.resolve([]),
     linkedClIds.length > 0 ? db.select().from(checklistsTable).where(inArray(checklistsTable.id, linkedClIds)) : Promise.resolve([]),
     linkedArtIds.length > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
     linkedDelIds.length > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
-    linkedRunbookIds.length > 0
+    uuidRunbookIds.length > 0
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
+          .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidRunbookIds))
+      : Promise.resolve([]),
+    slugRunbookIds.length > 0
       ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
-          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, linkedRunbookIds))
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugRunbookIds))
       : Promise.resolve([]),
   ]);
 
@@ -225,11 +233,28 @@ async function resolveTemplateTaskMetadata(
   const clMap = new Map(clRows.map(r => [r.id, r.items as Array<{ id: string; label: string }>]));
   const artMap = new Map(artRows.map(r => [r.id, r.artifacts as string[]]));
   const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
-  // runbookId column now stores the Azure runbook name (text), so key the map by azureRunbookName
-  const runbookMap = new Map(runbookRows.map(r => [r.azureRunbookName, r]));
+  const moduleRunbookMap = new Map(moduleRunbookRows.map(r => [r.id, r]));
+  const scriptRunbookMap = new Map(scriptRunbookRows.map(r => [r.azureRunbookName as string, r]));
+
+  function provFilenameSlug(filename: string): string {
+    return filename.replace(/\.ps1$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "script";
+  }
 
   return templateTasks.map(t => {
-    const runbook = t.runbookId ? runbookMap.get(t.runbookId) : undefined;
+    let linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null = null;
+    if (t.runbookId) {
+      if (PROV_UUID_RE.test(t.runbookId)) {
+        const mod = moduleRunbookMap.get(t.runbookId);
+        if (mod) {
+          linkedRunbook = { scriptId: mod.id, azureRunbookName: provFilenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+        }
+      } else {
+        const script = scriptRunbookMap.get(t.runbookId);
+        if (script?.azureRunbookName) {
+          linkedRunbook = { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+        }
+      }
+    }
     return {
       instructions: t.instructionSetId ? (instrMap.get(t.instructionSetId) ?? (t.instructions as string[] | null) ?? []) : ((t.instructions as string[] | null) ?? []),
       checklist: t.checklistId ? (clMap.get(t.checklistId) ?? (t.checklist as Array<{ id: string; label: string }> | null) ?? []) : ((t.checklist as Array<{ id: string; label: string }> | null) ?? []),
@@ -237,9 +262,7 @@ async function resolveTemplateTaskMetadata(
       clientDeliverables: t.deliverablesId ? (delMap.get(t.deliverablesId) ?? (t.clientDeliverables as string[] | null) ?? []) : ((t.clientDeliverables as string[] | null) ?? []),
       checklistState: {} as Record<string, never>,
       uploadedArtifacts: [] as never[],
-      linkedRunbook: runbook && runbook.azureRunbookName
-        ? { scriptId: runbook.id, azureRunbookName: runbook.azureRunbookName, scriptTitle: runbook.title }
-        : null,
+      linkedRunbook,
     };
   });
 }
