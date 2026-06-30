@@ -209,6 +209,27 @@ export function getJobRefForTask(kanbanTaskId: number): string | undefined {
   return taskJobMap.get(kanbanTaskId);
 }
 
+/**
+ * Resume polling for a task whose jobRef was sourced from the DB (taskMetadata.runningJobRef).
+ * Safe to call even if a poll for this task is already active — it will no-op in that case.
+ * If the job has already finished, the first poll tick will detect the terminal status and
+ * stop automatically (clearing runningJobRef in the DB via the backend).
+ */
+export function resumePollForTask(
+  taskId: number,
+  jobRef: string,
+  fetchFn: (url: string) => Promise<Response>
+) {
+  if (isActiveForTask(taskId)) return;
+  startPoll(
+    jobRef,
+    fetchFn,
+    null,
+    () => undefined,
+    taskId
+  );
+}
+
 export function stopPoll(jobRef: string) {
   const p = polls.get(jobRef);
   if (p) {

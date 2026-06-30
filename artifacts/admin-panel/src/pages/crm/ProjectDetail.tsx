@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
-import { subscribeToChanges, isTaskRunning, rehydratePolls } from "@/lib/scriptPoller";
+import { subscribeToChanges, isTaskRunning, rehydratePolls, resumePollForTask } from "@/lib/scriptPoller";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
@@ -1585,6 +1585,20 @@ export default function ProjectDetailPage() {
     rehydratePolls(fetchWithAuth);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Resume polls for tasks whose runningJobRef is set in the DB.
+  // This covers new browser tabs and any scenario where sessionStorage was cleared.
+  useEffect(() => {
+    for (const task of tasks) {
+      const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+      const runningJobRef = meta.runningJobRef as string | null | undefined;
+      if (runningJobRef) {
+        resumePollForTask(task.id, runningJobRef, fetchWithAuth);
+      }
+    }
+  // fetchWithAuth is stable (memoized in AuthContext), tasks identity changes on each fetch
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
 
   useEffect(() => { void reloadAll(); }, [reloadAll]);
 

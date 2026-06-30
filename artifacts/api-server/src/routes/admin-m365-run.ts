@@ -307,6 +307,15 @@ async function processRunInBackground(
         await db.update(kanbanTasksTable)
           .set({ completionStatus: "script_failed", completionNotes: `Script run failed (job ${jobId})`, updatedAt: new Date() })
           .where(inArray(kanbanTasksTable.id, kanbanIds));
+        // Clear runningJobRef so the button no longer shows "Running…" after reload
+        const rows = await db.select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+          .from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+        for (const row of rows) {
+          const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
+          await db.update(kanbanTasksTable)
+            .set({ taskMetadata: { ...meta, runningJobRef: null } })
+            .where(eq(kanbanTasksTable.id, row.id));
+        }
       } catch (patchErr) {
         logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to update kanban tasks on timeout (non-fatal)");
       }
@@ -380,6 +389,15 @@ async function processRunInBackground(
       };
       if (finalStatus === "completed") kanbanPatch.column = "completed";
       await db.update(kanbanTasksTable).set(kanbanPatch).where(inArray(kanbanTasksTable.id, kanbanIds));
+      // Clear runningJobRef so the button no longer shows "Running…" after reload
+      const metaRows = await db.select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+      for (const row of metaRows) {
+        const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
+        await db.update(kanbanTasksTable)
+          .set({ taskMetadata: { ...meta, runningJobRef: null } })
+          .where(eq(kanbanTasksTable.id, row.id));
+      }
       logger.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
     } catch (patchErr) {
       logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
@@ -597,6 +615,26 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     } catch (err) {
       logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to resolve/move sibling tasks (non-fatal)");
       siblingTaskIds = undefined;
+    }
+  }
+
+  // Persist runningJobRef in taskMetadata so the "Running…" button state survives
+  // page reloads and new browser tabs — cleared by processRunInBackground on completion.
+  if (kanbanTaskId) {
+    const idsToMark = siblingTaskIds ?? [kanbanTaskId];
+    try {
+      const rows = await db
+        .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
+        .where(inArray(kanbanTasksTable.id, idsToMark));
+      for (const row of rows) {
+        const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
+        await db.update(kanbanTasksTable)
+          .set({ taskMetadata: { ...meta, runningJobRef: jobId }, updatedAt: new Date() })
+          .where(eq(kanbanTasksTable.id, row.id));
+      }
+    } catch (err) {
+      logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to set runningJobRef (non-fatal)");
     }
   }
 

@@ -191,6 +191,7 @@ async function saveKanbanOutput(options: {
           ...existingMeta,
           lastJobId: jobId,
           lastJobStatus,
+          runningJobRef: null,
           scriptOutput: scriptOutput.slice(0, 50_000),
           ...(success ? { completedAt: now } : { failedAt: now }),
         },

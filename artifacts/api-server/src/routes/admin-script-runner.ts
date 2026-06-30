@@ -370,7 +370,7 @@ router.get("/admin/runbook-jobs/output", requireAdmin, async (req: Request, res:
           await db
             .update(kanbanTasksTable)
             .set({
-              taskMetadata: { ...meta, lastJobId: jobId, lastJobStatus: statusResult.status },
+              taskMetadata: { ...meta, lastJobId: jobId, lastJobStatus: statusResult.status, runningJobRef: null },
               updatedAt: new Date(),
             })
             .where(eq(kanbanTasksTable.id, kanbanTaskId));

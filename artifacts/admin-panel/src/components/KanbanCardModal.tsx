@@ -16,7 +16,7 @@ import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
 import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
-import { isActiveForTask } from "@/lib/scriptPoller";
+import { isActiveForTask, subscribeToChanges, resumePollForTask } from "@/lib/scriptPoller";
 import { useToast } from "@/hooks/use-toast";
 
 export interface KanbanCardModalTask {
@@ -618,6 +618,14 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [scriptRunning, setScriptRunning] = useState(false);
 
   useEffect(() => {
+    if (!task) return;
+    const unsubscribe = subscribeToChanges(() => {
+      setScriptRunning(isActiveForTask(task.id));
+    });
+    return unsubscribe;
+  }, [task?.id]);
+
+  useEffect(() => {
     if (task) {
       setForm({
         title: task.title ?? "",
@@ -627,7 +635,15 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
       });
       setLocalTask(task);
-      setScriptRunning(isActiveForTask(task.id));
+      const alreadyActive = isActiveForTask(task.id);
+      setScriptRunning(alreadyActive);
+      if (!alreadyActive && fetchWithAuth) {
+        const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+        const runningJobRef = meta.runningJobRef as string | null | undefined;
+        if (runningJobRef) {
+          resumePollForTask(task.id, runningJobRef, fetchWithAuth);
+        }
+      }
     }
     setEditing(false);
     setSaveError(null);
