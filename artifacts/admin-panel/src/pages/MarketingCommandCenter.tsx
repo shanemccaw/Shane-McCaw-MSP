@@ -6605,6 +6605,10 @@ function CampaignDetailView({
 
 function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
   const [step, setStep] = useState(1);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(null);
+  const [selectedServiceName, setSelectedServiceName] = useState("");
+  const [wizardServices, setWizardServices] = useState<LpService[]>([]);
+  const [loadingWizardServices, setLoadingWizardServices] = useState(true);
   const [goal, setGoal] = useState("");
   const [audience, setAudience] = useState("");
   const [offer, setOffer] = useState("");
@@ -6642,13 +6646,26 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setCampaigns(d as Campaign[])).catch(() => null).finally(() => setLoadingCampaigns(false));
   }, [fetchWithAuth]);
 
+  useEffect(() => {
+    setLoadingWizardServices(true);
+    fetchWithAuth(`${API}/admin/services`)
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const all = Array.isArray(d) ? (d as LpService[]) : [];
+        const lpOnly = all.filter(s => s.visibility === "landing_page_only");
+        setWizardServices(lpOnly.length > 0 ? lpOnly : all);
+      })
+      .catch(() => setWizardServices([]))
+      .finally(() => setLoadingWizardServices(false));
+  }, [fetchWithAuth]);
+
   const aiFillField = async (field: "goal" | "audience" | "offer", topic?: string) => {
     setAiFillingField(field);
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-suggest`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ field, name, goal, audience, topic }),
+        body: JSON.stringify({ field, name, goal, audience, topic, serviceName: selectedServiceName || undefined }),
       });
       const data = await r.json() as { value: string };
       if (data.value) {
@@ -6677,7 +6694,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/campaign-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ exclude: previousTopics }),
+        body: JSON.stringify({ exclude: previousTopics, serviceName: selectedServiceName || undefined }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setTopicSuggestions(data.topics);
@@ -6698,7 +6715,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/audience-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal, exclude: previousAudiences }),
+        body: JSON.stringify({ goal, exclude: previousAudiences, serviceName: selectedServiceName || undefined }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setAudienceSuggestions(data.topics);
@@ -6719,7 +6736,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const r = await fetchWithAuth(`${API}/admin/marketing/generate/offer-topics`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal, audience, exclude: previousOffers }),
+        body: JSON.stringify({ goal, audience, exclude: previousOffers, serviceName: selectedServiceName || undefined }),
       });
       const data = await r.json() as { topics?: string[] };
       if (Array.isArray(data.topics)) setOfferSuggestions(data.topics);
@@ -6746,7 +6763,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
         return;
       }
       setPreviewAssets(data);
-      setStep(4);
+      setStep(5);
     } catch {
       setPreviewError("Network error — check your connection and try again.");
     } finally { setPreviewing(false); }
@@ -6759,7 +6776,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       const cr = await fetchWithAuth(`${API}/admin/marketing/campaigns`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: campaignName, goal, audience, offer }),
+        body: JSON.stringify({ name: campaignName, goal, audience, offer, linkedServiceId: selectedServiceId ?? undefined }),
       });
       const campaign = await cr.json() as Campaign;
       setSavedCampaignId(campaign.id);
@@ -6779,13 +6796,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
       });
 
       setCampaigns(prev => [campaign, ...prev]);
-      setStep(5);
+      setStep(6);
     } finally { setSaving(false); }
   };
 
   const reset = () => {
     setShowCreate(false);
-    setStep(1); setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
+    setStep(1); setSelectedServiceId(null); setSelectedServiceName("");
+    setGoal(""); setAudience(""); setOffer(""); setName(""); setPreviewAssets([]); setSavedCampaignId(null);
     setTopicSuggestions(null); setLoadingTopics(false); setExpandingTopic(null);
     setAudienceSuggestions(null); setLoadingAudienceTopics(false); setExpandingAudience(null);
     setOfferSuggestions(null); setLoadingOfferTopics(false); setExpandingOffer(null);
@@ -6818,7 +6836,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
     setOffer(campaign.offer);
     setSavedCampaignId(campaign.id);
     setDetailCampaignId(null);
-    setStep(5);
+    setStep(6);
     setShowCreate(true);
   };
 
@@ -6849,8 +6867,8 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
   };
 
   const steps = [
-    { n: 1, label: "Goal" }, { n: 2, label: "Audience" }, { n: 3, label: "Offer" },
-    { n: 4, label: "Review" }, { n: 5, label: "Ad Assets" }, { n: 6, label: "Saved" },
+    { n: 1, label: "Service" }, { n: 2, label: "Goal" }, { n: 3, label: "Audience" },
+    { n: 4, label: "Offer" }, { n: 5, label: "Review" }, { n: 6, label: "Ad Assets" }, { n: 7, label: "Saved" },
   ];
 
   if (detailCampaignId !== null) {
@@ -6981,10 +6999,10 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
               </button>
               <span className="text-[#30363D]">/</span>
               <span className="text-[#E6EDF3] font-semibold">
-                {step === 5 && savedCampaignId ? "Generate Assets" : step === 6 ? "Campaign Saved" : "New Campaign"}
+                {step === 6 && savedCampaignId ? "Generate Assets" : step === 7 ? "Campaign Saved" : "New Campaign"}
               </span>
             </div>
-            {step <= 4 && (
+            {step <= 5 && (
               <button
                 onClick={() => { setBuilderMode(m => m === "prompt" ? "guided" : "prompt"); setPromptError(null); }}
                 className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors flex items-center gap-1.5 ${builderMode === "prompt" ? "border-violet-500/60 bg-violet-500/15 text-violet-300" : "border-violet-500/40 text-violet-400 hover:bg-violet-500/10"}`}
@@ -7045,6 +7063,46 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
           </div>
 
           {step === 1 && (
+            <div className="space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-[#E6EDF3] mb-1">Select a Service for this campaign *</p>
+                {wizardServices.length === 0 && !loadingWizardServices && (
+                  <p className="text-xs text-[#484F58] italic mb-2">No services found. Please create a service first.</p>
+                )}
+                {wizardServices.length > 0 && !loadingWizardServices && wizardServices.every(s => s.visibility !== "landing_page_only") && (
+                  <p className="text-[10px] text-amber-400/70 mb-2">No LP-only services yet — showing all services. Mark a service as "Landing Page Only" in Services to scope this list.</p>
+                )}
+                {loadingWizardServices ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[0, 1].map(i => <div key={i} className="h-14 bg-[#30363D] animate-pulse rounded-lg" />)}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {wizardServices.map(svc => (
+                      <button
+                        key={svc.id}
+                        onClick={() => { setSelectedServiceId(svc.id); setSelectedServiceName(svc.name); }}
+                        className={`text-left px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
+                          selectedServiceId === svc.id
+                            ? "border-[#0078D4] bg-[#0078D4]/15 text-[#E6EDF3]"
+                            : "border-[#30363D] bg-[#0D1117] text-[#C9D1D9] hover:border-[#0078D4]/50 hover:bg-[#0078D4]/5"
+                        }`}
+                      >
+                        <span className="block truncate">{svc.name}</span>
+                        {svc.visibility === "landing_page_only" && (
+                          <span className="text-[10px] text-amber-400 font-normal">🔒 LP-only</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button onClick={() => setStep(2)} disabled={selectedServiceId === null || loadingWizardServices}
+                className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
+            </div>
+          )}
+
+          {step === 2 && (
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-[#E6EDF3]">Campaign Name <span className="text-[#7D8590] font-normal">(optional)</span></label>
@@ -7109,12 +7167,12 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 <textarea value={goal} onChange={e => setGoal(e.target.value)} rows={3} placeholder="e.g. Generate 20 qualified leads for Microsoft Copilot workshops…"
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
-              <button onClick={() => setStep(2)} disabled={!goal.trim()}
+              <button onClick={() => setStep(3)} disabled={!goal.trim()}
                 className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -7175,14 +7233,14 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(1)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
-                <button onClick={() => setStep(3)} disabled={!audience.trim()}
+                <button onClick={() => setStep(2)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(4)} disabled={!audience.trim()}
                   className="px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">Next →</button>
               </div>
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -7243,7 +7301,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none" />
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setStep(2)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(3)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
                 <button onClick={() => { void previewAssetGeneration(); }} disabled={!offer.trim() || previewing}
                   className="flex items-center gap-2 px-6 py-2 rounded-lg bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/80 disabled:opacity-40 transition-colors">
                   {previewing ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating Preview…</> : "Preview Campaign →"}
@@ -7255,7 +7313,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold text-[#E6EDF3]">Review Generated Assets</p>
@@ -7276,7 +7334,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                 ))}
               </div>
               <div className="flex gap-2 pt-2 border-t border-[#30363D]">
-                <button onClick={() => setStep(3)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
+                <button onClick={() => setStep(4)} className="px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] text-sm hover:text-[#E6EDF3] transition-colors">← Back</button>
                 <button onClick={() => { void confirmSave(); }} disabled={saving}
                   className="flex items-center gap-2 flex-1 justify-center py-2 rounded-lg bg-emerald-500 text-white text-sm font-semibold hover:bg-emerald-400 disabled:opacity-40 transition-colors">
                   {saving ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Saving…</> : "✓ Confirm & Save Campaign"}
@@ -7285,7 +7343,7 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
 
-          {step === 5 && !savedCampaignId && (
+          {step === 6 && !savedCampaignId && (
             <div className="space-y-4">
               <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-4 space-y-3">
                 <div className="flex items-start gap-3">
@@ -7294,11 +7352,11 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
                   </svg>
                   <div>
                     <p className="text-sm font-semibold text-red-400">Campaign save incomplete</p>
-                    <p className="text-xs text-[#7D8590] mt-1">The campaign wasn't saved successfully — this can happen if the connection dropped or the request timed out. Go back to step 4 and try saving again.</p>
+                    <p className="text-xs text-[#7D8590] mt-1">The campaign wasn't saved successfully — this can happen if the connection dropped or the request timed out. Go back to step 5 (Review) and try saving again.</p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setStep(4)}
+                  onClick={() => setStep(5)}
                   className="w-full py-2 rounded-lg border border-red-500/40 text-red-400 text-sm font-medium hover:bg-red-500/10 transition-colors"
                 >
                   ← Go back and retry
@@ -7307,19 +7365,19 @@ function CampaignBuilderWizard({ fetchWithAuth }: { fetchWithAuth: (url: string,
             </div>
           )}
 
-          {step === 5 && savedCampaignId && (
+          {step === 6 && savedCampaignId && (
             <CampaignAdAssetsStep
               campaignId={savedCampaignId}
               goal={goal}
               audience={audience}
               offer={offer}
               fetchWithAuth={fetchWithAuth}
-              onNext={() => setStep(6)}
-              onSkip={() => setStep(6)}
+              onNext={() => setStep(7)}
+              onSkip={() => setStep(7)}
             />
           )}
 
-          {step === 6 && (
+          {step === 7 && (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center">
