@@ -2275,13 +2275,27 @@ RULES:
   return [];
 }
 
+const LP_QUIZ_ROUTES: Record<string, string> = {
+  copilot: "/copilot-quiz",
+  "m365-health": "/m365-health-quiz",
+  sharepoint: "/sharepoint-readiness-quiz",
+  "power-platform": "/power-platform-quiz",
+  "security-compliance": "/security-compliance-quiz",
+  teams: "/teams-maturity-quiz",
+  migration: "/migration-readiness-quiz",
+  governance: "/governance-maturity-quiz",
+};
+
 function applyCtaMode(
   cta: { buttonText: string; href: string; subtext?: string },
   ctaMode?: string, quizType?: string, customHref?: string,
 ): { buttonText: string; href: string; subtext?: string } {
   if (!ctaMode || ctaMode === "order_service") return cta;
   if (ctaMode === "book_call") return { ...cta, href: "/book", buttonText: cta.buttonText || "Book a Discovery Call", subtext: cta.subtext || "Free. No commitment." };
-  if (ctaMode === "take_assessment") return { ...cta, href: `/quiz/${quizType ?? "copilot"}`, buttonText: cta.buttonText || "Start Free Assessment" };
+  if (ctaMode === "take_assessment") {
+    const qt = quizType ?? "copilot";
+    return { ...cta, href: LP_QUIZ_ROUTES[qt] ?? `/${qt}-quiz`, buttonText: cta.buttonText || "Start Free Assessment" };
+  }
   if (ctaMode === "custom" && customHref?.trim()) return { ...cta, href: customHref.trim() };
   return cta;
 }

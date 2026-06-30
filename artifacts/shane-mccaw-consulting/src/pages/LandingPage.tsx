@@ -76,6 +76,17 @@ const QUIZ_LABELS: Record<string, string> = {
   governance: "Governance Maturity",
 };
 
+const QUIZ_ROUTES: Record<string, string> = {
+  copilot: "/copilot-quiz",
+  "m365-health": "/m365-health-quiz",
+  sharepoint: "/sharepoint-readiness-quiz",
+  "power-platform": "/power-platform-quiz",
+  "security-compliance": "/security-compliance-quiz",
+  teams: "/teams-maturity-quiz",
+  migration: "/migration-readiness-quiz",
+  governance: "/governance-maturity-quiz",
+};
+
 function FaqSection({ content }: { content: FaqContent }) {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   return (
@@ -216,7 +227,7 @@ export default function LandingPage() {
   const trustBadges = (blocks.find(b => b.blockType === "trust_badges")?.content as TrustBadgesContent | undefined)?.badges ?? [];
 
   function ctaProps(extraClassName?: string) {
-    if (isLpOnly) {
+    if (isLpOnly || !!page?.linkedService) {
       return {
         onClick: handleLpCtaClick as React.MouseEventHandler,
         disabled: fetchingToken,
@@ -283,25 +294,61 @@ export default function LandingPage() {
         if (!c.steps.length) return null;
         const stepColors = ["#0078D4", "#00B4D8", "#0A2540"];
         return (
-          <section key={i} className="bg-white py-20 px-6">
+          <section key={i} className="bg-[#F7F9FC] py-20 px-6">
             <div className="max-w-[1100px] mx-auto">
               <div className="text-center mb-14">
                 <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">The Process</p>
                 <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">How It Works</h2>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 relative">
-                {c.steps.length === 3 && (
-                  <div className="hidden md:block absolute top-10 left-[calc(16.67%+1rem)] right-[calc(16.67%+1rem)] h-0.5 bg-gradient-to-r from-[#0078D4] via-[#00B4D8] to-[#0A2540] opacity-20" />
-                )}
+
+              {/* Desktop: horizontal workflow cards with arrows */}
+              <div className="hidden md:flex items-stretch gap-3">
                 {c.steps.map((step, si) => (
-                  <div key={si} className="flex flex-col items-center text-center">
-                    <div className="w-20 h-20 rounded-2xl flex items-center justify-center mb-6 text-white text-2xl font-extrabold"
-                      style={{ backgroundColor: stepColors[si % stepColors.length] }}>
-                      {step.step}
+                  <div key={si} className="flex items-center gap-3 flex-1">
+                    <div className="flex-1 bg-white border border-border rounded-2xl p-7 shadow-sm hover:shadow-md transition-shadow flex flex-col">
+                      <div
+                        className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-extrabold text-sm mb-5 shadow-sm"
+                        style={{ backgroundColor: stepColors[si % stepColors.length] }}
+                      >
+                        {String(si + 1).padStart(2, "0")}
+                      </div>
+                      <p className="text-[#0078D4] text-[10px] font-bold uppercase tracking-wider mb-2">Step {si + 1}</p>
+                      <h3 className="font-extrabold text-[#0A2540] text-base mb-2.5">{step.title}</h3>
+                      <p className="text-muted-foreground text-sm leading-relaxed flex-1">{step.description}</p>
+                      {step.note && (
+                        <p className="text-xs font-semibold text-[#0078D4] italic mt-3 pt-3 border-t border-border">
+                          {step.note}
+                        </p>
+                      )}
                     </div>
-                    <h3 className="text-xl font-extrabold text-[#0A2540] mb-3">{step.title}</h3>
-                    <p className="text-muted-foreground text-sm leading-relaxed mb-3">{step.description}</p>
-                    {step.note && <p className="text-xs font-semibold text-[#0078D4] italic">{step.note}</p>}
+                    {si < c.steps.length - 1 && (
+                      <ArrowRight className="w-5 h-5 text-[#0078D4]/35 flex-shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Mobile: vertical timeline */}
+              <div className="flex flex-col gap-0 md:hidden">
+                {c.steps.map((step, si) => (
+                  <div key={si} className="flex gap-4">
+                    <div className="flex flex-col items-center flex-shrink-0">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-extrabold text-sm shadow-sm"
+                        style={{ backgroundColor: stepColors[si % stepColors.length] }}
+                      >
+                        {String(si + 1).padStart(2, "0")}
+                      </div>
+                      {si < c.steps.length - 1 && (
+                        <div className="w-0.5 flex-1 mt-2 min-h-[40px] bg-gradient-to-b from-[#0078D4]/25 to-transparent" />
+                      )}
+                    </div>
+                    <div className="flex-1 pb-8">
+                      <p className="text-[#0078D4] text-[10px] font-bold uppercase tracking-wider mb-1.5">Step {si + 1}</p>
+                      <h3 className="font-extrabold text-[#0A2540] text-base mb-2">{step.title}</h3>
+                      <p className="text-muted-foreground text-sm leading-relaxed">{step.description}</p>
+                      {step.note && <p className="text-xs font-semibold text-[#0078D4] italic mt-2">{step.note}</p>}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -459,6 +506,7 @@ export default function LandingPage() {
       case "quiz_cta": {
         const c = block.content as QuizCtaContent;
         const label = QUIZ_LABELS[c.quizType] ?? c.quizType;
+        const quizHref = QUIZ_ROUTES[c.quizType] ?? `/${c.quizType}-quiz`;
         return (
           <section key={i} className="bg-[#F7F9FC] py-16 px-6 border-b border-border">
             <div className="max-w-[680px] mx-auto text-center">
@@ -473,7 +521,7 @@ export default function LandingPage() {
                 {c.description ?? "Answer 10 questions and receive a personalised readiness report with actionable recommendations — in minutes."}
               </p>
               <a
-                href={`/quiz/${c.quizType}`}
+                href={quizHref}
                 className="inline-flex items-center gap-2 bg-[#0078D4] text-white font-bold text-base px-10 py-4 rounded-xl hover:bg-[#0065b3] transition-colors shadow-lg shadow-[#0078D4]/20"
               >
                 {c.buttonText ?? "Start Free Assessment"}
