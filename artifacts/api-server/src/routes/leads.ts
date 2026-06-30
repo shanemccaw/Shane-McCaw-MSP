@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db, leadsTable, emailsTable, servicesTable, quizLeadsTable,
   leadQualificationsTable, opportunitiesTable, opportunityTasksTable, kanbanTasksTable,
+  notificationsTable, usersTable,
 } from "@workspace/db";
 import { eq, desc, count, gte, and, ilike, or, ne, isNull, type SQL, lt, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -180,6 +181,23 @@ router.post("/leads", async (req: Request, res: Response) => {
     entityLabel: lead.name,
     metadata: { source: lead.source, company: lead.company ?? null },
   });
+
+  void (async () => {
+    try {
+      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+      if (admins.length > 0) {
+        await db.insert(notificationsTable).values(
+          admins.map(a => ({
+            userId: a.id,
+            title: `New lead: ${lead.name}`,
+            body: lead.company ? `${lead.company} — ${lead.source.replace(/_/g, " ")}` : lead.source.replace(/_/g, " "),
+            type: "lead_created" as const,
+            linkPath: `/crm/leads/${lead.id}`,
+          }))
+        );
+      }
+    } catch {}
+  })();
 
   res.status(201).json(lead);
 });

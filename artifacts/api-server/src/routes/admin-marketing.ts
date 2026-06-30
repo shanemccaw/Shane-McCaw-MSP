@@ -3193,6 +3193,63 @@ router.post("/admin/leads", requireAdmin, async (req: Request, res: Response) =>
   }
 });
 
+// ─── Active campaign badges with live visitor counts ─────────────────────────
+
+router.get("/admin/marketing/active-campaign-badges", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const cutoff = new Date(Date.now() - 5 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        id: campaignsTable.id,
+        name: campaignsTable.name,
+        slug: landingPagesTable.slug,
+      })
+      .from(campaignsTable)
+      .innerJoin(landingPagesTable, and(
+        eq(landingPagesTable.campaignId, campaignsTable.id),
+        eq(landingPagesTable.published, true),
+      ))
+      .where(eq(campaignsTable.status, "active"));
+
+    if (rows.length === 0) { res.json([]); return; }
+
+    const perPage = await Promise.all(
+      rows.map(async (r) => {
+        try {
+          const pattern = `%/landing-pages/${r.slug}%`;
+          const result = await db.execute(sql`
+            SELECT COUNT(DISTINCT ap.session_id)::text AS cnt
+            FROM analytics_pageviews ap
+            JOIN analytics_sessions s ON s.session_id = ap.session_id
+            WHERE s.last_seen_at >= ${cutoff}
+            AND ap.page LIKE ${pattern}
+          `);
+          const qrows = (result as unknown as { rows: { cnt: string }[] }).rows ?? [];
+          const cnt = parseInt(qrows[0]?.cnt ?? "0", 10);
+          return { id: r.id, name: r.name, slug: r.slug, liveCount: isNaN(cnt) ? 0 : cnt };
+        } catch {
+          return { id: r.id, name: r.name, slug: r.slug, liveCount: 0 };
+        }
+      })
+    );
+
+    const byId = new Map<number, { id: number; name: string; slug: string; liveCount: number }>();
+    for (const r of perPage) {
+      const existing = byId.get(r.id);
+      if (existing) {
+        existing.liveCount += r.liveCount;
+      } else {
+        byId.set(r.id, { ...r });
+      }
+    }
+
+    res.json(Array.from(byId.values()));
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 // ─── Site config (public site URL for linking) ───────────────────────────────
 
 router.get("/admin/site-config", requireAdmin, (_req: Request, res: Response) => {

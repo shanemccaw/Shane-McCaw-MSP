@@ -305,7 +305,7 @@ export const notificationsTable = pgTable("notifications", {
   userId: integer("user_id").notNull().references(() => usersTable.id),
   title: text("title").notNull(),
   body: text("body"),
-  type: text("type", { enum: ["project_update", "message", "invoice", "document", "general"] }).notNull().default("general"),
+  type: text("type", { enum: ["project_update", "message", "invoice", "document", "general", "lead_created", "quiz_lead_created", "purchase_created"] }).notNull().default("general"),
   read: boolean("read").notNull().default(false),
   linkPath: text("link_path"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

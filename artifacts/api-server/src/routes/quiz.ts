@@ -3,7 +3,8 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { db, quizLeadsTable, quizAnalyticsEventsTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
@@ -574,6 +575,25 @@ Respond ONLY with valid JSON in this exact shape:
   } catch (err) {
     logger.error({ err }, "quiz/submit: DB insert failed");
     return res.status(500).json({ error: "Failed to save your results. Please try again." });
+  }
+
+  if (leadId !== null) {
+    void (async () => {
+      try {
+        const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+        if (admins.length > 0) {
+          await db.insert(notificationsTable).values(
+            admins.map(a => ({
+              userId: a.id,
+              title: `New quiz lead: ${name}`,
+              body: company ? `${company} — ${tier}` : tier,
+              type: "quiz_lead_created" as const,
+              linkPath: `/crm/quiz-leads/${leadId}`,
+            }))
+          );
+        }
+      } catch {}
+    })();
   }
 
   let resendToken: string | null = null;

@@ -8,6 +8,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import NotificationDrawer from "@/components/NotificationDrawer";
 
 interface NavItem {
   label: string;
@@ -251,6 +252,15 @@ function NavItemLink({
   );
 }
 
+// ─── Campaign badge type ──────────────────────────────────────────────────────
+
+interface CampaignBadge {
+  id: number;
+  name: string;
+  slug: string;
+  liveCount: number;
+}
+
 // ─── TopHeader ────────────────────────────────────────────────────────────────
 
 function TopHeader({
@@ -259,21 +269,29 @@ function TopHeader({
   user,
   onLogout,
   unreadEmailCount,
+  liveVisitors,
+  campaignBadges,
+  unreadNotifCount,
+  onBellClick,
 }: {
   onMobileMenuClick: () => void;
   location: string;
   user: { email?: string } | null;
   onLogout: () => void;
   unreadEmailCount: number;
+  liveVisitors: number | null;
+  campaignBadges: CampaignBadge[];
+  unreadNotifCount: number;
+  onBellClick: () => void;
 }) {
   const breadcrumb = computeBreadcrumb(location);
 
   return (
-    <header className="h-14 bg-[#161B22] border-b border-[#30363D] flex items-center px-4 gap-4 flex-shrink-0">
+    <header className="h-14 bg-[#161B22] border-b border-[#30363D] flex items-center px-4 gap-3 flex-shrink-0 overflow-x-auto">
       {/* Mobile hamburger */}
       <button
         onClick={onMobileMenuClick}
-        className="lg:hidden p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors"
+        className="lg:hidden p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors flex-shrink-0"
         aria-label="Open navigation"
       >
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -282,7 +300,7 @@ function TopHeader({
       </button>
 
       {/* Breadcrumb — desktop */}
-      <div className="hidden lg:flex items-center gap-1.5 text-xs min-w-0">
+      <div className="hidden lg:flex items-center gap-1.5 text-xs min-w-0 flex-shrink-0">
         {breadcrumb ? (
           <>
             <span className="text-[#7D8590] font-medium truncate">{breadcrumb.group}</span>
@@ -297,12 +315,36 @@ function TopHeader({
       </div>
 
       {/* Mobile title */}
-      <span className="lg:hidden font-bold text-[#E6EDF3] text-sm">Admin Panel</span>
+      <span className="lg:hidden font-bold text-[#E6EDF3] text-sm flex-shrink-0">Admin Panel</span>
 
-      <div className="flex-1" />
+      {/* Live & campaign badges — left of search, flex-wrap to handle many campaigns */}
+      <div className="hidden md:flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
+        {liveVisitors !== null && liveVisitors > 0 && (
+          <span className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            {liveVisitors} live now
+          </span>
+        )}
+        {campaignBadges.map(c => (
+          <span
+            key={c.id}
+            title={`Landing page: /landing-pages/${c.slug}`}
+            className="flex items-center gap-1 bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 cursor-default"
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            {c.name}
+            {c.liveCount > 0 && ` — ${c.liveCount} live`}
+          </span>
+        ))}
+        {/* Spacer so search box is pushed right */}
+        <div className="flex-1" />
+      </div>
+
+      {/* flex-1 for mobile (no badges showing) */}
+      <div className="md:hidden flex-1" />
 
       {/* Global search */}
-      <div className="hidden md:flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 w-52 focus-within:border-[#0078D4]/60 transition-colors">
+      <div className="hidden md:flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 w-52 focus-within:border-[#0078D4]/60 transition-colors flex-shrink-0">
         <svg className="w-3.5 h-3.5 text-[#7D8590] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
         </svg>
@@ -317,25 +359,24 @@ function TopHeader({
         </kbd>
       </div>
 
-      {/* Notification bell — inbox badge */}
-      <Link href="/system/inbox">
-        <button
-          className="relative p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors"
-          title="Inbox"
-        >
-          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-          </svg>
-          {unreadEmailCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
-              {unreadEmailCount > 99 ? "99+" : unreadEmailCount}
-            </span>
-          )}
-        </button>
-      </Link>
+      {/* Notification bell — opens notification drawer */}
+      <button
+        onClick={onBellClick}
+        className="relative p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors flex-shrink-0"
+        title="Notifications"
+      >
+        <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+        </svg>
+        {unreadNotifCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center px-0.5 leading-none">
+            {unreadNotifCount > 99 ? "99+" : unreadNotifCount}
+          </span>
+        )}
+      </button>
 
       {/* Identity chip */}
-      <div className="flex items-center gap-2.5 pl-3 border-l border-[#30363D]">
+      <div className="flex items-center gap-2.5 pl-3 border-l border-[#30363D] flex-shrink-0">
         <div className="w-7 h-7 bg-[#0078D4]/20 border border-[#0078D4]/30 rounded-full flex items-center justify-center flex-shrink-0">
           <span className="text-xs font-bold text-[#0078D4] uppercase leading-none">
             {user?.email?.[0] ?? "A"}
@@ -473,13 +514,25 @@ function saveLastSeenAt(ts: number): void {
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, fetchWithAuth } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readSidebarCollapsed());
   const [unreadEmailCount, setUnreadEmailCount] = useState(0);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Live visitors ──────────────────────────────────────────────────────────
+  const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
+  const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Campaign badges ────────────────────────────────────────────────────────
+  const [campaignBadges, setCampaignBadges] = useState<CampaignBadge[]>([]);
+  const campaignTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Notification drawer ────────────────────────────────────────────────────
+  const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   const fetchCount = useCallback(async () => {
     const lastSeen = readLastSeenAt();
@@ -497,6 +550,26 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
   const refreshUnreadCount = useCallback(() => { void fetchCount(); }, [fetchCount]);
 
+  const fetchLiveVisitors = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/analytics/live");
+      if (res.ok) {
+        const d = await res.json() as { live: number };
+        setLiveVisitors(d.live);
+      }
+    } catch {}
+  }, [fetchWithAuth]);
+
+  const fetchCampaignBadges = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth("/api/admin/marketing/active-campaign-badges");
+      if (res.ok) {
+        const d = await res.json() as CampaignBadge[];
+        setCampaignBadges(d);
+      }
+    } catch {}
+  }, [fetchWithAuth]);
+
   useEffect(() => {
     const isInbox = location === "/inbox" || location === "/system/inbox";
     if (isInbox) {
@@ -511,6 +584,22 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       if (pollTimerRef.current) { clearInterval(pollTimerRef.current); pollTimerRef.current = null; }
     };
   }, [location, fetchCount]);
+
+  useEffect(() => {
+    void fetchLiveVisitors();
+    liveTimerRef.current = setInterval(() => void fetchLiveVisitors(), 30_000);
+    return () => {
+      if (liveTimerRef.current) clearInterval(liveTimerRef.current);
+    };
+  }, [fetchLiveVisitors]);
+
+  useEffect(() => {
+    void fetchCampaignBadges();
+    campaignTimerRef.current = setInterval(() => void fetchCampaignBadges(), 60_000);
+    return () => {
+      if (campaignTimerRef.current) clearInterval(campaignTimerRef.current);
+    };
+  }, [fetchCampaignBadges]);
 
   useEffect(() => {
     try { localStorage.setItem(LS_SIDEBAR_COLLAPSED, String(sidebarCollapsed)); } catch {}
@@ -579,6 +668,10 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             user={user}
             onLogout={handleLogout}
             unreadEmailCount={unreadEmailCount}
+            liveVisitors={liveVisitors}
+            campaignBadges={campaignBadges}
+            unreadNotifCount={unreadNotifCount}
+            onBellClick={() => setNotifDrawerOpen(true)}
           />
 
           <main className="flex-1 overflow-y-auto bg-[#0D1117]">
@@ -588,6 +681,14 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+
+      {/* Notification drawer */}
+      <NotificationDrawer
+        open={notifDrawerOpen}
+        onOpenChange={setNotifDrawerOpen}
+        unreadCount={unreadNotifCount}
+        onUnreadCountChange={setUnreadNotifCount}
+      />
     </TooltipProvider>
   );
 }

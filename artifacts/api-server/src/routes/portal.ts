@@ -3821,6 +3821,24 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceName} — $${amountDollars}`,
       ).catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: SMS alert failed (non-fatal)"));
 
+      // Bell notification for admin users
+      void (async () => {
+        try {
+          const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+          if (admins.length > 0) {
+            await db.insert(notificationsTable).values(
+              admins.map(a => ({
+                userId: a.id,
+                title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+                body: `${serviceName} — $${amountDollars}`,
+                type: "purchase_created" as const,
+                linkPath: `/crm/invoices/${newInvoice?.id ?? ""}`,
+              }))
+            );
+          }
+        } catch {}
+      })();
+
       // Push notification to Shane's devices
       db.select({ token: deviceTokensTable.token }).from(deviceTokensTable)
         .then(async (rows) => {
@@ -3926,6 +3944,24 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         sendAdminSms(
           `New order: ${buyer?.name ?? buyer?.email ?? "A client"} — ${serviceLabel} — $${totalDollars}`,
         ).catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: onboarding SMS alert failed (non-fatal)"));
+
+        // Bell notification for admin users
+        void (async () => {
+          try {
+            const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+            if (admins.length > 0) {
+              await db.insert(notificationsTable).values(
+                admins.map(a => ({
+                  userId: a.id,
+                  title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+                  body: `${serviceLabel} — $${totalDollars}`,
+                  type: "purchase_created" as const,
+                  linkPath: `/crm/invoices`,
+                }))
+              );
+            }
+          } catch {}
+        })();
 
         // Push notification to Shane's devices — look up the invoice ID created during provisioning
         const buyerLabel = buyer?.name ?? buyer?.email ?? "A client";
