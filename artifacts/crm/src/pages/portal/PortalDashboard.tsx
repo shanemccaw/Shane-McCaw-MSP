@@ -263,7 +263,6 @@ export default function PortalDashboard() {
                             <h2 className="text-base font-black text-white tracking-tight">M365 Environment Health</h2>
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-[#0078D4] whitespace-nowrap">Set up profile →</span>
                       </div>
                       <div className="bg-[#0d2d4a] border border-[#0A2540] rounded-b-2xl px-6 py-8 flex items-center gap-5">
                         <div className="w-12 h-12 rounded-xl bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
@@ -273,14 +272,8 @@ export default function PortalDashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-white">Awaiting baseline scan</p>
-                          <p className="text-xs text-white/40 mt-0.5">Complete your M365 profile and save it — we'll generate your first environment health scores immediately.</p>
+                          <p className="text-xs text-white/40 mt-0.5">Your health scores will appear once Shane runs your first baseline scan.</p>
                         </div>
-                        <span className="inline-flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-bold px-4 py-2.5 rounded-lg whitespace-nowrap">
-                          Run baseline scan
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                          </svg>
-                        </span>
                       </div>
                     </div>
                   ) : (
