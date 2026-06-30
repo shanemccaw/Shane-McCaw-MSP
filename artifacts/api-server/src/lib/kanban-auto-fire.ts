@@ -235,6 +235,7 @@ async function runInBackground(
   cardIds:  number[],
   projectId: number,
   workflowStepId: number | null,
+  clientUserId: number,
 ): Promise<void> {
   try {
     const { success, lastStatus, output } = await pollJobToCompletion(jobId);
@@ -264,6 +265,7 @@ async function runInBackground(
         const { spawnedTasks } = await advancePhaseIfComplete(workflowStepId, projectId);
         if (spawnedTasks.length > 0) {
           logger.info({ workflowStepId, projectId, spawnedCount: spawnedTasks.length }, "kanban-auto-fire: next phase activated");
+          void autoFireFirstBacklogScript(clientUserId);
         }
       }
     } else {
@@ -407,7 +409,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     );
 
     // Detached — does NOT block the HTTP response
-    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId);
+    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId);
   } catch (err) {
     logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
   }
