@@ -8,6 +8,7 @@ export interface RunStatus {
 
 type StatusListener = (status: RunStatus) => void;
 type CompleteListener = (status: "completed" | "failed", outputLines: string[]) => void;
+type ChangeListener = () => void;
 
 interface ActivePoll {
   intervalId: ReturnType<typeof setInterval>;
@@ -19,6 +20,29 @@ interface ActivePoll {
 
 const polls = new Map<string, ActivePoll>();
 const taskJobMap = new Map<number, string>();
+
+const taskIdToJobRef = new Map<number, string>();
+
+const changeListeners = new Set<ChangeListener>();
+
+function notifyChange() {
+  changeListeners.forEach(fn => fn());
+}
+
+export function subscribeToChanges(fn: ChangeListener): () => void {
+  changeListeners.add(fn);
+  return () => changeListeners.delete(fn);
+}
+
+export function registerTaskJob(taskId: number, jobRef: string) {
+  taskIdToJobRef.set(taskId, jobRef);
+  notifyChange();
+}
+
+export function isTaskRunning(taskId: number): boolean {
+  const jobRef = taskIdToJobRef.get(taskId);
+  return jobRef !== undefined && polls.has(jobRef);
+}
 
 export function startPoll(
   jobRef: string,
@@ -78,6 +102,7 @@ export function startPoll(
     }, 4000),
   };
   polls.set(jobRef, poll);
+  notifyChange();
 }
 
 export function attachStatusListener(jobRef: string, listener: StatusListener) {
@@ -113,5 +138,12 @@ export function stopPoll(jobRef: string) {
     clearInterval(p.intervalId);
     if (p.kanbanTaskId !== undefined) taskJobMap.delete(p.kanbanTaskId);
     polls.delete(jobRef);
+    for (const [taskId, ref] of taskIdToJobRef.entries()) {
+      if (ref === jobRef) {
+        taskIdToJobRef.delete(taskId);
+        break;
+      }
+    }
+    notifyChange();
   }
 }

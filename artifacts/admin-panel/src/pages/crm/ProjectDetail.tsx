@@ -3,11 +3,11 @@ import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
+import { subscribeToChanges, isTaskRunning } from "@/lib/scriptPoller";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
-import { isActiveForTask } from "@/lib/scriptPoller";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
 import StatusReportForm from "@/components/StatusReportForm";
@@ -201,16 +201,14 @@ function DraggableCard({
   const [replySent, setReplySent] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
-  const [scriptRunning, setScriptRunning] = useState(() => isActiveForTask(task.id));
+  const [scriptRunning, setScriptRunning] = useState(() => isTaskRunning(task.id));
   const [, setLocation] = useLocation();
 
-  // Re-sync with poller activity — catches scripts started from KanbanCardModal or other surfaces
   useEffect(() => {
-    const id = setInterval(() => {
-      const active = isActiveForTask(task.id);
-      setScriptRunning(prev => prev !== active ? active : prev);
-    }, 2000);
-    return () => clearInterval(id);
+    const unsubscribe = subscribeToChanges(() => {
+      setScriptRunning(isTaskRunning(task.id));
+    });
+    return unsubscribe;
   }, [task.id]);
 
   const handleRunScript = () => { if (!scriptRunning) setConfirmRunOpen(true); };
@@ -528,7 +526,16 @@ function DraggableCard({
             )}
 
             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-              {linkedRunbook?.azureRunbookName && task.taskType !== "script" && (
+              {scriptRunning && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/40 bg-emerald-500/15 text-emerald-400">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                  </span>
+                  Running…
+                </span>
+              )}
+              {linkedRunbook?.azureRunbookName && !scriptRunning && task.taskType !== "script" && (
                 <button
                   onClick={e => { e.stopPropagation(); if (!scriptRunning) setConfirmRunOpen(true); }}
                   disabled={scriptRunning}
@@ -546,6 +553,19 @@ function DraggableCard({
                     </svg>
                   )}
                   {scriptRunning ? "Running…" : "Run Script"}
+                </button>
+              )}
+              {linkedRunbook?.azureRunbookName && scriptRunning && (
+                <button
+                  onClick={e => { e.stopPropagation(); setRunDialogOpen(true); }}
+                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5"
+                  title="View running script"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  View
                 </button>
               )}
               {targetCols.map(col => (
@@ -577,7 +597,7 @@ function DraggableCard({
           clientName={clientName ?? null}
           disabled={scriptRunning}
           onConfirm={() => {
-            if (isActiveForTask(task.id)) return;
+            if (isTaskRunning(task.id)) return;
             setConfirmRunOpen(false);
             setScriptRunning(true);
             onQuickMove(task, "in_progress");
@@ -596,7 +616,6 @@ function DraggableCard({
           kanbanTaskId={task.id}
           onClose={() => {
             setRunDialogOpen(false);
-            if (isActiveForTask(task.id)) setScriptRunning(true);
           }}
           onRunComplete={(status, title) => {
             setScriptRunning(false);

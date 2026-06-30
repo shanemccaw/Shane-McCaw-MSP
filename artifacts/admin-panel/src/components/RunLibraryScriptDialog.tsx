@@ -8,6 +8,7 @@ import {
   getLastStatus,
   isActive,
   stopPoll,
+  registerTaskJob,
   type RunStatus,
 } from "@/lib/scriptPoller";
 
@@ -144,6 +145,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       const { jobRef: ref } = await r.json() as { jobRef: string };
       setJobRef(ref);
       jobRefRef.current = ref;
+      if (kanbanTaskId != null) registerTaskJob(kanbanTaskId, ref);
       const initialStatus: RunStatus = { status: "running", outputLines: [], findings: [], recommendations: [], scoreImpact: {} };
       setRunStatus(initialStatus);
 
