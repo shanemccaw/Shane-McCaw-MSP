@@ -333,7 +333,13 @@ function TopHeader({
           >
             <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
             {c.name}
-            {c.liveCount > 0 && ` — ${c.liveCount} live`}
+            {c.liveCount > 0 && (
+              <>
+                {" — "}
+                <span key={c.liveCount} className="count-pop tabular-nums">{c.liveCount}</span>
+                {" live"}
+              </>
+            )}
           </span>
         ))}
         {/* Spacer so search box is pushed right */}
@@ -529,6 +535,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   // ─── Campaign badges ────────────────────────────────────────────────────────
   const [campaignBadges, setCampaignBadges] = useState<CampaignBadge[]>([]);
   const campaignTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const campaignAbortRef = useRef<AbortController | null>(null);
 
   // ─── Notification drawer ────────────────────────────────────────────────────
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
@@ -570,6 +577,37 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     } catch {}
   }, [fetchWithAuth]);
 
+  const startCampaignSSE = useCallback(async (signal: AbortSignal) => {
+    try {
+      const res = await fetchWithAuth("/api/admin/marketing/campaign-badges-stream", { signal });
+      if (!res.ok || !res.body) return false;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        if (signal.aborted) break;
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const dataLine = part.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const parsed = JSON.parse(dataLine.slice(6)) as CampaignBadge[];
+            setCampaignBadges(parsed);
+          } catch {}
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, [fetchWithAuth]);
+
   useEffect(() => {
     const isInbox = location === "/inbox" || location === "/system/inbox";
     if (isInbox) {
@@ -594,12 +632,30 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   }, [fetchLiveVisitors]);
 
   useEffect(() => {
-    void fetchCampaignBadges();
-    campaignTimerRef.current = setInterval(() => void fetchCampaignBadges(), 60_000);
-    return () => {
-      if (campaignTimerRef.current) clearInterval(campaignTimerRef.current);
+    const abortCtrl = new AbortController();
+    campaignAbortRef.current = abortCtrl;
+
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = async () => {
+      if (abortCtrl.signal.aborted) return;
+      const ok = await startCampaignSSE(abortCtrl.signal);
+      if (!ok && !abortCtrl.signal.aborted) {
+        void fetchCampaignBadges();
+        campaignTimerRef.current = setInterval(() => void fetchCampaignBadges(), 15_000);
+      } else if (ok && !abortCtrl.signal.aborted) {
+        retryTimer = setTimeout(() => void connect(), 3_000);
+      }
     };
-  }, [fetchCampaignBadges]);
+
+    void connect();
+
+    return () => {
+      abortCtrl.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (campaignTimerRef.current) { clearInterval(campaignTimerRef.current); campaignTimerRef.current = null; }
+    };
+  }, [startCampaignSSE, fetchCampaignBadges]);
 
   useEffect(() => {
     try { localStorage.setItem(LS_SIDEBAR_COLLAPSED, String(sidebarCollapsed)); } catch {}
