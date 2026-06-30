@@ -227,7 +227,7 @@ export default function LandingPage() {
   const trustBadges = (blocks.find(b => b.blockType === "trust_badges")?.content as TrustBadgesContent | undefined)?.badges ?? [];
 
   function ctaProps(extraClassName?: string) {
-    if (isLpOnly || !!page?.linkedService) {
+    if (isLpOnly) {
       return {
         onClick: handleLpCtaClick as React.MouseEventHandler,
         disabled: fetchingToken,
