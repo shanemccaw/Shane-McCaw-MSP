@@ -342,6 +342,8 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
         name: createName.trim(),
         slug: createSlug.trim() || createName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
         billingType: createBilling,
+        visibility: "private",
+        isPublic: false,
       });
       toast({ title: "Service created" });
       onSaved?.(created.id);

@@ -51,7 +51,7 @@ export interface ServiceRow {
 }
 
 export type ServiceUpdate = Omit<ServiceRow, "id" | "createdAt" | "orderWorkflow" | "overviewPdfKey" | "overviewPdfGeneratedAt">;
-export type ServiceCreate = { name: string; slug: string; billingType: "one_time" | "recurring_monthly" };
+export type ServiceCreate = { name: string; slug: string; billingType: "one_time" | "recurring_monthly"; visibility?: "public" | "private" | "landing_page_only"; isPublic?: boolean };
 
 export const SERVICES_QUERY_KEY = ["services"] as const;
 
