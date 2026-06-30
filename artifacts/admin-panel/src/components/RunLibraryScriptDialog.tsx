@@ -92,27 +92,14 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     };
   }, []);
 
-  const patchKanbanTask = useCallback(async (status: "completed" | "failed", outputLines: string[]) => {
-    if (!kanbanTaskId) return;
-    const summary = outputLines.slice(-10).join("\n");
-    const completionNotes = status === "completed"
-      ? `Script '${scriptTitle}' completed successfully.\n\nOutput:\n${summary}`
-      : `Script '${scriptTitle}' failed.\n\nOutput:\n${summary}`;
-    const patch: Record<string, unknown> = {
-      completionNotes,
-      completionStatus: status === "completed" ? "script_completed" : "script_failed",
-    };
-    if (status === "completed") {
-      patch.column = "completed";
-    }
-    try {
-      await fetchWithAuth(`/api/admin/kanban-tasks/${kanbanTaskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-    } catch { /* silent */ }
-  }, [kanbanTaskId, scriptTitle, fetchWithAuth]);
+  // The backend (processRunInBackground) now owns all kanban task status writes — it bulk-updates
+  // the triggering card AND all sibling cards sharing the same runbook. Patching only the triggering
+  // card here would diverge siblings. Keep the callback signature for startPoll compatibility but
+  // make it a no-op.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const patchKanbanTask = useCallback(async (_status: "completed" | "failed", _outputLines: string[]) => {
+    // no-op: backend handles all kanban task column + completionNotes updates
+  }, []);
 
   const handleRun = async () => {
     if (!moduleId && !azureRunbookName) {

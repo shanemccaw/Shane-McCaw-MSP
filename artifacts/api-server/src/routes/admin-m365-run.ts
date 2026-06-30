@@ -367,11 +367,15 @@ async function processRunInBackground(
 
   if (kanbanIds.length > 0) {
     try {
+      // Build a consistent output summary so every sibling card gets identical completion notes.
+      const outputLines = jobOutput.split("\n").map(l => l.replace(/\r$/, "")).filter(Boolean);
+      const outputSummary = outputLines.slice(-10).join("\n");
+      const notesBody = outputSummary ? `\n\nOutput:\n${outputSummary}` : "";
       const kanbanPatch: { column?: "completed"; completionStatus: string; completionNotes: string; updatedAt: Date } = {
         completionStatus: finalStatus === "completed" ? "script_completed" : "script_failed",
         completionNotes: finalStatus === "completed"
-          ? `Script run completed (job ${jobId}).`
-          : `Script run failed (job ${jobId}).`,
+          ? `Script run completed (job ${jobId}).${notesBody}`
+          : `Script run failed (job ${jobId}).${notesBody}`,
         updatedAt: new Date(),
       };
       if (finalStatus === "completed") kanbanPatch.column = "completed";
@@ -582,7 +586,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   if (kanbanTaskId) {
     try {
       siblingTaskIds = await resolveSiblingTaskIds(kanbanTaskId);
-      if (siblingTaskIds.length > 1) {
+      if (siblingTaskIds.length > 0) {
         await db
           .update(kanbanTasksTable)
           .set({ column: "in_progress", updatedAt: new Date() })
