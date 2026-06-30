@@ -3529,7 +3529,7 @@ async function seedDefaultWorkflowSteps(
       projectId: projectId ?? null,
       title: s.title,
       description: s.description,
-      status: "pending" as const,
+      status: (i === 0 ? "in_progress" : "pending") as "in_progress" | "pending",
       order: i + 1,
     }))
   );
