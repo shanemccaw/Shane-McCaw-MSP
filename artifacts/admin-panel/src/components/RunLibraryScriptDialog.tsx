@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import {
+  startPoll,
+  attachStatusListener,
+  detachStatusListener,
+  getLastStatus,
+  isActive,
+  stopPoll,
+  type RunStatus,
+} from "@/lib/scriptPoller";
 
 interface ClientEntry {
   id: number;
   name: string | null;
   appRegistration: { id: number; tenantId: string; azureClientId: string; keyVaultSecretName: string; status: string } | null;
-}
-
-interface RunStatus {
-  status: "running" | "completed" | "failed";
-  outputLines: string[];
-  findings: string[];
-  recommendations: string[];
-  scoreImpact: Record<string, number>;
 }
 
 interface Props {
@@ -24,9 +25,10 @@ interface Props {
   onClose: () => void;
   initialClientId?: number | null;
   kanbanTaskId?: number | null;
+  onRunComplete?: (status: "completed" | "failed", scriptTitle: string) => void;
 }
 
-export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId, onRunComplete }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
@@ -42,7 +44,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   const [saved, setSaved] = useState(false);
 
   const terminalRef = useRef<HTMLDivElement>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jobRefRef = useRef<string | null>(null);
 
   // Load clients with credentials
   useEffect(() => {
@@ -80,14 +82,14 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     if (running) setSaved(false);
   }, [running]);
 
-  const stopPolling = useCallback(() => {
-    if (pollRef.current) {
-      clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
+  // On unmount: detach the live UI listener so the poll keeps running in the background
+  useEffect(() => {
+    return () => {
+      if (jobRefRef.current && isActive(jobRefRef.current)) {
+        detachStatusListener(jobRefRef.current);
+      }
+    };
   }, []);
-
-  useEffect(() => () => stopPolling(), [stopPolling]);
 
   const patchKanbanTask = useCallback(async (status: "completed" | "failed", outputLines: string[]) => {
     if (!kanbanTaskId) return;
@@ -110,26 +112,6 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       });
     } catch { /* silent */ }
   }, [kanbanTaskId, scriptTitle, fetchWithAuth]);
-
-  const startPolling = useCallback((ref: string) => {
-    stopPolling();
-    pollRef.current = setInterval(async () => {
-      try {
-        const r = await fetchWithAuth(`/api/admin/run-script/${ref}/status`);
-        if (!r.ok) { stopPolling(); return; }
-        const data = await r.json() as RunStatus;
-        setRunStatus(data);
-        if (data.status !== "running") {
-          stopPolling();
-          setRunning(false);
-          void patchKanbanTask(data.status, data.outputLines);
-        }
-      } catch {
-        stopPolling();
-        setRunning(false);
-      }
-    }, 4000);
-  }, [fetchWithAuth, stopPolling, patchKanbanTask]);
 
   const handleRun = async () => {
     if (!moduleId && !azureRunbookName) {
@@ -161,12 +143,56 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
       }
       const { jobRef: ref } = await r.json() as { jobRef: string };
       setJobRef(ref);
-      setRunStatus({ status: "running", outputLines: [], findings: [], recommendations: [], scoreImpact: {} });
-      startPolling(ref);
+      jobRefRef.current = ref;
+      const initialStatus: RunStatus = { status: "running", outputLines: [], findings: [], recommendations: [], scoreImpact: {} };
+      setRunStatus(initialStatus);
+
+      // Capture stable refs for the background completion callback
+      const capturedPatchKanbanTask = patchKanbanTask;
+      const capturedOnRunComplete = onRunComplete;
+      const capturedScriptTitle = scriptTitle;
+
+      startPoll(
+        ref,
+        fetchWithAuth,
+        (status) => {
+          setRunStatus(status);
+          if (status.status !== "running") {
+            setRunning(false);
+          }
+        },
+        async (status, outputLines) => {
+          // This fires even if the dialog has been closed
+          await capturedPatchKanbanTask(status, outputLines);
+          capturedOnRunComplete?.(status, capturedScriptTitle);
+        }
+      );
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Run failed", variant: "destructive" });
       setRunning(false);
     }
+  };
+
+  // Re-attach status listener if dialog is opened while a poll is already active for this job
+  useEffect(() => {
+    if (jobRef && isActive(jobRef)) {
+      attachStatusListener(jobRef, (status) => {
+        setRunStatus(status);
+        if (status.status !== "running") setRunning(false);
+      });
+      const last = getLastStatus(jobRef);
+      if (last) setRunStatus(last);
+    }
+  }, [jobRef]);
+
+  const handleClose = () => {
+    // If a poll is active, detach the UI listener so it runs in background; otherwise stop polling
+    if (jobRefRef.current) {
+      if (isActive(jobRefRef.current)) {
+        detachStatusListener(jobRefRef.current);
+      }
+    }
+    onClose();
   };
 
   const handleSaveToCard = async () => {
@@ -236,9 +262,17 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
               <p className="text-xs text-[#484F58] mt-0.5 truncate">Runbook: {azureRunbookName}</p>
             )}
           </div>
-          <button onClick={onClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors flex-shrink-0 ml-3">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            {running && (
+              <span className="text-xs text-yellow-400 font-medium flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
+                Running in background if closed
+              </span>
+            )}
+            <button onClick={handleClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
         </div>
 
         {/* Body */}
@@ -261,7 +295,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
               <select
                 value={selectedClientId ?? ""}
                 onChange={e => setSelectedClientId(e.target.value ? parseInt(e.target.value) : null)}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors"
+                disabled={running}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/50 transition-colors disabled:opacity-50"
               >
                 <option value="">— No client / run standalone —</option>
                 {clients.map(c => (

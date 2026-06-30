@@ -14,6 +14,8 @@ import {
 import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
 import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
+import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
+import { useToast } from "@/hooks/use-toast";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -43,6 +45,7 @@ interface Props {
   fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
   onUpdate?: (updated: KanbanCardModalTask) => void;
   clientId?: number | null;
+  clientName?: string | null;
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
@@ -596,7 +599,8 @@ export function KanbanCardModal(props: Props) {
   return <GenericKanbanCardModal {...props} />;
 }
 
-function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId }: Props) {
+function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName }: Props) {
+  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<EditForm>({ title: "", description: "", priority: "", assignedTo: "", dueDate: "" });
@@ -604,6 +608,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [localTask, setLocalTask] = useState<KanbanCardModalTask | null>(null);
   const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [confirmRunOpen, setConfirmRunOpen] = useState(false);
+  const [movingToInProgress, setMovingToInProgress] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -666,6 +672,39 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     onUpdate?.(merged);
   };
 
+  const handleConfirmRun = async () => {
+    setConfirmRunOpen(false);
+    // Move card to In Progress immediately
+    if (fetchWithAuth && localTask && localTask.column !== "in_progress") {
+      setMovingToInProgress(true);
+      try {
+        const res = await fetchWithAuth(`/api/admin/kanban-tasks/${localTask.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ column: "in_progress" }),
+        });
+        if (res.ok) {
+          const updated = await res.json() as KanbanCardModalTask;
+          const merged = { ...localTask, ...updated };
+          setLocalTask(merged);
+          onUpdate?.(merged);
+        }
+      } catch { /* silent — script will still run */ }
+      setMovingToInProgress(false);
+    }
+    setRunDialogOpen(true);
+  };
+
+  const handleRunComplete = (status: "completed" | "failed", title: string) => {
+    toast({
+      title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
+      description: status === "completed"
+        ? "The runbook finished successfully. The card has been moved to Done."
+        : "The runbook encountered an error. The card remains In Progress.",
+      variant: status === "failed" ? "destructive" : "default",
+    });
+  };
+
   const inputCls = "w-full border border-border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 bg-[#1C2128]";
   const labelCls = "block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1";
 
@@ -707,12 +746,17 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             {/* Run Script button (when linked runbook present) */}
             {!editing && linkedRunbook?.azureRunbookName && (
               <button
-                onClick={() => setRunDialogOpen(true)}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5"
+                onClick={() => setConfirmRunOpen(true)}
+                disabled={movingToInProgress}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50"
               >
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                </svg>
+                {movingToInProgress ? (
+                  <div className="w-3.5 h-3.5 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                  </svg>
+                )}
                 Run Script
               </button>
             )}
@@ -1085,6 +1129,17 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
       </DialogContent>
     </Dialog>
 
+    {/* Run Script confirm dialog */}
+    {confirmRunOpen && linkedRunbook?.azureRunbookName && (
+      <RunScriptConfirmDialog
+        scriptTitle={linkedRunbook.scriptTitle}
+        azureRunbookName={linkedRunbook.azureRunbookName}
+        clientName={clientName ?? null}
+        onConfirm={() => void handleConfirmRun()}
+        onCancel={() => setConfirmRunOpen(false)}
+      />
+    )}
+
     {runDialogOpen && linkedRunbook?.azureRunbookName && (
       <RunLibraryScriptDialog
         scriptId={linkedRunbook.scriptId}
@@ -1093,6 +1148,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         initialClientId={clientId}
         kanbanTaskId={localTask.id}
         onClose={() => setRunDialogOpen(false)}
+        onRunComplete={handleRunComplete}
       />
     )}
   </>

@@ -6,6 +6,7 @@ import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
+import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
 import StatusReportForm from "@/components/StatusReportForm";
@@ -179,7 +180,7 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 function DraggableCard({
-  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId,
+  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName,
 }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
@@ -189,13 +190,16 @@ function DraggableCard({
   onCardClick: (task: KanbanTask) => void;
   onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
+  clientName?: string | null;
 }) {
+  const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
   const [customerViewOpen, setCustomerViewOpen] = useState(false);
   const [replyDraft, setReplyDraft] = useState("");
   const [replySending, setReplySending] = useState(false);
   const [replySent, setReplySent] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
+  const [confirmRunOpen, setConfirmRunOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -498,7 +502,7 @@ function DraggableCard({
             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
               {linkedRunbook?.azureRunbookName && (
                 <button
-                  onClick={e => { e.stopPropagation(); setRunDialogOpen(true); }}
+                  onClick={e => { e.stopPropagation(); setConfirmRunOpen(true); }}
                   className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5"
                   title="Run linked script"
                 >
@@ -529,6 +533,21 @@ function DraggableCard({
         </div>
       </div>
 
+      {/* Confirm run dialog */}
+      {confirmRunOpen && linkedRunbook?.azureRunbookName && (
+        <RunScriptConfirmDialog
+          scriptTitle={linkedRunbook.scriptTitle}
+          azureRunbookName={linkedRunbook.azureRunbookName}
+          clientName={clientName ?? null}
+          onConfirm={() => {
+            setConfirmRunOpen(false);
+            onQuickMove(task, "in_progress");
+            setRunDialogOpen(true);
+          }}
+          onCancel={() => setConfirmRunOpen(false)}
+        />
+      )}
+
       {runDialogOpen && linkedRunbook?.azureRunbookName && (
         <RunLibraryScriptDialog
           scriptId={linkedRunbook.scriptId}
@@ -537,6 +556,15 @@ function DraggableCard({
           initialClientId={clientUserId}
           kanbanTaskId={task.id}
           onClose={() => setRunDialogOpen(false)}
+          onRunComplete={(status, title) => {
+            toast({
+              title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
+              description: status === "completed"
+                ? "The runbook finished successfully. The card has been moved to Done."
+                : "The runbook encountered an error. The card remains In Progress.",
+              variant: status === "failed" ? "destructive" : "default",
+            });
+          }}
         />
       )}
     </div>
@@ -554,7 +582,7 @@ function CardOverlay({ task }: { task: KanbanTask }) {
 }
 
 function DroppableColumn({
-  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId,
+  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -566,6 +594,7 @@ function DroppableColumn({
   onCardClick: (task: KanbanTask) => void;
   onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
+  clientName?: string | null;
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -601,6 +630,7 @@ function DroppableColumn({
             onCardClick={onCardClick}
             onReply={onReply}
             clientUserId={clientUserId}
+            clientName={clientName}
           />
         ))}
       </div>
@@ -611,7 +641,7 @@ function DroppableColumn({
 type PendingMove = { task: KanbanTask; targetColumn: ColumnKey };
 
 function KanbanBoard({
-  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, onDragStateChange, clientUserId,
+  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, onDragStateChange, clientUserId, clientName,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -624,6 +654,7 @@ function KanbanBoard({
   onMutation: () => void;
   onDragStateChange?: (draggingId: number | null) => void;
   clientUserId?: number | null;
+  clientName?: string | null;
 })  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -759,6 +790,7 @@ function KanbanBoard({
               onCardClick={onCardClick}
               onReply={handleReply}
               clientUserId={clientUserId}
+              clientName={clientName}
             />
           ))}
         </div>
@@ -2203,6 +2235,7 @@ export default function ProjectDetailPage() {
           onMutation={loadAuditLogs}
           onDragStateChange={(id) => { draggingIdRef.current = id; }}
           clientUserId={project?.clientUserId}
+          clientName={client?.name ?? null}
         />
       </section>
 
@@ -3095,11 +3128,23 @@ export default function ProjectDetailPage() {
         mode="admin"
         fetchWithAuth={fetchWithAuth}
         clientId={project?.clientUserId}
+        clientName={client?.name ?? null}
         onUpdate={updated => {
           setSelectedTask(prev => prev ? { ...prev, ...updated } : prev);
           setTasks(prev => prev.map(t =>
             t.id === updated.id
-              ? { ...t, title: updated.title, description: updated.description ?? null, priority: updated.priority ?? null, assignedTo: updated.assignedTo ?? null, dueDate: updated.dueDate ?? null }
+              ? {
+                  ...t,
+                  title: updated.title,
+                  description: updated.description ?? null,
+                  priority: updated.priority ?? null,
+                  assignedTo: updated.assignedTo ?? null,
+                  dueDate: updated.dueDate ?? null,
+                  column: updated.column ?? t.column,
+                  completionStatus: updated.completionStatus ?? t.completionStatus,
+                  completionNotes: updated.completionNotes ?? t.completionNotes,
+                  taskMetadata: updated.taskMetadata ?? t.taskMetadata,
+                }
               : t
           ));
         }}
