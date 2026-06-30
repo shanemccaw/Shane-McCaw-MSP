@@ -2261,6 +2261,89 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
     // ── Helpers ────────────────────────────────────────────────────────────
     const isPlaceholder = (v: string) => !v || v === "..." || v.includes("Value prop") || v.startsWith("[") || v.length < 6;
 
+    function parseCopyLayoutBlocks(copy: string): Array<{ blockType: string; content: unknown }> {
+      const blocks: Array<{ blockType: string; content: unknown }> = [];
+
+      // WHY THIS MATTERS
+      const whyMatch = copy.match(/^WHY THIS MATTERS\n([\s\S]+?)(?=\n\nVALUE PILLARS|\n\nWHAT|\n\nAUTHORITY|\n\nPROCESS|\n\nFINAL|$)/m);
+      if (whyMatch) {
+        const whyBody = whyMatch[1].trim();
+        if (whyBody.length > 10) blocks.push({ blockType: "why_this_matters", content: { body: whyBody } });
+      }
+
+      // AUTHORITY
+      const authMatch = copy.match(/^AUTHORITY\n([\s\S]+?)(?=\n\nPROCESS|\n\nFINAL|\n\nWHAT|$)/m);
+      const authContent = authMatch ? authMatch[1].trim() : "";
+      const authLines = authContent.split("\n").filter(Boolean);
+      const authHeading = authLines[0]?.trim() || "Built at NASA Scale. Available to You.";
+      const authBody = authLines.slice(1).join(" ").trim() || "Shane McCaw is NASA's Lead Microsoft 365 Architect with over 30 years inside the Microsoft ecosystem. Senior-level delivery only. No junior staff. No handoffs.";
+      const knownBadges = ["FedRAMP", "FISMA", "ITAR", "GCC High", "HIPAA", "SOC 2", "NIST"];
+      const complianceBadges = knownBadges.filter(b => authBody.includes(b));
+      if (complianceBadges.length === 0) complianceBadges.push("FedRAMP", "FISMA", "ITAR", "GCC High", "HIPAA");
+      blocks.push({
+        blockType: "authority",
+        content: {
+          heading: authHeading,
+          body: authBody,
+          complianceBadges,
+          stats: [
+            { stat: "30+", label: "Years in the Microsoft Ecosystem" },
+            { stat: "NASA", label: "Current Lead M365 Architect" },
+            { stat: "100%", label: "Senior Delivery — No Junior Staff" },
+          ],
+        },
+      });
+
+      // PROCESS
+      const processMatch = copy.match(/^PROCESS\n([\s\S]+?)(?=\n\nFINAL|\n\nAUTHOR|$)/m);
+      const processSteps: Array<{ step: string; title: string; description: string; note?: string }> = [];
+      if (processMatch) {
+        for (const m of processMatch[1].matchAll(/^(\d{2})\s*[—–-]+\s*([^:]+):\s*(.+)$/gm)) {
+          processSteps.push({ step: m[1] as string, title: (m[2] as string).trim(), description: (m[3] as string).trim() });
+        }
+      }
+      if (processSteps.length === 0) {
+        processSteps.push(
+          { step: "01", title: "Discovery Call", description: "A 30-minute call to understand your environment. No pitch. No obligation.", note: "No pitch. No obligation." },
+          { step: "02", title: "Scoped Engagement", description: "Fixed-price, clearly defined deliverables. No open-ended fees. No scope creep.", note: "Fixed price. Delivered personally by Shane." },
+          { step: "03", title: "Actionable Results", description: "A documented, immediately executable output delivered personally by Shane.", note: "No handoffs. No junior staff." },
+        );
+      }
+      blocks.push({ blockType: "process", content: { steps: processSteps } });
+
+      // Trust badges — consistent across all Shane campaigns
+      blocks.push({ blockType: "trust_badges", content: { badges: ["Lead M365 Architect at NASA", "30 Years Microsoft Experience", "Fixed-Price Engagements", "Senior-Level Delivery"] } });
+
+      return blocks;
+    }
+
+    const defaultLayoutBlocks: Array<{ blockType: string; content: unknown }> = [
+      {
+        blockType: "authority",
+        content: {
+          heading: "Built at NASA Scale. Available to You.",
+          body: "Shane McCaw is NASA's Lead Microsoft 365 Architect with over 30 years inside the Microsoft ecosystem. Senior-level delivery only. No junior staff. No handoffs. Mission-critical compliance experience: FedRAMP, FISMA, ITAR, GCC High.",
+          complianceBadges: ["FedRAMP", "FISMA", "ITAR", "GCC High", "HIPAA"],
+          stats: [
+            { stat: "30+", label: "Years in the Microsoft Ecosystem" },
+            { stat: "NASA", label: "Current Lead M365 Architect" },
+            { stat: "100%", label: "Senior Delivery — No Junior Staff" },
+          ],
+        },
+      },
+      {
+        blockType: "process",
+        content: {
+          steps: [
+            { step: "01", title: "Discovery Call", description: "A 30-minute call to understand your environment. No pitch. No obligation.", note: "No pitch. No obligation." },
+            { step: "02", title: "Scoped Engagement", description: "Fixed-price, clearly defined deliverables. No open-ended fees. No scope creep.", note: "Fixed price. Delivered personally by Shane." },
+            { step: "03", title: "Actionable Results", description: "A documented, immediately executable output delivered personally by Shane.", note: "No handoffs. No junior staff." },
+          ],
+        },
+      },
+      { blockType: "trust_badges", content: { badges: ["Lead M365 Architect at NASA", "30 Years Microsoft Experience", "Fixed-Price Engagements", "Senior-Level Delivery"] } },
+    ];
+
     function parsedCopyFields(copy: string) {
       let headline: string | null = null;
       let subheadline: string | null = null;
@@ -2316,6 +2399,7 @@ Example: ["🔍","📋","🚀"]`;
           valuePropBlocks: parsed.pillars.slice(0, 3).map((p, i) => ({ icon: icons[i] ?? "🔍", heading: p.heading, body: p.body })),
           socialProof: [],
           cta: { buttonText: parsed.ctaButtonText ?? "Book Your Paid Assessment", href: "/contact", subtext: "Fixed price. Senior-level delivery." },
+          layoutBlocks: parseCopyLayoutBlocks(rawCopy),
         });
         return;
       }
@@ -2356,7 +2440,7 @@ Output ONLY valid JSON, no prose, no markdown fences:
         socialProof: z.array(z.object({ quote: z.string(), author: z.string(), role: z.string().optional() })).default([]),
         cta: z.object({ buttonText: z.string(), href: z.string(), subtext: z.string().optional() }),
       });
-      res.json(parseAiJson(extractRaw, schema));
+      res.json({ ...parseAiJson(extractRaw, schema), layoutBlocks: parseCopyLayoutBlocks(rawCopy) });
       return;
     }
 
@@ -2406,7 +2490,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       socialProof: z.array(z.object({ quote: z.string(), author: z.string(), role: z.string().optional() })),
       cta: z.object({ buttonText: z.string(), href: z.string(), subtext: z.string().optional() }),
     });
-    res.json(parseAiJson(raw, schema));
+    res.json({ ...parseAiJson(raw, schema), layoutBlocks: defaultLayoutBlocks });
   } catch (e) {
     if (e instanceof AiResponseError) {
       req.log.warn({ err: e }, "AI parse failed on /generate/landing-page");
@@ -2593,7 +2677,7 @@ router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request,
 
 router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; linkedServiceId?: number | null; published?: boolean };
+    const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; linkedServiceId?: number | null; published?: boolean; layoutBlocks?: unknown[] };
     // Derive a title if missing: prefer headline, then prettify slug, then default
     const resolvedTitle = body.title?.trim()
       || body.headline?.trim()
@@ -2607,7 +2691,7 @@ router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request,
       valuePropBlocks: (body.valuePropBlocks ?? []) as Array<{ icon?: string; heading: string; body: string }>,
       socialProof: (body.socialProof ?? []) as Array<{ quote: string; author: string; role?: string }>,
       cta: body.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: "Get Started", href: "/contact" },
-      layoutBlocks: [],
+      layoutBlocks: (body.layoutBlocks ?? []) as Array<{ blockType: string; content: unknown }>,
       campaignId: body.campaignId ?? null,
       linkedServiceId: body.linkedServiceId ?? null,
       published: body.published ?? false,
