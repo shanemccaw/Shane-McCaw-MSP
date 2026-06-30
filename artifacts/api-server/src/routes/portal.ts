@@ -3739,18 +3739,8 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       }).returning({ id: invoicesTable.id });
       void uploadInvoiceToSharePoint(newInvoice.id);
 
-      // Notify the admin user(s)
-      const admins = await db.select().from(usersTable).where(eq(usersTable.role, "admin"));
+      // Look up the buyer for notifications and emails below
       const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, uid));
-      for (const admin of admins) {
-        await db.insert(notificationsTable).values({
-          userId: admin.id,
-          title: `New service purchase: ${serviceName}`,
-          body: `${buyer?.email ?? "A client"} purchased "${serviceName}" ($${amountDollars}). Please activate the service in their portal.`,
-          type: "general",
-          linkPath: "/portal/services",
-        });
-      }
 
       // Send branded confirmation email to buyer (fire-and-forget)
       if (buyer?.email) {
