@@ -119,7 +119,7 @@ function Router() {
         <RequireAuth role="client"><OnboardingWizard /></RequireAuth>
       </Route>
 
-      {/* Re-run wizard from Profile page — update mode only touches M365 steps */}
+      {/* Re-run wizard from Profile page — update mode for Automation Setup credentials */}
       <Route path="/portal/m365-wizard">
         <RequireAuth role="client"><RequireOnboarding><OnboardingWizard mode="update" /></RequireOnboarding></RequireAuth>
       </Route>
