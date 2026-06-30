@@ -2264,15 +2264,19 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
     function parseCopyLayoutBlocks(copy: string): Array<{ blockType: string; content: unknown }> {
       const blocks: Array<{ blockType: string; content: unknown }> = [];
 
-      // WHY THIS MATTERS
-      const whyMatch = copy.match(/^WHY THIS MATTERS\n([\s\S]+?)(?=\n\nVALUE PILLARS|\n\nWHAT|\n\nAUTHORITY|\n\nPROCESS|\n\nFINAL|$)/m);
+      // Generic "next section" boundary: blank line + something that looks like a section heading
+      // Handles optional emoji prefixes (⭐, ✅, etc.) and any all-caps heading
+      const nextSectionLookahead = String.raw`(?=\n\n(?:[^\w\n]{0,3}\s*)?(?:WHAT|VALUE|THE |AUTHORITY|PROCESS|FINAL|WHY|HOW|OPTIONAL|YOUR|CTA:|$))`;
+
+      // WHY section — match any heading that begins with WHY (e.g. "WHY THIS MATTERS", "WHY COPILOT READINESS MATTERS")
+      const whyMatch = copy.match(new RegExp(String.raw`^WHY\s[^\n]+\n([\s\S]+?)` + nextSectionLookahead, "m"));
       if (whyMatch) {
         const whyBody = whyMatch[1].trim();
         if (whyBody.length > 10) blocks.push({ blockType: "why_this_matters", content: { body: whyBody } });
       }
 
-      // AUTHORITY
-      const authMatch = copy.match(/^AUTHORITY\n([\s\S]+?)(?=\n\nPROCESS|\n\nFINAL|\n\nWHAT|$)/m);
+      // AUTHORITY — section heading is always "AUTHORITY"; terminator handles optional emoji-prefixed PROCESS
+      const authMatch = copy.match(/^AUTHORITY\n([\s\S]+?)(?=\n\n(?:[^\w\n]{0,3}\s*)?(?:PROCESS|FINAL|WHAT|$))/m);
       const authContent = authMatch ? authMatch[1].trim() : "";
       const authLines = authContent.split("\n").filter(Boolean);
       const authHeading = authLines[0]?.trim() || "Built at NASA Scale. Available to You.";
@@ -2294,12 +2298,31 @@ router.post("/admin/marketing/generate/landing-page", requireAdmin, async (req: 
         },
       });
 
-      // PROCESS
-      const processMatch = copy.match(/^PROCESS\n([\s\S]+?)(?=\n\nFINAL|\n\nAUTHOR|$)/m);
+      // PROCESS — allow optional emoji/symbol prefix before "PROCESS" (e.g. "⭐ PROCESS")
+      const processMatch = copy.match(/^(?:[^\w\n]{0,3}\s*)?PROCESS\n([\s\S]+?)(?=\n\n(?:[^\w\n]{0,3}\s*)?(?:FINAL|AUTHORITY|WHAT|OPTIONAL|YOUR|$))/m);
       const processSteps: Array<{ step: string; title: string; description: string; note?: string }> = [];
       if (processMatch) {
-        for (const m of processMatch[1].matchAll(/^(\d{2})\s*[—–-]+\s*([^:]+):\s*(.+)$/gm)) {
-          processSteps.push({ step: m[1] as string, title: (m[2] as string).trim(), description: (m[3] as string).trim() });
+        const processBody = processMatch[1];
+
+        // Inline format: "01 — Title: Description on same line"
+        const inlineSteps = [...processBody.matchAll(/^(\d{2})\s*[—–-]+\s*([^:\n]+):\s*(.+)$/gm)];
+        if (inlineSteps.length > 0) {
+          for (const m of inlineSteps) {
+            processSteps.push({ step: m[1] as string, title: (m[2] as string).trim(), description: (m[3] as string).trim() });
+          }
+        } else {
+          // Multi-line format: "01 — Title\nDescription lines..."
+          const multiSteps = [...processBody.matchAll(/^(\d{2})\s*[—–-]+\s*([^\n]+)\n([\s\S]+?)(?=\n(?:\d{2})\s*[—–-]|$)/gm)];
+          for (const m of multiSteps) {
+            const desc = (m[3] as string)
+              .split("\n")
+              .map((l: string) => l.trim())
+              .filter((l: string) => l.length > 0 && !l.startsWith("•") && !l.startsWith("⭐"))
+              .slice(0, 2)
+              .join(" ")
+              .replace(/\s+/g, " ");
+            processSteps.push({ step: m[1] as string, title: (m[2] as string).trim(), description: desc || (m[2] as string).trim() });
+          }
         }
       }
       if (processSteps.length === 0) {
@@ -2405,7 +2428,7 @@ Example: ["🔍","📋","🚀"]`;
       }
 
       // Partial parse — use AI as a pure extraction/conversion task (not generation)
-      const extractPrompt = `You are converting existing landing page copy into a JSON structure. Do NOT write new marketing content — extract and restructure what is already written.
+      const extractPrompt = `You are converting existing landing page copy into a JSON structure. Do NOT invent new marketing content — extract and restructure what is already written.
 
 LANDING PAGE COPY:
 ---
@@ -2414,13 +2437,18 @@ ${rawCopy}
 
 Campaign topic: ${body.topic ?? "Microsoft 365 Consulting"}
 
-Rules:
-- "title": Use the campaign topic above, concise.
-- "headline": Copy the EXACT text from "Headline:" in the copy. Do not rephrase it.
-- "subheadline": Copy the EXACT text from "Subheadline:" in the copy. Do not rephrase it.
-- "valuePropBlocks": One block per VALUE PILLAR section. heading = the pillar name after the dash. body = the sentences that follow. icon = one professional emoji.
-- "socialProof": Always empty array.
-- "cta": buttonText from the CTA line in the copy, href "/contact", subtext "Fixed price. Senior-level delivery."
+RULES:
+- "title": Use the campaign topic. Keep it concise.
+- "headline": Copy the EXACT text after "Headline:" in the HERO section. Do not rephrase.
+- "subheadline": Copy the EXACT text after "Subheadline:" in the HERO section. Do not rephrase.
+- "valuePropBlocks": Produce exactly 3 blocks that capture the core value of this offer.
+  Source them using this priority order:
+  1. "VALUE PILLARS" section — if present, one block per Pillar (heading = name after the dash, body = the sentences that follow)
+  2. "WHAT YOU GET" or "THE OFFER" section — group the bullets into 3 thematic blocks. Give each group a short heading that names the theme. Write a 1–2 sentence body for each group using the context from the surrounding copy.
+  3. Key themes in the body copy
+  Each block must have: { "icon": one relevant professional emoji, "heading": concise heading, "body": 1–2 sentences grounded in the copy }
+- "socialProof": Always empty array [].
+- "cta": Use the FINAL CTA line for buttonText. href = "/contact". subtext = derive from copy (e.g. "Free. No commitment." or "Fixed price. Senior-level delivery.").
 
 Output ONLY valid JSON, no prose, no markdown fences:
 {
@@ -2429,7 +2457,7 @@ Output ONLY valid JSON, no prose, no markdown fences:
   "subheadline": "...",
   "valuePropBlocks": [{ "icon": "🔍", "heading": "...", "body": "..." }],
   "socialProof": [],
-  "cta": { "buttonText": "...", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
+  "cta": { "buttonText": "...", "href": "/contact", "subtext": "..." }
 }`;
 
       const extractMsg = await anthropic.messages.create({ model: "claude-haiku-4-5", max_tokens: 2000, messages: [{ role: "user", content: extractPrompt }] });
