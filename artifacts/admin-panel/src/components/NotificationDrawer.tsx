@@ -247,6 +247,7 @@ interface NotificationDrawerProps {
   onUnreadCountChange: (count: number) => void;
   onPurchaseSound?: () => void;
   onPurchaseFlash?: () => void;
+  onLeadFlash?: () => void;
 }
 
 export default function NotificationDrawer({
@@ -255,6 +256,7 @@ export default function NotificationDrawer({
   onUnreadCountChange,
   onPurchaseSound,
   onPurchaseFlash,
+  onLeadFlash,
 }: NotificationDrawerProps) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -274,18 +276,23 @@ export default function NotificationDrawer({
         if (seenIdsRef.current === null) {
           seenIdsRef.current = incomingIds;
         } else {
-          const newPurchases = data.filter(
-            n => n.type === "purchase_created" && !seenIdsRef.current!.has(n.id)
+          const newItems = data.filter(n => !seenIdsRef.current!.has(n.id));
+          const newPurchases = newItems.filter(n => n.type === "purchase_created");
+          const newLeads = newItems.filter(
+            n => n.type === "lead_created" || n.type === "quiz_lead_created"
           );
           if (newPurchases.length > 0) {
             onPurchaseSound?.();
             onPurchaseFlash?.();
           }
+          if (newLeads.length > 0) {
+            onLeadFlash?.();
+          }
           seenIdsRef.current = incomingIds;
         }
       }
     } catch {}
-  }, [fetchWithAuth, onUnreadCountChange, onPurchaseSound]);
+  }, [fetchWithAuth, onUnreadCountChange, onPurchaseSound, onPurchaseFlash, onLeadFlash]);
 
   useEffect(() => {
     void loadNotifications();

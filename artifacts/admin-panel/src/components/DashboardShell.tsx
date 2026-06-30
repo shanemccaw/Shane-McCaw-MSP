@@ -582,6 +582,26 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
     }, 2800);
   }, []);
 
+  // ─── Lead flash toast ────────────────────────────────────────────────────────
+  const [leadFlashVisible, setLeadFlashVisible] = useState(false);
+  const [leadFlashExiting, setLeadFlashExiting] = useState(false);
+  const leadFlashEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const leadFlashExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerLeadFlash = useCallback(() => {
+    if (leadFlashEnterTimerRef.current) clearTimeout(leadFlashEnterTimerRef.current);
+    if (leadFlashExitTimerRef.current) clearTimeout(leadFlashExitTimerRef.current);
+    setLeadFlashExiting(false);
+    setLeadFlashVisible(true);
+    leadFlashEnterTimerRef.current = setTimeout(() => {
+      setLeadFlashExiting(true);
+      leadFlashExitTimerRef.current = setTimeout(() => {
+        setLeadFlashVisible(false);
+        setLeadFlashExiting(false);
+      }, 350);
+    }, 2800);
+  }, []);
+
   // ─── Live visitors ──────────────────────────────────────────────────────────
   const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
   const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -916,6 +936,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onUnreadCountChange={setUnreadNotifCount}
         onPurchaseSound={playPurchaseSound}
         onPurchaseFlash={triggerSaleFlash}
+        onLeadFlash={triggerLeadFlash}
       />
 
       {/* Sale flash toast */}
@@ -936,6 +957,29 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="leading-tight text-left">
             <p className="text-sm font-bold text-emerald-300">New sale!</p>
             <p className="text-[11px] text-emerald-500/80 font-medium">A purchase just came in</p>
+          </div>
+        </button>
+      )}
+
+      {/* Lead flash toast */}
+      {leadFlashVisible && (
+        <button
+          onClick={() => {
+            if (leadFlashEnterTimerRef.current) clearTimeout(leadFlashEnterTimerRef.current);
+            if (leadFlashExitTimerRef.current) clearTimeout(leadFlashExitTimerRef.current);
+            setLeadFlashVisible(false);
+            setLeadFlashExiting(false);
+            navigate("/pipeline/leads");
+          }}
+          style={{ top: flashVisible ? "88px" : "16px" }}
+          className={`fixed right-4 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border border-blue-500/30 bg-[#081828]/95 backdrop-blur-sm cursor-pointer hover:bg-[#081828] hover:border-blue-500/50 transition-[background-color,border-color,top] ${
+            leadFlashExiting ? "sale-flash-exit" : "sale-flash-enter"
+          }`}
+        >
+          <span className="text-xl leading-none">👤</span>
+          <div className="leading-tight text-left">
+            <p className="text-sm font-bold text-blue-300">New lead!</p>
+            <p className="text-[11px] text-blue-500/80 font-medium">A new lead just came in</p>
           </div>
         </button>
       )}
