@@ -3191,6 +3191,12 @@ export default function ProjectDetailPage() {
         fetchWithAuth={fetchWithAuth}
         clientId={project?.clientUserId}
         clientName={client?.name ?? null}
+        boardTasks={tasks as import("@/components/KanbanCardModal").KanbanCardModalTask[]}
+        onSiblingUpdate={updated => {
+          setTasks(prev => prev.map(t =>
+            t.id === updated.id ? { ...t, column: updated.column ?? t.column } : t
+          ));
+        }}
         onUpdate={updated => {
           setSelectedTask(prev => prev ? { ...prev, ...updated } : prev);
           setTasks(prev => prev.map(t =>

@@ -26,7 +26,7 @@ import {
   servicesTable,
   kanbanTasksTable,
 } from "@workspace/db";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
@@ -232,6 +232,43 @@ async function snapshotHealthFromProfile(clientId: number): Promise<void> {
   );
 }
 
+// ── Sibling task resolution ───────────────────────────────────────────────────
+
+/**
+ * Given a triggering kanban task ID, returns the IDs of all kanban tasks in the
+ * same project that share the same `linkedRunbook.azureRunbookName` in their
+ * task metadata. The triggering task is always included in the result.
+ */
+async function resolveSiblingTaskIds(kanbanTaskId: number): Promise<number[]> {
+  const [task] = await db
+    .select({ projectId: kanbanTasksTable.projectId, taskMetadata: kanbanTasksTable.taskMetadata })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.id, kanbanTaskId))
+    .limit(1);
+
+  if (!task) return [kanbanTaskId];
+
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const linkedRunbook = meta.linkedRunbook as { azureRunbookName?: string } | null | undefined;
+  const azureRunbookName = linkedRunbook?.azureRunbookName;
+
+  if (!azureRunbookName) return [kanbanTaskId];
+
+  const siblings = await db
+    .select({ id: kanbanTasksTable.id })
+    .from(kanbanTasksTable)
+    .where(
+      and(
+        eq(kanbanTasksTable.projectId, task.projectId),
+        sql`task_metadata->'linkedRunbook'->>'azureRunbookName' = ${azureRunbookName}`,
+      )
+    );
+
+  const ids = siblings.map(s => s.id);
+  if (!ids.includes(kanbanTaskId)) ids.push(kanbanTaskId);
+  return ids;
+}
+
 // ── Background job processor (detached — no await) ────────────────────────────
 
 async function processRunInBackground(
@@ -243,7 +280,13 @@ async function processRunInBackground(
   aiInstructions: string,
   kanbanTaskId?: number,
   automationRunId?: number,
+  siblingTaskIds?: number[],
 ): Promise<void> {
+  // All kanban task IDs to update (siblings share the same run outcome).
+  const kanbanIds: number[] = siblingTaskIds?.length
+    ? siblingTaskIds
+    : (kanbanTaskId ? [kanbanTaskId] : []);
+
   let jobOutput: string;
   let jobStatus: string;
   try {
@@ -259,13 +302,13 @@ async function processRunInBackground(
         .set({ status: "failed", errorMessage: String(err), finishedAt: new Date() })
         .where(eq(clientAutomationRunsTable.id, automationRunId));
     }
-    if (kanbanTaskId) {
+    if (kanbanIds.length > 0) {
       try {
         await db.update(kanbanTasksTable)
           .set({ completionStatus: "script_failed", completionNotes: `Script run failed (job ${jobId})`, updatedAt: new Date() })
-          .where(eq(kanbanTasksTable.id, kanbanTaskId));
+          .where(inArray(kanbanTasksTable.id, kanbanIds));
       } catch (patchErr) {
-        logger.warn({ patchErr, kanbanTaskId }, "admin-m365-run: failed to update kanban task on timeout (non-fatal)");
+        logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to update kanban tasks on timeout (non-fatal)");
       }
     }
     return;
@@ -322,7 +365,7 @@ async function processRunInBackground(
     }
   }
 
-  if (kanbanTaskId) {
+  if (kanbanIds.length > 0) {
     try {
       const kanbanPatch: { column?: "completed"; completionStatus: string; completionNotes: string; updatedAt: Date } = {
         completionStatus: finalStatus === "completed" ? "script_completed" : "script_failed",
@@ -332,10 +375,10 @@ async function processRunInBackground(
         updatedAt: new Date(),
       };
       if (finalStatus === "completed") kanbanPatch.column = "completed";
-      await db.update(kanbanTasksTable).set(kanbanPatch).where(eq(kanbanTasksTable.id, kanbanTaskId));
-      logger.info({ kanbanTaskId, finalStatus }, "admin-m365-run: kanban task synced from script result");
+      await db.update(kanbanTasksTable).set(kanbanPatch).where(inArray(kanbanTasksTable.id, kanbanIds));
+      logger.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
     } catch (patchErr) {
-      logger.warn({ patchErr, kanbanTaskId }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
+      logger.warn({ patchErr, kanbanIds }, "admin-m365-run: failed to sync kanban task status (non-fatal)");
     }
   }
 
@@ -533,6 +576,25 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     }
   }
 
+  // Resolve sibling task IDs (other cards in the same project sharing this runbook)
+  // and bulk-move them to In Progress so the board reflects that the job is underway.
+  let siblingTaskIds: number[] | undefined;
+  if (kanbanTaskId) {
+    try {
+      siblingTaskIds = await resolveSiblingTaskIds(kanbanTaskId);
+      if (siblingTaskIds.length > 1) {
+        await db
+          .update(kanbanTasksTable)
+          .set({ column: "in_progress", updatedAt: new Date() })
+          .where(inArray(kanbanTasksTable.id, siblingTaskIds));
+        logger.info({ siblingTaskIds, kanbanTaskId }, "admin-m365-run: bulk moved sibling tasks to in_progress");
+      }
+    } catch (err) {
+      logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to resolve/move sibling tasks (non-fatal)");
+      siblingTaskIds = undefined;
+    }
+  }
+
   // Kick off background processing (detached — do NOT await)
   void processRunInBackground(
     runResultId,
@@ -543,6 +605,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
     "",
     kanbanTaskId,
     automationRunId,
+    siblingTaskIds,
   );
 
   res.json({ jobRef: jobId, resultId: runResultId, libraryScriptId: resolvedLibraryScriptId, status: "running" });

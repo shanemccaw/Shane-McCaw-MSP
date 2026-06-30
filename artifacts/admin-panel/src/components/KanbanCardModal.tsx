@@ -47,6 +47,8 @@ interface Props {
   onUpdate?: (updated: KanbanCardModalTask) => void;
   clientId?: number | null;
   clientName?: string | null;
+  boardTasks?: KanbanCardModalTask[];
+  onSiblingUpdate?: (updated: KanbanCardModalTask) => void;
 }
 
 const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
@@ -600,7 +602,7 @@ export function KanbanCardModal(props: Props) {
   return <GenericKanbanCardModal {...props} />;
 }
 
-function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName }: Props) {
+function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client", fetchWithAuth, onUpdate, clientId, clientName, boardTasks, onSiblingUpdate }: Props) {
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -679,7 +681,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     if (isActiveForTask(localTask.id)) return;
     setConfirmRunOpen(false);
     setScriptRunning(true);
-    // Move card to In Progress immediately
+
+    // Move triggering card to In Progress immediately
     if (fetchWithAuth && localTask && localTask.column !== "in_progress") {
       setMovingToInProgress(true);
       try {
@@ -697,6 +700,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
       } catch { /* silent — script will still run */ }
       setMovingToInProgress(false);
     }
+
+    // Optimistically move sibling cards (same azureRunbookName) to In Progress
+    if (onSiblingUpdate && boardTasks && linkedRunbook?.azureRunbookName) {
+      for (const bt of boardTasks) {
+        if (bt.id === localTask.id) continue;
+        const btMeta = (bt.taskMetadata ?? {}) as Record<string, unknown>;
+        const btRunbook = btMeta.linkedRunbook as { azureRunbookName?: string } | null | undefined;
+        if (btRunbook?.azureRunbookName === linkedRunbook.azureRunbookName && bt.column !== "in_progress") {
+          onSiblingUpdate({ ...bt, column: "in_progress" });
+        }
+      }
+    }
+
     setRunDialogOpen(true);
   };
 
