@@ -246,6 +246,7 @@ interface NotificationDrawerProps {
   unreadCount: number;
   onUnreadCountChange: (count: number) => void;
   onPurchaseSound?: () => void;
+  onPurchaseFlash?: () => void;
 }
 
 export default function NotificationDrawer({
@@ -253,6 +254,7 @@ export default function NotificationDrawer({
   onOpenChange,
   onUnreadCountChange,
   onPurchaseSound,
+  onPurchaseFlash,
 }: NotificationDrawerProps) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -277,6 +279,7 @@ export default function NotificationDrawer({
           );
           if (newPurchases.length > 0) {
             onPurchaseSound?.();
+            onPurchaseFlash?.();
           }
           seenIdsRef.current = incomingIds;
         }

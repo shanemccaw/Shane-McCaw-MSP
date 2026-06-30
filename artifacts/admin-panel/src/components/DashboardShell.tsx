@@ -562,6 +562,26 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   // ─── Purchase sound ─────────────────────────────────────────────────────────
   const { playPurchaseSound, muted: soundMuted, toggleMute } = usePurchaseSound();
 
+  // ─── Sale flash toast ────────────────────────────────────────────────────────
+  const [flashVisible, setFlashVisible] = useState(false);
+  const [flashExiting, setFlashExiting] = useState(false);
+  const flashEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerSaleFlash = useCallback(() => {
+    if (flashEnterTimerRef.current) clearTimeout(flashEnterTimerRef.current);
+    if (flashExitTimerRef.current) clearTimeout(flashExitTimerRef.current);
+    setFlashExiting(false);
+    setFlashVisible(true);
+    flashEnterTimerRef.current = setTimeout(() => {
+      setFlashExiting(true);
+      flashExitTimerRef.current = setTimeout(() => {
+        setFlashVisible(false);
+        setFlashExiting(false);
+      }, 350);
+    }, 2800);
+  }, []);
+
   // ─── Live visitors ──────────────────────────────────────────────────────────
   const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
   const liveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -895,7 +915,23 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         unreadCount={unreadNotifCount}
         onUnreadCountChange={setUnreadNotifCount}
         onPurchaseSound={playPurchaseSound}
+        onPurchaseFlash={triggerSaleFlash}
       />
+
+      {/* Sale flash toast */}
+      {flashVisible && (
+        <div
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border border-emerald-500/30 bg-[#0D2818]/95 backdrop-blur-sm pointer-events-none select-none ${
+            flashExiting ? "sale-flash-exit" : "sale-flash-enter"
+          }`}
+        >
+          <span className="text-xl leading-none">💰</span>
+          <div className="leading-tight">
+            <p className="text-sm font-bold text-emerald-300">New sale!</p>
+            <p className="text-[11px] text-emerald-500/80 font-medium">A purchase just came in</p>
+          </div>
+        </div>
+      )}
     </TooltipProvider>
   );
 }
