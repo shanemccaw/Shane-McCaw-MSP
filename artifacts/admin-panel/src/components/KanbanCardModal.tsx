@@ -698,6 +698,26 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const handleConfirmRun = async () => {
     if (isActiveForTask(localTask.id)) return;
     setConfirmRunOpen(false);
+
+    // Pre-flight: check the client has an App Registration before opening the run dialog
+    if (clientId != null && fetchWithAuth) {
+      try {
+        const r = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
+        if (r.ok) {
+          const list = await r.json() as Array<{ id: number; appRegistration: { id: number } | null }>;
+          const entry = list.find(c => c.id === clientId);
+          if (entry && !entry.appRegistration) {
+            toast({
+              title: "No App Registration",
+              description: "This client has no App Registration. Add one in CRM before running a script.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+      } catch { /* non-fatal — proceed, the run dialog will surface the error */ }
+    }
+
     setScriptRunning(true);
 
     // Move triggering card to In Progress immediately
@@ -1190,6 +1210,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         azureRunbookName={linkedRunbook.azureRunbookName}
         initialClientId={clientId}
         kanbanTaskId={localTask.id}
+        autoRun
         onClose={() => {
           setRunDialogOpen(false);
           if (isActiveForTask(localTask.id)) setScriptRunning(true);

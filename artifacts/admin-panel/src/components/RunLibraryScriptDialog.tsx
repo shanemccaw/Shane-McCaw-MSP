@@ -27,9 +27,10 @@ interface Props {
   initialClientId?: number | null;
   kanbanTaskId?: number | null;
   onRunComplete?: (status: "completed" | "failed", scriptTitle: string) => void;
+  autoRun?: boolean;
 }
 
-export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId, onRunComplete }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, kanbanTaskId, onRunComplete, autoRun }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
@@ -92,6 +93,18 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     };
   }, []);
 
+  // autoRun: fire handleRun() once credentials are resolved, without requiring a second button click
+  const autoRunFiredRef = useRef(false);
+  useEffect(() => {
+    if (!autoRun || loadingClients || autoRunFiredRef.current) return;
+    autoRunFiredRef.current = true;
+    if (appRegistrationId) {
+      void handleRun();
+    }
+    // If appRegistrationId is null, the amber warning box below already explains the problem
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRun, loadingClients, appRegistrationId]);
+
   // The backend (processRunInBackground) now owns all kanban task status writes — it bulk-updates
   // the triggering card AND all sibling cards sharing the same runbook. Patching only the triggering
   // card here would diverge siblings. Keep the callback signature for startPoll compatibility but
@@ -102,8 +115,12 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
   }, []);
 
   const handleRun = async () => {
+    if (!moduleId && !scriptId) {
+      toast({ title: "Script not linked", description: "This card's script metadata is incomplete — re-link it to a library script.", variant: "destructive" });
+      return;
+    }
     if (!moduleId && !azureRunbookName) {
-      toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first", variant: "destructive" });
+      toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first from the Library editor.", variant: "destructive" });
       return;
     }
     if (!appRegistrationId) {
@@ -253,6 +270,12 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+            {autoRun && loadingClients && !running && !jobRef && (
+              <span className="text-xs text-[#7D8590] font-medium flex items-center gap-1.5">
+                <div className="w-3 h-3 border border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                Starting…
+              </span>
+            )}
             {running && (
               <span className="text-xs text-yellow-400 font-medium flex items-center gap-1.5">
                 <div className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse" />
