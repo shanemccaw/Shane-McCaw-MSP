@@ -94,8 +94,15 @@ interface LandingPage {
   socialProof: Array<{ quote: string; author: string; role?: string }>;
   cta: { buttonText: string; href: string; subtext?: string } | null;
   campaignId?: number | null;
+  linkedServiceId?: number | null;
   published: boolean;
   createdAt: string;
+}
+
+interface LpService {
+  id: number;
+  name: string;
+  visibility: string;
 }
 
 interface FollowUp {
@@ -3128,16 +3135,22 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
 
   const [lpCampaigns, setLpCampaigns] = useState<Campaign[]>([]);
   const [lpOffers, setLpOffers] = useState<Offer[]>([]);
+  const [allServices, setAllServices] = useState<LpService[]>([]);
+  const [draftLinkedServiceId, setDraftLinkedServiceId] = useState<number | null>(null);
   useEffect(() => {
     Promise.all([
       fetchWithAuth(`${API}/admin/marketing/landing-pages`).then(r => r.json()).then(d => setPages(Array.isArray(d) ? d as LandingPage[] : [])).catch(() => null),
       fetchWithAuth(`${API}/admin/site-config`).then(r => r.json()).then((d: { publicSiteUrl?: string }) => setPublicSiteUrl(d.publicSiteUrl ?? "")).catch(() => null),
       fetchWithAuth(`${API}/admin/marketing/campaigns`).then(r => r.json()).then(d => setLpCampaigns(Array.isArray(d) ? d as Campaign[] : [])).catch(() => null),
       fetchWithAuth(`${API}/admin/marketing/offers`).then(r => r.json()).then(d => setLpOffers(Array.isArray(d) ? d as Offer[] : [])).catch(() => null),
+      fetchWithAuth(`${API}/admin/services`).then(r => r.json()).then(d => setAllServices(Array.isArray(d) ? (d as LpService[]) : [])).catch(() => null),
     ]).finally(() => setLoading(false));
   }, [fetchWithAuth]);
   const lpCampaignMap = new Map(lpCampaigns.map(c => [c.id, c.name]));
   const lpOfferByCampaignId = new Map(lpOffers.filter(o => o.campaignId != null).map(o => [o.campaignId as number, o]));
+  const lpOnlyServices = allServices.filter(s => s.visibility === "landing_page_only");
+  const serviceOptions = lpOnlyServices.length > 0 ? lpOnlyServices : allServices;
+  const serviceMap = new Map(allServices.map(s => [s.id, s]));
 
   const fetchSuggestions = async (force = false) => {
     if (suggestions.length > 0 && !force) {
@@ -3192,7 +3205,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     try {
       const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...draft, slug: slugInput.trim(), published: false }),
+        body: JSON.stringify({ ...draft, slug: slugInput.trim(), published: false, linkedServiceId: draftLinkedServiceId ?? null }),
       });
       if (!r.ok) {
         const err = await r.json() as { error?: string };
@@ -3201,8 +3214,17 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
       }
       const saved = await r.json() as LandingPage;
       setPages(prev => [saved, ...prev]);
-      setDraft(null); setTopic(""); setAudience(""); setCta(""); setSlugInput("");
+      setDraft(null); setTopic(""); setAudience(""); setCta(""); setSlugInput(""); setDraftLinkedServiceId(null);
     } finally { setSaving(false); }
+  };
+
+  const patchLinkedService = async (page: LandingPage, linkedServiceId: number | null) => {
+    const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages/${page.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ linkedServiceId }),
+    });
+    const updated = await r.json() as LandingPage;
+    setPages(prev => prev.map(p => p.id === page.id ? updated : p));
   };
 
   const togglePublish = async (page: LandingPage) => {
@@ -3290,6 +3312,21 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
               </div>
             )}
             <div className="space-y-2">
+              {serviceOptions.length > 0 && (
+                <div>
+                  <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Linked Service <span className="normal-case text-[#484F58]">(optional — LP-only services shown)</span></label>
+                  <select
+                    value={draftLinkedServiceId ?? ""}
+                    onChange={e => setDraftLinkedServiceId(e.target.value === "" ? null : Number(e.target.value))}
+                    className="mt-1 w-full bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    <option value="">— No linked service —</option>
+                    {serviceOptions.map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">URL Slug</label>
                 <div className="flex items-center gap-2 mt-1">
@@ -3356,8 +3393,29 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                   <button onClick={e => { e.stopPropagation(); void deletePage(page.id); }} className="text-[#484F58] hover:text-red-400 text-xs">✕</button>
                 </div>
               </div>
-              {expandedId === page.id && (page.valuePropBlocks.length > 0 || (page.campaignId && lpOfferByCampaignId.get(page.campaignId))) && (
+              {expandedId === page.id && (
                 <div className="border-t border-[#30363D] px-4 pb-4 pt-3 space-y-3">
+                  {serviceOptions.length > 0 && (
+                    <div>
+                      <label className="text-[10px] text-[#7D8590] uppercase tracking-wide">Linked Service</label>
+                      <select
+                        value={page.linkedServiceId ?? ""}
+                        onChange={e => { void patchLinkedService(page, e.target.value === "" ? null : Number(e.target.value)); }}
+                        className="mt-1 w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                      >
+                        <option value="">— No linked service —</option>
+                        {serviceOptions.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}{s.visibility === "landing_page_only" ? " 🔒" : ""}</option>
+                        ))}
+                      </select>
+                      {page.linkedServiceId && serviceMap.get(page.linkedServiceId) && (
+                        <p className="text-[10px] text-amber-400 mt-1">
+                          🔗 Linked to: <span className="font-semibold">{serviceMap.get(page.linkedServiceId)!.name}</span>
+                          {serviceMap.get(page.linkedServiceId)!.visibility === "landing_page_only" && " — LP-only gate active"}
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {page.valuePropBlocks.length > 0 && (
                     <>
                       <p className="text-xs text-[#7D8590]">{page.headline}</p>

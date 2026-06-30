@@ -2496,7 +2496,7 @@ router.get("/admin/marketing/landing-pages", requireAdmin, async (_req: Request,
 
 router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; published?: boolean };
+    const body = req.body as { slug?: string; title?: string; headline?: string; subheadline?: string; valuePropBlocks?: unknown[]; socialProof?: unknown[]; cta?: unknown; campaignId?: number; linkedServiceId?: number | null; published?: boolean };
     // Derive a title if missing: prefer headline, then prettify slug, then default
     const resolvedTitle = body.title?.trim()
       || body.headline?.trim()
@@ -2512,6 +2512,7 @@ router.post("/admin/marketing/landing-pages", requireAdmin, async (req: Request,
       cta: body.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: "Get Started", href: "/contact" },
       layoutBlocks: [],
       campaignId: body.campaignId ?? null,
+      linkedServiceId: body.linkedServiceId ?? null,
       published: body.published ?? false,
     }).returning();
     res.status(201).json(row);
