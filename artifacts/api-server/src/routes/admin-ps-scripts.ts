@@ -1820,21 +1820,39 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
 });
 
 // ─── GET /api/admin/ps-scripts/published ─────────────────────────────────────
-// Returns only scripts that are published to Azure (azureRunbookName IS NOT NULL)
-// Used by workflow template editor to populate the "Linked Runbook" dropdown.
+// Returns a merged list of all runnable entries for the "Linked Runbook" dropdown:
+//   • Published scripts (azureRunbookName IS NOT NULL) — id = azureRunbookName slug
+//   • All script modules — id = module UUID (stored by assign-tasks endpoint)
+// Both formats can appear as task.runbookId so the combobox must handle both.
 
 router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const scripts = await db
-      .select({
-        id: powershellScriptsTable.id,
-        title: powershellScriptsTable.title,
-        azureRunbookName: powershellScriptsTable.azureRunbookName,
-      })
-      .from(powershellScriptsTable)
-      .where(isNotNull(powershellScriptsTable.azureRunbookName))
-      .orderBy(powershellScriptsTable.title);
-    res.json(scripts);
+    const [scripts, modules] = await Promise.all([
+      db
+        .select({
+          id: powershellScriptsTable.azureRunbookName,
+          title: powershellScriptsTable.title,
+        })
+        .from(powershellScriptsTable)
+        .where(isNotNull(powershellScriptsTable.azureRunbookName))
+        .orderBy(powershellScriptsTable.title),
+      db
+        .select({
+          id: scriptModulesTable.id,
+          title: scriptModulesTable.description,
+          filename: scriptModulesTable.filename,
+        })
+        .from(scriptModulesTable)
+        .orderBy(scriptModulesTable.sortOrder),
+    ]);
+
+    const scriptEntries = scripts.map(s => ({ id: s.id as string, title: s.title }));
+    const moduleEntries = modules.map(m => ({
+      id: m.id,
+      title: m.title ?? m.filename.replace(/\.ps1$/i, "").replace(/-/g, " "),
+    }));
+
+    res.json([...scriptEntries, ...moduleEntries]);
   } catch (err) {
     logger.error({ err }, "Failed to list published PS scripts");
     res.status(500).json({ error: "Failed to list published scripts" });
