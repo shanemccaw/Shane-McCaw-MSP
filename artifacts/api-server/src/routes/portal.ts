@@ -6600,6 +6600,32 @@ router.get("/portal/onboarding/services", async (_req: Request, res: Response) =
   res.json(services);
 });
 
+// Public lookup for a single service by ID — used by the LP token flow so that
+// landing_page_only services (excluded from the list above) can still render
+// their card with full details when the user arrives via a direct URL.
+router.get("/portal/onboarding/service/:id", async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [svc] = await db.select({
+    id: servicesTable.id,
+    slug: servicesTable.slug,
+    name: servicesTable.name,
+    description: servicesTable.description,
+    category: servicesTable.category,
+    deliverables: servicesTable.deliverables,
+    price: servicesTable.price,
+    basePrice: servicesTable.basePrice,
+    maxPrice: servicesTable.maxPrice,
+    durationDays: servicesTable.durationDays,
+    turnaround: servicesTable.turnaround,
+    billingType: servicesTable.billingType,
+    orderWorkflow: servicesTable.orderWorkflow,
+    visibility: servicesTable.visibility,
+  }).from(servicesTable).where(eq(servicesTable.id, id)).limit(1);
+  if (!svc) { res.status(404).json({ error: "Not found" }); return; }
+  res.json(svc);
+});
+
 // ─── ONBOARDING: Sign a contract (supports multi-service) ────────────────────
 router.post("/portal/onboarding/contract", async (req: Request, res: Response) => {
   // Optional auth: use bearer JWT if present; otherwise treat as guest and require guestEmail in body

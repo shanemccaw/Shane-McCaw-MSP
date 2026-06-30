@@ -111,18 +111,31 @@ export default function OnboardingSelect() {
       }
     }
 
-    fetch("/api/portal/onboarding/services")
-      .then(r => r.json() as Promise<Service[]>)
-      .then(data => {
+    // When a specific LP service ID is requested, fetch it directly so we always
+    // get full details (including description) even for landing_page_only services
+    // and even when sessionStorage is empty (direct URL visit or stale data).
+    const lpServiceFetch: Promise<Service | null> = lpServiceId
+      ? fetch(`/api/portal/onboarding/service/${lpServiceId}`)
+          .then(r => r.ok ? (r.json() as Promise<Service>) : null)
+          .catch(() => null)
+      : Promise.resolve(null);
+
+    Promise.all([
+      fetch("/api/portal/onboarding/services").then(r => r.json() as Promise<Service[]>),
+      lpServiceFetch,
+    ])
+      .then(([data, lpSvc]) => {
         const oneTime = data.filter(s => s.billingType === "one_time");
         const monthly = data.filter(s => s.billingType === "recurring_monthly");
         let sorted = [...oneTime, ...monthly];
 
-        if (injectedService && !sorted.find(s => s.id === injectedService!.id)) {
+        // Prefer freshly-fetched LP service over stale sessionStorage data
+        const resolvedLpService = lpSvc ?? injectedService;
+        if (resolvedLpService && !sorted.find(s => s.id === resolvedLpService.id)) {
           // Prepend the LP-only service so it appears first in the list
-          sorted = [injectedService, ...sorted];
-          setLockedServiceId(injectedService.id);
-          setSelectedIds(new Set([injectedService.id]));
+          sorted = [resolvedLpService, ...sorted];
+          setLockedServiceId(resolvedLpService.id);
+          setSelectedIds(new Set([resolvedLpService.id]));
         } else if (preselectedSlug) {
           const match = sorted.find(s => s.slug === preselectedSlug);
           if (match) setSelectedIds(new Set([match.id]));
