@@ -2538,6 +2538,55 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
   }
 });
 
+// ─── POST /api/admin/ps-scripts/explain ──────────────────────────────────────
+
+router.post("/admin/ps-scripts/explain", requireAdmin, async (req: Request, res: Response) => {
+  const { scriptContent } = req.body as { scriptContent?: string };
+  if (!scriptContent || typeof scriptContent !== "string" || scriptContent.trim().length === 0) {
+    res.status(400).json({ error: "scriptContent is required" });
+    return;
+  }
+
+  try {
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 2048,
+      messages: [
+        {
+          role: "user",
+          content: `You are a Microsoft 365 PowerShell expert. Analyse the following PowerShell script and produce a clear, concise explanation aimed at a technical admin.
+
+Cover these points (use plain paragraphs, no markdown headers or bullet lists):
+1. What the script does overall (one sentence summary).
+2. Step-by-step breakdown of the key operations.
+3. What Microsoft 365 services or Azure resources it touches.
+4. Any permissions it requires to run.
+5. Any side-effects, risks, or things to be aware of before running it.
+
+SCRIPT:
+\`\`\`powershell
+${scriptContent.trim()}
+\`\`\``,
+        },
+        { role: "assistant", content: "This script" },
+      ],
+    });
+
+    const block = msg.content[0];
+    if (block.type !== "text") {
+      res.status(500).json({ error: "Unexpected AI response format" });
+      return;
+    }
+
+    // Prepend the prefill so the explanation reads as a complete sentence
+    const explanation = ("This script" + block.text).trim();
+    res.json({ explanation });
+  } catch (err) {
+    logger.error({ err }, "PS script explain failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Explain failed" });
+  }
+});
+
 // ─── POST /api/admin/ps-scripts/modularize ───────────────────────────────────
 
 router.post("/admin/ps-scripts/modularize", requireAdmin, async (req: Request, res: Response) => {

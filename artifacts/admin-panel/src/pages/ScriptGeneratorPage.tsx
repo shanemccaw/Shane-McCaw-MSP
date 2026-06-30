@@ -2179,13 +2179,17 @@ function RightPanel({
   summaryAiResponse,
   onDismissSummaryError,
   onDismissFixSummary,
+  explaining,
+  explainText,
+  onExplain,
+  onDismissExplain,
 }: {
   permissions: PsScriptPermissions;
   scriptLoaded: boolean;
   scriptBody: string;
   editorScript: PsScriptDetail | null;
-  activeTab: "runner" | "permissions" | "bugfix";
-  onActiveTabChange: (t: "runner" | "permissions" | "bugfix") => void;
+  activeTab: "runner" | "permissions" | "bugfix" | "explain";
+  onActiveTabChange: (t: "runner" | "permissions" | "bugfix" | "explain") => void;
   bugDescription: string;
   onBugDescriptionChange: (v: string) => void;
   fixing: boolean;
@@ -2195,9 +2199,13 @@ function RightPanel({
   summaryAiResponse: string | null;
   onDismissSummaryError: () => void;
   onDismissFixSummary: () => void;
+  explaining: boolean;
+  explainText: string;
+  onExplain: () => void;
+  onDismissExplain: () => void;
 }) {
   const switchTab = (t: string) => {
-    const tab = t as "runner" | "permissions" | "bugfix";
+    const tab = t as "runner" | "permissions" | "bugfix" | "explain";
     onActiveTabChange(tab);
     lsSet(IDE_RIGHT_TAB_KEY, tab);
   };
@@ -2286,6 +2294,50 @@ function RightPanel({
         </div>
       </TabsContent>
 
+      <TabsContent
+        value="explain"
+        className="flex-1 min-h-0 overflow-y-auto flex flex-col mt-0 p-0"
+      >
+        <div className="p-3 space-y-3">
+          {/* Header */}
+          <div className="flex items-center gap-2 pb-1 border-b border-[#21262D]">
+            <svg className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+            <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Explain Script</span>
+          </div>
+
+          <p className="text-[11px] text-[#7D8590] leading-relaxed">Claude will analyse the current script and explain what it does, what it touches, and what to watch out for.</p>
+
+          {/* Result */}
+          {explainText && (
+            <div className="relative bg-[#161B22] border border-violet-500/25 rounded-xl p-3">
+              <button
+                onClick={onDismissExplain}
+                className="absolute top-2 right-2 text-[#484F58] hover:text-[#7D8590] rounded p-0.5 transition-colors"
+                title="Dismiss"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+              <p className="text-[11px] text-[#E6EDF3] leading-relaxed pr-5 whitespace-pre-wrap">{explainText}</p>
+            </div>
+          )}
+
+          <button
+            onClick={onExplain}
+            disabled={explaining || !scriptLoaded}
+            className="w-full flex items-center justify-center gap-2 bg-violet-500/10 hover:bg-violet-500/20 disabled:opacity-50 border border-violet-500/30 text-violet-400 text-xs font-semibold py-2 px-4 rounded transition-colors"
+          >
+            {explaining
+              ? <><div className="w-3.5 h-3.5 border-2 border-violet-400/40 border-t-violet-400 rounded-full animate-spin" />Analysing…</>
+              : <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>Explain with Claude</>
+            }
+          </button>
+
+          {!scriptLoaded && (
+            <p className="text-[10px] text-[#484F58] text-center">Generate or open a script first</p>
+          )}
+        </div>
+      </TabsContent>
+
       {/* Tab strip pinned at the bottom */}
       <TabsList className="flex-shrink-0 h-9 w-full rounded-none border-t border-[#21262D] bg-[#161B22] p-0 gap-0 justify-start">
         <TabsTrigger
@@ -2305,6 +2357,12 @@ function RightPanel({
           className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-red-500/15 data-[state=active]:text-red-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
         >
           Fix Bug
+        </TabsTrigger>
+        <TabsTrigger
+          value="explain"
+          className="h-full px-3 rounded-none text-[10px] font-bold uppercase tracking-wider border-0 shadow-none data-[state=active]:bg-violet-500/15 data-[state=active]:text-violet-400 data-[state=active]:shadow-none data-[state=inactive]:text-[#484F58]"
+        >
+          Explain
         </TabsTrigger>
       </TabsList>
     </Tabs>
@@ -3166,6 +3224,8 @@ export default function ScriptGeneratorPage() {
   const [bugDescription, setBugDescription] = useState("");
   const [fixSummary, setFixSummary] = useState("");
   const [summaryError, setSummaryError] = useState<"generate" | "fix" | null>(null);
+  const [explainText, setExplainText] = useState("");
+  const [explaining, setExplaining] = useState(false);
   const [summaryAiResponse, setSummaryAiResponse] = useState<string | null>(null);
   const [editingModuleId, setEditingModuleId] = useState<string | null>(null);
   const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
@@ -3224,8 +3284,8 @@ export default function ScriptGeneratorPage() {
     return (stored === "results" ? "results" : "library") as "library" | "results";
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [rightActiveTab, setRightActiveTab] = useState<"runner" | "permissions" | "bugfix">(() =>
-    (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions" | "bugfix")
+  const [rightActiveTab, setRightActiveTab] = useState<"runner" | "permissions" | "bugfix" | "explain">(() =>
+    (lsGet(IDE_RIGHT_TAB_KEY, "runner") as "runner" | "permissions" | "bugfix" | "explain")
   );
   const [runLibraryScriptTarget, setRunLibraryScriptTarget] = useState<PsScriptListItem | null>(null);
   const [runLibraryModuleTarget, setRunLibraryModuleTarget] = useState<ScriptModuleItem | null>(null);
@@ -3405,6 +3465,23 @@ export default function ScriptGeneratorPage() {
       } else toast({ title: "Fix failed", description: msg, variant: "destructive" });
     } finally {
       setFixing(false);
+    }
+  };
+
+  const explainScript = async () => {
+    if (!scriptBody.trim()) return;
+    setExplaining(true);
+    setExplainText("");
+    try {
+      const result = await apiFetch("/admin/ps-scripts/explain", token, {
+        method: "POST",
+        body: JSON.stringify({ scriptContent: scriptBody }),
+      }) as { explanation: string };
+      setExplainText(result.explanation);
+    } catch (e) {
+      toast({ title: "Explain failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setExplaining(false);
     }
   };
 
@@ -4095,6 +4172,10 @@ export default function ScriptGeneratorPage() {
               summaryAiResponse={summaryAiResponse}
               onDismissSummaryError={() => { setSummaryError(null); setSummaryAiResponse(null); }}
               onDismissFixSummary={() => setFixSummary("")}
+              explaining={explaining}
+              explainText={explainText}
+              onExplain={() => { explainScript(); }}
+              onDismissExplain={() => setExplainText("")}
             />
           </div>
         )}
