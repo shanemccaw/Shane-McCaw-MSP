@@ -27,6 +27,7 @@ import {
 } from "@workspace/db";
 import { eq, asc, count, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
+import { broadcastKanbanChange } from "./sse-broadcast";
 
 type SpawnedTask = typeof kanbanTasksTable.$inferSelect;
 
@@ -187,6 +188,8 @@ export async function advancePhaseIfComplete(
       { workflowStepId, nextStepId: nextStep.id, spawnedCount: spawnedTasks.length, projectId },
       "kanban-phase-advance: next phase activated",
     );
+
+    for (const t of spawnedTasks) broadcastKanbanChange(projectId, { action: "created", task: t });
 
     return { spawnedTasks, nextStepActivated: true };
   } catch (err) {

@@ -1,0 +1,23 @@
+import type { Response } from "express";
+
+const kanbanSSEClients = new Map<number, Set<Response>>();
+
+export function registerSSEClient(projectId: number, res: Response, onClose: () => void): void {
+  if (!kanbanSSEClients.has(projectId)) kanbanSSEClients.set(projectId, new Set());
+  const clients = kanbanSSEClients.get(projectId)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) kanbanSSEClients.delete(projectId);
+    onClose();
+  });
+}
+
+export function broadcastKanbanChange(projectId: number, payload: { action: string; task: unknown }): void {
+  const clients = kanbanSSEClients.get(projectId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(payload)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}

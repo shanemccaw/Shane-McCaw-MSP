@@ -33,6 +33,7 @@ import { logger } from "./logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
+import { broadcastKanbanChange } from "./sse-broadcast";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS   = 10 * 60 * 1000;
@@ -251,6 +252,11 @@ async function runInBackground(
         })
         .where(inArray(kanbanTasksTable.id, cardIds));
 
+      {
+        const completedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+        for (const t of completedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+      }
+
       logger.info({ cardIds, jobId }, "kanban-auto-fire: script completed — cards moved to completed");
 
       // Phase advance for each unique workflowStepId
@@ -270,6 +276,11 @@ async function runInBackground(
         })
         .where(inArray(kanbanTasksTable.id, cardIds));
 
+      {
+        const failedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+        for (const t of failedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+      }
+
       logger.warn({ cardIds, jobId, lastStatus }, "kanban-auto-fire: script failed — cards remain in_progress");
     }
 
@@ -284,6 +295,10 @@ async function runInBackground(
       await db.update(kanbanTasksTable)
         .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: finalStatus } })
         .where(eq(kanbanTasksTable.id, row.id));
+    }
+    {
+      const clearedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+      for (const t of clearedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
     }
 
     await syncProjectProgress(projectId);
@@ -341,6 +356,11 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       .set({ column: "in_progress", updatedAt: new Date() })
       .where(inArray(kanbanTasksTable.id, siblingIds));
 
+    {
+      const inProgressRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
+      for (const t of inProgressRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
+    }
+
     // Stamp runningJobRef placeholder so the "Running…" badge appears if admin reloads
     let jobId: string;
     try {
@@ -357,6 +377,10 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       await db.update(kanbanTasksTable)
         .set({ column: "backlog", updatedAt: new Date() })
         .where(inArray(kanbanTasksTable.id, siblingIds));
+      {
+        const revertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
+        for (const t of revertedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
+      }
       logger.error({ azErr, clientUserId, runbook: card.linkedRunbook.azureRunbookName }, "kanban-auto-fire: Azure job creation failed — cards reverted to backlog");
       return;
     }
@@ -371,6 +395,10 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       await db.update(kanbanTasksTable)
         .set({ taskMetadata: { ...meta, runningJobRef: jobId, lastJobStatus: "Running", lastJobId: jobId }, updatedAt: new Date() })
         .where(eq(kanbanTasksTable.id, row.id));
+    }
+    {
+      const stampedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
+      for (const t of stampedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
     }
 
     logger.info(

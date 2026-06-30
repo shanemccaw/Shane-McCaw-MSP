@@ -30,6 +30,7 @@ import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
+import { broadcastKanbanChange } from "../lib/sse-broadcast";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
@@ -399,6 +400,10 @@ async function processRunInBackground(
           .set({ taskMetadata: { ...meta, runningJobRef: null } })
           .where(eq(kanbanTasksTable.id, row.id));
       }
+      {
+        const clearedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
+        for (const t of clearedRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
+      }
       logger.info({ kanbanIds, finalStatus }, "admin-m365-run: kanban tasks synced from script result");
 
       // Phase advance: if script succeeded, check whether this step is fully done
@@ -636,6 +641,8 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
           .update(kanbanTasksTable)
           .set({ column: "in_progress", updatedAt: new Date() })
           .where(inArray(kanbanTasksTable.id, siblingTaskIds));
+        const inProgressRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingTaskIds)).catch(() => []);
+        for (const t of inProgressRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
         logger.info({ siblingTaskIds, kanbanTaskId }, "admin-m365-run: bulk moved sibling tasks to in_progress");
       }
     } catch (err) {
@@ -659,6 +666,8 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
           .set({ taskMetadata: { ...meta, runningJobRef: jobId }, updatedAt: new Date() })
           .where(eq(kanbanTasksTable.id, row.id));
       }
+      const stampedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, idsToMark)).catch(() => []);
+      for (const t of stampedRows) if (t.projectId != null) broadcastKanbanChange(t.projectId, { action: "updated", task: t });
     } catch (err) {
       logger.warn({ err, kanbanTaskId }, "admin-m365-run: failed to set runningJobRef (non-fatal)");
     }

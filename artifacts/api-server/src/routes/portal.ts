@@ -20,6 +20,7 @@ import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
 import { logger } from "../lib/logger.ts";
+import { broadcastKanbanChange, registerSSEClient } from "../lib/sse-broadcast.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -28,38 +29,17 @@ import { Readable } from "stream";
 
 const router: IRouter = Router();
 
-// ─── Kanban real-time SSE registry ────────────────────────────────────────────
-// One Set<Response> per projectId; entries are removed on connection close.
-const kanbanSSEClients = new Map<number, Set<Response>>();
-
-function broadcastKanbanChange(projectId: number, payload: { action: string; task: unknown }): void {
-  const clients = kanbanSSEClients.get(projectId);
-  if (!clients?.size) return;
-  const line = `data: ${JSON.stringify(payload)}\n\n`;
-  for (const res of clients) {
-    try { res.write(line); } catch { /* disconnected — will be cleaned up on close event */ }
-  }
-}
-
-// Helper to set up common SSE response headers and keep-alive, returns cleanup fn
+// Helper to set up common SSE response headers and keep-alive
 function setupSSE(req: Request, res: Response, projectId: number): void {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders();
 
-  if (!kanbanSSEClients.has(projectId)) kanbanSSEClients.set(projectId, new Set());
-  const clients = kanbanSSEClients.get(projectId)!;
-  clients.add(res);
   res.write(": connected\n\n");
-
   const keepAlive = setInterval(() => { try { res.write(": ping\n\n"); } catch {} }, 25_000);
 
-  req.on("close", () => {
-    clearInterval(keepAlive);
-    clients.delete(res);
-    if (clients.size === 0) kanbanSSEClients.delete(projectId);
-  });
+  registerSSEClient(projectId, res, () => clearInterval(keepAlive));
 }
 
 // Admin: subscribe to kanban events for a project (token via query param — EventSource can't send headers)

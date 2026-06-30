@@ -44,6 +44,7 @@ import {
 import { getSecretValue } from "./azure-keyvault";
 import { sendEmail } from "./mailer";
 import { logger } from "./logger";
+import { broadcastKanbanChange } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const POLL_INTERVAL_MS = 5_000;
@@ -201,6 +202,9 @@ async function saveKanbanOutput(options: {
       .where(eq(kanbanTasksTable.id, kanbanTaskId));
 
     logger.info({ kanbanTaskId, success }, "client-script-sequence: scriptOutput saved to kanban card");
+
+    const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, kanbanTaskId)).limit(1).catch(() => [null]);
+    if (updated) broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   } catch (err) {
     logger.warn({ err, kanbanTaskId }, "client-script-sequence: failed to save scriptOutput to kanban card (non-fatal)");
   }
@@ -234,6 +238,9 @@ async function patchKanbanAiAnalysis(
       .where(eq(kanbanTasksTable.id, kanbanTaskId));
 
     logger.info({ kanbanTaskId }, "client-script-sequence: aiAnalysis patched onto kanban card");
+
+    const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, kanbanTaskId)).limit(1).catch(() => [null]);
+    if (updated) broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
   } catch (err) {
     logger.warn({ err, kanbanTaskId }, "client-script-sequence: failed to patch aiAnalysis (non-fatal — raw output already saved)");
   }
