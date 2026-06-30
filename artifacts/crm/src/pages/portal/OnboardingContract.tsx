@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw, Sparkles, Tag, ChevronDown, Check } from "lucide-react";
+import { ShieldCheck, Loader2, ArrowRight, ArrowLeft, PenLine, X, RefreshCw, Sparkles, Tag, ChevronDown, Check, Clock } from "lucide-react";
 
 interface Service {
   id: number;
@@ -263,6 +263,7 @@ export default function OnboardingContract() {
 
   const [offerAvailable, setOfferAvailable] = useState<boolean | null>(null);
   const [lpTokenExpired, setLpTokenExpired] = useState(false);
+  const [lpTokenMinsLeft, setLpTokenMinsLeft] = useState<number | null>(null);
   const lpUrl = sessionStorage.getItem("onboardingLpUrl") ?? null;
 
   const [couponOpen, setCouponOpen] = useState(false);
@@ -329,6 +330,35 @@ export default function OnboardingContract() {
     }
 
     void servicesReq;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Countdown timer for LP token expiry warning
+  useEffect(() => {
+    const expRaw = sessionStorage.getItem("onboardingLpTokenExp");
+    if (!expRaw) return; // No LP token — no countdown needed
+
+    const computeMins = () => {
+      const expMs = Number(expRaw) * 1000;
+      const diffMs = expMs - Date.now();
+      return Math.ceil(diffMs / 60000);
+    };
+
+    const tick = () => {
+      const mins = computeMins();
+      if (mins <= 0) {
+        setLpTokenMinsLeft(0);
+        setLpTokenExpired(true);
+      } else if (mins <= 30) {
+        setLpTokenMinsLeft(mins);
+      } else {
+        setLpTokenMinsLeft(null);
+      }
+    };
+
+    tick(); // run immediately
+    const id = setInterval(tick, 60000);
+    return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -600,6 +630,18 @@ export default function OnboardingContract() {
           </div>
         </div>
       </div>
+
+      {lpTokenMinsLeft !== null && lpTokenMinsLeft > 0 && (
+        <div className="bg-amber-50 border-b border-amber-300">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-2.5 flex items-center gap-2.5">
+            <Clock className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <p className="text-sm text-amber-800">
+              <span className="font-semibold">Your access link expires in ~{lpTokenMinsLeft} {lpTokenMinsLeft === 1 ? "minute" : "minutes"}</span>
+              {" — "}please complete checkout soon to avoid losing your progress.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <div className="bg-white border border-border rounded-xl px-5 py-4 mb-6">
