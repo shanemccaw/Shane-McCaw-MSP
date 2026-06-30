@@ -107,6 +107,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         sortOrder: sortOrder != null ? Number(sortOrder) : 0,
         tier: (tier as string | null) ?? null,
         workflowTemplateId: workflowTemplateId != null ? Number(workflowTemplateId) : null,
+        updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
       .returning();

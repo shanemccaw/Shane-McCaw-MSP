@@ -350,8 +350,8 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     } finally { setCreating(false); }
   }, [createName, createSlug, createBilling, createService, toast, onSaved]);
 
-  const onSubmit = useCallback(async (values: ServiceFormValues) => {
-    if (!id) return;
+  const onSubmit = useCallback(async (values: ServiceFormValues): Promise<boolean> => {
+    if (!id) return false;
     try {
       await updateService.mutateAsync({
         id,
@@ -366,13 +366,19 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
       toast({ title: "Service saved" });
       reset(values);
       onSaved?.(id);
+      return true;
     } catch (err) {
       toast({ title: (err as Error).message, variant: "destructive" });
+      return false;
     }
   }, [id, updateService, toast, reset, onSaved]);
 
   const handleSaveAndClose = useCallback(async () => {
-    await handleSubmit(async (values) => { await onSubmit(values); onClose(); })();
+    let succeeded = false;
+    await handleSubmit(async (values) => {
+      succeeded = await onSubmit(values);
+    })();
+    if (succeeded) onClose();
   }, [handleSubmit, onSubmit, onClose]);
 
   const handleGeneratePdf = async () => {
@@ -529,11 +535,58 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     );
   }
 
-  // ---- Edit form ----
+  // ---- Edit form skeleton ----
   if (isLoading || !service) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-[#0078D4]" />
+      <div className="flex h-full overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header skeleton */}
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-[#21262D] animate-pulse" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-5 w-48 rounded bg-[#21262D] animate-pulse" />
+              <div className="h-3 w-28 rounded bg-[#21262D] animate-pulse" />
+            </div>
+            <div className="flex gap-2">
+              <div className="h-7 w-16 rounded-lg bg-[#21262D] animate-pulse" />
+              <div className="h-7 w-24 rounded-lg bg-[#21262D] animate-pulse" />
+              <div className="h-7 w-16 rounded-lg bg-[#0078D4]/30 animate-pulse" />
+            </div>
+          </div>
+          {/* Action bar skeleton */}
+          <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#30363D] bg-[#0D1117] flex-shrink-0">
+            <div className="h-7 w-28 rounded-lg bg-[#21262D] animate-pulse" />
+            <div className="h-7 w-24 rounded-lg bg-[#21262D] animate-pulse" />
+          </div>
+          {/* Form skeleton */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-3 w-20 rounded bg-[#21262D] animate-pulse" />
+                  <div className="h-9 rounded-lg bg-[#21262D] animate-pulse" style={{ width: `${60 + (i * 17) % 40}%` }} />
+                </div>
+              ))}
+              <div className="grid grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <div className="h-3 w-16 rounded bg-[#21262D] animate-pulse" />
+                    <div className="h-9 rounded-lg bg-[#21262D] animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Side panel skeleton */}
+        <aside className="w-64 flex-shrink-0 border-l border-[#30363D] bg-[#161B22] p-4 space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="h-3 w-16 rounded bg-[#21262D] animate-pulse" />
+              <div className="h-5 rounded bg-[#21262D] animate-pulse" style={{ width: `${50 + (i * 19) % 40}%` }} />
+            </div>
+          ))}
+        </aside>
       </div>
     );
   }

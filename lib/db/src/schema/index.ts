@@ -95,6 +95,7 @@ export const servicesTable = pgTable("services", {
   isPublic: boolean("is_public").notNull().default(true),
   visibility: text("visibility", { enum: ["public", "private", "landing_page_only"] }).notNull().default("public"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
   // Marketing content fields
   serviceType: text("service_type"),
   tagline: text("tagline"),

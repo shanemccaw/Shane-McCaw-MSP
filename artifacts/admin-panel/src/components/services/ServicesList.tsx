@@ -54,8 +54,8 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
   const [page, setPage] = useState(1);
   const [archiveTarget, setArchiveTarget] = useState<ServiceRow | null>(null);
   const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
-  const [sortCol, setSortCol] = useState<"name" | "category" | "price" | "visibility" | "createdAt">("name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [sortCol, setSortCol] = useState<"name" | "category" | "price" | "visibility" | "updatedAt">("updatedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const categories = useMemo(
     () => [...new Set(services.map(s => s.category).filter(Boolean) as string[])].sort(),
@@ -76,7 +76,7 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
       else if (sortCol === "category") cmp = (a.category ?? "").localeCompare(b.category ?? "");
       else if (sortCol === "price") cmp = parseFloat(a.price ?? a.basePrice ?? "0") - parseFloat(b.price ?? b.basePrice ?? "0");
       else if (sortCol === "visibility") cmp = a.visibility.localeCompare(b.visibility);
-      else if (sortCol === "createdAt") cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      else if (sortCol === "updatedAt") cmp = new Date(a.updatedAt ?? a.createdAt).getTime() - new Date(b.updatedAt ?? b.createdAt).getTime();
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [services, filters, sortCol, sortDir]);
@@ -86,7 +86,7 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
 
   function toggleSort(col: typeof sortCol) {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
-    else { setSortCol(col); setSortDir("asc"); }
+    else { setSortCol(col); setSortDir(col === "updatedAt" ? "desc" : "asc"); }
     setPage(1);
   }
 
@@ -261,7 +261,7 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
                 <th className="px-3 py-2.5 text-left">
                   <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider">Badge</span>
                 </th>
-                <ThBtn col="createdAt" label="Created" />
+                <ThBtn col="updatedAt" label="Updated" />
                 <th className="px-3 py-2.5 w-24">
                   <span className="text-[10px] font-bold text-[#7D8590] uppercase tracking-wider">Actions</span>
                 </th>
@@ -311,7 +311,7 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
                         : <span className="text-xs text-[#30363D]">—</span>}
                     </td>
                     <td className="px-3 py-3">
-                      <span className="text-xs text-[#7D8590]">{new Date(s.createdAt).toLocaleDateString()}</span>
+                      <span className="text-xs text-[#7D8590]">{new Date(s.updatedAt ?? s.createdAt).toLocaleDateString()}</span>
                     </td>
                     <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

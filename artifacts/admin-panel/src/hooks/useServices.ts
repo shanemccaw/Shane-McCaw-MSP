@@ -31,6 +31,7 @@ export interface ServiceRow {
   isPublic: boolean;
   visibility: "public" | "private" | "landing_page_only";
   createdAt: string;
+  updatedAt: string;
   serviceType: string | null;
   tagline: string | null;
   targetAudience: string | null;
