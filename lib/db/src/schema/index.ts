@@ -1456,7 +1456,7 @@ export const pushSubscriptionsTable = pgTable("push_subscriptions", {
   p256dh: text("p256dh").notNull(),
   auth: text("auth").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (t) => [uniqueIndex("push_subscriptions_user_endpoint_uidx").on(t.userId, t.endpoint)]);
 
 export type InsertPushSubscription = typeof pushSubscriptionsTable.$inferInsert;
 export type PushSubscription = typeof pushSubscriptionsTable.$inferSelect;
