@@ -3134,6 +3134,7 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [ctaTextEdits, setCtaTextEdits] = useState<Record<number, string>>({});
   const [ctaTextSaving, setCtaTextSaving] = useState<Record<number, boolean>>({});
+  const [pendingPublishPage, setPendingPublishPage] = useState<LandingPage | null>(null);
 
   const [lpCampaigns, setLpCampaigns] = useState<Campaign[]>([]);
   const [lpOffers, setLpOffers] = useState<Offer[]>([]);
@@ -3248,10 +3249,21 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
     }
   };
 
-  const togglePublish = async (page: LandingPage) => {
+  const doPublish = async (page: LandingPage) => {
     const r = await fetchWithAuth(`${API}/admin/marketing/landing-pages/${page.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ published: !page.published }) });
     const updated = await r.json() as LandingPage;
     setPages(prev => prev.map(p => p.id === page.id ? updated : p));
+  };
+
+  const togglePublish = (page: LandingPage) => {
+    if (!page.published) {
+      const hasGate = page.linkedServiceId != null && serviceMap.get(page.linkedServiceId)?.visibility === "landing_page_only";
+      if (!hasGate) {
+        setPendingPublishPage(page);
+        return;
+      }
+    }
+    void doPublish(page);
   };
 
   const deletePage = async (id: number) => {
@@ -3533,6 +3545,36 @@ function LandingPagesPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {pendingPublishPage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <span className="text-2xl leading-none">⚠️</span>
+              <div>
+                <p className="text-sm font-semibold text-[#E6EDF3]">No access gate</p>
+                <p className="text-xs text-[#7D8590] mt-1">
+                  <span className="font-medium text-[#C9D1D9]">{pendingPublishPage.title}</span> has no linked service gate. It will be visible to everyone with no access check. Publish anyway?
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setPendingPublishPage(null)}
+                className="text-xs px-3 py-1.5 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void doPublish(pendingPublishPage); setPendingPublishPage(null); }}
+                className="text-xs px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 font-semibold transition-colors"
+              >
+                Publish anyway
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
