@@ -835,13 +835,23 @@ export default function PortalProjectDetail() {
 
     connect();
 
+    const STALE_THRESHOLD_MS = 30_000;
+    let hiddenAt: number | null = null;
+
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (document.visibilityState === "visible") {
+        const wasHiddenMs = hiddenAt !== null ? Date.now() - hiddenAt : 0;
+        hiddenAt = null;
         if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
         es?.close();
         es = null;
         backoff = 1000;
         setSseReconnecting(false);
+        if (wasHiddenMs >= STALE_THRESHOLD_MS) {
+          loadProjectRef.current();
+        }
         connect();
       }
     };
