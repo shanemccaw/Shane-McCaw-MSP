@@ -262,6 +262,8 @@ export default function OnboardingContract() {
   const [hasScrolled, setHasScrolled] = useState(false);
 
   const [offerAvailable, setOfferAvailable] = useState<boolean | null>(null);
+  const [lpTokenExpired, setLpTokenExpired] = useState(false);
+  const lpUrl = sessionStorage.getItem("onboardingLpUrl") ?? null;
 
   const [couponOpen, setCouponOpen] = useState(false);
   const [couponInput, setCouponInput] = useState("");
@@ -393,6 +395,18 @@ export default function OnboardingContract() {
     setSubmitting(true);
 
     try {
+      // Check LP token expiry before making any API calls
+      const lpTokenRaw = sessionStorage.getItem("onboardingLpToken");
+      const lpTokenExpRaw = sessionStorage.getItem("onboardingLpTokenExp");
+      if (lpTokenRaw && lpTokenExpRaw) {
+        const expMs = Number(lpTokenExpRaw) * 1000;
+        if (Date.now() > expMs) {
+          setLpTokenExpired(true);
+          setSubmitting(false);
+          return;
+        }
+      }
+
       // Save profile fields — only if logged in
       if (user) {
         await fetchWithAuth("/api/portal/profile", {
@@ -917,6 +931,30 @@ export default function OnboardingContract() {
               </label>
             </div>
 
+            {lpTokenExpired && (
+              <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-4 text-sm">
+                <p className="font-semibold mb-1">Your access link has expired</p>
+                <p className="mb-3 text-amber-800">This offer link is only valid for 24 hours. Please return to the landing page and click the button again to get a fresh link.</p>
+                {lpUrl ? (
+                  <a
+                    href={lpUrl}
+                    className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Return to landing page
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => window.history.back()}
+                    className="inline-flex items-center gap-1.5 bg-amber-700 hover:bg-amber-800 text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    Go back
+                  </button>
+                )}
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
                 {error}
@@ -945,7 +983,7 @@ export default function OnboardingContract() {
               </button>
               <button
                 onClick={handleSign}
-                disabled={submitting || !agreed || !signed || !signerName.trim() || !street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()}
+                disabled={submitting || lpTokenExpired || !agreed || !signed || !signerName.trim() || !street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()}
                 className="flex-1 flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? (

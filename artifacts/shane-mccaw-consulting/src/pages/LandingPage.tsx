@@ -103,8 +103,12 @@ export default function LandingPage() {
         const err = await res.json() as { error?: string };
         throw new Error(err.error ?? "Unable to generate access token");
       }
-      const { token, serviceId } = await res.json() as { token: string; serviceId: number; exp: number };
+      const { token, serviceId, exp } = await res.json() as { token: string; serviceId: number; exp: number };
       sessionStorage.setItem("onboardingLpToken", token);
+      if (typeof exp === "number") {
+        sessionStorage.setItem("onboardingLpTokenExp", String(exp));
+      }
+      sessionStorage.setItem("onboardingLpUrl", window.location.href);
       if (page.linkedService) {
         sessionStorage.setItem("onboardingLpService", JSON.stringify(page.linkedService));
       }
