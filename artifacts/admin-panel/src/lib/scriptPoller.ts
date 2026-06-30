@@ -25,6 +25,55 @@ const taskIdToJobRef = new Map<number, string>();
 
 const changeListeners = new Set<ChangeListener>();
 
+// ─── sessionStorage persistence ──────────────────────────────────────────────
+// Format: { [jobRef]: taskId }
+const STORAGE_KEY = "scriptPoller_jobs";
+
+function readStorage(): Record<string, number> {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStorage(jobRef: string, taskId: number) {
+  try {
+    const stored = readStorage();
+    stored[jobRef] = taskId;
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  } catch {
+    // sessionStorage not available (e.g. private mode restrictions) — silent
+  }
+}
+
+function removeFromStorage(jobRef: string) {
+  try {
+    const stored = readStorage();
+    delete stored[jobRef];
+    if (Object.keys(stored).length === 0) {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } else {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    }
+  } catch {
+    // silent
+  }
+}
+
+// On module init: restore maps from sessionStorage so isTaskRunning / getJobRefForTask
+// return correct values before rehydratePolls() kicks off actual polling.
+(function restoreFromStorage() {
+  const stored = readStorage();
+  for (const [jobRef, taskId] of Object.entries(stored)) {
+    taskIdToJobRef.set(taskId, jobRef);
+    taskJobMap.set(taskId, jobRef);
+  }
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function notifyChange() {
   changeListeners.forEach(fn => fn());
 }
@@ -36,6 +85,7 @@ export function subscribeToChanges(fn: ChangeListener): () => void {
 
 export function registerTaskJob(taskId: number, jobRef: string) {
   taskIdToJobRef.set(taskId, jobRef);
+  writeStorage(jobRef, taskId);
   notifyChange();
 }
 
@@ -72,6 +122,8 @@ export function startPoll(
 
   if (kanbanTaskId !== undefined) {
     taskJobMap.set(kanbanTaskId, jobRef);
+    taskIdToJobRef.set(kanbanTaskId, jobRef);
+    writeStorage(jobRef, kanbanTaskId);
   }
 
   const poll: ActivePoll = {
@@ -103,6 +155,31 @@ export function startPoll(
   };
   polls.set(jobRef, poll);
   notifyChange();
+}
+
+/**
+ * Call once on app mount (after auth is ready) to restart polling for any
+ * jobRefs that were persisted to sessionStorage before a page reload.
+ * Jobs that have already finished will be cleared from sessionStorage on the
+ * first poll tick.
+ */
+export function rehydratePolls(fetchFn: (url: string) => Promise<Response>) {
+  const stored = readStorage();
+  let rehydrated = false;
+  for (const [jobRef, taskId] of Object.entries(stored)) {
+    if (!polls.has(jobRef)) {
+      startPoll(
+        jobRef,
+        fetchFn,
+        null,
+        // no-op completion callback — the backend owns kanban task updates
+        () => undefined,
+        taskId
+      );
+      rehydrated = true;
+    }
+  }
+  if (rehydrated) notifyChange();
 }
 
 export function attachStatusListener(jobRef: string, listener: StatusListener) {
@@ -144,6 +221,7 @@ export function stopPoll(jobRef: string) {
         break;
       }
     }
+    removeFromStorage(jobRef);
     notifyChange();
   }
 }

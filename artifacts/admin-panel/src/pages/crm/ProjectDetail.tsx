@@ -3,7 +3,7 @@ import { useRoute, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
-import { subscribeToChanges, isTaskRunning } from "@/lib/scriptPoller";
+import { subscribeToChanges, isTaskRunning, rehydratePolls } from "@/lib/scriptPoller";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
@@ -1579,6 +1579,12 @@ export default function ProjectDetailPage() {
     }
     setLoading(false);
   }, [projectId, fetchWithAuth]);
+
+  // Rehydrate any in-progress polls that were active before the page reloaded
+  useEffect(() => {
+    rehydratePolls(fetchWithAuth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => { void reloadAll(); }, [reloadAll]);
 
