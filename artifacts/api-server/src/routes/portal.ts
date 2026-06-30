@@ -5240,7 +5240,7 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
               .orderBy(asc(workflowTemplateStepTasksTable.order));
             if (templateTasks.length > 0) {
               const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
-              await db.insert(kanbanTasksTable).values(
+              const spawnedTasks = await db.insert(kanbanTasksTable).values(
                 templateTasks.map((t, idx) => ({
                   projectId: activatedStep.projectId!,
                   workflowStepId: activatedStep.id,
@@ -5252,7 +5252,10 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
                   taskType: t.taskType ?? null,
                   taskMetadata: resolvedMetadata[idx],
                 }))
-              );
+              ).returning();
+              for (const spawnedTask of spawnedTasks) {
+                broadcastKanbanChange(spawnedTask.projectId, { action: "created", task: spawnedTask });
+              }
             }
           }
 
