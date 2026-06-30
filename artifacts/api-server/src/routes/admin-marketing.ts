@@ -85,7 +85,7 @@ function aiErrorResponse(e: unknown): { _aiError: true; error: string; message: 
 async function buildICPContext(): Promise<string> {
   const [services, topLeads, painSignals, icpSettings] = await Promise.all([
     db.select({ name: servicesTable.name, description: servicesTable.description, targetAudience: servicesTable.targetAudience })
-      .from(servicesTable).where(eq(servicesTable.isPublic, true)).limit(8),
+      .from(servicesTable).where(eq(servicesTable.visibility, "public")).limit(8),
     db.execute(sql`
       SELECT industry, company_size, COUNT(*) as cnt
       FROM leads
@@ -168,7 +168,7 @@ router.get("/admin/marketing/kpi", requireAdmin, async (_req: Request, res: Resp
       db.select({ total: sql<string>`COALESCE(SUM(revenue_attributed::numeric), 0)` }).from(campaignsTable).where(eq(campaignsTable.status, "active")),
       db.select({ cnt: count() }).from(leadsTable).where(and(eq(leadsTable.status, "converted"), gte(leadsTable.createdAt, weekAgo))),
       // Avg deal size derived from actual service pricing (base_price fallback to price)
-      db.select({ avg: sql<string>`COALESCE(AVG(COALESCE(base_price::numeric, price::numeric)), 5000)` }).from(servicesTable).where(eq(servicesTable.isPublic, true)),
+      db.select({ avg: sql<string>`COALESCE(AVG(COALESCE(base_price::numeric, price::numeric)), 5000)` }).from(servicesTable).where(eq(servicesTable.visibility, "public")),
     ]);
 
     const totalLeadsThisWeek = leads;
@@ -2566,7 +2566,51 @@ router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
       ).limit(1);
 
     if (!page) { res.status(404).json({ error: "Not found" }); return; }
-    res.json({ ...page, _preview: isAdminPreview && !page.published });
+
+    // Resolve linked service visibility so the frontend can decide whether to gate the CTA
+    let linkedService: { id: number; slug: string | null; name: string; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null } | null = null;
+    if (page.linkedServiceId) {
+      const [svc] = await db.select({
+        id: servicesTable.id,
+        slug: servicesTable.slug,
+        name: servicesTable.name,
+        visibility: servicesTable.visibility,
+        billingType: servicesTable.billingType,
+        price: servicesTable.price,
+        basePrice: servicesTable.basePrice,
+        maxPrice: servicesTable.maxPrice,
+        turnaround: servicesTable.turnaround,
+      }).from(servicesTable).where(eq(servicesTable.id, page.linkedServiceId)).limit(1);
+      if (svc) linkedService = { ...svc, price: svc.price ?? null, basePrice: svc.basePrice ?? null, maxPrice: svc.maxPrice ?? null, turnaround: svc.turnaround ?? null };
+    }
+
+    res.json({ ...page, _preview: isAdminPreview && !page.published, linkedService });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Issue a short-lived HMAC-SHA256 token for a landing page's linked LP-only service
+router.post("/landing-pages/:slug/token", async (req: Request, res: Response) => {
+  try {
+    const slug = String(req.params.slug);
+    const [page] = await db.select().from(landingPagesTable)
+      .where(and(eq(landingPagesTable.slug, slug), eq(landingPagesTable.published, true))).limit(1);
+    if (!page) { res.status(404).json({ error: "Landing page not found" }); return; }
+    if (!page.linkedServiceId) { res.status(400).json({ error: "This landing page has no linked service" }); return; }
+
+    const [svc] = await db.select({ id: servicesTable.id, visibility: servicesTable.visibility })
+      .from(servicesTable).where(eq(servicesTable.id, page.linkedServiceId)).limit(1);
+    if (!svc) { res.status(404).json({ error: "Linked service not found" }); return; }
+    if (svc.visibility !== "landing_page_only") { res.status(400).json({ error: "Linked service is not restricted to landing pages" }); return; }
+
+    const crypto = await import("crypto");
+    const secret = process.env.JWT_SECRET ?? "";
+    const exp = Date.now() + 24 * 60 * 60 * 1000;
+    const payload = Buffer.from(JSON.stringify({ serviceId: svc.id, exp })).toString("base64url");
+    const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
+    const token = `${payload}.${sig}`;
+    res.json({ token, serviceId: svc.id, exp });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

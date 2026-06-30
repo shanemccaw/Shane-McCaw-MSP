@@ -67,6 +67,7 @@ interface Service {
   turnaround: string | null;
   billingType: "one_time" | "recurring_monthly";
   isPublic: boolean;
+  visibility: "public" | "private" | "landing_page_only";
   createdAt: string;
   serviceType: string | null;
   tagline: string | null;
@@ -853,10 +854,16 @@ export default function ServicesPage() {
               <div key={s.id} className={`group flex items-center gap-1 pr-2 hover:bg-[#1C2128] transition-colors ${selected?.id === s.id ? "bg-[#0078D4]/10 border-l-2 border-[#0078D4]" : ""}`}>
                 <button onClick={() => selectService(s)} className="flex-1 text-left px-4 py-3.5 min-w-0">
                   <p className="font-medium text-sm text-[#E6EDF3] leading-snug truncate">{s.name}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${s.billingType === "recurring_monthly" ? "bg-purple-500/15 text-purple-400" : "bg-green-500/15 text-green-400"}`}>
                       {s.billingType === "recurring_monthly" ? "Monthly retainer" : "One-time charge"}
                     </span>
+                    {(s.visibility ?? (s.isPublic ? "public" : "private")) === "landing_page_only" && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-500/15 text-amber-400 uppercase tracking-wide">LP Only</span>
+                    )}
+                    {(s.visibility ?? (s.isPublic ? "public" : "private")) === "private" && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/15 text-red-400 uppercase tracking-wide">Private</span>
+                    )}
                     {s.price && <span className="text-xs text-[#7D8590]">${parseFloat(s.price).toLocaleString()}</span>}
                     {!s.price && s.basePrice && (
                       <span className="text-xs text-[#7D8590]">
@@ -1153,11 +1160,34 @@ export default function ServicesPage() {
                     ))}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" id="isPublic" checked={form.isPublic ?? true}
-                    onChange={e => setField("isPublic", e.target.checked)}
-                    className="rounded" />
-                  <label htmlFor="isPublic" className="text-sm font-medium text-[#C9D1D9]">Visible on public site</label>
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Visibility</label>
+                  <div className="flex gap-2">
+                    {([
+                      { value: "public", label: "Public", hint: "Listed on site" },
+                      { value: "private", label: "Private", hint: "Admin only" },
+                      { value: "landing_page_only", label: "LP Only", hint: "Via landing page" },
+                    ] as const).map(opt => (
+                      <label
+                        key={opt.value}
+                        className={`flex flex-col flex-1 border rounded-xl p-2.5 cursor-pointer transition-all text-center ${(form.visibility ?? (form.isPublic ? "public" : "private")) === opt.value ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}
+                      >
+                        <input
+                          type="radio"
+                          name="visibility"
+                          value={opt.value}
+                          checked={(form.visibility ?? (form.isPublic ? "public" : "private")) === opt.value}
+                          onChange={() => {
+                            setField("visibility", opt.value);
+                            setField("isPublic", opt.value === "public");
+                          }}
+                          className="sr-only"
+                        />
+                        <span className="text-xs font-bold text-[#E6EDF3]">{opt.label}</span>
+                        <span className="text-[10px] text-[#7D8590] mt-0.5">{opt.hint}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div>

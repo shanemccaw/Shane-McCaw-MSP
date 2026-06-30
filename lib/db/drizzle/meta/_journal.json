@@ -694,6 +694,13 @@
       "when": 1782933000000,
       "tag": "0096_add_articles_table",
       "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1782830400000,
+      "tag": "0097_add_service_visibility_and_lp_service",
+      "breakpoints": true
     }
   ]
 }

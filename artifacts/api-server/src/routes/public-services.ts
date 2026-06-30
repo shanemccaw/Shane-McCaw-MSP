@@ -11,7 +11,7 @@ const router: IRouter = Router();
 router.get("/services", async (req: Request, res: Response) => {
   try {
     const { type, category } = req.query as { type?: string; category?: string };
-    const conditions = [eq(servicesTable.isPublic, true)];
+    const conditions = [eq(servicesTable.visibility, "public")];
     if (type) {
       conditions.push(eq(servicesTable.serviceType, type));
     }

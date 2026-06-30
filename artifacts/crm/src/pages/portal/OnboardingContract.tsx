@@ -459,6 +459,7 @@ export default function OnboardingContract() {
       const checkoutAuthHeader: Record<string, string> = {};
       if (accessToken) checkoutAuthHeader["Authorization"] = `Bearer ${accessToken}`;
 
+      const storedLpToken = sessionStorage.getItem("onboardingLpToken") ?? undefined;
       const checkoutRes = await fetch("/api/portal/checkout/create-session", {
         method: "POST",
         credentials: "include",
@@ -470,6 +471,7 @@ export default function OnboardingContract() {
           returnUrl: window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, ""),
           ...(appliedCoupon ? { couponCode: appliedCoupon.code } : {}),
           ...(!user ? { guestEmail: guestInfo.email } : {}),
+          ...(storedLpToken ? { lpToken: storedLpToken } : {}),
         }),
       });
 

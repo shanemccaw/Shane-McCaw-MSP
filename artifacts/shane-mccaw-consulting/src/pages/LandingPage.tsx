@@ -1,8 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CheckCircle, ArrowRight, Shield, Zap } from "lucide-react";
+import { CheckCircle, ArrowRight, Loader2, Shield, Zap } from "lucide-react";
+
+interface LinkedService {
+  id: number;
+  slug: string | null;
+  name: string;
+  visibility: string;
+  billingType: string;
+  price: string | null;
+  basePrice: string | null;
+  maxPrice: string | null;
+  turnaround: string | null;
+}
 
 interface LandingPageData {
   id: number;
@@ -14,6 +26,7 @@ interface LandingPageData {
   cta: { buttonText: string; href: string; subtext?: string } | null;
   published: boolean;
   _preview?: boolean;
+  linkedService?: LinkedService | null;
 }
 
 const TRUST_BADGES = [
@@ -56,6 +69,10 @@ export default function LandingPage() {
   const [page, setPage] = useState<LandingPageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [fetchingToken, setFetchingToken] = useState(false);
+  const [tokenError, setTokenError] = useState<string | null>(null);
+  const isLpOnly = page?.linkedService?.visibility === "landing_page_only";
+  const ctaClickedRef = useRef(false);
 
   useEffect(() => {
     if (!slug) return;
@@ -73,6 +90,32 @@ export default function LandingPage() {
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [slug, search]);
+
+  async function handleLpCtaClick(e: React.MouseEvent) {
+    e.preventDefault();
+    if (!page || !slug || ctaClickedRef.current) return;
+    ctaClickedRef.current = true;
+    setFetchingToken(true);
+    setTokenError(null);
+    try {
+      const res = await fetch(`/api/landing-pages/${encodeURIComponent(slug)}/token`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error ?? "Unable to generate access token");
+      }
+      const { token, serviceId } = await res.json() as { token: string; serviceId: number; exp: number };
+      sessionStorage.setItem("onboardingLpToken", token);
+      if (page.linkedService) {
+        sessionStorage.setItem("onboardingLpService", JSON.stringify(page.linkedService));
+      }
+      window.location.href = `/crm/onboarding/select?serviceId=${serviceId}`;
+    } catch (err) {
+      setTokenError(err instanceof Error ? err.message : "Unable to continue. Please try again.");
+      ctaClickedRef.current = false;
+    } finally {
+      setFetchingToken(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -98,6 +141,18 @@ export default function LandingPage() {
 
   const ctaHref = page.cta?.href ?? "/contact";
   const ctaText = page.cta?.buttonText ?? "Get Started";
+
+  function ctaProps(extraClassName?: string) {
+    if (isLpOnly) {
+      return {
+        onClick: handleLpCtaClick as React.MouseEventHandler,
+        disabled: fetchingToken,
+        className: extraClassName,
+        children: fetchingToken ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Loading…</span> : ctaText,
+      } as const;
+    }
+    return { href: ctaHref, className: extraClassName, children: ctaText } as const;
+  }
 
   return (
     <Layout>
@@ -150,9 +205,8 @@ export default function LandingPage() {
           )}
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8 mb-10">
-            <CTAButton href={ctaHref} className="text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30">
-              {ctaText}
-            </CTAButton>
+            <CTAButton {...ctaProps("text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30")} />
+            {tokenError && <p className="text-red-300 text-sm text-center">{tokenError}</p>}
             <a
               href="/micro-offers"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
@@ -302,12 +356,7 @@ export default function LandingPage() {
           <p className="text-blue-100 mb-8 leading-relaxed">
             Fixed price. Senior-level delivery. No surprises. Ready when you are.
           </p>
-          <CTAButton
-            href={ctaHref}
-            className="bg-white text-[#0078D4] hover:bg-gray-100 text-lg px-10 py-4 shadow-lg"
-          >
-            {ctaText}
-          </CTAButton>
+          <CTAButton {...ctaProps("bg-white text-[#0078D4] hover:bg-gray-100 text-lg px-10 py-4 shadow-lg")} />
           {page.cta?.subtext && (
             <p className="mt-4 text-sm text-blue-200">{page.cta.subtext}</p>
           )}

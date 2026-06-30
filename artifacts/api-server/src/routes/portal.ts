@@ -6546,7 +6546,7 @@ router.post("/admin/project-updates", requireAdmin, async (req: Request, res: Re
 router.get("/portal/onboarding/services", async (_req: Request, res: Response) => {
   const services = await db.select().from(servicesTable)
     .where(and(
-      eq(servicesTable.isPublic, true),
+      eq(servicesTable.visibility, "public"),
       inArray(servicesTable.serviceType, ["micro_offer", "retainer"]),
     ))
     .orderBy(asc(servicesTable.name));
@@ -7131,12 +7131,14 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     contractId, contractIds: rawContractIds,
     returnUrl, startDate, couponCode,
     guestEmail: bodyGuestEmail,
+    lpToken,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
     returnUrl?: string; startDate?: string;
     couponCode?: string;
     guestEmail?: string;
+    lpToken?: string;
   };
 
   if (!resolvedUserId) {
@@ -7194,6 +7196,32 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
   if (services.length !== resolvedServiceIds.length) {
     res.status(404).json({ error: "One or more services not found" });
     return;
+  }
+
+  // ── LP token gate: validate for landing_page_only services ────────────────
+  for (const svc of services) {
+    if (svc.visibility === "landing_page_only") {
+      if (!lpToken) {
+        res.status(403).json({ error: `Service "${svc.name}" is only available through a specific landing page link. Please return to the landing page to continue.` });
+        return;
+      }
+      try {
+        const crypto = await import("crypto");
+        const dotIdx = lpToken.lastIndexOf(".");
+        if (dotIdx === -1) throw new Error("Malformed token");
+        const encoded = lpToken.slice(0, dotIdx);
+        const sig = lpToken.slice(dotIdx + 1);
+        const secret = process.env.JWT_SECRET ?? "";
+        const expectedSig = crypto.createHmac("sha256", secret).update(encoded).digest("hex");
+        if (sig !== expectedSig) throw new Error("Invalid signature");
+        const payload = JSON.parse(Buffer.from(encoded, "base64url").toString()) as { serviceId: number; exp: number };
+        if (payload.exp < Date.now()) throw new Error("Token expired");
+        if (payload.serviceId !== svc.id) throw new Error("Service mismatch");
+      } catch {
+        res.status(403).json({ error: "Landing page access token is invalid or expired. Please return to the landing page to continue." });
+        return;
+      }
+    }
   }
 
   let stripeKey: string;

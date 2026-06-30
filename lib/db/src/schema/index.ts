@@ -93,6 +93,7 @@ export const servicesTable = pgTable("services", {
   turnaround: text("turnaround"),
   billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),
   isPublic: boolean("is_public").notNull().default(true),
+  visibility: text("visibility", { enum: ["public", "private", "landing_page_only"] }).notNull().default("public"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   // Marketing content fields
   serviceType: text("service_type"),
@@ -1282,6 +1283,7 @@ export const landingPagesTable = pgTable("landing_pages", {
   socialProof: jsonb("social_proof").$type<Array<{ quote: string; author: string; role?: string }>>().notNull().default([]),
   cta: jsonb("cta").$type<{ buttonText: string; href: string; subtext?: string }>().default({ buttonText: "Get Started", href: "/contact" }),
   layoutBlocks: jsonb("layout_blocks").$type<Array<{ blockType: string; content: unknown }>>().notNull().default([]),
+  linkedServiceId: integer("linked_service_id").references(() => servicesTable.id, { onDelete: "set null" }),
   published: boolean("published").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

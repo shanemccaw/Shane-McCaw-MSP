@@ -54,10 +54,12 @@ export default function OnboardingSelect() {
   const search = useSearch();
   const params = new URLSearchParams(search);
   const preselectedSlug = params.get("service") ?? "";
+  const lpServiceId = params.get("serviceId") ? Number(params.get("serviceId")) : null;
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [lockedServiceId, setLockedServiceId] = useState<number | null>(null);
 
   // Wizard state
   const [wizardQueue, setWizardQueue] = useState<Service[]>([]);
@@ -81,23 +83,60 @@ export default function OnboardingSelect() {
     // always receives fresh data that matches what the user configured this session.
     sessionStorage.removeItem("wizardSelections");
 
+    // Handle LP token flow: read service data injected by landing page
+    let injectedService: Service | null = null;
+    if (lpServiceId) {
+      const raw = sessionStorage.getItem("onboardingLpService");
+      if (raw) {
+        try {
+          const lpSvc = JSON.parse(raw) as { id: number; slug: string | null; name: string; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null };
+          if (lpSvc.id === lpServiceId) {
+            injectedService = {
+              id: lpSvc.id,
+              slug: lpSvc.slug,
+              name: lpSvc.name,
+              description: null,
+              category: null,
+              deliverables: null,
+              price: lpSvc.price,
+              basePrice: lpSvc.basePrice,
+              maxPrice: lpSvc.maxPrice,
+              durationDays: null,
+              turnaround: lpSvc.turnaround,
+              billingType: lpSvc.billingType as "one_time" | "recurring_monthly",
+              orderWorkflow: null,
+            };
+          }
+        } catch { /* ignore malformed data */ }
+      }
+    }
+
     fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
       .then(data => {
         const oneTime = data.filter(s => s.billingType === "one_time");
         const monthly = data.filter(s => s.billingType === "recurring_monthly");
-        const sorted = [...oneTime, ...monthly];
-        setServices(sorted);
-        if (preselectedSlug) {
+        let sorted = [...oneTime, ...monthly];
+
+        if (injectedService && !sorted.find(s => s.id === injectedService!.id)) {
+          // Prepend the LP-only service so it appears first in the list
+          sorted = [injectedService, ...sorted];
+          setLockedServiceId(injectedService.id);
+          setSelectedIds(new Set([injectedService.id]));
+        } else if (preselectedSlug) {
           const match = sorted.find(s => s.slug === preselectedSlug);
           if (match) setSelectedIds(new Set([match.id]));
         }
+        setServices(sorted);
         setLoading(false);
       })
       .catch(() => setLoading(false));
-  }, [preselectedSlug]);
+  }, [preselectedSlug, lpServiceId]);
 
   const toggleService = (id: number) => {
+    // Locked LP-only services cannot be deselected
+    if (id === lockedServiceId && selectedIds.has(id)) return;
+
     const svc = services.find(s => s.id === id);
     const wasSelected = selectedIds.has(id);
 

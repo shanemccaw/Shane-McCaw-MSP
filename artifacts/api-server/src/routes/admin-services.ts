@@ -67,11 +67,17 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     const body = (req.body ?? {}) as Record<string, unknown>;
     const {
       name, description, category, deliverables, price, basePrice, maxPrice, durationDays, turnaround,
-      billingType, isPublic, slug,
+      billingType, isPublic, visibility, slug,
       serviceType, tagline, targetAudience, inclusions, features, badge,
       highlighted, hoursPerMonth, iconName, pageHref, sortOrder, workflowTemplateId, tier,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
+    const validVisibilities = ["public", "private", "landing_page_only"] as const;
+    const resolvedVisibility = validVisibilities.includes(visibility as typeof validVisibilities[number])
+      ? (visibility as "public" | "private" | "landing_page_only")
+      : isPublic != null
+        ? (Boolean(isPublic) ? "public" : "private")
+        : undefined;
     const [updated] = await db
       .update(servicesTable)
       .set({
@@ -85,7 +91,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         durationDays: durationDays != null ? Number(durationDays) : null,
         turnaround: (turnaround as string | null) ?? null,
         billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly",
-        isPublic: isPublic != null ? Boolean(isPublic) : true,
+        isPublic: resolvedVisibility != null ? resolvedVisibility === "public" : (isPublic != null ? Boolean(isPublic) : true),
+        visibility: resolvedVisibility ?? "public",
         slug: (slug as string | null) ?? null,
         serviceType: (serviceType as string | null) ?? null,
         tagline: (tagline as string | null) ?? null,
