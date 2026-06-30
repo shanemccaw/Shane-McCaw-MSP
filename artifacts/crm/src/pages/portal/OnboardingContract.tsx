@@ -264,7 +264,13 @@ export default function OnboardingContract() {
   const [offerAvailable, setOfferAvailable] = useState<boolean | null>(null);
   const [lpTokenExpired, setLpTokenExpired] = useState(false);
   const [lpTokenMinsLeft, setLpTokenMinsLeft] = useState<number | null>(null);
-  const lpUrl = sessionStorage.getItem("onboardingLpUrl") ?? null;
+  const lpUrl = (() => {
+    const stored = sessionStorage.getItem("onboardingLpUrl");
+    if (stored) return stored;
+    const slug = sessionStorage.getItem("onboardingLpSlug");
+    if (slug) return `/lp/${slug}`;
+    return null;
+  })();
 
   const [couponOpen, setCouponOpen] = useState(false);
   const [couponInput, setCouponInput] = useState("");

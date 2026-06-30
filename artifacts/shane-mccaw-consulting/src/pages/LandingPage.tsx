@@ -109,6 +109,7 @@ export default function LandingPage() {
         sessionStorage.setItem("onboardingLpTokenExp", String(exp));
       }
       sessionStorage.setItem("onboardingLpUrl", window.location.href);
+      sessionStorage.setItem("onboardingLpSlug", slug ?? "");
       if (page.linkedService) {
         sessionStorage.setItem("onboardingLpService", JSON.stringify(page.linkedService));
       }
