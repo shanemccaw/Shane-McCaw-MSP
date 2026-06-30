@@ -638,6 +638,7 @@ export default function PortalProjectDetail() {
   const { fetchWithAuth, accessToken } = useAuth();
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sseReconnecting, setSseReconnecting] = useState(false);
   const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(() => {
     const hash = window.location.hash.replace("#", "");
     const validTabs: SecondaryTab[] = ["kanban", "documents", "status-reports", "contracts", "timeline"];
@@ -798,6 +799,7 @@ export default function PortalProjectDetail() {
         try {
           const payload = JSON.parse(event.data as string) as { action: string; task: KanbanTask & { id: number } };
           backoff = 1000;
+          setSseReconnecting(false);
           const { action, task } = payload;
           if (action === "updated") {
             setData(prev => prev ? { ...prev, tasks: prev.tasks.map(t => t.id === task.id ? { ...t, ...task } : t) } : prev);
@@ -821,7 +823,8 @@ export default function PortalProjectDetail() {
         // change will tear down this effect and start a fresh connection with
         // no backoff and no unnecessary data reload. Don't compete with it.
         if (accessTokenRef.current !== tokenAtMount) return;
-        // Genuine network error — backoff and reload to catch any missed events.
+        // Genuine network error — show indicator, backoff and reload to catch any missed events.
+        setSseReconnecting(true);
         reconnectTimer = setTimeout(() => {
           backoff = Math.min(backoff * 2, 30_000);
           loadProjectRef.current();
@@ -836,6 +839,7 @@ export default function PortalProjectDetail() {
       mounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
+      setSseReconnecting(false);
     };
   }, [params.id, accessToken]); // loadProject and accessTokenRef accessed via refs above
 
@@ -1753,6 +1757,15 @@ export default function PortalProjectDetail() {
         {/* ── Kanban Board ── */}
         {secondaryTab === "kanban" && (
           <div>
+            {sseReconnecting && (
+              <div className="flex items-center gap-2 mb-3 text-amber-600 text-xs font-medium">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-500 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                </span>
+                Reconnecting live sync…
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {KANBAN_COLUMNS.map(col => {
                 const colTasks = tasks.filter(t => t.column === col.key);

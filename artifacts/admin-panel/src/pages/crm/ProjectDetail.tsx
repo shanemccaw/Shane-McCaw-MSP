@@ -1089,6 +1089,7 @@ export default function ProjectDetailPage() {
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
   const draggingIdRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sseReconnecting, setSseReconnecting] = useState(false);
 
   const completedTaskCount = tasks.filter(t => t.column === "completed").length;
   const computedProgress = tasks.length > 0
@@ -1633,6 +1634,7 @@ export default function ProjectDetailPage() {
         try {
           const payload = JSON.parse(event.data as string) as { action: string; task: KanbanTask & { id: number } };
           backoff = 1000;
+          setSseReconnecting(false);
           const { action, task } = payload;
           if (action === "updated") {
             if (draggingIdRef.current === task.id) return;
@@ -1653,7 +1655,8 @@ export default function ProjectDetailPage() {
         // change will tear down this effect and start a fresh connection with
         // no backoff and no unnecessary data reload. Don't compete with it.
         if (accessTokenRef.current !== tokenAtMount) return;
-        // Genuine network error — backoff and reload to catch any missed events.
+        // Genuine network error — show indicator, backoff and reload to catch any missed events.
+        setSseReconnecting(true);
         reconnectTimer = setTimeout(() => {
           backoff = Math.min(backoff * 2, 30_000);
           void reloadAllRef.current();
@@ -1668,6 +1671,7 @@ export default function ProjectDetailPage() {
       mounted = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       es?.close();
+      setSseReconnecting(false);
     };
   }, [projectId, accessToken]); // reloadAll and accessTokenRef accessed via refs above
 
@@ -2322,6 +2326,15 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
+        {sseReconnecting && (
+          <div className="flex items-center gap-2 mb-3 text-amber-400 text-xs font-medium">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+            </span>
+            Reconnecting live sync…
+          </div>
+        )}
         <KanbanBoard
           projectId={projectId}
           tasks={tasks}
