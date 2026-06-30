@@ -246,7 +246,7 @@ interface NotificationDrawerProps {
   unreadCount: number;
   onUnreadCountChange: (count: number) => void;
   onPurchaseSound?: () => void;
-  onPurchaseFlash?: (amount?: number) => void;
+  onPurchaseFlash?: (amount?: number, serviceName?: string) => void;
   onLeadFlash?: () => void;
 }
 
@@ -284,9 +284,11 @@ export default function NotificationDrawer({
           if (newPurchases.length > 0) {
             onPurchaseSound?.();
             const bodyText = newPurchases[0]?.body ?? "";
-            const match = bodyText.match(/\$(\d[\d,]*)/);
-            const amount = match ? parseInt(match[1].replace(/,/g, ""), 10) : undefined;
-            onPurchaseFlash?.(amount);
+            const amountMatch = bodyText.match(/\$(\d[\d,]*)/);
+            const amount = amountMatch ? parseInt(amountMatch[1].replace(/,/g, ""), 10) : undefined;
+            const serviceMatch = bodyText.match(/^(.+?)\s*—\s*\$/);
+            const serviceName = serviceMatch?.[1]?.trim() || undefined;
+            onPurchaseFlash?.(amount, serviceName);
           }
           if (newLeads.length > 0) {
             onLeadFlash?.();

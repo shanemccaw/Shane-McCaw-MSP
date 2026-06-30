@@ -566,13 +566,15 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [flashVisible, setFlashVisible] = useState(false);
   const [flashExiting, setFlashExiting] = useState(false);
   const [flashAmount, setFlashAmount] = useState<number | undefined>(undefined);
+  const [flashServiceName, setFlashServiceName] = useState<string | undefined>(undefined);
   const flashEnterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flashExitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const triggerSaleFlash = useCallback((amount?: number) => {
+  const triggerSaleFlash = useCallback((amount?: number, serviceName?: string) => {
     if (flashEnterTimerRef.current) clearTimeout(flashEnterTimerRef.current);
     if (flashExitTimerRef.current) clearTimeout(flashExitTimerRef.current);
     setFlashAmount(amount);
+    setFlashServiceName(serviceName);
     setFlashExiting(false);
     setFlashVisible(true);
     flashEnterTimerRef.current = setTimeout(() => {
@@ -959,9 +961,13 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
           <div className="leading-tight text-left">
             <p className="text-sm font-bold text-emerald-300">New sale!</p>
             <p className="text-[11px] text-emerald-500/80 font-medium">
-              {flashAmount !== undefined
-                ? `New sale — $${flashAmount.toLocaleString()}!`
-                : "A purchase just came in"}
+              {flashServiceName && flashAmount !== undefined
+                ? `${flashServiceName} — $${flashAmount.toLocaleString()}`
+                : flashServiceName
+                  ? flashServiceName
+                  : flashAmount !== undefined
+                    ? `$${flashAmount.toLocaleString()}`
+                    : "A purchase just came in"}
             </p>
           </div>
         </button>
