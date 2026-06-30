@@ -5,6 +5,7 @@ import {
   analyticsSessionsTable, analyticsSiteEventsTable, servicesTable,
   settingsTable, quizPainSignalConfigTable, emailEventsTable, seoRankingsTable,
   leadIntentEventsTable, followUpEventsTable, offersTable, landingPagesTable,
+  clientServicesTable,
 } from "@workspace/db";
 import { eq, desc, count, and, gte, lte, sql, inArray, lt, isNull, or, ne } from "drizzle-orm";
 import { ingestIntentEvent, recomputeAndPersistHotScore } from "../lib/lead-intent";
@@ -2708,6 +2709,60 @@ router.post("/landing-pages/:slug/token", async (req: Request, res: Response) =>
     const sig = crypto.createHmac("sha256", secret).update(payload).digest("hex");
     const token = `${payload}.${sig}`;
     res.json({ token, serviceId: svc.id, exp });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Public gate-status check — returns whether the LP is gated and whether the
+// requesting user already holds the linked service.  The Authorization header
+// is optional; omitting it (or passing an invalid token) means hasAccess=false.
+router.get("/landing-pages/:slug/gate-status", async (req: Request, res: Response) => {
+  try {
+    const slug = String(req.params.slug);
+
+    const [page] = await db.select({ id: landingPagesTable.id, linkedServiceId: landingPagesTable.linkedServiceId })
+      .from(landingPagesTable)
+      .where(and(eq(landingPagesTable.slug, slug), eq(landingPagesTable.published, true)))
+      .limit(1);
+
+    if (!page) { res.status(404).json({ error: "Not found" }); return; }
+
+    let isLpOnly = false;
+    let hasAccess = false;
+
+    if (page.linkedServiceId) {
+      const [svc] = await db.select({ visibility: servicesTable.visibility })
+        .from(servicesTable).where(eq(servicesTable.id, page.linkedServiceId)).limit(1);
+      if (svc) isLpOnly = svc.visibility === "landing_page_only";
+    }
+
+    // Optionally verify the caller's JWT and check service ownership
+    if (isLpOnly && page.linkedServiceId) {
+      const authHeader = req.headers.authorization;
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7);
+        const secret = process.env.JWT_SECRET;
+        if (secret) {
+          try {
+            const payload = (await import("jsonwebtoken")).default.verify(token, secret) as { id?: number; role?: string };
+            if (payload.id) {
+              const [match] = await db.select({ id: clientServicesTable.id })
+                .from(clientServicesTable)
+                .where(and(
+                  eq(clientServicesTable.clientUserId, payload.id),
+                  eq(clientServicesTable.serviceId, page.linkedServiceId),
+                  eq(clientServicesTable.status, "active"),
+                ))
+                .limit(1);
+              if (match) hasAccess = true;
+            }
+          } catch { /* invalid token — hasAccess stays false */ }
+        }
+      }
+    }
+
+    res.json({ isLpOnly, hasAccess });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

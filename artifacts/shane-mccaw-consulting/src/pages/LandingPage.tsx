@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearch } from "wouter";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CheckCircle, ArrowRight, Loader2, Shield, Zap } from "lucide-react";
+import { CheckCircle, ArrowRight, Loader2, Shield, Zap, Lock } from "lucide-react";
 
 interface LinkedService {
   id: number;
@@ -72,7 +72,26 @@ export default function LandingPage() {
   const [fetchingToken, setFetchingToken] = useState(false);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const isLpOnly = page?.linkedService?.visibility === "landing_page_only";
+  const [hasServiceAccess, setHasServiceAccess] = useState(false);
   const ctaClickedRef = useRef(false);
+
+  useEffect(() => {
+    if (!slug) return;
+    // Silently try to obtain a short-lived access token via the httpOnly refresh
+    // cookie shared across the same domain, then use it to ask the API whether
+    // this user already holds the linked service.
+    fetch("/api/auth/refresh", { method: "POST", credentials: "include" })
+      .then(r => r.ok ? (r.json() as Promise<{ accessToken?: string }>) : null)
+      .then(data => {
+        if (!data?.accessToken) return;
+        return fetch(`/api/landing-pages/${encodeURIComponent(slug)}/gate-status`, {
+          headers: { Authorization: `Bearer ${data.accessToken}` },
+        })
+          .then(r => r.ok ? (r.json() as Promise<{ isLpOnly?: boolean; hasAccess?: boolean }>) : null)
+          .then(gs => { if (gs?.hasAccess) setHasServiceAccess(true); });
+      })
+      .catch(() => {});
+  }, [slug]);
 
   useEffect(() => {
     if (!slug) return;
@@ -209,7 +228,7 @@ export default function LandingPage() {
             </p>
           )}
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8 mb-10">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mt-8 mb-4">
             <CTAButton {...ctaProps("text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30")} />
             {tokenError && <p className="text-red-300 text-sm text-center">{tokenError}</p>}
             <a
@@ -219,6 +238,15 @@ export default function LandingPage() {
               See All Packages <ArrowRight className="w-4 h-4" />
             </a>
           </div>
+
+          {isLpOnly && !hasServiceAccess && (
+            <div className="flex justify-center mb-6">
+              <span className="inline-flex items-center gap-1.5 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-white/80 text-xs font-semibold">
+                <Lock className="w-3 h-3 text-[#00B4D8] flex-shrink-0" />
+                Members only — sign up to access
+              </span>
+            </div>
+          )}
 
           {/* Trust footer */}
           <div className="pt-8 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
@@ -362,6 +390,14 @@ export default function LandingPage() {
             Fixed price. Senior-level delivery. No surprises. Ready when you are.
           </p>
           <CTAButton {...ctaProps("bg-white text-[#0078D4] hover:bg-gray-100 text-lg px-10 py-4 shadow-lg")} />
+          {isLpOnly && !hasServiceAccess && (
+            <div className="flex justify-center mt-4">
+              <span className="inline-flex items-center gap-1.5 bg-white/15 border border-white/25 rounded-full px-4 py-1.5 text-white/80 text-xs font-semibold">
+                <Lock className="w-3 h-3 text-white/60 flex-shrink-0" />
+                Members only — sign up to access
+              </span>
+            </div>
+          )}
           {page.cta?.subtext && (
             <p className="mt-4 text-sm text-blue-200">{page.cta.subtext}</p>
           )}
