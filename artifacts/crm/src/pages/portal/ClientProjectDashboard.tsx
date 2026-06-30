@@ -317,6 +317,9 @@ export default function ClientProjectDashboard() {
   // M365 health scorecard history
   const [scorecardHistory, setScorecardHistory] = useState<ScorecardHistory | null>(null);
 
+  // Authoritative overall health score from /api/portal/health/summary (matches nav widget)
+  const [healthSummaryOverall, setHealthSummaryOverall] = useState<number | null>(null);
+
   // ── Load project list ────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -350,6 +353,16 @@ export default function ClientProjectDashboard() {
     fetchWithAuth("/api/portal/m365-scorecard-history")
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setScorecardHistory(d as ScorecardHistory); })
+      .catch(() => null);
+
+    fetchWithAuth("/api/portal/health/summary")
+      .then(r => r.ok ? (r.json() as Promise<unknown>) : Promise.resolve({ hasData: false }))
+      .then((d: unknown) => {
+        const data = d as { hasData?: boolean; overallLatest?: number };
+        if (data.hasData && data.overallLatest !== undefined) {
+          setHealthSummaryOverall(data.overallLatest);
+        }
+      })
       .catch(() => null);
 
     fetchWithAuth("/api/portal/m365-profile")
@@ -815,8 +828,9 @@ export default function ClientProjectDashboard() {
               </div>
             </div>
           ) : (() => {
-            const scores = SCORECARD_DEFS.map(d => scorecardHistory.latest?.[d.key] ?? 0);
-            const overall = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+            const overall = healthSummaryOverall ?? Math.round(
+              SCORECARD_DEFS.map(d => scorecardHistory.latest?.[d.key] ?? 0).reduce((a, b) => a + b, 0) / SCORECARD_DEFS.length
+            );
             const isFirstSameAsLatest = scorecardHistory.firstDate === scorecardHistory.latestDate;
             return (
               <div className="rounded-2xl overflow-hidden shadow-lg">
