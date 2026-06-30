@@ -251,11 +251,13 @@ function HealthCheckBody({ m }: { m: HealthCheckMetadata }) {
       {m.outputSummary && (
         <p className="text-[10px] text-[#E6EDF3] leading-snug italic">{m.outputSummary}</p>
       )}
-      <div className="flex gap-1 flex-wrap pt-1">
-        <ActionBtn label="Run Again" />
-        <ActionBtn label="View Output" />
-        <ActionBtn label="Open Script" />
-      </div>
+      {m.scriptName && (
+        <div className="flex gap-1 flex-wrap pt-1">
+          <ActionBtn label="Run" />
+          {m.lastRunDate && <ActionBtn label="View Output" />}
+          <ActionBtn label="Open Script" />
+        </div>
+      )}
     </div>
   );
 }
