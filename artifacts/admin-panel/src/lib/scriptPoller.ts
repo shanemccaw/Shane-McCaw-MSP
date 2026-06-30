@@ -27,6 +27,18 @@ export function startPoll(
   onComplete: CompleteListener,
   kanbanTaskId?: number
 ) {
+  // If this kanbanTaskId already has an active poll (possibly from a different
+  // launch surface), attach to the existing one rather than starting a new job.
+  if (kanbanTaskId !== undefined) {
+    const existingJobRef = taskJobMap.get(kanbanTaskId);
+    if (existingJobRef && polls.has(existingJobRef)) {
+      const existing = polls.get(existingJobRef)!;
+      if (statusListener) existing.statusListener = statusListener;
+      existing.completeListeners.push(onComplete);
+      return;
+    }
+  }
+
   if (polls.has(jobRef)) {
     const existing = polls.get(jobRef)!;
     if (statusListener) existing.statusListener = statusListener;

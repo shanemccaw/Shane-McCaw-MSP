@@ -676,7 +676,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   };
 
   const handleConfirmRun = async () => {
+    if (isActiveForTask(localTask.id)) return;
     setConfirmRunOpen(false);
+    setScriptRunning(true);
     // Move card to In Progress immediately
     if (fetchWithAuth && localTask && localTask.column !== "in_progress") {
       setMovingToInProgress(true);
@@ -1141,6 +1143,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         clientName={clientName ?? null}
         onConfirm={() => void handleConfirmRun()}
         onCancel={() => setConfirmRunOpen(false)}
+        disabled={scriptRunning}
       />
     )}
 

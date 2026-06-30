@@ -4,9 +4,10 @@ interface Props {
   clientName?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
+  disabled?: boolean;
 }
 
-export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, clientName, onConfirm, onCancel }: Props) {
+export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, clientName, onConfirm, onCancel, disabled }: Props) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onCancel}>
       <div
@@ -47,13 +48,26 @@ export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, 
             Cancel
           </button>
           <button
-            onClick={onConfirm}
-            className="flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 transition-colors"
+            onClick={disabled ? undefined : onConfirm}
+            disabled={disabled}
+            className="flex-1 flex items-center justify-center gap-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg px-4 py-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-emerald-600"
           >
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-            </svg>
-            Run Script
+            {disabled ? (
+              <>
+                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Script running…
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                </svg>
+                Run Script
+              </>
+            )}
           </button>
         </div>
       </div>

@@ -203,6 +203,15 @@ function DraggableCard({
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [scriptRunning, setScriptRunning] = useState(() => isActiveForTask(task.id));
 
+  // Re-sync with poller activity — catches scripts started from KanbanCardModal or other surfaces
+  useEffect(() => {
+    const id = setInterval(() => {
+      const active = isActiveForTask(task.id);
+      setScriptRunning(prev => prev !== active ? active : prev);
+    }, 2000);
+    return () => clearInterval(id);
+  }, [task.id]);
+
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
     data: { task },
@@ -549,8 +558,11 @@ function DraggableCard({
           scriptTitle={linkedRunbook.scriptTitle}
           azureRunbookName={linkedRunbook.azureRunbookName}
           clientName={clientName ?? null}
+          disabled={scriptRunning}
           onConfirm={() => {
+            if (isActiveForTask(task.id)) return;
             setConfirmRunOpen(false);
+            setScriptRunning(true);
             onQuickMove(task, "in_progress");
             setRunDialogOpen(true);
           }}
