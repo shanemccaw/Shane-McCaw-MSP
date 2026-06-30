@@ -8,6 +8,7 @@ interface LinkedService {
   id: number;
   slug: string | null;
   name: string;
+  description: string | null;
   visibility: string;
   billingType: string;
   price: string | null;

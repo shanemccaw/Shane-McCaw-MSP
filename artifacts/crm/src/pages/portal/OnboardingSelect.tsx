@@ -89,13 +89,13 @@ export default function OnboardingSelect() {
       const raw = sessionStorage.getItem("onboardingLpService");
       if (raw) {
         try {
-          const lpSvc = JSON.parse(raw) as { id: number; slug: string | null; name: string; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null };
+          const lpSvc = JSON.parse(raw) as { id: number; slug: string | null; name: string; description?: string | null; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null };
           if (lpSvc.id === lpServiceId) {
             injectedService = {
               id: lpSvc.id,
               slug: lpSvc.slug,
               name: lpSvc.name,
-              description: null,
+              description: lpSvc.description ?? null,
               category: null,
               deliverables: null,
               price: lpSvc.price,

@@ -2897,12 +2897,13 @@ router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
     if (!page) { res.status(404).json({ error: "Not found" }); return; }
 
     // Resolve linked service visibility so the frontend can decide whether to gate the CTA
-    let linkedService: { id: number; slug: string | null; name: string; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null } | null = null;
+    let linkedService: { id: number; slug: string | null; name: string; description: string | null; visibility: string; billingType: string; price: string | null; basePrice: string | null; maxPrice: string | null; turnaround: string | null } | null = null;
     if (page.linkedServiceId) {
       const [svc] = await db.select({
         id: servicesTable.id,
         slug: servicesTable.slug,
         name: servicesTable.name,
+        description: servicesTable.description,
         visibility: servicesTable.visibility,
         billingType: servicesTable.billingType,
         price: servicesTable.price,
@@ -2910,7 +2911,7 @@ router.get("/landing-pages/:slug", async (req: Request, res: Response) => {
         maxPrice: servicesTable.maxPrice,
         turnaround: servicesTable.turnaround,
       }).from(servicesTable).where(eq(servicesTable.id, page.linkedServiceId)).limit(1);
-      if (svc) linkedService = { ...svc, price: svc.price ?? null, basePrice: svc.basePrice ?? null, maxPrice: svc.maxPrice ?? null, turnaround: svc.turnaround ?? null };
+      if (svc) linkedService = { ...svc, description: svc.description ?? null, price: svc.price ?? null, basePrice: svc.basePrice ?? null, maxPrice: svc.maxPrice ?? null, turnaround: svc.turnaround ?? null };
     }
 
     res.json({ ...page, _preview: isAdminPreview && !page.published, linkedService });
