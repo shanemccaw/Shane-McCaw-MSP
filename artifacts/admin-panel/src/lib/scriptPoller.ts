@@ -160,14 +160,48 @@ export function startPoll(
 /**
  * Call once on app mount (after auth is ready) to restart polling for any
  * jobRefs that were persisted to sessionStorage before a page reload.
- * Jobs that have already finished will be cleared from sessionStorage on the
- * first poll tick.
+ *
+ * Each job receives an immediate status pre-check before the 4-second interval
+ * is started. If the job already finished while the tab was closed the entry is
+ * removed from sessionStorage immediately — no stale "Running…" badge appears.
+ * Only jobs that are genuinely still running enter the normal polling interval.
  */
-export function rehydratePolls(fetchFn: (url: string) => Promise<Response>) {
+export async function rehydratePolls(fetchFn: (url: string) => Promise<Response>) {
   const stored = readStorage();
-  let rehydrated = false;
-  for (const [jobRef, taskId] of Object.entries(stored)) {
-    if (!polls.has(jobRef)) {
+  const entries = Object.entries(stored);
+  if (entries.length === 0) return;
+
+  await Promise.all(
+    entries.map(async ([jobRef, taskId]) => {
+      if (polls.has(jobRef)) return;
+
+      try {
+        const r = await fetchFn(`/api/admin/run-script/${jobRef}/status`);
+        if (!r.ok) {
+          // Cannot determine status — clear to avoid a permanently stale badge.
+          removeFromStorage(jobRef);
+          taskIdToJobRef.delete(taskId);
+          taskJobMap.delete(taskId);
+          return;
+        }
+        const data = (await r.json()) as RunStatus;
+        if (data.status !== "running") {
+          // Job already finished — clear without ever showing the badge.
+          removeFromStorage(jobRef);
+          taskIdToJobRef.delete(taskId);
+          taskJobMap.delete(taskId);
+          notifyChange();
+          return;
+        }
+      } catch {
+        // Network error — clear rather than show a badge we cannot verify.
+        removeFromStorage(jobRef);
+        taskIdToJobRef.delete(taskId);
+        taskJobMap.delete(taskId);
+        return;
+      }
+
+      // Job is still running — start the normal 4-second interval.
       startPoll(
         jobRef,
         fetchFn,
@@ -176,10 +210,10 @@ export function rehydratePolls(fetchFn: (url: string) => Promise<Response>) {
         () => undefined,
         taskId
       );
-      rehydrated = true;
-    }
-  }
-  if (rehydrated) notifyChange();
+    })
+  );
+
+  notifyChange();
 }
 
 export function attachStatusListener(jobRef: string, listener: StatusListener) {

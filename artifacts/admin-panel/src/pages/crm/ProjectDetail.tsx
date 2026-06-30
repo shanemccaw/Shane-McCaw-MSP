@@ -1583,7 +1583,7 @@ export default function ProjectDetailPage() {
 
   // Rehydrate any in-progress polls that were active before the page reloaded
   useEffect(() => {
-    rehydratePolls(fetchWithAuth);
+    void rehydratePolls(fetchWithAuth);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
