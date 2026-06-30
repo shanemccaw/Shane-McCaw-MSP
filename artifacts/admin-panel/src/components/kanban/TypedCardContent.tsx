@@ -399,7 +399,7 @@ function ScriptCardBody({
 }) {
   const jobStatus = m.lastJobStatus ?? "Never run";
   const cfg = CARD_JOB_STATUS_CFG[jobStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
-  const hasRun = jobStatus !== "Never run";
+  const hasRun = Boolean(m.lastJobId) || (m.lastJobStatus !== undefined && m.lastJobStatus !== "Never run");
   return (
     <div className="space-y-1">
       {m.runbookName && (
@@ -425,12 +425,21 @@ function ScriptCardBody({
 }
 
 function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
-  // Guard: if this metadata contains script-specific fields it has been
+  // Guard 1: if this metadata contains script-specific fields it has been
   // mis-categorised — do not render discovery actions on a script card.
   const raw = m as Record<string, unknown>;
   if (raw.runbookName !== undefined || raw.lastJobStatus !== undefined || raw.credentialId !== undefined) {
     return null;
   }
+  // Guard 2: if there are no actual discovery signals, suppress all actions to
+  // avoid rendering "Convert to Project" on sparse/empty metadata.
+  const hasDiscoverySignal =
+    m.riskScore !== undefined ||
+    Boolean(m.findingsSummary) ||
+    (m.recommendations && m.recommendations.length > 0) ||
+    Boolean(m.assessmentUrl);
+  if (!hasDiscoverySignal) return null;
+
   const recs = m.recommendations ?? [];
   const riskCfg = m.riskScore ? RISK_CFG[m.riskScore] : null;
   return (

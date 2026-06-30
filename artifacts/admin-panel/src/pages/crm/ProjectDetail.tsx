@@ -450,7 +450,13 @@ function DraggableCard({
                 {customerViewOpen && (
                   <div className="mt-1.5 space-y-2 bg-[#1C2128] border border-[#0078D4]/15 rounded-lg px-2.5 py-2">
                     {task.taskType && (
-                      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
+                      <TypedCardContent
+                        taskType={task.taskType}
+                        metadata={task.taskMetadata}
+                        onRunScript={handleRunScript}
+                        onViewResults={handleViewResults}
+                        onOpenScript={handleOpenScript}
+                      />
                     )}
                     {clientDeliverables.length > 0 && (
                       <div>
