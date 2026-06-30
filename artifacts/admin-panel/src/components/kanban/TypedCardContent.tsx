@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { isTaskRunning, subscribeToChanges } from "@/lib/scriptPoller";
 
 export type TaskType =
   | "training"
@@ -387,19 +388,45 @@ const CARD_JOB_STATUS_CFG: Record<string, { cls: string; dot: string; label: str
 };
 
 function ScriptCardBody({
+  taskId,
   m,
   onRunScript,
   onViewResults,
   onOpenScript,
 }: {
+  taskId?: number;
   m: ScriptMetadata;
   onRunScript?: () => void;
   onViewResults?: () => void;
   onOpenScript?: () => void;
 }) {
-  const jobStatus = m.lastJobStatus ?? "Never run";
-  const cfg = CARD_JOB_STATUS_CFG[jobStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
-  const hasRun = Boolean(m.lastJobId) || (m.lastJobStatus !== undefined && m.lastJobStatus !== "Never run");
+  const [pollerActive, setPollerActive] = useState(() =>
+    taskId != null ? isTaskRunning(taskId) : false,
+  );
+
+  useEffect(() => {
+    if (taskId == null) return;
+    return subscribeToChanges(() => {
+      setPollerActive(isTaskRunning(taskId));
+    });
+  }, [taskId]);
+
+  // Running if the live poller is tracking this task, or metadata says so
+  const metaRunning =
+    Boolean((m as Record<string, unknown>).runningJobRef) ||
+    m.lastJobStatus === "Running" ||
+    m.lastJobStatus === "New" ||
+    m.lastJobStatus === "Activating";
+  const isRunning = pollerActive || metaRunning;
+
+  const effectiveStatus = isRunning ? "Running" : (m.lastJobStatus ?? "Never run");
+  const cfg = CARD_JOB_STATUS_CFG[effectiveStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
+  const hasRun = isRunning || Boolean(m.lastJobId) || (m.lastJobStatus !== undefined && m.lastJobStatus !== "Never run");
+
+  const handleViewOutput = useCallback(() => {
+    onViewResults?.();
+  }, [onViewResults]);
+
   return (
     <div className="space-y-1">
       {m.runbookName && (
@@ -409,10 +436,19 @@ function ScriptCardBody({
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
         {cfg.label}
       </span>
+      {isRunning && (
+        <button
+          onClick={e => { e.stopPropagation(); handleViewOutput(); }}
+          className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded border border-yellow-500/30 bg-yellow-500/10 text-yellow-400 hover:bg-yellow-500/20 transition-colors"
+        >
+          <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+          View Output
+        </button>
+      )}
       <div className="flex gap-1 flex-wrap pt-0.5">
         {hasRun ? (
           <>
-            <ActionBtn label="Re-Run Script" onClick={onRunScript} />
+            {!isRunning && <ActionBtn label="Re-Run Script" onClick={onRunScript} />}
             <ActionBtn label="View Script Results" onClick={onViewResults} />
             <ActionBtn label="Open Script" onClick={onOpenScript} />
           </>
@@ -480,12 +516,14 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
 }
 
 export function TypedCardContent({
+  taskId,
   taskType,
   metadata,
   onRunScript,
   onViewResults,
   onOpenScript,
 }: {
+  taskId?: number;
   taskType: string | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
   onRunScript?: () => void;
@@ -517,6 +555,7 @@ export function TypedCardContent({
           {taskType === "discovery" && <DiscoveryBody m={metadata as DiscoveryMetadata} />}
           {taskType === "script" && (
             <ScriptCardBody
+              taskId={taskId}
               m={metadata as ScriptMetadata}
               onRunScript={onRunScript}
               onViewResults={onViewResults}

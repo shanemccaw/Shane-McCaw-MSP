@@ -423,14 +423,25 @@ export function TypedCardContent({
   if (!cfg) return null;
 
   const hasDetail = metadata && Object.keys(metadata).length > 0;
+  const isScriptRunning =
+    Boolean(metadata?.runningJobRef) ||
+    metadata?.lastJobStatus === "Running" ||
+    metadata?.lastJobStatus === "New" ||
+    metadata?.lastJobStatus === "Activating";
 
   return (
     <div className="mt-2 border-t border-border/60 pt-2">
-      <div className="flex items-center gap-1.5 mb-2">
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${cfg.badge}`}>
           <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{cfg.icon}</span>
           {cfg.label}
         </span>
+        {isScriptRunning && (
+          <span className="inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-800 border border-yellow-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse flex-shrink-0" />
+            Automation running…
+          </span>
+        )}
       </div>
 
       {hasDetail && (

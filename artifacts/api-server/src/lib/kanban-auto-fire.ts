@@ -273,15 +273,16 @@ async function runInBackground(
       logger.warn({ cardIds, jobId, lastStatus }, "kanban-auto-fire: script failed — cards remain in_progress");
     }
 
-    // Clear runningJobRef
-    const metaRows = await db
+    // Clear runningJobRef and stamp final lastJobStatus
+    const finalStatus = success ? "Completed" : lastStatus;
+    const metaRows2 = await db
       .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
       .from(kanbanTasksTable)
       .where(inArray(kanbanTasksTable.id, cardIds));
-    for (const row of metaRows) {
+    for (const row of metaRows2) {
       const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
       await db.update(kanbanTasksTable)
-        .set({ taskMetadata: { ...meta, runningJobRef: null } })
+        .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: finalStatus } })
         .where(eq(kanbanTasksTable.id, row.id));
     }
 
@@ -368,7 +369,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     for (const row of metaRows) {
       const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
       await db.update(kanbanTasksTable)
-        .set({ taskMetadata: { ...meta, runningJobRef: jobId }, updatedAt: new Date() })
+        .set({ taskMetadata: { ...meta, runningJobRef: jobId, lastJobStatus: "Running", lastJobId: jobId }, updatedAt: new Date() })
         .where(eq(kanbanTasksTable.id, row.id));
     }
 

@@ -317,6 +317,7 @@ function DraggableCard({
             )}
 
             <TypedCardContent
+              taskId={task.id}
               taskType={task.taskType}
               metadata={task.taskMetadata}
               onRunScript={handleRunScript}
@@ -448,6 +449,7 @@ function DraggableCard({
                   <div className="mt-1.5 space-y-2 bg-[#1C2128] border border-[#0078D4]/15 rounded-lg px-2.5 py-2">
                     {task.taskType && (
                       <TypedCardContent
+                        taskId={task.id}
                         taskType={task.taskType}
                         metadata={task.taskMetadata}
                         onRunScript={handleRunScript}
