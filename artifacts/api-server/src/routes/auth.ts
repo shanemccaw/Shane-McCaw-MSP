@@ -28,7 +28,7 @@ const setupPasswordLimiter = rateLimit({
 const router: IRouter = Router();
 
 const REFRESH_TOKEN_TTL_DAYS = 30;
-const ACCESS_TOKEN_TTL = "15m";
+const ACCESS_TOKEN_TTL = "8h";
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function getJwtSecret(): string {

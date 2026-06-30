@@ -113,6 +113,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
   }, [refresh]);
 
+  // Proactively refresh the access token 5 minutes before it expires so the
+  // user never hits a 401 mid-session.
+  useEffect(() => {
+    if (!state.accessToken) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const payload = JSON.parse(atob(state.accessToken.split(".")[1])) as { exp?: number };
+      if (typeof payload.exp === "number") {
+        const msUntilRefresh = payload.exp * 1000 - Date.now() - 5 * 60 * 1000;
+        if (msUntilRefresh <= 0) {
+          void refresh();
+        } else {
+          timer = setTimeout(() => { void refresh(); }, msUntilRefresh);
+        }
+      }
+    } catch { /* ignore malformed token */ }
+    return () => { if (timer !== undefined) clearTimeout(timer); };
+  }, [state.accessToken, refresh]);
+
   const login = async (email: string, password: string): Promise<AuthUser | MfaChallenge> => {
     const res = await fetch("/api/auth/login", {
       method: "POST",
