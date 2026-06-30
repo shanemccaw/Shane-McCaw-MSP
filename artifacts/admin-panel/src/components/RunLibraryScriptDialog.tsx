@@ -165,7 +165,8 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
           // This fires even if the dialog has been closed
           await capturedPatchKanbanTask(status, outputLines);
           capturedOnRunComplete?.(status, capturedScriptTitle);
-        }
+        },
+        kanbanTaskId ?? undefined
       );
     } catch (err) {
       toast({ title: err instanceof Error ? err.message : "Run failed", variant: "destructive" });

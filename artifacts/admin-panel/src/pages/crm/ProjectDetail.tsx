@@ -7,6 +7,7 @@ import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
+import { isActiveForTask } from "@/lib/scriptPoller";
 import { TypedCardContent, TASK_TYPE_CONFIG } from "@/components/kanban/TypedCardContent";
 import type { TaskType } from "@/components/kanban/TypedCardContent";
 import StatusReportForm from "@/components/StatusReportForm";
@@ -200,6 +201,7 @@ function DraggableCard({
   const [replySent, setReplySent] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
+  const [scriptRunning, setScriptRunning] = useState(() => isActiveForTask(task.id));
 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
@@ -502,14 +504,22 @@ function DraggableCard({
             <div className="flex items-center gap-1 mt-1.5 flex-wrap">
               {linkedRunbook?.azureRunbookName && (
                 <button
-                  onClick={e => { e.stopPropagation(); setConfirmRunOpen(true); }}
-                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5"
-                  title="Run linked script"
+                  onClick={e => { e.stopPropagation(); if (!scriptRunning) setConfirmRunOpen(true); }}
+                  disabled={scriptRunning}
+                  className="text-[9px] font-semibold px-1.5 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 transition-colors flex items-center gap-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={scriptRunning ? "Script running in background" : "Run linked script"}
                 >
-                  <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
-                  </svg>
-                  Run Script
+                  {scriptRunning ? (
+                    <svg className="w-2.5 h-2.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                  {scriptRunning ? "Running…" : "Run Script"}
                 </button>
               )}
               {targetCols.map(col => (
@@ -555,8 +565,12 @@ function DraggableCard({
           azureRunbookName={linkedRunbook.azureRunbookName}
           initialClientId={clientUserId}
           kanbanTaskId={task.id}
-          onClose={() => setRunDialogOpen(false)}
+          onClose={() => {
+            setRunDialogOpen(false);
+            if (isActiveForTask(task.id)) setScriptRunning(true);
+          }}
           onRunComplete={(status, title) => {
+            setScriptRunning(false);
             toast({
               title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
               description: status === "completed"

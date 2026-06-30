@@ -14,15 +14,18 @@ interface ActivePoll {
   statusListener: StatusListener | null;
   completeListeners: CompleteListener[];
   lastStatus: RunStatus | null;
+  kanbanTaskId?: number;
 }
 
 const polls = new Map<string, ActivePoll>();
+const taskJobMap = new Map<number, string>();
 
 export function startPoll(
   jobRef: string,
   fetchFn: (url: string) => Promise<Response>,
   statusListener: StatusListener | null,
-  onComplete: CompleteListener
+  onComplete: CompleteListener,
+  kanbanTaskId?: number
 ) {
   if (polls.has(jobRef)) {
     const existing = polls.get(jobRef)!;
@@ -31,10 +34,15 @@ export function startPoll(
     return;
   }
 
+  if (kanbanTaskId !== undefined) {
+    taskJobMap.set(kanbanTaskId, jobRef);
+  }
+
   const poll: ActivePoll = {
     statusListener,
     completeListeners: [onComplete],
     lastStatus: null,
+    kanbanTaskId,
     intervalId: setInterval(() => {
       void (async () => {
         try {
@@ -78,10 +86,20 @@ export function isActive(jobRef: string): boolean {
   return polls.has(jobRef);
 }
 
+export function isActiveForTask(kanbanTaskId: number): boolean {
+  const jobRef = taskJobMap.get(kanbanTaskId);
+  return jobRef !== undefined && polls.has(jobRef);
+}
+
+export function getJobRefForTask(kanbanTaskId: number): string | undefined {
+  return taskJobMap.get(kanbanTaskId);
+}
+
 export function stopPoll(jobRef: string) {
   const p = polls.get(jobRef);
   if (p) {
     clearInterval(p.intervalId);
+    if (p.kanbanTaskId !== undefined) taskJobMap.delete(p.kanbanTaskId);
     polls.delete(jobRef);
   }
 }

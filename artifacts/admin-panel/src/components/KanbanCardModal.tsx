@@ -15,6 +15,7 @@ import ChecklistClosureDialog from "@/components/kanban/ChecklistClosureDialog";
 import type { ClosureField } from "@/components/kanban/ChecklistClosureForm";
 import RunLibraryScriptDialog from "@/components/RunLibraryScriptDialog";
 import RunScriptConfirmDialog from "@/components/RunScriptConfirmDialog";
+import { isActiveForTask } from "@/lib/scriptPoller";
 import { useToast } from "@/hooks/use-toast";
 
 export interface KanbanCardModalTask {
@@ -610,6 +611,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [confirmRunOpen, setConfirmRunOpen] = useState(false);
   const [movingToInProgress, setMovingToInProgress] = useState(false);
+  const [scriptRunning, setScriptRunning] = useState(false);
 
   useEffect(() => {
     if (task) {
@@ -621,6 +623,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
       });
       setLocalTask(task);
+      setScriptRunning(isActiveForTask(task.id));
     }
     setEditing(false);
     setSaveError(null);
@@ -696,6 +699,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   };
 
   const handleRunComplete = (status: "completed" | "failed", title: string) => {
+    setScriptRunning(false);
     toast({
       title: status === "completed" ? `Script completed: ${title}` : `Script failed: ${title}`,
       description: status === "completed"
@@ -746,18 +750,18 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             {/* Run Script button (when linked runbook present) */}
             {!editing && linkedRunbook?.azureRunbookName && (
               <button
-                onClick={() => setConfirmRunOpen(true)}
-                disabled={movingToInProgress}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50"
+                onClick={() => { if (!scriptRunning) setConfirmRunOpen(true); }}
+                disabled={movingToInProgress || scriptRunning}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {movingToInProgress ? (
+                {movingToInProgress || scriptRunning ? (
                   <div className="w-3.5 h-3.5 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
                 ) : (
                   <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clipRule="evenodd" />
                   </svg>
                 )}
-                Run Script
+                {scriptRunning ? "Running in background…" : "Run Script"}
               </button>
             )}
 
@@ -1147,7 +1151,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         azureRunbookName={linkedRunbook.azureRunbookName}
         initialClientId={clientId}
         kanbanTaskId={localTask.id}
-        onClose={() => setRunDialogOpen(false)}
+        onClose={() => {
+          setRunDialogOpen(false);
+          if (isActiveForTask(localTask.id)) setScriptRunning(true);
+        }}
         onRunComplete={handleRunComplete}
       />
     )}
