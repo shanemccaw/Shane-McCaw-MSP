@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import NotificationDrawer from "@/components/NotificationDrawer";
+import { usePurchaseSound } from "@/hooks/usePurchaseSound";
 
 interface NavItem {
   label: string;
@@ -273,6 +274,8 @@ function TopHeader({
   campaignBadges,
   unreadNotifCount,
   onBellClick,
+  soundMuted,
+  onToggleMute,
 }: {
   onMobileMenuClick: () => void;
   location: string;
@@ -283,6 +286,8 @@ function TopHeader({
   campaignBadges: CampaignBadge[];
   unreadNotifCount: number;
   onBellClick: () => void;
+  soundMuted: boolean;
+  onToggleMute: () => void;
 }) {
   const breadcrumb = computeBreadcrumb(location);
 
@@ -371,6 +376,25 @@ function TopHeader({
           ⌘K
         </kbd>
       </div>
+
+      {/* Purchase sound mute toggle */}
+      <button
+        onClick={onToggleMute}
+        className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] rounded-lg hover:bg-[#1C2128] transition-colors flex-shrink-0"
+        title={soundMuted ? "Unmute purchase alerts" : "Mute purchase alerts"}
+      >
+        {soundMuted ? (
+          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+          </svg>
+        ) : (
+          <svg className="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m0 0l-4.243-4.243M12 18l4.243-4.243M12 6l-4.243 4.243M12 6l4.243 4.243" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          </svg>
+        )}
+      </button>
 
       {/* Notification bell — opens notification drawer */}
       <button
@@ -534,6 +558,9 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readSidebarCollapsed());
   const [unreadEmailCount, setUnreadEmailCount] = useState(0);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Purchase sound ─────────────────────────────────────────────────────────
+  const { playPurchaseSound, muted: soundMuted, toggleMute } = usePurchaseSound();
 
   // ─── Live visitors ──────────────────────────────────────────────────────────
   const [liveVisitors, setLiveVisitors] = useState<number | null>(null);
@@ -849,6 +876,8 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
             campaignBadges={campaignBadges}
             unreadNotifCount={unreadNotifCount}
             onBellClick={() => setNotifDrawerOpen(true)}
+            soundMuted={soundMuted}
+            onToggleMute={toggleMute}
           />
 
           <main className="flex-1 overflow-y-auto bg-[#0D1117]">
@@ -865,6 +894,7 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
         onOpenChange={setNotifDrawerOpen}
         unreadCount={unreadNotifCount}
         onUnreadCountChange={setUnreadNotifCount}
+        onPurchaseSound={playPurchaseSound}
       />
     </TooltipProvider>
   );

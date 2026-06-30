@@ -245,16 +245,19 @@ interface NotificationDrawerProps {
   onOpenChange: (open: boolean) => void;
   unreadCount: number;
   onUnreadCountChange: (count: number) => void;
+  onPurchaseSound?: () => void;
 }
 
 export default function NotificationDrawer({
   open,
   onOpenChange,
   onUnreadCountChange,
+  onPurchaseSound,
 }: NotificationDrawerProps) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const seenIdsRef = useRef<Set<number> | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -263,9 +266,23 @@ export default function NotificationDrawer({
         const data = await res.json() as Notification[];
         setNotifications(data);
         onUnreadCountChange(data.filter(n => !n.read).length);
+
+        const incomingIds = new Set(data.map(n => n.id));
+
+        if (seenIdsRef.current === null) {
+          seenIdsRef.current = incomingIds;
+        } else {
+          const newPurchases = data.filter(
+            n => n.type === "purchase_created" && !seenIdsRef.current!.has(n.id)
+          );
+          if (newPurchases.length > 0) {
+            onPurchaseSound?.();
+          }
+          seenIdsRef.current = incomingIds;
+        }
       }
     } catch {}
-  }, [fetchWithAuth, onUnreadCountChange]);
+  }, [fetchWithAuth, onUnreadCountChange, onPurchaseSound]);
 
   useEffect(() => {
     void loadNotifications();
