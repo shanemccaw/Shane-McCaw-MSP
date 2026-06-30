@@ -4939,6 +4939,112 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
     : [];
   const reportMap = new Map(reports.map(r => [r.id, r]));
 
+  // ── Enrich task_metadata.linkedRunbook from template task runbookId ───────────
+  // Chain: kanban_task.workflow_step_id → workflow_steps.workflow_template_step_id
+  //        → workflow_template_step_tasks.runbook_id → powershell_scripts | script_modules
+  // Only fills in linkedRunbook when task_metadata doesn't already have one stored.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function filenameSlug(filename: string): string {
+    return filename.replace(/\.ps1$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "script";
+  }
+  function wordJaccard(a: string, b: string): number {
+    const aw = new Set((a.toLowerCase().match(/\w+/g) ?? []));
+    const bw = new Set((b.toLowerCase().match(/\w+/g) ?? []));
+    const inter = [...aw].filter(w => bw.has(w)).length;
+    const union = new Set([...aw, ...bw]).size;
+    return union === 0 ? 0 : inter / union;
+  }
+
+  const stepIds = [...new Set(tasks.map(t => t.workflowStepId).filter((id): id is number => id !== null))];
+  if (stepIds.length > 0) {
+    const wSteps = await db
+      .select({ id: workflowStepsTable.id, templateStepId: workflowStepsTable.workflowTemplateStepId })
+      .from(workflowStepsTable)
+      .where(inArray(workflowStepsTable.id, stepIds));
+
+    const templateStepIds = [...new Set(wSteps.map(s => s.templateStepId).filter((id): id is number => id !== null))];
+    const stepToTemplateStep = new Map(wSteps.map(s => [s.id, s.templateStepId]));
+
+    if (templateStepIds.length > 0) {
+      const templateTasks = await db
+        .select({
+          title: workflowTemplateStepTasksTable.title,
+          workflowTemplateStepId: workflowTemplateStepTasksTable.workflowTemplateStepId,
+          runbookId: workflowTemplateStepTasksTable.runbookId,
+        })
+        .from(workflowTemplateStepTasksTable)
+        .where(and(
+          inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, templateStepIds),
+          isNotNull(workflowTemplateStepTasksTable.runbookId),
+        ));
+
+      if (templateTasks.length > 0) {
+        const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
+        const uuidIds = allRunbookIds.filter(id => UUID_RE.test(id));
+        const slugIds = allRunbookIds.filter(id => !UUID_RE.test(id));
+
+        const [moduleRows, scriptRows] = await Promise.all([
+          uuidIds.length > 0
+            ? db.select({ id: scriptModulesTable.id, description: scriptModulesTable.description, filename: scriptModulesTable.filename })
+                .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidIds))
+            : Promise.resolve([]),
+          slugIds.length > 0
+            ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
+                .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugIds))
+            : Promise.resolve([]),
+        ]);
+
+        const moduleMap = new Map(moduleRows.map(m => [m.id, m]));
+        const scriptMap = new Map(scriptRows.map(s => [s.azureRunbookName as string, s]));
+
+        function resolveRunbook(runbookId: string): { scriptId: string; azureRunbookName: string; scriptTitle: string } | null {
+          if (UUID_RE.test(runbookId)) {
+            const mod = moduleMap.get(runbookId);
+            if (!mod) return null;
+            return { scriptId: mod.id, azureRunbookName: filenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+          }
+          const script = scriptMap.get(runbookId);
+          if (!script?.azureRunbookName) return null;
+          return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+        }
+
+        // Group template tasks by their step for efficient lookup
+        const ttByStep = new Map<number, typeof templateTasks>();
+        for (const tt of templateTasks) {
+          const arr = ttByStep.get(tt.workflowTemplateStepId) ?? [];
+          arr.push(tt);
+          ttByStep.set(tt.workflowTemplateStepId, arr);
+        }
+
+        for (const task of tasks) {
+          // Skip if already has a stored linkedRunbook
+          const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+          if (meta.linkedRunbook) continue;
+          if (!task.workflowStepId) continue;
+          const tStepId = stepToTemplateStep.get(task.workflowStepId);
+          if (!tStepId) continue;
+          const candidates = ttByStep.get(tStepId) ?? [];
+          if (candidates.length === 0) continue;
+
+          // Best-match template task by title similarity
+          let best: typeof candidates[0] | null = null;
+          let bestSim = 0;
+          for (const tt of candidates) {
+            const sim = wordJaccard(task.title, tt.title);
+            if (sim > bestSim) { bestSim = sim; best = tt; }
+          }
+          if (!best || !best.runbookId || bestSim < 0.30) continue;
+
+          const resolved = resolveRunbook(best.runbookId);
+          if (resolved) {
+            task.taskMetadata = { ...meta, linkedRunbook: resolved };
+          }
+        }
+      }
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────────
+
   res.json(tasks.map(t => ({
     ...t,
     statusReportQuestion: t.statusReportId ? (reportMap.get(t.statusReportId)?.clientQuestion ?? null) : null,
