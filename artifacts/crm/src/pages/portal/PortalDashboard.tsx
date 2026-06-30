@@ -165,6 +165,9 @@ export default function PortalDashboard() {
   const [activityLoading, setActivityLoading] = useState(true);
   const [scorecardHistory, setScorecardHistory] = useState<ScorecardHistory | null>(null);
 
+  // Authoritative overall health score from /api/portal/health/summary (matches nav widget)
+  const [healthSummaryOverall, setHealthSummaryOverall] = useState<number | null>(null);
+
   useEffect(() => {
     fetchWithAuth("/api/portal/dashboard")
       .then(r => r.json())
@@ -175,6 +178,16 @@ export default function PortalDashboard() {
     fetchWithAuth("/api/portal/m365-scorecard-history")
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setScorecardHistory(d as ScorecardHistory); })
+      .catch(() => null);
+
+    fetchWithAuth("/api/portal/health/summary")
+      .then(r => r.ok ? (r.json() as Promise<unknown>) : Promise.resolve({ hasData: false }))
+      .then((d: unknown) => {
+        const summary = d as { hasData?: boolean; overallLatest?: number };
+        if (summary.hasData && summary.overallLatest !== undefined) {
+          setHealthSummaryOverall(summary.overallLatest);
+        }
+      })
       .catch(() => null);
   }, [fetchWithAuth]);
 
@@ -201,9 +214,11 @@ export default function PortalDashboard() {
   const dueCount = invoiceSummary.filter(i => i.status === "due").length;
 
   const scorecardScores = SCORECARD_DEFS.map(d => scorecardHistory?.latest?.[d.key] ?? 0);
-  const scorecardOverall = scorecardScores.length > 0
+  const scorecardOverallFallback = scorecardScores.length > 0
     ? Math.round(scorecardScores.reduce((a, b) => a + b, 0) / scorecardScores.length)
     : 0;
+  // Prefer the authoritative value from /api/portal/health/summary so this matches the nav widget
+  const scorecardOverall = healthSummaryOverall ?? scorecardOverallFallback;
   const scorecardIsFirstSameAsLatest = scorecardHistory?.firstDate === scorecardHistory?.latestDate;
 
   return (
