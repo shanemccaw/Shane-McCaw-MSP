@@ -253,6 +253,31 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      endpoint TEXT NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      CONSTRAINT push_subscriptions_endpoint_unique UNIQUE (endpoint)
+    )
+  `).then(() => {
+    logger.info("Migration: push_subscriptions table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: push_subscriptions table failed (non-fatal)");
+  });
+
+  pool.query(`
+    ALTER TABLE push_subscriptions
+    ADD CONSTRAINT IF NOT EXISTS push_subscriptions_endpoint_unique UNIQUE (endpoint)
+  `).then(() => {
+    logger.info("Migration: push_subscriptions unique endpoint constraint ensured");
+  }).catch(() => {
+    /* constraint may already exist — non-fatal */
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS client_scores (
       id SERIAL PRIMARY KEY,
       client_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

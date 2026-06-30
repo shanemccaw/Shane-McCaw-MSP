@@ -53,6 +53,7 @@ import adminPsScriptsRouter from "./admin-ps-scripts";
 import adminKanbanEscalationRouter from "./admin-kanban-escalation";
 import adminAiPromptsRouter from "./admin-ai-prompts";
 import notificationsRouter from "./notifications";
+import pushRouter from "./push";
 
 const router: IRouter = Router();
 
@@ -110,5 +111,6 @@ router.use(adminPsScriptsRouter);
 router.use(adminKanbanEscalationRouter);
 router.use(adminAiPromptsRouter);
 router.use(notificationsRouter);
+router.use(pushRouter);
 
 export default router;

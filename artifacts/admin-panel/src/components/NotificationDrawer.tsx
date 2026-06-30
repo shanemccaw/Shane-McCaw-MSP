@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -82,6 +82,164 @@ function relativeTime(iso: string): string {
   }
 }
 
+// ─── Push Notification Toggle ─────────────────────────────────────────────────
+
+type PushState = "unsupported" | "loading" | "denied" | "subscribed" | "unsubscribed";
+
+const LS_PUSH_ENDPOINT = "admin_push_endpoint";
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
+function PushNotificationToggle({ fetchWithAuth }: { fetchWithAuth: ReturnType<typeof useAuth>["fetchWithAuth"] }) {
+  const [state, setState] = useState<PushState>("loading");
+  const [busy, setBusy] = useState(false);
+  const swRegRef = useRef<ServiceWorkerRegistration | null>(null);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setState("denied");
+      return;
+    }
+
+    const storedEndpoint = localStorage.getItem(LS_PUSH_ENDPOINT);
+    if (storedEndpoint) {
+      setState("subscribed");
+    } else {
+      setState("unsubscribed");
+    }
+
+    navigator.serviceWorker
+      .register("/admin-panel/sw.js", { scope: "/admin-panel/" })
+      .then((reg) => { swRegRef.current = reg; })
+      .catch(() => { setState("unsupported"); });
+  }, []);
+
+  const handleEnable = async () => {
+    setBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "denied") {
+        setState("denied");
+        return;
+      }
+      if (permission !== "granted") {
+        setState("unsubscribed");
+        return;
+      }
+
+      let reg = swRegRef.current;
+      if (!reg) {
+        reg = await navigator.serviceWorker.register("/admin-panel/sw.js", { scope: "/admin-panel/" });
+        swRegRef.current = reg;
+      }
+
+      const vapidRes = await fetchWithAuth("/api/push/vapid-public-key");
+      if (!vapidRes.ok) throw new Error("Could not fetch VAPID key");
+      const { publicKey } = await vapidRes.json() as { publicKey: string };
+
+      const keyArray = urlBase64ToUint8Array(publicKey);
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: keyArray.buffer.slice(keyArray.byteOffset, keyArray.byteOffset + keyArray.byteLength) as ArrayBuffer,
+      });
+
+      const json = subscription.toJSON();
+      const subRes = await fetchWithAuth("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+          keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },
+        }),
+      });
+
+      if (!subRes.ok) {
+        await subscription.unsubscribe();
+        throw new Error("Failed to save push subscription on server");
+      }
+
+      localStorage.setItem(LS_PUSH_ENDPOINT, subscription.endpoint);
+      setState("subscribed");
+    } catch {
+      setState("unsubscribed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDisable = async () => {
+    setBusy(true);
+    try {
+      const endpoint = localStorage.getItem(LS_PUSH_ENDPOINT);
+      if (endpoint) {
+        await fetchWithAuth("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint }),
+        });
+        localStorage.removeItem(LS_PUSH_ENDPOINT);
+      }
+
+      const reg = swRegRef.current;
+      if (reg) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();
+      }
+      setState("unsubscribed");
+    } catch {
+      setState("unsubscribed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state === "unsupported") return null;
+
+  return (
+    <div className="px-4 py-2.5 border-t border-[#30363D] flex-shrink-0">
+      {state === "denied" ? (
+        <p className="text-[10px] text-[#7D8590] leading-snug">
+          Browser notifications blocked. Allow them in your browser settings and reload.
+        </p>
+      ) : state === "subscribed" ? (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+            <span className="text-[10px] text-[#7D8590]">Browser notifications active</span>
+          </div>
+          <button
+            onClick={() => void handleDisable()}
+            disabled={busy}
+            className="text-[10px] font-medium text-[#484F58] hover:text-red-400 transition-colors disabled:opacity-50"
+          >
+            Disable
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => void handleEnable()}
+          disabled={busy || state === "loading"}
+          className="w-full flex items-center gap-2 text-[10px] font-medium text-[#0078D4] hover:text-[#58A6FF] transition-colors disabled:opacity-50"
+        >
+          <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+          </svg>
+          Enable browser notifications
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface NotificationDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -114,6 +272,18 @@ export default function NotificationDrawer({
     const id = setInterval(() => void loadNotifications(), 30_000);
     return () => clearInterval(id);
   }, [loadNotifications]);
+
+  // Listen for SW navigate messages when a push notification is clicked
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "NAVIGATE" && event.data.path) {
+        navigate(event.data.path as string);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () => navigator.serviceWorker.removeEventListener("message", handler);
+  }, [navigate]);
 
   const markRead = async (id: number) => {
     try {
@@ -207,6 +377,8 @@ export default function NotificationDrawer({
             </ul>
           )}
         </div>
+
+        <PushNotificationToggle fetchWithAuth={fetchWithAuth} />
       </SheetContent>
     </Sheet>
   );

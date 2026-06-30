@@ -21,6 +21,7 @@ import {
 import { createAuditLog } from "../lib/audit.ts";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf.ts";
 import { scoreLead, determineNextStep } from "../lib/lead-scorer.ts";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import fs from "fs";
 import path from "path";
 
@@ -196,6 +197,11 @@ router.post("/leads", async (req: Request, res: Response) => {
           }))
         );
       }
+      void sendWebPushToAdmins({
+        title: `New lead: ${lead.name}`,
+        body: lead.company ? `${lead.company} — ${lead.source.replace(/_/g, " ")}` : lead.source.replace(/_/g, " "),
+        linkPath: `/crm/leads/${lead.id}`,
+      });
     } catch {}
   })();
 

@@ -4,6 +4,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable } from "@workspace/db";
+import { sendWebPushToAdmins } from "../lib/web-push";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { generateQuizPdf } from "../lib/quiz-pdf";
@@ -592,6 +593,11 @@ Respond ONLY with valid JSON in this exact shape:
             }))
           );
         }
+        void sendWebPushToAdmins({
+          title: `New quiz lead: ${name}`,
+          body: company ? `${company} — ${tier}` : tier,
+          linkPath: `/crm/quiz-leads/${leadId}`,
+        });
       } catch {}
     })();
   }

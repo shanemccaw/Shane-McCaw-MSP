@@ -1447,3 +1447,16 @@ export const aiPromptsTable = pgTable("ai_prompts", {
 
 export type AiPrompt = typeof aiPromptsTable.$inferSelect;
 export type InsertAiPrompt = typeof aiPromptsTable.$inferInsert;
+
+// Web push subscriptions (browser-level push notifications for admin)
+export const pushSubscriptionsTable = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertPushSubscription = typeof pushSubscriptionsTable.$inferInsert;
+export type PushSubscription = typeof pushSubscriptionsTable.$inferSelect;

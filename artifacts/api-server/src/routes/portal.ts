@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
+import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph.ts";
@@ -3302,6 +3303,11 @@ async function provisionOnboardingProject(
       linkPath: `/dashboard`,
     });
   }
+  void sendWebPushToAdmins({
+    title: `New onboarding purchase: ${serviceNames.join(", ")}`,
+    body: `${buyer.name ?? buyer.email} purchased ($${totalAmountDollars}). Project #${project.id} auto-created.`,
+    linkPath: `/dashboard`,
+  });
 
   // ── Notify client ─────────────────────────────────────────────────────────
   await db.insert(notificationsTable).values({
@@ -3826,6 +3832,11 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               }))
             );
           }
+          void sendWebPushToAdmins({
+            title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+            body: `${serviceName} — $${amountDollars}`,
+            linkPath: `/crm/invoices/${newInvoice?.id ?? ""}`,
+          });
         } catch {}
       })();
 
@@ -3950,6 +3961,11 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
                 }))
               );
             }
+            void sendWebPushToAdmins({
+              title: `New purchase: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+              body: `${serviceLabel} — $${totalDollars}`,
+              linkPath: `/crm/invoices`,
+            });
           } catch {}
         })();
 
@@ -4124,6 +4140,11 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
         title: "New client message",
         body: body.trim().slice(0, 100),
         type: "message",
+        linkPath: `/dashboard/messages?clientId=${senderId}`,
+      });
+      void sendWebPushToAdmins({
+        title: "New client message",
+        body: body.trim().slice(0, 100),
         linkPath: `/dashboard/messages?clientId=${senderId}`,
       });
       // Email the admin

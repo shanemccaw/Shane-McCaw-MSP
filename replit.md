@@ -123,3 +123,20 @@ Required to enable automatic SEO ranking sync in the Admin Panel (Marketing → 
 | `GOOGLE_SEARCH_CONSOLE_SITE_URL` | Exact site URL as registered in Search Console (e.g. `https://shanemccawconsulting.com/` — include the trailing slash if that's how it's registered). |
 
 If either secret is missing, clicking "Sync Search Console" shows a clear error message in the card without crashing. Manual keyword entry is always available as a fallback.
+
+## Browser Push Notification Secrets
+
+Required to enable OS-level browser push notifications in the Admin Panel notification drawer:
+
+| Secret | Description |
+|--------|-------------|
+| `VAPID_PUBLIC_KEY` | VAPID public key (base64url, starts with `BN…` or `BA…`) |
+| `VAPID_PRIVATE_KEY` | VAPID private key (base64url) |
+
+**One-time key generation** (run locally or in a Replit shell):
+```
+node -e "const wp = require('web-push'); const keys = wp.generateVAPIDKeys(); console.log(keys);"
+```
+Or with npx: `npx web-push generate-vapid-keys`
+
+Copy the `publicKey` value into `VAPID_PUBLIC_KEY` and `privateKey` into `VAPID_PRIVATE_KEY` in Replit Secrets. No other configuration is needed. If either secret is missing, push dispatch is silently skipped (with a warning log) and the feature gracefully degrades — the notification bell continues to work normally.
