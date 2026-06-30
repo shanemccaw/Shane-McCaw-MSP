@@ -639,6 +639,7 @@ export default function PortalProjectDetail() {
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseReconnecting, setSseReconnecting] = useState(false);
+  const [boardRefreshing, setBoardRefreshing] = useState(false);
   const [secondaryTab, setSecondaryTab] = useState<SecondaryTab | null>(() => {
     const hash = window.location.hash.replace("#", "");
     const validTabs: SecondaryTab[] = ["kanban", "documents", "status-reports", "contracts", "timeline"];
@@ -752,7 +753,7 @@ export default function PortalProjectDetail() {
         else if (detail.steps.length > 0) setExpandedStepId(detail.steps[0].id);
       })
       .catch(() => null)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setBoardRefreshing(false); });
   }, [fetchWithAuth, params.id]);
 
   const loadClosure = useCallback(() => {
@@ -850,6 +851,7 @@ export default function PortalProjectDetail() {
         backoff = 1000;
         setSseReconnecting(false);
         if (wasHiddenMs >= STALE_THRESHOLD_MS) {
+          setBoardRefreshing(true);
           loadProjectRef.current();
         }
         connect();
@@ -1787,6 +1789,15 @@ export default function PortalProjectDetail() {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
                 </span>
                 Reconnecting live sync…
+              </div>
+            )}
+            {boardRefreshing && (
+              <div className="flex items-center gap-1.5 mb-3 text-muted-foreground text-xs font-medium">
+                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Refreshing board…
               </div>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

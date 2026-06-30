@@ -1090,6 +1090,7 @@ export default function ProjectDetailPage() {
   const draggingIdRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseReconnecting, setSseReconnecting] = useState(false);
+  const [boardRefreshing, setBoardRefreshing] = useState(false);
 
   const completedTaskCount = tasks.filter(t => t.column === "completed").length;
   const computedProgress = tasks.length > 0
@@ -1682,7 +1683,8 @@ export default function ProjectDetailPage() {
         backoff = 1000;
         setSseReconnecting(false);
         if (wasHiddenMs >= STALE_THRESHOLD_MS) {
-          void reloadAllRef.current();
+          setBoardRefreshing(true);
+          void reloadAllRef.current().finally(() => setBoardRefreshing(false));
         }
         connect();
       }
@@ -2132,7 +2134,18 @@ export default function ProjectDetailPage() {
       {/* ── Kanban Board ───────────────────────────────────────────────── */}
       <section className="mb-8">
         <div className="flex items-center justify-between flex-wrap gap-4 mb-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-[#E6EDF3]">Kanban Board</h2>
+          <span className="flex items-center gap-2">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#E6EDF3]">Kanban Board</h2>
+            {boardRefreshing && (
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-[#8B949E]">
+                <svg className="animate-spin h-3 w-3 text-[#8B949E]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Refreshing…
+              </span>
+            )}
+          </span>
           <button
             onClick={() => setAddTaskOpen(s => !s)}
             className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
