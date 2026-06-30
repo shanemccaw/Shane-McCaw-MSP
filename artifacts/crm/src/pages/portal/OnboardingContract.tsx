@@ -319,8 +319,24 @@ export default function OnboardingContract() {
 
     const servicesReq = fetch("/api/portal/onboarding/services")
       .then(r => r.json() as Promise<Service[]>)
-      .then(all => {
-        const matched = serviceIds.map(id => all.find(s => s.id === id)).filter(Boolean) as Service[];
+      .then(async all => {
+        // Match as many as possible from the public list
+        let matched = serviceIds.map(id => all.find(s => s.id === id)).filter(Boolean) as Service[];
+        // For any IDs not in the public list (e.g. landing_page_only services),
+        // fetch them individually using the single-service endpoint
+        const missingIds = serviceIds.filter(id => !matched.find(s => s.id === id));
+        if (missingIds.length > 0) {
+          const extras = await Promise.all(
+            missingIds.map(id =>
+              fetch(`/api/portal/onboarding/service/${id}`)
+                .then(r => r.ok ? (r.json() as Promise<Service>) : null)
+                .catch(() => null)
+            )
+          );
+          matched = [...matched, ...(extras.filter(Boolean) as Service[])];
+          // Re-sort to match the original serviceIds order
+          matched.sort((a, b) => serviceIds.indexOf(a.id) - serviceIds.indexOf(b.id));
+        }
         if (matched.length === 0) { setLocation("/portal/onboarding/select"); return; }
         setServices(matched);
         setLoading(false);
