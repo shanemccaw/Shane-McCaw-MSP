@@ -83,7 +83,6 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
       and(
         inArray(kanbanTasksTable.workflowStepId, activeStepIds),
         eq(kanbanTasksTable.column, "backlog"),
-        eq(kanbanTasksTable.taskType, "script"),
       ),
     )
     .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
