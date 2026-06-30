@@ -552,7 +552,7 @@ function saveLastSeenAt(ts: number): void {
 
 export default function DashboardShell({ children }: { children: ReactNode }) {
   const { user, logout, fetchWithAuth, accessToken } = useAuth();
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => readSidebarCollapsed());
@@ -920,17 +920,24 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
 
       {/* Sale flash toast */}
       {flashVisible && (
-        <div
-          className={`fixed top-4 right-4 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border border-emerald-500/30 bg-[#0D2818]/95 backdrop-blur-sm pointer-events-none select-none ${
+        <button
+          onClick={() => {
+            if (flashEnterTimerRef.current) clearTimeout(flashEnterTimerRef.current);
+            if (flashExitTimerRef.current) clearTimeout(flashExitTimerRef.current);
+            setFlashVisible(false);
+            setFlashExiting(false);
+            navigate("/finance/purchases");
+          }}
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-2xl border border-emerald-500/30 bg-[#0D2818]/95 backdrop-blur-sm cursor-pointer hover:bg-[#0D2818] hover:border-emerald-500/50 transition-colors ${
             flashExiting ? "sale-flash-exit" : "sale-flash-enter"
           }`}
         >
           <span className="text-xl leading-none">💰</span>
-          <div className="leading-tight">
+          <div className="leading-tight text-left">
             <p className="text-sm font-bold text-emerald-300">New sale!</p>
             <p className="text-[11px] text-emerald-500/80 font-medium">A purchase just came in</p>
           </div>
-        </div>
+        </button>
       )}
     </TooltipProvider>
   );
