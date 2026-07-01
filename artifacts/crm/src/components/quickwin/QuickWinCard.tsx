@@ -89,7 +89,9 @@ export default function QuickWinCard() {
     ).then(() => {
       dispatch({ type: "AUTO_STEP_COMPLETE" });
       runnerActive.current = false;
-    }).catch(() => {
+    }).catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : "An unexpected error occurred.";
+      dispatch({ type: "AUTO_STEP_ERROR", payload: message });
       runnerActive.current = false;
     });
   }, [mode, quickWin, currentStepIndex, runAutoStep, dispatch, addTelemetry]);
@@ -274,6 +276,39 @@ export default function QuickWinCard() {
                 style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
               >
                 {QW_COPY.complete.exitBtn}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Error */}
+        {mode === "Error" && (
+          <div className="flex flex-col items-center gap-5 py-4">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-black text-[#0A2540]">Step failed</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto break-words">
+                {state.errorMessage ?? "An unexpected error occurred during the automated step."}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
+              <button
+                onClick={() => dispatch({ type: "RETRY_STEP" })}
+                className="flex-1 px-5 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20"
+                style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+              >
+                Retry step
+              </button>
+              <button
+                onClick={handleExit}
+                className="flex-1 px-5 py-3 rounded-xl border border-border text-[#0A2540] font-bold text-sm hover:bg-[#F7F9FC] active:scale-[0.98]"
+                style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+              >
+                Exit
               </button>
             </div>
           </div>

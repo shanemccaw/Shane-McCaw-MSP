@@ -12,7 +12,8 @@ export type QuickWinState =
   | "QuickWinComplete"
   | "EscalatingToProject"
   | "ProjectTasksView"
-  | "ExitQuickWin";
+  | "ExitQuickWin"
+  | "Error";
 
 export interface QuickWinItem {
   id: string;
@@ -35,6 +36,8 @@ export type QuickWinAction =
   | { type: "ENTRY_COMPLETE" }
   | { type: "START_AUTO_STEP" }
   | { type: "AUTO_STEP_COMPLETE" }
+  | { type: "AUTO_STEP_ERROR"; payload: string }
+  | { type: "RETRY_STEP" }
   | { type: "WAIT_FOR_USER" }
   | { type: "STEP_COMPLETE" }
   | { type: "NEXT_STEP" }
@@ -58,6 +61,7 @@ export interface QuickWinMachineState {
   // not duplicated in this state machine.
   projectId: string | null;
   openProjectOnExit: boolean;
+  errorMessage: string | null;
 }
 
 const initialState: QuickWinMachineState = {
@@ -68,6 +72,7 @@ const initialState: QuickWinMachineState = {
   prevScore: 0,
   projectId: null,
   openProjectOnExit: false,
+  errorMessage: null,
 };
 
 function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinMachineState {
@@ -85,7 +90,15 @@ function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinM
 
     case "AUTO_STEP_COMPLETE":
       if (state.mode !== "RunningAutoStep") return state;
-      return { ...state, mode: "StepComplete" };
+      return { ...state, mode: "StepComplete", errorMessage: null };
+
+    case "AUTO_STEP_ERROR":
+      if (state.mode !== "RunningAutoStep") return state;
+      return { ...state, mode: "Error", errorMessage: action.payload };
+
+    case "RETRY_STEP":
+      if (state.mode !== "Error") return state;
+      return { ...state, mode: "Ready", errorMessage: null };
 
     case "WAIT_FOR_USER":
       if (state.mode !== "Ready") return state;
