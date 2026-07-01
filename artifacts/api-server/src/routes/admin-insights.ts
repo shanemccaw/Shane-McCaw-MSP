@@ -39,7 +39,7 @@ import {
   insightsAutomationsTable,
   notificationsTable,
 } from "@workspace/db";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, isNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
@@ -1417,11 +1417,9 @@ router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Req
   try {
     const id = parseInt(String(req.params["id"] ?? ""), 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-    const [existing] = await db.select({ runningAt: insightsAutomationsTable.runningAt })
-      .from(insightsAutomationsTable).where(eq(insightsAutomationsTable.id, id)).limit(1);
-    if (!existing) return res.status(404).json({ error: "Automation not found" });
-    if (existing.runningAt) return res.status(409).json({ error: "This automation is already running. Wait for it to finish before running again." });
-    await executeAutomation(id);
+    const claimed = await executeAutomation(id);
+    if (claimed === null) return res.status(404).json({ error: "Automation not found" });
+    if (!claimed) return res.status(409).json({ error: "This automation is already running. Wait for it to finish before running again." });
     const [updated] = await db.select().from(insightsAutomationsTable)
       .where(eq(insightsAutomationsTable.id, id)).limit(1);
     if (!updated) return res.status(404).json({ error: "Automation not found" });
@@ -1449,22 +1447,33 @@ const REPORT_DOC_TYPE_LABELS_AUTO: Record<string, string> = {
   license_optimization_report:"License Optimization Report",
 };
 
-export async function executeAutomation(automationId: number): Promise<void> {
+/**
+ * Execute an automation.
+ * Returns:
+ *   null  — automation not found
+ *   false — lock was already held (another run is in progress)
+ *   true  — execution completed (success or error; always releases lock in finally)
+ *
+ * Lock acquisition is atomic: a single UPDATE ... WHERE running_at IS NULL RETURNING
+ * ensures only one concurrent caller can claim the lock.
+ */
+export async function executeAutomation(automationId: number): Promise<boolean | null> {
   const [automation] = await db.select().from(insightsAutomationsTable)
     .where(eq(insightsAutomationsTable.id, automationId)).limit(1);
-  if (!automation) return;
+  if (!automation) return null;
 
   const now = new Date();
 
-  // Reject concurrent triggers (cron + manual) — route also checks, but this is the definitive guard
-  if (automation.runningAt) {
-    logger.warn({ automationId, runningAt: automation.runningAt }, "insights: automation already running — skipping duplicate execution");
-    return;
-  }
+  // Atomically claim the lock — only proceeds if running_at is currently NULL
+  const [claimed] = await db.update(insightsAutomationsTable)
+    .set({ runningAt: now })
+    .where(and(eq(insightsAutomationsTable.id, automationId), isNull(insightsAutomationsTable.runningAt)))
+    .returning({ id: insightsAutomationsTable.id });
 
-  // Mark as running
-  await db.update(insightsAutomationsTable)
-    .set({ runningAt: now }).where(eq(insightsAutomationsTable.id, automationId));
+  if (!claimed) {
+    logger.warn({ automationId }, "insights: automation already running — skipping duplicate execution");
+    return false;
+  }
 
   try {
     // ── 1. Trigger linked Azure runbook (if configured) ─────────────────────
@@ -1598,6 +1607,8 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
     await db.update(insightsAutomationsTable)
       .set({ runningAt: null }).where(eq(insightsAutomationsTable.id, automationId));
   }
+
+  return true;
 }
 
 export default router;
