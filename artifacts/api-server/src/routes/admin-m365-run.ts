@@ -389,11 +389,18 @@ async function processRunInBackground(
     }
     // Only snapshot via the standard path when no kanban task explicitly triggers a health score
     // update — that path will write its own snapshot, so we skip this one to avoid duplicates.
+    // Also skip entirely when the Azure job did not complete successfully: a failed or cancelled
+    // job may leave the tenant in an inconsistent state, so snapshotting at that point could log
+    // a misleading or inaccurate score.
     if (!kanbanHealthScoreTrigger) {
-      try {
-        await snapshotHealthFromProfile(customerId);
-      } catch (err) {
-        logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+      if (finalStatus === "completed") {
+        try {
+          await snapshotHealthFromProfile(customerId);
+        } catch (err) {
+          logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+        }
+      } else {
+        logger.warn({ customerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
       }
     }
   }
