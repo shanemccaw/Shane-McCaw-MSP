@@ -110,7 +110,6 @@ Write-Host "  Or use the portal UI — locate this script's card and click 'Uplo
 .REQUIREMENTS
 ${requirementsList}
 #>
-${callbackVarsBlock}
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -125,6 +124,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+${callbackVarsBlock}
 
 Write-Host "[${scriptName}] Starting — connecting as $UserPrincipalName to tenant $TenantId" -ForegroundColor Cyan
 
