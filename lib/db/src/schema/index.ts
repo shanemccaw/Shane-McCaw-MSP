@@ -1070,6 +1070,7 @@ export const clientHealthHistoryTable = pgTable("client_health_history", {
   }).notNull(),
   score: integer("score").notNull(),
   recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  sourceKanbanTaskId: integer("source_kanban_task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
 });
 
 export type InsertClientHealthHistory = typeof clientHealthHistoryTable.$inferInsert;

@@ -799,6 +799,13 @@
       "when": 1782878559148,
       "tag": "0110_add_triggers_health_score",
       "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1782880047099,
+      "tag": "0111_add_source_kanban_task_id_to_health_history",
+      "breakpoints": true
     }
   ]
 }

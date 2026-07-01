@@ -18,7 +18,7 @@ interface HealthSummaryData {
   overallLatest: number;
   overallDelta: number;
   lastUpdated: string;
-  timeSeries: Array<{ date: string; score: number }>;
+  timeSeries: Array<{ date: string; score: number; sourceTaskId: number | null; sourceTaskTitle: string | null }>;
   categories: CategoryBreakdown[];
 }
 
@@ -395,9 +395,21 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
                 />
                 <YAxis domain={[0, 100]} tick={{ fontSize: 9, fill: "#484F58" }} />
                 <Tooltip
-                  formatter={(v: number) => [`${v}%`, "Overall"]}
-                  labelFormatter={l => new Date(l + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                  contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#161B22", color: "#E6EDF3" }}
+                  content={({ active, payload, label }) => {
+                    if (!active || !payload?.length) return null;
+                    const pt = payload[0].payload as { score: number; sourceTaskTitle?: string | null };
+                    return (
+                      <div style={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#161B22", color: "#E6EDF3", padding: "8px 10px", lineHeight: 1.5 }}>
+                        <p style={{ fontWeight: 600, marginBottom: 2 }}>
+                          {new Date(String(label) + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        </p>
+                        <p style={{ color: "#0078D4" }}>{pt.score}% overall</p>
+                        {pt.sourceTaskTitle && (
+                          <p style={{ color: "#7D8590", marginTop: 2 }}>⚡ via {pt.sourceTaskTitle}</p>
+                        )}
+                      </div>
+                    );
+                  }}
                 />
                 <Line
                   type="monotone"
@@ -409,6 +421,26 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
                 />
               </LineChart>
             </ResponsiveContainer>
+
+            {/* Automation-triggered snapshot attribution */}
+            {d.timeSeries.some(p => p.sourceTaskTitle) && (
+              <div className="mt-3 pt-3 border-t border-[#21262D]">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-2">Automation-Triggered Snapshots</p>
+                <div className="space-y-1.5">
+                  {d.timeSeries.filter(p => p.sourceTaskTitle).slice(-5).map(p => (
+                    <div key={p.date} className="flex items-center gap-2 text-xs text-[#7D8590]">
+                      <span className="text-emerald-400 flex-shrink-0">⚡</span>
+                      <span className="tabular-nums">
+                        {new Date(p.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                      <span className="text-[#484F58]">·</span>
+                      <span className="text-[#E6EDF3] truncate">{p.sourceTaskTitle}</span>
+                      <span className="ml-auto text-[#0078D4] font-semibold flex-shrink-0">{p.score}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

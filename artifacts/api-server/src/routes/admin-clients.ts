@@ -448,6 +448,7 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
         category: clientHealthHistoryTable.category,
         score: clientHealthHistoryTable.score,
         recordedAt: clientHealthHistoryTable.recordedAt,
+        sourceKanbanTaskId: clientHealthHistoryTable.sourceKanbanTaskId,
       })
       .from(clientHealthHistoryTable)
       .where(eq(clientHealthHistoryTable.clientId, id))
@@ -480,17 +481,36 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
       ? Math.round(categories.reduce((s, c) => s + c.latestScore, 0) / categories.length)
       : 0;
 
-    const dayMap = new Map<string, number[]>();
+    // Resolve kanban task titles for any automation-triggered snapshots.
+    const sourceTaskIdSet = new Set<number>(
+      rows.map(r => r.sourceKanbanTaskId).filter((sid): sid is number => sid != null)
+    );
+    const taskTitleMap = new Map<number, string>();
+    if (sourceTaskIdSet.size > 0) {
+      const taskRows = await db
+        .select({ id: kanbanTasksTable.id, title: kanbanTasksTable.title })
+        .from(kanbanTasksTable)
+        .where(inArray(kanbanTasksTable.id, [...sourceTaskIdSet]));
+      for (const t of taskRows) taskTitleMap.set(t.id, t.title);
+    }
+
+    const dayMap = new Map<string, { scores: number[]; sourceKanbanTaskId: number | null }>();
     for (const row of rows) {
       const day = row.recordedAt.toISOString().slice(0, 10);
-      if (!dayMap.has(day)) dayMap.set(day, []);
-      dayMap.get(day)!.push(row.score);
+      if (!dayMap.has(day)) dayMap.set(day, { scores: [], sourceKanbanTaskId: null });
+      const entry = dayMap.get(day)!;
+      entry.scores.push(row.score);
+      if (row.sourceKanbanTaskId != null && entry.sourceKanbanTaskId == null) {
+        entry.sourceKanbanTaskId = row.sourceKanbanTaskId;
+      }
     }
     const timeSeries = Array.from(dayMap.entries())
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, scores]) => ({
+      .map(([date, entry]) => ({
         date,
-        score: Math.round(scores.reduce((a, b) => a + b, 0) / scores.length),
+        score: Math.round(entry.scores.reduce((a, b) => a + b, 0) / entry.scores.length),
+        sourceTaskId: entry.sourceKanbanTaskId ?? null,
+        sourceTaskTitle: entry.sourceKanbanTaskId != null ? (taskTitleMap.get(entry.sourceKanbanTaskId) ?? null) : null,
       }));
 
     const lastUpdated = rows[rows.length - 1].recordedAt.toISOString();

@@ -361,15 +361,18 @@ async function processRunInBackground(
   // Determine up-front whether any linked kanban task has triggersHealthScore=true.
   // This gates snapshotHealthFromProfile so we never write two snapshots for the same run.
   let kanbanHealthScoreTrigger = false;
+  let triggerKanbanTaskId: number | null = null;
   if (finalStatus === "completed" && customerId && kanbanIds.length > 0) {
     const triggerRows = await db
-      .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+      .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
       .from(kanbanTasksTable)
       .where(inArray(kanbanTasksTable.id, kanbanIds));
-    kanbanHealthScoreTrigger = triggerRows.some(row => {
+    const triggeringRow = triggerRows.find(row => {
       const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
       return meta.triggersHealthScore === true;
     });
+    kanbanHealthScoreTrigger = !!triggeringRow;
+    triggerKanbanTaskId = triggeringRow?.id ?? null;
   }
 
   if (customerId) {
@@ -414,6 +417,7 @@ async function processRunInBackground(
                 category,
                 score,
                 recordedAt: now,
+                sourceKanbanTaskId: triggerKanbanTaskId,
               }))
             );
             healthScoreTriggered = true;
