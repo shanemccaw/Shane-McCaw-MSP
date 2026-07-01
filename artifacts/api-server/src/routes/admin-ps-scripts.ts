@@ -2362,7 +2362,7 @@ Rules:
 
 PowerShell script to analyze:
 \`\`\`powershell
-${script.scriptBody}
+${scriptBody}
 \`\`\``;
 
     const msg = await anthropic.messages.create({
