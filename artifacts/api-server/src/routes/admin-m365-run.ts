@@ -315,7 +315,7 @@ async function processRunInBackground(
         for (const row of rows) {
           const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
           await db.update(kanbanTasksTable)
-            .set({ taskMetadata: { ...meta, runningJobRef: null } })
+            .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: "Failed" } })
             .where(eq(kanbanTasksTable.id, row.id));
         }
       } catch (patchErr) {
@@ -391,13 +391,13 @@ async function processRunInBackground(
       };
       if (finalStatus === "completed") kanbanPatch.column = "completed";
       await db.update(kanbanTasksTable).set(kanbanPatch).where(inArray(kanbanTasksTable.id, kanbanIds));
-      // Clear runningJobRef so the button no longer shows "Running…" after reload
+      // Clear runningJobRef and stamp the terminal lastJobStatus so no stale "Running" ref lingers
       const metaRows = await db.select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
         .from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, kanbanIds));
       for (const row of metaRows) {
         const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
         await db.update(kanbanTasksTable)
-          .set({ taskMetadata: { ...meta, runningJobRef: null } })
+          .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: jobStatus } })
           .where(eq(kanbanTasksTable.id, row.id));
       }
       {
