@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight,
+  BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight, ChevronDown,
   Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
   Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2,
 } from "lucide-react";
@@ -40,11 +40,18 @@ interface InsightsDoc {
 
 interface InsightsDocFull extends InsightsDoc { htmlContent: string; }
 
+interface RunLogEntry {
+  ts: string;
+  level: "info" | "warn" | "error";
+  message: string;
+}
+
 interface Automation {
   id: number; name: string; customerId: number | null; projectId: number | null;
   automationType: string; cronExpression: string; cronLabel: string; enabled: boolean; runningAt: string | null;
   linkedRunbookScriptId: string | null; generateDocument: boolean;
   lastRunAt: string | null; nextRunAt: string | null; createdAt: string;
+  lastRunLog: RunLogEntry[] | null;
 }
 
 interface Customer { id: number; name: string; email: string; company: string; }
@@ -905,7 +912,9 @@ function AutomationTab({
   const [wLinkedScript, setWLinkedScript] = useState("");
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState<string | null>(null);
-  const [runningId, setRunningId]     = useState<number | null>(null);
+  const [runningId, setRunningId]         = useState<number | null>(null);
+  const [expandedLogId, setExpandedLogId] = useState<number | null>(null);
+  const [liveLog, setLiveLog]             = useState<RunLogEntry[]>([]);
   const { toast } = useToast();
 
   const loadAutomations = useCallback(async () => {
@@ -980,18 +989,59 @@ function AutomationTab({
 
   const runNow = async (a: Automation) => {
     setRunningId(a.id);
+    setLiveLog([]);
+    setExpandedLogId(a.id);
     try {
       const r = await fetchWithAuth(`${API}/admin/insights/automations/${a.id}/run`, { method: "POST" });
-      if (!r.ok) {
+      if (!r.ok || !r.body) {
         const body = await r.json() as { error?: string };
         toast({ title: "Run failed", description: body.error ?? "Unknown error", variant: "destructive" });
         return;
       }
-      const body = await r.json() as { automation?: Automation };
-      if (body.automation) {
-        setAutomations(prev => prev.map(x => x.id === a.id ? { ...x, ...body.automation } : x));
+
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      const parseSseChunk = (chunk: string) => {
+        const blocks = chunk.split("\n\n");
+        for (const block of blocks) {
+          if (!block.trim()) continue;
+          const lines = block.split("\n");
+          let event = "message";
+          let data = "";
+          for (const line of lines) {
+            if (line.startsWith("event: ")) event = line.slice(7).trim();
+            else if (line.startsWith("data: ")) data = line.slice(6).trim();
+          }
+          if (!data) continue;
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+            if (event === "log") {
+              setLiveLog(prev => [...prev, parsed as unknown as RunLogEntry]);
+            } else if (event === "complete") {
+              const updated = (parsed as { automation?: Automation }).automation;
+              if (updated) {
+                setAutomations(prev => prev.map(x => x.id === a.id ? { ...x, ...updated } : x));
+              }
+              toast({ title: `"${a.name}" ran successfully` });
+            } else if (event === "error") {
+              toast({ title: "Run failed", description: String(parsed["error"] ?? "Unknown error"), variant: "destructive" });
+            }
+          } catch { /* malformed SSE block — skip */ }
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const boundary = buffer.lastIndexOf("\n\n");
+        if (boundary !== -1) {
+          parseSseChunk(buffer.slice(0, boundary + 2));
+          buffer = buffer.slice(boundary + 2);
+        }
       }
-      toast({ title: `"${a.name}" ran successfully` });
     } catch {
       toast({ title: "Run failed", description: "Network error", variant: "destructive" });
     } finally {
@@ -1091,37 +1141,99 @@ function AutomationTab({
         : (
           <div className="divide-y divide-gray-700/30">
             {automations.map(a => (
-              <div key={a.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
-                <button onClick={() => void toggleEnabled(a)}
-                  className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${a.enabled ? "bg-blue-600" : "bg-gray-600"}`}>
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${a.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white text-sm">{a.name}</div>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
-                    <Clock className="w-3 h-3" />
-                    <span className="text-gray-300">{a.cronLabel || a.cronExpression}</span>
-                    <code className="text-gray-600 text-[10px]">({a.cronExpression})</code>
-                    {a.nextRunAt && <span>· next {new Date(a.nextRunAt).toLocaleDateString()}</span>}
-                    {a.lastRunAt && <span>· last ran {new Date(a.lastRunAt).toLocaleDateString()}</span>}
-                    {a.linkedRunbookScriptId && <span className="text-purple-400">· runbook linked</span>}
+              <div key={a.id}>
+                <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
+                  <button onClick={() => void toggleEnabled(a)}
+                    className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${a.enabled ? "bg-blue-600" : "bg-gray-600"}`}>
+                    <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${a.enabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm">{a.name}</div>
+                    <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
+                      <Clock className="w-3 h-3" />
+                      <span className="text-gray-300">{a.cronLabel || a.cronExpression}</span>
+                      <code className="text-gray-600 text-[10px]">({a.cronExpression})</code>
+                      {a.nextRunAt && <span>· next {new Date(a.nextRunAt).toLocaleDateString()}</span>}
+                      {a.lastRunAt && <span>· last ran {new Date(a.lastRunAt).toLocaleDateString()}</span>}
+                      {a.linkedRunbookScriptId && <span className="text-purple-400">· runbook linked</span>}
+                    </div>
+                  </div>
+                  {a.generateDocument && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded shrink-0">Generates Doc</span>}
+                  {(runningId === a.id || (a.lastRunLog && a.lastRunLog.length > 0)) && (
+                    <button
+                      onClick={() => setExpandedLogId(expandedLogId === a.id ? null : a.id)}
+                      title={expandedLogId === a.id ? "Hide run log" : runningId === a.id ? "Show live log" : "Show last run log"}
+                      className={`flex items-center gap-1 text-[10px] px-2 py-1 rounded transition-colors shrink-0 ${
+                        runningId === a.id
+                          ? "text-blue-300 bg-blue-500/20 hover:bg-blue-500/30"
+                          : "text-gray-400 hover:text-blue-300 bg-gray-700/40 hover:bg-gray-700"
+                      }`}
+                    >
+                      <ChevronDown className={`w-3 h-3 transition-transform ${expandedLogId === a.id ? "rotate-180" : ""}`} />
+                      {runningId === a.id ? "Live log" : "Last run log"}
+                    </button>
+                  )}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={() => void runNow(a)}
+                      disabled={runningId === a.id || !!a.runningAt}
+                      title={a.runningAt ? "Already running…" : "Run now"}
+                      className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {(runningId === a.id || !!a.runningAt)
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Play className="w-3.5 h-3.5" />}
+                    </button>
+                    <button onClick={() => openEdit(a)} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Pencil className="w-3.5 h-3.5" /></button>
+                    <button onClick={() => void deleteAutomation(a.id)} className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
                 </div>
-                {a.generateDocument && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded shrink-0">Generates Doc</span>}
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => void runNow(a)}
-                    disabled={runningId === a.id || !!a.runningAt}
-                    title={a.runningAt ? "Already running…" : "Run now"}
-                    className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {(runningId === a.id || !!a.runningAt)
-                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      : <Play className="w-3.5 h-3.5" />}
-                  </button>
-                  <button onClick={() => openEdit(a)} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Pencil className="w-3.5 h-3.5" /></button>
-                  <button onClick={() => void deleteAutomation(a.id)} className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
-                </div>
+                {expandedLogId === a.id && (() => {
+                  const isLive = runningId === a.id;
+                  const entries = isLive ? liveLog : (a.lastRunLog ?? []);
+                  if (!isLive && entries.length === 0) return null;
+                  return (
+                    <div className={`mx-4 mb-3 rounded-lg overflow-hidden border ${isLive ? "border-blue-500/40 bg-[#0A1628]" : "border-gray-700/50 bg-[#0D1117]"}`}>
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700/30">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+                            {isLive ? "Live log" : "Last run log"}
+                          </span>
+                          {isLive && <Loader2 className="w-2.5 h-2.5 animate-spin text-blue-400" />}
+                        </div>
+                        <span className="text-[10px] text-gray-600">
+                          {isLive ? `${entries.length} step${entries.length !== 1 ? "s" : ""}…` : (a.lastRunAt ? new Date(a.lastRunAt).toLocaleString() : "")}
+                        </span>
+                      </div>
+                      <div className="p-3 flex flex-col gap-1 max-h-64 overflow-y-auto font-mono text-xs">
+                        {entries.length === 0 && isLive && (
+                          <span className="text-gray-600 italic">Waiting for first step…</span>
+                        )}
+                        {entries.map((entry, i) => (
+                          <div key={i} className="flex items-start gap-2">
+                            <span className="text-gray-600 shrink-0 tabular-nums">
+                              {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            </span>
+                            <span className={`shrink-0 font-semibold uppercase text-[10px] mt-px ${
+                              entry.level === "error" ? "text-red-400" :
+                              entry.level === "warn"  ? "text-yellow-400" :
+                                                        "text-blue-400"
+                            }`}>
+                              {entry.level}
+                            </span>
+                            <span className={
+                              entry.level === "error" ? "text-red-300" :
+                              entry.level === "warn"  ? "text-yellow-300" :
+                                                        "text-gray-300"
+                            }>
+                              {entry.message}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

@@ -1487,6 +1487,7 @@ export const insightsAutomationsTable = pgTable("insights_automations", {
   lastRunAt:  timestamp("last_run_at"),
   nextRunAt:  timestamp("next_run_at"),
   runningAt:  timestamp("running_at"),
+  lastRunLog: jsonb("last_run_log").$type<{ ts: string; level: "info" | "warn" | "error"; message: string }[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -1412,21 +1412,50 @@ router.delete("/admin/insights/automations/:id", requireAdmin, async (req: Reque
 });
 
 // ── POST /api/admin/insights/automations/:id/run ──────────────────────────────
+// Streams execution progress as Server-Sent Events (text/event-stream).
+// Events:
+//   event: log   — data: RunLogEntry JSON  (emitted live during execution)
+//   event: complete — data: { ok, automation } JSON  (final, closes stream)
+//   event: error — data: { error: string }  (on failure)
 
 router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const sendEvent = (event: string, data: unknown) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
   try {
-    const id = parseInt(String(req.params["id"] ?? ""), 10);
-    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
-    const claimed = await executeAutomation(id);
-    if (claimed === null) return res.status(404).json({ error: "Automation not found" });
-    if (!claimed) return res.status(409).json({ error: "This automation is already running. Wait for it to finish before running again." });
+    const claimed = await executeAutomation(id, entry => sendEvent("log", entry));
+    if (claimed === null) {
+      sendEvent("error", { error: "Automation not found" });
+      return;
+    }
+    if (!claimed) {
+      sendEvent("error", { error: "This automation is already running. Wait for it to finish before running again." });
+      return;
+    }
     const [updated] = await db.select().from(insightsAutomationsTable)
       .where(eq(insightsAutomationsTable.id, id)).limit(1);
-    if (!updated) return res.status(404).json({ error: "Automation not found" });
-    return res.json({ ok: true, automation: { ...updated, cronLabel: describeCron(updated.cronExpression) } });
+    if (!updated) {
+      sendEvent("error", { error: "Automation not found" });
+    } else {
+      sendEvent("complete", { ok: true, automation: { ...updated, cronLabel: describeCron(updated.cronExpression) } });
+    }
   } catch (err) {
     logger.error({ err }, "insights automation run error");
-    return res.status(500).json({ error: "Failed to run automation" });
+    sendEvent("error", { error: "Failed to run automation" });
+  } finally {
+    res.end();
   }
 });
 
@@ -1447,6 +1476,8 @@ const REPORT_DOC_TYPE_LABELS_AUTO: Record<string, string> = {
   license_optimization_report:"License Optimization Report",
 };
 
+type RunLogEntry = { ts: string; level: "info" | "warn" | "error"; message: string };
+
 /**
  * Execute an automation.
  * Returns:
@@ -1457,12 +1488,24 @@ const REPORT_DOC_TYPE_LABELS_AUTO: Record<string, string> = {
  * Lock acquisition is atomic: a single UPDATE ... WHERE running_at IS NULL RETURNING
  * ensures only one concurrent caller can claim the lock.
  */
-export async function executeAutomation(automationId: number): Promise<boolean | null> {
+export async function executeAutomation(
+  automationId: number,
+  onLog?: (entry: RunLogEntry) => void,
+): Promise<boolean | null> {
   const [automation] = await db.select().from(insightsAutomationsTable)
     .where(eq(insightsAutomationsTable.id, automationId)).limit(1);
   if (!automation) return null;
 
   const now = new Date();
+  const runLog: RunLogEntry[] = [];
+
+  const log = (level: RunLogEntry["level"], message: string) => {
+    const entry: RunLogEntry = { ts: new Date().toISOString(), level, message };
+    runLog.push(entry);
+    onLog?.(entry);
+  };
+
+  log("info", "Automation started");
 
   // Atomically claim the lock — only proceeds if running_at is currently NULL
   const [claimed] = await db.update(insightsAutomationsTable)
@@ -1479,6 +1522,7 @@ export async function executeAutomation(automationId: number): Promise<boolean |
     // ── 1. Trigger linked Azure runbook (if configured) ─────────────────────
     if (automation.linkedRunbookScriptId) {
       if (isAzureConfigured()) {
+        log("info", "Resolving linked Azure runbook…");
         try {
           // Resolve the runbook name from the powershell_scripts table
           const [psScript] = await db.select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
@@ -1493,29 +1537,36 @@ export async function executeAutomation(automationId: number): Promise<boolean |
               { automationId, runbookName, jobId: job.jobId },
               "insights: automation triggered Azure runbook job",
             );
+            log("info", `Triggered Azure runbook "${runbookName}" (job ${job.jobId})`);
           } else {
             logger.warn(
               { automationId, linkedRunbookScriptId: automation.linkedRunbookScriptId },
               "insights: linked script has no azureRunbookName — skipping Azure trigger",
             );
+            log("warn", "Linked script has no Azure runbook name — runbook trigger skipped");
           }
         } catch (runbookErr) {
           logger.warn({ runbookErr, automationId }, "insights: Azure runbook trigger failed (non-fatal)");
+          log("warn", `Azure runbook trigger failed (non-fatal): ${String(runbookErr)}`);
         }
       } else {
         logger.info({ automationId }, "insights: Azure not configured — skipping runbook trigger");
+        log("warn", "Azure not configured — runbook trigger skipped");
       }
     }
 
     // ── 2. Generate document (if enabled) ───────────────────────────────────
     if (automation.generateDocument) {
+      log("info", "Fetching telemetry runs for document generation…");
       const runs = await fetchRunsForCustomer(
         automation.customerId ?? undefined,
         automation.projectId  ?? undefined,
         50,
       );
+      log("info", `Loaded ${runs.length} telemetry run(s)`);
       const scores = computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
       const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
+      log("info", `Scores — Security: ${scores.security}/100, Governance: ${scores.governance}/100, Readiness: ${scores.readiness}/100`);
 
       const docType   = REPORT_DOC_TYPES_FOR_AUTOMATION[automation.automationType] ?? "executive_summary";
       const docLabel  = REPORT_DOC_TYPE_LABELS_AUTO[docType] ?? docType;
@@ -1535,6 +1586,7 @@ Configuration telemetry:
 ${profileSample || "  No telemetry captured yet."}
 Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Include: branded header, score summary table, findings section, recommendations section, footer. 400-900 words.`;
 
+      log("info", `AI document generation started (${docLabel})…`);
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 2048,
@@ -1542,6 +1594,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
       });
 
       const htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
+      log("info", "AI generation complete — saving document draft…");
 
       const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
         customerId: automation.customerId ?? null,
@@ -1560,6 +1613,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id));
 
       logger.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and staged for review");
+      log("info", `Document saved as draft — "${automation.name} — ${reportDate}" (ID ${newDoc!.id})`);
 
       // ── Notify admins that a new report is ready for review ─────────────────
       const notifTitle = `New report ready: ${automation.name}`;
@@ -1582,9 +1636,11 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
               linkPath: notifLink,
             })),
           );
+          log("info", `Admin notification sent to ${admins.length} admin(s)`);
         }
       } catch (notifErr) {
         logger.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");
+        log("warn", "Failed to insert admin notifications (non-fatal)");
       }
 
       void sendWebPushToAdmins({
@@ -1592,16 +1648,26 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         body:     notifBody,
         linkPath: notifLink,
       });
+      log("info", "Web push notification dispatched");
     }
 
     // ── 3. Update last/next run timestamps ──────────────────────────────────
     const nextRunAt = nextRunFromCron(automation.cronExpression);
+    log("info", `Next scheduled run: ${nextRunAt ? nextRunAt.toISOString() : "N/A"}`);
+    log("info", "Automation completed successfully");
+
     await db.update(insightsAutomationsTable)
-      .set({ lastRunAt: now, nextRunAt, updatedAt: now })
+      .set({ lastRunAt: now, nextRunAt, updatedAt: now, lastRunLog: runLog })
       .where(eq(insightsAutomationsTable.id, automationId));
 
   } catch (err) {
     logger.warn({ err, automationId }, "insights: automation execution failed (non-fatal)");
+    log("error", `Automation failed: ${String(err)}`);
+    // Persist the partial log even on failure
+    await db.update(insightsAutomationsTable)
+      .set({ lastRunAt: now, updatedAt: now, lastRunLog: runLog })
+      .where(eq(insightsAutomationsTable.id, automationId))
+      .catch(() => { /* best-effort */ });
   } finally {
     // Always clear the running lock so the next scheduled/manual run can proceed
     await db.update(insightsAutomationsTable)
