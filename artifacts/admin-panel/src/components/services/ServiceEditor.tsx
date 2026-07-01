@@ -445,7 +445,7 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ scriptPackageId: scriptSetAddId }),
       });
-      if (res.ok) { setScriptSets(await res.json() as ScriptSetItem[]); setScriptSetAddId(""); }
+      if (res.ok) { const data = await res.json(); if (Array.isArray(data)) { setScriptSets(data as ScriptSetItem[]); } setScriptSetAddId(""); }
       else toast({ title: "Failed to add script set", variant: "destructive" });
     } finally { setScriptSetSaving(false); }
   };

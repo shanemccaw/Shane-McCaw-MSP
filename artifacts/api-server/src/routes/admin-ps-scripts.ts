@@ -3013,7 +3013,21 @@ router.post("/admin/services/:id/script-sets", requireAdmin, async (req: Request
       .insert(serviceScriptSetsTable)
       .values({ serviceId, scriptPackageId, displayOrder: nextOrder })
       .onConflictDoNothing();
-    res.json({ ok: true });
+    const rows = await db
+      .select({
+        scriptPackageId: serviceScriptSetsTable.scriptPackageId,
+        displayOrder: serviceScriptSetsTable.displayOrder,
+        title: scriptPackagesTable.title,
+        category: scriptPackagesTable.category,
+        tags: scriptPackagesTable.tags,
+        permissions: scriptPackagesTable.permissions,
+        createdAt: scriptPackagesTable.createdAt,
+      })
+      .from(serviceScriptSetsTable)
+      .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
+      .where(eq(serviceScriptSetsTable.serviceId, serviceId))
+      .orderBy(asc(serviceScriptSetsTable.displayOrder));
+    res.json(rows);
   } catch (err) {
     logger.error({ err, serviceId, scriptPackageId }, "admin-ps-scripts: failed to add service script set");
     res.status(500).json({ error: "Failed to link script package to service" });
