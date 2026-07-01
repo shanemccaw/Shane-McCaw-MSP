@@ -1417,6 +1417,10 @@ router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Req
   try {
     const id = parseInt(String(req.params["id"] ?? ""), 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    const [existing] = await db.select({ runningAt: insightsAutomationsTable.runningAt })
+      .from(insightsAutomationsTable).where(eq(insightsAutomationsTable.id, id)).limit(1);
+    if (!existing) return res.status(404).json({ error: "Automation not found" });
+    if (existing.runningAt) return res.status(409).json({ error: "This automation is already running. Wait for it to finish before running again." });
     await executeAutomation(id);
     const [updated] = await db.select().from(insightsAutomationsTable)
       .where(eq(insightsAutomationsTable.id, id)).limit(1);
@@ -1451,6 +1455,16 @@ export async function executeAutomation(automationId: number): Promise<void> {
   if (!automation) return;
 
   const now = new Date();
+
+  // Reject concurrent triggers (cron + manual) — route also checks, but this is the definitive guard
+  if (automation.runningAt) {
+    logger.warn({ automationId, runningAt: automation.runningAt }, "insights: automation already running — skipping duplicate execution");
+    return;
+  }
+
+  // Mark as running
+  await db.update(insightsAutomationsTable)
+    .set({ runningAt: now }).where(eq(insightsAutomationsTable.id, automationId));
 
   try {
     // ── 1. Trigger linked Azure runbook (if configured) ─────────────────────
@@ -1579,6 +1593,10 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
 
   } catch (err) {
     logger.warn({ err, automationId }, "insights: automation execution failed (non-fatal)");
+  } finally {
+    // Always clear the running lock so the next scheduled/manual run can proceed
+    await db.update(insightsAutomationsTable)
+      .set({ runningAt: null }).where(eq(insightsAutomationsTable.id, automationId));
   }
 }
 

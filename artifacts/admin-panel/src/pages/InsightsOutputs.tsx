@@ -42,7 +42,7 @@ interface InsightsDocFull extends InsightsDoc { htmlContent: string; }
 
 interface Automation {
   id: number; name: string; customerId: number | null; projectId: number | null;
-  automationType: string; cronExpression: string; cronLabel: string; enabled: boolean;
+  automationType: string; cronExpression: string; cronLabel: string; enabled: boolean; runningAt: string | null;
   linkedRunbookScriptId: string | null; generateDocument: boolean;
   lastRunAt: string | null; nextRunAt: string | null; createdAt: string;
 }
@@ -1111,11 +1111,11 @@ function AutomationTab({
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => void runNow(a)}
-                    disabled={runningId === a.id}
-                    title="Run now"
+                    disabled={runningId === a.id || !!a.runningAt}
+                    title={a.runningAt ? "Already running…" : "Run now"}
                     className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {runningId === a.id
+                    {(runningId === a.id || !!a.runningAt)
                       ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       : <Play className="w-3.5 h-3.5" />}
                   </button>

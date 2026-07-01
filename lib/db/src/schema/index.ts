@@ -1484,8 +1484,9 @@ export const insightsAutomationsTable = pgTable("insights_automations", {
   enabled: boolean("enabled").notNull().default(true),
   linkedRunbookScriptId: text("linked_runbook_script_id"),
   generateDocument: boolean("generate_document").notNull().default(true),
-  lastRunAt: timestamp("last_run_at"),
-  nextRunAt: timestamp("next_run_at"),
+  lastRunAt:  timestamp("last_run_at"),
+  nextRunAt:  timestamp("next_run_at"),
+  runningAt:  timestamp("running_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
