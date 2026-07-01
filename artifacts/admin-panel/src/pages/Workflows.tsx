@@ -30,6 +30,8 @@ const TASK_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "governanceSetup", label: "Governance Setup" },
   { value: "automationBuild", label: "Automation Build" },
   { value: "documentDelivery", label: "Document Delivery" },
+  { value: "script", label: "Script" },
+  { value: "manualScript", label: "Manual Script" },
 ];
 
 const TASK_TYPE_LABELS: Record<string, string> = Object.fromEntries(
@@ -1008,7 +1010,9 @@ function SortableTaskRow({
     environmentHealthCheck: { bg: "bg-cyan-500/15",  text: "text-cyan-400" },
     governanceSetup:      { bg: "bg-indigo-500/15", text: "text-indigo-400" },
     automationBuild:      { bg: "bg-violet-500/15", text: "text-violet-400" },
-    documentDelivery:     { bg: "bg-emerald-500/15","text": "text-emerald-400" },
+    documentDelivery:     { bg: "bg-emerald-500/15", text: "text-emerald-400" },
+    script:               { bg: "bg-orange-500/15", text: "text-orange-400" },
+    manualScript:         { bg: "bg-amber-500/15",  text: "text-amber-400" },
   };
   const typeStyle = task.taskType ? (taskTypeMeta[task.taskType] ?? { bg: "bg-[#30363D]", text: "text-[#7D8590]" }) : null;
 
