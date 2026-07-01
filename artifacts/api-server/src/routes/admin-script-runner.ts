@@ -14,8 +14,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable, scriptRunResultsTable, powershellScriptsTable, scriptModulesTable } from "@workspace/db";
 import { eq, desc, and, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
-import { getCredential } from "../lib/azure-keyvault";
+import { requireAdmin } from "../middlewares/requireAuth.ts";
+import { getCredential } from "../lib/azure-keyvault.ts";
 import {
   listRunbooks,
   createRunbookJob,
@@ -24,11 +24,11 @@ import {
   isTerminalStatus,
   pushScriptToAzure,
   isAzureConfigured,
-} from "../lib/azure-automation";
-import { logger } from "../lib/logger";
+} from "../lib/azure-automation.ts";
+import { logger } from "../lib/logger.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { sendAdminSms } from "../lib/sms";
-import { validatePsSyntax } from "../lib/ps-guard";
+import { sendAdminSms } from "../lib/sms.ts";
+import { validatePsSyntax } from "../lib/ps-guard.ts";
 
 const router: IRouter = Router();
 
