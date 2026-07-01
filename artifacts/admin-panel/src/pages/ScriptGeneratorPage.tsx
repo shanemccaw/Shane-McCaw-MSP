@@ -2664,10 +2664,9 @@ function PermissionsSidebarPanel({
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const r = await apiFetch(`/admin/ps-scripts/${scriptId}/analyze-permissions`, token, { method: "POST" });
-      if (!r.ok) { toast({ title: "Analysis failed", description: `Server returned ${r.status}`, variant: "destructive" }); return; }
-      const data = await r.json() as { appPermissionDetails?: AppPermDetail[]; delegatedPermissionDetails?: AppPermDetail[] };
-      setAnalysisResult({ app: data.appPermissionDetails ?? [], delegated: data.delegatedPermissionDetails ?? [] });
+      // apiFetch already parses JSON and throws on non-2xx — use result directly
+      const data = await apiFetch(`/admin/ps-scripts/${scriptId}/analyze-permissions`, token, { method: "POST" }) as { appPermissionDetails?: AppPermDetail[]; delegatedPermissionDetails?: AppPermDetail[] } | null;
+      setAnalysisResult({ app: data?.appPermissionDetails ?? [], delegated: data?.delegatedPermissionDetails ?? [] });
     } catch (e) {
       toast({ title: "Analysis failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -2885,21 +2884,29 @@ function PermissionsSidebarPanel({
             {permissions.delegatedPermissions.length > 0 && (
               <div>
                 <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide mb-1.5">Delegated</p>
-                <div className="flex flex-col gap-1">
-                  {permissions.delegatedPermissions.map((p) => (
-                    <div key={p} className="flex items-center gap-1 group">
-                      <PermissionBadge text={p} />
-                      {canEdit && (
-                        <button
-                          onClick={() => handleRemoveDelegated(p)}
-                          className="opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
-                          title="Remove"
-                        >
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                <div className="flex flex-col gap-2">
+                  {permissions.delegatedPermissions.map((p) => {
+                    const detail = permissions.delegatedPermissionDetails?.find(d => d.name === p);
+                    return (
+                      <div key={p} className="bg-[#161B22] border border-[#21262D] rounded p-2 group">
+                        <div className="flex items-center gap-1">
+                          <PermissionBadge text={p} />
+                          {canEdit && (
+                            <button
+                              onClick={() => handleRemoveDelegated(p)}
+                              className="ml-auto opacity-0 group-hover:opacity-100 text-[#484F58] hover:text-red-400 transition-all rounded p-0.5 flex-shrink-0"
+                              title="Remove"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                          )}
+                        </div>
+                        {detail?.description && (
+                          <p className="mt-1 text-[10px] text-[#7D8590] leading-relaxed">{detail.description}</p>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
