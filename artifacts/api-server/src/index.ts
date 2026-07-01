@@ -4,6 +4,7 @@ import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/s
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
 import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
+import { reconcileOrphanedRuns } from "./lib/kanban-auto-fire";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
@@ -80,6 +81,14 @@ app.listen(port, (err) => {
   seedArticles().catch((err) => {
     logger.warn({ err }, "Article seed failed (non-fatal)");
   });
+
+  // Recover kanban cards orphaned by a server restart mid-run.
+  // Runs once on startup, ~2 s after the server is ready (gives DB pool time to warm up).
+  setTimeout(() => {
+    reconcileOrphanedRuns().catch((err) => {
+      logger.warn({ err }, "kanban orphan reconciliation failed (non-fatal)");
+    });
+  }, 2_000);
 
   // ── Daily escalation check: manual script cards stalled in Waiting on Customer ──
   // Runs once at startup (to catch any overnight stalls) then every 24 h.

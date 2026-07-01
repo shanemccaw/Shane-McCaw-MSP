@@ -222,6 +222,10 @@ async function resolveSiblingIds(taskId: number, projectId: number, azureRunbook
       and(
         eq(kanbanTasksTable.projectId, projectId),
         sql`task_metadata->'linkedRunbook'->>'azureRunbookName' = ${azureRunbookName}`,
+        // Never pull already-completed cards back into a new job's sibling set.
+        // Without this, firing the next backlog card (same runbook) would move the
+        // just-completed sibling back to in_progress, erasing its completed state.
+        sql`"column" != 'completed'`,
       ),
     );
   const ids = siblings.map(s => s.id);
@@ -540,5 +544,154 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId, card.linkedRunbook.scriptTitle, automationRunId);
   } catch (err) {
     logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
+  }
+}
+
+/**
+ * Called once on server startup to recover cards that were left in_progress when
+ * the previous server process was killed mid-run (e.g. during a deploy or restart).
+ *
+ * Strategy:
+ *  1. Find all kanban cards stuck in "in_progress" that have a runningJobRef.
+ *  2. Group by jobId.
+ *  3. For cards whose completionStatus is already "script_completed" (sibling-stampede
+ *     victims), simply flip column back to "completed" — no Azure check needed.
+ *  4. For the rest: check Azure job status. If terminal, resolve the outcome and update
+ *     cards. If still running, re-spawn the background poller.
+ *  5. For any client whose cards were completed, fire autoFireFirstBacklogScript so the
+ *     chain continues.
+ */
+export async function reconcileOrphanedRuns(): Promise<void> {
+  if (!isAzureConfigured()) return;
+
+  try {
+    const stuck = await db
+      .select({
+        id:               kanbanTasksTable.id,
+        projectId:        kanbanTasksTable.projectId,
+        workflowStepId:   kanbanTasksTable.workflowStepId,
+        completionStatus: kanbanTasksTable.completionStatus,
+        jobId:            sql<string>`(task_metadata->>'runningJobRef')`,
+        clientUserId:     projectsTable.clientUserId,
+      })
+      .from(kanbanTasksTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, kanbanTasksTable.projectId))
+      .where(
+        and(
+          eq(kanbanTasksTable.column, "in_progress"),
+          isNotNull(sql`task_metadata->>'runningJobRef'`),
+        ),
+      );
+
+    if (stuck.length === 0) return;
+
+    logger.info({ count: stuck.length }, "kanban-auto-fire: reconciling orphaned in_progress cards");
+
+    // Group by jobId
+    const byJob = new Map<string, typeof stuck>();
+    for (const card of stuck) {
+      if (!card.jobId) continue;
+      const group = byJob.get(card.jobId) ?? [];
+      group.push(card);
+      byJob.set(card.jobId, group);
+    }
+
+    const processedClientIds = new Set<number>();
+
+    for (const [jobId, cards] of byJob) {
+      try {
+        const cardIds        = cards.map(c => c.id);
+        const { projectId, workflowStepId, clientUserId } = cards[0];
+        if (projectId == null || clientUserId == null) continue;
+
+        // Case 1: completionStatus already says script_completed but column is in_progress.
+        // This happens when a sibling-stampede moved a completed card back. No Azure check needed.
+        const allAlreadyDone = cards.every(c => c.completionStatus === "script_completed");
+        if (allAlreadyDone) {
+          await db.update(kanbanTasksTable)
+            .set({ column: "completed", updatedAt: new Date() })
+            .where(inArray(kanbanTasksTable.id, cardIds));
+          const fixed = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+          for (const t of fixed) broadcastKanbanChange(projectId, { action: "updated", task: t });
+          logger.info({ cardIds, jobId }, "kanban-auto-fire: fixed sibling-stampede victims (column→completed)");
+          processedClientIds.add(clientUserId);
+          continue;
+        }
+
+        // Case 2: Check Azure for the real job outcome
+        const { status } = await getJobStatus(jobId);
+
+        if (!isTerminalStatus(status)) {
+          // Still running in Azure — re-spawn the poller so we don't lose the result again
+          const [runRow] = await db.select({ id: scriptRunResultsTable.id })
+            .from(scriptRunResultsTable)
+            .where(eq(scriptRunResultsTable.jobId, jobId))
+            .limit(1);
+          void runInBackground(jobId, cardIds, projectId, workflowStepId, clientUserId, runRow?.id, "(reconciled)", undefined);
+          logger.info({ jobId, cardIds }, "kanban-auto-fire: re-spawned poller for job still running in Azure");
+          continue;
+        }
+
+        // Terminal — settle the outcome
+        const outputLines = await getJobOutput(jobId).catch(() => [] as Array<{ text: string }>);
+        const output      = outputLines.map((l: { text: string }) => l.text).join("\n");
+        const success     = status === "Completed";
+        const summary     = output.split("\n").filter(Boolean).slice(-10).join("\n");
+        const notesBody   = summary ? `\n\nOutput:\n${summary}` : "";
+
+        // Update scriptRunResults if the row is still showing "running"
+        const [runRow] = await db.select({ id: scriptRunResultsTable.id, currentStatus: scriptRunResultsTable.status })
+          .from(scriptRunResultsTable)
+          .where(eq(scriptRunResultsTable.jobId, jobId))
+          .limit(1);
+        if (runRow && runRow.currentStatus === "running") {
+          await db.update(scriptRunResultsTable)
+            .set({ status: success ? "completed" : "failed", rawOutput: { text: output, azureStatus: status } })
+            .where(eq(scriptRunResultsTable.id, runRow.id));
+        }
+
+        if (success) {
+          await db.update(kanbanTasksTable)
+            .set({
+              column:           "completed",
+              completionStatus: "script_completed",
+              completionNotes:  `Script run completed (job ${jobId}).${notesBody}`,
+              updatedAt:        new Date(),
+            })
+            .where(inArray(kanbanTasksTable.id, cardIds));
+
+          const completedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+          for (const t of completedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+
+          if (workflowStepId != null) {
+            await advancePhaseIfComplete(workflowStepId, projectId);
+          }
+          processedClientIds.add(clientUserId);
+        } else {
+          await db.update(kanbanTasksTable)
+            .set({
+              completionStatus: "script_failed",
+              completionNotes:  `Script run failed — status: ${status} (job ${jobId}).${notesBody}`,
+              updatedAt:        new Date(),
+            })
+            .where(inArray(kanbanTasksTable.id, cardIds));
+
+          const failedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+          for (const t of failedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+        }
+
+        await syncProjectProgress(projectId);
+        logger.info({ jobId, success, cardIds }, "kanban-auto-fire: reconciled orphaned job");
+      } catch (err) {
+        logger.warn({ err, jobId }, "kanban-auto-fire: could not reconcile this job (non-fatal)");
+      }
+    }
+
+    // Continue the auto-fire chain for any client whose cards were just resolved
+    for (const clientUserId of processedClientIds) {
+      void autoFireFirstBacklogScript(clientUserId);
+    }
+  } catch (err) {
+    logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
   }
 }
