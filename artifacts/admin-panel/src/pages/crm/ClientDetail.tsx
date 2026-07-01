@@ -95,6 +95,27 @@ interface PermissionCheckResult {
   checkedAt: string;
 }
 
+const PERMISSION_DESCRIPTIONS: Record<string, string> = {
+  "User.Read.All":                  "Read all users in the Microsoft 365 directory",
+  "Group.Read.All":                 "Read all Microsoft 365 groups",
+  "Directory.Read.All":             "Read all directory data (users, groups, contacts)",
+  "RoleManagement.Read.Directory":  "Read Azure AD role assignments and definitions",
+  "AuditLog.Read.All":              "Access sign-in and audit logs",
+  "SecurityEvents.Read.All":        "Read security alerts and events",
+  "Mail.Read":                      "Read messages in user mailboxes",
+  "MailboxSettings.Read":           "Read mailbox configuration settings",
+  "Sites.Read.All":                 "Read content across all SharePoint sites",
+  "Files.Read.All":                 "Read files in all drives and sites",
+  "Team.ReadBasic.All":             "Read basic info about all Teams",
+  "TeamSettings.Read.All":          "Read Teams settings and configuration",
+  "Channel.ReadBasic.All":          "Read basic info about Teams channels",
+  "Organization.Read.All":          "Read the organisation profile",
+  "Reports.Read.All":               "Access Microsoft 365 usage reports",
+  "ThreatAssessment.Read.All":      "Read threat assessment requests",
+  "Compliance.Read.All":            "Read compliance data",
+  "Exchange.ManageAsApp":           "Manage Exchange Online as a service account",
+};
+
 interface AppRegRecord {
   status: "pending" | "submitted" | "verified";
   tenantId: string;
@@ -2275,11 +2296,16 @@ export default function ClientDetailPage() {
                       {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
                         <div className="pt-3 border-t border-border">
                           <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
-                          <div className="space-y-1.5">
+                          <div className="space-y-2">
                             {appReg.permissionCheck.missing.map(perm => (
-                              <div key={perm} className="flex items-center gap-2 text-xs">
-                                <svg className="w-3 h-3 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                                <code className="text-red-300 font-mono">{perm}</code>
+                              <div key={perm} className="flex items-start gap-2">
+                                <svg className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                <div>
+                                  <code className="text-xs text-red-300 font-mono">{perm}</code>
+                                  {PERMISSION_DESCRIPTIONS[perm] && (
+                                    <p className="text-[11px] text-muted-foreground mt-0.5">{PERMISSION_DESCRIPTIONS[perm]}</p>
+                                  )}
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -2315,11 +2341,16 @@ export default function ClientDetailPage() {
                     {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
                       <div className="pt-3 border-t border-border">
                         <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {appReg.permissionCheck.missing.map(perm => (
-                            <div key={perm} className="flex items-center gap-2 text-xs">
-                              <svg className="w-3 h-3 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-                              <code className="text-red-300 font-mono">{perm}</code>
+                            <div key={perm} className="flex items-start gap-2">
+                              <svg className="w-3 h-3 text-red-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              <div>
+                                <code className="text-xs text-red-300 font-mono">{perm}</code>
+                                {PERMISSION_DESCRIPTIONS[perm] && (
+                                  <p className="text-[11px] text-muted-foreground mt-0.5">{PERMISSION_DESCRIPTIONS[perm]}</p>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
