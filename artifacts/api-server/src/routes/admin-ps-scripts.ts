@@ -2021,7 +2021,7 @@ router.patch("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request
   const pkgId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { title, category } = req.body as { title?: string; category?: string };
+  const { title, category, permissions } = req.body as { title?: string; category?: string; permissions?: PsScriptPermissions };
 
   try {
     const [updated] = await db
@@ -2029,6 +2029,7 @@ router.patch("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request
       .set({
         ...(title !== undefined && { title: title.trim() }),
         ...(category !== undefined && { category }),
+        ...(permissions !== undefined && { permissions }),
       })
       .where(eq(scriptPackagesTable.id, pkgId))
       .returning();

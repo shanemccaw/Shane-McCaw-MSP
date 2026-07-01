@@ -59,6 +59,7 @@ function buildContractHtml(
   clientInfo?: { company?: string; address?: string; phone?: string; email?: string },
   coupon?: { code: string; discountAmount: number; discountedTotal: number } | null,
   isFree?: boolean,
+  requiredPermissions?: { scope: string; reason: string }[],
 ): string {
   const hasRecurring = services.some(s => s.billingType === "recurring_monthly");
   const hasOneTime = services.some(s => s.billingType === "one_time");
@@ -220,6 +221,25 @@ function buildContractHtml(
     <h3 style="${HEADING_STYLE}">11. Entire Agreement</h3>
     <p style="${PARA_STYLE}">This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
 
+    ${requiredPermissions && requiredPermissions.length > 0 ? `
+    <h3 style="${HEADING_STYLE}">${coupon?.code === "TESTIMONIAL" ? "13" : "12"}. App Registration Permissions</h3>
+    <p style="${PARA_STYLE}">To enable automated Microsoft 365 management, Client agrees to grant the following Application permissions (not Delegated) in an Azure AD App Registration and to click "Grant admin consent" in the Azure portal before work commences on automated deliverables. These permissions are required for Consultant's scripts and automation to operate on Client's tenant.</p>
+    <table style="width:100%;border-collapse:collapse;margin:8px 0 12px 0;font-size:0.85em;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:6px 10px;background:#0A2540;color:#fff;border-radius:4px 0 0 4px;">Permission Scope</th>
+          <th style="text-align:left;padding:6px 10px;background:#0A2540;color:#fff;border-radius:0 4px 4px 0;">Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${requiredPermissions.map((p, i) => `
+        <tr style="${i % 2 === 1 ? "background:#F7F9FC;" : ""}">
+          <td style="padding:5px 10px;font-family:monospace;font-weight:600;color:#0078D4;white-space:nowrap;">${p.scope}</td>
+          <td style="padding:5px 10px;color:#6B7280;">${p.reason || "—"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>
+    ` : ""}
     ${coupon?.code === "TESTIMONIAL" ? `
     <h3 style="${HEADING_STYLE}">12. Testimonial</h3>
     <p style="${PARA_STYLE}">Upon satisfactory completion of the services described herein, Client agrees to provide Consultant with a brief written testimonial or case study (2–5 sentences) describing the results achieved. Client grants Consultant the non-exclusive right to publish this testimonial on Consultant's website and marketing materials, attributed to Client's name and company unless Client requests anonymity in writing. Consultant agrees not to alter the substance of the testimonial without Client's prior approval.</p>
@@ -269,6 +289,8 @@ export default function OnboardingContract() {
   const [addrState, setAddrState] = useState(user?.addressState ?? "");
   const [zip, setZip] = useState(user?.addressZip ?? "");
   const [agreed, setAgreed] = useState(false);
+  const [appRegAgreed, setAppRegAgreed] = useState(false);
+  const [requiredPermissions, setRequiredPermissions] = useState<{ scope: string; reason: string }[]>([]);
   const [signed, setSigned] = useState(false);
   const [stripeError, setStripeError] = useState("");
   const [hasScrolled, setHasScrolled] = useState(false);
@@ -359,6 +381,14 @@ export default function OnboardingContract() {
       .then(r => r.json() as Promise<{ available: boolean }>)
       .then(d => setOfferAvailable(d.available))
       .catch(() => setOfferAvailable(false));
+
+    // Fetch aggregated required permissions for these services (public endpoint, no auth needed with ?serviceIds=)
+    if (serviceIds.length > 0) {
+      fetch(`/api/portal/required-permissions?serviceIds=${serviceIds.join(",")}`)
+        .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
+        .then(d => { if (d?.permissions?.length) setRequiredPermissions(d.permissions); })
+        .catch(() => { /* silently ignore — permissions section just won't appear */ });
+    }
 
     // Only fetch profile if logged in
     if (user) {
@@ -471,6 +501,7 @@ export default function OnboardingContract() {
       return;
     }
     if (!agreed) { setError("Please confirm you have read and agree to the terms."); return; }
+    if (requiredPermissions.length > 0 && !appRegAgreed) { setError("Please confirm you will configure the required Azure AD App Registration permissions."); return; }
     if (!signed || !hasDrawn.current) { setError("Please draw your signature in the box above."); return; }
 
     setError("");
@@ -531,6 +562,7 @@ export default function OnboardingContract() {
           signerName,
           wizardSelections: Object.keys(wizardSelectionsInput).length > 0 ? wizardSelectionsInput : undefined,
           couponCode: appliedCoupon?.code ?? undefined,
+          appRegPermissionsAgreed: requiredPermissions.length > 0 ? appRegAgreed : false,
           // Pass guest info when not logged in — address is saved to their profile at signing time
           ...(!user ? {
             guestEmail: guestInfo.email,
@@ -892,6 +924,7 @@ export default function OnboardingContract() {
                 },
                 appliedCoupon,
                 isFree,
+                requiredPermissions.length > 0 ? requiredPermissions : undefined,
               ) }}
             />
           </div>
@@ -1024,6 +1057,24 @@ export default function OnboardingContract() {
                 </span>
               </label>
             </div>
+
+            {requiredPermissions.length > 0 && (
+              <div className={`bg-white border rounded-2xl p-5 transition-opacity ${hasScrolled ? "border-border opacity-100" : "border-border opacity-50"}`}>
+                <label className={`flex items-start gap-3 ${hasScrolled ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                  <input
+                    type="checkbox"
+                    checked={appRegAgreed}
+                    disabled={!hasScrolled}
+                    onChange={e => setAppRegAgreed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
+                  />
+                  <span className="text-sm text-[#0A2540]">
+                    I understand that the {requiredPermissions.length} Azure AD App Registration permission{requiredPermissions.length !== 1 ? "s" : ""} listed in Section 12 of this agreement must be granted in my tenant before automated deliverables can be activated. I agree to configure these permissions and grant admin consent in the Azure portal.
+                    {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
+                  </span>
+                </label>
+              </div>
+            )}
 
             {lpTokenExpired && (
               <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-4 text-sm">

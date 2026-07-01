@@ -349,6 +349,7 @@ export const contractsTable = pgTable("contracts", {
   sharepointFileUrl: text("sharepoint_file_url"),
   sharepointFileId: text("sharepoint_file_id"),
   localFilePath: text("local_file_path"),
+  appRegPermissionsAgreed: boolean("app_reg_permissions_agreed").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

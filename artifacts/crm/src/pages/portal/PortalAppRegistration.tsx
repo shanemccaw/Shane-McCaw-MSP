@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
-import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
 
 interface AppRegRecord {
   status: "pending" | "submitted" | "verified";
@@ -39,11 +38,18 @@ function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
   );
 }
 
+interface DynamicPermission {
+  scope: string;
+  reason: string;
+}
+
 export default function PortalAppRegistration() {
   const { fetchWithAuth } = useAuth();
 
   const [record, setRecord] = useState<AppRegRecord | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dynamicPermissions, setDynamicPermissions] = useState<DynamicPermission[] | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   const [tenantId, setTenantId] = useState("");
   const [azureClientId, setAzureClientId] = useState("");
@@ -66,6 +72,12 @@ export default function PortalAppRegistration() {
       })
       .catch(() => null)
       .finally(() => setLoading(false));
+
+    fetchWithAuth("/api/portal/required-permissions")
+      .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
+      .then(d => setDynamicPermissions(d?.permissions ?? null))
+      .catch(() => setDynamicPermissions(null))
+      .finally(() => setPermissionsLoading(false));
   }, [fetchWithAuth]);
 
   function enterUpdateMode() {
@@ -196,24 +208,27 @@ export default function PortalAppRegistration() {
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Required API Permissions</p>
             <p className="text-xs text-gray-500 mt-0.5">Grant all of these as <strong>Application</strong> permissions (not delegated) in your App Registration</p>
           </div>
-          <div>
-            {REQUIRED_PERMISSIONS.map(group => (
-              <div key={group.category}>
-                <div className="px-5 py-2 bg-[#0A2540]/[0.04] border-b border-border">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/50">{group.category}</span>
+          {permissionsLoading ? (
+            <div className="px-5 py-6 flex justify-center">
+              <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : dynamicPermissions && dynamicPermissions.length > 0 ? (
+            <div>
+              {dynamicPermissions.map((p, i) => (
+                <div
+                  key={p.scope}
+                  className={`px-5 py-3 ${i < dynamicPermissions.length - 1 ? "border-b border-border" : ""}`}
+                >
+                  <code className="inline-block text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{p.scope}</code>
+                  {p.reason && <p className="text-xs text-gray-500 mt-1 leading-relaxed">{p.reason}</p>}
                 </div>
-                {group.permissions.map((p, i) => (
-                  <div
-                    key={p.permission}
-                    className={`px-5 py-3 ${i < group.permissions.length - 1 ? "border-b border-border" : ""}`}
-                  >
-                    <code className="inline-block text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{p.permission}</code>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{p.reason}</p>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-5 py-4 text-sm text-gray-500">
+              No specific permissions have been configured for your active services yet. Your consultant will provide the exact list when automation is set up for your account.
+            </div>
+          )}
           <div className="px-5 py-3 border-t border-border bg-amber-50">
             <p className="text-xs text-amber-800">
               <strong>After granting permissions:</strong> Click <strong>Grant admin consent</strong> in the Azure portal — otherwise the App Registration won't be able to act on behalf of the organization.

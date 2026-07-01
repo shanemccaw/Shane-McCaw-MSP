@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -592,6 +592,72 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
     timeSeries,
     categories,
   });
+});
+
+// ─── CLIENT: Aggregated required App Registration permissions ─────────────────
+// GET /portal/required-permissions
+//   - No ?serviceIds → derive from calling user's active client_services
+//   - ?serviceIds=1,2,3 → explicit service IDs (used at contract-signing time before active services exist)
+// Returns { permissions: Array<{ scope: string; reason: string }> }
+router.get("/portal/required-permissions", async (req: Request, res: Response) => {
+  try {
+    let serviceIds: number[] = [];
+
+    const rawIds = req.query["serviceIds"] as string | undefined;
+    if (rawIds) {
+      serviceIds = rawIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+    } else {
+      // Auth required when not passing explicit serviceIds
+      const authHeader = req.headers.authorization;
+      if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
+      const jwtSecret = process.env.JWT_SECRET;
+      if (!jwtSecret) { res.status(401).json({ error: "Unauthorized" }); return; }
+      let userId: number;
+      try {
+        const payload = jwt.verify(authHeader.slice(7), jwtSecret) as { id: number };
+        userId = payload.id;
+      } catch { res.status(401).json({ error: "Unauthorized" }); return; }
+
+      const activeServices = await db
+        .select({ serviceId: clientServicesTable.serviceId })
+        .from(clientServicesTable)
+        .where(and(eq(clientServicesTable.clientUserId, userId), eq(clientServicesTable.status, "active")));
+      serviceIds = activeServices.map(r => r.serviceId);
+    }
+
+    if (serviceIds.length === 0) {
+      res.json({ permissions: [] });
+      return;
+    }
+
+    // Join service_script_sets → script_packages to gather permissions
+    const rows = await db
+      .select({ permissions: scriptPackagesTable.permissions })
+      .from(serviceScriptSetsTable)
+      .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
+      .where(inArray(serviceScriptSetsTable.serviceId, serviceIds));
+
+    // Aggregate and deduplicate by scope string
+    type PermEntry = { scope: string; reason: string };
+    const seen = new Map<string, string>();
+    for (const row of rows) {
+      const perms = row.permissions as { appPermissions?: (string | { scope?: string; reason?: string })[] } | null;
+      if (!perms?.appPermissions) continue;
+      for (const entry of perms.appPermissions) {
+        if (typeof entry === "string") {
+          if (!seen.has(entry)) seen.set(entry, "");
+        } else if (entry && typeof entry.scope === "string") {
+          if (!seen.has(entry.scope)) seen.set(entry.scope, entry.reason ?? "");
+        }
+      }
+    }
+
+    const permissions: PermEntry[] = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
+    res.json({ permissions });
+  } catch (err) {
+    req.log.error({ err }, "portal/required-permissions: failed");
+    res.status(500).json({ error: "Failed to load required permissions" });
+  }
 });
 
 // ─── CLIENT: App Registration (Azure automation credentials) ─────────────────
@@ -6626,12 +6692,14 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
   const {
     serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode,
     guestName, guestCompany, guestPhone, guestAddress, guestCity, guestState, guestZip,
+    appRegPermissionsAgreed,
   } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
     wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
     couponCode?: string;
     guestName?: string; guestCompany?: string; guestPhone?: string;
     guestAddress?: string; guestCity?: string; guestState?: string; guestZip?: string;
+    appRegPermissionsAgreed?: boolean;
   };
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
@@ -6802,6 +6870,7 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
       // When no template exists but a testimonial clause applies, store the clause
       // in agreementBody so there is a DB record; the PDF renders it via appendBody.
       agreementBody: templateBody ?? (pdfAppendBody ?? null),
+      appRegPermissionsAgreed: appRegPermissionsAgreed === true,
     }).returning();
 
     // ── Generate signed PDF immediately at signing time ──────────────────
