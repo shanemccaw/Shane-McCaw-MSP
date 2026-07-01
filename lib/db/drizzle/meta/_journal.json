@@ -729,6 +729,13 @@
       "when": 1751337600000,
       "tag": "0101_add_script_modules_azure_runbook_name",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1751424000000,
+      "tag": "0102_add_app_reg_permissions_agreed",
+      "breakpoints": true
     }
   ]
 }

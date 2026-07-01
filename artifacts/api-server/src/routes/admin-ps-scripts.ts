@@ -23,6 +23,24 @@ import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
 
+// ─── App-permission normalizer ────────────────────────────────────────────────
+// Old DB rows may store appPermissions as string[]; new rows use {scope,reason}[].
+// This helper normalises both so the rest of the code can always work with objects.
+function normalizeAppPerms(raw: unknown[]): { scope: string; reason: string }[] {
+  return raw
+    .map((entry): { scope: string; reason: string } | null => {
+      if (typeof entry === "string") return { scope: entry, reason: "" };
+      if (entry !== null && typeof entry === "object") {
+        const e = entry as Record<string, unknown>;
+        if (typeof e["scope"] === "string") {
+          return { scope: e["scope"], reason: typeof e["reason"] === "string" ? e["reason"] : "" };
+        }
+      }
+      return null;
+    })
+    .filter((x): x is { scope: string; reason: string } => x !== null);
+}
+
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
 
 function titleToRunbookName(title: string): string {
@@ -453,7 +471,7 @@ Write the complete PowerShell script followed by the permissions JSON block.`,
     if (rawPermissions && typeof rawPermissions === "object" && !Array.isArray(rawPermissions)) {
       const p = rawPermissions as Record<string, unknown>;
       permissions = {
-        appPermissions: Array.isArray(p["appPermissions"]) ? (p["appPermissions"] as string[]) : [],
+        appPermissions: Array.isArray(p["appPermissions"]) ? normalizeAppPerms(p["appPermissions"] as unknown[]) : [],
         delegatedPermissions: Array.isArray(p["delegatedPermissions"]) ? (p["delegatedPermissions"] as string[]) : [],
         notes: typeof p["notes"] === "string" ? p["notes"] : "",
       };
@@ -1039,7 +1057,14 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
       }
 
       // Deduplicate permissions
-      mergedPerms.appPermissions = [...new Set(mergedPerms.appPermissions)];
+      {
+        const seenApp = new Set<string>();
+        mergedPerms.appPermissions = mergedPerms.appPermissions.filter(p => {
+          if (seenApp.has(p.scope)) return false;
+          seenApp.add(p.scope);
+          return true;
+        });
+      }
       mergedPerms.delegatedPermissions = [...new Set(mergedPerms.delegatedPermissions)];
 
       if (generatedModules.length === 0) {
@@ -1199,7 +1224,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
     if (rawPerms && typeof rawPerms === "object" && !Array.isArray(rawPerms)) {
       const p = rawPerms as Record<string, unknown>;
       permissions = {
-        appPermissions: Array.isArray(p["appPermissions"]) ? (p["appPermissions"] as string[]) : [],
+        appPermissions: Array.isArray(p["appPermissions"]) ? normalizeAppPerms(p["appPermissions"] as unknown[]) : [],
         delegatedPermissions: Array.isArray(p["delegatedPermissions"]) ? (p["delegatedPermissions"] as string[]) : [],
         notes: typeof p["notes"] === "string" ? p["notes"] : "",
       };
@@ -1739,8 +1764,14 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
 
     const type = typeof parsed["type"] === "string" ? parsed["type"] : "single";
     const title = (typeof parsed["title"] === "string" ? parsed["title"].trim() : null) || task.title;
-    const permissions: PsScriptPermissions = (parsed["permissions"] as PsScriptPermissions | undefined)
-      ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
+    const rawParsedPerms = parsed["permissions"];
+    const permissions: PsScriptPermissions = (rawParsedPerms && typeof rawParsedPerms === "object" && !Array.isArray(rawParsedPerms))
+      ? {
+          appPermissions: Array.isArray((rawParsedPerms as Record<string,unknown>)["appPermissions"]) ? normalizeAppPerms((rawParsedPerms as Record<string,unknown>)["appPermissions"] as unknown[]) : [],
+          delegatedPermissions: Array.isArray((rawParsedPerms as Record<string,unknown>)["delegatedPermissions"]) ? ((rawParsedPerms as Record<string,unknown>)["delegatedPermissions"] as string[]) : [],
+          notes: typeof (rawParsedPerms as Record<string,unknown>)["notes"] === "string" ? ((rawParsedPerms as Record<string,unknown>)["notes"] as string) : "",
+        }
+      : { appPermissions: [], delegatedPermissions: [], notes: "" };
 
     if (type === "human-only") {
       const explanation = typeof parsed["explanation"] === "string"
@@ -1959,7 +1990,7 @@ router.post("/admin/ps-scripts/packages", requireAdmin, async (req: Request, res
     typeof permissions === "object" &&
     !Array.isArray(permissions)
   ) ? {
-    appPermissions: Array.isArray(permissions.appPermissions) ? permissions.appPermissions : [],
+    appPermissions: Array.isArray(permissions.appPermissions) ? normalizeAppPerms(permissions.appPermissions as unknown[]) : [],
     delegatedPermissions: Array.isArray(permissions.delegatedPermissions) ? permissions.delegatedPermissions : [],
     notes: typeof permissions.notes === "string" ? permissions.notes : "",
   } : { appPermissions: [], delegatedPermissions: [], notes: "" };
@@ -2599,7 +2630,7 @@ Output the corrected script, then a <fix-summary> block, then the permissions JS
     if (rawPermissions && typeof rawPermissions === "object" && !Array.isArray(rawPermissions)) {
       const p = rawPermissions as Record<string, unknown>;
       permissions = {
-        appPermissions: Array.isArray(p["appPermissions"]) ? (p["appPermissions"] as string[]) : [],
+        appPermissions: Array.isArray(p["appPermissions"]) ? normalizeAppPerms(p["appPermissions"] as unknown[]) : [],
         delegatedPermissions: Array.isArray(p["delegatedPermissions"]) ? (p["delegatedPermissions"] as string[]) : [],
         notes: typeof p["notes"] === "string" ? p["notes"] : "",
       };

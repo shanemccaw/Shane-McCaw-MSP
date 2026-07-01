@@ -1019,21 +1019,31 @@ export default function OnboardingContract() {
                   Clear
                 </button>
               </div>
-              <div className="border-2 border-dashed border-border rounded-xl overflow-hidden bg-[#F7F9FC]">
-                <canvas
-                  ref={canvasRef}
-                  width={480}
-                  height={160}
-                  className="w-full cursor-crosshair touch-none"
-                  onMouseDown={startDraw}
-                  onMouseMove={draw}
-                  onMouseUp={stopDraw}
-                  onMouseLeave={stopDraw}
-                  onTouchStart={startDraw}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDraw}
-                />
-              </div>
+              {(() => {
+                const canvasActive = agreed && (requiredPermissions.length === 0 || appRegAgreed);
+                return (
+                  <div className={`border-2 border-dashed rounded-xl overflow-hidden relative ${canvasActive ? "border-border bg-[#F7F9FC]" : "border-border bg-gray-100 opacity-50"}`}>
+                    <canvas
+                      ref={canvasRef}
+                      width={480}
+                      height={160}
+                      className={`w-full touch-none ${canvasActive ? "cursor-crosshair" : "cursor-not-allowed pointer-events-none"}`}
+                      onMouseDown={canvasActive ? startDraw : undefined}
+                      onMouseMove={canvasActive ? draw : undefined}
+                      onMouseUp={canvasActive ? stopDraw : undefined}
+                      onMouseLeave={canvasActive ? stopDraw : undefined}
+                      onTouchStart={canvasActive ? startDraw : undefined}
+                      onTouchMove={canvasActive ? draw : undefined}
+                      onTouchEnd={canvasActive ? stopDraw : undefined}
+                    />
+                    {!canvasActive && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <p className="text-xs text-gray-500 text-center px-4">Please agree to the terms above before signing</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {!signed && (
                 <p className="text-xs text-muted-foreground mt-2 text-center">Sign with mouse or touch above</p>
               )}
@@ -1137,7 +1147,7 @@ export default function OnboardingContract() {
               </button>
               <button
                 onClick={handleSign}
-                disabled={submitting || lpTokenExpired || !agreed || !signed || !signerName.trim() || !street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()}
+                disabled={submitting || lpTokenExpired || !agreed || (requiredPermissions.length > 0 && !appRegAgreed) || !signed || !signerName.trim() || !street.trim() || !city.trim() || !addrState.trim() || !zip.trim() || !phone.trim()}
                 className="flex-1 flex items-center justify-center gap-2 bg-[#0078D4] text-white font-semibold px-5 py-3 rounded-xl hover:bg-[#005A9E] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? (

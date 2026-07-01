@@ -1338,7 +1338,7 @@ export type ClientScore = typeof clientScoresTable.$inferSelect;
 
 // PowerShell Script Library — AI-generated scripts stored by Shane
 export interface PsScriptPermissions {
-  appPermissions: string[];
+  appPermissions: { scope: string; reason: string }[];
   delegatedPermissions: string[];
   notes: string;
 }

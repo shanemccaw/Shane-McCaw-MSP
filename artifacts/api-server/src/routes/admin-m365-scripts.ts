@@ -41,7 +41,8 @@ router.get("/admin/appreg/requirements", requireAdmin, async (req: Request, res:
       const perms = row.permissions;
       if (!perms) continue;
       for (const p of perms.appPermissions ?? []) {
-        if (!seenApp.has(p)) { seenApp.add(p); applicationPermissions.push(p); }
+        const scope = typeof p === "string" ? p : p.scope;
+        if (!seenApp.has(scope)) { seenApp.add(scope); applicationPermissions.push(scope); }
       }
       for (const p of perms.delegatedPermissions ?? []) {
         if (!seenDel.has(p)) { seenDel.add(p); delegatedPermissions.push(p); }
