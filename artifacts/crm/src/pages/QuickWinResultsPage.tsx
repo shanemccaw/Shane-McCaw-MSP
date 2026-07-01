@@ -1,19 +1,21 @@
+import { useEffect, useState } from "react";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
+import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
-import { QW_COPY, DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import type { QuickWinItem } from "@/context/QuickWinModeContext";
 
-interface QuickWinResultsPageProps {
-  quickWins?: QuickWinItem[];
-}
-
-const SAMPLE_QUICK_WINS: QuickWinItem[] = [
+// Fallback shown while loading or if the API call fails
+const FALLBACK_QUICK_WINS: QuickWinItem[] = [
   {
     id: "qw-security",
     title: "Security Baseline Diagnostic",
     description: "Automated scan of your M365 security posture with actionable findings.",
     category: "Security",
-    steps: DEFAULT_QUICK_WIN_STEPS,
+    steps: [
+      { id: "sec-1", title: "Identity & access scan", type: "auto" },
+      { id: "sec-2", title: "Threat protection review", type: "auto" },
+      { id: "sec-3", title: "Data protection check", type: "manual" },
+    ],
   },
   {
     id: "qw-copilot",
@@ -22,7 +24,8 @@ const SAMPLE_QUICK_WINS: QuickWinItem[] = [
     category: "Copilot AI",
     steps: [
       { id: "cop-1", title: "License & seat check", type: "auto" },
-      { id: "cop-2", title: "Data sensitivity scan", type: "manual" },
+      { id: "cop-2", title: "Security prerequisite scan", type: "auto" },
+      { id: "cop-3", title: "Data sensitivity review", type: "manual" },
     ],
   },
   {
@@ -31,8 +34,8 @@ const SAMPLE_QUICK_WINS: QuickWinItem[] = [
     description: "Rapid governance maturity scan across your Microsoft 365 tenant.",
     category: "Governance",
     steps: [
-      { id: "gov-1", title: "Policy scan", type: "auto" },
-      { id: "gov-2", title: "Access review", type: "auto" },
+      { id: "gov-1", title: "Policy & retention scan", type: "auto" },
+      { id: "gov-2", title: "Identity governance review", type: "auto" },
       { id: "gov-3", title: "Compliance report upload", type: "manual" },
     ],
   },
@@ -46,18 +49,43 @@ function RocketIcon() {
   );
 }
 
-export default function QuickWinResultsPage({ quickWins = SAMPLE_QUICK_WINS }: QuickWinResultsPageProps) {
+export default function QuickWinResultsPage() {
   const { dispatch } = useQuickWinMode();
+  const { fetchWithAuth } = useAuth();
+
+  const [quickWins, setQuickWins] = useState<QuickWinItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWithAuth("/api/portal/quick-win/catalog")
+      .then((res) => {
+        if (!res.ok) throw new Error("Catalog fetch failed");
+        return res.json() as Promise<QuickWinItem[]>;
+      })
+      .then((data) => {
+        if (!cancelled) setQuickWins(data);
+      })
+      .catch(() => {
+        if (!cancelled) setQuickWins(FALLBACK_QUICK_WINS);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [fetchWithAuth]);
 
   const activate = (qw: QuickWinItem) => {
     dispatch({ type: "SELECT_QUICK_WIN", payload: qw });
   };
 
   const CATEGORY_COLORS: Record<string, string> = {
-    Security:    "bg-[#0078D4]/10 text-[#0078D4]",
+    Security:     "bg-[#0078D4]/10 text-[#0078D4]",
     "Copilot AI": "bg-purple-100 text-purple-700",
-    Governance:  "bg-teal-100 text-teal-700",
+    Governance:   "bg-teal-100 text-teal-700",
   };
+
+  const items = loading ? FALLBACK_QUICK_WINS : quickWins;
 
   return (
     <PortalLayout>
@@ -77,7 +105,7 @@ export default function QuickWinResultsPage({ quickWins = SAMPLE_QUICK_WINS }: Q
 
         {/* Quick Win Cards grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {quickWins.map((qw) => (
+          {items.map((qw) => (
             <div
               key={qw.id}
               className="bg-white border border-border rounded-2xl p-5 flex flex-col gap-4 shadow-sm hover:border-[#0078D4]/40 hover:shadow-md"
@@ -127,7 +155,7 @@ export default function QuickWinResultsPage({ quickWins = SAMPLE_QUICK_WINS }: Q
 
         {/* Info footer */}
         <p className="text-xs text-muted-foreground text-center mt-8">
-          Quick Win diagnostics run entirely in your browser. Automated steps use stub data — connect your API for live scoring.
+          Automated steps read your Microsoft 365 tenant profile and return live scores. Results reflect your actual environment.
         </p>
       </div>
     </PortalLayout>

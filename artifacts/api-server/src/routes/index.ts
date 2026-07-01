@@ -56,6 +56,7 @@ import notificationsRouter from "./notifications";
 import pushRouter from "./push";
 import adminCallbackTokensRouter from "./admin-callback-tokens";
 import adminInsightsRouter from "./admin-insights";
+import portalQuickWinScoringRouter from "./portal-quick-win-scoring";
 
 const router: IRouter = Router();
 
@@ -116,5 +117,6 @@ router.use(notificationsRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
 router.use(adminInsightsRouter);
+router.use(portalQuickWinScoringRouter);
 
 export default router;

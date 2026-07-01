@@ -2,6 +2,7 @@ import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wo
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { QuickWinModeProvider } from "@/context/QuickWinModeContext";
+import { useQuickWinRealImpl } from "@/hooks/useQuickWinRealImpl";
 import FullScreenWrapper from "@/components/quickwin/FullScreenWrapper";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/Login";
@@ -30,6 +31,17 @@ import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
+
+// Bridge: sits inside AuthProvider so it can read the auth context and inject
+// real runAutoStep / escalateToProject implementations into QuickWinModeProvider.
+function QuickWinBridge({ children }: { children: ReactNode }) {
+  const { runAutoStep, escalateToProject } = useQuickWinRealImpl();
+  return (
+    <QuickWinModeProvider runAutoStep={runAutoStep} escalateToProject={escalateToProject}>
+      {children}
+    </QuickWinModeProvider>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -213,13 +225,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <QuickWinModeProvider>
+        <QuickWinBridge>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
           </WouterRouter>
           <FullScreenWrapper />
           <Toaster />
-        </QuickWinModeProvider>
+        </QuickWinBridge>
       </AuthProvider>
     </QueryClientProvider>
   );
