@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -337,13 +338,17 @@ type SortDir = "asc" | "desc";
 export default function RunningScriptsPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
+  const search = useSearch();
 
   const [rows, setRows] = useState<ScriptRunRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
 
-  // Filters
-  const [filterCustomerId, setFilterCustomerId] = useState<string>("");
+  // Filters — pre-populate customerId from URL search param (e.g. ?customerId=42)
+  const [filterCustomerId, setFilterCustomerId] = useState<string>(() => {
+    const params = new URLSearchParams(search);
+    return params.get("customerId") ?? "";
+  });
   const [filterStatus, setFilterStatus] = useState<string>("");
 
   // Sort
