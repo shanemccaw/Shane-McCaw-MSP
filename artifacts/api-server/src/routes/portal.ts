@@ -718,6 +718,82 @@ async function getRequiredPermissionsForClient(clientUserId: number): Promise<st
   return result;
 }
 
+/**
+ * Re-probes Graph permissions for a client in the background after their active
+ * services change. Uses the credentials already stored in Key Vault — never asks
+ * the client to re-enter them.
+ *
+ * Safe to call fire-and-forget (never throws; all errors are logged as warnings).
+ */
+async function reProbeClientPermissionsInBackground(clientUserId: number): Promise<void> {
+  try {
+    // 1. Only proceed if the client has a verified App Registration
+    const [appReg] = await db
+      .select()
+      .from(clientAppRegistrationsTable)
+      .where(
+        and(
+          eq(clientAppRegistrationsTable.clientUserId, clientUserId),
+          eq(clientAppRegistrationsTable.status, "verified"),
+        ),
+      );
+    if (!appReg) return;
+
+    // 2. Gather permissions required by all active services
+    const requiredPermissions = await getRequiredPermissionsForClient(clientUserId);
+    if (requiredPermissions.length === 0) return;
+
+    // 3. Retrieve the stored client secret from Key Vault
+    let clientSecret: string;
+    try {
+      clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+    } catch (kvErr) {
+      logger.warn(
+        { kvErr, clientUserId },
+        "re-probe: could not retrieve client secret from Key Vault — skipping permission re-check",
+      );
+      return;
+    }
+
+    // 4. Run the permission probe (never throws)
+    const probeResult = await probeGraphPermissions(
+      appReg.tenantId,
+      appReg.azureClientId,
+      clientSecret,
+      requiredPermissions,
+    );
+
+    // 5. Persist the fresh result
+    await db
+      .update(clientAppRegistrationsTable)
+      .set({ permissionCheck: probeResult, updatedAt: new Date() })
+      .where(eq(clientAppRegistrationsTable.clientUserId, clientUserId));
+
+    logger.info(
+      {
+        clientUserId,
+        granted: probeResult.granted.length,
+        missing: probeResult.missing.length,
+        unverifiable: probeResult.unverifiable.length,
+      },
+      "re-probe: permission_check refreshed after service change",
+    );
+
+    // 6. Notify the client if newly required permissions are missing
+    if (probeResult.missing.length > 0) {
+      await db.insert(notificationsTable).values({
+        userId: clientUserId,
+        title: "Action required: App Registration permissions",
+        body: `Your services have been updated and your Microsoft 365 App Registration is now missing ${probeResult.missing.length} required permission${probeResult.missing.length === 1 ? "" : "s"}. Please visit the App Registration page to grant them.`,
+        type: "general",
+        linkPath: "/portal/app-registration",
+      });
+    }
+  } catch (err) {
+    logger.warn({ err, clientUserId }, "re-probe: background permission re-check failed (non-fatal)");
+  }
+}
+
 router.put("/portal/app-registration", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const { tenantId, azureClientId, clientSecret } = req.body as {
@@ -6666,6 +6742,11 @@ router.post("/admin/client-services", requireAdmin, async (req: Request, res: Re
   });
 
   res.status(201).json(cs);
+
+  // Re-probe the client's App Registration permissions in the background now that
+  // their active services have changed. This keeps permission_check current without
+  // requiring the client to re-submit their credentials.
+  void reProbeClientPermissionsInBackground(clientUserId);
 });
 
 // ─── ADMIN: Project updates ──────────────────────────────────────────────────
