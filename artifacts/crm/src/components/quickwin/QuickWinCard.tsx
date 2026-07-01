@@ -4,6 +4,7 @@ import { QW_COPY, DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import ScoreRing from "@/components/ScoreRing";
 import ProgressLayer from "./ProgressLayer";
 import ManualActionLayer from "./ManualActionLayer";
+import ProjectTasksLayer from "./ProjectTasksLayer";
 import TelemetryFeed from "./TelemetryFeed";
 import type { QuickWinStep } from "@/context/QuickWinModeContext";
 
@@ -75,7 +76,7 @@ export default function QuickWinCard() {
     }
   }, [mode, currentStep, dispatch, addTelemetry]);
 
-  // RunningAutoStep: invoke stub async runner
+  // RunningAutoStep: invoke real async runner
   useEffect(() => {
     if (mode !== "RunningAutoStep" || runnerActive.current) return;
     runnerActive.current = true;
@@ -109,18 +110,15 @@ export default function QuickWinCard() {
     return () => clearTimeout(t);
   }, [mode, currentStepIndex, totalSteps, dispatch, addTelemetry]);
 
-  // EscalatingToProject phase 1: card fades+scales over 240ms, show telemetry
+  // EscalatingToProject: add telemetry; card stays fully visible while
+  // FullScreenWrapper makes the API call and fetches project tasks.
   useEffect(() => {
     if (mode !== "EscalatingToProject") return undefined;
     addTelemetry(QW_COPY.escalating.telemetry);
-    requestAnimationFrame(() => {
-      setCardScale(0.9);
-      setCardOpacity(0);
-    });
     return undefined;
   }, [mode, addTelemetry]);
 
-  // ExitQuickWin: card fades to 0
+  // ExitQuickWin: card fades + scales down
   useEffect(() => {
     if (mode !== "ExitQuickWin") return undefined;
     requestAnimationFrame(() => {
@@ -132,7 +130,10 @@ export default function QuickWinCard() {
 
   const handleExit = () => dispatch({ type: "EXIT" });
 
+  const isProjectView = mode === "ProjectTasksView";
   const isEscalating = mode === "EscalatingToProject" || mode === "ExitQuickWin";
+  const showStepBar = mode !== "QuickWinComplete" && !isProjectView;
+  const showStepCounter = mode !== "QuickWinComplete" && mode !== "EscalatingToProject" && !isProjectView;
 
   return (
     <div
@@ -150,7 +151,9 @@ export default function QuickWinCard() {
             <BoltIcon />
           </div>
           <div>
-            <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Quick Win Mode</p>
+            <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">
+              {isProjectView ? "Project Created" : "Quick Win Mode"}
+            </p>
             <h2 className="text-sm font-black text-white leading-tight">
               {quickWin?.title ?? "Diagnostic Sequence"}
             </h2>
@@ -158,29 +161,37 @@ export default function QuickWinCard() {
         </div>
 
         <div className="flex items-center gap-3">
-          {mode !== "QuickWinComplete" && mode !== "EscalatingToProject" && (
+          {showStepCounter && (
             <span className="text-[10px] font-bold text-white/50">
               Step {Math.min(currentStepIndex + 1, totalSteps)} of {totalSteps}
             </span>
           )}
-          <button
-            onClick={handleExit}
-            className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white"
-            style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-            title="Exit Quick Win Mode"
-          >
-            <XIcon />
-          </button>
+          {isProjectView && (
+            <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
+              <CheckIcon />
+              Ready
+            </span>
+          )}
+          {!isProjectView && (
+            <button
+              onClick={handleExit}
+              className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/60 hover:text-white"
+              style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+              title="Exit Quick Win Mode"
+            >
+              <XIcon />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Step progress bar */}
-      {mode !== "QuickWinComplete" && (
+      {/* Step progress bar — hidden during project tasks view and completion screen */}
+      {showStepBar && (
         <div className="flex gap-1 px-6 pt-3">
           {steps.map((s, i) => (
             <div key={s.id} className="h-1 flex-1 rounded-full overflow-hidden bg-[#F7F9FC]">
               <div
-                className={`h-full rounded-full ${i < currentStepIndex ? "bg-green-500" : i === currentStepIndex && (mode === "RunningAutoStep") ? "bg-[#0078D4]" : "bg-transparent"}`}
+                className={`h-full rounded-full ${i < currentStepIndex ? "bg-green-500" : i === currentStepIndex && mode === "RunningAutoStep" ? "bg-[#0078D4]" : "bg-transparent"}`}
                 style={{
                   width: i === currentStepIndex && mode === "RunningAutoStep" ? `${progress}%` : i < currentStepIndex ? "100%" : "0%",
                   transition: "width 240ms cubic-bezier(0.42,0,0.58,1)",
@@ -238,7 +249,7 @@ export default function QuickWinCard() {
           </div>
         )}
 
-        {/* All complete */}
+        {/* All steps complete — show score + escalate CTA */}
         {mode === "QuickWinComplete" && (
           <div className="flex flex-col items-center gap-5 py-4">
             <ScoreRing score={score} size={128} />
@@ -268,20 +279,33 @@ export default function QuickWinCard() {
           </div>
         )}
 
-        {/* Escalating — phase 1: show telemetry while card fades */}
-        {(mode === "EscalatingToProject" || mode === "ExitQuickWin") && (
+        {/* Escalating — API in flight; card stays visible while project is being created */}
+        {mode === "EscalatingToProject" && (
           <div className="flex flex-col gap-3 py-2">
             <div className="flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-              <p className="text-sm font-bold text-[#0A2540]">{QW_COPY.exit}</p>
+              <p className="text-sm font-bold text-[#0A2540]">Creating your project…</p>
             </div>
             <TelemetryFeed lines={telemetryLines} />
           </div>
         )}
+
+        {/* Project tasks view — derived from real Kanban task data */}
+        {isProjectView && (
+          <ProjectTasksLayer />
+        )}
+
+        {/* ExitQuickWin — brief spinner while card fades out */}
+        {mode === "ExitQuickWin" && (
+          <div className="flex items-center gap-3 py-4">
+            <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+            <p className="text-sm font-bold text-[#0A2540]">{QW_COPY.exit}</p>
+          </div>
+        )}
       </div>
 
-      {/* Step label footer */}
-      {mode !== "QuickWinComplete" && !isEscalating && currentStep && (
+      {/* Step label footer — hidden in project view, complete, and escalating states */}
+      {mode !== "QuickWinComplete" && !isEscalating && !isProjectView && currentStep && (
         <div className="px-6 pb-5">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
             Current: {currentStep.title}

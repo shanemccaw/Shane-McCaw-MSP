@@ -228,8 +228,8 @@ function App() {
         <QuickWinBridge>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
+            <FullScreenWrapper />
           </WouterRouter>
-          <FullScreenWrapper />
           <Toaster />
         </QuickWinBridge>
       </AuthProvider>

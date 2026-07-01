@@ -1,27 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
+import type { KanbanTaskSummary } from "@/context/QuickWinModeContext";
 import TransitionLayer from "./TransitionLayer";
 
 export default function FullScreenWrapper() {
   const { state, dispatch, escalateToProject } = useQuickWinMode();
-  const { mode, quickWin } = state;
+  const { mode, quickWin, openProjectOnExit, projectId } = state;
   const [, navigate] = useLocation();
+  const { fetchWithAuth } = useAuth();
 
   const isVisible = mode !== "Idle";
   const [mounted, setMounted] = useState(false);
   const [backdropOpacity, setBackdropOpacity] = useState(0);
-  const escalationTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // Track the created project ID so we can navigate to it specifically
-  const escalatedProjectId = useRef<string | null>(null);
+
   // Guard against double-firing the escalation API call
   const escalationInFlight = useRef(false);
 
-  // Mount / unmount the overlay
+  // Mount / unmount: double-rAF ensures the element is in the DOM before the
+  // opacity transition starts (single rAF fires before React commits the paint).
   useEffect(() => {
     if (isVisible && !mounted) {
       setMounted(true);
-      requestAnimationFrame(() => setBackdropOpacity(1));
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setBackdropOpacity(1));
+      });
       return;
     }
     if (!isVisible && mounted) {
@@ -32,51 +36,80 @@ export default function FullScreenWrapper() {
     return undefined;
   }, [isVisible, mounted]);
 
-  // ExitQuickWin: fade backdrop → unmount
+  // ExitQuickWin: fade backdrop out, then reset state machine.
+  // If openProjectOnExit is true (user clicked "Open Project" from the task view),
+  // navigate to the created project once the animation finishes.
   useEffect(() => {
     if (mode !== "ExitQuickWin") return undefined;
     setBackdropOpacity(0);
-    const t = setTimeout(() => dispatch({ type: "ESCALATION_COMPLETE" }), 240);
+    const t = setTimeout(() => {
+      dispatch({ type: "ESCALATION_COMPLETE" });
+      if (openProjectOnExit && projectId) {
+        navigate(`/portal/projects/${projectId}`);
+      }
+    }, 240);
     return () => clearTimeout(t);
-  }, [mode, dispatch]);
+  }, [mode, dispatch, navigate, openProjectOnExit, projectId]);
 
-  // EscalatingToProject: 3-phase 240ms choreography
-  // Phase 0 (0ms):       fire escalateToProject API call (non-blocking)
-  // Phase 1 (0–240ms):   card scales to 0.9 + fades — managed by QuickWinCard
-  // Phase 2 (240–480ms): backdrop fades out
-  // Phase 3 (480ms):     unmount + navigate to the created project (or list fallback)
+  // EscalatingToProject: fire the API, then fetch the new project's kanban tasks
+  // so the overlay can show real task statuses instead of navigating away.
+  // The overlay stays open throughout — the card content transitions to the
+  // ProjectTasksView once the tasks are loaded.
   useEffect(() => {
     if (mode !== "EscalatingToProject") return undefined;
+    if (!quickWin || escalationInFlight.current) return undefined;
 
-    // Phase 0: kick off the API call immediately; don't block the animation
-    if (quickWin && !escalationInFlight.current) {
-      escalationInFlight.current = true;
-      escalatedProjectId.current = null;
-      escalateToProject(quickWin)
-        .then((projectId) => {
-          escalatedProjectId.current = projectId;
-        })
-        .catch(() => {
-          escalatedProjectId.current = null;
-        });
-    }
+    escalationInFlight.current = true;
 
-    // Phase 2: after card has faded (240ms), fade out backdrop
-    const t2 = setTimeout(() => setBackdropOpacity(0), 240);
+    const run = async () => {
+      try {
+        const newProjectId = await escalateToProject(quickWin);
 
-    // Phase 3: after backdrop fades (another 240ms), navigate and reset
-    const t3 = setTimeout(() => {
-      escalationInFlight.current = false;
-      dispatch({ type: "ESCALATION_COMPLETE" });
-      const dest = escalatedProjectId.current
-        ? `/portal/projects/${escalatedProjectId.current}`
-        : "/portal/projects";
-      navigate(dest);
-    }, 480);
+        if (!newProjectId) {
+          // Escalation returned nothing — navigate to the projects list
+          dispatch({ type: "ESCALATION_COMPLETE" });
+          navigate("/portal/projects");
+          return;
+        }
 
-    escalationTimers.current = [t2, t3];
-    return () => escalationTimers.current.forEach(clearTimeout);
-  }, [mode, dispatch, navigate, quickWin, escalateToProject]);
+        // Fetch the project's kanban tasks so we can show them in the overlay
+        const res = await fetchWithAuth(`/api/portal/projects/${newProjectId}`);
+        if (res.ok) {
+          const data = await res.json() as {
+            tasks?: Array<{
+              id: number;
+              title: string;
+              column: string;
+              groupName?: string | null;
+              description?: string | null;
+            }>;
+          };
+          const tasks: KanbanTaskSummary[] = (data.tasks ?? []).map(t => ({
+            id: t.id,
+            title: t.title,
+            column: (["backlog", "in_progress", "waiting_on_customer", "completed"].includes(t.column)
+              ? t.column
+              : "backlog") as KanbanTaskSummary["column"],
+            groupName: t.groupName ?? null,
+            description: t.description ?? null,
+          }));
+          dispatch({ type: "SET_PROJECT_TASKS", payload: { projectId: newProjectId, tasks } });
+        } else {
+          // Couldn't load tasks — go straight to the project page
+          dispatch({ type: "ESCALATION_COMPLETE" });
+          navigate(`/portal/projects/${newProjectId}`);
+        }
+      } catch {
+        dispatch({ type: "ESCALATION_COMPLETE" });
+        navigate("/portal/projects");
+      } finally {
+        escalationInFlight.current = false;
+      }
+    };
+
+    run();
+    return undefined;
+  }, [mode, quickWin, escalateToProject, fetchWithAuth, dispatch, navigate]);
 
   if (!mounted) return null;
 
@@ -86,8 +119,8 @@ export default function FullScreenWrapper() {
       style={{
         opacity: backdropOpacity,
         transition: "opacity 240ms cubic-bezier(0.42,0,0.58,1)",
-        backdropFilter: `blur(12px)`,
-        WebkitBackdropFilter: `blur(12px)`,
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         backgroundColor: `rgba(255, 255, 255, ${backdropOpacity * 0.80})`,
       }}
     >
