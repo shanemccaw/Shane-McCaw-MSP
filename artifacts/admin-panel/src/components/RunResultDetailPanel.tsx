@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw, CheckCircle, Zap, Download, Upload, X, ArrowLeft } from "lucide-react";
@@ -46,9 +46,29 @@ const TABS: { id: Tab; label: string }[] = [
 
 // ── AI Findings Tab ───────────────────────────────────────────────────────────
 
-function FindingsTab({ result }: { result: RunResult }) {
+function FindingsTab({ result, isAnalyzing }: { result: RunResult; isAnalyzing?: boolean }) {
   const hasFindings = result.parsedFindings.length > 0;
   const hasRecs = result.recommendations.length > 0;
+
+  if (isAnalyzing && !hasFindings && !hasRecs) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/25">
+          <span className="flex h-2 w-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
+          <p className="text-xs font-medium text-[#58A6FF]">AI analyzing results…</p>
+        </div>
+        <div className="space-y-2 animate-pulse">
+          {[80, 65, 90, 55].map((w, i) => (
+            <div key={i} className="flex gap-3 items-start">
+              <div className="flex-shrink-0 w-5 h-5 rounded-full bg-[#21262D] mt-0.5" />
+              <div className="flex-1 h-4 rounded bg-[#21262D]" style={{ width: `${w}%` }} />
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[#484F58] text-center pt-2">Checking again shortly…</p>
+      </div>
+    );
+  }
 
   if (!hasFindings && !hasRecs) {
     return (
@@ -538,13 +558,69 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
   const [applying, setApplying] = useState(false);
   const [marking, setMarking] = useState(false);
 
-  const hasImpact = Object.keys(result.scoreImpact).length > 0 && Object.values(result.scoreImpact).some(v => v !== 0);
+  // ── AI analysis polling ────────────────────────────────────────────────────
+  const [liveResult, setLiveResult] = useState<RunResult>(result);
+  const analysisPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isAnalyzing =
+    liveResult.status === "completed" &&
+    liveResult.executionSource === "customer_upload" &&
+    liveResult.parsedFindings.length === 0 &&
+    liveResult.recommendations.length === 0;
+
+  const pollAnalysis = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-runs/${liveResult.id}`);
+      if (!res.ok) return;
+      const data = await res.json() as {
+        parsedFindings: string[] | null;
+        recommendations: string[] | null;
+        scoreImpact: Record<string, number> | null;
+      };
+      const findings = data.parsedFindings ?? [];
+      const recs = data.recommendations ?? [];
+      if (findings.length > 0 || recs.length > 0) {
+        if (analysisPollRef.current) {
+          clearInterval(analysisPollRef.current);
+          analysisPollRef.current = null;
+        }
+        setLiveResult(prev => ({
+          ...prev,
+          parsedFindings: findings,
+          recommendations: recs,
+          scoreImpact: data.scoreImpact ?? prev.scoreImpact,
+        }));
+      }
+    } catch {
+      // ignore transient failures
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fetchWithAuth, liveResult.id]);
+
+  useEffect(() => {
+    if (!isAnalyzing) return;
+    analysisPollRef.current = setInterval(() => void pollAnalysis(), 4000);
+    return () => {
+      if (analysisPollRef.current) {
+        clearInterval(analysisPollRef.current);
+        analysisPollRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAnalyzing]);
+
+  // Sync liveResult if the parent passes a new result (e.g. after upload)
+  useEffect(() => {
+    setLiveResult(result);
+  }, [result]);
+
+  const hasImpact = Object.keys(liveResult.scoreImpact).length > 0 && Object.values(liveResult.scoreImpact).some(v => v !== 0);
 
   const handleApplyToClient = async () => {
-    if (!result.customerId) return;
+    if (!liveResult.customerId) return;
     setApplying(true);
     try {
-      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/apply-to-client`, { method: "POST" });
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${liveResult.id}/apply-to-client`, { method: "POST" });
       if (!res.ok) {
         const err = await res.json() as { error?: string };
         toast({ title: err.error ?? "Failed to apply scores", variant: "destructive" }); return;
@@ -561,11 +637,11 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
   const handleMarkReviewed = async () => {
     setMarking(true);
     try {
-      const res = await fetchWithAuth(`/api/admin/script-run-results/${result.id}/mark-reviewed`, { method: "PATCH" });
+      const res = await fetchWithAuth(`/api/admin/script-run-results/${liveResult.id}/mark-reviewed`, { method: "PATCH" });
       if (!res.ok) { toast({ title: "Failed to mark as reviewed", variant: "destructive" }); return; }
       const data = await res.json() as { reviewedAt: string };
       toast({ title: "Marked as reviewed" });
-      onMarkReviewed(result.id, data.reviewedAt);
+      onMarkReviewed(liveResult.id, data.reviewedAt);
     } catch {
       toast({ title: "Failed to mark as reviewed", variant: "destructive" });
     } finally {
@@ -588,27 +664,33 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-sm font-semibold text-[#E6EDF3] truncate">
-              {result.scriptName ?? `Script #${result.scriptId}`}
+              {liveResult.scriptName ?? `Script #${liveResult.scriptId}`}
             </span>
-            <StatusBadge status={result.status} />
-            {result.executionSource === "manual" && (
+            <StatusBadge status={liveResult.status} />
+            {liveResult.executionSource === "manual" && (
               <span className="text-[10px] text-amber-500/80 font-medium">📋 Manual</span>
+            )}
+            {isAnalyzing && (
+              <span className="flex items-center gap-1 text-[10px] text-[#58A6FF] font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
+                AI analyzing…
+              </span>
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {result.clientName && (
+            {liveResult.clientName && (
               <span className="text-xs text-[#7D8590]">
-                {result.clientName}
+                {liveResult.clientName}
               </span>
             )}
-            {result.packageName && (
+            {liveResult.packageName && (
               <>
                 <span className="text-[#30363D]">·</span>
-                <span className="text-xs text-[#7D8590]">{result.packageName}</span>
+                <span className="text-xs text-[#7D8590]">{liveResult.packageName}</span>
               </>
             )}
             <span className="text-[#30363D]">·</span>
-            <span className="text-xs text-[#484F58]">{formatRelative(result.createdAt)}</span>
+            <span className="text-xs text-[#484F58]">{formatRelative(liveResult.createdAt)}</span>
           </div>
         </div>
       </div>
@@ -632,16 +714,16 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
 
       {/* Tab body */}
       <div className={`flex-1 min-h-0 overflow-y-auto px-5 py-4 ${activeTab === "raw-output" ? "flex flex-col" : ""}`}>
-        {activeTab === "findings" && <FindingsTab result={result} />}
-        {activeTab === "score-impact" && <ScoreImpactTab result={result} />}
-        {activeTab === "m365-score" && <M365ScoreTab result={result} />}
-        {activeTab === "raw-output" && <RawOutputTab result={result} />}
+        {activeTab === "findings" && <FindingsTab result={liveResult} isAnalyzing={isAnalyzing} />}
+        {activeTab === "score-impact" && <ScoreImpactTab result={liveResult} />}
+        {activeTab === "m365-score" && <M365ScoreTab result={liveResult} />}
+        {activeTab === "raw-output" && <RawOutputTab result={liveResult} />}
       </div>
 
       {/* Action bar */}
-      {result.status !== "awaiting_upload" && (result.customerId && hasImpact && result.status === "completed" || !result.reviewedAt) && (
+      {liveResult.status !== "awaiting_upload" && (liveResult.customerId && hasImpact && liveResult.status === "completed" || !liveResult.reviewedAt) && (
         <div className="flex items-center gap-2 px-5 py-3 border-t border-[#21262D] bg-[#161B22] flex-shrink-0">
-          {result.customerId && hasImpact && result.status === "completed" && (
+          {liveResult.customerId && hasImpact && liveResult.status === "completed" && (
             <button
               onClick={() => void handleApplyToClient()}
               disabled={applying}
@@ -651,7 +733,7 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
               Apply Scores
             </button>
           )}
-          {!result.reviewedAt && (
+          {!liveResult.reviewedAt && (
             <div className="ml-auto flex flex-col items-end gap-0.5">
               <button
                 onClick={() => void handleMarkReviewed()}
@@ -669,9 +751,9 @@ export default function RunResultDetailPanel({ result, onClose, onMarkReviewed, 
       )}
 
       {/* Awaiting upload action area */}
-      {result.status === "awaiting_upload" && (
+      {liveResult.status === "awaiting_upload" && (
         <div className="border-t border-[#21262D] px-5 py-4 flex-shrink-0">
-          <AwaitingUploadActions result={result} onUploaded={onUploaded} />
+          <AwaitingUploadActions result={liveResult} onUploaded={onUploaded} />
         </div>
       )}
     </div>

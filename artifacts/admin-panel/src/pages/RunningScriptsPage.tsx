@@ -149,18 +149,38 @@ function DetailSheet({
     }
   }, [fetchWithAuth, fetchDetail]);
 
+  const analysisPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     void (async () => {
       const data = await fetchDetail();
       if (data?.status === "running" && data.jobId) {
         pollRef.current = setInterval(() => void pollOutput(data.jobId!), 3000);
       }
+      // Start analysis polling for customer_upload runs awaiting AI findings
+      if (
+        data?.status === "completed" &&
+        data.executionSource === "customer_upload" &&
+        (data.parsedFindings?.length ?? 0) === 0
+      ) {
+        analysisPollRef.current = setInterval(() => void fetchDetail(), 4000);
+      }
     })();
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (analysisPollRef.current) clearInterval(analysisPollRef.current);
     };
   }, [fetchDetail, pollOutput]);
+
+  // Stop analysis polling once findings arrive
+  useEffect(() => {
+    if (!detail) return;
+    if ((detail.parsedFindings?.length ?? 0) > 0 && analysisPollRef.current) {
+      clearInterval(analysisPollRef.current);
+      analysisPollRef.current = null;
+    }
+  }, [detail]);
 
   // Auto-scroll terminal
   useEffect(() => {
@@ -270,6 +290,23 @@ function DetailSheet({
                 </div>
               </div>
 
+              {/* AI analysis in progress indicator */}
+              {detail.status === "completed" &&
+               detail.executionSource === "customer_upload" &&
+               !hasFindings && !hasRecs && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/25">
+                    <span className="flex h-2 w-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
+                    <p className="text-xs font-medium text-[#58A6FF]">AI analyzing results…</p>
+                  </div>
+                  <div className="space-y-2 animate-pulse">
+                    {[75, 60, 85, 50].map((w, i) => (
+                      <div key={i} className="h-9 bg-[#161B22] border border-[#21262D] rounded-lg" style={{ width: `${w}%` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* AI Findings */}
               {hasFindings && (
                 <div>
@@ -317,7 +354,8 @@ function DetailSheet({
                 </div>
               )}
 
-              {!hasFindings && !hasRecs && detail.status !== "running" && (
+              {!hasFindings && !hasRecs && detail.status !== "running" &&
+               !(detail.status === "completed" && detail.executionSource === "customer_upload") && (
                 <p className="text-xs text-[#484F58] italic">No AI findings were generated for this run.</p>
               )}
             </>

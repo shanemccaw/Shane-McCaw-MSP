@@ -16,7 +16,7 @@ export interface RunResult {
   recommendations: string[];
   scoreImpact: Record<string, number>;
   status: "running" | "completed" | "failed" | "awaiting_upload";
-  executionSource: "automated" | "manual";
+  executionSource: "automated" | "manual" | "customer_upload";
   uploadedBy: string | null;
   uploadedAt: string | null;
   reviewedAt: string | null;
