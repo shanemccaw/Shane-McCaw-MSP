@@ -2324,10 +2324,19 @@ router.post("/admin/ps-scripts/:id/analyze-permissions", requireAdmin, async (re
   if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
   try {
+    // Try powershell_scripts first; fall back to script_modules (module UUIDs are used
+    // when the permissions panel is open while editing inside a Script Set)
+    let scriptBody: string | null | undefined;
     const [script] = await db.select({ scriptBody: powershellScriptsTable.scriptBody })
       .from(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
-    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
-    if (!script.scriptBody?.trim()) { res.status(422).json({ error: "Script body is empty" }); return; }
+    if (script) {
+      scriptBody = script.scriptBody;
+    } else {
+      const [mod] = await db.select({ content: scriptModulesTable.content })
+        .from(scriptModulesTable).where(eq(scriptModulesTable.id, id));
+      scriptBody = mod?.content;
+    }
+    if (!scriptBody?.trim()) { res.status(404).json({ error: "Script not found" }); return; }
 
     const prompt = `Analyze the following PowerShell script and identify every Azure App Registration permission it requires.
 
