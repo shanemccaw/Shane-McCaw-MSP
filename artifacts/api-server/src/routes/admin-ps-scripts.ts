@@ -2061,11 +2061,12 @@ router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: 
   const pkgId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder } = req.body as {
+  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
+    azureRunbookName?: string | null;
   };
 
   if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
@@ -2086,6 +2087,7 @@ router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: 
         description: description?.trim() ?? null,
         content,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
+        azureRunbookName: azureRunbookName?.trim() || null,
       })
       .returning();
     res.status(201).json(created);
@@ -2101,11 +2103,12 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
   const moduleId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder } = req.body as {
+  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
+    azureRunbookName?: string | null;
   };
 
   try {
@@ -2116,6 +2119,7 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
         ...(description !== undefined && { description: description?.trim() ?? null }),
         ...(content !== undefined && { content }),
         ...(sortOrder !== undefined && { sortOrder }),
+        ...(azureRunbookName !== undefined && { azureRunbookName: azureRunbookName?.trim() || null }),
       })
       .where(eq(scriptModulesTable.id, moduleId))
       .returning();
@@ -2179,11 +2183,12 @@ router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Requ
   const pkgId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder } = req.body as {
+  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
+    azureRunbookName?: string | null;
   };
 
   if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
@@ -2202,6 +2207,7 @@ router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Requ
         description: description?.trim() ?? null,
         content,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
+        azureRunbookName: azureRunbookName?.trim() || null,
       })
       .returning();
     res.status(201).json(created);

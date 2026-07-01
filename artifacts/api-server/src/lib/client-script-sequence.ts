@@ -395,10 +395,15 @@ export async function runClientScriptSequence(
           })
           .where(eq(clientAutomationRunsTable.id, runId));
 
-        const runbookName = `client-${clientUserId}-${mod.id}`;
-        logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
-
-        await pushScriptToAzure(runbookName, mod.content);
+        let runbookName: string;
+        if (mod.azureRunbookName?.trim()) {
+          runbookName = mod.azureRunbookName.trim();
+          logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: using existing Azure runbook (skipping push)");
+        } else {
+          runbookName = `client-${clientUserId}-${mod.id}`;
+          logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
+          await pushScriptToAzure(runbookName, mod.content);
+        }
 
         const { jobId } = await createRunbookJob({
           runbookName,

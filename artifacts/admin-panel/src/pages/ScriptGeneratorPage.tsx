@@ -72,6 +72,7 @@ interface ScriptModuleItem {
   filename: string;
   description: string | null;
   content: string;
+  azureRunbookName?: string | null;
 }
 
 interface ScriptPackageListItem {
@@ -948,9 +949,10 @@ function PackageDrawer({
               description: em.description,
               content: em.content,
               sortOrder: i,
+              azureRunbookName: em.azureRunbookName?.trim() || null,
             }),
           });
-          savedModules.push({ id: em.id, filename: em.filename, description: em.description, content: em.content });
+          savedModules.push({ id: em.id, filename: em.filename, description: em.description, content: em.content, azureRunbookName: em.azureRunbookName?.trim() || null });
         } else {
           const created = await apiFetch(`/admin/ps-scripts/packages/${pkg.id}/modules`, token, {
             method: "POST",
@@ -959,6 +961,7 @@ function PackageDrawer({
               description: em.description,
               content: em.content,
               sortOrder: i,
+              azureRunbookName: em.azureRunbookName?.trim() || null,
             }),
           }) as ScriptModuleItem;
           savedModules.push(created);
@@ -1004,6 +1007,7 @@ function PackageDrawer({
       filename: `Module${editModules.length + 1}.ps1`,
       description: null,
       content: "",
+      azureRunbookName: null,
     };
     setEditModules((prev) => [...prev, newMod]);
     setActiveModuleIdx(editModules.length);
@@ -1190,6 +1194,16 @@ function PackageDrawer({
                             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </div>
+                      </div>
+                      {/* Azure Runbook Name */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161B22] border-b border-[#30363D]">
+                        <span className="text-[10px] font-medium text-[#484F58] whitespace-nowrap">Azure Runbook</span>
+                        <input
+                          className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2.5 py-1 text-xs font-mono text-[#C9D1D9] focus:outline-none focus:border-[#0078D4]/60 placeholder-[#3D444D]"
+                          value={(activeModule as EditableModule).azureRunbookName ?? ""}
+                          onChange={(e) => updateEditModule((activeModule as EditableModule)._key, { azureRunbookName: e.target.value || null })}
+                          placeholder="e.g. my-onboarding-runbook (leave blank to push script)"
+                        />
                       </div>
                       {/* Content editor */}
                       <div className="min-h-[300px] max-h-[520px] overflow-auto">

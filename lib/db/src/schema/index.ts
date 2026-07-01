@@ -1378,6 +1378,7 @@ export const scriptModulesTable = pgTable("script_modules", {
   description: text("description"),
   content: text("content").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
+  azureRunbookName: text("azure_runbook_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
