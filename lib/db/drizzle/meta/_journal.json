@@ -771,6 +771,13 @@
       "when": 1751385700000,
       "tag": "0106_add_script_modules_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1751385800000,
+      "tag": "0107_add_recheck_locked_until",
+      "breakpoints": true
     }
   ]
 }

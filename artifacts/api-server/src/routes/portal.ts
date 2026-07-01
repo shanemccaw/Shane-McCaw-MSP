@@ -975,15 +975,14 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
 router.post("/portal/app-registration/recheck", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  // Guard: reject concurrent probes for the same user (e.g. multiple tabs)
+  // Fast in-process guard: rejects concurrent probes hitting the same server
+  // instance without a DB round-trip (e.g. multiple tabs opened simultaneously).
   if (recheckInFlight.has(userId)) {
     res.status(429).json({ error: "A permission check is already in progress. Please wait a moment and try again." });
     return;
   }
-  recheckInFlight.add(userId);
 
-  try {
-  // 1. Load the existing app registration record (must be verified to have a stored secret)
+  // 1. Load the existing app registration record (must be verified to have a stored secret).
   const [appReg] = await db
     .select()
     .from(clientAppRegistrationsTable)
@@ -999,7 +998,39 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     return;
   }
 
-  // 2. Retrieve the stored client secret from Key Vault
+  // 2. Atomically acquire the DB-level TTL lock.
+  //
+  // The WHERE clause includes the expiry condition so the UPDATE is a
+  // compare-and-swap: it only succeeds when no active lock is held.  If a
+  // concurrent request (even from a different server process) already acquired
+  // the lock the UPDATE matches zero rows and we return 429 without entering
+  // the probe path.  A lock left behind by a mid-probe server restart will
+  // auto-expire after 60 s, so users are never permanently blocked.
+  const lockedUntil = new Date(Date.now() + 60_000);
+  const lockNow = new Date();
+  const acquired = await db
+    .update(clientAppRegistrationsTable)
+    .set({ recheckLockedUntil: lockedUntil })
+    .where(and(
+      eq(clientAppRegistrationsTable.clientUserId, userId),
+      or(
+        isNull(clientAppRegistrationsTable.recheckLockedUntil),
+        lt(clientAppRegistrationsTable.recheckLockedUntil, lockNow),
+      ),
+    ))
+    .returning({ id: clientAppRegistrationsTable.id });
+
+  if (acquired.length === 0) {
+    res.status(429).json({ error: "A permission check is already in progress. Please wait a moment and try again." });
+    return;
+  }
+
+  // Acquire the in-process lock after the DB lock so the finally block always
+  // clears it, regardless of what happens inside the try block.
+  recheckInFlight.add(userId);
+
+  try {
+  // 3. Retrieve the stored client secret from Key Vault
   let clientSecret: string;
   try {
     clientSecret = await getSecretValue(appReg.keyVaultSecretName);
@@ -1009,7 +1040,7 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     return;
   }
 
-  // 3. Gather required permissions for the client's active services
+  // 4. Gather required permissions for the client's active services
   const requiredPermissions = await getRequiredPermissionsForClient(userId);
 
   if (requiredPermissions.length === 0) {
@@ -1026,7 +1057,7 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     return;
   }
 
-  // 4. Run a fresh permission probe
+  // 5. Run a fresh permission probe
   let permissionCheck: import("@workspace/db").PermissionCheckResult;
   try {
     permissionCheck = await probeGraphPermissions(
@@ -1045,11 +1076,11 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     return;
   }
 
-  // 5. Persist the fresh result
-  const now = new Date();
+  // 6. Persist the fresh result (recheckLockedUntil cleared in the finally block)
+  const probeNow = new Date();
   await db
     .update(clientAppRegistrationsTable)
-    .set({ permissionCheck, connectionTestedAt: now, updatedAt: now })
+    .set({ permissionCheck, connectionTestedAt: probeNow, updatedAt: probeNow })
     .where(eq(clientAppRegistrationsTable.clientUserId, userId));
 
   res.json({
@@ -1058,11 +1089,16 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     azureClientId: appReg.azureClientId,
     submittedAt: appReg.submittedAt,
     verifiedAt: appReg.verifiedAt,
-    connectionTestedAt: now,
+    connectionTestedAt: probeNow,
     permissionCheck,
   });
   } finally {
+    // Always release both the in-process lock and the DB-level TTL lock.
     recheckInFlight.delete(userId);
+    db.update(clientAppRegistrationsTable)
+      .set({ recheckLockedUntil: null })
+      .where(eq(clientAppRegistrationsTable.clientUserId, userId))
+      .catch(err => req.log.warn({ err, userId }, "portal/app-registration/recheck: failed to clear recheckLockedUntil"));
   }
 });
 

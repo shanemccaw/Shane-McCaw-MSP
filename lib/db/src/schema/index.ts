@@ -874,6 +874,7 @@ export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
   verifiedAt: timestamp("verified_at"),
   connectionTestedAt: timestamp("connection_tested_at"),
   permissionCheck: jsonb("permission_check").$type<PermissionCheckResult>(),
+  recheckLockedUntil: timestamp("recheck_locked_until"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
