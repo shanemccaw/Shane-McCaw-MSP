@@ -1143,7 +1143,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
+              {meta.lastRunResult && (
+                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
+              )}
 
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
+              )}
 
               {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
@@ -1303,7 +1315,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
+              {meta.lastRunResult && (
+                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
+              )}
 
+              {(meta.scriptOutput || meta.aiAnalysis) && (
+                <AutoSavedScriptResultsSection
+                  scriptOutput={meta.scriptOutput as string | undefined}
+                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
+                  completedAt={meta.completedAt as string | undefined}
+                  failedAt={meta.failedAt as string | undefined}
+                  lastJobStatus={meta.lastJobStatus as string | undefined}
+                />
+              )}
 
               {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
