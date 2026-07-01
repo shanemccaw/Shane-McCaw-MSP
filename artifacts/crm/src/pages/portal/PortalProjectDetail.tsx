@@ -10,6 +10,7 @@ import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
 import { TypedCardContent } from "@/components/kanban/TypedCardContent";
 import { ManualScriptsSection } from "@/components/ManualScriptsSection";
+import { useToast } from "@/hooks/use-toast";
 
 interface Project {
   id: number;
@@ -183,6 +184,7 @@ function TaskCard({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [downloading, setDownloading] = useState(false);
+  const { toast } = useToast();
   const customerDownload = task.taskMetadata?.customerDownload as { scriptId?: string; scriptTitle?: string } | null | undefined;
 
   const handleDownloadScript = async (e: React.MouseEvent) => {
@@ -191,7 +193,15 @@ function TaskCard({
     setDownloading(true);
     try {
       const res = await fetchWithAuth(`/api/portal/tasks/${task.id}/download-script`);
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Download failed",
+          description: (body as { error?: string }).error ?? "Could not prepare the script. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
