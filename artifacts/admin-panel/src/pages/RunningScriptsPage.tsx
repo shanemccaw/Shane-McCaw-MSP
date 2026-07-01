@@ -8,7 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 interface ScriptRunRow {
   id: number;
   status: "running" | "completed" | "failed" | "awaiting_upload";
-  executionSource: "manual" | "automated";
+  executionSource: "manual" | "automated" | "customer_upload";
   jobId: string | null;
   createdAt: string;
   completedAt: string | null;
@@ -585,13 +585,19 @@ export default function RunningScriptsPage() {
                     <StatusBadge status={run.status} />
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`text-[10px] font-medium capitalize px-2 py-0.5 rounded-full border ${
-                      run.executionSource === "automated"
-                        ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                        : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
-                    }`}>
-                      {run.executionSource}
-                    </span>
+                    {run.executionSource === "automated" ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-purple-500/10 text-purple-400 border-purple-500/20">
+                        Automated
+                      </span>
+                    ) : run.executionSource === "customer_upload" ? (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-teal-500/10 text-teal-400 border-teal-500/20">
+                        Customer Script
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full border bg-[#1C2128] text-[#7D8590] border-[#30363D]">
+                        Manual
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-[#8B949E] whitespace-nowrap">
                     {formatDateTime(run.createdAt)}

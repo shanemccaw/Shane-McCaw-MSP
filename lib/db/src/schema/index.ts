@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -1321,7 +1321,7 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   scoreImpact: jsonb("score_impact").$type<Record<string, number>>().notNull().default({}),
   profileUpdates: jsonb("profile_updates").$type<Record<string, unknown>>().notNull().default({}),
   status: text("status", { enum: ["running", "completed", "failed", "awaiting_upload"] }).notNull().default("running"),
-  executionSource: text("execution_source", { enum: ["automated", "manual"] }).notNull().default("automated"),
+  executionSource: text("execution_source", { enum: ["automated", "manual", "customer_upload"] }).notNull().default("automated"),
   kanbanTaskId: integer("kanban_task_id").references(() => kanbanTasksTable.id, { onDelete: "set null" }),
   uploadedBy: text("uploaded_by"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
@@ -1331,6 +1331,22 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
 
 export type InsertScriptRunResult = typeof scriptRunResultsTable.$inferInsert;
 export type ScriptRunResult = typeof scriptRunResultsTable.$inferSelect;
+
+// Client Callback Tokens — embedded in downloaded .ps1 scripts so results auto-POST back
+export const clientCallbackTokensTable = pgTable("client_callback_tokens", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  label: text("label").notNull().default(""),
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "cascade" }),
+  scriptRunResultId: integer("script_run_result_id").references(() => scriptRunResultsTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+  lastUsedAt: timestamp("last_used_at"),
+}, (t) => [index("client_callback_tokens_project_id_idx").on(t.projectId)]);
+
+export type InsertClientCallbackToken = typeof clientCallbackTokensTable.$inferInsert;
+export type ClientCallbackToken = typeof clientCallbackTokensTable.$inferSelect;
 
 // Client Scores — upsert table tracking M365 health scores per client
 export const clientScoresTable = pgTable("client_scores", {

@@ -15,6 +15,10 @@ export interface ManualScriptPackageInput {
   runResultId: number;
   customerDisplayName?: string;
   uploadBaseUrl: string;
+  /** When provided, the script auto-POSTs results to this URL instead of requiring manual upload */
+  callbackToken?: string;
+  /** Full URL for the callback endpoint (e.g. https://host/api/script-callback) */
+  callbackUrl?: string;
 }
 
 export interface ManualScriptPackage {
@@ -32,6 +36,8 @@ export function generateManualScriptPackage(input: ManualScriptPackageInput): Ma
     runResultId,
     customerDisplayName,
     uploadBaseUrl,
+    callbackToken,
+    callbackUrl,
   } = input;
 
   const safeScriptName = scriptName.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -42,6 +48,44 @@ export function generateManualScriptPackage(input: ManualScriptPackageInput): Ma
     ? manualRequirements.map(r => `#   - ${r}`).join("\n")
     : "#   (none listed)";
 
+  const hasCallback = Boolean(callbackToken && callbackUrl);
+
+  const callbackVarsBlock = hasCallback
+    ? `
+# ── Auto-callback configuration ───────────────────────────────────────────────
+# These variables are generated automatically and allow the script to submit
+# results back to the portal without any manual upload step.
+$CallbackUrl   = "${callbackUrl}"
+$CallbackToken = "${callbackToken}"
+`
+    : "";
+
+  const callbackSubmitBlock = hasCallback
+    ? `
+# ── Auto-submit results to portal ─────────────────────────────────────────────
+Write-Host "[${scriptName}] Submitting results automatically…" -ForegroundColor Cyan
+try {
+    $headers = @{ Authorization = "Bearer $CallbackToken"; "Content-Type" = "application/json" }
+    $body    = $output | ConvertTo-Json -Depth 10
+    $resp    = Invoke-RestMethod -Uri $CallbackUrl -Method POST -Headers $headers -Body $body
+    Write-Host "[${scriptName}] Results submitted successfully. (received=$($resp.received))" -ForegroundColor Green
+} catch {
+    Write-Warning "[${scriptName}] Auto-submit failed: $_"
+    Write-Host "FALLBACK: Upload the JSON file manually to the portal:" -ForegroundColor Yellow
+    Write-Host "  URL: ${uploadUrl}" -ForegroundColor Yellow
+}
+`
+    : `
+# ── Write output JSON ──────────────────────────────────────────────────────────
+$jsonOutput = $output | ConvertTo-Json -Depth 10
+$jsonOutput | Out-File -FilePath $OutputPath -Encoding utf8
+Write-Host "[${scriptName}] Output written to: $OutputPath" -ForegroundColor Green
+Write-Host ""
+Write-Host "NEXT STEP: Upload the JSON file to the portal:" -ForegroundColor Yellow
+Write-Host "  URL: ${uploadUrl}" -ForegroundColor Yellow
+Write-Host "  Or use the portal UI — locate this script's card and click 'Upload Results'." -ForegroundColor Yellow
+`;
+
   const psContent = `<#
 .SYNOPSIS
     ${scriptName}
@@ -50,16 +94,18 @@ export function generateManualScriptPackage(input: ManualScriptPackageInput): Ma
 .NOTES
     This script requires DELEGATED authentication and must be run locally
     by a user with appropriate Microsoft 365 permissions.
-    After running, upload the JSON output file to the portal.
+    ${hasCallback
+      ? "Results are submitted automatically when the script completes."
+      : "After running, upload the JSON output file to the portal."}
 
     Run Result ID : ${runResultId}
     Customer      : ${customerDisplayName ?? "N/A"}
-    Upload URL    : ${uploadUrl}
+    ${hasCallback ? `Callback URL  : ${callbackUrl}` : `Upload URL    : ${uploadUrl}`}
 
 .REQUIREMENTS
 ${requirementsList}
 #>
-
+${callbackVarsBlock}
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
@@ -112,16 +158,7 @@ $output = @{
 
 # ── Disconnect ─────────────────────────────────────────────────────────────────
 Disconnect-MgGraph -ErrorAction SilentlyContinue
-
-# ── Write output JSON ──────────────────────────────────────────────────────────
-$jsonOutput = $output | ConvertTo-Json -Depth 10
-$jsonOutput | Out-File -FilePath $OutputPath -Encoding utf8
-Write-Host "[${scriptName}] Output written to: $OutputPath" -ForegroundColor Green
-Write-Host ""
-Write-Host "NEXT STEP: Upload the JSON file to the portal:" -ForegroundColor Yellow
-Write-Host "  URL: ${uploadUrl}" -ForegroundColor Yellow
-Write-Host "  Or use the portal UI — locate this script's card and click 'Upload Results'." -ForegroundColor Yellow
-`;
+${callbackSubmitBlock}`;
 
   const instructions = `MANUAL SCRIPT EXECUTION INSTRUCTIONS
 ======================================
@@ -129,6 +166,7 @@ Script      : ${scriptName}
 Run Result  : #${runResultId}
 Customer    : ${customerDisplayName ?? "N/A"}
 Generated   : ${new Date().toISOString()}
+${hasCallback ? "Callback    : Automatic — no manual upload needed!" : ""}
 
 WHY THIS SCRIPT CANNOT BE AUTOMATED
 -------------------------------------
@@ -154,9 +192,11 @@ STEP 2: RUN THE SCRIPT
 
       .\\${filename} -TenantId "<your-tenant-id>" -UserPrincipalName "<your-upn>"
 
-  The script collects data and writes a JSON file to the same directory.
+  The script collects data and ${hasCallback
+    ? "automatically submits the results back to the portal. No further action needed."
+    : `writes a JSON file to the same directory.`}
 
-STEP 3: SAVE THE JSON FILE
+${hasCallback ? "" : `STEP 3: SAVE THE JSON FILE
 ---------------------------
   The script writes output to: ${safeScriptName}_output_${runResultId}.json
   Keep this file — you will upload it in the next step.
@@ -173,7 +213,7 @@ STEP 4: UPLOAD THE RESULTS
     Content-Type: application/json
     Authorization: Bearer <admin-password>
     Body: <contents of the JSON file>
-
+`}
 WHAT DATA IS COLLECTED?
 ------------------------
   ${description ?? "See the script body for specifics."}

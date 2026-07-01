@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -5316,6 +5316,24 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
 
   const [updated] = await db.update(projectsTable).set(updates).where(eq(projectsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Project not found" }); return; }
+
+  // Auto-revoke all active callback tokens when a project is marked completed
+  if (status === "completed") {
+    try {
+      await db
+        .update(clientCallbackTokensTable)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(clientCallbackTokensTable.projectId, id),
+            isNull(clientCallbackTokensTable.revokedAt),
+          )
+        );
+    } catch (revokeErr) {
+      logger.warn({ revokeErr, projectId: id }, "portal: failed to auto-revoke callback tokens on project completion (non-fatal)");
+    }
+  }
+
   res.json(updated);
 });
 
@@ -8648,6 +8666,29 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       ? `https://${process.env.REPLIT_DEV_DOMAIN}`
       : "http://localhost:8080";
 
+    // Generate a callback token so the script can auto-POST results back
+    let callbackToken: string | undefined;
+    let callbackUrl: string | undefined;
+    try {
+      const { randomBytes, createHash } = await import("crypto");
+      const plaintext = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(plaintext).digest("hex");
+      const scriptTitle = script?.title ?? "Script";
+
+      await db.insert(clientCallbackTokensTable).values({
+        tokenHash,
+        label: scriptTitle,
+        clientUserId: userId,
+        projectId,
+        scriptRunResultId: runResultId,
+      });
+
+      callbackToken = plaintext;
+      callbackUrl = `${uploadBaseUrl}/api/script-callback`;
+    } catch (tokenErr) {
+      logger.warn({ tokenErr, runResultId }, "portal: failed to create callback token (non-fatal)");
+    }
+
     const pkg = generateManualScriptPackage({
       scriptId: runResult.scriptId ?? 0,
       scriptName: script?.title ?? "Script",
@@ -8657,6 +8698,8 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       runResultId,
       customerDisplayName: user?.name ?? undefined,
       uploadBaseUrl,
+      callbackToken,
+      callbackUrl,
     });
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");

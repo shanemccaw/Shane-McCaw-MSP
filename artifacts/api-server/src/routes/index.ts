@@ -54,6 +54,7 @@ import adminKanbanEscalationRouter from "./admin-kanban-escalation";
 import adminAiPromptsRouter from "./admin-ai-prompts";
 import notificationsRouter from "./notifications";
 import pushRouter from "./push";
+import adminCallbackTokensRouter from "./admin-callback-tokens";
 
 const router: IRouter = Router();
 
@@ -112,5 +113,6 @@ router.use(adminKanbanEscalationRouter);
 router.use(adminAiPromptsRouter);
 router.use(notificationsRouter);
 router.use(pushRouter);
+router.use(adminCallbackTokensRouter);
 
 export default router;

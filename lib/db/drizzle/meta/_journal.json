@@ -806,6 +806,13 @@
       "when": 1782880047099,
       "tag": "0111_add_source_kanban_task_id_to_health_history",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1782931134956,
+      "tag": "0112_add_client_callback_tokens",
+      "breakpoints": true
     }
   ]
 }
