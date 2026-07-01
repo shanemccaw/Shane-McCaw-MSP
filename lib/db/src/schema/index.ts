@@ -1341,6 +1341,10 @@ export interface PsScriptPermissions {
   appPermissions: { scope: string; reason: string }[];
   delegatedPermissions: string[];
   notes: string;
+  /** AI-analyzed detail for Application permissions — optional, set by analyze-permissions endpoint */
+  appPermissionDetails?: { name: string; description: string }[];
+  /** AI-analyzed detail for Delegated permissions — optional, set by analyze-permissions endpoint */
+  delegatedPermissionDetails?: { name: string; description: string }[];
 }
 
 export const powershellScriptsTable = pgTable("powershell_scripts", {

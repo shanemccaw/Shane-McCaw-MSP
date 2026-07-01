@@ -2315,6 +2315,69 @@ router.delete("/admin/script-packages/:id/modules/:moduleId", requireAdmin, asyn
   }
 });
 
+// ─── POST /api/admin/ps-scripts/:id/analyze-permissions ──────────────────────
+// NOTE: must be registered BEFORE /admin/ps-scripts/:id to prevent route shadowing
+
+router.post("/admin/ps-scripts/:id/analyze-permissions", requireAdmin, async (req: Request, res: Response) => {
+  const id = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  try {
+    const [script] = await db.select({ scriptBody: powershellScriptsTable.scriptBody })
+      .from(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
+    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+    if (!script.scriptBody?.trim()) { res.status(422).json({ error: "Script body is empty" }); return; }
+
+    const prompt = `Analyze the following PowerShell script and identify every Azure App Registration permission it requires.
+
+Return ONLY a JSON object with this exact structure — no prose before or after:
+\`\`\`json
+{
+  "appPermissions": [
+    {"name": "ExactScope.Name", "description": "One sentence explaining why this script needs this specific permission."}
+  ],
+  "delegatedPermissions": [
+    {"name": "ExactScope.Name", "description": "One sentence explaining why this script needs this specific permission."}
+  ]
+}
+\`\`\`
+
+Rules:
+- Application permissions (app-only, no signed-in user): put in "appPermissions"
+- Delegated permissions (act on behalf of signed-in user): put in "delegatedPermissions"
+- "name" must be the exact Microsoft Graph or Azure RBAC scope string (e.g. "User.Read.All", "Mail.Send")
+- "description" must be one sentence explaining why THIS script specifically needs it
+- Only include permissions the script actually invokes — do not speculate
+- If no permissions of a type are needed, return an empty array for that key
+
+PowerShell script to analyze:
+\`\`\`powershell
+${script.scriptBody}
+\`\`\``;
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const text = msg.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
+    const parsed = extractJson(text) as Record<string, unknown> | null;
+
+    type PermDetail = { name: string; description: string };
+    const isPermDetailArr = (v: unknown): v is PermDetail[] =>
+      Array.isArray(v) && v.every(e => e && typeof (e as Record<string, unknown>)["name"] === "string");
+
+    const appPermissions: PermDetail[] = isPermDetailArr(parsed?.["appPermissions"]) ? parsed["appPermissions"] : [];
+    const delegatedPermissions: PermDetail[] = isPermDetailArr(parsed?.["delegatedPermissions"]) ? parsed["delegatedPermissions"] : [];
+
+    res.json({ appPermissionDetails: appPermissions, delegatedPermissionDetails: delegatedPermissions });
+  } catch (err) {
+    logger.error({ err }, "analyze-permissions: failed");
+    res.status(500).json({ error: "Failed to analyze permissions" });
+  }
+});
+
 // ─── POST /api/admin/ps-scripts/:id/associate-to-package ─────────────────────
 // NOTE: must be registered BEFORE /admin/ps-scripts/:id to prevent route shadowing
 

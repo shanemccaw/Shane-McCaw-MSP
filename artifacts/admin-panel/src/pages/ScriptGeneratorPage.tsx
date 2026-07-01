@@ -47,10 +47,17 @@ interface AppPermEntry {
   reason: string;
 }
 
+interface AppPermDetail {
+  name: string;
+  description: string;
+}
+
 interface PsScriptPermissions {
   appPermissions: AppPermEntry[];
   delegatedPermissions: string[];
   notes: string;
+  appPermissionDetails?: AppPermDetail[];
+  delegatedPermissionDetails?: AppPermDetail[];
 }
 
 interface PsScriptListItem {
@@ -2557,6 +2564,8 @@ function PermissionsSidebarPanel({
   const [editingReasonValue, setEditingReasonValue] = useState("");
   const [inheritedPerms, setInheritedPerms] = useState<AppPermEntry[]>([]);
   const [inheritedLoading, setInheritedLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<{ app: AppPermDetail[]; delegated: AppPermDetail[] } | null>(null);
 
   useEffect(() => {
     setNotesValue(permissions?.notes ?? "");
@@ -2650,19 +2659,140 @@ function PermissionsSidebarPanel({
     await savePermissions(updated);
   };
 
+  const handleAnalyze = async () => {
+    if (!isScriptMode || !scriptId) return;
+    setAnalyzing(true);
+    setAnalysisResult(null);
+    try {
+      const r = await apiFetch(`/admin/ps-scripts/${scriptId}/analyze-permissions`, token, { method: "POST" });
+      if (!r.ok) { toast({ title: "Analysis failed", description: `Server returned ${r.status}`, variant: "destructive" }); return; }
+      const data = await r.json() as { appPermissionDetails?: AppPermDetail[]; delegatedPermissionDetails?: AppPermDetail[] };
+      setAnalysisResult({ app: data.appPermissionDetails ?? [], delegated: data.delegatedPermissionDetails ?? [] });
+    } catch (e) {
+      toast({ title: "Analysis failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const handleSaveAnalysis = async () => {
+    if (!permissions || !analysisResult) return;
+    // Merge app perms: add new scopes or fill in missing reasons
+    const existingByScope = new Map(permissions.appPermissions.map(p => [p.scope, p]));
+    for (const detail of analysisResult.app) {
+      const existing = existingByScope.get(detail.name);
+      if (!existing) {
+        existingByScope.set(detail.name, { scope: detail.name, reason: detail.description });
+      } else if (!existing.reason) {
+        existingByScope.set(detail.name, { ...existing, reason: detail.description });
+      }
+    }
+    // Merge delegated perms: add new ones
+    const delegatedSet = new Set(permissions.delegatedPermissions);
+    for (const detail of analysisResult.delegated) {
+      delegatedSet.add(detail.name);
+    }
+    const updated: PsScriptPermissions = {
+      ...permissions,
+      appPermissions: Array.from(existingByScope.values()),
+      delegatedPermissions: Array.from(delegatedSet),
+      appPermissionDetails: analysisResult.app,
+      delegatedPermissionDetails: analysisResult.delegated,
+    };
+    onPermissionsChange(updated);
+    await savePermissions(updated);
+    setAnalysisResult(null);
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[#0D1117]">
       <div className="px-4 py-2.5 border-b border-[#21262D] flex-shrink-0 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <svg className="w-3.5 h-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
           <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest">Permissions</span>
-          {saving && <div className="w-3 h-3 border border-amber-400/50 border-t-amber-400 rounded-full animate-spin" />}
+          {(saving || analyzing) && <div className="w-3 h-3 border border-amber-400/50 border-t-amber-400 rounded-full animate-spin" />}
         </div>
-        {totalCount > 0 && (
-          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">{totalCount}</span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {totalCount > 0 && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/25">{totalCount}</span>
+          )}
+          <button
+            onClick={handleAnalyze}
+            disabled={analyzing || !isScriptMode}
+            title={isScriptMode ? "Analyze script with AI to identify required permissions" : "Save the script first"}
+            className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-violet-500/30 text-violet-400 bg-violet-500/10 hover:bg-violet-500/20"
+          >
+            {analyzing ? (
+              <div className="w-2.5 h-2.5 border border-violet-400/50 border-t-violet-400 rounded-full animate-spin" />
+            ) : (
+              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+            )}
+            Analyze
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* ── AI Analysis Results ── */}
+        {analysisResult && (
+          <div className="border border-violet-500/30 rounded bg-violet-500/5">
+            <div className="flex items-center justify-between px-2 py-1.5 border-b border-violet-500/20">
+              <div className="flex items-center gap-1.5">
+                <svg className="w-3 h-3 text-violet-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                <span className="text-[10px] font-semibold text-violet-400 uppercase tracking-wide">AI Analysis</span>
+                <span className="text-[9px] text-violet-400/60">{analysisResult.app.length + analysisResult.delegated.length} permission{analysisResult.app.length + analysisResult.delegated.length !== 1 ? "s" : ""} found</span>
+              </div>
+              <button onClick={() => setAnalysisResult(null)} className="text-[#484F58] hover:text-[#7D8590] transition-colors rounded p-0.5">
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-2 space-y-2">
+              {analysisResult.app.length === 0 && analysisResult.delegated.length === 0 ? (
+                <p className="text-[10px] text-[#7D8590] italic">No Azure App Registration permissions detected in this script.</p>
+              ) : (
+                <>
+                  {analysisResult.app.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wide mb-1">Application</p>
+                      <div className="flex flex-col gap-1.5">
+                        {analysisResult.app.map(d => (
+                          <div key={d.name} className="bg-[#0D1117] border border-violet-500/15 rounded px-2 py-1.5">
+                            <code className="text-[11px] font-mono text-violet-300">{d.name}</code>
+                            <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{d.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {analysisResult.delegated.length > 0 && (
+                    <div>
+                      <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wide mb-1">Delegated</p>
+                      <div className="flex flex-col gap-1.5">
+                        {analysisResult.delegated.map(d => (
+                          <div key={d.name} className="bg-[#0D1117] border border-violet-500/15 rounded px-2 py-1.5">
+                            <code className="text-[11px] font-mono text-violet-300">{d.name}</code>
+                            <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{d.description}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { void handleSaveAnalysis(); }}
+                    disabled={saving}
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-violet-500/15 hover:bg-violet-500/25 border border-violet-500/30 text-violet-400 text-[10px] font-semibold rounded transition-colors disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <div className="w-3 h-3 border border-violet-400/40 border-t-violet-400 rounded-full animate-spin" />
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                    )}
+                    Save to Script
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         {!permissions ? (
           <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
             <svg className="w-8 h-8 text-[#21262D] mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" /></svg>
