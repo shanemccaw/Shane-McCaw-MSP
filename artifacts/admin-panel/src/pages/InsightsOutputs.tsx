@@ -323,10 +323,11 @@ function DashboardTab({
 type WizardStep = "confirm" | "generating" | "done";
 
 function DocumentsTab({
-  customerId, projectId, fetchWithAuth,
+  customerId, projectId, fetchWithAuth, customers,
 }: {
   customerId: number | null; projectId: number | null;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  customers: Customer[];
 }) {
   const [docs, setDocs] = useState<InsightsDoc[]>([]);
   const [loading, setLoading] = useState(false);
@@ -337,6 +338,12 @@ function DocumentsTab({
   const [wizardStep, setWizardStep] = useState<WizardStep>("confirm");
   const [wizardTitle, setWizardTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendDoc, setSendDoc] = useState<InsightsDoc | null>(null);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendSubject, setSendSubject] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<string | null>(null);
 
   const buildQs = useCallback(() => {
     const p = new URLSearchParams({ category: "report" });
@@ -405,6 +412,33 @@ function DocumentsTab({
 
   const downloadPdf = (doc: InsightsDoc) => window.open(`${API}/admin/insights/documents/${doc.id}/download`, "_blank");
 
+  const openSend = (doc: InsightsDoc) => {
+    const customerEmail = doc.customerId
+      ? (customers.find(c => c.id === doc.customerId)?.email ?? "")
+      : "";
+    setSendDoc(doc); setSendEmail(customerEmail); setSendSubject(doc.title); setSendResult(null); setSendOpen(true);
+  };
+
+  const sendDocument = async () => {
+    if (!sendDoc) return;
+    setSending(true); setSendResult(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/${sendDoc.id}/send`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recipientEmail: sendEmail || undefined, subject: sendSubject }),
+      });
+      const d = await r.json() as { ok?: boolean; sentTo?: string; sharepointUrl?: string; error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Send failed");
+      let msg = `✓ Sent to ${d.sentTo}`;
+      if (d.sharepointUrl) msg += ` · Uploaded to SharePoint`;
+      setSendResult(msg);
+      void loadDocs();
+      if (selectedDoc && selectedDoc.id === sendDoc.id) {
+        setSelectedDoc(prev => prev ? { ...prev, status: "delivered", deliveredAt: new Date().toISOString() } : prev);
+      }
+    } catch (e) { setSendResult(`Error: ${String(e)}`); } finally { setSending(false); }
+  };
+
   return (
     <div className="flex gap-5">
       {/* Left: type cards + list */}
@@ -458,6 +492,9 @@ function DocumentsTab({
                     {doc.status === "draft" && (
                       <button onClick={() => void updateStatus(doc.id, "approved")} title="Approve" className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700"><CheckCircle className="w-3.5 h-3.5" /></button>
                     )}
+                    {doc.status === "approved" && (
+                      <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
+                    )}
                     <button onClick={() => void updateStatus(doc.id, "archived")} title="Archive" className="p-1 rounded text-gray-400 hover:text-gray-300 hover:bg-gray-700"><Archive className="w-3.5 h-3.5" /></button>
                     <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
@@ -472,9 +509,18 @@ function DocumentsTab({
       {selectedDoc && (
         <div className="w-[480px] shrink-0 bg-[#161B22] border border-gray-700/50 rounded-xl flex flex-col">
           <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700/50">
-            <div><div className="text-white text-sm font-medium truncate max-w-[300px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
+            <div><div className="text-white text-sm font-medium truncate max-w-[260px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
             <div className="flex gap-1">
               <button onClick={() => downloadPdf(selectedDoc)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="Download PDF"><Download className="w-3.5 h-3.5" /></button>
+              {selectedDoc.status === "approved" && (
+                <button
+                  onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) openSend(d); }}
+                  className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                  title="Send to Client"
+                >
+                  <Send className="w-3 h-3" /> Send
+                </button>
+              )}
               <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
             </div>
           </div>
@@ -533,6 +579,33 @@ function DocumentsTab({
           <iframe srcDoc={selectedDoc.htmlContent} className="w-full h-full min-h-[600px] rounded-lg" sandbox="allow-same-origin" title="Full Preview" />
         )}
       </SlideOver>
+
+      <Modal open={sendOpen} onClose={() => setSendOpen(false)} title="Send to Client">
+        <div className="flex flex-col gap-4">
+          <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-300 text-xs flex gap-2 items-start">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            This will email the report via Exchange Online and upload a PDF to the client's SharePoint site (if configured). This action cannot be undone.
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Recipient Email (optional — uses customer email if blank)</label>
+            <input value={sendEmail} onChange={e => setSendEmail(e.target.value)} type="email" placeholder="client@company.com"
+              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          <div>
+            <label className="text-gray-400 text-xs mb-1.5 block">Email Subject</label>
+            <input value={sendSubject} onChange={e => setSendSubject(e.target.value)}
+              className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+          </div>
+          {sendResult && <p className={`text-xs ${sendResult.startsWith("Error") ? "text-red-400" : "text-green-400"}`}>{sendResult}</p>}
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setSendOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
+            <button onClick={() => void sendDocument()} disabled={sending}
+              className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 flex items-center gap-2">
+              {sending ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Sending…</> : <><Send className="w-3.5 h-3.5" /> Send Now</>}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -1124,7 +1197,7 @@ export default function InsightsOutputs() {
       .catch(() => { setProjects([]); });
   }, [selectedCustomer, fetchWithAuth]);
 
-  const tabProps = { customerId: selectedCustomer, projectId: selectedProject, fetchWithAuth };
+  const tabProps = { customerId: selectedCustomer, projectId: selectedProject, fetchWithAuth, customers };
 
   return (
     <div className="flex flex-col h-full bg-[#0D1117] text-white">

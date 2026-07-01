@@ -853,6 +853,120 @@ router.delete("/admin/insights/documents/:id", requireAdmin, async (req: Request
   }
 });
 
+// ── POST /api/admin/insights/documents/:id/send ───────────────────────────────
+// 1. Validates the document is approved
+// 2. Sends HTML content as email body via Exchange Online (Graph)
+// 3. Uploads PDF to client's SharePoint site (best-effort, non-fatal)
+// 4. Marks as delivered and sets deliveredAt
+
+router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params["id"] ?? ""), 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+    const [doc] = await db.select().from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, id)).limit(1);
+    if (!doc) return res.status(404).json({ error: "Document not found" });
+    if (doc.status !== "approved") {
+      return res.status(400).json({ error: "Document must be approved before sending. Approve it first." });
+    }
+
+    const recipientEmail = req.body.recipientEmail as string | undefined;
+    const subject        = (req.body.subject as string | undefined) ?? `${doc.title} — Shane McCaw Consulting`;
+
+    let toEmail: string | undefined = recipientEmail;
+    let sharepointSiteId: string | null = null;
+    let clientName = "Client";
+
+    if (doc.customerId) {
+      const [cust] = await db.select({
+        email: usersTable.email,
+        name: usersTable.name,
+        company: usersTable.company,
+        sharepointSiteId: usersTable.sharepointSiteId,
+      }).from(usersTable).where(eq(usersTable.id, doc.customerId)).limit(1);
+
+      if (cust) {
+        if (!toEmail) toEmail = cust.email;
+        sharepointSiteId = cust.sharepointSiteId ?? null;
+        clientName = cust.company ?? cust.name ?? "Client";
+      }
+    }
+
+    if (!toEmail) {
+      return res.status(400).json({
+        error: "No recipient email — provide recipientEmail or link the document to a customer with an email address.",
+      });
+    }
+
+    const mailUserId = process.env["GRAPH_MAIL_USER_ID"];
+    if (!mailUserId || !graphCredentialsPresent()) {
+      return res.status(503).json({
+        error: "Exchange Online not configured. Set GRAPH_TENANT_ID, GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, and GRAPH_MAIL_USER_ID in Replit Secrets.",
+      });
+    }
+
+    const emailBody = `${doc.htmlContent}
+<hr style="margin:24px 0">
+<p style="font-size:12px;color:#666">Sent by Shane McCaw Consulting · <a href="https://shanemccaw.com">shanemccaw.com</a></p>`;
+
+    // 1. Generate PDF (best-effort) to attach to the email
+    const safeTitle = doc.title.replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
+    const pdfFilename = `${safeTitle}_${new Date().toISOString().slice(0, 10)}.pdf`;
+    let pdfBuffer: Buffer | null = null;
+    try {
+      pdfBuffer = await generateInsightsPdf(doc.title, doc.htmlContent, clientName, new Date(doc.createdAt));
+    } catch (pdfErr) {
+      logger.warn({ pdfErr, docId: id }, "insights: PDF generation failed (non-fatal) — will send email without attachment");
+    }
+
+    const sent = await sendMessage({
+      userId: mailUserId,
+      to: [toEmail],
+      subject,
+      body: emailBody,
+      bodyType: "html",
+      ...(pdfBuffer ? {
+        attachments: [{ name: pdfFilename, contentType: "application/pdf", contentBytes: pdfBuffer }],
+      } : {}),
+    });
+    if (!sent) return res.status(500).json({ error: "Failed to send email via Exchange Online" });
+
+    // 2. SharePoint upload (best-effort — non-fatal if not configured)
+    let sharepointUrl: string | null = null;
+    if (sharepointSiteId && graphCredentialsPresent() && pdfBuffer) {
+      try {
+        await ensureSharePointFolderAtRoot(sharepointSiteId, CONSULTING_DELIVERABLES_FOLDER);
+        sharepointUrl = await uploadFileToSharePoint(
+          sharepointSiteId,
+          CONSULTING_DELIVERABLES_FOLDER,
+          pdfFilename,
+          pdfBuffer,
+          "application/pdf",
+        );
+        logger.info({ docId: id, pdfFilename, sharepointUrl }, "insights: document uploaded to SharePoint");
+      } catch (spErr) {
+        logger.warn({ spErr, docId: id }, "insights: SharePoint upload failed (non-fatal) — email was still sent");
+      }
+    }
+
+    const [updated] = await db.update(insightsGeneratedDocumentsTable)
+      .set({
+        status:      "delivered",
+        deliveredAt: new Date(),
+        updatedAt:   new Date(),
+        ...(sharepointUrl ? { pdfUrl: sharepointUrl } : {}),
+      })
+      .where(eq(insightsGeneratedDocumentsTable.id, id))
+      .returning();
+
+    return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl, pdfAttached: !!pdfBuffer });
+  } catch (err) {
+    logger.error({ err }, "insights document send error");
+    return res.status(500).json({ error: "Failed to send document" });
+  }
+});
+
 // ── POST /api/admin/insights/consulting/generate ──────────────────────────────
 
 const CONSULTING_TYPE_LABELS: Record<string, string> = {

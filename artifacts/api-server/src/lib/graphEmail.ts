@@ -260,6 +260,12 @@ export async function moveToFolder(userId: string, messageId: string, destinatio
 
 // ─── Send new message ─────────────────────────────────────────────────────────
 
+export interface SendMessageAttachment {
+  name: string;
+  contentType: string;
+  contentBytes: Buffer | Uint8Array;
+}
+
 export interface SendMessageOpts {
   userId: string;
   to: string[];
@@ -269,16 +275,24 @@ export interface SendMessageOpts {
   body: string;
   bodyType?: "html" | "text";
   saveToSentItems?: boolean;
+  attachments?: SendMessageAttachment[];
 }
 
 export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
-  const { userId, to, cc = [], bcc = [], subject, body, bodyType = "html", saveToSentItems = true } = opts;
+  const { userId, to, cc = [], bcc = [], subject, body, bodyType = "html", saveToSentItems = true, attachments = [] } = opts;
 
   if (!graphCredentialsPresent()) {
     throw new GraphMailConfigError(
       "Exchange Online credentials not configured — check GRAPH_TENANT_ID, GRAPH_CLIENT_ID, and GRAPH_CLIENT_SECRET in Replit Secrets"
     );
   }
+
+  const graphAttachments = attachments.map(a => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: a.name,
+    contentType: a.contentType,
+    contentBytes: Buffer.from(a.contentBytes).toString("base64"),
+  }));
 
   try {
     const res = await graphEmailFetch(
@@ -292,6 +306,7 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
             toRecipients: to.map(a => ({ emailAddress: { address: a } })),
             ccRecipients: cc.map(a => ({ emailAddress: { address: a } })),
             bccRecipients: bcc.map(a => ({ emailAddress: { address: a } })),
+            ...(graphAttachments.length > 0 ? { attachments: graphAttachments } : {}),
           },
           saveToSentItems,
         }),
