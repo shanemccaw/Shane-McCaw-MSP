@@ -1044,6 +1044,7 @@ const JOB_STATUS_CFG: Record<string, { cls: string; label: string }> = {
 
 function ScriptModalBody({
   taskId,
+  taskStatus,
   m,
   mode,
   fetchWithAuth,
@@ -1052,6 +1053,7 @@ function ScriptModalBody({
   onOpenScript,
 }: {
   taskId: number;
+  taskStatus?: string | null;
   m: Record<string, unknown>;
   mode: "admin" | "client";
   fetchWithAuth?: (url: string, options?: RequestInit) => Promise<Response>;
@@ -1062,7 +1064,14 @@ function ScriptModalBody({
   const sm = m as ScriptMetadata;
   const [running, setRunning] = useState(false);
   const [logLines, setLogLines] = useState<string[]>([]);
-  const [liveStatus, setLiveStatus] = useState<string>(sm.lastJobStatus ?? "Never run");
+
+  const isCompleted = taskStatus?.toLowerCase() === "completed";
+  const STALE_RUNNING_STATUSES = new Set(["Running", "New", "Activating"]);
+  const initialStatus =
+    isCompleted && STALE_RUNNING_STATUSES.has(sm.lastJobStatus ?? "")
+      ? "Completed"
+      : (sm.lastJobStatus ?? "Never run");
+  const [liveStatus, setLiveStatus] = useState<string>(initialStatus);
   const logEndRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
 
@@ -1198,16 +1207,18 @@ function ScriptModalBody({
                 variant="primary"
                 onClick={canRun ? (onRunScript ?? (() => void handleRun())) : undefined}
               />
-              <ModalActionBtn
-                label="View Output"
-                onClick={() => {
-                  if (logContainerRef.current) {
-                    logContainerRef.current.scrollIntoView({ behavior: "smooth" });
-                  } else {
-                    onOpenScript?.();
-                  }
-                }}
-              />
+              {!isCompleted && (
+                <ModalActionBtn
+                  label="View Output"
+                  onClick={() => {
+                    if (logContainerRef.current) {
+                      logContainerRef.current.scrollIntoView({ behavior: "smooth" });
+                    } else {
+                      onOpenScript?.();
+                    }
+                  }}
+                />
+              )}
               <ModalActionBtn label="Open Script" onClick={onOpenScript} />
             </>
           ) : (
@@ -1254,6 +1265,7 @@ function ScriptModalBody({
 
 export function TypedModalSection({
   taskType,
+  taskStatus,
   metadata,
   mode = "client",
   taskId,
@@ -1263,6 +1275,7 @@ export function TypedModalSection({
   onOpenScript,
 }: {
   taskType: string | null | undefined;
+  taskStatus?: string | null;
   metadata: Record<string, unknown> | null | undefined;
   mode?: "admin" | "client";
   taskId?: number;
@@ -1293,6 +1306,7 @@ export function TypedModalSection({
       {taskType === "script" && taskId !== undefined && (
         <ScriptModalBody
           taskId={taskId}
+          taskStatus={taskStatus}
           m={m}
           mode={mode}
           fetchWithAuth={fetchWithAuth}

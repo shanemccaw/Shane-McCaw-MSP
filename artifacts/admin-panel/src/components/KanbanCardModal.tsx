@@ -943,6 +943,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
               <TypedModalSection
                 taskType={localTask.taskType}
+                taskStatus={localTask.column}
                 metadata={localTask.taskMetadata}
                 mode={mode}
                 taskId={localTask.id}
