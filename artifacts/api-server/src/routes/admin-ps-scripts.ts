@@ -2591,6 +2591,50 @@ router.post("/admin/ps-scripts/packages/:packageId/push-module", requireAdmin, a
   }
 });
 
+// ─── POST /api/admin/ps-scripts/modules/:moduleId/push-to-azure ─────────────
+// Pushes a single module by its UUID, using the existing azureRunbookName if set
+// (falling back to filenameToRunbookName). This preserves the stored runbook name
+// so it stays consistent with any kanban card metadata already populated.
+
+router.post("/admin/ps-scripts/modules/:moduleId/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
+  const moduleId = String(req.params["moduleId"] ?? "");
+  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid moduleId" }); return; }
+
+  if (!isAzureConfigured()) {
+    res.json({ ok: false, warning: "Azure Automation is not configured on this server" });
+    return;
+  }
+
+  try {
+    const [mod] = await db
+      .select()
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.id, moduleId))
+      .limit(1);
+
+    if (!mod) { res.status(404).json({ error: "Module not found" }); return; }
+
+    const content = mod.content?.trim() ?? "";
+    if (!content) { res.status(400).json({ error: "Module has no content" }); return; }
+
+    const runbookName = mod.azureRunbookName ?? filenameToRunbookName(mod.filename ?? "module.ps1");
+
+    await pushScriptToAzure(runbookName, content);
+
+    await db
+      .update(scriptModulesTable)
+      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
+      .where(eq(scriptModulesTable.id, mod.id));
+
+    logger.info({ moduleId, runbookName }, "admin-ps-scripts: pushed module to Azure by ID");
+    res.json({ ok: true, moduleId, runbookName });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Push failed";
+    logger.error({ err, moduleId }, "admin-ps-scripts: push-module-by-id failed");
+    res.status(500).json({ ok: false, error: msg });
+  }
+});
+
 // ─── POST /api/admin/ps-scripts/packages/:packageId/push-to-azure ────────────
 
 router.post("/admin/ps-scripts/packages/:packageId/push-to-azure", requireAdmin, async (req: Request, res: Response) => {

@@ -13,6 +13,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { checkManualScriptEscalations } from "../lib/manual-script-escalation";
+import { autoFireFirstBacklogScript, reconcileStalledPhases } from "../lib/kanban-auto-fire";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -40,6 +41,54 @@ router.post(
     } catch (err) {
       logger.error({ err }, "admin-kanban-escalation: unexpected error");
       res.status(500).json({ error: "Failed to run escalation check" });
+    }
+  },
+);
+
+/**
+ * POST /api/admin/kanban/trigger-auto-fire
+ *   Manually trigger auto-fire for a specific client (by clientUserId).
+ *   Also useful after fixing template runbook mappings on an already-spawned phase.
+ *   Body: { clientUserId: number }
+ */
+router.post(
+  "/admin/kanban/trigger-auto-fire",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    const { clientUserId } = req.body as { clientUserId?: unknown };
+    if (typeof clientUserId !== "number" || !Number.isInteger(clientUserId) || clientUserId <= 0) {
+      res.status(400).json({ error: "clientUserId must be a positive integer" });
+      return;
+    }
+    try {
+      // Fire-and-forget — the job runs in the background
+      void autoFireFirstBacklogScript(clientUserId);
+      req.log.info({ clientUserId }, "admin triggered auto-fire for client");
+      res.json({ ok: true, message: `Auto-fire triggered for clientUserId ${clientUserId}` });
+    } catch (err) {
+      logger.error({ err, clientUserId }, "admin-kanban-escalation: trigger-auto-fire unexpected error");
+      res.status(500).json({ error: "Failed to trigger auto-fire" });
+    }
+  },
+);
+
+/**
+ * POST /api/admin/kanban/reconcile-stalled-phases
+ *   Run the stalled-phase reconciler immediately.
+ *   Finds any in_progress workflow step with backlog script cards but no running job,
+ *   and kicks off auto-fire for the affected clients.
+ */
+router.post(
+  "/admin/kanban/reconcile-stalled-phases",
+  requireAdmin,
+  async (req: Request, res: Response) => {
+    try {
+      await reconcileStalledPhases();
+      req.log.info({}, "admin triggered reconcile-stalled-phases");
+      res.json({ ok: true, message: "Stalled-phase reconciliation complete — check server logs for details" });
+    } catch (err) {
+      logger.error({ err }, "admin-kanban-escalation: reconcile-stalled-phases unexpected error");
+      res.status(500).json({ error: "Failed to run stalled-phase reconciler" });
     }
   },
 );

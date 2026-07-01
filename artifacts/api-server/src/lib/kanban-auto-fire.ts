@@ -695,3 +695,79 @@ export async function reconcileOrphanedRuns(): Promise<void> {
     logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
   }
 }
+
+/**
+ * Called once on server startup (after reconcileOrphanedRuns) to detect phases
+ * that advanced successfully but whose auto-fire chain never started — e.g. because
+ * the server was restarted between phase advance and the first autoFireFirstBacklogScript
+ * call, or because the template runbook mapping was added after the cards were spawned.
+ *
+ * A "stalled phase" is: an in_progress workflow step that has at least one backlog
+ * kanban card with a populated linkedRunbook in its metadata, and zero kanban cards
+ * currently in_progress (meaning no job is already running for this client).
+ */
+export async function reconcileStalledPhases(): Promise<void> {
+  if (!isAzureConfigured()) return;
+
+  try {
+    // Find projects with in_progress workflow steps
+    const activeSteps = await db
+      .select({
+        stepId:       workflowStepsTable.id,
+        projectId:    workflowStepsTable.projectId,
+        clientUserId: projectsTable.clientUserId,
+      })
+      .from(workflowStepsTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, workflowStepsTable.projectId))
+      .where(eq(workflowStepsTable.status, "in_progress"));
+
+    if (activeSteps.length === 0) return;
+
+    const stalledClientIds = new Set<number>();
+
+    for (const step of activeSteps) {
+      if (step.clientUserId == null) continue;
+
+      // Check for any in_progress cards in this step (means auto-fire is already running)
+      const [inProgressCard] = await db
+        .select({ id: kanbanTasksTable.id })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "in_progress"),
+          ),
+        )
+        .limit(1);
+
+      if (inProgressCard) continue; // already running — skip
+
+      // Check for backlog cards that have a linkedRunbook (auto-fireable)
+      const [backlogCard] = await db
+        .select({ id: kanbanTasksTable.id })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "backlog"),
+            isNotNull(sql`task_metadata->'linkedRunbook'->>'azureRunbookName'`),
+          ),
+        )
+        .limit(1);
+
+      if (backlogCard) {
+        logger.info(
+          { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
+          "kanban-auto-fire: detected stalled phase — no in_progress cards but backlog script cards exist",
+        );
+        stalledClientIds.add(step.clientUserId);
+      }
+    }
+
+    for (const clientUserId of stalledClientIds) {
+      void autoFireFirstBacklogScript(clientUserId);
+    }
+  } catch (err) {
+    logger.warn({ err }, "kanban-auto-fire: reconcileStalledPhases failed (non-fatal)");
+  }
+}
