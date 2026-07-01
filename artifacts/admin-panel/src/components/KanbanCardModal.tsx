@@ -151,8 +151,8 @@ function AutoSavedScriptResultsSection({
   failedAt?: string;
   lastJobStatus?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [showOutput, setShowOutput] = useState(false);
+  const [open, setOpen] = useState(true);
+  const [showOutput, setShowOutput] = useState(true);
 
   const timestamp = completedAt ?? failedAt;
   const isFailure = !!failedAt && !completedAt;
@@ -249,7 +249,7 @@ function AutoSavedScriptResultsSection({
                 {showOutput ? "Hide" : "Show"} raw output
               </button>
               {showOutput && (
-                <pre className="mt-2 text-[10px] text-[#8B949E] bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
+                <pre className="mt-2 text-[10px] text-[#8B949E] bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed">
                   {scriptOutput}
                 </pre>
               )}
@@ -262,7 +262,7 @@ function AutoSavedScriptResultsSection({
 }
 
 function LastRunResultsSection({ result }: { result: LastRunResult }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [showAllFindings, setShowAllFindings] = useState(false);
   const [showAllRecs, setShowAllRecs] = useState(false);
 
