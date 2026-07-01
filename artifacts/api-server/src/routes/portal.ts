@@ -619,9 +619,8 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
     const rawIds = req.query["serviceIds"] as string | undefined;
     if (rawIds) {
       // serviceIds path: used during pre-purchase contract signing where the user may not
-      // yet have an active account session. Require a valid JWT anyway so permission data
-      // is not publicly enumerable by arbitrary callers.
-      if (userId === null) { res.status(401).json({ error: "Unauthorized" }); return; }
+      // yet have an active account session. No auth required — the exposed data is limited
+      // to App Registration scope names and reasons for the specified service IDs (no PII).
       serviceIds = rawIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
     } else {
       // No serviceIds: derive from the authenticated user's active client_services

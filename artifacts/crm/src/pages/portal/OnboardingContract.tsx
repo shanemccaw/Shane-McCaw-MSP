@@ -382,11 +382,10 @@ export default function OnboardingContract() {
       .then(d => setOfferAvailable(d.available))
       .catch(() => setOfferAvailable(false));
 
-    // Fetch aggregated required permissions for these services — requires auth JWT
-    if (serviceIds.length > 0 && accessToken) {
-      fetch(`/api/portal/required-permissions?serviceIds=${serviceIds.join(",")}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      })
+    // Fetch aggregated required permissions for these services — no auth required for
+    // the ?serviceIds= path (public-ish service metadata, no PII); works for guests too
+    if (serviceIds.length > 0) {
+      fetch(`/api/portal/required-permissions?serviceIds=${serviceIds.join(",")}`)
         .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
         .then(d => { if (d?.permissions?.length) setRequiredPermissions(d.permissions); })
         .catch(() => { /* silently ignore — permissions section just won't appear */ });
