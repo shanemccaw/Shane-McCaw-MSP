@@ -36,6 +36,7 @@ import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
 import { computeM365Scores, type M365ScoreCategory } from "../lib/m365-scores";
+import { createAuditLog } from "../lib/audit";
 
 const router: IRouter = Router();
 
@@ -422,6 +423,16 @@ async function processRunInBackground(
             );
             healthScoreTriggered = true;
             logger.info({ customerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
+            void createAuditLog({
+              actorName: "System",
+              actorRole: "admin",
+              actionType: "health_score_updated",
+              entityType: "health_score",
+              entityId: String(customerId),
+              entityLabel: "M365 Health Score",
+              clientId: customerId,
+              metadata: { categories: Object.keys(scores), scores },
+            }).catch(() => {});
           } else {
             logger.warn({ customerId }, "admin-m365-run: triggersHealthScore=true but no M365 profile found — skipping health score update");
           }

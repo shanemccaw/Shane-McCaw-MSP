@@ -5,6 +5,9 @@ import PortalLayout from "@/components/PortalLayout";
 import ActivityFeed from "@/components/ActivityFeed";
 import M365ProfileSummaryCard from "@/components/M365ProfileSummaryCard";
 import { type AuditLogEntry } from "@/lib/auditFormatter";
+import RecentAutomationPanel, { type AutomationHistoryRun } from "@/components/RecentAutomationPanel";
+import PortalActivityBanner from "@/components/PortalActivityBanner";
+import InlineAutomationBanner from "@/components/InlineAutomationBanner";
 
 type M365ScoreCategory = "security" | "compliance" | "copilot" | "governance" | "productivity";
 
@@ -80,6 +83,7 @@ interface Project {
   phase: string | null;
   progress: number;
   endDate: string | null;
+  currentTask: { stepNumber: number; totalSteps: number; title: string } | null;
 }
 
 interface ClientService {
@@ -164,6 +168,9 @@ export default function PortalDashboard() {
   const [activityEntries, setActivityEntries] = useState<AuditLogEntry[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [scorecardHistory, setScorecardHistory] = useState<ScorecardHistory | null>(null);
+  const [automationHistory, setAutomationHistory] = useState<AutomationHistoryRun[]>([]);
+  const [automationHistoryLoading, setAutomationHistoryLoading] = useState(true);
+  const [automationRunning, setAutomationRunning] = useState(false);
 
   // Authoritative overall health score from /api/portal/health/summary (matches nav widget)
   const [healthSummaryOverall, setHealthSummaryOverall] = useState<number | null>(null);
@@ -189,6 +196,13 @@ export default function PortalDashboard() {
         }
       })
       .catch(() => null);
+
+    setAutomationHistoryLoading(true);
+    fetchWithAuth("/api/portal/automation-history")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setAutomationHistory(d as AutomationHistoryRun[]); })
+      .catch(() => null)
+      .finally(() => setAutomationHistoryLoading(false));
   }, [fetchWithAuth]);
 
   const fetchActivity = useCallback(() => {
@@ -246,6 +260,18 @@ export default function PortalDashboard() {
         <div className="flex gap-6 items-start">
           {/* Main content column */}
           <div className="flex-1 min-w-0">
+            {/* What's Happening Now banner + inline automation banner — always mounted, self-hide when idle */}
+            <div className="space-y-3 mb-6">
+              <PortalActivityBanner
+                projects={data?.projects ?? []}
+                clientServices={data?.clientServices ?? []}
+                automationRuns={automationHistory}
+                automationRunning={automationRunning}
+              />
+              <InlineAutomationBanner
+                onRunChange={(_run, isActive) => setAutomationRunning(isActive)}
+              />
+            </div>
             {loading ? <Spinner /> : (
               <div className="space-y-8">
                 {/* Invoice Alert */}
@@ -268,7 +294,7 @@ export default function PortalDashboard() {
                 {/* M365 Environment Health Scorecards */}
                 <section>
                   {!scorecardHistory?.hasData ? (
-                    /* ── Empty state: dark command panel with CTA ── */
+                    /* ── Pending state: shows upcoming steps ── */
                     <div className="rounded-2xl overflow-hidden">
                       <div className="bg-[#0A2540] px-6 py-5 flex items-center justify-between gap-4">
                         <div className="flex items-center gap-3">
@@ -279,16 +305,31 @@ export default function PortalDashboard() {
                           </div>
                         </div>
                       </div>
-                      <div className="bg-[#0d2d4a] border border-[#0A2540] rounded-b-2xl px-6 py-8 flex items-center gap-5">
-                        <div className="w-12 h-12 rounded-xl bg-[#0078D4]/20 border border-[#0078D4]/30 flex items-center justify-center flex-shrink-0">
-                          <svg className="w-6 h-6 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                          </svg>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-white">Awaiting baseline scan</p>
-                          <p className="text-xs text-white/40 mt-0.5">Your health scores will appear once Shane runs your first baseline scan.</p>
-                        </div>
+                      <div className="bg-[#0d2d4a] border border-[#0A2540] rounded-b-2xl px-6 py-6">
+                        <p className="text-xs font-bold text-white/40 uppercase tracking-wider mb-4">Baseline scan steps</p>
+                        <ol className="space-y-3">
+                          {[
+                            { label: "Connect your Azure App Registration", done: false, active: true },
+                            { label: "Run M365 security baseline scan", done: false, active: false },
+                            { label: "Compute your 5 health scores", done: false, active: false },
+                            { label: "Generate recommendations report", done: false, active: false },
+                          ].map((step, i) => (
+                            <li key={i} className="flex items-center gap-3">
+                              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${step.done ? "border-green-400 bg-green-400" : step.active ? "border-[#0078D4] bg-[#0078D4]/20" : "border-white/20 bg-transparent"}`}>
+                                {step.done && (
+                                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                  </svg>
+                                )}
+                                {step.active && !step.done && (
+                                  <div className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse" />
+                                )}
+                              </div>
+                              <span className={`text-sm ${step.active ? "text-white font-semibold" : "text-white/40"}`}>{step.label}</span>
+                              {step.active && <span className="text-[10px] font-bold text-[#0078D4] uppercase tracking-wide ml-auto">Up next</span>}
+                            </li>
+                          ))}
+                        </ol>
                       </div>
                     </div>
                   ) : (
@@ -377,8 +418,27 @@ export default function PortalDashboard() {
                     </Link>
                   </div>
                   {(data?.projects?.filter(p => p.status !== "completed").length ?? 0) === 0 ? (
-                    <div className="bg-white border border-border rounded-xl p-8 text-center text-muted-foreground text-sm">
-                      No active projects — Shane will set them up shortly.
+                    /* ── Pending state: "project plan being built" shimmer card ── */
+                    <div className="bg-white border border-dashed border-[#0078D4]/30 rounded-xl p-6 flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#0A2540]">Your project plan is being built</p>
+                        <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                          Shane's team will create your tailored project plan based on your purchased services. Once set up, your project tasks and milestones will appear here.
+                        </p>
+                        <div className="mt-3 space-y-1.5">
+                          {["Define project scope and objectives", "Build task roadmap and milestones", "Assign timelines and deliverables"].map((s, i) => (
+                            <div key={i} className="flex items-center gap-2">
+                              <div className="w-3.5 h-3.5 rounded-sm border border-[#0078D4]/30 bg-[#0078D4]/5 flex-shrink-0 animate-pulse" style={{ animationDelay: `${i * 200}ms` }} />
+                              <span className="text-xs text-muted-foreground">{s}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -397,6 +457,14 @@ export default function PortalDashboard() {
                               <span className="font-semibold text-[#0078D4]">{p.progress}%</span>
                             </div>
                             <ProgressBar value={p.progress} />
+                            {p.currentTask && (
+                              <div className="mt-2.5 flex items-center gap-2 bg-[#0078D4]/5 border border-[#0078D4]/15 rounded-lg px-3 py-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
+                                <p className="text-xs text-[#0078D4] font-semibold truncate">
+                                  Step {p.currentTask.stepNumber} of {p.currentTask.totalSteps} — {p.currentTask.title}
+                                </p>
+                              </div>
+                            )}
                             {p.endDate && (
                               <p className="text-xs text-muted-foreground mt-2.5">
                                 Target: {new Date(p.endDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -439,6 +507,9 @@ export default function PortalDashboard() {
                     </div>
                   </section>
                 )}
+
+                {/* Recent Automation Activity */}
+                <RecentAutomationPanel runs={automationHistory} loading={automationHistoryLoading} />
 
                 {/* Bottom row: Reports + Invoice Status */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

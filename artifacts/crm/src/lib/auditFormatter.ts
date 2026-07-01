@@ -140,6 +140,21 @@ export function formatActivityItem(entry: AuditLogEntry): ActivityItemMeta {
       return { icon: ICON_USER, color: COLOR_GRAY, label: `Portal previewed as ${label}`, href: null };
     case "document_uploaded":
       return { icon: ICON_DOCUMENT, color: COLOR_BLUE, label: `Document uploaded: '${label}'`, href: null };
+    case "automation_run_started": {
+      const pkg = meta.packageTitle ? `"${String(meta.packageTitle)}"` : "automation";
+      return { icon: "service", color: COLOR_BLUE, label: `${pkg} scan started`, href: null };
+    }
+    case "automation_run_completed": {
+      const pkg = meta.packageTitle ? `"${String(meta.packageTitle)}"` : "Automation";
+      const steps = meta.modulesTotal ? ` (${String(meta.modulesCompleted)} of ${String(meta.modulesTotal)} steps)` : "";
+      return { icon: "service", color: COLOR_GREEN, label: `${pkg} scan completed${steps}`, href: null };
+    }
+    case "automation_run_failed": {
+      const pkg = meta.packageTitle ? `"${String(meta.packageTitle)}"` : "Automation";
+      return { icon: "service", color: COLOR_RED, label: `${pkg} scan encountered an issue`, href: null };
+    }
+    case "health_score_updated":
+      return { icon: ICON_REPORT, color: COLOR_TEAL, label: `M365 health scores updated`, href: "/portal/health" };
     default:
       return { icon: ICON_DEFAULT, color: COLOR_GRAY, label: actionType.replace(/_/g, " "), href: null };
   }
@@ -253,6 +268,21 @@ export function formatAuditEntry(entry: AuditLogEntry): string {
       const client = meta.clientName ? ` for ${meta.clientName}` : "";
       return `${date} ${actorName} uploaded '${label}'${client}`;
     }
+    case "automation_run_started": {
+      const pkg = meta.packageTitle ? ` "${String(meta.packageTitle)}"` : "";
+      return `${date} Automation${pkg} scan started`;
+    }
+    case "automation_run_completed": {
+      const pkg = meta.packageTitle ? ` "${String(meta.packageTitle)}"` : "";
+      const steps = meta.modulesTotal ? ` (${String(meta.modulesCompleted)}/${String(meta.modulesTotal)} steps)` : "";
+      return `${date} Automation${pkg} scan completed${steps}`;
+    }
+    case "automation_run_failed": {
+      const pkg = meta.packageTitle ? ` "${String(meta.packageTitle)}"` : "";
+      return `${date} Automation${pkg} scan encountered an issue`;
+    }
+    case "health_score_updated":
+      return `${date} M365 health scores updated`;
     default:
       return `${date} ${actorName} performed ${actionType.replace(/_/g, " ")} on ${label}`;
   }

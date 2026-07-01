@@ -46,6 +46,7 @@ import { sendEmail } from "./mailer";
 import { logger } from "./logger";
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { createAuditLog } from "./audit";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 10 * 60 * 1000;
@@ -378,6 +379,19 @@ export async function runClientScriptSequence(
       .set({ status: "running", modulesTotal: totalModules })
       .where(eq(clientAutomationRunsTable.id, runId));
 
+    // Write system audit event: automation run started
+    const firstPkg = orderedPackages[0];
+    void createAuditLog({
+      actorName: "System",
+      actorRole: "admin",
+      actionType: "automation_run_started",
+      entityType: "automation_run",
+      entityId: runId,
+      entityLabel: firstPkg?.title ?? "Automation",
+      clientId: clientUserId,
+      metadata: { packageTitle: firstPkg?.title ?? null, modulesTotal: totalModules },
+    }).catch(() => {});
+
     let completedCount = 0;
     const clientLabel = client?.name ?? client?.email ?? `client #${clientUserId}`;
 
@@ -433,6 +447,18 @@ export async function runClientScriptSequence(
           logger.error({ runId, clientUserId, jobId, status: result.lastStatus }, "client-script-sequence: job failed");
           await markFailed(runId, errMsg);
 
+          // Write system audit event: automation run failed
+          void createAuditLog({
+            actorName: "System",
+            actorRole: "admin",
+            actionType: "automation_run_failed",
+            entityType: "automation_run",
+            entityId: runId,
+            entityLabel: pkg.title,
+            clientId: clientUserId,
+            metadata: { packageTitle: pkg.title, moduleName: mod.filename, lastStatus: result.lastStatus, modulesCompleted: completedCount },
+          }).catch(() => {});
+
           if (kanbanTaskId) {
             const accumulatedOutput = accumulatedOutputParts.join("\n");
 
@@ -474,6 +500,19 @@ export async function runClientScriptSequence(
 
     await markCompleted(runId, totalModules);
     logger.info({ runId, clientUserId, totalModules }, "client-script-sequence: all modules completed");
+
+    // Write system audit event: automation run completed
+    const lastPkgForAudit = orderedPackages[orderedPackages.length - 1];
+    void createAuditLog({
+      actorName: "System",
+      actorRole: "admin",
+      actionType: "automation_run_completed",
+      entityType: "automation_run",
+      entityId: runId,
+      entityLabel: lastPkgForAudit?.title ?? "Automation",
+      clientId: clientUserId,
+      metadata: { packageTitle: lastPkgForAudit?.title ?? null, modulesCompleted: totalModules, modulesTotal: totalModules },
+    }).catch(() => {});
 
     if (kanbanTaskId) {
       const accumulatedOutput = accumulatedOutputParts.join("\n");

@@ -1146,6 +1146,39 @@ router.get("/portal/automation-progress", requireAuth, async (req: Request, res:
   });
 });
 
+// ─── CLIENT: Automation history (last 5 runs) ─────────────────────────────────
+router.get("/portal/automation-history", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  const runs = await db.select()
+    .from(clientAutomationRunsTable)
+    .where(eq(clientAutomationRunsTable.clientUserId, userId))
+    .orderBy(desc(clientAutomationRunsTable.triggeredAt))
+    .limit(5);
+
+  if (runs.length === 0) { res.json([]); return; }
+
+  // Resolve package titles for runs that have a currentPackageId
+  const packageIds = [...new Set(runs.map(r => r.currentPackageId).filter((id): id is string => !!id))];
+  const pkgRows = packageIds.length > 0
+    ? await db.select({ id: scriptPackagesTable.id, title: scriptPackagesTable.title })
+        .from(scriptPackagesTable)
+        .where(inArray(scriptPackagesTable.id, packageIds))
+    : [];
+  const pkgMap = new Map(pkgRows.map(p => [p.id, p.title]));
+
+  res.json(runs.map(r => ({
+    id: r.id,
+    status: r.status,
+    packageTitle: r.currentPackageId ? (pkgMap.get(r.currentPackageId) ?? null) : null,
+    modulesCompleted: r.modulesCompleted ?? 0,
+    modulesTotal: r.modulesTotal ?? 0,
+    triggeredAt: r.triggeredAt,
+    finishedAt: r.finishedAt,
+    lastLogSnippet: r.lastLogSnippet,
+  })));
+});
+
 // ─── Onboarding wizard status ─────────────────────────────────────────────────
 router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -1360,12 +1393,52 @@ router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response)
     .where(and(eq(projectsTable.clientUserId, userId), eq(projectsTable.status, "active")))
     .orderBy(desc(projectsTable.updatedAt)).limit(5);
 
+  // Enrich projects with currentTask (first in-progress kanban task + step position)
+  type EnrichedProject = typeof projects[0] & {
+    currentTask: { stepNumber: number; totalSteps: number; title: string } | null;
+  };
+  let enrichedProjects: EnrichedProject[];
+
+  if (projects.length > 0) {
+    const projectIds = projects.map(p => p.id);
+    const allTasks = await db.select({
+      id: kanbanTasksTable.id,
+      title: kanbanTasksTable.title,
+      order: kanbanTasksTable.order,
+      column: kanbanTasksTable.column,
+      projectId: kanbanTasksTable.projectId,
+    }).from(kanbanTasksTable)
+      .where(inArray(kanbanTasksTable.projectId, projectIds))
+      .orderBy(asc(kanbanTasksTable.order));
+
+    const tasksByProject = new Map<number, typeof allTasks>();
+    for (const task of allTasks) {
+      if (!task.projectId) continue;
+      const arr = tasksByProject.get(task.projectId) ?? [];
+      arr.push(task);
+      tasksByProject.set(task.projectId, arr);
+    }
+
+    enrichedProjects = projects.map(p => {
+      const tasks = tasksByProject.get(p.id) ?? [];
+      const inProgressTask = tasks.find(t => t.column === "in_progress");
+      if (!inProgressTask) return { ...p, currentTask: null };
+      const stepNumber = tasks.indexOf(inProgressTask) + 1;
+      return {
+        ...p,
+        currentTask: { stepNumber, totalSteps: tasks.length, title: inProgressTask.title },
+      };
+    });
+  } else {
+    enrichedProjects = [];
+  }
+
   const clientServices = await db.select({
     cs: clientServicesTable,
     service: servicesTable,
   }).from(clientServicesTable)
     .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
-    .where(and(eq(clientServicesTable.clientUserId, userId), eq(clientServicesTable.status, "active")))
+    .where(and(eq(clientServicesTable.clientUserId, userId), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
     .orderBy(desc(clientServicesTable.purchasedAt)).limit(6);
 
   const invoices = await db.select().from(invoicesTable)
@@ -1382,7 +1455,7 @@ router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response)
   const [{ unreadMessages }] = await db.select({ unreadMessages: count() }).from(messagesTable)
     .where(and(eq(messagesTable.clientUserId, userId), eq(messagesTable.readByClient, false)));
 
-  res.json({ projects, clientServices, invoices, reports, unreadNotifications: unread, unreadMessages });
+  res.json({ projects: enrichedProjects, clientServices, invoices, reports, unreadNotifications: unread, unreadMessages });
 });
 
 // ─── CLIENT: Projects ────────────────────────────────────────────────────────
