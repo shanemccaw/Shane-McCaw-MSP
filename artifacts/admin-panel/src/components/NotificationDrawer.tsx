@@ -290,6 +290,7 @@ export default function NotificationDrawer({
           const newLeads = newItems.filter(
             n => n.type === "lead_created" || n.type === "quiz_lead_created"
           );
+          const newDocuments = newItems.filter(n => n.type === "document");
           if (newPurchases.length > 0) {
             onPurchaseSound?.();
             const bodyText = newPurchases[0]?.body ?? "";
@@ -301,6 +302,9 @@ export default function NotificationDrawer({
           }
           if (newLeads.length > 0) {
             onLeadFlash?.();
+          }
+          if (newDocuments.length > 0) {
+            window.dispatchEvent(new CustomEvent("insights:new-document"));
           }
           seenIdsRef.current = incomingIds;
         }

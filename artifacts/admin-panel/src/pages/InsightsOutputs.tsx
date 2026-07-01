@@ -322,11 +322,12 @@ function DashboardTab({
 type WizardStep = "confirm" | "generating" | "done";
 
 function DocumentsTab({
-  customerId, projectId, fetchWithAuth, customers,
+  customerId, projectId, fetchWithAuth, customers, refreshKey,
 }: {
   customerId: number | null; projectId: number | null;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   customers: Customer[];
+  refreshKey?: number;
 }) {
   const [docs, setDocs] = useState<InsightsDoc[]>([]);
   const [loading, setLoading] = useState(false);
@@ -360,6 +361,7 @@ function DocumentsTab({
   }, [fetchWithAuth, buildQs]);
 
   useEffect(() => { void loadDocs(); }, [loadDocs]);
+  useEffect(() => { if (refreshKey) void loadDocs(); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openWizard = (type: string) => {
     const t = REPORT_TYPES.find(r => r.key === type);
@@ -1206,6 +1208,7 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: s
 
 export default function InsightsOutputs() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
 
   const initialTab = useMemo<Tab>(() => {
     try {
@@ -1222,6 +1225,30 @@ export default function InsightsOutputs() {
   const [projects, setProjects]               = useState<Project[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
   const [selectedProject,  setSelectedProject]  = useState<number | null>(null);
+  const [docsRefreshKey, setDocsRefreshKey]   = useState(0);
+
+  // Listen for new automation-generated report notifications and sync the Documents tab
+  useEffect(() => {
+    const handler = () => {
+      setDocsRefreshKey(k => k + 1);
+      if (tab !== "documents") {
+        toast({
+          title: "New report ready",
+          description: "An automation just generated a new report.",
+          action: (
+            <button
+              onClick={() => setTab("documents")}
+              className="text-blue-400 hover:text-blue-300 text-xs font-medium underline"
+            >
+              View Documents
+            </button>
+          ),
+        } as Parameters<typeof toast>[0]);
+      }
+    };
+    window.addEventListener("insights:new-document", handler);
+    return () => window.removeEventListener("insights:new-document", handler);
+  }, [tab, toast]);
 
   // Load customers on mount
   useEffect(() => {
@@ -1277,7 +1304,7 @@ export default function InsightsOutputs() {
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto p-6">
         {tab === "dashboard"  && <DashboardTab  {...tabProps} />}
-        {tab === "documents"  && <DocumentsTab  {...tabProps} />}
+        {tab === "documents"  && <DocumentsTab  {...tabProps} refreshKey={docsRefreshKey} />}
         {tab === "consulting" && <ConsultingTab {...tabProps} />}
         {tab === "automation" && <AutomationTab {...tabProps} />}
       </div>
