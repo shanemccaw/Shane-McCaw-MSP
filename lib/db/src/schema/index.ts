@@ -1394,6 +1394,7 @@ export const scriptModulesTable = pgTable("script_modules", {
   sortOrder: integer("sort_order").notNull().default(0),
   azureRunbookName: text("azure_runbook_name"),
   sourceScriptId: uuid("source_script_id"),
+  sourceTaskIds: integer("source_task_ids").array(),
   azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
   permissions: jsonb("permissions").$type<PsScriptPermissions>().default({ appPermissions: [], delegatedPermissions: [], notes: "" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
