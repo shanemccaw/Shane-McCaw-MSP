@@ -596,8 +596,10 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
 
 // ─── CLIENT: Aggregated required App Registration permissions ─────────────────
 // GET /portal/required-permissions
-//   - No ?serviceIds → derive from calling user's active client_services
-//   - ?serviceIds=1,2,3 → explicit service IDs (used at contract-signing time before active services exist)
+//   - No ?serviceIds → auth-required; derives permissions from the calling user's active client_services
+//   - ?serviceIds=1,2,3 → intentionally unauthenticated for the pre-auth guest contract-signing flow
+//     (exposed data is limited to App Registration scope names and reasons for the specified service
+//     IDs — no personal data; acceptable public-ish metadata for the purchase funnel)
 // Returns { permissions: Array<{ scope: string; reason: string }> }
 router.get("/portal/required-permissions", async (req: Request, res: Response) => {
   try {
