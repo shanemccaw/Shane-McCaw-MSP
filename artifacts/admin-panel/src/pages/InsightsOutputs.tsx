@@ -41,7 +41,7 @@ interface InsightsDocFull extends InsightsDoc { htmlContent: string; }
 
 interface Automation {
   id: number; name: string; customerId: number | null; projectId: number | null;
-  automationType: string; cronExpression: string; enabled: boolean;
+  automationType: string; cronExpression: string; cronLabel: string; enabled: boolean;
   linkedRunbookScriptId: string | null; generateDocument: boolean;
   lastRunAt: string | null; nextRunAt: string | null; createdAt: string;
 }
@@ -966,7 +966,7 @@ function AutomationTab({
               {existing ? (
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <Clock className="w-3 h-3" />
-                  <code className="text-gray-400">{existing.cronExpression}</code>
+                  <span className="text-gray-300">{existing.cronLabel || existing.cronExpression}</span>
                   {existing.nextRunAt && <span>· {new Date(existing.nextRunAt).toLocaleDateString()}</span>}
                 </div>
               ) : (
@@ -1003,7 +1003,8 @@ function AutomationTab({
                   <div className="text-white text-sm">{a.name}</div>
                   <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
                     <Clock className="w-3 h-3" />
-                    <code className="text-gray-400">{a.cronExpression}</code>
+                    <span className="text-gray-300">{a.cronLabel || a.cronExpression}</span>
+                    <code className="text-gray-600 text-[10px]">({a.cronExpression})</code>
                     {a.nextRunAt && <span>· next {new Date(a.nextRunAt).toLocaleDateString()}</span>}
                     {a.lastRunAt && <span>· last ran {new Date(a.lastRunAt).toLocaleDateString()}</span>}
                     {a.linkedRunbookScriptId && <span className="text-purple-400">· runbook linked</span>}

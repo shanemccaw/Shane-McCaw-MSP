@@ -1038,7 +1038,8 @@ router.get("/admin/insights/automations", requireAdmin, async (_req: Request, re
   try {
     const automations = await db.select().from(insightsAutomationsTable)
       .orderBy(desc(insightsAutomationsTable.createdAt)).limit(50);
-    return res.json({ automations });
+    const withLabels = automations.map(a => ({ ...a, cronLabel: describeCron(a.cronExpression) }));
+    return res.json({ automations: withLabels });
   } catch (err) {
     logger.error({ err }, "insights automations list error");
     return res.status(500).json({ error: "Failed to load automations" });
@@ -1063,7 +1064,7 @@ const createAutomationSchema = z.object({
   linkedRunbookScriptId:  z.string().optional(),
 });
 
-function nextRunFromCron(cron: string): Date {
+export function nextRunFromCron(cron: string): Date {
   const candidate = new Date(Date.now() + 60000);
   candidate.setSeconds(0, 0);
   for (let i = 0; i < 10080; i++) {
@@ -1096,6 +1097,83 @@ export function matchesCron(expr: string, now: Date): boolean {
     && matchesCronField(dom!, now.getDate())
     && matchesCronField(month!, now.getMonth() + 1)
     && matchesCronField(dow!, now.getDay());
+}
+
+const DOW_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function fmtTime(hour: string, min: string): string {
+  const h = parseInt(hour, 10);
+  const m = parseInt(min, 10);
+  if (isNaN(h) || isNaN(m)) return `${hour}:${min}`;
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  const mStr = m === 0 ? "" : `:${String(m).padStart(2, "0")}`;
+  return `${h12}${mStr} ${ampm}`;
+}
+
+function ordinal(n: number): string {
+  if (n === 1) return "1st";
+  if (n === 2) return "2nd";
+  if (n === 3) return "3rd";
+  return `${n}th`;
+}
+
+export function describeCron(expr: string): string {
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return expr;
+  const [min, hour, dom, month, dow] = parts as [string, string, string, string, string];
+
+  // Every N minutes: */N * * * *
+  if (min.startsWith("*/") && hour === "*" && dom === "*" && month === "*" && dow === "*") {
+    const n = parseInt(min.slice(2), 10);
+    return `Every ${n} minute${n !== 1 ? "s" : ""}`;
+  }
+
+  // Every N hours: 0 */N * * *
+  if (hour.startsWith("*/") && dom === "*" && month === "*" && dow === "*") {
+    const n = parseInt(hour.slice(2), 10);
+    return `Every ${n} hour${n !== 1 ? "s" : ""}`;
+  }
+
+  const atTime = (hour !== "*") ? ` at ${fmtTime(hour, min === "*" ? "0" : min)}` : "";
+
+  // Daily: * * * * * or 0 H * * *
+  if (dom === "*" && month === "*" && dow === "*") {
+    return `Daily${atTime}`;
+  }
+
+  // Day-of-week patterns
+  if (dom === "*" && month === "*" && dow !== "*") {
+    if (dow === "1-5") return `Weekdays${atTime}`;
+    if (dow === "6,0" || dow === "0,6" || dow === "6-7") return `Weekends${atTime}`;
+    const dowNum = parseInt(dow, 10);
+    if (!isNaN(dowNum) && dowNum >= 0 && dowNum <= 6) {
+      return `Every ${DOW_NAMES[dowNum]}${atTime}`;
+    }
+    if (dow.includes(",")) {
+      const days = dow.split(",").map(d => DOW_NAMES[parseInt(d.trim(), 10)] ?? d).filter(Boolean);
+      return `Every ${days.join("/")}${atTime}`;
+    }
+    return `Weekly (${dow})${atTime}`;
+  }
+
+  // Monthly: 0 H dom * *
+  if (dom !== "*" && month === "*" && dow === "*") {
+    const domNum = parseInt(dom, 10);
+    return `${ordinal(domNum)} of every month${atTime}`;
+  }
+
+  // Quarterly: specific months
+  if (dom !== "*" && dow === "*" && month !== "*") {
+    if (month === "1,4,7,10" || month === "*/3") {
+      return `Quarterly (${ordinal(parseInt(dom, 10))} of quarter)${atTime}`;
+    }
+    const months = month.split(",").map(m => MONTH_ABBR[(parseInt(m.trim(), 10) - 1)] ?? m);
+    return `${months.join("/")} ${ordinal(parseInt(dom, 10))}${atTime}`;
+  }
+
+  return `Custom schedule (${expr})`;
 }
 
 router.post("/admin/insights/automations", requireAdmin, async (req: Request, res: Response) => {

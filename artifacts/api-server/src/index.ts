@@ -8,8 +8,8 @@ import { reconcileOrphanedRuns, reconcileStalledPhases } from "./lib/kanban-auto
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool, db, insightsAutomationsTable } from "@workspace/db";
-import { executeAutomation, matchesCron } from "./routes/admin-insights";
-import { eq, and, lte, sql } from "drizzle-orm";
+import { executeAutomation, nextRunFromCron } from "./routes/admin-insights";
+import { eq, and, isNotNull, sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -103,27 +103,83 @@ app.listen(port, (err) => {
   // Logic Apps, etc.):
   //   POST /api/admin/kanban/check-escalations
   //   Authorization: Bearer <ADMIN_PASSWORD>
-  // ── Insights automation cron scheduler (1-minute tick) ────────────────────
-  // Checks all enabled automations whose nextRunAt <= now and fires them.
+  // ── Insights automation cron scheduler ────────────────────────────────────
+  // On startup: reconcile any automations missing nextRunAt so the scheduler
+  // can fire them correctly on the next tick.
+  db.select({
+    id: insightsAutomationsTable.id,
+    cronExpression: insightsAutomationsTable.cronExpression,
+  }).from(insightsAutomationsTable)
+    .where(and(
+      eq(insightsAutomationsTable.enabled, true),
+      sql`next_run_at IS NULL`,
+    ))
+    .then(async (stale) => {
+      for (const row of stale) {
+        const nextRunAt = nextRunFromCron(row.cronExpression);
+        await db.update(insightsAutomationsTable)
+          .set({ nextRunAt })
+          .where(eq(insightsAutomationsTable.id, row.id));
+      }
+      if (stale.length > 0) {
+        logger.info({ count: stale.length }, "insights: reconciled automations with missing nextRunAt");
+      }
+    })
+    .catch((err: unknown) => {
+      logger.warn({ err }, "insights: startup nextRunAt reconciliation failed (non-fatal)");
+    });
+
+  // Count and log active automations so the log makes it clear the scheduler is live.
+  db.select({ id: insightsAutomationsTable.id })
+    .from(insightsAutomationsTable)
+    .where(eq(insightsAutomationsTable.enabled, true))
+    .then((rows) => {
+      logger.info({ count: rows.length }, "insights: automation scheduler started — enabled automations loaded");
+    })
+    .catch(() => { /* non-fatal */ });
+
+  // Every 60 seconds: fire any enabled automation whose nextRunAt has arrived.
+  //
+  // Duplicate-run prevention (optimistic lock):
+  //   Before handing off to executeAutomation, we atomically advance nextRunAt
+  //   to the next occurrence using a conditional UPDATE that matches the row's
+  //   current nextRunAt value.  If the UPDATE returns 0 rows, another tick
+  //   already claimed the row, so we skip it.  This makes the scheduler safe
+  //   against runs that take >60s (e.g. AI generation + Azure runbook), where
+  //   a naive poll would re-select the same row and generate duplicate documents.
   const runInsightsCron = () => {
-    const now = new Date();
     db.select({
-      id: insightsAutomationsTable.id,
+      id:             insightsAutomationsTable.id,
       cronExpression: insightsAutomationsTable.cronExpression,
-      nextRunAt: insightsAutomationsTable.nextRunAt,
-      enabled: insightsAutomationsTable.enabled,
+      nextRunAt:      insightsAutomationsTable.nextRunAt,
     }).from(insightsAutomationsTable)
       .where(and(
         eq(insightsAutomationsTable.enabled, true),
-        sql`(next_run_at IS NULL OR next_run_at <= NOW())`,
+        isNotNull(insightsAutomationsTable.nextRunAt),
+        sql`next_run_at <= NOW()`,
       ))
-      .then((rows) => {
+      .then(async (rows) => {
         for (const row of rows) {
-          if (matchesCron(row.cronExpression, now)) {
-            executeAutomation(row.id).catch((err: unknown) => {
-              logger.warn({ err, automationId: row.id }, "insights: automation execution error (non-fatal)");
-            });
+          // Optimistic lock: advance nextRunAt atomically.
+          // Only fire if this tick wins the claim.
+          const nextRun = nextRunFromCron(row.cronExpression);
+          const claimed = await db.update(insightsAutomationsTable)
+            .set({ nextRunAt: nextRun })
+            .where(and(
+              eq(insightsAutomationsTable.id, row.id),
+              sql`next_run_at = ${row.nextRunAt}`,
+            ))
+            .returning({ id: insightsAutomationsTable.id });
+
+          if (claimed.length === 0) {
+            logger.info({ automationId: row.id }, "insights: cron tick — skipped (already claimed)");
+            continue;
           }
+
+          logger.info({ automationId: row.id }, "insights: cron tick — firing automation");
+          executeAutomation(row.id).catch((err: unknown) => {
+            logger.warn({ err, automationId: row.id }, "insights: automation execution error (non-fatal)");
+          });
         }
       })
       .catch((err: unknown) => {
