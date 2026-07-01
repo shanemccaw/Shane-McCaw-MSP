@@ -329,6 +329,22 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
     `/runbooks/${encodeURIComponent(name)}` +
     `?api-version=2022-08-08`;
 
+  // Check whether the runbook already exists and, if so, what type it is.
+  // Azure does not allow changing a runbook's type after creation — attempting
+  // to PUT with a different runbookType returns HTTP 400. We must preserve
+  // whatever type the runbook was originally created with.
+  let existingRunbookType: string | undefined;
+  const getRes = await fetch(runbookUrl, {
+    method: "GET",
+    headers: { "Authorization": `Bearer ${bearerToken}` },
+  });
+  if (getRes.ok) {
+    const getBody = await getRes.json().catch(() => ({})) as { properties?: { runbookType?: string } };
+    existingRunbookType = getBody?.properties?.runbookType;
+  }
+  // Fall back to PowerShell72 only when creating a new runbook from scratch.
+  const runbookType = existingRunbookType ?? "PowerShell72";
+
   const createRes = await fetch(runbookUrl, {
     method: "PUT",
     headers: {
@@ -339,7 +355,7 @@ export async function upsertRunbookContent(name: string, psCode: string): Promis
       name,
       location,
       properties: {
-        runbookType: "PowerShell72",
+        runbookType,
         description: "Managed by Shane McCaw Consulting admin panel",
         logVerbose: false,
         logProgress: false,
