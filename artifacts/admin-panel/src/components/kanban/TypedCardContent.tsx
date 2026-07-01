@@ -1004,6 +1004,9 @@ export function GovernanceAreasPicker({
 }
 
 export interface ScriptMetadata {
+  /** UUID of a powershell_scripts or script_modules row — required for execution */
+  scriptId?: string;
+  /** Display label for the linked script (name from DB, stored alongside scriptId) */
   runbookName?: string;
   credentialId?: number;
   credentialName?: string;
@@ -1050,7 +1053,7 @@ function ScriptModalBody({
   const initAreas = (sm.governanceAreas !== undefined ? sm.governanceAreas : null) as string[] | null;
   const [governanceAreas, setGovernanceAreas] = useState<string[] | null>(initAreas);
 
-  const canRun = !!sm.runbookName && !!sm.credentialId && !running && (governanceAreas === null || governanceAreas.length > 0);
+  const canRun = !!sm.scriptId && !!sm.credentialId && !running && (governanceAreas === null || governanceAreas.length > 0);
   const hasRun = Boolean(sm.lastJobId) || (sm.lastJobStatus !== undefined && sm.lastJobStatus !== "Never run");
 
   useEffect(() => {
@@ -1058,7 +1061,7 @@ function ScriptModalBody({
   }, [logLines]);
 
   const handleRun = async () => {
-    if (!fetchWithAuth || !sm.credentialId || !sm.runbookName) return;
+    if (!fetchWithAuth || !sm.credentialId || (!sm.scriptId && !sm.runbookName)) return;
     setRunning(true);
     setLogLines(["[Starting job…]"]);
     setLiveStatus("New");
@@ -1080,7 +1083,7 @@ function ScriptModalBody({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           credentialId: sm.credentialId,
-          runbookName: sm.runbookName,
+          ...(sm.scriptId ? { scriptId: sm.scriptId } : { runbookName: sm.runbookName }),
           kanbanTaskId: taskId,
           ...(areasPayload ? { governanceAreas: areasPayload } : {}),
         }),

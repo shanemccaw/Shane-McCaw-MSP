@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable, scriptRunResultsTable } from "@workspace/db";
+import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable, scriptRunResultsTable, powershellScriptsTable, scriptModulesTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
@@ -62,12 +62,23 @@ router.get("/admin/runbooks", requireAdmin, async (_req: Request, res: Response)
   }
 });
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Fixed Azure runbook name used for IDE ad-hoc script executions. */
+const ADHOC_RUNBOOK_NAME = "IDE-AdHoc";
+
 interface CreateJobBody {
   /** Legacy credential from azureTenantCredentialsTable. Kept for backward compatibility. */
   credentialId?: number;
   /** Preferred: use client's App Registration from clientAppRegistrationsTable. */
   appRegistrationId?: number;
-  runbookName: string;
+  /**
+   * UUID of a powershell_scripts or script_modules row.
+   * Server resolves azureRunbookName from DB.
+   * Optional only when adHocContent is also provided (ad-hoc IDE runs that push
+   * temporary content to the fixed ADHOC_RUNBOOK_NAME Azure runbook).
+   */
+  scriptId?: string;
   kanbanTaskId?: number;
   governanceAreas?: string[];
   /** When provided, pushes this PowerShell content to Azure as the runbook draft before starting the job (ad-hoc IDE run). */
@@ -76,14 +87,55 @@ interface CreateJobBody {
 
 router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { credentialId, appRegistrationId, runbookName, kanbanTaskId, governanceAreas, adHocContent } = req.body as CreateJobBody;
+    const { credentialId, appRegistrationId, scriptId, kanbanTaskId, governanceAreas, adHocContent } = req.body as CreateJobBody;
 
     if (!credentialId && !appRegistrationId) {
       res.status(400).json({ error: "Either appRegistrationId or credentialId is required" });
       return;
     }
-    if (!runbookName) {
-      res.status(400).json({ error: "runbookName is required" });
+
+    // Resolve the actual Azure runbook name from DB — DB is the single source of truth.
+    // Exception: ad-hoc IDE runs (adHocContent without scriptId) use the fixed IDE-AdHoc runbook.
+    let runbookName: string;
+    if (scriptId) {
+      if (!UUID_RE.test(scriptId)) {
+        res.status(400).json({ error: "scriptId must be a valid UUID" });
+        return;
+      }
+      const [psScript] = await db
+        .select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
+        .from(powershellScriptsTable)
+        .where(eq(powershellScriptsTable.id, scriptId))
+        .limit(1);
+      if (psScript) {
+        if (!psScript.azureRunbookName) {
+          res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
+          return;
+        }
+        runbookName = psScript.azureRunbookName;
+      } else {
+        const [mod] = await db
+          .select({ azureRunbookName: scriptModulesTable.azureRunbookName })
+          .from(scriptModulesTable)
+          .where(eq(scriptModulesTable.id, scriptId))
+          .limit(1);
+        if (!mod) {
+          res.status(404).json({ error: `Script ${scriptId} not found in powershell_scripts or script_modules` });
+          return;
+        }
+        if (!mod.azureRunbookName) {
+          res.status(400).json({ error: "This module has not been pushed to Azure Automation yet — push it first from the Script Sets editor" });
+          return;
+        }
+        runbookName = mod.azureRunbookName;
+      }
+      logger.info({ scriptId, runbookName }, "admin-script-runner: resolved runbookName from DB");
+    } else if (adHocContent?.trim()) {
+      // Ad-hoc IDE run without a DB-backed script — use fixed runbook slot
+      runbookName = ADHOC_RUNBOOK_NAME;
+      logger.info({ runbookName }, "admin-script-runner: ad-hoc run using fixed runbook slot");
+    } else {
+      res.status(400).json({ error: "scriptId (UUID) is required, or provide adHocContent for an ad-hoc run" });
       return;
     }
 

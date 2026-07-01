@@ -743,6 +743,20 @@
       "when": 1751510400000,
       "tag": "0103_add_source_script_id_to_script_modules",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1751510460000,
+      "tag": "0104_add_script_modules_azure_synced_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1751510400000,
+      "tag": "0103_workflow_template_step_tasks_runbook_id_uuid_fk",
+      "breakpoints": true
     }
   ]
 }

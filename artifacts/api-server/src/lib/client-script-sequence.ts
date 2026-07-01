@@ -403,6 +403,10 @@ export async function runClientScriptSequence(
           runbookName = `client-${clientUserId}-${mod.id}`;
           logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
           await pushScriptToAzure(runbookName, mod.content);
+          await db
+            .update(scriptModulesTable)
+            .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
+            .where(eq(scriptModulesTable.id, mod.id));
         }
 
         const { jobId } = await createRunbookJob({

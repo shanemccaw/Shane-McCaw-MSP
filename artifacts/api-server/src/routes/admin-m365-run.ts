@@ -538,14 +538,13 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       res.status(404).json({ error: `Module ${moduleId} not found` });
       return;
     }
-    resolvedRunbookName = mod.filename
-      .replace(/\.ps1$/i, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 63) || "script";
+    if (!mod.azureRunbookName) {
+      res.status(400).json({ error: "This module has not been pushed to Azure Automation yet — push it first from the Script Sets editor" });
+      return;
+    }
+    resolvedRunbookName = mod.azureRunbookName;
   } else {
-    // Running a standalone library script
+    // Running a standalone library script — or a script_modules UUID injected via kanban enrichment
     const libraryScriptId = parsed.data.libraryScriptId;
     const [script] = await db
       .select()
@@ -553,8 +552,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       .where(eq(powershellScriptsTable.id, libraryScriptId))
       .limit(1);
     if (!script) {
-      // The kanban enrichment may have injected a script_modules UUID as scriptId —
-      // fall back to checking script_modules and treat it like the module path.
+      // Check if the ID points to script_modules instead (kanban-injected UUID)
       const [mod] = await db
         .select()
         .from(scriptModulesTable)
@@ -564,12 +562,11 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
         res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
         return;
       }
-      resolvedRunbookName = mod.filename
-        .replace(/\.ps1$/i, "")
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "")
-        .slice(0, 63) || "script";
+      if (!mod.azureRunbookName) {
+        res.status(400).json({ error: "This module has not been pushed to Azure Automation yet — push it first from the Script Sets editor" });
+        return;
+      }
+      resolvedRunbookName = mod.azureRunbookName;
     } else {
       if (!script.azureRunbookName) {
         res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });

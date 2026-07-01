@@ -1804,14 +1804,14 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
     );
     const saved = savedRow.rows[0]!;
 
-    const effectiveRunbookId = saved.azure_runbook_name ?? runbookName;
+    // Write the script's UUID as runbook_id (FK to powershell_scripts.id — single source of truth)
     await pool.query(
       `UPDATE workflow_template_step_tasks SET runbook_id = $1 WHERE id = $2`,
-      [effectiveRunbookId, taskId],
+      [saved.id, taskId],
     );
 
-    logger.info({ scriptId: saved.id, taskId, runbookId: effectiveRunbookId }, "generate-from-task: saved and linked");
-    res.json({ type, scriptId: saved.id, title: saved.title, runbookId: effectiveRunbookId });
+    logger.info({ scriptId: saved.id, taskId, runbookId: saved.id }, "generate-from-task: saved and linked");
+    res.json({ type, scriptId: saved.id, title: saved.title, runbookId: saved.id });
   } catch (err) {
     logger.error({ err }, "generate-from-task failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Generation failed" });
@@ -1836,13 +1836,13 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
       res.json({ assigned: 0, message: "No source task recorded for this script." });
       return;
     }
-    const runbookId = script.azure_runbook_name ?? titleToRunbookName(script.title);
+    // Write the script's UUID as runbook_id (FK to powershell_scripts.id — single source of truth)
     const updateResult = await pool.query(
       `UPDATE workflow_template_step_tasks SET runbook_id = $1 WHERE id = $2 RETURNING id`,
-      [runbookId, script.source_task_id],
+      [scriptId, script.source_task_id],
     );
     const assigned = updateResult.rowCount ?? 0;
-    logger.info({ scriptId, assigned, taskId: script.source_task_id, runbookId }, "assign-task: runbook_id set");
+    logger.info({ scriptId, assigned, taskId: script.source_task_id, runbookId: scriptId }, "assign-task: runbook_id set");
     res.json({ assigned, taskId: script.source_task_id });
   } catch (err) {
     logger.error({ err }, "Failed to assign script to task");
@@ -1852,17 +1852,18 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
 
 // ─── GET /api/admin/ps-scripts/published ─────────────────────────────────────
 // Returns a merged list of all runnable entries for the "Linked Runbook" dropdown:
-//   • Published scripts (azureRunbookName IS NOT NULL) — id = azureRunbookName slug
-//   • All script modules — id = module UUID (stored by assign-tasks endpoint)
-// Both formats can appear as task.runbookId so the combobox must handle both.
+//   • Published scripts (azureRunbookName IS NOT NULL) — id = powershell_scripts UUID
+//   • All script modules — id = script_modules UUID
+// All IDs are UUIDs (FK-compatible with workflow_template_step_tasks.runbook_id).
 
 router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, res: Response) => {
   try {
     const [scripts, modules] = await Promise.all([
       db
         .select({
-          id: powershellScriptsTable.azureRunbookName,
+          id: powershellScriptsTable.id,
           title: powershellScriptsTable.title,
+          azureRunbookName: powershellScriptsTable.azureRunbookName,
         })
         .from(powershellScriptsTable)
         .where(isNotNull(powershellScriptsTable.azureRunbookName))
@@ -1877,7 +1878,7 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
         .orderBy(scriptModulesTable.sortOrder),
     ]);
 
-    const scriptEntries = scripts.map(s => ({ id: s.id as string, title: s.title }));
+    const scriptEntries = scripts.map(s => ({ id: s.id, title: s.title, azureRunbookName: s.azureRunbookName }));
     const moduleEntries = modules.map(m => ({
       id: m.id,
       title: m.title ?? m.filename.replace(/\.ps1$/i, "").replace(/-/g, " "),
@@ -2556,14 +2557,16 @@ router.post("/admin/ps-scripts/packages/:packageId/push-module", requireAdmin, a
     const content = mod.content?.trim() ?? "";
     if (!content) { res.status(400).json({ error: "Module has no content" }); return; }
 
-    const runbookName = filename
-      .replace(/\.ps1$/i, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 63) || "script";
+    const runbookName = filenameToRunbookName(filename);
 
     await pushScriptToAzure(runbookName, content);
+
+    await db
+      .update(scriptModulesTable)
+      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
+      .where(eq(scriptModulesTable.id, mod.id));
+
+    logger.info({ packageId, filename, runbookName, moduleId: mod.id }, "admin-ps-scripts: push-module stamped azureRunbookName");
     res.json({ ok: true, filename, runbookName });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Push failed";
@@ -2611,6 +2614,10 @@ router.post("/admin/ps-scripts/packages/:packageId/push-to-azure", requireAdmin,
 
       try {
         await pushScriptToAzure(runbookName, content);
+        await db
+          .update(scriptModulesTable)
+          .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
+          .where(eq(scriptModulesTable.id, mod.id));
         results.push({ filename, runbookName, ok: true });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Push failed";

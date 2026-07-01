@@ -327,4 +327,8 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: client_scores table failed (non-fatal)");
   });
+
+  // Slug→UUID conversion for workflow_template_step_tasks.runbook_id is handled
+  // by Drizzle migration 0103_workflow_template_step_tasks_runbook_id_uuid_fk.sql.
+  // No runtime patch needed here.
 });

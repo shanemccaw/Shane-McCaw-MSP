@@ -145,34 +145,44 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     return null;
   }
 
-  // Batch-resolve all runbook_ids (UUID → scriptModules, slug → powershellScripts)
+  // Batch-resolve all runbook_ids — UUIDs only; non-UUID values are skipped with a warning
   const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId!))];
   const uuidIds = allRunbookIds.filter(id => UUID_RE.test(id));
-  const slugIds = allRunbookIds.filter(id => !UUID_RE.test(id));
+  const nonUuidIds = allRunbookIds.filter(id => !UUID_RE.test(id));
+
+  if (nonUuidIds.length > 0) {
+    logger.warn({ clientUserId, nonUuidIds }, "kanban-auto-fire: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
+  }
 
   const [moduleRows, scriptRows] = await Promise.all([
     uuidIds.length > 0
-      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description, azureRunbookName: scriptModulesTable.azureRunbookName })
           .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidIds))
       : Promise.resolve([]),
-    slugIds.length > 0
+    uuidIds.length > 0
       ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
-          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugIds))
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, uuidIds))
       : Promise.resolve([]),
   ]);
 
   const moduleMap = new Map(moduleRows.map(m => [m.id, m]));
-  const scriptMap = new Map(scriptRows.map(s => [s.azureRunbookName as string, s]));
+  const scriptMap = new Map(scriptRows.map(s => [s.id, s]));
 
   function resolveRunbook(runbookId: string): LinkedRunbook | null {
-    if (UUID_RE.test(runbookId)) {
-      const mod = moduleMap.get(runbookId);
-      if (!mod) return null;
-      return { scriptId: mod.id, azureRunbookName: filenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+    if (!UUID_RE.test(runbookId)) return null;
+    const mod = moduleMap.get(runbookId);
+    if (mod) {
+      if (!mod.azureRunbookName) {
+        logger.warn({ runbookId, filename: mod.filename }, "kanban-auto-fire: module not yet pushed to Azure — skipping");
+        return null;
+      }
+      return { scriptId: mod.id, azureRunbookName: mod.azureRunbookName, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
     }
     const script = scriptMap.get(runbookId);
-    if (!script?.azureRunbookName) return null;
-    return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+    if (script?.azureRunbookName) {
+      return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+    }
+    return null;
   }
 
   // Build a map: templateStepId → first resolved runbook (ordered by task order)
@@ -183,7 +193,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     if (resolved) stepRunbookMap.set(tt.workflowTemplateStepId, resolved);
   }
 
-  logger.info({ clientUserId, uuidIds, slugIds, moduleRows: moduleRows.length, scriptRows: scriptRows.length, stepRunbookMap: Object.fromEntries(stepRunbookMap) },
+  logger.info({ clientUserId, uuidIds, moduleRows: moduleRows.length, scriptRows: scriptRows.length, stepRunbookMap: Object.fromEntries(stepRunbookMap) },
     "kanban-auto-fire: fallback template resolution");
 
   // Return the first candidate whose step resolves to a runbook

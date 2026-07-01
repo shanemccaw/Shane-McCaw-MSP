@@ -188,11 +188,14 @@ async function resolveTemplateTaskMetadata(
   const linkedClIds = [...new Set(templateTasks.map(t => t.checklistId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedArtIds = [...new Set(templateTasks.map(t => t.artifactsId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedDelIds = [...new Set(templateTasks.map(t => t.deliverablesId).filter((id): id is number => id !== null && id !== undefined))];
-  // runbook_id stores either a UUID (→ script_modules) or an azure-runbook-name slug (→ powershell_scripts)
+  // runbook_id stores a UUID pointing to either script_modules or powershell_scripts
   const PROV_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
   const uuidRunbookIds = allRunbookIds.filter(id => PROV_UUID_RE.test(id));
-  const slugRunbookIds = allRunbookIds.filter(id => !PROV_UUID_RE.test(id));
+  const nonUuidRunbookIds = allRunbookIds.filter(id => !PROV_UUID_RE.test(id));
+  if (nonUuidRunbookIds.length > 0) {
+    logger.warn({ nonUuidRunbookIds }, "portal: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
+  }
 
   const [instrRows, clRows, artRows, delRows, moduleRunbookRows, scriptRunbookRows] = await Promise.all([
     linkedInstrIds.length > 0 ? db.select().from(instructionSetsTable).where(inArray(instructionSetsTable.id, linkedInstrIds)) : Promise.resolve([]),
@@ -200,12 +203,12 @@ async function resolveTemplateTaskMetadata(
     linkedArtIds.length > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
     linkedDelIds.length > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
     uuidRunbookIds.length > 0
-      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description, azureRunbookName: scriptModulesTable.azureRunbookName })
           .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidRunbookIds))
       : Promise.resolve([]),
-    slugRunbookIds.length > 0
+    uuidRunbookIds.length > 0
       ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
-          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugRunbookIds))
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, uuidRunbookIds))
       : Promise.resolve([]),
   ]);
 
@@ -214,21 +217,15 @@ async function resolveTemplateTaskMetadata(
   const artMap = new Map(artRows.map(r => [r.id, r.artifacts as string[]]));
   const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
   const moduleRunbookMap = new Map(moduleRunbookRows.map(r => [r.id, r]));
-  const scriptRunbookMap = new Map(scriptRunbookRows.map(r => [r.azureRunbookName as string, r]));
-
-  function provFilenameSlug(filename: string): string {
-    return filename.replace(/\.ps1$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "script";
-  }
+  const scriptRunbookMap = new Map(scriptRunbookRows.map(r => [r.id, r]));
 
   return templateTasks.map(t => {
     let linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null = null;
-    if (t.runbookId) {
-      if (PROV_UUID_RE.test(t.runbookId)) {
-        const mod = moduleRunbookMap.get(t.runbookId);
-        if (mod) {
-          linkedRunbook = { scriptId: mod.id, azureRunbookName: provFilenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
-        }
-      } else {
+    if (t.runbookId && PROV_UUID_RE.test(t.runbookId)) {
+      const mod = moduleRunbookMap.get(t.runbookId);
+      if (mod?.azureRunbookName) {
+        linkedRunbook = { scriptId: mod.id, azureRunbookName: mod.azureRunbookName, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+      } else if (!mod) {
         const script = scriptRunbookMap.get(t.runbookId);
         if (script?.azureRunbookName) {
           linkedRunbook = { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
@@ -5167,11 +5164,9 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
   // ── Enrich task_metadata.linkedRunbook from template task runbookId ───────────
   // Chain: kanban_task.workflow_step_id → workflow_steps.workflow_template_step_id
   //        → workflow_template_step_tasks.runbook_id → powershell_scripts | script_modules
-  // Only fills in linkedRunbook when task_metadata doesn't already have one stored.
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  function filenameSlug(filename: string): string {
-    return filename.replace(/\.ps1$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 63) || "script";
-  }
+  // runbook_id is always a UUID (FK to powershell_scripts.id).
+  // Lookup order: powershell_scripts first, then script_modules (for any legacy module UUIDs).
+  const UUID_RE_LOCAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   function wordJaccard(a: string, b: string): number {
     const aw = new Set((a.toLowerCase().match(/\w+/g) ?? []));
     const bw = new Set((b.toLowerCase().match(/\w+/g) ?? []));
@@ -5204,33 +5199,38 @@ router.get("/admin/kanban-tasks", requireAdmin, async (req: Request, res: Respon
         ));
 
       if (templateTasks.length > 0) {
-        const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
-        const uuidIds = allRunbookIds.filter(id => UUID_RE.test(id));
-        const slugIds = allRunbookIds.filter(id => !UUID_RE.test(id));
+        // All runbook_id values are UUIDs (FK to powershell_scripts.id).
+        // Ignore any non-UUID values left from before the migration.
+        const allUuidIds = [...new Set(
+          templateTasks.map(t => t.runbookId).filter((id): id is string => !!id && UUID_RE_LOCAL.test(id))
+        )];
 
-        const [moduleRows, scriptRows] = await Promise.all([
-          uuidIds.length > 0
-            ? db.select({ id: scriptModulesTable.id, description: scriptModulesTable.description, filename: scriptModulesTable.filename })
-                .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidIds))
-            : Promise.resolve([]),
-          slugIds.length > 0
+        const [scriptRows, moduleRows] = await Promise.all([
+          allUuidIds.length > 0
             ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
-                .from(powershellScriptsTable).where(inArray(powershellScriptsTable.azureRunbookName, slugIds))
+                .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, allUuidIds))
+            : Promise.resolve([]),
+          allUuidIds.length > 0
+            ? db.select({ id: scriptModulesTable.id, description: scriptModulesTable.description, filename: scriptModulesTable.filename, azureRunbookName: scriptModulesTable.azureRunbookName })
+                .from(scriptModulesTable).where(inArray(scriptModulesTable.id, allUuidIds))
             : Promise.resolve([]),
         ]);
 
+        const scriptMap = new Map(scriptRows.map(s => [s.id, s]));
         const moduleMap = new Map(moduleRows.map(m => [m.id, m]));
-        const scriptMap = new Map(scriptRows.map(s => [s.azureRunbookName as string, s]));
 
         function resolveRunbook(runbookId: string): { scriptId: string; azureRunbookName: string; scriptTitle: string } | null {
-          if (UUID_RE.test(runbookId)) {
-            const mod = moduleMap.get(runbookId);
-            if (!mod) return null;
-            return { scriptId: mod.id, azureRunbookName: filenameSlug(mod.filename), scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
-          }
+          // Primary: powershell_scripts UUID
           const script = scriptMap.get(runbookId);
-          if (!script?.azureRunbookName) return null;
-          return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+          if (script?.azureRunbookName) {
+            return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+          }
+          // Fallback: script_modules UUID (legacy module-linked tasks)
+          const mod = moduleMap.get(runbookId);
+          if (mod?.azureRunbookName) {
+            return { scriptId: mod.id, azureRunbookName: mod.azureRunbookName, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+          }
+          return null;
         }
 
         // Group template tasks by their step for efficient lookup

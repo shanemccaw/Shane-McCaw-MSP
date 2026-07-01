@@ -2007,10 +2007,20 @@ function InlineScriptRunner({
       const areasPayload = Array.isArray(governanceAreas) && governanceAreas.length > 0 ? governanceAreas : undefined;
       const body: Record<string, unknown> = {
         appRegistrationId: appRegId,
-        runbookName: actualRunbook,
         ...(areasPayload ? { governanceAreas: areasPayload } : {}),
       };
-      if (isAdHoc) body["adHocContent"] = scriptBody;
+      if (isAdHoc) {
+        body["adHocContent"] = scriptBody;
+        // Prefer the editor script's UUID so the route resolves the correct Azure runbook slot
+        if (editorScript?.id) body["scriptId"] = editorScript.id;
+      } else {
+        if (!editorScript?.id) {
+          setLogLines(["[Error: Script must be saved and pushed to Azure before running]"]);
+          setRunning(false);
+          return;
+        }
+        body["scriptId"] = editorScript.id;
+      }
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

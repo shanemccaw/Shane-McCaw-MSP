@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   ActivityIndicator,
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -23,20 +22,30 @@ import { ErrorBanner } from "@/components/ErrorBanner";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ListSkeleton } from "@/components/SkeletonLoader";
 
-interface Runbook {
-  id: number;
-  name: string;
+interface DbScript {
+  id: string;
+  title: string;
   description?: string | null;
-  governanceArea?: string | null;
+  category: string;
+  azureRunbookName: string | null;
+  azureSyncedAt?: string | null;
+  tags?: string[];
 }
 
 interface RunbookJob {
   id: number;
-  runbookId?: number;
   runbookName?: string | null;
   status: string;
   createdAt?: string;
   output?: string | null;
+}
+
+interface AppRegistration {
+  id: number;
+  tenantId: string;
+  azureClientId: string;
+  keyVaultSecretName: string;
+  status: string;
 }
 
 interface Client {
@@ -44,6 +53,7 @@ interface Client {
   name: string | null;
   email: string;
   company?: string | null;
+  appRegistration: AppRegistration | null;
 }
 
 interface AIAnalysis {
@@ -68,7 +78,7 @@ export default function ScriptRunnerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [selectedClientId, setSelectedClientId] = useState<number | null>(presetClientId ? parseInt(presetClientId, 10) : null);
-  const [selectedRunbookId, setSelectedRunbookId] = useState<number | null>(null);
+  const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
   const [runningJobId, setRunningJobId] = useState<number | null>(null);
   const [output, setOutput] = useState<string[]>([]);
   const [jobStatus, setJobStatus] = useState<string>("");
@@ -77,23 +87,23 @@ export default function ScriptRunnerScreen() {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const outputScrollRef = useRef<ScrollView>(null);
 
-  const { data: runbooks, isLoading: runbooksLoading, error: runbooksError } = useQuery<Runbook[]>({
-    queryKey: ["runbooks"],
+  const { data: scripts, isLoading: scriptsLoading, error: scriptsError } = useQuery<DbScript[]>({
+    queryKey: ["db-scripts-pushed"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/runbooks");
-      if (!res.ok) throw new Error("Failed to load runbooks");
-      const json = await res.json() as { runbooks?: Runbook[] } | Runbook[];
-      return Array.isArray(json) ? json : (json.runbooks ?? []);
+      const res = await fetchWithAuth("/api/admin/ps-scripts");
+      if (!res.ok) throw new Error("Failed to load scripts");
+      const json = await res.json() as DbScript[];
+      return json.filter((s) => !!s.azureRunbookName);
     },
   });
 
   const { data: clients } = useQuery<Client[]>({
-    queryKey: ["admin-clients-simple"],
+    queryKey: ["admin-clients-with-azure"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/clients");
+      const res = await fetchWithAuth("/api/admin/clients/with-azure-credentials");
       if (!res.ok) return [];
-      const json = await res.json() as { clients?: Client[] } | Client[];
-      return Array.isArray(json) ? json : (json.clients ?? []);
+      const json = await res.json() as Client[];
+      return json;
     },
   });
 
@@ -108,16 +118,22 @@ export default function ScriptRunnerScreen() {
     enabled: showHistory,
   });
 
+  const selectedClient = clients?.find((c) => c.id === selectedClientId) ?? null;
+
   const runMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedRunbookId) throw new Error("No runbook selected");
-      const body: Record<string, unknown> = { runbookId: selectedRunbookId };
-      if (selectedClientId) body.clientId = selectedClientId;
+      if (!selectedScriptId) throw new Error("No script selected");
+      const appRegId = selectedClient?.appRegistration?.id;
+      if (!appRegId) throw new Error("Selected client has no Azure App Registration configured");
       const res = await fetchWithAuth("/api/admin/runbook-jobs", {
         method: "POST",
-        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scriptId: selectedScriptId, appRegistrationId: appRegId }),
       });
-      if (!res.ok) throw new Error("Failed to start job");
+      if (!res.ok) {
+        const err = await res.json() as { error?: string };
+        throw new Error(err.error ?? "Failed to start job");
+      }
       return res.json() as Promise<{ jobId?: number; id?: number }>;
     },
     onSuccess: (data) => {
@@ -147,9 +163,6 @@ export default function ScriptRunnerScreen() {
         if (data.status === "completed" || data.status === "failed") {
           clearInterval(pollingRef.current!);
           pollingRef.current = null;
-          void Haptics.notificationAsync(
-            data.status === "completed" ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Error
-          );
           void refetchHistory();
         }
         setTimeout(() => outputScrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -177,8 +190,7 @@ export default function ScriptRunnerScreen() {
     }
   };
 
-  const selectedRunbook = runbooks?.find((r) => r.id === selectedRunbookId);
-  const selectedClient = clients?.find((c) => c.id === selectedClientId);
+  const selectedScript = scripts?.find((s) => s.id === selectedScriptId);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -196,7 +208,7 @@ export default function ScriptRunnerScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {runbooksError && <ErrorBanner message="Could not load runbooks" />}
+        {scriptsError && <ErrorBanner message="Could not load scripts" />}
 
         {/* Client picker */}
         <SectionHeader title="Client (optional)" />
@@ -220,40 +232,50 @@ export default function ScriptRunnerScreen() {
           ))}
         </ScrollView>
 
-        {/* Runbook picker */}
-        <SectionHeader title="Runbook" />
-        {runbooksLoading ? (
+        {selectedClientId && !selectedClient?.appRegistration && (
+          <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+            <Text style={{ color: colors.warning, fontFamily: "Inter_400Regular", fontSize: 12 }}>
+              This client has no Azure App Registration — scripts cannot be run for them.
+            </Text>
+          </View>
+        )}
+
+        {/* Script picker */}
+        <SectionHeader title="Script" />
+        {scriptsLoading ? (
           <ListSkeleton count={3} />
         ) : (
           <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            {(runbooks ?? []).map((rb) => (
+            {(scripts ?? []).map((s) => (
               <Pressable
-                key={rb.id}
-                onPress={() => setSelectedRunbookId(rb.id)}
+                key={s.id}
+                onPress={() => setSelectedScriptId(s.id)}
                 style={[
-                  styles.runbookCard,
+                  styles.scriptCard,
                   {
-                    backgroundColor: selectedRunbookId === rb.id ? colors.primary + "18" : colors.card,
-                    borderColor: selectedRunbookId === rb.id ? colors.primary : colors.border,
+                    backgroundColor: selectedScriptId === s.id ? colors.primary + "18" : colors.card,
+                    borderColor: selectedScriptId === s.id ? colors.primary : colors.border,
                   },
                 ]}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.runbookName, { color: colors.text }]}>{rb.name}</Text>
-                  {rb.description && (
-                    <Text style={[styles.runbookDesc, { color: colors.mutedForeground }]} numberOfLines={2}>{rb.description}</Text>
+                  <Text style={[styles.scriptName, { color: colors.text }]}>{s.title}</Text>
+                  {s.azureRunbookName && (
+                    <Text style={[styles.scriptDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
+                      {s.azureRunbookName}
+                    </Text>
                   )}
                 </View>
-                {rb.governanceArea && <Badge label={rb.governanceArea} variant="info" />}
-                {selectedRunbookId === rb.id && (
+                {s.category && <Badge label={s.category} variant="info" />}
+                {selectedScriptId === s.id && (
                   <Feather name="check-circle" size={16} color={colors.primary} />
                 )}
               </Pressable>
             ))}
-            {(runbooks?.length ?? 0) === 0 && (
+            {(scripts?.length ?? 0) === 0 && (
               <Card>
                 <Text style={{ color: colors.mutedForeground, textAlign: "center", fontFamily: "Inter_400Regular" }}>
-                  No runbooks configured
+                  No pushed scripts found. Push a script to Azure Automation from the Script Library first.
                 </Text>
               </Card>
             )}
@@ -264,13 +286,21 @@ export default function ScriptRunnerScreen() {
         <View style={{ paddingHorizontal: 16, marginTop: 16 }}>
           <Pressable
             onPress={() => {
-              if (!selectedRunbookId) {
-                Alert.alert("Select a runbook", "Please select a runbook to run");
+              if (!selectedScriptId) {
+                Alert.alert("Select a script", "Please select a script to run");
+                return;
+              }
+              if (selectedClientId && !selectedClient?.appRegistration) {
+                Alert.alert("No credentials", "This client has no Azure App Registration configured");
+                return;
+              }
+              if (!selectedClientId) {
+                Alert.alert("Select a client", "Please select a client with Azure credentials");
                 return;
               }
               Alert.alert(
                 "Confirm",
-                `Run "${selectedRunbook?.name}"${selectedClient ? ` for ${selectedClient.name ?? selectedClient.email}` : ""}?`,
+                `Run "${selectedScript?.title}"${selectedClient ? ` for ${selectedClient.name ?? selectedClient.email}` : ""}?`,
                 [
                   { text: "Cancel", style: "cancel" },
                   {
@@ -298,7 +328,7 @@ export default function ScriptRunnerScreen() {
               <Feather name="play" size={18} color={colors.primaryForeground} />
             )}
             <Text style={[styles.runBtnText, { color: colors.primaryForeground }]}>
-              {jobStatus === "running" ? "Running…" : "Run Runbook"}
+              {jobStatus === "running" ? "Running…" : "Run Script"}
             </Text>
           </Pressable>
         </View>
@@ -415,9 +445,9 @@ const styles = StyleSheet.create({
   pickerRow: { paddingHorizontal: 16, paddingBottom: 4, gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1.5 },
   chipText: { fontSize: 13, fontFamily: "Inter_500Medium" },
-  runbookCard: { borderRadius: 14, padding: 14, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 10 },
-  runbookName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
-  runbookDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 3, lineHeight: 17 },
+  scriptCard: { borderRadius: 14, padding: 14, borderWidth: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  scriptName: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  scriptDesc: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 3, lineHeight: 17 },
   runBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 12, paddingVertical: 14 },
   runBtnText: { fontFamily: "Inter_600SemiBold", fontSize: 15 },
   consoleHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 },

@@ -476,7 +476,7 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   taskType: text("task_type"),
   requiresManualRun: boolean("requires_manual_run").default(false),
   isCustomerTask: boolean("is_customer_task").default(false),
-  runbookId: text("runbook_id"),
+  runbookId: uuid("runbook_id").references(() => powershellScriptsTable.id, { onDelete: "set null" }),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;
@@ -1385,6 +1385,7 @@ export const scriptModulesTable = pgTable("script_modules", {
   sortOrder: integer("sort_order").notNull().default(0),
   azureRunbookName: text("azure_runbook_name"),
   sourceScriptId: uuid("source_script_id"),
+  azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
