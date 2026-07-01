@@ -764,6 +764,13 @@
       "when": 1751385600000,
       "tag": "0105_add_permission_check_to_app_registrations",
       "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1751385700000,
+      "tag": "0106_add_script_modules_permissions",
+      "breakpoints": true
     }
   ]
 }
