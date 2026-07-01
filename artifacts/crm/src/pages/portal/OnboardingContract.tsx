@@ -194,35 +194,32 @@ function buildContractHtml(
       : `<p style="${PARA_STYLE}">For one-time services, Consultant will deliver the agreed outputs within the stated turnaround period after receipt of payment and any required access or information from Client. Work will not commence until both payment is confirmed and all necessary access has been granted. For monthly retainers, Consultant will perform the described ongoing services throughout each billing period.</p>`
     }
 
-    <h3 style="${HEADING_STYLE}">5. Revisions (One-Time Services)</h3>
-    <p style="${PARA_STYLE}">One round of revisions is included within the scope of each one-time service. Additional revisions are available at Consultant's standard hourly rate.</p>
-
-    <h3 style="${HEADING_STYLE}">6. Confidentiality</h3>
+    <h3 style="${HEADING_STYLE}">5. Confidentiality</h3>
     <p style="${PARA_STYLE}">Each party agrees to keep the other party's confidential information confidential and not to disclose it to any third party without prior written consent. This obligation survives termination of this agreement.</p>
 
-    <h3 style="${HEADING_STYLE}">7. Intellectual Property</h3>
+    <h3 style="${HEADING_STYLE}">6. Intellectual Property</h3>
     <p style="${PARA_STYLE}">${isFree
       ? "Upon execution of this agreement, all deliverables produced by Consultant for Client under this agreement become the sole property of Client."
       : "Upon receipt of full payment (or, for ongoing retainers, upon payment for the relevant billing period), all deliverables produced by Consultant for Client under this agreement become the sole property of Client."
     }</p>
 
-    <h3 style="${HEADING_STYLE}">8. Limitation of Liability</h3>
+    <h3 style="${HEADING_STYLE}">7. Limitation of Liability</h3>
     <p style="${PARA_STYLE}">${isFree
       ? "Consultant's total liability under this agreement shall not exceed $100. Consultant is not liable for any indirect, incidental, or consequential damages."
       : "Consultant's total liability under this agreement shall not exceed the total fees paid in the 12 months prior to any claim. Consultant is not liable for any indirect, incidental, or consequential damages."
     }</p>
 
-    <h3 style="${HEADING_STYLE}">9. Independent Contractor</h3>
+    <h3 style="${HEADING_STYLE}">8. Independent Contractor</h3>
     <p style="${PARA_STYLE}">Consultant is an independent contractor and not an employee of Client. Nothing in this agreement shall create any partnership, joint venture, agency, franchise, or employment relationship between the parties.</p>
 
-    <h3 style="${HEADING_STYLE}">10. Governing Law</h3>
-    <p style="${PARA_STYLE}">This agreement is governed by the laws of the State of Virginia, United States. Any disputes shall be resolved in the courts of Virginia.</p>
+    <h3 style="${HEADING_STYLE}">9. Governing Law</h3>
+    <p style="${PARA_STYLE}">This agreement is governed by the laws of the State of Florida, United States. Any disputes shall be resolved in the courts of Florida.</p>
 
-    <h3 style="${HEADING_STYLE}">11. Entire Agreement</h3>
+    <h3 style="${HEADING_STYLE}">10. Entire Agreement</h3>
     <p style="${PARA_STYLE}">This document constitutes the entire agreement between the parties with respect to this engagement and supersedes all prior discussions and representations. Amendments must be made in writing.</p>
 
     ${requiredPermissions && requiredPermissions.length > 0 ? `
-    <h3 style="${HEADING_STYLE}">${coupon?.code === "TESTIMONIAL" ? "13" : "12"}. App Registration Permissions</h3>
+    <h3 style="${HEADING_STYLE}">${coupon?.code === "TESTIMONIAL" ? "12" : "11"}. App Registration Permissions</h3>
     <p style="${PARA_STYLE}">To enable automated Microsoft 365 management, Client agrees to grant the following Application permissions (not Delegated) in an Azure AD App Registration and to click "Grant admin consent" in the Azure portal before work commences on automated deliverables. These permissions are required for Consultant's scripts and automation to operate on Client's tenant.</p>
     <table style="width:100%;border-collapse:collapse;margin:8px 0 12px 0;font-size:0.85em;">
       <thead>

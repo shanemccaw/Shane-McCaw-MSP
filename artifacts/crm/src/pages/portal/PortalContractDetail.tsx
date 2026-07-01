@@ -57,7 +57,7 @@ Either party may terminate ongoing services with 14 days' written notice. Client
 Consultant is an independent contractor. Nothing in this agreement creates an employment, partnership, or joint-venture relationship between the parties.
 
 8. GOVERNING LAW
-This agreement is governed by the laws of the State of Virginia, without regard to conflict-of-law principles. Any dispute not resolved by good-faith negotiation shall be submitted to binding arbitration in Fairfax County, Virginia under the AAA Commercial Arbitration Rules.
+This agreement is governed by the laws of the State of Florida, without regard to conflict-of-law principles. Any dispute not resolved by good-faith negotiation shall be submitted to binding arbitration in the State of Florida under the AAA Commercial Arbitration Rules.
 
 9. ENTIRE AGREEMENT
 This agreement, together with any applicable service order, constitutes the entire agreement between the parties regarding its subject matter and supersedes all prior discussions and representations.`;
