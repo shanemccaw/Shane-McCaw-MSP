@@ -199,13 +199,16 @@ export default function ProjectTasksLayer() {
 
   useEffect(() => {
     const prev = prevTasksRef.current;
-    if (prev.length === 0) { prevTasksRef.current = tasks; return; }
 
-    const newlyCompleted = tasks.filter(t => {
+    const newlyCompleted = prev.length === 0 ? [] : tasks.filter(t => {
       if (t.column !== "completed") return false;
       const p = prev.find(p => p.id === t.id);
       return p !== undefined && p.column !== "completed";
     });
+
+    // Always advance the ref so the same transition is never re-detected on
+    // the next poll cycle (even when newlyCompleted is non-empty).
+    prevTasksRef.current = tasks;
 
     if (newlyCompleted.length > 0) {
       const ids = new Set(newlyCompleted.map(t => t.id));
@@ -223,7 +226,6 @@ export default function ProjectTasksLayer() {
       return () => clearTimeout(timer);
     }
 
-    prevTasksRef.current = tasks;
     return undefined;
   }, [tasks]);
 

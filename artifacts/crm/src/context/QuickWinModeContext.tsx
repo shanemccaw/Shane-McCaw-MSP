@@ -111,7 +111,13 @@ function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinM
     // SET_PROJECT: escalation resolved — store the project ID and show the
     // live Kanban task view. Task data is NOT stored here; ProjectTasksLayer
     // fetches it independently via react-query so it stays in sync with the board.
+    //
+    // Guard: only accept this action while we are still EscalatingToProject.
+    // The escalateToProject() promise is async; if the user exits before it
+    // resolves the mode resets to Idle (or another state) and we must NOT
+    // re-open the overlay when the stale promise eventually dispatches.
     case "SET_PROJECT":
+      if (state.mode !== "EscalatingToProject") return state;
       return {
         ...state,
         mode: "ProjectTasksView",
