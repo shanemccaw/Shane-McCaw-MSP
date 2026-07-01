@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,6 +11,8 @@ import {
   TASK_TYPE_CONFIG,
   type TaskType,
 } from "@/components/kanban/TypedCardContent";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 export interface KanbanCardModalTask {
   id: number;
@@ -45,11 +48,45 @@ const COLUMN_CONFIG: Record<string, { label: string; cls: string }> = {
 };
 
 export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client" }: Props) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState(false);
+
   if (!task) return null;
 
   const colCfg = COLUMN_CONFIG[task.column] ?? { label: task.column, cls: "bg-gray-100 text-gray-600 border border-gray-200" };
   const banner = getTypedStatusBanner(task.taskType, task.taskMetadata);
   const typeCfg = task.taskType ? TASK_TYPE_CONFIG[task.taskType as TaskType] : null;
+  const customerDownload = task.taskMetadata?.customerDownload as { scriptId?: string; scriptTitle?: string } | undefined;
+
+  const handleDownloadScript = async () => {
+    if (downloading || !task) return;
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/tasks/${task.id}/download-script`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Download failed",
+          description: (body as { error?: string }).error ?? "Could not prepare the script. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const scriptTitle = customerDownload?.scriptTitle ?? "script";
+      a.href = url;
+      a.download = `${scriptTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}.ps1`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
@@ -70,6 +107,30 @@ export function KanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         </DialogHeader>
 
         <div className="space-y-4 mt-1">
+          {mode === "client" && customerDownload?.scriptId && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => void handleDownloadScript()}
+                disabled={downloading}
+                className="flex items-center justify-center gap-2 w-full bg-[#0078D4] text-white text-sm font-semibold px-4 py-2.5 rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-60 transition-colors"
+              >
+                {downloading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Preparing…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Download Script (.ps1)
+                  </>
+                )}
+              </button>
+            </div>
+          )}
           {task.taskType ? (
             /* ── TYPED VIEW ──────────────────────────────────────────────── */
             <>

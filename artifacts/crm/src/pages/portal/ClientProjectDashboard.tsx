@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import PortalLayout from "@/components/PortalLayout";
 import { KanbanCardModal } from "@/components/KanbanCardModal";
 import type { KanbanCardModalTask } from "@/components/KanbanCardModal";
@@ -257,6 +258,64 @@ function OverallHealthRing({ score }: { score: number }) {
         <span className="text-xl font-black text-white leading-none">{score}%</span>
         <span className="text-[9px] font-bold text-white/50 uppercase tracking-widest mt-0.5">Overall</span>
       </div>
+    </div>
+  );
+}
+
+// ── KanbanCardDownloadButton ──────────────────────────────────────────────────
+// Separate component so each card has its own `downloading` state.
+
+function KanbanCardDownloadButton({ taskId, scriptTitle }: { taskId: number; scriptTitle?: string }) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/tasks/${taskId}/download-script`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({
+          title: "Download failed",
+          description: (body as { error?: string }).error ?? "Could not prepare the script. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(scriptTitle ?? "script").replace(/[^a-zA-Z0-9_-]/g, "_")}.ps1`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  return (
+    <div className="mt-2" onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={downloading}
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors"
+      >
+        {downloading ? (
+          <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+        ) : (
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        )}
+        {downloading ? "Preparing…" : (scriptTitle ?? "Download Script")}
+      </button>
     </div>
   );
 }
@@ -1205,6 +1264,7 @@ export default function ClientProjectDashboard() {
                               low: "bg-gray-100 text-gray-500",
                             };
                             const priCls = task.priority ? (priorityColor[task.priority] ?? "bg-gray-100 text-gray-500") : null;
+                            const cardCustomerDownload = task.taskMetadata?.customerDownload as { scriptId?: string; scriptTitle?: string } | undefined;
                             return (
                               <div
                                 key={task.id}
@@ -1213,6 +1273,9 @@ export default function ClientProjectDashboard() {
                               >
                                 <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
                                 <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} taskStatus={task.column} />
+                                {cardCustomerDownload?.scriptId && (
+                                  <KanbanCardDownloadButton taskId={task.id} scriptTitle={cardCustomerDownload.scriptTitle} />
+                                )}
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                   {priCls && task.priority && (
                                     <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${priCls}`}>
