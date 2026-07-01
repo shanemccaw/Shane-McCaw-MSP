@@ -209,85 +209,83 @@ function DashboardTab({
   const SCORE_COLORS = { security: "#ef4444", governance: "#f59e0b", readiness: "#3b82f6", composite: "#0078D4" };
 
   return (
-    <div className="flex gap-5 h-full">
-      <div className="flex-1 flex flex-col gap-5 min-w-0">
-        {/* Score cards */}
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">M365 Health Scores</h3>
-            <button onClick={() => void load()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+    <div className="flex flex-col gap-5">
+      {/* Score cards */}
+      <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-white font-semibold">M365 Health Scores</h3>
+          <button onClick={() => void load()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+        </div>
+        <div className="grid grid-cols-4 gap-3">
+          <ScoreBadge label="Security"   value={sd?.scores.security   ?? 0} color={SCORE_COLORS.security}   />
+          <ScoreBadge label="Governance"  value={sd?.scores.governance  ?? 0} color={SCORE_COLORS.governance}  />
+          <ScoreBadge label="Readiness"   value={sd?.scores.readiness   ?? 0} color={SCORE_COLORS.readiness}   />
+          <ScoreBadge label="Composite"   value={sd?.scores.composite   ?? 0} color={SCORE_COLORS.composite}   />
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+          <div className="bg-[#0D1117] rounded-lg p-3">
+            <div className="text-lg font-bold text-white">{sd?.totalRuns ?? 0}</div>
+            <div className="text-xs text-gray-400">Script Runs</div>
           </div>
-          <div className="grid grid-cols-4 gap-3">
-            <ScoreBadge label="Security"   value={sd?.scores.security   ?? 0} color={SCORE_COLORS.security}   />
-            <ScoreBadge label="Governance"  value={sd?.scores.governance  ?? 0} color={SCORE_COLORS.governance}  />
-            <ScoreBadge label="Readiness"   value={sd?.scores.readiness   ?? 0} color={SCORE_COLORS.readiness}   />
-            <ScoreBadge label="Composite"   value={sd?.scores.composite   ?? 0} color={SCORE_COLORS.composite}   />
+          <div className="bg-[#0D1117] rounded-lg p-3">
+            <div className="text-lg font-bold text-yellow-400">{sd?.totalGaps ?? 0}</div>
+            <div className="text-xs text-gray-400">Config Gaps</div>
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-3 text-center">
-            <div className="bg-[#0D1117] rounded-lg p-3">
-              <div className="text-lg font-bold text-white">{sd?.totalRuns ?? 0}</div>
-              <div className="text-xs text-gray-400">Script Runs</div>
-            </div>
-            <div className="bg-[#0D1117] rounded-lg p-3">
-              <div className="text-lg font-bold text-yellow-400">{sd?.totalGaps ?? 0}</div>
-              <div className="text-xs text-gray-400">Config Gaps</div>
-            </div>
-            <div className="bg-[#0D1117] rounded-lg p-3">
-              <div className="text-lg font-bold text-blue-400">{sd?.coveragePct ?? 0}%</div>
-              <div className="text-xs text-gray-400">Coverage</div>
-            </div>
+          <div className="bg-[#0D1117] rounded-lg p-3">
+            <div className="text-lg font-bold text-blue-400">{sd?.coveragePct ?? 0}%</div>
+            <div className="text-xs text-gray-400">Coverage</div>
           </div>
         </div>
-
-        {/* Coverage bars */}
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
-          <h3 className="text-white font-semibold mb-4">Infrastructure Coverage</h3>
-          <div className="flex flex-col gap-3">
-            <ProgressBar label="Conditional Access Coverage" value={sd?.conditionalAccessPct ?? 0} color="#0078D4" />
-            <ProgressBar label="Device Compliance"           value={sd?.deviceCompliancePct  ?? 0} color="#10b981" />
-            <ProgressBar label="Assessment Coverage"         value={sd?.coveragePct           ?? 0} color="#f59e0b" />
-          </div>
-        </div>
-
-        {/* Risk heatmap */}
-        {heatmap.length > 0 && (
-          <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
-            <h3 className="text-white font-semibold mb-4">Risk Heatmap by Domain</h3>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={heatmap} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
-                <XAxis dataKey="domain" tick={{ fill: "#9ca3af", fontSize: 11 }} />
-                <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
-                <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
-                <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 12 }} />
-                <Bar dataKey="high"   name="High"   fill="#ef4444" stackId="a" />
-                <Bar dataKey="medium" name="Medium" fill="#f59e0b" stackId="a" />
-                <Bar dataKey="low"    name="Low"    fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-
-        {/* Score trend */}
-        {(sd?.weeklyTrend.length ?? 0) > 0 && (
-          <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
-            <h3 className="text-white font-semibold mb-4">Score Trend (8-week)</h3>
-            <ResponsiveContainer width="100%" height={140}>
-              <BarChart data={sd!.weeklyTrend} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
-                <XAxis dataKey="week" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-                <YAxis domain={[0, 100]} tick={{ fill: "#9ca3af", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
-                <Bar dataKey="composite" name="Composite" fill="#0078D4" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
       </div>
 
-      {/* Right inspector panel */}
-      <div className="w-80 shrink-0 flex flex-col gap-4">
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 flex-1 overflow-y-auto max-h-80">
+      {/* Coverage bars */}
+      <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+        <h3 className="text-white font-semibold mb-4">Infrastructure Coverage</h3>
+        <div className="flex flex-col gap-3">
+          <ProgressBar label="Conditional Access Coverage" value={sd?.conditionalAccessPct ?? 0} color="#0078D4" />
+          <ProgressBar label="Device Compliance"           value={sd?.deviceCompliancePct  ?? 0} color="#10b981" />
+          <ProgressBar label="Assessment Coverage"         value={sd?.coveragePct           ?? 0} color="#f59e0b" />
+        </div>
+      </div>
+
+      {/* Risk heatmap */}
+      {heatmap.length > 0 && (
+        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+          <h3 className="text-white font-semibold mb-4">Risk Heatmap by Domain</h3>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={heatmap} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
+              <XAxis dataKey="domain" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
+              <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 12 }} />
+              <Bar dataKey="high"   name="High"   fill="#ef4444" stackId="a" />
+              <Bar dataKey="medium" name="Medium" fill="#f59e0b" stackId="a" />
+              <Bar dataKey="low"    name="Low"    fill="#3b82f6" stackId="a" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Score trend */}
+      {(sd?.weeklyTrend.length ?? 0) > 0 && (
+        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-5">
+          <h3 className="text-white font-semibold mb-4">Score Trend (8-week)</h3>
+          <ResponsiveContainer width="100%" height={140}>
+            <BarChart data={sd!.weeklyTrend} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2d333b" />
+              <XAxis dataKey="week" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <YAxis domain={[0, 100]} tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <Tooltip contentStyle={{ background: "#161B22", border: "1px solid #374151", borderRadius: 8, color: "#fff" }} />
+              <Bar dataKey="composite" name="Composite" fill="#0078D4" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Findings + Recommendations — full-width two-column row */}
+      <div className="grid grid-cols-2 gap-5">
+        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
           <h4 className="text-white font-medium text-sm mb-3">Latest Findings</h4>
           {(sd?.findings.length ?? 0) === 0 ? (
             <p className="text-gray-500 text-xs">No findings yet. Run PowerShell assessments to populate.</p>
@@ -299,7 +297,7 @@ function DashboardTab({
             </ul>
           )}
         </div>
-        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4">
+        <div className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 overflow-y-auto max-h-64">
           <h4 className="text-white font-medium text-sm mb-3">Recommendations</h4>
           {(sd?.recommendations.length ?? 0) === 0 ? (
             <p className="text-gray-500 text-xs">No recommendations yet.</p>
