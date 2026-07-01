@@ -48,6 +48,7 @@ async function resolveTemplateTaskMetadata(
     artifactsProduced?: unknown;
     clientDeliverables?: unknown;
     runbookId?: string | null;
+    triggersHealthScore?: boolean | null;
   }>
 ): Promise<Array<{
   instructions: string[];
@@ -57,6 +58,7 @@ async function resolveTemplateTaskMetadata(
   checklistState: Record<string, never>;
   uploadedArtifacts: never[];
   linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null;
+  triggersHealthScore: boolean;
 }>> {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const linkedInstrIds = [...new Set(templateTasks.map(t => t.instructionSetId).filter((id): id is number => id != null))];
@@ -113,6 +115,7 @@ async function resolveTemplateTaskMetadata(
       checklistState: {} as Record<string, never>,
       uploadedArtifacts: [] as never[],
       linkedRunbook,
+      triggersHealthScore: t.triggersHealthScore === true,
     };
   });
 }

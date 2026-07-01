@@ -477,6 +477,7 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   requiresManualRun: boolean("requires_manual_run").default(false),
   isCustomerTask: boolean("is_customer_task").default(false),
   runbookId: uuid("runbook_id"),
+  triggersHealthScore: boolean("triggers_health_score").notNull().default(false),
 });
 
 export type InsertWorkflowTemplateStepTask = typeof workflowTemplateStepTasksTable.$inferInsert;

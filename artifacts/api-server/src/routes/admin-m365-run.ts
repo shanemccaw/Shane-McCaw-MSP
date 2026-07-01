@@ -358,6 +358,20 @@ async function processRunInBackground(
     })
     .where(eq(scriptRunResultsTable.id, runResultId));
 
+  // Determine up-front whether any linked kanban task has triggersHealthScore=true.
+  // This gates snapshotHealthFromProfile so we never write two snapshots for the same run.
+  let kanbanHealthScoreTrigger = false;
+  if (finalStatus === "completed" && customerId && kanbanIds.length > 0) {
+    const triggerRows = await db
+      .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+      .from(kanbanTasksTable)
+      .where(inArray(kanbanTasksTable.id, kanbanIds));
+    kanbanHealthScoreTrigger = triggerRows.some(row => {
+      const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
+      return meta.triggersHealthScore === true;
+    });
+  }
+
   if (customerId) {
     try {
       await applyScoreImpact(customerId, aiResult.scoreImpact);
@@ -369,23 +383,58 @@ async function processRunInBackground(
     } catch (err) {
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
     }
-    try {
-      await snapshotHealthFromProfile(customerId);
-    } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+    // Only snapshot via the standard path when no kanban task explicitly triggers a health score
+    // update — that path will write its own snapshot, so we skip this one to avoid duplicates.
+    if (!kanbanHealthScoreTrigger) {
+      try {
+        await snapshotHealthFromProfile(customerId);
+      } catch (err) {
+        logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+      }
     }
   }
 
   if (kanbanIds.length > 0) {
     try {
+      // Record explicit health score snapshot for triggered tasks (exactly once per run).
+      let healthScoreTriggered = false;
+      if (kanbanHealthScoreTrigger && customerId) {
+        try {
+          const [profileRow] = await db
+            .select({ profile: clientM365ProfilesTable.profile })
+            .from(clientM365ProfilesTable)
+            .where(eq(clientM365ProfilesTable.clientId, customerId))
+            .limit(1);
+          if (profileRow?.profile) {
+            const scores = computeM365Scores(profileRow.profile as Record<string, unknown>);
+            const now = new Date();
+            await db.insert(clientHealthHistoryTable).values(
+              (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
+                clientId: customerId,
+                category,
+                score,
+                recordedAt: now,
+              }))
+            );
+            healthScoreTriggered = true;
+            logger.info({ customerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
+          } else {
+            logger.warn({ customerId }, "admin-m365-run: triggersHealthScore=true but no M365 profile found — skipping health score update");
+          }
+        } catch (hsErr) {
+          logger.warn({ hsErr, customerId }, "admin-m365-run: health score snapshot failed (non-fatal)");
+        }
+      }
+
       // Build a consistent output summary so every sibling card gets identical completion notes.
       const outputLines = jobOutput.split("\n").map(l => l.replace(/\r$/, "")).filter(Boolean);
       const outputSummary = outputLines.slice(-10).join("\n");
       const notesBody = outputSummary ? `\n\nOutput:\n${outputSummary}` : "";
+      const healthScoreSuffix = healthScoreTriggered ? " · M365 Health Score updated" : "";
       const kanbanPatch: { column?: "completed"; completionStatus: string; completionNotes: string; updatedAt: Date } = {
         completionStatus: finalStatus === "completed" ? "script_completed" : "script_failed",
         completionNotes: finalStatus === "completed"
-          ? `Script run completed (job ${jobId}).${notesBody}`
+          ? `Script completed${healthScoreSuffix} (job ${jobId}).${notesBody}`
           : `Script run failed (job ${jobId}).${notesBody}`,
         updatedAt: new Date(),
       };

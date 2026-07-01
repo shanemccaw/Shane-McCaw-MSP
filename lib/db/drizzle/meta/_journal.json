@@ -792,6 +792,13 @@
       "when": 1751386000000,
       "tag": "0109_script_modules_source_task_ids",
       "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1782878559148,
+      "tag": "0110_add_triggers_health_score",
+      "breakpoints": true
     }
   ]
 }

@@ -51,6 +51,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   deliverablesId: null,
   isCustomerTask: false,
   runbookId: null,
+  triggersHealthScore: false,
 };
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -84,6 +85,7 @@ interface StepTask {
   requiresManualRun: boolean | null;
   isCustomerTask: boolean | null;
   runbookId: string | null;
+  triggersHealthScore: boolean | null;
 }
 
 interface WorkflowStep {
@@ -120,6 +122,7 @@ interface EditingTaskForm {
   deliverablesId: number | null;
   isCustomerTask: boolean;
   runbookId: string | null;
+  triggersHealthScore: boolean;
 }
 
 interface PublishedScript {
@@ -1309,12 +1312,42 @@ function TaskDrawer({
                 <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Linked Runbook</label>
                 <RunbookCombobox
                   value={form.runbookId ?? null}
-                  onChange={id => setForm(p => ({ ...p, runbookId: id }))}
+                  onChange={id => setForm(p => ({ ...p, runbookId: id, triggersHealthScore: id ? p.triggersHealthScore : false }))}
                   scripts={publishedScripts}
                 />
                 <p className="text-[10px] text-[#7D8590] mt-1">
                   When set, a "Run Script" button will appear on this task's kanban card and modal.
                 </p>
+              </div>
+              <div
+                title={!form.runbookId ? "Link a runbook first" : undefined}
+                className={`flex items-start gap-3 rounded-lg border px-3 py-3 transition-colors ${
+                  !form.runbookId
+                    ? "opacity-40 cursor-not-allowed bg-[#0D1117] border-[#30363D]"
+                    : form.triggersHealthScore
+                    ? "cursor-pointer select-none bg-[#0078D4]/10 border-[#0078D4]/40"
+                    : "cursor-pointer select-none bg-[#0D1117] border-[#30363D] hover:border-[#484F58]"
+                }`}
+                onClick={() => {
+                  if (!form.runbookId) return;
+                  setForm(p => ({ ...p, triggersHealthScore: !p.triggersHealthScore }));
+                }}
+              >
+                <div className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+                  form.triggersHealthScore && form.runbookId ? "bg-[#0078D4] border-[#0078D4]" : "border-[#484F58]"
+                }`}>
+                  {form.triggersHealthScore && form.runbookId && (
+                    <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-[#E6EDF3]">Updates M365 Health Score</p>
+                  <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">
+                    When this task's script completes successfully, a new M365 Health Score snapshot is automatically recorded for the client.
+                  </p>
+                </div>
               </div>
             </>
           )}
@@ -1751,6 +1784,7 @@ export default function WorkflowsPage() {
       deliverablesId: task.deliverablesId ?? null,
       isCustomerTask: task.isCustomerTask ?? false,
       runbookId: task.runbookId ?? null,
+      triggersHealthScore: task.triggersHealthScore ?? false,
     });
     setDrawerIsNew(false);
     setDrawerOpen(true);
@@ -1774,6 +1808,7 @@ export default function WorkflowsPage() {
       deliverablesId: taskForm.deliverablesId,
       isCustomerTask: taskForm.isCustomerTask,
       runbookId: taskForm.runbookId || null,
+      triggersHealthScore: taskForm.triggersHealthScore,
     };
 
     if (drawerIsNew) {
