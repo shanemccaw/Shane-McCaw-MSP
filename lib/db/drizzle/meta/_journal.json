@@ -834,6 +834,13 @@
       "when": 1782936374967,
       "tag": "0115_add_automation_last_run_log",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1751385901000,
+      "tag": "0116_add_script_name_to_run_results",
+      "breakpoints": true
     }
   ]
 }

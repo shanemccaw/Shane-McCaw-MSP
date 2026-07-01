@@ -597,6 +597,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   let resolvedRunbookName: string;
   let resolvedLibraryScriptId: string | null = null;
 
+  let resolvedScriptName: string | null = null;
   if ("libraryModuleId" in parsed.data) {
     // Running a module from a script set
     const moduleId = parsed.data.libraryModuleId;
@@ -614,6 +615,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       return;
     }
     resolvedRunbookName = mod.azureRunbookName;
+    resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
   } else {
     // Running a standalone library script — or a script_modules UUID injected via kanban enrichment
     const libraryScriptId = parsed.data.libraryScriptId;
@@ -638,6 +640,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
         return;
       }
       resolvedRunbookName = mod.azureRunbookName;
+      resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
     } else {
       if (!script.azureRunbookName) {
         res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
@@ -645,6 +648,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       }
       resolvedRunbookName = script.azureRunbookName;
       resolvedLibraryScriptId = libraryScriptId;
+      resolvedScriptName = script.title ?? null;
     }
   }
 
@@ -660,6 +664,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
         libraryScriptId: resolvedLibraryScriptId,
         kanbanTaskId: kanbanTaskId ?? null,
         status: "running",
+        scriptName: resolvedScriptName,
       })
       .returning({ id: scriptRunResultsTable.id });
     runResultId = row.id;

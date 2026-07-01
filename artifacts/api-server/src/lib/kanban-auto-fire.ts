@@ -515,6 +515,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
           kanbanTaskId:    card.id,
           status:          "running",
           executionSource: "automated",
+          scriptName:      card.linkedRunbook.scriptTitle ?? null,
         })
         .returning({ id: scriptRunResultsTable.id });
       runResultId = resultRow?.id;

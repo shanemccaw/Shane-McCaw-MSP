@@ -97,13 +97,14 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
     // Resolve the actual Azure runbook name from DB — DB is the single source of truth.
     // Exception: ad-hoc IDE runs (adHocContent without scriptId) use the fixed IDE-AdHoc runbook.
     let runbookName: string;
+    let resolvedScriptName: string | null = null;
     if (scriptId) {
       if (!UUID_RE.test(scriptId)) {
         res.status(400).json({ error: "scriptId must be a valid UUID" });
         return;
       }
       const [psScript] = await db
-        .select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
+        .select({ azureRunbookName: powershellScriptsTable.azureRunbookName, title: powershellScriptsTable.title })
         .from(powershellScriptsTable)
         .where(eq(powershellScriptsTable.id, scriptId))
         .limit(1);
@@ -113,9 +114,10 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
           return;
         }
         runbookName = psScript.azureRunbookName;
+        resolvedScriptName = psScript.title ?? null;
       } else {
         const [mod] = await db
-          .select({ azureRunbookName: scriptModulesTable.azureRunbookName })
+          .select({ azureRunbookName: scriptModulesTable.azureRunbookName, filename: scriptModulesTable.filename })
           .from(scriptModulesTable)
           .where(eq(scriptModulesTable.id, scriptId))
           .limit(1);
@@ -128,11 +130,13 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
           return;
         }
         runbookName = mod.azureRunbookName;
+        resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
       }
       logger.info({ scriptId, runbookName }, "admin-script-runner: resolved runbookName from DB");
     } else if (adHocContent?.trim()) {
       // Ad-hoc IDE run without a DB-backed script — use fixed runbook slot
       runbookName = ADHOC_RUNBOOK_NAME;
+      resolvedScriptName = "Ad-hoc Script";
       logger.info({ runbookName }, "admin-script-runner: ad-hoc run using fixed runbook slot");
     } else {
       res.status(400).json({ error: "scriptId (UUID) is required, or provide adHocContent for an ad-hoc run" });
@@ -341,6 +345,7 @@ router.post("/admin/runbook-jobs", requireAdmin, async (req: Request, res: Respo
           kanbanTaskId: kanbanTaskId ?? null,
           status: "running",
           executionSource: "manual",
+          scriptName: resolvedScriptName,
         })
         .returning({ id: scriptRunResultsTable.id });
       runResultId = resultRow?.id;
@@ -745,8 +750,9 @@ router.get("/admin/script-runs", requireAdmin, async (req: Request, res: Respons
         kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
         // Customer name via join
         customerName: usersTable.name,
-        // Script title via join
-        scriptTitle: powershellScriptsTable.title,
+        // Script title via join (fallback when scriptName column is null)
+        scriptTitleJoin: powershellScriptsTable.title,
+        scriptName: scriptRunResultsTable.scriptName,
       })
       .from(scriptRunResultsTable)
       .leftJoin(usersTable, eq(scriptRunResultsTable.customerId, usersTable.id))
@@ -778,7 +784,7 @@ router.get("/admin/script-runs", requireAdmin, async (req: Request, res: Respons
       customerId: r.customerId,
       customerName: r.customerName ?? null,
       libraryScriptId: r.libraryScriptId,
-      scriptTitle: r.scriptTitle ?? null,
+      scriptTitle: r.scriptName ?? r.scriptTitleJoin ?? null,
       kanbanTaskId: r.kanbanTaskId,
     }));
 
@@ -820,7 +826,8 @@ router.get("/admin/script-runs/:id", requireAdmin, async (req: Request, res: Res
         libraryScriptId: scriptRunResultsTable.libraryScriptId,
         kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
         customerName: usersTable.name,
-        scriptTitle: powershellScriptsTable.title,
+        scriptTitleJoin: powershellScriptsTable.title,
+        scriptName: scriptRunResultsTable.scriptName,
       })
       .from(scriptRunResultsTable)
       .leftJoin(usersTable, eq(scriptRunResultsTable.customerId, usersTable.id))
@@ -848,7 +855,7 @@ router.get("/admin/script-runs/:id", requireAdmin, async (req: Request, res: Res
       ...row,
       completedAt,
       customerName: row.customerName ?? null,
-      scriptTitle: row.scriptTitle ?? null,
+      scriptTitle: row.scriptName ?? row.scriptTitleJoin ?? null,
     });
   } catch (err) {
     logger.error({ err, id }, "admin-script-runner: failed to fetch script run detail");

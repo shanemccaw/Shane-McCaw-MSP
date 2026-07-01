@@ -2550,6 +2550,7 @@ router.get("/portal/tasks/:taskId/download-script", requireAuth, async (req: Req
         status: "awaiting_upload",
         executionSource: "manual",
         kanbanTaskId: taskId,
+        scriptName: script.title ?? null,
       }).returning({ id: scriptRunResultsTable.id });
       runResultId = runResult!.id;
 

@@ -1455,7 +1455,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
                     permissions,
                     tags: ["manual", "from-package"],
                   })
-                  .returning({ id: powershellScriptsTable.id });
+                  .returning({ id: powershellScriptsTable.id, title: powershellScriptsTable.title });
 
                 if (!libScript) continue;
 
@@ -1471,6 +1471,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
                     packageId: serviceId,   // links run result to the service for portal queries
                     status: "awaiting_upload",
                     executionSource: "manual",
+                    scriptName: libScript.title ?? null,
                   })
                   .returning({ id: scriptRunResultsTable.id });
 

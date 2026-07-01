@@ -323,6 +323,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
         rawOutput: body,
         uploadedAt: new Date(),
         uploadedBy: "customer_script_callback",
+        scriptName: "Customer Upload",
       })
       .returning({ id: scriptRunResultsTable.id });
     const resultId = resultRow?.id ?? null;

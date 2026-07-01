@@ -1326,6 +1326,7 @@ export const scriptRunResultsTable = pgTable("script_run_results", {
   uploadedBy: text("uploaded_by"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  scriptName: text("script_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
