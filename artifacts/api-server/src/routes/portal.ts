@@ -635,25 +635,44 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       return;
     }
 
-    // Join service_script_sets → script_packages to gather permissions
-    const rows = await db
-      .select({ permissions: scriptPackagesTable.permissions })
+    // Join service_script_sets → script_packages to gather linked package IDs
+    const pkgRows = await db
+      .select({ packageId: scriptPackagesTable.id, permissions: scriptPackagesTable.permissions })
       .from(serviceScriptSetsTable)
       .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
       .where(inArray(serviceScriptSetsTable.serviceId, serviceIds));
 
+    type RawPerms = { appPermissions?: (string | { scope?: string; reason?: string })[] } | null;
+
     // Aggregate and deduplicate by scope string
     type PermEntry = { scope: string; reason: string };
     const seen = new Map<string, string>();
-    for (const row of rows) {
-      const perms = row.permissions as { appPermissions?: (string | { scope?: string; reason?: string })[] } | null;
-      if (!perms?.appPermissions) continue;
+
+    const addPerms = (perms: RawPerms) => {
+      if (!perms?.appPermissions) return;
       for (const entry of perms.appPermissions) {
         if (typeof entry === "string") {
           if (!seen.has(entry)) seen.set(entry, "");
         } else if (entry && typeof entry.scope === "string") {
           if (!seen.has(entry.scope)) seen.set(entry.scope, entry.reason ?? "");
         }
+      }
+    };
+
+    // 1. Package-level permissions (legacy fallback)
+    for (const row of pkgRows) {
+      addPerms(row.permissions as RawPerms);
+    }
+
+    // 2. Per-module permissions (primary — each module now has its own permissions)
+    const pkgIds = pkgRows.map(r => r.packageId);
+    if (pkgIds.length > 0) {
+      const modRows = await db
+        .select({ permissions: scriptModulesTable.permissions })
+        .from(scriptModulesTable)
+        .where(inArray(scriptModulesTable.packageId, pkgIds));
+      for (const row of modRows) {
+        addPerms(row.permissions as RawPerms);
       }
     }
 

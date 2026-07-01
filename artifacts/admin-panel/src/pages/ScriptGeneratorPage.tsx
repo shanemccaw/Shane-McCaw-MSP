@@ -2338,6 +2338,7 @@ function RightPanel({
   editingPackageId,
   token,
   onPermissionsChange,
+  onModulePermissionsSaved,
   activeTab,
   onActiveTabChange,
   bugDescription,
@@ -2362,6 +2363,7 @@ function RightPanel({
   editingPackageId: string | null;
   token: string;
   onPermissionsChange: (p: PsScriptPermissions) => void;
+  onModulePermissionsSaved?: (moduleId: string, perms: PsScriptPermissions) => void;
   activeTab: "runner" | "permissions" | "bugfix" | "explain";
   onActiveTabChange: (t: "runner" | "permissions" | "bugfix" | "explain") => void;
   bugDescription: string;
@@ -2409,6 +2411,7 @@ function RightPanel({
           packageId={editingModuleId ? null : editingPackageId}
           token={token}
           onPermissionsChange={onPermissionsChange}
+          onModulePermissionsSaved={onModulePermissionsSaved}
         />
       </TabsContent>
       <TabsContent
@@ -2561,6 +2564,7 @@ function PermissionsSidebarPanel({
   packageId,
   token,
   onPermissionsChange,
+  onModulePermissionsSaved,
 }: {
   permissions: PsScriptPermissions | null;
   scriptId: string | null;
@@ -2569,6 +2573,7 @@ function PermissionsSidebarPanel({
   packageId: string | null;
   token: string;
   onPermissionsChange: (p: PsScriptPermissions) => void;
+  onModulePermissionsSaved?: (moduleId: string, perms: PsScriptPermissions) => void;
 }) {
   const UUID_RE_LOCAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const { toast } = useToast();
@@ -2627,6 +2632,7 @@ function PermissionsSidebarPanel({
           method: "PUT",
           body: JSON.stringify({ permissions: permsToSave }),
         });
+        onModulePermissionsSaved?.(moduleId!, permsToSave);
       } else if (isPackageMode) {
         await apiFetch(`/admin/ps-scripts/packages/${packageId}`, token, {
           method: "PATCH",
@@ -4762,6 +4768,12 @@ export default function ScriptGeneratorPage() {
               editingPackageId={editingPackageId}
               token={token}
               onPermissionsChange={setPermissions}
+              onModulePermissionsSaved={(modId, perms) => {
+                setPackages(prev => prev.map(pkg => ({
+                  ...pkg,
+                  modules: pkg.modules.map(m => m.id === modId ? { ...m, permissions: perms } : m),
+                })));
+              }}
               activeTab={rightActiveTab}
               onActiveTabChange={(t) => { setRightActiveTab(t); lsSet(IDE_RIGHT_TAB_KEY, t); }}
               bugDescription={bugDescription}
