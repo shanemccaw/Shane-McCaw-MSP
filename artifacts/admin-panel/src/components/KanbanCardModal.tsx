@@ -831,6 +831,21 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const typeCfg = localTask.taskType ? TASK_TYPE_CONFIG[localTask.taskType as TaskType] : null;
   const linkedRunbook = meta.linkedRunbook as { scriptId: string; azureRunbookName: string; scriptTitle: string } | null | undefined;
 
+  // Build a single consolidated output string from all output sources.
+  const _scriptOutput = meta.scriptOutput as string | undefined;
+  const _aiAnalysis = meta.aiAnalysis as AutoSavedAiAnalysis | undefined;
+  const _lastRunResult = meta.lastRunResult as LastRunResult | undefined;
+  const _consolidatedParts: string[] = [];
+  if (localTask.completionNotes) _consolidatedParts.push(localTask.completionNotes);
+  if (_scriptOutput?.trim()) _consolidatedParts.push(`--- Script Output ---\n${_scriptOutput.trim()}`);
+  if (_aiAnalysis?.summary) _consolidatedParts.push(`--- AI Summary ---\n${_aiAnalysis.summary}`);
+  if (_aiAnalysis?.risks?.length) _consolidatedParts.push(`--- Risks ---\n${_aiAnalysis.risks.join('\n')}`);
+  if (_aiAnalysis?.recommendations?.length) _consolidatedParts.push(`--- Recommendations ---\n${_aiAnalysis.recommendations.join('\n')}`);
+  if (_aiAnalysis?.nextSteps?.length) _consolidatedParts.push(`--- Next Steps ---\n${_aiAnalysis.nextSteps.join('\n')}`);
+  if (_lastRunResult?.findings?.length) _consolidatedParts.push(`--- Findings ---\n${(_lastRunResult.findings as string[]).join('\n')}`);
+  if (_lastRunResult?.recommendations?.length) _consolidatedParts.push(`--- Recommendations ---\n${(_lastRunResult.recommendations as string[]).join('\n')}`);
+  const consolidatedOutput = _consolidatedParts.join('\n\n');
+
   return (
     <>
     <Dialog open={open} onOpenChange={o => { if (!o) { setEditing(false); onClose(); } }}>
@@ -838,7 +853,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
         <DialogHeader>
           <div className="flex items-start gap-3 pr-2">
             <div className="flex-1 min-w-0">
-              {localTask.groupName && (
+              {localTask.groupName && mode !== "admin" && (
                 <span className="inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 mb-2">
                   {localTask.groupName}
                 </span>
@@ -970,17 +985,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
             <>
               {typeCfg && <div className={`h-0.5 w-full rounded-full opacity-60 ${typeCfg.bar}`} />}
 
-              <TypedModalSection
-                taskType={localTask.taskType}
-                taskStatus={localTask.column}
-                metadata={localTask.taskMetadata}
-                mode={mode}
-                taskId={localTask.id}
-                fetchWithAuth={fetchWithAuth}
-                onMetadataUpdate={handleMetadataUpdate}
-                onRunScript={linkedRunbook?.azureRunbookName ? () => setConfirmRunOpen(true) : undefined}
-                onOpenScript={() => setLocation("/command/scripts")}
-              />
+              {mode !== "admin" && (
+                <TypedModalSection
+                  taskType={localTask.taskType}
+                  taskStatus={localTask.column}
+                  metadata={localTask.taskMetadata}
+                  mode={mode}
+                  taskId={localTask.id}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                  onRunScript={linkedRunbook?.azureRunbookName ? () => setConfirmRunOpen(true) : undefined}
+                  onOpenScript={() => setLocation("/command/scripts")}
+                />
+              )}
 
               <div className="border border-border rounded-lg overflow-hidden">
                 <button
@@ -1019,13 +1036,13 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 )}
               </div>
 
-              {localTask.completionNotes && (
+              {consolidatedOutput && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => void navigator.clipboard.writeText(localTask.completionNotes ?? "")}
+                        onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
                         className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
                         title="Copy to clipboard"
                       >
@@ -1036,7 +1053,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       </button>
                       {fetchWithAuth && (
                         <button
-                          onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")}
+                          onClick={() => void handleAiSuggest(consolidatedOutput)}
                           disabled={aiSuggestLoading}
                           className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
                         >
@@ -1050,7 +1067,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     </div>
                   </div>
                   <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
-                    {localTask.completionNotes}
+                    {consolidatedOutput}
                   </pre>
                   {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
                     <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
@@ -1072,7 +1089,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       {!aiSuggestLoading && aiSuggestError && (
                         <div className="px-3 py-2 flex items-center gap-2">
                           <span className="text-xs text-red-400">{aiSuggestError}</span>
-                          <button onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
                         </div>
                       )}
                       {!aiSuggestLoading && aiSuggestions && (
@@ -1126,19 +1143,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
-              {meta.lastRunResult && (
-                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
-              )}
 
-              {(meta.scriptOutput || meta.aiAnalysis) && (
-                <AutoSavedScriptResultsSection
-                  scriptOutput={meta.scriptOutput as string | undefined}
-                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
-                  completedAt={meta.completedAt as string | undefined}
-                  failedAt={meta.failedAt as string | undefined}
-                  lastJobStatus={meta.lastJobStatus as string | undefined}
-                />
-              )}
 
               {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
@@ -1191,13 +1196,13 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
-              {localTask.completionNotes && (
+              {consolidatedOutput && (
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => void navigator.clipboard.writeText(localTask.completionNotes ?? "")}
+                        onClick={() => void navigator.clipboard.writeText(consolidatedOutput)}
                         className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
                         title="Copy to clipboard"
                       >
@@ -1208,7 +1213,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       </button>
                       {fetchWithAuth && (
                         <button
-                          onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")}
+                          onClick={() => void handleAiSuggest(consolidatedOutput)}
                           disabled={aiSuggestLoading}
                           className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
                         >
@@ -1222,7 +1227,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                     </div>
                   </div>
                   <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
-                    {localTask.completionNotes}
+                    {consolidatedOutput}
                   </pre>
                   {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
                     <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
@@ -1244,7 +1249,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                       {!aiSuggestLoading && aiSuggestError && (
                         <div className="px-3 py-2 flex items-center gap-2">
                           <span className="text-xs text-red-400">{aiSuggestError}</span>
-                          <button onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                          <button onClick={() => void handleAiSuggest(consolidatedOutput)} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
                         </div>
                       )}
                       {!aiSuggestLoading && aiSuggestions && (
@@ -1298,19 +1303,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </div>
               )}
 
-              {meta.lastRunResult && (
-                <LastRunResultsSection result={meta.lastRunResult as LastRunResult} />
-              )}
 
-              {(meta.scriptOutput || meta.aiAnalysis) && (
-                <AutoSavedScriptResultsSection
-                  scriptOutput={meta.scriptOutput as string | undefined}
-                  aiAnalysis={meta.aiAnalysis as AutoSavedAiAnalysis | undefined}
-                  completedAt={meta.completedAt as string | undefined}
-                  failedAt={meta.failedAt as string | undefined}
-                  lastJobStatus={meta.lastJobStatus as string | undefined}
-                />
-              )}
 
               {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
