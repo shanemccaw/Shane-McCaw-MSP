@@ -618,6 +618,15 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const [scriptRunning, setScriptRunning] = useState(false);
   const [confirmedAppRegId, setConfirmedAppRegId] = useState<number | null>(null);
 
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<{
+    analysis: string;
+    risks: string[];
+    remediationSteps: string[];
+    nextActions: string[];
+  } | null>(null);
+  const [aiSuggestError, setAiSuggestError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!task) return;
     const unsubscribe = subscribeToChanges(() => {
@@ -648,6 +657,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     }
     setEditing(false);
     setSaveError(null);
+    setAiSuggestions(null);
+    setAiSuggestError(null);
   }, [task]);
 
   if (!task || !localTask) return null;
@@ -694,6 +705,40 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     const merged = { ...localTask, taskMetadata: meta };
     setLocalTask(merged);
     onUpdate?.(merged);
+  };
+
+  const handleAiSuggest = async (outputText: string) => {
+    if (!fetchWithAuth) return;
+    setAiSuggestLoading(true);
+    setAiSuggestions(null);
+    setAiSuggestError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/ai/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          output: outputText,
+          taskTitle: localTask?.title,
+          taskType: localTask?.taskType ?? undefined,
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        setAiSuggestError(d.error ?? "AI analysis failed");
+        return;
+      }
+      const data = await res.json() as {
+        analysis: string;
+        risks: string[];
+        remediationSteps: string[];
+        nextActions: string[];
+      };
+      setAiSuggestions(data);
+    } catch {
+      setAiSuggestError("Network error — please try again");
+    } finally {
+      setAiSuggestLoading(false);
+    }
   };
 
   const handleConfirmRun = async () => {
@@ -923,22 +968,6 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
           ) : localTask.taskType ? (
             /* ── TYPED VIEW MODE ──────────────────────────────────────────── */
             <>
-              {banner && (
-                <div className={`flex items-start gap-2.5 rounded-lg px-4 py-3 ${
-                  banner.variant === "error"   ? "bg-red-500/10 border border-red-500/20 text-red-400" :
-                  banner.variant === "warning" ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" :
-                                                 "bg-green-500/10 border border-green-500/20 text-green-400"
-                }`}>
-                  <span className="material-symbols-outlined flex-shrink-0 mt-0.5" style={{ fontSize: "18px" }}>
-                    {banner.variant === "error" ? "error" : banner.variant === "warning" ? "warning" : "check_circle"}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold leading-snug">{banner.headline}</p>
-                    {banner.detail && <p className="text-xs mt-0.5 opacity-80 leading-relaxed line-clamp-2">{banner.detail}</p>}
-                  </div>
-                </div>
-              )}
-
               {typeCfg && <div className={`h-0.5 w-full rounded-full opacity-60 ${typeCfg.bar}`} />}
 
               <TypedModalSection
@@ -978,67 +1007,120 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 </button>
                 {taskDetailsOpen && (
                   <div className="px-4 py-3 border-t border-border space-y-3">
-                    {localTask.description && (
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                        <p className="text-sm text-[#E6EDF3] leading-relaxed">{localTask.description}</p>
-                      </div>
-                    )}
-                    {(localTask.assignedTo || localTask.dueDate || stepTitle) && (
-                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                        {localTask.assignedTo && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                            </svg>
-                            <span>{localTask.assignedTo}</span>
-                          </div>
-                        )}
-                        {localTask.dueDate && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                            <span>Due {new Date(localTask.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                          </div>
-                        )}
-                        {stepTitle && (
-                          <div className="flex items-center gap-1.5">
-                            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            <span>Phase: {stepTitle}</span>
-                          </div>
-                        )}
+                    {localTask.assignedTo && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>Assigned to {localTask.assignedTo}</span>
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              {localTask.column === "waiting_on_customer" && localTask.waitingReason && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1.5">Waiting for</p>
-                  <p className="text-sm text-amber-300 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
-                </div>
-              )}
-
-              {localTask.column === "completed" && (localTask.completionStatus || localTask.completionNotes) && (
-                <div className="space-y-3">
-                  {localTask.completionStatus && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
-                        ✓ {localTask.completionStatus}
-                      </span>
+              {localTask.completionNotes && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => void navigator.clipboard.writeText(localTask.completionNotes ?? "")}
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                      </button>
+                      {fetchWithAuth && (
+                        <button
+                          onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")}
+                          disabled={aiSuggestLoading}
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                        >
+                          {aiSuggestLoading
+                            ? <div className="w-2 h-2 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                            : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                          }
+                          AI Suggestions
+                        </button>
+                      )}
                     </div>
-                  )}
-                  {localTask.completionNotes && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output / Notes</p>
-                      <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
-                        {localTask.completionNotes}
-                      </pre>
+                  </div>
+                  <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                    {localTask.completionNotes}
+                  </pre>
+                  {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
+                    <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[#0078D4]/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4]">AI Suggestions</p>
+                        {!aiSuggestLoading && (
+                          <button
+                            onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
+                            className="ml-auto text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                      {aiSuggestLoading && (
+                        <div className="px-3 py-3 text-xs text-[#7D8590]">Analysing output…</div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestError && (
+                        <div className="px-3 py-2 flex items-center gap-2">
+                          <span className="text-xs text-red-400">{aiSuggestError}</span>
+                          <button onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                        </div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestions && (
+                        <div className="px-3 py-3 space-y-3">
+                          {aiSuggestions.analysis && (
+                            <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiSuggestions.analysis}</p>
+                          )}
+                          {aiSuggestions.risks.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.risks.map((r, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                                    <span className="leading-relaxed">{r}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {aiSuggestions.remediationSteps.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Remediation Steps</p>
+                              <ol className="space-y-1">
+                                {aiSuggestions.remediationSteps.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                                    <span className="leading-relaxed">{s}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                          {aiSuggestions.nextActions.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommended Next Actions</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.nextActions.map((a, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                                    <span className="leading-relaxed">{a}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1058,7 +1140,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 />
               )}
 
-              {mode === "admin" && fetchWithAuth && (
+              {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
                   task={localTask}
                   fetchWithAuth={fetchWithAuth}
@@ -1100,65 +1182,117 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 )}
               </div>
 
-              {localTask.description && (
+              {localTask.assignedTo && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>Assigned to {localTask.assignedTo}</span>
+                </div>
+              )}
+
+              {localTask.completionNotes && (
                 <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm text-[#E6EDF3] leading-relaxed">{localTask.description}</p>
-                </div>
-              )}
-
-              {(localTask.assignedTo || localTask.dueDate || stepTitle) && (
-                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                  {localTask.assignedTo && (
+                  <div className="flex items-center justify-between mb-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Output / Notes</p>
                     <div className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                      <span>{localTask.assignedTo}</span>
+                      <button
+                        onClick={() => void navigator.clipboard.writeText(localTask.completionNotes ?? "")}
+                        className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] border border-border hover:border-[#7D8590] rounded px-1.5 py-0.5 transition-colors"
+                        title="Copy to clipboard"
+                      >
+                        <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Copy
+                      </button>
+                      {fetchWithAuth && (
+                        <button
+                          onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")}
+                          disabled={aiSuggestLoading}
+                          className="inline-flex items-center gap-1 text-[9px] font-semibold text-[#0078D4] hover:text-white bg-[#0078D4]/10 hover:bg-[#0078D4] border border-[#0078D4]/30 hover:border-[#0078D4] rounded px-1.5 py-0.5 transition-colors disabled:opacity-50"
+                        >
+                          {aiSuggestLoading
+                            ? <div className="w-2 h-2 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                            : <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                          }
+                          AI Suggestions
+                        </button>
+                      )}
                     </div>
-                  )}
-                  {localTask.dueDate && (
-                    <div className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span>Due {new Date(localTask.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                    </div>
-                  )}
-                  {stepTitle && (
-                    <div className="flex items-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                      <span>Phase: {stepTitle}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {localTask.column === "waiting_on_customer" && localTask.waitingReason && (
-                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1.5">Waiting for</p>
-                  <p className="text-sm text-amber-300 leading-relaxed whitespace-pre-wrap">{localTask.waitingReason}</p>
-                </div>
-              )}
-
-              {localTask.column === "completed" && (localTask.completionStatus || localTask.completionNotes) && (
-                <div className="space-y-3">
-                  {localTask.completionStatus && (
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Result:</span>
-                      <span className="text-xs font-semibold text-green-400 bg-green-500/10 border border-green-500/20 rounded-full px-2.5 py-0.5">
-                        ✓ {localTask.completionStatus}
-                      </span>
-                    </div>
-                  )}
-                  {localTask.completionNotes && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Output / Notes</p>
-                      <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-52 overflow-y-auto">
-                        {localTask.completionNotes}
-                      </pre>
+                  </div>
+                  <pre className="text-xs text-[#E6EDF3] bg-[#1C2128] border border-border rounded-lg px-3 py-2.5 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                    {localTask.completionNotes}
+                  </pre>
+                  {(aiSuggestLoading || aiSuggestions || aiSuggestError) && (
+                    <div className="mt-2 border border-[#0078D4]/20 rounded-lg overflow-hidden">
+                      <div className="flex items-center gap-2 px-3 py-2 bg-[#0078D4]/8">
+                        {aiSuggestLoading && <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin flex-shrink-0" />}
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-[#0078D4]">AI Suggestions</p>
+                        {!aiSuggestLoading && (
+                          <button
+                            onClick={() => { setAiSuggestions(null); setAiSuggestError(null); }}
+                            className="ml-auto text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                      {aiSuggestLoading && (
+                        <div className="px-3 py-3 text-xs text-[#7D8590]">Analysing output…</div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestError && (
+                        <div className="px-3 py-2 flex items-center gap-2">
+                          <span className="text-xs text-red-400">{aiSuggestError}</span>
+                          <button onClick={() => void handleAiSuggest(localTask.completionNotes ?? "")} className="text-[10px] font-semibold text-[#0078D4] hover:underline">Retry</button>
+                        </div>
+                      )}
+                      {!aiSuggestLoading && aiSuggestions && (
+                        <div className="px-3 py-3 space-y-3">
+                          {aiSuggestions.analysis && (
+                            <p className="text-xs text-[#C9D1D9] leading-relaxed">{aiSuggestions.analysis}</p>
+                          )}
+                          {aiSuggestions.risks.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-red-400 mb-1.5">Identified Risks</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.risks.map((r, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-red-400 mt-0.5 flex-shrink-0">⚠</span>
+                                    <span className="leading-relaxed">{r}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {aiSuggestions.remediationSteps.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Remediation Steps</p>
+                              <ol className="space-y-1">
+                                {aiSuggestions.remediationSteps.map((s, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-emerald-400 mt-0.5 flex-shrink-0 font-semibold">{i + 1}.</span>
+                                    <span className="leading-relaxed">{s}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            </div>
+                          )}
+                          {aiSuggestions.nextActions.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-[#7D8590] mb-1.5">Recommended Next Actions</p>
+                              <ul className="space-y-1">
+                                {aiSuggestions.nextActions.map((a, i) => (
+                                  <li key={i} className="flex items-start gap-2 text-xs text-[#C9D1D9]">
+                                    <span className="text-blue-400 mt-0.5 flex-shrink-0">→</span>
+                                    <span className="leading-relaxed">{a}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1178,7 +1312,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 />
               )}
 
-              {mode === "admin" && fetchWithAuth && (
+              {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
                   task={localTask}
                   fetchWithAuth={fetchWithAuth}
