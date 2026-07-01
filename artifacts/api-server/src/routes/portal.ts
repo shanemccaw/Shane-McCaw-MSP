@@ -947,6 +947,90 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
   });
 });
 
+// ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
+router.post("/portal/app-registration/recheck", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  // 1. Load the existing app registration record (must be verified to have a stored secret)
+  const [appReg] = await db
+    .select()
+    .from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, userId));
+
+  if (!appReg) {
+    res.status(404).json({ error: "No App Registration found. Please submit your credentials first." });
+    return;
+  }
+
+  if (appReg.status !== "verified") {
+    res.status(422).json({ error: "App Registration has not been verified yet. Please submit and verify your credentials first." });
+    return;
+  }
+
+  // 2. Retrieve the stored client secret from Key Vault
+  let clientSecret: string;
+  try {
+    clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+  } catch (kvErr) {
+    req.log.warn({ kvErr, userId }, "portal/app-registration/recheck: could not retrieve secret from Key Vault");
+    res.status(503).json({ error: "Could not retrieve credentials from Azure Key Vault. Please check Key Vault configuration or update your credentials." });
+    return;
+  }
+
+  // 3. Gather required permissions for the client's active services
+  const requiredPermissions = await getRequiredPermissionsForClient(userId);
+
+  if (requiredPermissions.length === 0) {
+    res.json({
+      status: appReg.status,
+      tenantId: appReg.tenantId,
+      azureClientId: appReg.azureClientId,
+      submittedAt: appReg.submittedAt,
+      verifiedAt: appReg.verifiedAt,
+      connectionTestedAt: appReg.connectionTestedAt,
+      permissionCheck: appReg.permissionCheck ?? null,
+      message: "No permissions are required by your active services.",
+    });
+    return;
+  }
+
+  // 4. Run a fresh permission probe
+  let permissionCheck: import("@workspace/db").PermissionCheckResult;
+  try {
+    permissionCheck = await probeGraphPermissions(
+      appReg.tenantId,
+      appReg.azureClientId,
+      clientSecret,
+      requiredPermissions,
+    );
+    req.log.info(
+      { userId, granted: permissionCheck.granted.length, missing: permissionCheck.missing.length, unverifiable: permissionCheck.unverifiable.length },
+      "portal/app-registration/recheck: permission probe complete",
+    );
+  } catch (probeErr) {
+    req.log.warn({ probeErr, userId }, "portal/app-registration/recheck: permission probe threw unexpectedly");
+    res.status(503).json({ error: "Permission probe failed. Please try again later." });
+    return;
+  }
+
+  // 5. Persist the fresh result
+  const now = new Date();
+  await db
+    .update(clientAppRegistrationsTable)
+    .set({ permissionCheck, connectionTestedAt: now, updatedAt: now })
+    .where(eq(clientAppRegistrationsTable.clientUserId, userId));
+
+  res.json({
+    status: appReg.status,
+    tenantId: appReg.tenantId,
+    azureClientId: appReg.azureClientId,
+    submittedAt: appReg.submittedAt,
+    verifiedAt: appReg.verifiedAt,
+    connectionTestedAt: now,
+    permissionCheck,
+  });
+});
+
 // ─── Client: Automation progress ──────────────────────────────────────────────
 router.get("/portal/automation-progress", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
