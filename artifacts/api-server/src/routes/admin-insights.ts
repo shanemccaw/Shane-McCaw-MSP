@@ -41,6 +41,7 @@ import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
+import { getPrompt } from "../lib/prompt-loader";
 import { sendMessage } from "../lib/graphEmail";
 import {
   graphCredentialsPresent,
@@ -645,6 +646,72 @@ const REPORT_DOC_TYPE_LABELS: Record<string, string> = {
   license_optimization_report:"License Optimization Report",
 };
 
+// Substitutes {{token}} placeholders in a prompt template string.
+function substituteTokens(template: string, vars: Record<string, string>): string {
+  return Object.entries(vars).reduce(
+    (t, [k, v]) => t.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v),
+    template,
+  );
+}
+
+// Fallback prompt used when the DB row is missing (first boot, seed race, etc.)
+const INSIGHTS_REPORT_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.
+
+Client: {{clientName}}{{projectLine}}
+Document title: {{title}}
+Report date: {{date}}
+
+M365 Environment Health Scores:
+{{scores}}
+
+Key Findings ({{findingsCount}} total):
+{{findings}}
+
+Key Recommendations ({{recommendationsCount}} total):
+{{recommendations}}
+
+Configuration Telemetry Sample (from profileUpdates):
+{{profileSample}}
+
+Script analysis runs: {{runCount}} completed assessments
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography
+- Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
+- Write in first person as Shane McCaw with professional consulting tone
+- Be specific and actionable — reference actual findings, not generic advice
+- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+- Total length: 800-1500 words of body content`;
+
+const INSIGHTS_CONSULTING_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
+
+Client: {{clientName}}
+{{projectDesc}}Deliverable title: {{title}}
+Date: {{date}}
+
+M365 Health Context:
+{{scores}}
+
+Key Findings: {{findings}}
+Key Recommendations: {{recommendations}}
+
+Configuration Telemetry Sample (from profileUpdates — use in your analysis):
+{{profileSample}}
+
+Document Sections Required:
+{{sectionHints}}
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables
+- Each major section as <h2> with a horizontal rule separator
+- Data tables where appropriate (border-collapse, alternating rows)
+- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
+- Professional consulting tone as Shane McCaw, first person where appropriate
+- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+- Total length: 1000-2000 words`;
+
 const generateDocSchema = z.object({
   customerId: z.number().int().positive().optional(),
   projectId:  z.number().int().positive().optional(),
@@ -683,37 +750,25 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       .map(([k, v]) => `  ${k}: ${String(v)}`)
       .join("\n");
 
-    const prompt = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing ${docLabel} in HTML format.
+    const scoresBlock = `- Security: ${scores.security}/100\n- Governance: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
+    const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
+    const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
-Client: ${clientName}${projectName ? ` · Project: ${projectName}` : ""}
-Document title: ${title}
-Report date: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-
-M365 Environment Health Scores:
-- Security: ${scores.security}/100
-- Governance: ${scores.governance}/100
-- Copilot Readiness: ${scores.readiness}/100
-- Composite: ${scores.composite}/100
-
-Key Findings (${findings.length} total):
-${findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending."}
-
-Key Recommendations (${recommendations.length} total):
-${recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet."}
-
-Configuration Telemetry Sample (from profileUpdates):
-${profileSample || "  No telemetry captured yet."}
-
-Script analysis runs: ${runs.length} completed assessments
-
-INSTRUCTIONS:
-- Output ONLY valid HTML (no markdown, no code fences)
-- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography
-- Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
-- Write in first person as Shane McCaw with professional consulting tone
-- Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
-- Total length: 800-1500 words of body content`;
+    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+    const prompt = substituteTokens(rawReportTemplate, {
+      docLabel,
+      clientName,
+      projectLine: projectName ? ` · Project: ${projectName}` : "",
+      title,
+      date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      scores: scoresBlock,
+      findingsCount: String(findings.length),
+      findings: findingsBlock,
+      recommendationsCount: String(recommendations.length),
+      recommendations: recommendationsBlock,
+      profileSample: profileSample || "  No telemetry captured yet.",
+      runCount: String(runs.length),
+    });
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -860,36 +915,26 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
 
     const typeLabel = CONSULTING_TYPE_LABELS[deliverableType] ?? deliverableType;
 
-    const prompt = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting ${typeLabel} in HTML format.
+    const scoresBlock = `- Security Score: ${scores.security}/100\n- Governance Score: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
+    const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+    const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
 
-Client: ${clientName}
-${projectDesc ? projectDesc + "\n" : ""}Deliverable title: ${title}
-Date: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
-
-M365 Health Context:
-- Security Score: ${scores.security}/100
-- Governance Score: ${scores.governance}/100
-- Copilot Readiness: ${scores.readiness}/100
-- Composite: ${scores.composite}/100
-
-Key Findings: ${findings.slice(0, 10).join("; ") || "Pending assessment runs"}
-Key Recommendations: ${recommendations.slice(0, 8).join("; ") || "Pending assessment runs"}
-
-Configuration Telemetry Sample (from profileUpdates — use in your analysis):
-${profileSample || "  No telemetry captured yet."}
-
-Document Sections Required:
-${sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable"}
-
-INSTRUCTIONS:
-- Output ONLY valid HTML (no markdown, no code fences)
-- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables
-- Each major section as <h2> with a horizontal rule separator
-- Data tables where appropriate (border-collapse, alternating rows)
-- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
-- Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
-- Total length: 1000-2000 words`;
+    // Fallback injects per-type section hints for the case where the DB row is absent
+    const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
+      sectionHints: sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
+    });
+    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback);
+    const prompt = substituteTokens(rawConsultingTemplate, {
+      typeLabel,
+      clientName,
+      projectDesc: projectDesc ? projectDesc + "\n" : "",
+      title,
+      date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      scores: scoresBlock,
+      findings: findingsInline,
+      recommendations: recommendationsInline,
+      profileSample: profileSample || "  No telemetry captured yet.",
+    });
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",

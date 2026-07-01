@@ -1515,7 +1515,7 @@ export const aiPromptsTable = pgTable("ai_prompts", {
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
-  category: text("category", { enum: ["scripting", "marketing", "advisory", "inbox", "classification", "artifacts"] }).notNull(),
+  category: text("category", { enum: ["scripting", "marketing", "advisory", "inbox", "classification", "artifacts", "insights"] }).notNull(),
   featureArea: text("feature_area").notNull().default(""),
   featureRoute: text("feature_route").notNull().default(""),
   model: text("model"),

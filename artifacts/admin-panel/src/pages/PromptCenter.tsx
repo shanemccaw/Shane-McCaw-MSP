@@ -23,9 +23,10 @@ const CATEGORY_COLORS: Record<string, string> = {
   inbox:          "bg-teal-500/15 text-teal-400 border-teal-500/25",
   classification: "bg-orange-500/15 text-orange-400 border-orange-500/25",
   artifacts:      "bg-green-500/15 text-green-400 border-green-500/25",
+  insights:       "bg-cyan-500/15 text-cyan-400 border-cyan-500/25",
 };
 
-const CATEGORIES = ["all", "scripting", "marketing", "advisory", "inbox", "classification", "artifacts"] as const;
+const CATEGORIES = ["all", "scripting", "marketing", "advisory", "inbox", "classification", "artifacts", "insights"] as const;
 
 function isModified(prompt: AiPrompt): boolean {
   return prompt.promptBody !== prompt.defaultBody;
