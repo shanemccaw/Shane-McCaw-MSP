@@ -326,26 +326,7 @@ export default function PortalJourneyMap() {
                             </span>
                           </Link>
                         )}
-                        {stage.id === "followup" && (
-                          <button
-                            onClick={() => qwDispatch({
-                              type: "SELECT_QUICK_WIN",
-                              payload: {
-                                id: "qw-journey-followup",
-                                title: "Follow Up Diagnostic",
-                                description: "Quick Win diagnostic sequence from your journey map.",
-                                steps: DEFAULT_QUICK_WIN_STEPS,
-                              },
-                            })}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-[#0A2540] text-white hover:bg-[#0A2540]/90 active:scale-[0.98]"
-                            style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-                          >
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            Activate Quick Win
-                          </button>
-                        )}
+                        {/* Activate Quick Win button hidden — backlogged for rework */}
                       </div>
                     </div>
                   </div>
