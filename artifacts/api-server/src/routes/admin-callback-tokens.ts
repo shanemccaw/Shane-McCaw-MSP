@@ -13,7 +13,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, clientCallbackTokensTable, scriptRunResultsTable, projectsTable, usersTable } from "@workspace/db";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { createHash } from "crypto";
@@ -74,19 +74,40 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       return;
     }
 
-    // Insert a new script_run_results row for this auto-submission
-    const [resultRow] = await db
-      .insert(scriptRunResultsTable)
-      .values({
-        customerId: tokenRow.clientUserId,
-        kanbanTaskId: null,
-        jobId: null,
-        status: "completed",
-        executionSource: "customer_upload",
-        rawOutput: body,
-        uploadedAt: new Date(),
-      })
-      .returning({ id: scriptRunResultsTable.id });
+    let resultId: number | null = null;
+
+    if (tokenRow.scriptRunResultId !== null) {
+      // Preferred path: update the original awaiting-upload row so all linkage
+      // (kanbanTaskId, libraryScriptId, customerId, projectId) is preserved.
+      const [updated] = await db
+        .update(scriptRunResultsTable)
+        .set({
+          status: "completed",
+          executionSource: "customer_upload",
+          rawOutput: body,
+          uploadedAt: new Date(),
+          uploadedBy: "customer_script_callback",
+        })
+        .where(eq(scriptRunResultsTable.id, tokenRow.scriptRunResultId))
+        .returning({ id: scriptRunResultsTable.id });
+      resultId = updated?.id ?? null;
+    } else {
+      // Fallback: no original row linked, insert a new one.
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId: tokenRow.clientUserId,
+          kanbanTaskId: null,
+          jobId: null,
+          status: "completed",
+          executionSource: "customer_upload",
+          rawOutput: body,
+          uploadedAt: new Date(),
+          uploadedBy: "customer_script_callback",
+        })
+        .returning({ id: scriptRunResultsTable.id });
+      resultId = resultRow?.id ?? null;
+    }
 
     // Update last_used_at on the token
     await db
@@ -95,14 +116,51 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       .where(eq(clientCallbackTokensTable.id, tokenRow.id));
 
     logger.info(
-      { tokenId: tokenRow.id, clientUserId: tokenRow.clientUserId, newResultId: resultRow?.id },
+      { tokenId: tokenRow.id, clientUserId: tokenRow.clientUserId, resultId },
       "admin-callback-tokens: customer script auto-callback received"
     );
 
-    res.json({ received: true, resultId: resultRow?.id ?? null });
+    res.json({ received: true, resultId });
   } catch (err) {
     logger.error({ err }, "admin-callback-tokens: script-callback error");
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ─── ADMIN: kanban task IDs with unreviewed customer_upload results ───────────
+
+/**
+ * GET /api/admin/projects/:projectId/customer-upload-task-ids
+ *
+ * Returns an array of kanban task IDs for which there is at least one
+ * completed `customer_upload` script_run_results row that has not yet been
+ * reviewed (reviewedAt IS NULL). Used to show the teal badge on kanban cards.
+ */
+router.get("/admin/projects/:projectId/customer-upload-task-ids", requireAdmin, async (req: Request, res: Response) => {
+  const projectId = Number(req.params.projectId);
+  if (!Number.isFinite(projectId) || projectId <= 0) {
+    res.status(400).json({ error: "Invalid projectId" });
+    return;
+  }
+
+  try {
+    const rows = await db
+      .select({ kanbanTaskId: scriptRunResultsTable.kanbanTaskId })
+      .from(scriptRunResultsTable)
+      .where(
+        and(
+          eq(scriptRunResultsTable.executionSource, "customer_upload"),
+          eq(scriptRunResultsTable.status, "completed"),
+          isNull(scriptRunResultsTable.reviewedAt),
+          isNotNull(scriptRunResultsTable.kanbanTaskId),
+        )
+      );
+
+    const taskIds = [...new Set(rows.map(r => r.kanbanTaskId).filter((id): id is number => id !== null))];
+    res.json({ taskIds });
+  } catch (err) {
+    logger.error({ err, projectId }, "admin-callback-tokens: failed to get customer-upload task ids");
+    res.status(500).json({ error: "Failed to fetch task ids" });
   }
 });
 

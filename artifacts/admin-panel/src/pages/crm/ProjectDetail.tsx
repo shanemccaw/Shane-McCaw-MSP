@@ -180,7 +180,7 @@ function AssigneeAvatar({ name }: { name: string }) {
 }
 
 function DraggableCard({
-  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName,
+  task, onDelete, projectId, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName, hasCustomerUpload,
 }: {
   task: KanbanTask;
   onDelete: (taskId: number, projectId: number) => void;
@@ -191,6 +191,7 @@ function DraggableCard({
   onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
   clientName?: string | null;
+  hasCustomerUpload?: boolean;
 }) {
   const { toast } = useToast();
   const { fetchWithAuth } = useAuth();
@@ -282,6 +283,16 @@ function DraggableCard({
               {stepTitle && (
                 <span className="inline-block text-[9px] font-medium px-1.5 py-0.5 rounded bg-[#0A2540]/8 text-[#E6EDF3]/60 border border-[#0A2540]/10">
                   {stepTitle}
+                </span>
+              )}
+              {hasCustomerUpload && (
+                <span
+                  title="Customer submitted script results — click to review"
+                  onClick={() => onCardClick(task)}
+                  className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-teal-500/15 text-teal-400 border-teal-500/25 cursor-pointer hover:bg-teal-500/25 transition-colors"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-pulse" />
+                  Customer Submitted
                 </span>
               )}
             </div>
@@ -677,7 +688,7 @@ function CardOverlay({ task }: { task: KanbanTask }) {
 }
 
 function DroppableColumn({
-  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName,
+  col, tasks, onDelete, projectId, isOver, steps, onQuickMove, onCardClick, onReply, clientUserId, clientName, customerUploadTaskIds,
 }: {
   col: { key: string; label: string };
   tasks: KanbanTask[];
@@ -690,6 +701,7 @@ function DroppableColumn({
   onReply: (reportId: number, reply: string) => Promise<void>;
   clientUserId?: number | null;
   clientName?: string | null;
+  customerUploadTaskIds?: Set<number>;
 }) {
   const { setNodeRef } = useDroppable({ id: col.key });
 
@@ -726,6 +738,7 @@ function DroppableColumn({
             onReply={onReply}
             clientUserId={clientUserId}
             clientName={clientName}
+            hasCustomerUpload={customerUploadTaskIds?.has(task.id)}
           />
         ))}
       </div>
@@ -736,7 +749,7 @@ function DroppableColumn({
 type PendingMove = { task: KanbanTask; targetColumn: ColumnKey };
 
 function KanbanBoard({
-  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, onDragStateChange, clientUserId, clientName,
+  projectId, tasks, steps, onTasksChange, onDelete, fetchWithAuth, toast, onCardClick, onMutation, onDragStateChange, clientUserId, clientName, customerUploadTaskIds,
 }: {
   projectId: number;
   tasks: KanbanTask[];
@@ -750,6 +763,7 @@ function KanbanBoard({
   onDragStateChange?: (draggingId: number | null) => void;
   clientUserId?: number | null;
   clientName?: string | null;
+  customerUploadTaskIds?: Set<number>;
 })  {
   const [activeTask, setActiveTask] = useState<KanbanTask | null>(null);
   const [overColumnKey, setOverColumnKey] = useState<string | null>(null);
@@ -886,6 +900,7 @@ function KanbanBoard({
               onReply={handleReply}
               clientUserId={clientUserId}
               clientName={clientName}
+              customerUploadTaskIds={customerUploadTaskIds}
             />
           ))}
         </div>
@@ -1119,6 +1134,7 @@ export default function ProjectDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
   const [tasks, setTasks] = useState<KanbanTask[]>([]);
+  const [customerUploadTaskIds, setCustomerUploadTaskIds] = useState<Set<number>>(new Set());
   const [linkedEmails, setLinkedEmails] = useState<LinkedEmail[]>([]);
   const draggingIdRef = useRef<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1612,12 +1628,13 @@ export default function ProjectDetailPage() {
 
   const reloadAll = useCallback(async () => {
     if (!projectId) return;
-    const [projRes, stepsRes, tasksRes, clientsRes, emailsRes] = await Promise.all([
+    const [projRes, stepsRes, tasksRes, clientsRes, emailsRes, uploadIdsRes] = await Promise.all([
       fetchWithAuth(`/api/admin/projects/${projectId}`),
       fetchWithAuth(`/api/admin/workflow-steps?projectId=${projectId}`),
       fetchWithAuth(`/api/admin/kanban-tasks?projectId=${projectId}`),
       fetchWithAuth("/api/admin/clients"),
       fetchWithAuth(`/api/admin/projects/${projectId}/emails`),
+      fetchWithAuth(`/api/admin/projects/${projectId}/customer-upload-task-ids`),
     ]);
     if (projRes.ok) {
       const proj = await projRes.json() as Project;
@@ -1634,6 +1651,10 @@ export default function ProjectDetailPage() {
     if (emailsRes.ok) {
       const data = await emailsRes.json() as { emails: LinkedEmail[] };
       setLinkedEmails(data.emails);
+    }
+    if (uploadIdsRes.ok) {
+      const data = await uploadIdsRes.json() as { taskIds: number[] };
+      setCustomerUploadTaskIds(new Set(data.taskIds));
     }
     setLoading(false);
   }, [projectId, fetchWithAuth]);
@@ -2463,6 +2484,7 @@ export default function ProjectDetailPage() {
           onDragStateChange={(id) => { draggingIdRef.current = id; }}
           clientUserId={project?.clientUserId}
           clientName={client?.name ?? null}
+          customerUploadTaskIds={customerUploadTaskIds}
         />
       </section>
 
