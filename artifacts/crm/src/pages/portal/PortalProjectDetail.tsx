@@ -181,7 +181,7 @@ function TaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task:
     >
       <p className="text-sm font-medium text-[#0A2540] leading-snug">{task.title}</p>
       {task.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
-      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
+      <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} taskStatus={task.column} />
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {task.assignedTo && (
           <span className="text-xs bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded-full font-medium">{task.assignedTo}</span>

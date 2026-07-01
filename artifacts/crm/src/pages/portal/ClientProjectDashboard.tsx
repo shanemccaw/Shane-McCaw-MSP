@@ -1198,7 +1198,7 @@ export default function ClientProjectDashboard() {
                                 className="w-full text-left bg-white rounded-lg border border-border p-2.5 hover:border-[#0078D4]/30 hover:shadow-sm transition-all cursor-pointer"
                               >
                                 <p className="text-xs font-medium text-[#0A2540] line-clamp-2 leading-snug">{task.title}</p>
-                                <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} />
+                                <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} taskStatus={task.column} />
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                   {priCls && task.priority && (
                                     <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${priCls}`}>

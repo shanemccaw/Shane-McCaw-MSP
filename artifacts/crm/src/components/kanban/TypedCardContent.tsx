@@ -412,10 +412,12 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
 export function TypedCardContent({
   taskType,
   metadata,
+  taskStatus,
   onMarkDocumentApproved,
 }: {
   taskType: string | null | undefined;
   metadata: Record<string, unknown> | null | undefined;
+  taskStatus?: string | null;
   onMarkDocumentApproved?: (docName: string) => void;
 }) {
   if (!taskType) return null;
@@ -423,11 +425,13 @@ export function TypedCardContent({
   if (!cfg) return null;
 
   const hasDetail = metadata && Object.keys(metadata).length > 0;
+  const isCompleted = taskStatus?.toLowerCase() === "completed";
   const isScriptRunning =
-    Boolean(metadata?.runningJobRef) ||
-    metadata?.lastJobStatus === "Running" ||
-    metadata?.lastJobStatus === "New" ||
-    metadata?.lastJobStatus === "Activating";
+    !isCompleted &&
+    (Boolean(metadata?.runningJobRef) ||
+      metadata?.lastJobStatus === "Running" ||
+      metadata?.lastJobStatus === "New" ||
+      metadata?.lastJobStatus === "Activating");
 
   return (
     <div className="mt-2 border-t border-border/60 pt-2">
@@ -1067,13 +1071,6 @@ export function TypedModalSection({
   if (!cfg) return null;
   const m = metadata ?? {};
 
-  const scriptOutput = m.scriptOutput as string | undefined;
-  const aiAnalysis = m.aiAnalysis as AutoSavedAiAnalysis | undefined;
-  const completedAt = m.completedAt as string | undefined;
-  const failedAt = m.failedAt as string | undefined;
-  const lastJobStatus = m.lastJobStatus as string | undefined;
-  const hasAutoSaved = !!(scriptOutput || aiAnalysis);
-
   return (
     <div className="space-y-4">
       <div>
@@ -1089,15 +1086,6 @@ export function TypedModalSection({
       {taskType === "documentDelivery"       && <DocumentModalBody     m={m} />}
       {taskType === "discovery"              && <DiscoveryModalBody    m={m} />}
       {taskType === "manualScript"           && <ManualScriptModalBody m={m} />}
-      {hasAutoSaved && (
-        <AutoSavedScriptResultsSection
-          scriptOutput={scriptOutput}
-          aiAnalysis={aiAnalysis}
-          completedAt={completedAt}
-          failedAt={failedAt}
-          lastJobStatus={lastJobStatus}
-        />
-      )}
     </div>
   );
 }
