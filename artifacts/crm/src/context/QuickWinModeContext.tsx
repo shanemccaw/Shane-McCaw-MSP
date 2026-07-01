@@ -30,14 +30,6 @@ export interface QuickWinStep {
   description?: string;
 }
 
-export interface KanbanTaskSummary {
-  id: number;
-  title: string;
-  column: "backlog" | "in_progress" | "waiting_on_customer" | "completed";
-  groupName: string | null;
-  description: string | null;
-}
-
 export type QuickWinAction =
   | { type: "SELECT_QUICK_WIN"; payload: QuickWinItem }
   | { type: "ENTRY_COMPLETE" }
@@ -48,7 +40,7 @@ export type QuickWinAction =
   | { type: "NEXT_STEP" }
   | { type: "ALL_STEPS_DONE" }
   | { type: "ESCALATE_TO_PROJECT" }
-  | { type: "SET_PROJECT_TASKS"; payload: { projectId: string; tasks: KanbanTaskSummary[] } }
+  | { type: "SET_PROJECT"; payload: { projectId: string } }
   | { type: "ESCALATION_COMPLETE" }
   | { type: "EXIT" }
   | { type: "OPEN_PROJECT" }
@@ -61,8 +53,10 @@ export interface QuickWinMachineState {
   currentStepIndex: number;
   score: number;
   prevScore: number;
+  // projectId is the only project-related state stored here.
+  // Live kanban task data is fetched and owned by ProjectTasksLayer,
+  // not duplicated in this state machine.
   projectId: string | null;
-  projectTasks: KanbanTaskSummary[];
   openProjectOnExit: boolean;
 }
 
@@ -73,7 +67,6 @@ const initialState: QuickWinMachineState = {
   score: 0,
   prevScore: 0,
   projectId: null,
-  projectTasks: [],
   openProjectOnExit: false,
 };
 
@@ -115,12 +108,14 @@ function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinM
       if (state.mode !== "QuickWinComplete") return state;
       return { ...state, mode: "EscalatingToProject" };
 
-    case "SET_PROJECT_TASKS":
+    // SET_PROJECT: escalation resolved — store the project ID and show the
+    // live Kanban task view. Task data is NOT stored here; ProjectTasksLayer
+    // fetches it independently via react-query so it stays in sync with the board.
+    case "SET_PROJECT":
       return {
         ...state,
         mode: "ProjectTasksView",
         projectId: action.payload.projectId,
-        projectTasks: action.payload.tasks,
       };
 
     case "OPEN_PROJECT":

@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/contexts/AuthContext";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
-import type { KanbanTaskSummary } from "@/context/QuickWinModeContext";
 import TransitionLayer from "./TransitionLayer";
 
 export default function FullScreenWrapper() {
   const { state, dispatch, escalateToProject } = useQuickWinMode();
   const { mode, quickWin, openProjectOnExit, projectId } = state;
   const [, navigate] = useLocation();
-  const { fetchWithAuth } = useAuth();
 
   const isVisible = mode !== "Idle";
   const [mounted, setMounted] = useState(false);
@@ -51,65 +48,35 @@ export default function FullScreenWrapper() {
     return () => clearTimeout(t);
   }, [mode, dispatch, navigate, openProjectOnExit, projectId]);
 
-  // EscalatingToProject: fire the API, then fetch the new project's kanban tasks
-  // so the overlay can show real task statuses instead of navigating away.
-  // The overlay stays open throughout — the card content transitions to the
-  // ProjectTasksView once the tasks are loaded.
+  // EscalatingToProject: fire the escalation API. On success, dispatch SET_PROJECT
+  // with the new project ID so the overlay transitions to ProjectTasksView.
+  // Live Kanban task data is fetched by ProjectTasksLayer independently via
+  // react-query, so it stays in sync with the board without duplication here.
   useEffect(() => {
     if (mode !== "EscalatingToProject") return undefined;
     if (!quickWin || escalationInFlight.current) return undefined;
 
     escalationInFlight.current = true;
 
-    const run = async () => {
-      try {
-        const newProjectId = await escalateToProject(quickWin);
-
-        if (!newProjectId) {
-          // Escalation returned nothing — navigate to the projects list
+    escalateToProject(quickWin)
+      .then((newProjectId) => {
+        if (newProjectId) {
+          dispatch({ type: "SET_PROJECT", payload: { projectId: newProjectId } });
+        } else {
           dispatch({ type: "ESCALATION_COMPLETE" });
           navigate("/portal/projects");
-          return;
         }
-
-        // Fetch the project's kanban tasks so we can show them in the overlay
-        const res = await fetchWithAuth(`/api/portal/projects/${newProjectId}`);
-        if (res.ok) {
-          const data = await res.json() as {
-            tasks?: Array<{
-              id: number;
-              title: string;
-              column: string;
-              groupName?: string | null;
-              description?: string | null;
-            }>;
-          };
-          const tasks: KanbanTaskSummary[] = (data.tasks ?? []).map(t => ({
-            id: t.id,
-            title: t.title,
-            column: (["backlog", "in_progress", "waiting_on_customer", "completed"].includes(t.column)
-              ? t.column
-              : "backlog") as KanbanTaskSummary["column"],
-            groupName: t.groupName ?? null,
-            description: t.description ?? null,
-          }));
-          dispatch({ type: "SET_PROJECT_TASKS", payload: { projectId: newProjectId, tasks } });
-        } else {
-          // Couldn't load tasks — go straight to the project page
-          dispatch({ type: "ESCALATION_COMPLETE" });
-          navigate(`/portal/projects/${newProjectId}`);
-        }
-      } catch {
+      })
+      .catch(() => {
         dispatch({ type: "ESCALATION_COMPLETE" });
         navigate("/portal/projects");
-      } finally {
+      })
+      .finally(() => {
         escalationInFlight.current = false;
-      }
-    };
+      });
 
-    run();
     return undefined;
-  }, [mode, quickWin, escalateToProject, fetchWithAuth, dispatch, navigate]);
+  }, [mode, quickWin, escalateToProject, dispatch, navigate]);
 
   if (!mounted) return null;
 
