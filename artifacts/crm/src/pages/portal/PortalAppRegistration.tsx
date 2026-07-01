@@ -1,6 +1,14 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
+import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
+
+interface PermissionCheckResult {
+  granted: string[];
+  missing: string[];
+  unverifiable: string[];
+  checkedAt: string;
+}
 
 interface AppRegRecord {
   status: "pending" | "submitted" | "verified";
@@ -9,9 +17,10 @@ interface AppRegRecord {
   submittedAt: string | null;
   verifiedAt: string | null;
   connectionTestedAt: string | null;
+  permissionCheck: PermissionCheckResult | null;
 }
 
-function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
+function StatusBadge({ status, hasMissing }: { status: AppRegRecord["status"] | null; hasMissing?: boolean }) {
   if (!status || status === "pending") {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-red-50 text-red-700 border border-red-200">
@@ -28,6 +37,16 @@ function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
       </span>
     );
   }
+  if (hasMissing) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        </svg>
+        Connected · Permissions Incomplete
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -35,6 +54,141 @@ function StatusBadge({ status }: { status: AppRegRecord["status"] | null }) {
       </svg>
       Verified &amp; Active
     </span>
+  );
+}
+
+/** Flat map of permission name → reason from REQUIRED_PERMISSIONS constant. */
+const PERMISSION_REASON_MAP = new Map<string, string>(
+  REQUIRED_PERMISSIONS.flatMap(cat =>
+    cat.permissions.map(p => [p.permission, p.reason] as [string, string])
+  )
+);
+
+function PermissionCheckCard({ permissionCheck }: { permissionCheck: PermissionCheckResult }) {
+  const { granted, missing, unverifiable, checkedAt } = permissionCheck;
+  const allPermissions = [
+    ...granted.map(p => ({ name: p, state: "granted" as const })),
+    ...missing.map(p => ({ name: p, state: "missing" as const })),
+    ...unverifiable.map(p => ({ name: p, state: "unverifiable" as const })),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+
+  const hasMissing = missing.length > 0;
+  const AZURE_APIPERMISSIONS_URL =
+    "https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/CallAnAPI";
+
+  return (
+    <div className="bg-white border border-border rounded-xl overflow-hidden">
+      <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC] flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Permission Check</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Checked {new Date(checkedAt).toLocaleString()} ·{" "}
+            {granted.length} granted, {missing.length} missing, {unverifiable.length} could not verify
+          </p>
+        </div>
+        {hasMissing && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            Action required
+          </span>
+        )}
+      </div>
+
+      {allPermissions.length > 0 && (
+        <div className="divide-y divide-border">
+          {allPermissions.map(({ name, state }) => {
+            const reason = PERMISSION_REASON_MAP.get(name);
+            return (
+              <div key={name} className="flex items-start gap-3 px-5 py-3">
+                <div className="flex-shrink-0 mt-0.5">
+                  {state === "granted" && (
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-green-100 text-green-600">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </span>
+                  )}
+                  {state === "missing" && (
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-600">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </span>
+                  )}
+                  {state === "unverifiable" && (
+                    <span className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-600">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01" />
+                      </svg>
+                    </span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-1.5 py-0.5 rounded">
+                      {name}
+                    </code>
+                    {state === "granted" && (
+                      <span className="text-[10px] font-bold text-green-700 uppercase tracking-wide">Granted</span>
+                    )}
+                    {state === "missing" && (
+                      <span className="text-[10px] font-bold text-red-700 uppercase tracking-wide">Missing</span>
+                    )}
+                    {state === "unverifiable" && (
+                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wide">Could not verify</span>
+                    )}
+                  </div>
+                  {reason && <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{reason}</p>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {allPermissions.length === 0 && (
+        <div className="px-5 py-4 text-sm text-gray-500">
+          No permissions were required for your active services at the time of submission.
+        </div>
+      )}
+
+      {hasMissing && (
+        <div className="px-5 py-4 border-t border-border bg-red-50">
+          <div className="flex items-start gap-3">
+            <svg className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-red-800 mb-1">
+                Scripts cannot run until missing permissions are granted
+              </p>
+              <p className="text-xs text-red-700 mb-2 leading-relaxed">
+                In Azure Portal, go to your App Registration →{" "}
+                <a
+                  href={AZURE_APIPERMISSIONS_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-semibold hover:text-red-800"
+                >
+                  API Permissions
+                </a>
+                , add the permissions below as <strong>Application</strong> type, then click{" "}
+                <strong>Grant admin consent</strong>. Re-submit your credentials to re-run the check.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {missing.map(p => (
+                  <code key={p} className="text-xs font-mono font-semibold text-red-800 bg-red-100 border border-red-200 px-2 py-0.5 rounded">
+                    {p}
+                  </code>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -133,6 +287,7 @@ export default function PortalAppRegistration() {
 
   const isVerified = record?.status === "verified";
   const isSubmitted = submitted || record?.status === "submitted" || record?.status === "verified";
+  const hasMissingPermissions = (record?.permissionCheck?.missing?.length ?? 0) > 0;
 
   return (
     <PortalLayout>
@@ -154,7 +309,10 @@ export default function PortalAppRegistration() {
 
           {!loading && (
             <div className="mt-3">
-              <StatusBadge status={updateMode ? (record?.status ?? "pending") : (record?.status ?? "pending")} />
+              <StatusBadge
+                status={updateMode ? (record?.status ?? "pending") : (record?.status ?? "pending")}
+                hasMissing={!updateMode && hasMissingPermissions}
+              />
             </div>
           )}
         </div>
@@ -415,86 +573,40 @@ export default function PortalAppRegistration() {
                   {saving ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      Testing connection…
+                      Testing &amp; checking permissions…
                     </>
                   ) : (
                     <>
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                      Update &amp; Reconnect
+                      Update &amp; Re-check Permissions
                     </>
                   )}
                 </button>
               </div>
-              <p className="text-[11px] text-center text-gray-400">Your new Client Secret will be encrypted in transit and stored only in Azure Key Vault.</p>
             </form>
-          ) : isVerified ? (
-            /* ── Verified state ───────────────────────────────────────────────── */
-            <div className="p-5 space-y-4">
-              <div className="flex items-center gap-2.5 text-green-700 bg-green-50 border border-green-200 rounded-lg px-4 py-3">
-                <svg className="w-4.5 h-4.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm font-semibold">Credentials verified and active</p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+          ) : isSubmitted ? (
+            /* ── Submitted / verified state ───────────────────────────────────── */
+            <div className="p-5 space-y-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Tenant ID</p>
-                  <p className="font-mono text-[#0A2540] text-xs break-all">{record?.tenantId}</p>
+                  <p className="text-sm font-mono text-[#0A2540] break-all">{tenantId || "—"}</p>
                 </div>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Client ID</p>
-                  <p className="font-mono text-[#0A2540] text-xs break-all">{record?.azureClientId}</p>
+                  <p className="text-sm font-mono text-[#0A2540] break-all">{azureClientId || "—"}</p>
                 </div>
-                {record?.verifiedAt && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Verified on</p>
-                    <p className="text-[#0A2540] text-sm">{new Date(record.verifiedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
-                  </div>
-                )}
-                {record?.connectionTestedAt && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Last connection test</p>
-                    <p className="text-[#0A2540] text-sm">{new Date(record.connectionTestedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
-                  </div>
-                )}
               </div>
-              <div className="border-t border-border pt-4 flex items-center justify-between gap-3">
-                <p className="text-xs text-gray-500">
-                  If your App Registration secret has rotated or been recreated, use the Update Credentials button above to resubmit.
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Client Secret</p>
+                <p className="text-sm font-mono text-gray-400">••••••••••••••••••••••••••••••••</p>
+              </div>
+              {record?.verifiedAt && (
+                <p className="text-xs text-gray-400">
+                  Verified {new Date(record.verifiedAt).toLocaleString()}
                 </p>
-              </div>
-            </div>
-          ) : isSubmitted ? (
-            /* ── Submitted / pending state ────────────────────────────────────── */
-            <div className="p-5 space-y-4">
-              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <div>
-                  <p className="text-sm font-semibold text-amber-800">Credentials submitted — pending verification</p>
-                  <p className="text-xs text-amber-700 mt-0.5">Shane will test the connection and verify your App Registration within one business day.</p>
-                </div>
-              </div>
-              {record && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Tenant ID</p>
-                    <p className="font-mono text-[#0A2540] text-xs break-all">{record.tenantId}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Client ID</p>
-                    <p className="font-mono text-[#0A2540] text-xs break-all">{record.azureClientId}</p>
-                  </div>
-                  {record.submittedAt && (
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Submitted on</p>
-                      <p className="text-[#0A2540] text-sm">{new Date(record.submittedAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
-                    </div>
-                  )}
-                </div>
               )}
             </div>
           ) : (
@@ -577,7 +689,7 @@ export default function PortalAppRegistration() {
                   {saving ? (
                     <>
                       <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
-                      Testing connection…
+                      Testing &amp; checking permissions…
                     </>
                   ) : (
                     <>
@@ -593,6 +705,11 @@ export default function PortalAppRegistration() {
             </form>
           )}
         </div>
+
+        {/* ── Permission Check results (shown after submission) ────────────────── */}
+        {!loading && record?.permissionCheck && (
+          <PermissionCheckCard permissionCheck={record.permissionCheck} />
+        )}
 
       </div>
     </PortalLayout>

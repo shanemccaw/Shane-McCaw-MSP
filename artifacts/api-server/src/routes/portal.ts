@@ -12,6 +12,7 @@ import { getStripeKey } from "../lib/stripe.ts";
 import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFileToClientContracts, getDriveItemDownloadUrl } from "../lib/graph.ts";
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
+import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript } from "../lib/kanban-auto-fire.ts";
@@ -677,8 +678,45 @@ router.get("/portal/app-registration", requireAuth, async (req: Request, res: Re
     submittedAt: row.submittedAt,
     verifiedAt: row.verifiedAt,
     connectionTestedAt: row.connectionTestedAt,
+    permissionCheck: row.permissionCheck ?? null,
   });
 });
+
+/**
+ * Aggregates the union of appPermissions across all script packages linked
+ * to the client's active service(s) via the service_script_sets join table.
+ */
+async function getRequiredPermissionsForClient(clientUserId: number): Promise<string[]> {
+  const activeServices = await db
+    .select({ serviceId: clientServicesTable.serviceId })
+    .from(clientServicesTable)
+    .where(
+      and(
+        eq(clientServicesTable.clientUserId, clientUserId),
+        eq(clientServicesTable.status, "active"),
+      ),
+    );
+
+  if (activeServices.length === 0) return [];
+
+  const serviceIds = activeServices.map(s => s.serviceId);
+
+  const rows = await db
+    .select({ permissions: scriptPackagesTable.permissions })
+    .from(serviceScriptSetsTable)
+    .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
+    .where(inArray(serviceScriptSetsTable.serviceId, serviceIds));
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const row of rows) {
+    for (const p of row.permissions?.appPermissions ?? []) {
+      const scope = typeof p === "string" ? p : p.scope;
+      if (!seen.has(scope)) { seen.add(scope); result.push(scope); }
+    }
+  }
+  return result;
+}
 
 router.put("/portal/app-registration", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
@@ -717,7 +755,27 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     return;
   }
 
-  // ── Step 3: Upsert record as verified immediately ─────────────────────────
+  // ── Step 3: Probe Graph permissions for the client's active services ──────
+  let permissionCheck = null as import("@workspace/db").PermissionCheckResult | null;
+  try {
+    const requiredPermissions = await getRequiredPermissionsForClient(userId);
+    if (requiredPermissions.length > 0) {
+      permissionCheck = await probeGraphPermissions(
+        tenantId.trim(),
+        azureClientId.trim(),
+        clientSecret.trim(),
+        requiredPermissions,
+      );
+      req.log.info(
+        { userId, granted: permissionCheck.granted.length, missing: permissionCheck.missing.length, unverifiable: permissionCheck.unverifiable.length },
+        "portal/app-registration: permission probe complete",
+      );
+    }
+  } catch (probeErr) {
+    req.log.warn({ probeErr, userId }, "portal/app-registration: permission probe threw unexpectedly — treating all as unverifiable");
+  }
+
+  // ── Step 4: Upsert record as verified (credentials confirmed) ─────────────
   const now = new Date();
   await db.insert(clientAppRegistrationsTable)
     .values({
@@ -729,6 +787,7 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
       submittedAt: now,
       verifiedAt: now,
       connectionTestedAt: now,
+      permissionCheck: permissionCheck ?? undefined,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -741,6 +800,7 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
         submittedAt: now,
         verifiedAt: now,
         connectionTestedAt: now,
+        permissionCheck: permissionCheck ?? undefined,
         updatedAt: now,
       },
     });
@@ -752,6 +812,7 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     submittedAt: now,
     verifiedAt: now,
     connectionTestedAt: now,
+    permissionCheck,
   });
 
   // ── Step 4: Fire-and-forget sequential script run ─────────────────────────

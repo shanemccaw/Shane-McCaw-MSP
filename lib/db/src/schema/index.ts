@@ -856,6 +856,13 @@ export type InsertRunbookJobHistory = typeof runbookJobHistoryTable.$inferInsert
 export type RunbookJobHistory = typeof runbookJobHistoryTable.$inferSelect;
 
 // Client App Registrations — Azure App Registration credentials submitted by clients for Script Runner
+export interface PermissionCheckResult {
+  granted: string[];
+  missing: string[];
+  unverifiable: string[];
+  checkedAt: string;
+}
+
 export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
   id: serial("id").primaryKey(),
   clientUserId: integer("client_user_id").notNull().unique().references(() => usersTable.id, { onDelete: "cascade" }),
@@ -866,6 +873,7 @@ export const clientAppRegistrationsTable = pgTable("client_app_registrations", {
   submittedAt: timestamp("submitted_at"),
   verifiedAt: timestamp("verified_at"),
   connectionTestedAt: timestamp("connection_tested_at"),
+  permissionCheck: jsonb("permission_check").$type<PermissionCheckResult>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

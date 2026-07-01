@@ -224,6 +224,12 @@ const legacyMigrations = [
       DROP TABLE IF EXISTS "script_catalog" CASCADE;
     `,
   },
+  {
+    name: "0011_client_app_registrations_permission_check",
+    sql: `
+      ALTER TABLE "client_app_registrations" ADD COLUMN IF NOT EXISTS "permission_check" jsonb;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------
