@@ -2493,6 +2493,97 @@ router.patch("/portal/kanban-tasks/:id", requireAuth, async (req: Request, res: 
   res.json(updated);
 });
 
+// ─── CLIENT: Download script attached to a kanban task ───────────────────────
+// GET /api/portal/tasks/:taskId/download-script
+// Reads taskMetadata.customerDownload.scriptId, creates an awaiting_upload run
+// result + callback token, and returns a packaged .ps1 file for direct download.
+router.get("/portal/tasks/:taskId/download-script", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const taskId = parseInt(String(req.params.taskId ?? ""), 10);
+  if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task ID" }); return; }
+
+  try {
+    const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, taskId)).limit(1);
+    if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+    if (!task.projectId) { res.status(403).json({ error: "Task has no associated project" }); return; }
+    const [project] = await db.select({ id: projectsTable.id, clientUserId: projectsTable.clientUserId })
+      .from(projectsTable)
+      .where(and(eq(projectsTable.id, task.projectId), eq(projectsTable.clientUserId, userId)))
+      .limit(1);
+    if (!project) { res.status(403).json({ error: "Access denied" }); return; }
+
+    const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+    const customerDownload = meta.customerDownload as { scriptId?: string; scriptTitle?: string } | null | undefined;
+    if (!customerDownload?.scriptId) {
+      res.status(404).json({ error: "No downloadable script linked to this task" });
+      return;
+    }
+
+    const [script] = await db.select().from(powershellScriptsTable)
+      .where(eq(powershellScriptsTable.id, customerDownload.scriptId))
+      .limit(1);
+    if (!script) { res.status(404).json({ error: "Script not found in library" }); return; }
+
+    const [runResult] = await db.insert(scriptRunResultsTable).values({
+      customerId: userId,
+      libraryScriptId: script.id,
+      status: "awaiting_upload",
+      executionSource: "manual",
+      kanbanTaskId: taskId,
+    }).returning({ id: scriptRunResultsTable.id });
+    const runResultId = runResult!.id;
+
+    const domains = process.env.REPLIT_DOMAINS;
+    const uploadBaseUrl = domains
+      ? `https://${domains.split(",")[0]?.trim()}`
+      : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "http://localhost:8080";
+
+    let callbackToken: string | undefined;
+    let callbackUrl: string | undefined;
+    try {
+      const { randomBytes, createHash } = await import("crypto");
+      const plaintext = randomBytes(32).toString("hex");
+      const tokenHash = createHash("sha256").update(plaintext).digest("hex");
+      await db.insert(clientCallbackTokensTable).values({
+        tokenHash,
+        label: script.title,
+        clientUserId: userId,
+        projectId: task.projectId,
+        scriptRunResultId: runResultId,
+      });
+      callbackToken = plaintext;
+      callbackUrl = `${uploadBaseUrl}/api/script-callback`;
+    } catch (tokenErr) {
+      req.log.warn({ tokenErr, runResultId }, "portal: failed to create callback token for task script download (non-fatal)");
+    }
+
+    const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    const pkg = generateManualScriptPackage({
+      scriptId: runResultId,
+      scriptName: script.title,
+      description: script.description ?? null,
+      manualRequirements: [],
+      psScriptBody: script.scriptBody ?? null,
+      runResultId,
+      customerDisplayName: user?.name ?? undefined,
+      uploadBaseUrl,
+      callbackToken,
+      callbackUrl,
+    });
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${pkg.filename}"`);
+    res.send(pkg.psContent);
+  } catch (err) {
+    req.log.error({ err, taskId }, "portal: failed to generate task script download");
+    res.status(500).json({ error: "Failed to generate script download" });
+  }
+});
+
 // ─── CLIENT: Invoices ────────────────────────────────────────────────────────
 router.get("/portal/invoices", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;

@@ -349,6 +349,197 @@ function LastRunResultsSection({ result }: { result: LastRunResult }) {
   );
 }
 
+function CustomerDownloadSection({
+  task,
+  fetchWithAuth,
+  onMetadataUpdate,
+}: {
+  task: KanbanCardModalTask;
+  fetchWithAuth: (url: string, options?: RequestInit) => Promise<Response>;
+  onMetadataUpdate: (meta: Record<string, unknown>) => void;
+}) {
+  const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const linked = meta.customerDownload as { scriptId: string; scriptTitle: string } | null | undefined;
+
+  const [enabled, setEnabled] = useState(!!linked?.scriptId);
+  const [scripts, setScripts] = useState<Array<{ id: string; title: string; category: string }>>([]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const m = (task.taskMetadata ?? {}) as Record<string, unknown>;
+    const cd = m.customerDownload as { scriptId?: string } | null | undefined;
+    setEnabled(!!cd?.scriptId);
+  }, [task.id]);
+
+  const loadScripts = async () => {
+    if (scripts.length > 0) return;
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/ps-scripts");
+      if (res.ok) {
+        const data = await res.json() as Array<{ id: string; title: string; category: string }>;
+        setScripts(data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const save = async (scriptInfo: { scriptId: string; scriptTitle: string } | null): Promise<boolean> => {
+    setSaving(true);
+    try {
+      const currentMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+      const updatedMeta = { ...currentMeta };
+      if (scriptInfo) {
+        updatedMeta.customerDownload = scriptInfo;
+      } else {
+        delete updatedMeta.customerDownload;
+      }
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskMetadata: updatedMeta }),
+      });
+      if (res.ok) {
+        const updated = await res.json() as { taskMetadata: Record<string, unknown> };
+        onMetadataUpdate(updated.taskMetadata);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggle = async (on: boolean) => {
+    if (on) {
+      setEnabled(true);
+      void loadScripts();
+    } else {
+      const ok = await save(null);
+      if (ok) setEnabled(false);
+    }
+  };
+
+  const filteredScripts = query.trim()
+    ? scripts.filter(s =>
+        s.title.toLowerCase().includes(query.toLowerCase()) ||
+        s.category.toLowerCase().includes(query.toLowerCase())
+      )
+    : scripts;
+
+  const currentLinked = (task.taskMetadata as Record<string, unknown> | null | undefined)?.customerDownload as { scriptId: string; scriptTitle: string } | null | undefined;
+
+  return (
+    <div className="bg-[#1C2128] border border-border rounded-lg p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-[#E6EDF3]">Customer Download</p>
+        </div>
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void handleToggle(!enabled)}
+          className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${enabled ? "bg-[#0078D4]" : "bg-[#30363D]"}`}
+          role="switch"
+          aria-checked={enabled}
+        >
+          <span
+            aria-hidden="true"
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${enabled ? "translate-x-4" : "translate-x-0"}`}
+          />
+        </button>
+      </div>
+
+      {!enabled && (
+        <p className="text-[10px] text-[#484F58] italic">
+          Enable to let the customer download a pre-packaged .ps1 script from this task's card.
+        </p>
+      )}
+
+      {enabled && (
+        <>
+          {currentLinked?.scriptId && (
+            <div className="flex items-center gap-2 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg px-3 py-2">
+              <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+              </svg>
+              <span className="text-xs text-[#E6EDF3] flex-1 truncate font-medium">{currentLinked.scriptTitle}</span>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const ok = await save(null);
+                  if (ok) setEnabled(false);
+                }}
+                className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors disabled:opacity-50"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          <div>
+            <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">
+              {currentLinked?.scriptId ? "Change script:" : "Select a script from the library:"}
+            </p>
+            <input
+              type="text"
+              value={query}
+              onChange={e => { setQuery(e.target.value); void loadScripts(); }}
+              onFocus={() => void loadScripts()}
+              placeholder="Search scripts…"
+              className="w-full border border-border rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] bg-[#161B22] focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 placeholder:text-[#484F58] mb-2"
+            />
+
+            {loading && (
+              <div className="flex items-center gap-2 py-1.5">
+                <div className="w-3 h-3 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+                <span className="text-[10px] text-[#484F58]">Loading scripts…</span>
+              </div>
+            )}
+
+            {!loading && filteredScripts.length > 0 && (
+              <div className="max-h-44 overflow-y-auto space-y-0.5 rounded-lg">
+                {filteredScripts.map(script => (
+                  <button
+                    key={script.id}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void save({ scriptId: script.id, scriptTitle: script.title })}
+                    className={`w-full text-left flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs transition-colors disabled:opacity-50 ${
+                      currentLinked?.scriptId === script.id
+                        ? "bg-[#0078D4]/20 text-[#0078D4] border border-[#0078D4]/30"
+                        : "text-[#E6EDF3] hover:bg-[#30363D]"
+                    }`}
+                  >
+                    <svg className="w-3 h-3 flex-shrink-0 text-[#7D8590]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+                    </svg>
+                    <span className="flex-1 truncate">{script.title}</span>
+                    <span className="flex-shrink-0 text-[9px] text-[#484F58] bg-[#30363D] px-1.5 py-0.5 rounded">{script.category}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {!loading && scripts.length > 0 && filteredScripts.length === 0 && (
+              <p className="text-[10px] text-[#484F58] italic">No scripts match your search.</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function EngineerDetailSection({
   task,
   fetchWithAuth,
@@ -1165,6 +1356,14 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                 />
               )}
 
+              {mode === "admin" && fetchWithAuth && (
+                <CustomerDownloadSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
               {(localTask.createdAt || localTask.updatedAt) && (
                 <div className="flex flex-wrap gap-4 text-[10px] text-muted-foreground pt-2 border-t border-border">
                   {localTask.createdAt && (
@@ -1331,6 +1530,14 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
               {mode === "admin" && fetchWithAuth && !["automationBuild", "environmentHealthCheck"].includes(localTask.taskType ?? "") && (
                 <EngineerDetailSection
+                  task={localTask}
+                  fetchWithAuth={fetchWithAuth}
+                  onMetadataUpdate={handleMetadataUpdate}
+                />
+              )}
+
+              {mode === "admin" && fetchWithAuth && (
+                <CustomerDownloadSection
                   task={localTask}
                   fetchWithAuth={fetchWithAuth}
                   onMetadataUpdate={handleMetadataUpdate}

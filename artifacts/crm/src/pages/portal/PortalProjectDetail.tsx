@@ -173,7 +173,40 @@ function stepPercent(status: string): number {
   return 0;
 }
 
-function TaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task: KanbanTask) => void }) {
+function TaskCard({
+  task,
+  onCardClick,
+  fetchWithAuth,
+}: {
+  task: KanbanTask;
+  onCardClick: (task: KanbanTask) => void;
+  fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const customerDownload = task.taskMetadata?.customerDownload as { scriptId?: string; scriptTitle?: string } | null | undefined;
+
+  const handleDownloadScript = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetchWithAuth(`/api/portal/tasks/${task.id}/download-script`);
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const scriptTitle = customerDownload?.scriptTitle ?? "script";
+      a.href = url;
+      a.download = `${scriptTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}.ps1`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <div
       onClick={() => onCardClick(task)}
@@ -182,6 +215,25 @@ function TaskCard({ task, onCardClick }: { task: KanbanTask; onCardClick: (task:
       <p className="text-sm font-medium text-[#0A2540] leading-snug">{task.title}</p>
       {task.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>}
       <TypedCardContent taskType={task.taskType} metadata={task.taskMetadata} taskStatus={task.column} />
+      {customerDownload?.scriptId && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={handleDownloadScript}
+            disabled={downloading}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-60 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            {downloading ? (
+              <div className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+            )}
+            {downloading ? "Preparing…" : (customerDownload.scriptTitle ?? "Download Script")}
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-2 mt-2 flex-wrap">
         {task.assignedTo && (
           <span className="text-xs bg-[#0078D4]/10 text-[#0078D4] px-2 py-0.5 rounded-full font-medium">{task.assignedTo}</span>
@@ -1814,6 +1866,7 @@ export default function PortalProjectDetail() {
                         <TaskCard
                           key={task.id}
                           task={task}
+                          fetchWithAuth={fetchWithAuth}
                           onCardClick={t => {
                             const stepTitle = t.workflowStepId ? steps.find(s => s.id === t.workflowStepId)?.title ?? null : null;
                             handleCardClick(t, stepTitle);
