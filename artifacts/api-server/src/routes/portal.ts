@@ -28,6 +28,11 @@ import fs from "fs";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { Readable } from "stream";
 
+// In-memory set of userIds that currently have a permission re-check probe in flight.
+// Prevents concurrent probes from the same user (e.g. duplicate tabs) from racing
+// and corrupting the permission_check JSON stored in the DB.
+const recheckInFlight = new Set<number>();
+
 const router: IRouter = Router();
 
 // Helper to set up common SSE response headers and keep-alive
@@ -970,6 +975,14 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
 router.post("/portal/app-registration/recheck", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
+  // Guard: reject concurrent probes for the same user (e.g. multiple tabs)
+  if (recheckInFlight.has(userId)) {
+    res.status(429).json({ error: "A permission check is already in progress. Please wait a moment and try again." });
+    return;
+  }
+  recheckInFlight.add(userId);
+
+  try {
   // 1. Load the existing app registration record (must be verified to have a stored secret)
   const [appReg] = await db
     .select()
@@ -1048,6 +1061,9 @@ router.post("/portal/app-registration/recheck", requireAuth, async (req: Request
     connectionTestedAt: now,
     permissionCheck,
   });
+  } finally {
+    recheckInFlight.delete(userId);
+  }
 });
 
 // ─── Client: Automation progress ──────────────────────────────────────────────
