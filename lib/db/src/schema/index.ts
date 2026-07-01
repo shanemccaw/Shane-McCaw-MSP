@@ -1380,6 +1380,7 @@ export const scriptModulesTable = pgTable("script_modules", {
   content: text("content").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   azureRunbookName: text("azure_runbook_name"),
+  sourceScriptId: uuid("source_script_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -2046,6 +2046,56 @@ router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res
   }
 });
 
+// ─── GET /api/admin/ps-scripts/packages/:id/inherited-permissions ─────────────
+// Returns permissions aggregated from standalone scripts that were associated
+// into this package (tracked via script_modules.source_script_id).
+
+router.get("/admin/ps-scripts/packages/:id/inherited-permissions", requireAdmin, async (req: Request, res: Response) => {
+  const pkgId = String(req.params["id"] ?? "");
+  if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  try {
+    // Find all modules in this package that were linked from a standalone script
+    const linkedModules = await db
+      .select({ sourceScriptId: scriptModulesTable.sourceScriptId })
+      .from(scriptModulesTable)
+      .where(and(eq(scriptModulesTable.packageId, pkgId), isNotNull(scriptModulesTable.sourceScriptId)));
+
+    const scriptIds = linkedModules
+      .map(m => m.sourceScriptId)
+      .filter((id): id is string => typeof id === "string");
+
+    if (scriptIds.length === 0) {
+      res.json({ permissions: [] });
+      return;
+    }
+
+    // Aggregate permissions from the linked standalone scripts
+    const scripts = await db
+      .select({ id: powershellScriptsTable.id, permissions: powershellScriptsTable.permissions })
+      .from(powershellScriptsTable)
+      .where(inArray(powershellScriptsTable.id, scriptIds));
+
+    const seen = new Map<string, string>();
+    for (const script of scripts) {
+      const perms = script.permissions as PsScriptPermissions | null;
+      if (!perms?.appPermissions) continue;
+      for (const entry of perms.appPermissions) {
+        const normalized = typeof entry === "string"
+          ? { scope: entry, reason: "" }
+          : { scope: entry.scope, reason: entry.reason ?? "" };
+        if (!seen.has(normalized.scope)) seen.set(normalized.scope, normalized.reason);
+      }
+    }
+
+    const permissions = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
+    res.json({ permissions });
+  } catch (err) {
+    logger.error({ err }, "Failed to fetch inherited permissions");
+    res.status(500).json({ error: "Failed to fetch inherited permissions" });
+  }
+});
+
 // ─── PATCH /api/admin/ps-scripts/packages/:id ────────────────────────────────
 
 router.patch("/admin/ps-scripts/packages/:id", requireAdmin, async (req: Request, res: Response) => {
@@ -2286,6 +2336,7 @@ router.post("/admin/ps-scripts/:id/associate-to-package", requireAdmin, async (r
       description: script.description ?? null,
       content: script.scriptBody ?? "",
       sortOrder: 999,
+      sourceScriptId: script.id,
     }).returning();
 
     res.status(201).json(mod);

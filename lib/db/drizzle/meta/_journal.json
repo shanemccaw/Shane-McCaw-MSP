@@ -736,6 +736,13 @@
       "when": 1751424000000,
       "tag": "0102_add_app_reg_permissions_agreed",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1751510400000,
+      "tag": "0103_add_source_script_id_to_script_modules",
+      "breakpoints": true
     }
   ]
 }

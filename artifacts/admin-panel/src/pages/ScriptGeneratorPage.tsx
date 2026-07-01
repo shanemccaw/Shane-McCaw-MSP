@@ -2555,10 +2555,23 @@ function PermissionsSidebarPanel({
   const [notesValue, setNotesValue] = useState(permissions?.notes ?? "");
   const [editingReasonScope, setEditingReasonScope] = useState<string | null>(null);
   const [editingReasonValue, setEditingReasonValue] = useState("");
+  const [inheritedPerms, setInheritedPerms] = useState<AppPermEntry[]>([]);
+  const [inheritedLoading, setInheritedLoading] = useState(false);
 
   useEffect(() => {
     setNotesValue(permissions?.notes ?? "");
   }, [permissions?.notes]);
+
+  // Fetch inherited permissions when in package mode
+  useEffect(() => {
+    if (!(packageId && UUID_RE_LOCAL.test(packageId))) { setInheritedPerms([]); return; }
+    setInheritedLoading(true);
+    apiFetch(`/admin/ps-scripts/packages/${packageId}/inherited-permissions`, token, {})
+      .then(r => r.json())
+      .then((data: { permissions?: AppPermEntry[] }) => setInheritedPerms(data.permissions ?? []))
+      .catch(() => setInheritedPerms([]))
+      .finally(() => setInheritedLoading(false));
+  }, [packageId, token]);
 
   const totalCount = permissions
     ? permissions.appPermissions.length + permissions.delegatedPermissions.length
@@ -2632,22 +2645,9 @@ function PermissionsSidebarPanel({
   const handleSaveNotes = async () => {
     if (!permissions) return;
     const updated: PsScriptPermissions = { ...permissions, notes: notesValue };
-    setSaving(true);
-    try {
-      if (scriptId && UUID_RE_LOCAL.test(scriptId)) {
-        await apiFetch(`/admin/ps-scripts/${scriptId}`, token, {
-          method: "PUT",
-          body: JSON.stringify({ permissions: updated }),
-        });
-      }
-      onPermissionsChange(updated);
-      setEditingNotes(false);
-      toast({ title: "Notes saved" });
-    } catch (e) {
-      toast({ title: "Failed to save notes", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setSaving(false);
-    }
+    onPermissionsChange(updated);
+    setEditingNotes(false);
+    await savePermissions(updated);
   };
 
   return (
@@ -2671,11 +2671,32 @@ function PermissionsSidebarPanel({
         ) : (
           /* ── Script or Package mode: fully editable ── */
           <>
+            {/* Inherited from associated scripts (read-only, package mode only) */}
+            {isPackageMode && (inheritedLoading || inheritedPerms.length > 0) && (
+              <div className="border border-[#21262D] rounded">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 border-b border-[#21262D] bg-[#161B22]">
+                  <svg className="w-3 h-3 text-[#484F58] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                  <span className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wide">Inherited from linked scripts</span>
+                  {inheritedLoading && <div className="w-2.5 h-2.5 border border-[#484F58]/50 border-t-[#484F58] rounded-full animate-spin ml-auto" />}
+                </div>
+                {!inheritedLoading && inheritedPerms.length > 0 && (
+                  <div className="p-2 space-y-1.5 bg-[#0D1117]">
+                    <p className="text-[9px] text-[#484F58] leading-relaxed">Read-only — aggregated from standalone scripts associated to this package. Edit individual scripts to change their permissions.</p>
+                    {inheritedPerms.map(p => (
+                      <div key={p.scope} className="bg-[#161B22] border border-[#21262D] rounded px-2 py-1.5">
+                        <code className="text-[11px] font-mono text-amber-400/80">{p.scope}</code>
+                        {p.reason && <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">{p.reason}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {/* Package-level context banner */}
             {isPackageMode && (
               <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-[#161B22] border border-[#21262D] text-[10px] text-[#7D8590] leading-relaxed">
                 <svg className="w-3 h-3 text-amber-400/70 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                <span>Package-level permissions — all module scripts in this package request these scopes during App Registration. Add/remove entries here to keep the package-wide requirement in sync.</span>
+                <span>Package-level permissions — editable. Add/remove entries to keep the package-wide App Registration requirement in sync across all module scripts.</span>
               </div>
             )}
             {/* App permissions with per-entry reason editing */}

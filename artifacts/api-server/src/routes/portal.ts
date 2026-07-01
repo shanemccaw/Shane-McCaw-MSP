@@ -605,21 +605,27 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
   try {
     let serviceIds: number[] = [];
 
-    const rawIds = req.query["serviceIds"] as string | undefined;
-    if (rawIds) {
-      serviceIds = rawIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
-    } else {
-      // Auth required when not passing explicit serviceIds
-      const authHeader = req.headers.authorization;
-      if (!authHeader?.startsWith("Bearer ")) { res.status(401).json({ error: "Unauthorized" }); return; }
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) { res.status(401).json({ error: "Unauthorized" }); return; }
-      let userId: number;
+    // Both paths require a valid JWT — extract userId regardless of which path is taken
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let userId: number | null = null;
+    if (authHeader?.startsWith("Bearer ") && jwtSecret) {
       try {
         const payload = jwt.verify(authHeader.slice(7), jwtSecret) as { id: number };
         userId = payload.id;
-      } catch { res.status(401).json({ error: "Unauthorized" }); return; }
+      } catch { /* fall through — handled below per path */ }
+    }
 
+    const rawIds = req.query["serviceIds"] as string | undefined;
+    if (rawIds) {
+      // serviceIds path: used during pre-purchase contract signing where the user may not
+      // yet have an active account session. Require a valid JWT anyway so permission data
+      // is not publicly enumerable by arbitrary callers.
+      if (userId === null) { res.status(401).json({ error: "Unauthorized" }); return; }
+      serviceIds = rawIds.split(",").map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+    } else {
+      // No serviceIds: derive from the authenticated user's active client_services
+      if (userId === null) { res.status(401).json({ error: "Unauthorized" }); return; }
       const activeServices = await db
         .select({ serviceId: clientServicesTable.serviceId })
         .from(clientServicesTable)
