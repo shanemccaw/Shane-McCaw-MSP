@@ -389,12 +389,14 @@ const CARD_JOB_STATUS_CFG: Record<string, { cls: string; dot: string; label: str
 
 function ScriptCardBody({
   taskId,
+  taskStatus,
   m,
   onRunScript,
   onViewResults,
   onOpenScript,
 }: {
   taskId?: number;
+  taskStatus?: string | null;
   m: ScriptMetadata;
   onRunScript?: () => void;
   onViewResults?: () => void;
@@ -411,15 +413,26 @@ function ScriptCardBody({
     });
   }, [taskId]);
 
-  // Running if the live poller is tracking this task, or metadata says so
-  const metaRunning =
-    Boolean((m as Record<string, unknown>).runningJobRef) ||
-    m.lastJobStatus === "Running" ||
-    m.lastJobStatus === "New" ||
-    m.lastJobStatus === "Activating";
-  const isRunning = pollerActive || metaRunning;
+  const isCompleted = taskStatus?.toLowerCase() === "completed";
 
-  const effectiveStatus = isRunning ? "Running" : (m.lastJobStatus ?? "Never run");
+  // Running if the live poller is tracking this task, or metadata says so —
+  // but never show a running indicator on completed cards (stale metadata guard).
+  const metaRunning =
+    !isCompleted &&
+    (Boolean((m as Record<string, unknown>).runningJobRef) ||
+      m.lastJobStatus === "Running" ||
+      m.lastJobStatus === "New" ||
+      m.lastJobStatus === "Activating");
+  const isRunning = !isCompleted && (pollerActive || metaRunning);
+
+  // For completed cards, override any stale running-like lastJobStatus so the
+  // badge never shows a pulsing indicator due to metadata that was never cleared.
+  const STALE_RUNNING_STATUSES = new Set(["Running", "New", "Activating"]);
+  const effectiveLastJobStatus =
+    isCompleted && STALE_RUNNING_STATUSES.has(m.lastJobStatus ?? "")
+      ? "Completed"
+      : (m.lastJobStatus ?? "Never run");
+  const effectiveStatus = isRunning ? "Running" : effectiveLastJobStatus;
   const cfg = CARD_JOB_STATUS_CFG[effectiveStatus] ?? CARD_JOB_STATUS_CFG["Never run"];
   const hasRun = isRunning || Boolean(m.lastJobId) || (m.lastJobStatus !== undefined && m.lastJobStatus !== "Never run");
 
@@ -518,6 +531,7 @@ function DiscoveryBody({ m }: { m: DiscoveryMetadata }) {
 export function TypedCardContent({
   taskId,
   taskType,
+  taskStatus,
   metadata,
   onRunScript,
   onViewResults,
@@ -525,6 +539,7 @@ export function TypedCardContent({
 }: {
   taskId?: number;
   taskType: string | null | undefined;
+  taskStatus?: string | null;
   metadata: Record<string, unknown> | null | undefined;
   onRunScript?: () => void;
   onViewResults?: () => void;
@@ -556,6 +571,7 @@ export function TypedCardContent({
           {taskType === "script" && (
             <ScriptCardBody
               taskId={taskId}
+              taskStatus={taskStatus}
               m={metadata as ScriptMetadata}
               onRunScript={onRunScript}
               onViewResults={onViewResults}

@@ -319,6 +319,7 @@ function DraggableCard({
             <TypedCardContent
               taskId={task.id}
               taskType={task.taskType}
+              taskStatus={task.column}
               metadata={task.taskMetadata}
               onRunScript={handleRunScript}
               onViewResults={handleViewResults}
@@ -451,6 +452,7 @@ function DraggableCard({
                       <TypedCardContent
                         taskId={task.id}
                         taskType={task.taskType}
+                        taskStatus={task.column}
                         metadata={task.taskMetadata}
                         onRunScript={handleRunScript}
                         onViewResults={handleViewResults}
