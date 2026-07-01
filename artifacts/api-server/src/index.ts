@@ -260,6 +260,15 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    ALTER TABLE script_modules
+      ADD COLUMN IF NOT EXISTS permissions jsonb NOT NULL DEFAULT '{"appPermissions":[],"delegatedPermissions":[],"notes":""}'::jsonb
+  `).then(() => {
+    logger.info("Migration: script_modules.permissions column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: script_modules.permissions column failed (non-fatal)");
+  });
+
+  pool.query(`
     ALTER TABLE powershell_scripts ADD COLUMN IF NOT EXISTS source_task_id integer REFERENCES workflow_template_step_tasks(id) ON DELETE SET NULL
   `).then(() => {
     logger.info("Migration: powershell_scripts.source_task_id column ensured");

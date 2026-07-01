@@ -85,6 +85,7 @@ interface ScriptModuleItem {
   description: string | null;
   content: string;
   azureRunbookName?: string | null;
+  permissions?: PsScriptPermissions;
 }
 
 interface ScriptPackageListItem {
@@ -2403,8 +2404,9 @@ function RightPanel({
         <PermissionsSidebarPanel
           permissions={scriptLoaded ? permissions : null}
           scriptId={editingModuleId ? null : (editorScript?.id ?? null)}
+          moduleId={editingModuleId}
           analyzeScriptId={editorScript?.id ?? null}
-          packageId={editingPackageId}
+          packageId={editingModuleId ? null : editingPackageId}
           token={token}
           onPermissionsChange={onPermissionsChange}
         />
@@ -2554,6 +2556,7 @@ function RightPanel({
 function PermissionsSidebarPanel({
   permissions,
   scriptId,
+  moduleId,
   analyzeScriptId,
   packageId,
   token,
@@ -2561,6 +2564,7 @@ function PermissionsSidebarPanel({
 }: {
   permissions: PsScriptPermissions | null;
   scriptId: string | null;
+  moduleId?: string | null;
   analyzeScriptId?: string | null;
   packageId: string | null;
   token: string;
@@ -2604,16 +2608,22 @@ function PermissionsSidebarPanel({
     ? permissions.appPermissions.length + permissions.delegatedPermissions.length
     : 0;
 
-  // editable when a persisted script or package UUID is present
+  // editable when a persisted script, module, or package UUID is present
   const isScriptMode = !!(scriptId && UUID_RE_LOCAL.test(scriptId));
-  const isPackageMode = !isScriptMode && !!(packageId && UUID_RE_LOCAL.test(packageId));
-  const canEdit = isScriptMode || isPackageMode;
+  const isModuleMode = !!(moduleId && UUID_RE_LOCAL.test(moduleId));
+  const isPackageMode = !isScriptMode && !isModuleMode && !!(packageId && UUID_RE_LOCAL.test(packageId));
+  const canEdit = isScriptMode || isModuleMode || isPackageMode;
 
   const savePermissions = async (permsToSave: PsScriptPermissions) => {
     setSaving(true);
     try {
       if (isScriptMode) {
         await apiFetch(`/admin/ps-scripts/${scriptId}`, token, {
+          method: "PUT",
+          body: JSON.stringify({ permissions: permsToSave }),
+        });
+      } else if (isModuleMode) {
+        await apiFetch(`/admin/ps-scripts/modules/${moduleId}`, token, {
           method: "PUT",
           body: JSON.stringify({ permissions: permsToSave }),
         });
@@ -2809,7 +2819,7 @@ function PermissionsSidebarPanel({
                     ) : (
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
                     )}
-                    {isPackageMode ? "Save to Package" : "Save to Script"}
+                    {isPackageMode ? "Save to Package" : isModuleMode ? "Save to Module" : "Save to Script"}
                   </button>
                 </>
               )}
@@ -2843,6 +2853,13 @@ function PermissionsSidebarPanel({
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+            {/* Module-level context banner */}
+            {isModuleMode && (
+              <div className="flex items-start gap-1.5 px-2 py-1.5 rounded bg-[#161B22] border border-[#21262D] text-[10px] text-[#7D8590] leading-relaxed">
+                <svg className="w-3 h-3 text-blue-400/70 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                <span>Module-level permissions — unique to this module. Other modules in the package have their own independent permissions.</span>
               </div>
             )}
             {/* Package-level context banner */}
@@ -4291,6 +4308,7 @@ export default function ScriptGeneratorPage() {
   const handleSidebarModuleClick = (module: ScriptModuleItem, pkg: ScriptPackageListItem) => {
     const isDirty = scriptBody.length > 0 && scriptBody !== cleanBodyRef.current;
     const doSwitch = () => {
+      const modulePerms: PsScriptPermissions = module.permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" };
       const syntheticScript: PsScriptDetail = {
         id: module.id ?? `mod-${module.filename}`,
         title: module.filename,
@@ -4302,14 +4320,14 @@ export default function ScriptGeneratorPage() {
         createdAt: pkg.createdAt,
         updatedAt: pkg.createdAt,
         scriptBody: module.content,
-        permissions: pkg.permissions,
+        permissions: modulePerms,
       };
       setEditorScript(syntheticScript);
       setEditingModuleId(module.id ?? null);
       setEditingPackageId(pkg.id);
       setScriptBody(module.content);
       cleanBodyRef.current = module.content;
-      setPermissions(pkg.permissions);
+      setPermissions(modulePerms);
       setModules([]);
       setLoadedPackage(null);
       setLoadedPackageTitle(null);

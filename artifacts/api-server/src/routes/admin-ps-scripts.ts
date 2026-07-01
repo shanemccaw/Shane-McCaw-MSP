@@ -2041,7 +2041,12 @@ router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res
       permissions: pkg.permissions
         ? { ...pkg.permissions, appPermissions: normalizeAppPerms(pkg.permissions.appPermissions as unknown[]) }
         : pkg.permissions,
-      modules: allModules.filter((m) => m.packageId === pkg.id),
+      modules: allModules.filter((m) => m.packageId === pkg.id).map((m) => ({
+        ...m,
+        permissions: m.permissions
+          ? { ...m.permissions, appPermissions: normalizeAppPerms(m.permissions.appPermissions as unknown[]) }
+          : { appPermissions: [], delegatedPermissions: [], notes: "" },
+      })),
     }));
 
     res.json(result);
@@ -2190,12 +2195,13 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
   const moduleId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
+  const { filename, description, content, sortOrder, azureRunbookName, permissions } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
     azureRunbookName?: string | null;
+    permissions?: PsScriptPermissions;
   };
 
   try {
@@ -2207,6 +2213,7 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
         ...(content !== undefined && { content }),
         ...(sortOrder !== undefined && { sortOrder }),
         ...(azureRunbookName !== undefined && { azureRunbookName: azureRunbookName?.trim() || null }),
+        ...(permissions !== undefined && { permissions }),
       })
       .where(eq(scriptModulesTable.id, moduleId))
       .returning();
