@@ -28,6 +28,7 @@ import {
   scriptModulesTable,
   powershellScriptsTable,
   scriptRunResultsTable,
+  clientAutomationRunsTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { logger } from "./logger";
@@ -250,6 +251,7 @@ async function runInBackground(
   clientUserId: number,
   runResultId: number | undefined,
   scriptTitle: string,
+  automationRunId: number | undefined,
 ): Promise<void> {
   try {
     const { success, lastStatus, output } = await pollJobToCompletion(jobId);
@@ -314,6 +316,22 @@ async function runInBackground(
         }
       } catch (metaErr) {
         logger.warn({ metaErr, primaryCardId, jobId }, "kanban-auto-fire: could not save script output to kanban card (non-fatal)");
+      }
+    }
+
+    // WRITE 3: update the clientAutomationRunsTable row so the CRM progress widget reflects the result
+    if (automationRunId != null) {
+      try {
+        await db.update(clientAutomationRunsTable)
+          .set({
+            status:           success ? "completed" : "failed",
+            modulesCompleted: 1,
+            finishedAt:       new Date(),
+            ...(success ? {} : { errorMessage: `Job ${jobId} finished with status: ${lastStatus}` }),
+          })
+          .where(eq(clientAutomationRunsTable.id, automationRunId));
+      } catch (arErr) {
+        logger.warn({ arErr, automationRunId, jobId }, "kanban-auto-fire: could not update client_automation_runs (non-fatal)");
       }
     }
 
@@ -500,8 +518,26 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       logger.warn({ resultErr, jobId }, "kanban-auto-fire: could not insert script_run_results placeholder (non-fatal)");
     }
 
+    // Insert a client_automation_runs row so the CRM navigation progress widget shows this script.
+    let automationRunId: number | undefined;
+    try {
+      const [arRow] = await db
+        .insert(clientAutomationRunsTable)
+        .values({
+          clientUserId,
+          status:          "running",
+          modulesTotal:    1,
+          modulesCompleted: 0,
+          lastLogSnippet:  card.linkedRunbook.scriptTitle,
+        })
+        .returning({ id: clientAutomationRunsTable.id });
+      automationRunId = arRow?.id;
+    } catch (arErr) {
+      logger.warn({ arErr, jobId }, "kanban-auto-fire: could not insert client_automation_runs row (non-fatal)");
+    }
+
     // Detached — does NOT block the HTTP response
-    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId, card.linkedRunbook.scriptTitle);
+    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId, card.linkedRunbook.scriptTitle, automationRunId);
   } catch (err) {
     logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
   }
