@@ -35,6 +35,7 @@ import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzure
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
 import { broadcastKanbanChange } from "./sse-broadcast";
+import { runAiAnalyzer } from "./ai-analyzer";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS   = 10 * 60 * 1000;
@@ -248,6 +249,7 @@ async function runInBackground(
   workflowStepId: number | null,
   clientUserId: number,
   runResultId: number | undefined,
+  scriptTitle: string,
 ): Promise<void> {
   try {
     const { success, lastStatus, output } = await pollJobToCompletion(jobId);
@@ -255,19 +257,63 @@ async function runInBackground(
     const outputSummary = output.split("\n").filter(Boolean).slice(-10).join("\n");
     const notesBody = outputSummary ? `\n\nOutput:\n${outputSummary}` : "";
 
-    // Update the script_run_results record so the Results pane reflects the final state.
+    // Run AI analysis on the script output (non-fatal if it fails)
+    let aiResult: Awaited<ReturnType<typeof runAiAnalyzer>> | null = null;
+    if (output.trim()) {
+      try {
+        aiResult = await runAiAnalyzer({
+          scriptOutput: output,
+          aiInstructions: `Analyze the output of the "${scriptTitle}" runbook for security, governance, and Copilot readiness findings.`,
+          packageContext: "Automated M365 analysis triggered by client App Registration",
+        });
+        logger.info({ runResultId, jobId, scriptTitle }, "kanban-auto-fire: AI analysis completed");
+      } catch (aiErr) {
+        logger.warn({ aiErr, jobId, scriptTitle }, "kanban-auto-fire: AI analysis failed (non-fatal)");
+      }
+    }
+
+    // WRITE 1: persist raw output + AI findings to the script_run_results row
     if (runResultId != null) {
-      const outputLines = output.split("\n").filter(Boolean);
       try {
         await db.update(scriptRunResultsTable)
           .set({
-            status:      success ? "completed" : "failed",
-            rawOutput:   { output: outputLines },
-            parsedFindings: outputLines.slice(0, 20),
+            status:         success ? "completed" : "failed",
+            rawOutput:      { text: output, azureStatus: lastStatus },
+            parsedFindings: aiResult?.findings ?? [],
+            recommendations: aiResult?.recommendations ?? [],
+            scoreImpact:    aiResult?.scoreImpact ?? {},
+            profileUpdates: aiResult?.profileUpdates ?? {},
           })
           .where(eq(scriptRunResultsTable.id, runResultId));
       } catch (updateErr) {
         logger.warn({ updateErr, runResultId, jobId }, "kanban-auto-fire: could not update script_run_results (non-fatal)");
+      }
+    }
+
+    // WRITE 2: persist raw output + AI analysis to the primary kanban card's metadata
+    const primaryCardId = cardIds[0];
+    if (primaryCardId != null) {
+      try {
+        const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, primaryCardId)).limit(1);
+        if (task) {
+          const existingMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+          await db.update(kanbanTasksTable)
+            .set({
+              taskMetadata: {
+                ...existingMeta,
+                scriptOutput:  output.slice(0, 50_000),
+                lastJobId:     jobId,
+                lastJobStatus: success ? "Completed" : lastStatus,
+                runningJobRef: null,
+                ...(aiResult ? { aiAnalysis: aiResult } : {}),
+                ...(success ? { completedAt: new Date().toISOString() } : { failedAt: new Date().toISOString() }),
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(kanbanTasksTable.id, primaryCardId));
+        }
+      } catch (metaErr) {
+        logger.warn({ metaErr, primaryCardId, jobId }, "kanban-auto-fire: could not save script output to kanban card (non-fatal)");
       }
     }
 
@@ -288,14 +334,19 @@ async function runInBackground(
 
       logger.info({ cardIds, jobId }, "kanban-auto-fire: script completed — cards moved to completed");
 
-      // Phase advance for each unique workflowStepId
+      // Phase advance (activates the next workflow phase if every card in this step is done)
       if (workflowStepId != null) {
         const { spawnedTasks } = await advancePhaseIfComplete(workflowStepId, projectId);
         if (spawnedTasks.length > 0) {
           logger.info({ workflowStepId, projectId, spawnedCount: spawnedTasks.length }, "kanban-auto-fire: next phase activated");
-          void autoFireFirstBacklogScript(clientUserId);
         }
       }
+
+      // Always look for the next backlog script in this client's active phase.
+      // Without this, only the first card fires — subsequent cards in the same phase
+      // never get picked up because advancePhaseIfComplete only fires when ALL cards
+      // in the step are complete.
+      void autoFireFirstBacklogScript(clientUserId);
     } else {
       // On failure: stamp completionNotes but leave column as in_progress
       await db.update(kanbanTasksTable)
@@ -306,29 +357,24 @@ async function runInBackground(
         })
         .where(inArray(kanbanTasksTable.id, cardIds));
 
+      // Also clear runningJobRef on failure for all sibling cards
+      const failMetaRows = await db
+        .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
+        .where(inArray(kanbanTasksTable.id, cardIds));
+      for (const row of failMetaRows) {
+        const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
+        await db.update(kanbanTasksTable)
+          .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: lastStatus } })
+          .where(eq(kanbanTasksTable.id, row.id));
+      }
+
       {
         const failedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
         for (const t of failedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
       }
 
       logger.warn({ cardIds, jobId, lastStatus }, "kanban-auto-fire: script failed — cards remain in_progress");
-    }
-
-    // Clear runningJobRef and stamp final lastJobStatus
-    const finalStatus = success ? "Completed" : lastStatus;
-    const metaRows2 = await db
-      .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
-      .from(kanbanTasksTable)
-      .where(inArray(kanbanTasksTable.id, cardIds));
-    for (const row of metaRows2) {
-      const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
-      await db.update(kanbanTasksTable)
-        .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: finalStatus } })
-        .where(eq(kanbanTasksTable.id, row.id));
-    }
-    {
-      const clearedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
-      for (const t of clearedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
     }
 
     await syncProjectProgress(projectId);
@@ -455,7 +501,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     }
 
     // Detached — does NOT block the HTTP response
-    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId);
+    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId, card.linkedRunbook.scriptTitle);
   } catch (err) {
     logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
   }
