@@ -1451,6 +1451,48 @@ export const clientAutomationRunsTable = pgTable("client_automation_runs", {
 export type InsertClientAutomationRun = typeof clientAutomationRunsTable.$inferInsert;
 export type ClientAutomationRun = typeof clientAutomationRunsTable.$inferSelect;
 
+// ── Insights & Outputs — generated documents (reports + consulting deliverables)
+export const insightsGeneratedDocumentsTable = pgTable("insights_generated_documents", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  category: text("category", { enum: ["report", "consulting"] }).notNull().default("report"),
+  docType: text("doc_type").notNull().default("other"),
+  title: text("title").notNull(),
+  htmlContent: text("html_content").notNull().default(""),
+  pdfUrl: text("pdf_url"),
+  status: text("status", { enum: ["draft", "approved", "delivered", "archived"] }).notNull().default("draft"),
+  approvedAt: timestamp("approved_at"),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertInsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferInsert;
+export type InsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferSelect;
+
+// ── Insights & Outputs — recurring automation schedules ───────────────────────
+export const insightsAutomationsTable = pgTable("insights_automations", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "set null" }),
+  automationType: text("automation_type", {
+    enum: ["monthly_tenant_health_report", "quarterly_governance_review", "weekly_security_drift_alerts", "license_waste_monitoring", "conditional_access_drift_detection"],
+  }).notNull().default("monthly_tenant_health_report"),
+  cronExpression: text("cron_expression").notNull().default("0 9 1 * *"),
+  enabled: boolean("enabled").notNull().default(true),
+  linkedRunbookScriptId: text("linked_runbook_script_id"),
+  generateDocument: boolean("generate_document").notNull().default(true),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertInsightsAutomation = typeof insightsAutomationsTable.$inferInsert;
+export type InsightsAutomation = typeof insightsAutomationsTable.$inferSelect;
+
 // ─── Blog Articles (formerly Markdown files on disk) ──────────────────────────
 export const articlesTable = pgTable("articles", {
   id: serial("id").primaryKey(),

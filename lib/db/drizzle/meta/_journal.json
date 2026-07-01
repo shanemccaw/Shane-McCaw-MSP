@@ -813,6 +813,13 @@
       "when": 1782931134956,
       "tag": "0112_add_client_callback_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1782930099664,
+      "tag": "0113_add_insights_tables",
+      "breakpoints": true
     }
   ]
 }

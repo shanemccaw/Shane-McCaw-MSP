@@ -55,6 +55,7 @@ import adminAiPromptsRouter from "./admin-ai-prompts";
 import notificationsRouter from "./notifications";
 import pushRouter from "./push";
 import adminCallbackTokensRouter from "./admin-callback-tokens";
+import adminInsightsRouter from "./admin-insights";
 
 const router: IRouter = Router();
 
@@ -114,5 +115,6 @@ router.use(adminAiPromptsRouter);
 router.use(notificationsRouter);
 router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
+router.use(adminInsightsRouter);
 
 export default router;

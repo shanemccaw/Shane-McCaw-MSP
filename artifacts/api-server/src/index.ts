@@ -7,7 +7,9 @@ import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
 import { reconcileOrphanedRuns, reconcileStalledPhases } from "./lib/kanban-auto-fire";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
-import { pool } from "@workspace/db";
+import { pool, db, insightsAutomationsTable } from "@workspace/db";
+import { executeAutomation, matchesCron } from "./routes/admin-insights";
+import { eq, and, lte, sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -101,6 +103,35 @@ app.listen(port, (err) => {
   // Logic Apps, etc.):
   //   POST /api/admin/kanban/check-escalations
   //   Authorization: Bearer <ADMIN_PASSWORD>
+  // ── Insights automation cron scheduler (1-minute tick) ────────────────────
+  // Checks all enabled automations whose nextRunAt <= now and fires them.
+  const runInsightsCron = () => {
+    const now = new Date();
+    db.select({
+      id: insightsAutomationsTable.id,
+      cronExpression: insightsAutomationsTable.cronExpression,
+      nextRunAt: insightsAutomationsTable.nextRunAt,
+      enabled: insightsAutomationsTable.enabled,
+    }).from(insightsAutomationsTable)
+      .where(and(
+        eq(insightsAutomationsTable.enabled, true),
+        sql`(next_run_at IS NULL OR next_run_at <= NOW())`,
+      ))
+      .then((rows) => {
+        for (const row of rows) {
+          if (matchesCron(row.cronExpression, now)) {
+            executeAutomation(row.id).catch((err: unknown) => {
+              logger.warn({ err, automationId: row.id }, "insights: automation execution error (non-fatal)");
+            });
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, "insights: cron tick query failed (non-fatal)");
+      });
+  };
+  setInterval(runInsightsCron, 60_000); // every 1 minute
+
   const ESCALATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
   const runEscalationCheck = () => {
     checkManualScriptEscalations().then((result) => {
@@ -118,6 +149,52 @@ app.listen(port, (err) => {
   };
   runEscalationCheck();
   setInterval(runEscalationCheck, ESCALATION_INTERVAL_MS);
+
+  // ── Insights & Outputs tables ─────────────────────────────────────────────
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS insights_generated_documents (
+      id SERIAL PRIMARY KEY,
+      customer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      category TEXT NOT NULL DEFAULT 'report',
+      doc_type TEXT NOT NULL DEFAULT 'other',
+      title TEXT NOT NULL,
+      html_content TEXT NOT NULL DEFAULT '',
+      pdf_url TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      approved_at TIMESTAMP,
+      delivered_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `).then(() => {
+    logger.info("Migration: insights_generated_documents table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: insights_generated_documents table failed (non-fatal)");
+  });
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS insights_automations (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      customer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+      automation_type TEXT NOT NULL DEFAULT 'monthly_tenant_health_report',
+      cron_expression TEXT NOT NULL DEFAULT '0 9 1 * *',
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      linked_runbook_script_id TEXT,
+      generate_document BOOLEAN NOT NULL DEFAULT true,
+      last_run_at TIMESTAMP,
+      next_run_at TIMESTAMP,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    ALTER TABLE insights_automations ADD COLUMN IF NOT EXISTS linked_runbook_script_id TEXT;
+  `).then(() => {
+    logger.info("Migration: insights_automations table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: insights_automations table failed (non-fatal)");
+  });
 
   // ── DDL migrations (schema-only, no data inserts) ─────────────────────────
   pool.query(`
