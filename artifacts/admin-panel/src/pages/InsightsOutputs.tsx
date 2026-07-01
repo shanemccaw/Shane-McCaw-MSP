@@ -6,8 +6,9 @@ import {
 import {
   BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight,
   Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
-  Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock,
+  Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const API = "/api";
 
@@ -902,6 +903,8 @@ function AutomationTab({
   const [wLinkedScript, setWLinkedScript] = useState("");
   const [saving, setSaving]           = useState(false);
   const [error, setError]             = useState<string | null>(null);
+  const [runningId, setRunningId]     = useState<number | null>(null);
+  const { toast } = useToast();
 
   const loadAutomations = useCallback(async () => {
     setLoading(true);
@@ -971,6 +974,27 @@ function AutomationTab({
     if (!confirm("Delete this automation?")) return;
     await fetchWithAuth(`${API}/admin/insights/automations/${id}`, { method: "DELETE" });
     void loadAutomations();
+  };
+
+  const runNow = async (a: Automation) => {
+    setRunningId(a.id);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/automations/${a.id}/run`, { method: "POST" });
+      if (!r.ok) {
+        const body = await r.json() as { error?: string };
+        toast({ title: "Run failed", description: body.error ?? "Unknown error", variant: "destructive" });
+        return;
+      }
+      const body = await r.json() as { automation?: Automation };
+      if (body.automation) {
+        setAutomations(prev => prev.map(x => x.id === a.id ? { ...x, ...body.automation } : x));
+      }
+      toast({ title: `"${a.name}" ran successfully` });
+    } catch {
+      toast({ title: "Run failed", description: "Network error", variant: "destructive" });
+    } finally {
+      setRunningId(null);
+    }
   };
 
   const AutomationForm = () => (
@@ -1083,6 +1107,16 @@ function AutomationTab({
                 </div>
                 {a.generateDocument && <span className="text-[10px] text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded shrink-0">Generates Doc</span>}
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => void runNow(a)}
+                    disabled={runningId === a.id}
+                    title="Run now"
+                    className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {runningId === a.id
+                      ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      : <Play className="w-3.5 h-3.5" />}
+                  </button>
                   <button onClick={() => openEdit(a)} className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Pencil className="w-3.5 h-3.5" /></button>
                   <button onClick={() => void deleteAutomation(a.id)} className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>

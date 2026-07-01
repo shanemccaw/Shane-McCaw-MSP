@@ -22,6 +22,7 @@
  * POST /api/admin/insights/automations             — create automation
  * PATCH /api/admin/insights/automations/:id        — update automation
  * DELETE /api/admin/insights/automations/:id       — delete automation
+ * POST /api/admin/insights/automations/:id/run     — run automation immediately
  */
 
 import { Router, type Request, type Response } from "express";
@@ -1407,6 +1408,23 @@ router.delete("/admin/insights/automations/:id", requireAdmin, async (req: Reque
   } catch (err) {
     logger.error({ err }, "insights automation delete error");
     return res.status(500).json({ error: "Failed to delete automation" });
+  }
+});
+
+// ── POST /api/admin/insights/automations/:id/run ──────────────────────────────
+
+router.post("/admin/insights/automations/:id/run", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params["id"] ?? ""), 10);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    await executeAutomation(id);
+    const [updated] = await db.select().from(insightsAutomationsTable)
+      .where(eq(insightsAutomationsTable.id, id)).limit(1);
+    if (!updated) return res.status(404).json({ error: "Automation not found" });
+    return res.json({ ok: true, automation: { ...updated, cronLabel: describeCron(updated.cronExpression) } });
+  } catch (err) {
+    logger.error({ err }, "insights automation run error");
+    return res.status(500).json({ error: "Failed to run automation" });
   }
 });
 
