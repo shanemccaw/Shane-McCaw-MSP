@@ -27,6 +27,7 @@ import {
   workflowTemplateStepTasksTable,
   scriptModulesTable,
   powershellScriptsTable,
+  scriptRunResultsTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { logger } from "./logger";
@@ -246,12 +247,29 @@ async function runInBackground(
   projectId: number,
   workflowStepId: number | null,
   clientUserId: number,
+  runResultId: number | undefined,
 ): Promise<void> {
   try {
     const { success, lastStatus, output } = await pollJobToCompletion(jobId);
 
     const outputSummary = output.split("\n").filter(Boolean).slice(-10).join("\n");
     const notesBody = outputSummary ? `\n\nOutput:\n${outputSummary}` : "";
+
+    // Update the script_run_results record so the Results pane reflects the final state.
+    if (runResultId != null) {
+      const outputLines = output.split("\n").filter(Boolean);
+      try {
+        await db.update(scriptRunResultsTable)
+          .set({
+            status:      success ? "completed" : "failed",
+            rawOutput:   { output: outputLines },
+            parsedFindings: outputLines.slice(0, 20),
+          })
+          .where(eq(scriptRunResultsTable.id, runResultId));
+      } catch (updateErr) {
+        logger.warn({ updateErr, runResultId, jobId }, "kanban-auto-fire: could not update script_run_results (non-fatal)");
+      }
+    }
 
     if (success) {
       await db.update(kanbanTasksTable)
@@ -418,8 +436,26 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       "kanban-auto-fire: job started — polling in background",
     );
 
+    // Insert a script_run_results placeholder so the Results pane shows this run immediately.
+    let runResultId: number | undefined;
+    try {
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId:      clientUserId,
+          jobId,
+          kanbanTaskId:    card.id,
+          status:          "running",
+          executionSource: "automated",
+        })
+        .returning({ id: scriptRunResultsTable.id });
+      runResultId = resultRow?.id;
+    } catch (resultErr) {
+      logger.warn({ resultErr, jobId }, "kanban-auto-fire: could not insert script_run_results placeholder (non-fatal)");
+    }
+
     // Detached — does NOT block the HTTP response
-    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId);
+    void runInBackground(jobId, siblingIds, card.projectId, card.workflowStepId, clientUserId, runResultId);
   } catch (err) {
     logger.warn({ err, clientUserId }, "kanban-auto-fire: unexpected error (non-fatal)");
   }
