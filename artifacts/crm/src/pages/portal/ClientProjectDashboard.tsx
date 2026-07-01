@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
@@ -300,6 +301,9 @@ export default function ClientProjectDashboard() {
 
   // Kanban card modal
   const [selectedTask, setSelectedTask] = useState<KanbanCardModalTask | null>(null);
+
+  // Completed column starts collapsed; client can expand for the session
+  const [completedCollapsed, setCompletedCollapsed] = useState(true);
 
   // Invoice pay loading
   const [payingInvoice, setPayingInvoice] = useState<number | null>(null);
@@ -1158,11 +1162,21 @@ export default function ClientProjectDashboard() {
                     const totalCol = allColTasks.length + (col === "waiting_on_customer" && showAppRegKanbanCard ? 1 : 0);
                     return (
                       <div key={col} className={`rounded-xl border-t-2 ${colCfg.hdr} border border-border overflow-hidden`}>
-                        <div className="px-3 py-2 flex items-center justify-between">
+                        <div
+                          className={`px-3 py-2 flex items-center justify-between${col === "completed" ? " cursor-pointer select-none" : ""}`}
+                          onClick={col === "completed" ? () => setCompletedCollapsed(v => !v) : undefined}
+                        >
                           <span className="text-xs font-bold text-[#0A2540]">{colCfg.label}</span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${colCfg.chip}`}>{totalCol}</span>
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${colCfg.chip}${col === "completed" && completedCollapsed && totalCol > 0 ? " opacity-70" : ""}`}>{totalCol}</span>
+                            {col === "completed" && (
+                              completedCollapsed
+                                ? <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
+                                : <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
+                            )}
+                          </div>
                         </div>
-                        <div className="px-3 pb-3 space-y-2">
+                        {(col !== "completed" || !completedCollapsed) && <div className="px-3 pb-3 space-y-2">
                           {/* Synthetic app-registration card */}
                           {col === "waiting_on_customer" && showAppRegKanbanCard && (
                             <Link href="/portal/automation-setup">
@@ -1222,7 +1236,7 @@ export default function ClientProjectDashboard() {
                           {totalCol > 5 && (
                             <p className="text-[10px] text-muted-foreground text-center pt-1">+{totalCol - 5} more</p>
                           )}
-                        </div>
+                        </div>}
                       </div>
                     );
                   })}
