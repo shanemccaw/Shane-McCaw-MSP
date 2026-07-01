@@ -12,7 +12,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, clientCallbackTokensTable, scriptRunResultsTable, projectsTable, usersTable } from "@workspace/db";
+import { db, clientCallbackTokensTable, scriptRunResultsTable, projectsTable, kanbanTasksTable } from "@workspace/db";
 import { eq, and, isNull, isNotNull } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
@@ -74,40 +74,64 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       return;
     }
 
-    let resultId: number | null = null;
+    // Always insert a new row per run so history is preserved across repeat invocations.
+    // When the token was linked to an original "awaiting_upload" row, copy its linkage
+    // fields (kanbanTaskId, libraryScriptId, packageId, scriptId) so the new row is
+    // associated with the same kanban card and library script.
+    let linkage: {
+      customerId: number | null;
+      kanbanTaskId: number | null;
+      libraryScriptId: string | null;
+      packageId: number | null;
+      scriptId: number | null;
+    } = {
+      customerId: tokenRow.clientUserId,
+      kanbanTaskId: null,
+      libraryScriptId: null,
+      packageId: null,
+      scriptId: null,
+    };
 
     if (tokenRow.scriptRunResultId !== null) {
-      // Preferred path: update the original awaiting-upload row so all linkage
-      // (kanbanTaskId, libraryScriptId, customerId, projectId) is preserved.
-      const [updated] = await db
-        .update(scriptRunResultsTable)
-        .set({
-          status: "completed",
-          executionSource: "customer_upload",
-          rawOutput: body,
-          uploadedAt: new Date(),
-          uploadedBy: "customer_script_callback",
+      const [orig] = await db
+        .select({
+          customerId: scriptRunResultsTable.customerId,
+          kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
+          libraryScriptId: scriptRunResultsTable.libraryScriptId,
+          packageId: scriptRunResultsTable.packageId,
+          scriptId: scriptRunResultsTable.scriptId,
         })
+        .from(scriptRunResultsTable)
         .where(eq(scriptRunResultsTable.id, tokenRow.scriptRunResultId))
-        .returning({ id: scriptRunResultsTable.id });
-      resultId = updated?.id ?? null;
-    } else {
-      // Fallback: no original row linked, insert a new one.
-      const [resultRow] = await db
-        .insert(scriptRunResultsTable)
-        .values({
-          customerId: tokenRow.clientUserId,
-          kanbanTaskId: null,
-          jobId: null,
-          status: "completed",
-          executionSource: "customer_upload",
-          rawOutput: body,
-          uploadedAt: new Date(),
-          uploadedBy: "customer_script_callback",
-        })
-        .returning({ id: scriptRunResultsTable.id });
-      resultId = resultRow?.id ?? null;
+        .limit(1);
+      if (orig) {
+        linkage = {
+          customerId: orig.customerId ?? tokenRow.clientUserId,
+          kanbanTaskId: orig.kanbanTaskId ?? null,
+          libraryScriptId: orig.libraryScriptId ?? null,
+          packageId: orig.packageId ?? null,
+          scriptId: orig.scriptId ?? null,
+        };
+      }
     }
+
+    const [resultRow] = await db
+      .insert(scriptRunResultsTable)
+      .values({
+        customerId: linkage.customerId,
+        kanbanTaskId: linkage.kanbanTaskId,
+        libraryScriptId: linkage.libraryScriptId,
+        packageId: linkage.packageId,
+        scriptId: linkage.scriptId,
+        jobId: null,
+        status: "completed",
+        executionSource: "customer_upload",
+        rawOutput: body,
+        uploadedAt: new Date(),
+        uploadedBy: "customer_script_callback",
+      })
+      .returning({ id: scriptRunResultsTable.id });
+    const resultId = resultRow?.id ?? null;
 
     // Update last_used_at on the token
     await db
@@ -147,12 +171,17 @@ router.get("/admin/projects/:projectId/customer-upload-task-ids", requireAdmin, 
     const rows = await db
       .select({ kanbanTaskId: scriptRunResultsTable.kanbanTaskId })
       .from(scriptRunResultsTable)
+      .innerJoin(
+        kanbanTasksTable,
+        eq(scriptRunResultsTable.kanbanTaskId, kanbanTasksTable.id)
+      )
       .where(
         and(
           eq(scriptRunResultsTable.executionSource, "customer_upload"),
           eq(scriptRunResultsTable.status, "completed"),
           isNull(scriptRunResultsTable.reviewedAt),
           isNotNull(scriptRunResultsTable.kanbanTaskId),
+          eq(kanbanTasksTable.projectId, projectId),
         )
       );
 

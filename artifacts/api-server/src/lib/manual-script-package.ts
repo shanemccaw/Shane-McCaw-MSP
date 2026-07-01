@@ -62,17 +62,22 @@ $CallbackToken = "${callbackToken}"
 
   const callbackSubmitBlock = hasCallback
     ? `
+# ── Write output JSON (always — needed for fallback if auto-submit fails) ──────
+$jsonOutput = $output | ConvertTo-Json -Depth 10
+$jsonOutput | Out-File -FilePath $OutputPath -Encoding utf8
+Write-Host "[${scriptName}] Output written to: $OutputPath" -ForegroundColor Green
+
 # ── Auto-submit results to portal ─────────────────────────────────────────────
 Write-Host "[${scriptName}] Submitting results automatically…" -ForegroundColor Cyan
 try {
     $headers = @{ Authorization = "Bearer $CallbackToken"; "Content-Type" = "application/json" }
-    $body    = $output | ConvertTo-Json -Depth 10
-    $resp    = Invoke-RestMethod -Uri $CallbackUrl -Method POST -Headers $headers -Body $body
+    $resp    = Invoke-RestMethod -Uri $CallbackUrl -Method POST -Headers $headers -Body $jsonOutput
     Write-Host "[${scriptName}] Results submitted successfully. (received=$($resp.received))" -ForegroundColor Green
 } catch {
     Write-Warning "[${scriptName}] Auto-submit failed: $_"
     Write-Host "FALLBACK: Upload the JSON file manually to the portal:" -ForegroundColor Yellow
-    Write-Host "  URL: ${uploadUrl}" -ForegroundColor Yellow
+    Write-Host "  File: $OutputPath" -ForegroundColor Yellow
+    Write-Host "  URL:  ${uploadUrl}" -ForegroundColor Yellow
 }
 `
     : `
