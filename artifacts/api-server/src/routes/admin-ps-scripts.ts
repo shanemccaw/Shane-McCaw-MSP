@@ -2036,6 +2036,10 @@ router.get("/admin/ps-scripts/packages", requireAdmin, async (_req: Request, res
 
     const result = packages.map((pkg) => ({
       ...pkg,
+      // Normalize legacy string[] appPermissions to {scope,reason}[] before returning to UI
+      permissions: pkg.permissions
+        ? { ...pkg.permissions, appPermissions: normalizeAppPerms(pkg.permissions.appPermissions as unknown[]) }
+        : pkg.permissions,
       modules: allModules.filter((m) => m.packageId === pkg.id),
     }));
 
@@ -2356,7 +2360,13 @@ router.get("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
   try {
     const [script] = await db.select().from(powershellScriptsTable).where(eq(powershellScriptsTable.id, id));
     if (!script) { res.status(404).json({ error: "Script not found" }); return; }
-    res.json(script);
+    // Normalize legacy string[] appPermissions to {scope,reason}[] before returning to UI
+    res.json({
+      ...script,
+      permissions: script.permissions
+        ? { ...script.permissions, appPermissions: normalizeAppPerms(script.permissions.appPermissions as unknown[]) }
+        : script.permissions,
+    });
   } catch (err) {
     logger.error({ err }, "Failed to fetch PS script");
     res.status(500).json({ error: "Failed to fetch script" });
