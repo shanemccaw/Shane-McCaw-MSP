@@ -36,6 +36,7 @@ import {
   powershellScriptsTable,
   insightsGeneratedDocumentsTable,
   insightsAutomationsTable,
+  notificationsTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -52,6 +53,7 @@ import {
   createRunbookJob,
   isAzureConfigured,
 } from "../lib/azure-automation";
+import { sendWebPushToAdmins } from "../lib/web-push";
 import {
   PDFDocument,
   StandardFonts,
@@ -1517,6 +1519,38 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id));
 
       logger.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and staged for review");
+
+      // ── Notify admins that a new report is ready for review ─────────────────
+      const notifTitle = `New report ready: ${automation.name}`;
+      const notifBody  = `An auto-generated ${docLabel} is waiting for your review.`;
+      const notifLink  = "/command/insights?tab=documents";
+
+      try {
+        const admins = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(eq(usersTable.role, "admin"));
+
+        if (admins.length > 0) {
+          await db.insert(notificationsTable).values(
+            admins.map(a => ({
+              userId:   a.id,
+              title:    notifTitle,
+              body:     notifBody,
+              type:     "document" as const,
+              linkPath: notifLink,
+            })),
+          );
+        }
+      } catch (notifErr) {
+        logger.warn({ notifErr, automationId }, "insights: failed to insert report-ready notifications (non-fatal)");
+      }
+
+      void sendWebPushToAdmins({
+        title:    notifTitle,
+        body:     notifBody,
+        linkPath: notifLink,
+      });
     }
 
     // ── 3. Update last/next run timestamps ──────────────────────────────────

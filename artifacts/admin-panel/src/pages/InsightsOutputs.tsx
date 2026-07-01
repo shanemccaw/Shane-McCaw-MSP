@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -1172,7 +1172,18 @@ const TABS: { key: Tab; label: string; icon: React.ComponentType<{ className?: s
 
 export default function InsightsOutputs() {
   const { fetchWithAuth } = useAuth();
-  const [tab, setTab]                         = useState<Tab>("dashboard");
+
+  const initialTab = useMemo<Tab>(() => {
+    try {
+      const param = new URLSearchParams(window.location.search).get("tab");
+      const valid: Tab[] = ["dashboard", "documents", "consulting", "automation"];
+      return (valid.includes(param as Tab) ? param : "dashboard") as Tab;
+    } catch {
+      return "dashboard";
+    }
+  }, []);
+
+  const [tab, setTab]                         = useState<Tab>(initialTab);
   const [customers, setCustomers]             = useState<Customer[]>([]);
   const [projects, setProjects]               = useState<Project[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null);
