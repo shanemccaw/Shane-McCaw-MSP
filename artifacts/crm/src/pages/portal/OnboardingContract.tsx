@@ -1006,6 +1006,43 @@ export default function OnboardingContract() {
               </div>
             </div>
 
+            <div className={`bg-white border rounded-2xl p-5 transition-opacity ${hasScrolled ? "border-border opacity-100" : "border-border opacity-50"}`}>
+              <label className={`flex items-start gap-3 ${hasScrolled ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                <input
+                  type="checkbox"
+                  checked={agreed}
+                  disabled={!hasScrolled}
+                  onChange={e => setAgreed(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
+                />
+                <span className="text-sm text-[#0A2540]">
+                  {isFree
+                    ? "I have read and agree to the Service Agreement above. I understand this is a complimentary automated service delivered upon signing."
+                    : "I have read and agree to the Service Agreement above. I understand that payment is required before work commences, and fees are non-refundable once work has begun."
+                  }
+                  {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
+                </span>
+              </label>
+            </div>
+
+            {requiredPermissions.length > 0 && (
+              <div className={`bg-white border rounded-2xl p-5 transition-opacity ${hasScrolled ? "border-border opacity-100" : "border-border opacity-50"}`}>
+                <label className={`flex items-start gap-3 ${hasScrolled ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                  <input
+                    type="checkbox"
+                    checked={appRegAgreed}
+                    disabled={!hasScrolled}
+                    onChange={e => setAppRegAgreed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
+                  />
+                  <span className="text-sm text-[#0A2540]">
+                    I understand that the {requiredPermissions.length} Azure AD App Registration permission{requiredPermissions.length !== 1 ? "s" : ""} listed in Section 12 of this agreement must be granted in my tenant before automated deliverables can be activated. I agree to configure these permissions and grant admin consent in the Azure portal.
+                    {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
+                  </span>
+                </label>
+              </div>
+            )}
+
             <div className="bg-white border border-border rounded-2xl p-5">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-semibold text-[#0A2540] flex items-center gap-1.5">
@@ -1046,43 +1083,6 @@ export default function OnboardingContract() {
                 <p className="text-xs text-muted-foreground mt-2 text-center">Sign with mouse or touch above</p>
               )}
             </div>
-
-            <div className={`bg-white border rounded-2xl p-5 transition-opacity ${hasScrolled ? "border-border opacity-100" : "border-border opacity-50"}`}>
-              <label className={`flex items-start gap-3 ${hasScrolled ? "cursor-pointer" : "cursor-not-allowed"}`}>
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  disabled={!hasScrolled}
-                  onChange={e => setAgreed(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
-                />
-                <span className="text-sm text-[#0A2540]">
-                  {isFree
-                    ? "I have read and agree to the Service Agreement above. I understand this is a complimentary automated service delivered upon signing."
-                    : "I have read and agree to the Service Agreement above. I understand that payment is required before work commences, and fees are non-refundable once work has begun."
-                  }
-                  {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
-                </span>
-              </label>
-            </div>
-
-            {requiredPermissions.length > 0 && (
-              <div className={`bg-white border rounded-2xl p-5 transition-opacity ${hasScrolled ? "border-border opacity-100" : "border-border opacity-50"}`}>
-                <label className={`flex items-start gap-3 ${hasScrolled ? "cursor-pointer" : "cursor-not-allowed"}`}>
-                  <input
-                    type="checkbox"
-                    checked={appRegAgreed}
-                    disabled={!hasScrolled}
-                    onChange={e => setAppRegAgreed(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-[#0078D4] disabled:opacity-50"
-                  />
-                  <span className="text-sm text-[#0A2540]">
-                    I understand that the {requiredPermissions.length} Azure AD App Registration permission{requiredPermissions.length !== 1 ? "s" : ""} listed in Section 12 of this agreement must be granted in my tenant before automated deliverables can be activated. I agree to configure these permissions and grant admin consent in the Azure portal.
-                    {!hasScrolled && <span className="block text-xs text-muted-foreground mt-1">Please scroll through the full agreement first.</span>}
-                  </span>
-                </label>
-              </div>
-            )}
 
             {lpTokenExpired && (
               <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-xl px-4 py-4 text-sm">
