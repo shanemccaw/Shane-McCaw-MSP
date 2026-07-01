@@ -229,3 +229,19 @@ html {
 .d2-custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .d2-custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
 
+/* ── Quick Win Mode animations ─────────────────────────────────────── */
+@keyframes qw-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes qw-pulse-border {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@keyframes qw-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0%); }
+}
+

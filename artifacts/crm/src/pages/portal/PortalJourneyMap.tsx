@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQuickWinMode } from "@/context/QuickWinModeContext";
+import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import PortalLayout from "@/components/PortalLayout";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -111,6 +113,7 @@ function StatusPill({ status }: { status: JourneyStage["status"] }) {
 
 export default function PortalJourneyMap() {
   const { fetchWithAuth } = useAuth();
+  const { dispatch: qwDispatch } = useQuickWinMode();
   const [projects, setProjects] = useState<Project[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [appReg, setAppReg] = useState<AppReg | null>(null);
@@ -308,20 +311,42 @@ export default function PortalJourneyMap() {
                       <p className={`text-xs leading-relaxed mb-3 ${stage.status === "upcoming" ? "text-gray-400" : stage.status === "waiting" ? "text-amber-700/80" : "text-muted-foreground"}`}>
                         {stage.description}
                       </p>
-                      {(stage.status !== "upcoming" || stage.alwaysShowLink) && (
-                        <Link href={stage.link}>
-                          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer ${
-                            stage.status === "complete"
-                              ? "text-green-600 hover:text-green-700"
-                              : "text-[#0078D4] hover:text-[#0078D4]/80"
-                          }`}>
-                            {stage.linkLabel}
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {(stage.status !== "upcoming" || stage.alwaysShowLink) && (
+                          <Link href={stage.link}>
+                            <span className={`inline-flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+                              stage.status === "complete"
+                                ? "text-green-600 hover:text-green-700"
+                                : "text-[#0078D4] hover:text-[#0078D4]/80"
+                            }`}>
+                              {stage.linkLabel}
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                              </svg>
+                            </span>
+                          </Link>
+                        )}
+                        {stage.id === "followup" && (
+                          <button
+                            onClick={() => qwDispatch({
+                              type: "SELECT_QUICK_WIN",
+                              payload: {
+                                id: "qw-journey-followup",
+                                title: "Follow Up Diagnostic",
+                                description: "Quick Win diagnostic sequence from your journey map.",
+                                steps: DEFAULT_QUICK_WIN_STEPS,
+                              },
+                            })}
+                            className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-[#0A2540] text-white hover:bg-[#0A2540]/90 active:scale-[0.98]"
+                            style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                          >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
                             </svg>
-                          </span>
-                        </Link>
-                      )}
+                            Activate Quick Win
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

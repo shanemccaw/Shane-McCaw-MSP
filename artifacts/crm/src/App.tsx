@@ -1,6 +1,8 @@
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { QuickWinModeProvider } from "@/context/QuickWinModeContext";
+import FullScreenWrapper from "@/components/quickwin/FullScreenWrapper";
 import { Toaster } from "@/components/ui/toaster";
 import LoginPage from "@/pages/Login";
 import PortalProjects from "@/pages/portal/PortalProjects";
@@ -25,6 +27,7 @@ import PortalSecurity from "@/pages/portal/PortalSecurity";
 import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
+import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 
@@ -179,6 +182,9 @@ function Router() {
       <Route path="/portal/health">
         <RequireAuth role="client"><RequireOnboarding><PortalHealthScore /></RequireOnboarding></RequireAuth>
       </Route>
+      <Route path="/portal/quick-wins">
+        <RequireAuth role="client"><RequireOnboarding><QuickWinResultsPage /></RequireOnboarding></RequireAuth>
+      </Route>
 
       {/* Public reset-password route — token validated server-side */}
       <Route path="/reset-password">
@@ -207,10 +213,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
+        <QuickWinModeProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <FullScreenWrapper />
+          <Toaster />
+        </QuickWinModeProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
