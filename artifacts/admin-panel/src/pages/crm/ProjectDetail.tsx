@@ -1161,6 +1161,7 @@ export default function ProjectDetailPage() {
   const [statusReportOpen, setStatusReportOpen] = useState(false);
 
   const [spFolderCreating, setSpFolderCreating] = useState(false);
+  const [automationFiring, setAutomationFiring] = useState(false);
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
   const [generateArtifactsError, setGenerateArtifactsError] = useState<string | null>(null);
   const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
@@ -1506,6 +1507,28 @@ export default function ProjectDetailPage() {
       toast({ title: `${ok} of ${entries.length} artifacts saved`, description: `${Object.keys(newErrors).length} failed — see editor for details.` });
     } else {
       toast({ title: "All artifacts failed to save", description: "Check the editor for error details.", variant: "destructive" });
+    }
+  };
+
+  const handleStartAutomation = async () => {
+    if (!project?.clientUserId) return;
+    setAutomationFiring(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/kanban/trigger-auto-fire", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientUserId: project.clientUserId }),
+      });
+      const data = await res.json() as { message?: string; error?: string };
+      if (res.ok) {
+        toast({ title: "Automation started", description: data.message ?? "The next script in the backlog has been queued." });
+      } else {
+        toast({ title: "Automation failed", description: data.error ?? "Could not start automation.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Network error", description: "Could not reach the server.", variant: "destructive" });
+    } finally {
+      setAutomationFiring(false);
     }
   };
 
@@ -2179,15 +2202,38 @@ export default function ProjectDetailPage() {
               </span>
             )}
           </span>
-          <button
-            onClick={() => setAddTaskOpen(s => !s)}
-            className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-            </svg>
-            Add Task
-          </button>
+          <div className="flex items-center gap-2">
+            {project.clientUserId != null && (
+              <button
+                onClick={() => void handleStartAutomation()}
+                disabled={automationFiring}
+                className="flex items-center gap-1.5 border border-emerald-500/60 text-emerald-400 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-emerald-500/10 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {automationFiring ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                    Starting…
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3l14 9-14 9V3z" />
+                    </svg>
+                    Start Automation
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => setAddTaskOpen(s => !s)}
+              className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              Add Task
+            </button>
+          </div>
         </div>
 
         {addTaskOpen && (
