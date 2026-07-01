@@ -778,6 +778,13 @@
       "when": 1751385800000,
       "tag": "0107_add_recheck_locked_until",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1751385900000,
+      "tag": "0108_drop_runbook_id_fk",
+      "breakpoints": true
     }
   ]
 }
