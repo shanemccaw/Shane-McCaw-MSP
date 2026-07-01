@@ -53,6 +53,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   deliverablesId: null,
   isCustomerTask: false,
   runbookId: null,
+  customerDownloadScriptId: null,
   triggersHealthScore: false,
 };
 
@@ -87,6 +88,7 @@ interface StepTask {
   requiresManualRun: boolean | null;
   isCustomerTask: boolean | null;
   runbookId: string | null;
+  customerDownloadScriptId: string | null;
   triggersHealthScore: boolean | null;
 }
 
@@ -124,7 +126,14 @@ interface EditingTaskForm {
   deliverablesId: number | null;
   isCustomerTask: boolean;
   runbookId: string | null;
+  customerDownloadScriptId: string | null;
   triggersHealthScore: boolean;
+}
+
+interface AllPsScript {
+  id: string;
+  title: string;
+  category: string;
 }
 
 interface PublishedScript {
@@ -973,6 +982,7 @@ function SortableTaskRow({
   artifactSets,
   deliverableSets,
   publishedScripts,
+  allPsScripts,
 }: {
   task: StepTask;
   onEdit: (t: StepTask) => void;
@@ -983,6 +993,7 @@ function SortableTaskRow({
   artifactSets: AssetItem[];
   deliverableSets: AssetItem[];
   publishedScripts: PublishedScript[];
+  allPsScripts: AllPsScript[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id });
   const [isGenerating, setIsGenerating] = useState(false);
@@ -1021,7 +1032,8 @@ function SortableTaskRow({
   const clName     = task.checklistId       ? (checklists.find(a => a.id === task.checklistId)?.title            ?? `#${task.checklistId}`)        : null;
   const artName    = task.artifactsId       ? (artifactSets.find(a => a.id === task.artifactsId)?.title          ?? `#${task.artifactsId}`)        : null;
   const delName    = task.deliverablesId    ? (deliverableSets.find(a => a.id === task.deliverablesId)?.title     ?? `#${task.deliverablesId}`)    : null;
-  const rbName     = task.runbookId         ? (publishedScripts.find(s => s.id === task.runbookId)?.title        ?? task.runbookId)                : null;
+  const rbName     = task.runbookId                 ? (publishedScripts.find(s => s.id === task.runbookId)?.title                 ?? task.runbookId)                : null;
+  const cdName     = task.customerDownloadScriptId  ? (allPsScripts.find(s => s.id === task.customerDownloadScriptId)?.title     ?? task.customerDownloadScriptId)  : null;
 
   const chipBase = "flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded border leading-none";
   const linkedChip = `${chipBase} bg-teal-500/10 text-teal-400 border-teal-500/25`;
@@ -1083,6 +1095,12 @@ function SortableTaskRow({
           {rbName ? (
             <span className={`${chipBase} bg-[#0078D4]/15 text-[#0078D4] border-[#0078D4]/25`} title={`Runbook: ${rbName}`}>
               ▶ {rbName.length > 18 ? rbName.slice(0, 18) + "…" : rbName}
+            </span>
+          ) : null}
+          {/* Customer Download Script */}
+          {cdName ? (
+            <span className={`${chipBase} bg-emerald-500/15 text-emerald-400 border-emerald-500/25`} title={`Customer Download: ${cdName}`}>
+              ⬇ {cdName.length > 18 ? cdName.slice(0, 18) + "…" : cdName}
             </span>
           ) : null}
           {/* Instruction Set */}
@@ -1168,6 +1186,7 @@ function TaskDrawer({
   artifactSets,
   deliverableSets,
   publishedScripts,
+  allPsScripts,
 }: {
   open: boolean;
   isNew: boolean;
@@ -1180,6 +1199,7 @@ function TaskDrawer({
   artifactSets: AssetItem[];
   deliverableSets: AssetItem[];
   publishedScripts: PublishedScript[];
+  allPsScripts: AllPsScript[];
 }) {
   const [tab, setTab] = useState<DrawerTab>("basic");
 
@@ -1321,6 +1341,22 @@ function TaskDrawer({
                 />
                 <p className="text-[10px] text-[#7D8590] mt-1">
                   When set, a "Run Script" button will appear on this task's kanban card and modal.
+                </p>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Customer Download Script</label>
+                <select
+                  value={form.customerDownloadScriptId ?? ""}
+                  onChange={e => setForm(p => ({ ...p, customerDownloadScriptId: e.target.value || null }))}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                >
+                  <option value="">None</option>
+                  {allPsScripts.map(s => (
+                    <option key={s.id} value={s.id}>{s.title}</option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-[#7D8590] mt-1">
+                  When set, a download button will appear on this task's kanban card so the client can retrieve and run the script manually.
                 </p>
               </div>
               <div
@@ -1477,6 +1513,7 @@ export default function WorkflowsPage() {
   const [artifactSets, setArtifactSets] = useState<AssetItem[]>([]);
   const [deliverableSets, setDeliverableSets] = useState<AssetItem[]>([]);
   const [publishedScripts, setPublishedScripts] = useState<PublishedScript[]>([]);
+  const [allPsScripts, setAllPsScripts] = useState<AllPsScript[]>([]);
 
   // Two-column view: selected step
   const [selectedStepId, setSelectedStepId] = useState<number | null>(null);
@@ -1576,10 +1613,17 @@ export default function WorkflowsPage() {
 
   const fetchPublishedScripts = useCallback(async () => {
     try {
-      const res = await fetchWithAuth("/api/admin/ps-scripts/published");
-      if (res.ok) {
-        const data = await res.json() as { id: string; title: string }[];
+      const [pubRes, allRes] = await Promise.all([
+        fetchWithAuth("/api/admin/ps-scripts/published"),
+        fetchWithAuth("/api/admin/ps-scripts"),
+      ]);
+      if (pubRes.ok) {
+        const data = await pubRes.json() as { id: string; title: string }[];
         setPublishedScripts(data);
+      }
+      if (allRes.ok) {
+        const data = await allRes.json() as AllPsScript[];
+        setAllPsScripts(data);
       }
     } catch { /* ignore */ }
   }, [fetchWithAuth]);
@@ -1788,6 +1832,7 @@ export default function WorkflowsPage() {
       deliverablesId: task.deliverablesId ?? null,
       isCustomerTask: task.isCustomerTask ?? false,
       runbookId: task.runbookId ?? null,
+      customerDownloadScriptId: task.customerDownloadScriptId ?? null,
       triggersHealthScore: task.triggersHealthScore ?? false,
     });
     setDrawerIsNew(false);
@@ -1812,6 +1857,7 @@ export default function WorkflowsPage() {
       deliverablesId: taskForm.deliverablesId,
       isCustomerTask: taskForm.isCustomerTask,
       runbookId: taskForm.runbookId || null,
+      customerDownloadScriptId: taskForm.customerDownloadScriptId || null,
       triggersHealthScore: taskForm.triggersHealthScore,
     };
 
@@ -2841,6 +2887,7 @@ export default function WorkflowsPage() {
                                     artifactSets={artifactSets}
                                     deliverableSets={deliverableSets}
                                     publishedScripts={publishedScripts}
+                                    allPsScripts={allPsScripts}
                                   />
                                 ))}
                               </div>
@@ -2911,6 +2958,7 @@ export default function WorkflowsPage() {
         artifactSets={artifactSets}
         deliverableSets={deliverableSets}
         publishedScripts={publishedScripts}
+        allPsScripts={allPsScripts}
       />
 
       {/* ── Generate assets dialog ──────────────────────────────────────────── */}

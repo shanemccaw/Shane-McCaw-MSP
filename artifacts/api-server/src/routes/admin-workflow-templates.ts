@@ -234,6 +234,7 @@ interface TaskBody {
   deliverablesId?: number | null;
   isCustomerTask?: boolean;
   runbookId?: string | null;
+  customerDownloadScriptId?: string | null;
   triggersHealthScore?: boolean;
 }
 
@@ -241,7 +242,7 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
   try {
     const stepId = Number(req.params.stepId);
     if (isNaN(stepId)) { res.status(400).json({ error: "Invalid stepId" }); return; }
-    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId, isCustomerTask, runbookId, triggersHealthScore } = req.body as TaskBody;
+    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId, isCustomerTask, runbookId, customerDownloadScriptId, triggersHealthScore } = req.body as TaskBody;
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
     const [task] = await db.insert(workflowTemplateStepTasksTable)
       .values({
@@ -261,6 +262,7 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
         deliverablesId: deliverablesId ?? null,
         isCustomerTask: isCustomerTask ?? false,
         runbookId: runbookId ?? null,
+        customerDownloadScriptId: customerDownloadScriptId ?? null,
         triggersHealthScore: triggersHealthScore ?? false,
       })
       .returning();
@@ -284,7 +286,7 @@ router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireA
   try {
     const taskId = Number(req.params.taskId);
     if (isNaN(taskId)) { res.status(400).json({ error: "Invalid taskId" }); return; }
-    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId, isCustomerTask, runbookId, triggersHealthScore } = req.body as TaskBody;
+    const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId, isCustomerTask, runbookId, customerDownloadScriptId, triggersHealthScore } = req.body as TaskBody;
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
     const [updated] = await db.update(workflowTemplateStepTasksTable)
       .set({
@@ -303,6 +305,7 @@ router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireA
         deliverablesId: deliverablesId ?? null,
         isCustomerTask: isCustomerTask ?? false,
         runbookId: runbookId ?? null,
+        customerDownloadScriptId: customerDownloadScriptId ?? null,
         triggersHealthScore: triggersHealthScore ?? false,
       })
       .where(eq(workflowTemplateStepTasksTable.id, taskId))
