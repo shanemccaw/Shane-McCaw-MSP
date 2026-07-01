@@ -934,6 +934,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
       findings: findingsInline,
       recommendations: recommendationsInline,
       profileSample: profileSample || "  No telemetry captured yet.",
+      sectionHints: sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
     });
 
     const aiResponse = await anthropic.messages.create({
