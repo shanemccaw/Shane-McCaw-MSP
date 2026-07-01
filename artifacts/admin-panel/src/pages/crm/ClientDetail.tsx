@@ -88,6 +88,13 @@ interface AzureCredential {
   expiresOn: string | null;
 }
 
+interface PermissionCheckResult {
+  granted: string[];
+  missing: string[];
+  unverifiable: string[];
+  checkedAt: string;
+}
+
 interface AppRegRecord {
   status: "pending" | "submitted" | "verified";
   tenantId: string;
@@ -98,6 +105,7 @@ interface AppRegRecord {
   createdAt: string;
   updatedAt: string;
   expiresOn: string | null;
+  permissionCheck: PermissionCheckResult | null;
 }
 
 interface NbaAction {
@@ -255,6 +263,7 @@ export default function ClientDetailPage() {
 
   const [appReg, setAppReg] = useState<AppRegRecord | null | undefined>(undefined);
   const [appRegLoading, setAppRegLoading] = useState(true);
+  const [showPermissionsDetail, setShowPermissionsDetail] = useState(false);
   const [verifyingAppReg, setVerifyingAppReg] = useState(false);
 
   const [mfaMethods, setMfaMethods] = useState<string[]>([]);
@@ -2234,23 +2243,48 @@ export default function ClientDetailPage() {
                   </div>
                   {/* appReg verification status — inline when a portal submission also exists */}
                   {appReg && (
-                    <div className="mt-4 pt-4 border-t border-border flex items-center gap-3 flex-wrap">
-                      {appReg.status === "verified" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Portal App Reg · Verified</span>
-                      ) : appReg.status === "submitted" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Portal App Reg · Pending Verification</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Portal App Reg · Pending</span>
-                      )}
-                      <ExpiryBadge expiresOn={appReg.expiresOn} />
-                      {appReg.status !== "verified" && (
-                        <button onClick={() => void handleSetAppRegStatus("verified")} disabled={verifyingAppReg} className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                          Mark Verified
-                        </button>
-                      )}
-                      {appReg.status === "verified" && (
-                        <button onClick={() => void handleSetAppRegStatus("submitted")} disabled={verifyingAppReg} className="text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-3 py-1 rounded-lg hover:bg-amber-500/20 disabled:opacity-50 transition-colors">Revert</button>
+                    <div className="mt-4 pt-4 border-t border-border space-y-3">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        {appReg.status === "verified" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Portal App Reg · Verified</span>
+                        ) : appReg.status === "submitted" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Portal App Reg · Pending Verification</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Portal App Reg · Pending</span>
+                        )}
+                        <ExpiryBadge expiresOn={appReg.expiresOn} />
+                        {appReg.permissionCheck ? (
+                          appReg.permissionCheck.missing.length === 0 ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>All permissions granted</span>
+                          ) : (
+                            <button onClick={() => setShowPermissionsDetail(v => !v)} className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 transition-colors"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>Missing {appReg.permissionCheck.missing.length} permission{appReg.permissionCheck.missing.length !== 1 ? "s" : ""}</button>
+                          )
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">Permissions not yet checked</span>
+                        )}
+                        {appReg.status !== "verified" && (
+                          <button onClick={() => void handleSetAppRegStatus("verified")} disabled={verifyingAppReg} className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            Mark Verified
+                          </button>
+                        )}
+                        {appReg.status === "verified" && (
+                          <button onClick={() => void handleSetAppRegStatus("submitted")} disabled={verifyingAppReg} className="text-xs font-semibold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-3 py-1 rounded-lg hover:bg-amber-500/20 disabled:opacity-50 transition-colors">Revert</button>
+                        )}
+                      </div>
+                      {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
+                        <div className="pt-3 border-t border-border">
+                          <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
+                          <div className="space-y-1.5">
+                            {appReg.permissionCheck.missing.map(perm => (
+                              <div key={perm} className="flex items-center gap-2 text-xs">
+                                <svg className="w-3 h-3 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                <code className="text-red-300 font-mono">{perm}</code>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground mt-2">Checked {new Date(appReg.permissionCheck.checkedAt).toLocaleString()}</p>
+                        </div>
                       )}
                     </div>
                   )}
@@ -2258,15 +2292,40 @@ export default function ClientDetailPage() {
               ) : appReg ? (
                 /* No admin credential yet, but client has submitted an app registration */
                 <div className="px-5 py-4 space-y-4">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    {appReg.status === "verified" ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Verified</span>
-                    ) : appReg.status === "submitted" ? (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Submitted · Pending Verification</span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Pending</span>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {appReg.status === "verified" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>Verified</span>
+                      ) : appReg.status === "submitted" ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20"><span className="w-1.5 h-1.5 rounded-full bg-amber-500" />Submitted · Pending Verification</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-red-500/15 text-red-400 border border-red-500/20"><span className="w-1.5 h-1.5 rounded-full bg-red-500" />Pending</span>
+                      )}
+                      <ExpiryBadge expiresOn={appReg.expiresOn} />
+                      {appReg.permissionCheck ? (
+                        appReg.permissionCheck.missing.length === 0 ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-green-500/15 text-green-400 border border-green-500/20"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>All permissions granted</span>
+                        ) : (
+                          <button onClick={() => setShowPermissionsDetail(v => !v)} className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 hover:bg-amber-500/25 transition-colors"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>Missing {appReg.permissionCheck.missing.length} permission{appReg.permissionCheck.missing.length !== 1 ? "s" : ""}</button>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic">Permissions not yet checked</span>
+                      )}
+                    </div>
+                    {showPermissionsDetail && appReg.permissionCheck && appReg.permissionCheck.missing.length > 0 && (
+                      <div className="pt-3 border-t border-border">
+                        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-widest mb-2">Missing Permissions</p>
+                        <div className="space-y-1.5">
+                          {appReg.permissionCheck.missing.map(perm => (
+                            <div key={perm} className="flex items-center gap-2 text-xs">
+                              <svg className="w-3 h-3 text-red-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                              <code className="text-red-300 font-mono">{perm}</code>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-2">Checked {new Date(appReg.permissionCheck.checkedAt).toLocaleString()}</p>
+                      </div>
                     )}
-                    <ExpiryBadge expiresOn={appReg.expiresOn} />
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <div><p className={labelCls}>Tenant ID</p><p className="text-xs text-[#E6EDF3] font-mono break-all">{appReg.tenantId}</p></div>

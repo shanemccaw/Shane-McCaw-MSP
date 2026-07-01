@@ -1114,6 +1114,7 @@ router.get("/admin/clients/:id/app-registration", requireAdmin, async (req: Requ
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     expiresOn,
+    permissionCheck: row.permissionCheck ?? null,
   });
 });
 
