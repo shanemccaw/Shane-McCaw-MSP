@@ -2403,6 +2403,7 @@ function RightPanel({
         <PermissionsSidebarPanel
           permissions={scriptLoaded ? permissions : null}
           scriptId={editingModuleId ? null : (editorScript?.id ?? null)}
+          analyzeScriptId={editorScript?.id ?? null}
           packageId={editingPackageId}
           token={token}
           onPermissionsChange={onPermissionsChange}
@@ -2553,12 +2554,14 @@ function RightPanel({
 function PermissionsSidebarPanel({
   permissions,
   scriptId,
+  analyzeScriptId,
   packageId,
   token,
   onPermissionsChange,
 }: {
   permissions: PsScriptPermissions | null;
   scriptId: string | null;
+  analyzeScriptId?: string | null;
   packageId: string | null;
   token: string;
   onPermissionsChange: (p: PsScriptPermissions) => void;
@@ -2670,12 +2673,13 @@ function PermissionsSidebarPanel({
   };
 
   const handleAnalyze = async () => {
-    if (!isScriptMode || !scriptId) return;
+    const targetId = analyzeScriptId ?? scriptId;
+    if (!targetId || !UUID_RE_LOCAL.test(targetId)) return;
     setAnalyzing(true);
     setAnalysisResult(null);
     try {
       // apiFetch already parses JSON and throws on non-2xx — use result directly
-      const data = await apiFetch(`/admin/ps-scripts/${scriptId}/analyze-permissions`, token, { method: "POST" }) as { appPermissionDetails?: AppPermDetail[]; delegatedPermissionDetails?: AppPermDetail[] } | null;
+      const data = await apiFetch(`/admin/ps-scripts/${targetId}/analyze-permissions`, token, { method: "POST" }) as { appPermissionDetails?: AppPermDetail[]; delegatedPermissionDetails?: AppPermDetail[] } | null;
       setAnalysisResult({ app: data?.appPermissionDetails ?? [], delegated: data?.delegatedPermissionDetails ?? [] });
     } catch (e) {
       toast({ title: "Analysis failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
@@ -2727,8 +2731,8 @@ function PermissionsSidebarPanel({
           )}
           <button
             onClick={handleAnalyze}
-            disabled={analyzing || !isScriptMode}
-            title={isScriptMode ? "Analyze script with AI to identify required permissions" : "Save the script first"}
+            disabled={analyzing || !(analyzeScriptId ?? scriptId)}
+            title={(analyzeScriptId ?? scriptId) ? "Analyze script with AI to identify required permissions" : "Save the script first"}
             className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-semibold rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-violet-500/30 text-violet-400 bg-violet-500/10 hover:bg-violet-500/20"
           >
             {analyzing ? (
