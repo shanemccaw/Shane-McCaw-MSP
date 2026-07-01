@@ -13,7 +13,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, azureTenantCredentialsTable, clientAppRegistrationsTable, clientAutomationRunsTable, usersTable, projectsTable, kanbanTasksTable, runbookJobHistoryTable, scriptRunResultsTable, powershellScriptsTable, scriptModulesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { getCredential } from "../lib/azure-keyvault";
 import {
@@ -709,6 +709,150 @@ Rules:
   } catch (err) {
     logger.error({ err }, "admin-script-runner: AI analysis failed");
     res.status(500).json({ error: "AI analysis failed — check server logs" });
+  }
+});
+
+/**
+ * GET /api/admin/script-runs?customerId=N&status=running|completed|failed&limit=200
+ *
+ * Returns a list of script_run_results joined with customer name and script title,
+ * newest first. Used by the Running Scripts history page.
+ */
+router.get("/admin/script-runs", requireAdmin, async (req: Request, res: Response) => {
+  const rawLimit = Number(req.query.limit ?? 200);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 200) : 200;
+  const customerIdRaw = req.query.customerId ? Number(req.query.customerId) : NaN;
+  const customerId = Number.isFinite(customerIdRaw) && customerIdRaw > 0 ? customerIdRaw : undefined;
+  const statusFilter = req.query.status ? String(req.query.status) : undefined;
+  const VALID_STATUSES = ["running", "completed", "failed", "awaiting_upload"] as const;
+
+  try {
+    const conditions = [];
+    if (customerId) conditions.push(eq(scriptRunResultsTable.customerId, customerId));
+    if (statusFilter && VALID_STATUSES.includes(statusFilter as typeof VALID_STATUSES[number])) {
+      conditions.push(eq(scriptRunResultsTable.status, statusFilter as typeof VALID_STATUSES[number]));
+    }
+
+    const rows = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        status: scriptRunResultsTable.status,
+        executionSource: scriptRunResultsTable.executionSource,
+        jobId: scriptRunResultsTable.jobId,
+        createdAt: scriptRunResultsTable.createdAt,
+        customerId: scriptRunResultsTable.customerId,
+        libraryScriptId: scriptRunResultsTable.libraryScriptId,
+        kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
+        // Customer name via join
+        customerName: usersTable.name,
+        // Script title via join
+        scriptTitle: powershellScriptsTable.title,
+      })
+      .from(scriptRunResultsTable)
+      .leftJoin(usersTable, eq(scriptRunResultsTable.customerId, usersTable.id))
+      .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(scriptRunResultsTable.createdAt))
+      .limit(limit);
+
+    // Enrich: for rows with a jobId, look up completedAt from runbook_job_history
+    const jobIds = rows.filter(r => r.jobId).map(r => r.jobId as string);
+    let jobCompletedAtMap: Map<string, Date | null> = new Map();
+    if (jobIds.length > 0) {
+      const histRows = await db
+        .select({ jobId: runbookJobHistoryTable.jobId, completedAt: runbookJobHistoryTable.completedAt })
+        .from(runbookJobHistoryTable)
+        .where(inArray(runbookJobHistoryTable.jobId, jobIds));
+      for (const h of histRows) {
+        jobCompletedAtMap.set(h.jobId, h.completedAt);
+      }
+    }
+
+    const result = rows.map(r => ({
+      id: r.id,
+      status: r.status,
+      executionSource: r.executionSource,
+      jobId: r.jobId,
+      createdAt: r.createdAt,
+      completedAt: r.jobId ? (jobCompletedAtMap.get(r.jobId) ?? null) : null,
+      customerId: r.customerId,
+      customerName: r.customerName ?? null,
+      libraryScriptId: r.libraryScriptId,
+      scriptTitle: r.scriptTitle ?? null,
+      kanbanTaskId: r.kanbanTaskId,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "admin-script-runner: failed to fetch script runs");
+    res.status(500).json({ error: "Failed to fetch script runs" });
+  }
+});
+
+/**
+ * GET /api/admin/script-runs/:id
+ *
+ * Returns the full detail for a single script_run_results row:
+ * rawOutput, parsedFindings, recommendations, scoreImpact, profileUpdates,
+ * status, jobId, timestamps, customerName, and scriptTitle via joins.
+ */
+router.get("/admin/script-runs/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [row] = await db
+      .select({
+        id: scriptRunResultsTable.id,
+        status: scriptRunResultsTable.status,
+        executionSource: scriptRunResultsTable.executionSource,
+        jobId: scriptRunResultsTable.jobId,
+        rawOutput: scriptRunResultsTable.rawOutput,
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        recommendations: scriptRunResultsTable.recommendations,
+        scoreImpact: scriptRunResultsTable.scoreImpact,
+        profileUpdates: scriptRunResultsTable.profileUpdates,
+        createdAt: scriptRunResultsTable.createdAt,
+        customerId: scriptRunResultsTable.customerId,
+        libraryScriptId: scriptRunResultsTable.libraryScriptId,
+        kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
+        customerName: usersTable.name,
+        scriptTitle: powershellScriptsTable.title,
+      })
+      .from(scriptRunResultsTable)
+      .leftJoin(usersTable, eq(scriptRunResultsTable.customerId, usersTable.id))
+      .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+      .where(eq(scriptRunResultsTable.id, id))
+      .limit(1);
+
+    if (!row) {
+      res.status(404).json({ error: "Script run not found" });
+      return;
+    }
+
+    // Fetch completedAt from job history if we have a jobId
+    let completedAt: Date | null = null;
+    if (row.jobId) {
+      const [hist] = await db
+        .select({ completedAt: runbookJobHistoryTable.completedAt })
+        .from(runbookJobHistoryTable)
+        .where(eq(runbookJobHistoryTable.jobId, row.jobId))
+        .limit(1);
+      completedAt = hist?.completedAt ?? null;
+    }
+
+    res.json({
+      ...row,
+      completedAt,
+      customerName: row.customerName ?? null,
+      scriptTitle: row.scriptTitle ?? null,
+    });
+  } catch (err) {
+    logger.error({ err, id }, "admin-script-runner: failed to fetch script run detail");
+    res.status(500).json({ error: "Failed to fetch script run detail" });
   }
 });
 

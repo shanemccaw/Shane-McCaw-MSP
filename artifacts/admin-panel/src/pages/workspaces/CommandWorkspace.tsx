@@ -4,6 +4,7 @@ import OverviewPage from "@/pages/Overview";
 import MessagesPage from "@/pages/crm/Messages";
 import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
+import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 
@@ -45,6 +46,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
     ),
   },
   {
+    label: "Running Scripts",
+    path: "/command/running-scripts",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+      </svg>
+    ),
+  },
+  {
     label: "AI Prompts",
     path: "/command/prompts",
     icon: (
@@ -66,12 +76,13 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
 
 function getContent(section: string): ReactNode {
   switch (section) {
-    case "messages":   return <MessagesPage />;
-    case "analytics":  return <AnalyticsPage />;
-    case "scripts":    return <ScriptGeneratorPage />;
-    case "prompts":    return <PromptCenterPage />;
-    case "marketing":  return <MarketingCommandCenterPage />;
-    default:           return <OverviewPage />;
+    case "messages":         return <MessagesPage />;
+    case "analytics":        return <AnalyticsPage />;
+    case "scripts":          return <ScriptGeneratorPage />;
+    case "running-scripts":  return <RunningScriptsPage />;
+    case "prompts":          return <PromptCenterPage />;
+    case "marketing":        return <MarketingCommandCenterPage />;
+    default:                 return <OverviewPage />;
   }
 }
 
