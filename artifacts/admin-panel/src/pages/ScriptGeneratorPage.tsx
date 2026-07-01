@@ -2584,6 +2584,11 @@ function PermissionsSidebarPanel({
     setNotesValue(permissions?.notes ?? "");
   }, [permissions?.notes]);
 
+  // Clear stale AI analysis whenever the active script/module changes
+  useEffect(() => {
+    setAnalysisResult(null);
+  }, [analyzeScriptId]);
+
   // Fetch inherited permissions when in package mode
   useEffect(() => {
     if (!(packageId && UUID_RE_LOCAL.test(packageId))) { setInheritedPerms([]); return; }
