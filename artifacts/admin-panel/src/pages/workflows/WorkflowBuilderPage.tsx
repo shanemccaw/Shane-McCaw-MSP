@@ -11,6 +11,8 @@ import {
   type NodeTypes,
   type Node,
   type Edge,
+  type NodeChange,
+  type EdgeChange,
   type ReactFlowInstance,
   Handle,
   Position,
@@ -1815,6 +1817,26 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
   }, [setEdges, nodes, edges]);
 
+  // Wrap onNodesChange: snapshot once when a drag ends (dragging === false) or a node is removed
+  const handleNodesChange = useCallback((changes: NodeChange[]) => {
+    const needsSnapshot = changes.some(c =>
+      (c.type === "position" && c.dragging === false) || c.type === "remove",
+    );
+    if (needsSnapshot) {
+      historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    }
+    onNodesChange(changes);
+  }, [onNodesChange, nodes, edges]);
+
+  // Wrap onEdgesChange: snapshot when an edge is removed
+  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
+    const needsSnapshot = changes.some(c => c.type === "remove");
+    if (needsSnapshot) {
+      historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    }
+    onEdgesChange(changes);
+  }, [onEdgesChange, nodes, edges]);
+
   const canvasRef = useRef<HTMLDivElement>(null);
 
   function addNode(nodeType: string, position?: { x: number; y: number }) {
@@ -2111,8 +2133,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             nodeTypes={nodeTypes}
             onInit={inst => { rfInstanceRef.current = inst; }}
@@ -2190,10 +2212,11 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             ) : (
               <>
                 <button
-                  onClick={() => { rfInstanceRef.current?.fitView({ padding: 0.12 }); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                  disabled
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#484F58] cursor-default"
+                  title="Nothing copied"
                 >
-                  <span>⊡</span> Fit View
+                  <span>⎘</span> Paste
                 </button>
                 <button
                   onClick={() => {
@@ -2204,6 +2227,12 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
                 >
                   <span>⬚</span> Select All
+                </button>
+                <button
+                  onClick={() => { rfInstanceRef.current?.fitView({ padding: 0.12 }); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  <span>⊡</span> Fit View
                 </button>
                 <div className="border-t border-[#30363D] my-1" />
                 <button
