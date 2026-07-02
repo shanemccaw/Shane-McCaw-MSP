@@ -1288,7 +1288,7 @@ function generateMockValue(key: string): unknown {
   return `test-${key}`;
 }
 
-function TestRunModal({ defId, onClose }: { defId: number; onClose: () => void }) {
+function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; currentVersionId: number | null; onClose: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
 
@@ -1338,11 +1338,11 @@ function TestRunModal({ defId, onClose }: { defId: number; onClose: () => void }
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload }),
+        body: JSON.stringify({ payload, versionId: currentVersionId }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-        throw new Error(String(body.error ?? "Failed to start — publish the workflow first"));
+        throw new Error(String(body.error ?? "Failed to start run"));
       }
       return res.json() as Promise<{ runId: number }>;
     },
@@ -1958,7 +1958,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
       {/* Test Run modal */}
       {showTestRun && (
-        <TestRunModal defId={defId} onClose={() => setShowTestRun(false)} />
+        <TestRunModal defId={defId} currentVersionId={currentVersionId} onClose={() => setShowTestRun(false)} />
       )}
 
       {/* Publish dialog */}

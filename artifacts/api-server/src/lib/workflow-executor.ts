@@ -864,15 +864,21 @@ export async function fireWorkflowForDefinition(
   triggerType: "manual" | "schedule" | "webhook" | "event",
   triggerRef: string,
   payload: Record<string, unknown> = {},
+  opts: { versionId?: number } = {},
 ): Promise<number | null> {
   try {
-    // Resolve published version
-    const versionRows = await db.select().from(wfVersionsTable).where(and(
-      eq(wfVersionsTable.definitionId, definitionId),
-      eq(wfVersionsTable.status, "published"),
-    )).limit(1);
+    // Resolve version: explicit versionId (e.g. test-run from draft) or latest published
+    const versionRows = opts.versionId
+      ? await db.select().from(wfVersionsTable).where(and(
+          eq(wfVersionsTable.id, opts.versionId),
+          eq(wfVersionsTable.definitionId, definitionId),
+        )).limit(1)
+      : await db.select().from(wfVersionsTable).where(and(
+          eq(wfVersionsTable.definitionId, definitionId),
+          eq(wfVersionsTable.status, "published"),
+        )).limit(1);
     const version = versionRows[0];
-    if (!version) { logger.warn({ definitionId }, "wf-executor: no published version found"); return null; }
+    if (!version) { logger.warn({ definitionId, versionId: opts.versionId }, "wf-executor: no version found"); return null; }
 
     // Fetch definition for concurrency limit
     const defRows = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, definitionId)).limit(1);

@@ -421,8 +421,13 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
 
   try {
-    const runId = await fireWorkflowForDefinition(defId, "manual", `admin:manual`, req.body.payload ?? {});
-    if (!runId) return sendError(res, 422, "No published version found or concurrency limit reached");
+    const versionId = req.body.versionId ? parseInt(req.body.versionId as string, 10) : undefined;
+    const runId = await fireWorkflowForDefinition(
+      defId, "manual", `admin:manual`,
+      req.body.payload ?? {},
+      versionId ? { versionId } : {},
+    );
+    if (!runId) return sendError(res, 422, "No runnable version found or concurrency limit reached");
     res.status(202).json({ runId });
   } catch (err) {
     sendError(res, 500, "Failed to trigger workflow");
