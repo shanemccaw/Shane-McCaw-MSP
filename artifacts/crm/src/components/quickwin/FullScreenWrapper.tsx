@@ -233,7 +233,8 @@ export default function FullScreenWrapper() {
   const timingSavedRef = useRef(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  // Start/stop the clock based on mode
+  // Start/stop the clock based on mode — persist start time in sessionStorage
+  // so page refreshes don't reset the timer.
   useEffect(() => {
     if (mode !== "ProjectTasksView") {
       timerStartRef.current = null;
@@ -241,13 +242,25 @@ export default function FullScreenWrapper() {
       setElapsedSeconds(0);
       return undefined;
     }
-    if (timerStartRef.current === null) timerStartRef.current = Date.now();
+
+    // Derive a stable storage key from the project being viewed.
+    const storageKey = kanbanProjectId ? `qw-timer-start-${kanbanProjectId}` : null;
+
+    if (timerStartRef.current === null) {
+      // Try to restore a persisted start time first.
+      const stored = storageKey ? sessionStorage.getItem(storageKey) : null;
+      const restored = stored ? parseInt(stored, 10) : NaN;
+      const startTime = !isNaN(restored) ? restored : Date.now();
+      if (storageKey && isNaN(restored)) sessionStorage.setItem(storageKey, String(startTime));
+      timerStartRef.current = startTime;
+    }
+
     const interval = setInterval(() => {
       if (timerStartRef.current !== null)
         setElapsedSeconds(Math.floor((Date.now() - timerStartRef.current) / 1000));
     }, 1000);
     return () => clearInterval(interval);
-  }, [mode]);
+  }, [mode, kanbanProjectId]);
 
   // Save elapsed time to DB once when all tasks are done
   const allTasksDoneForSave = kanbanTasks.length > 0 && kanbanTasks.every(t => t.column === "completed");
@@ -257,6 +270,9 @@ export default function FullScreenWrapper() {
     const secs = timerStartRef.current
       ? Math.floor((Date.now() - timerStartRef.current) / 1000)
       : elapsedSeconds;
+    // Clear the persisted start so a future visit to the same project doesn't
+    // inherit the old timer.
+    sessionStorage.removeItem(`qw-timer-start-${kanbanProjectId}`);
     void fetchWithAuth(`/api/portal/projects/${kanbanProjectId}/timing`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
