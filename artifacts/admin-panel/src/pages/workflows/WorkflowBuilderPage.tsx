@@ -1660,6 +1660,21 @@ interface AiWorkflowResult {
   edges: Array<{ id: string; source: string; target: string; sourceHandle?: string | null }>;
 }
 
+const AI_TRIGGER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "",                    label: "— not specified —" },
+  { value: "lead.created",        label: "Event: New lead submits form" },
+  { value: "lead.qualified",      label: "Event: Lead passes qualification" },
+  { value: "opportunity.created", label: "Event: Lead converts to opportunity" },
+  { value: "client.created",      label: "Event: New client account created" },
+  { value: "payment.received",    label: "Event: Stripe payment received" },
+  { value: "contract.signed",     label: "Event: Contract signed" },
+  { value: "quiz.lead_submitted", label: "Event: M365 readiness quiz completed" },
+  { value: "m365.health_check_complete", label: "Event: M365 health check complete" },
+  { value: "schedule",            label: "Scheduled (cron)" },
+  { value: "webhook",             label: "Webhook call" },
+  { value: "manual",              label: "Manual / admin trigger" },
+];
+
 function AiWorkflowModal({
   defId,
   onClose,
@@ -1671,6 +1686,7 @@ function AiWorkflowModal({
 }) {
   const { fetchWithAuth } = useAuth();
   const [description, setDescription] = useState("");
+  const [triggerType, setTriggerType] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1679,10 +1695,12 @@ function AiWorkflowModal({
     setLoading(true);
     setError(null);
     try {
+      const body: Record<string, string> = { description: description.trim() };
+      if (triggerType) body.triggerContext = triggerType;
       const res = await fetchWithAuth(`/api/admin/workflows/ai-generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ description: description.trim() }),
+        body: JSON.stringify(body),
       });
       const data = await res.json() as { nodes?: unknown; edges?: unknown; error?: string };
       if (!res.ok) {
@@ -1706,7 +1724,7 @@ function AiWorkflowModal({
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
             <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
           </div>
           <div className="min-w-0">
@@ -1721,6 +1739,20 @@ function AiWorkflowModal({
         </div>
 
         <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Trigger (optional)</label>
+          <select
+            value={triggerType}
+            onChange={e => setTriggerType(e.target.value)}
+            disabled={loading}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 disabled:opacity-50"
+          >
+            {AI_TRIGGER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="space-y-1.5">
           <label className="text-xs font-medium text-[#7D8590]">Describe your workflow</label>
           <textarea
             value={description}
@@ -1732,7 +1764,7 @@ function AiWorkflowModal({
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
           />
           <div className="flex justify-between">
-            <span className="text-[10px] text-[#484F58]">Be specific about triggers, conditions, and actions</span>
+            <span className="text-[10px] text-[#484F58]">Be specific about conditions, actions, and data fields</span>
             <span className="text-[10px] text-[#484F58]">{description.length}/2000</span>
           </div>
         </div>
@@ -2031,25 +2063,28 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setSelectedNodeId(null);
   }
 
-  // Hydrate canvas from AI-generated graph
+  // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions
   function handleAiGenerate(result: AiWorkflowResult) {
     pushHistory();
+    // Build stable id map: AI-provided id → normalised node-N id
+    const idMap = new Map<string, string>();
+    result.nodes.forEach(n => {
+      const newId = `node-${++nodeIdCounter.current}`;
+      idMap.set(n.id, newId);
+    });
     const rfNodes = result.nodes.map(n => ({
-      id: n.id,
+      id: idMap.get(n.id)!,
       type: "wfNode" as const,
       position: n.position,
       data: { ...n.data, nodeType: n.data.nodeType ?? n.type },
     }));
-    const rfEdges = result.edges.map(e => ({
-      ...e,
+    const rfEdges = result.edges.map((e, i) => ({
+      id: `ai-edge-${i + 1}`,
+      source: idMap.get(e.source) ?? e.source,
+      target: idMap.get(e.target) ?? e.target,
+      sourceHandle: e.sourceHandle ?? undefined,
       style: { stroke: "#30363D", strokeWidth: 2 },
     }));
-    // Sync nodeIdCounter above the highest generated id
-    const maxId = result.nodes.reduce((max, n) => {
-      const num = parseInt(n.id.replace(/\D+/g, ""), 10);
-      return isNaN(num) ? max : Math.max(max, num);
-    }, 0);
-    if (maxId >= nodeIdCounter.current) nodeIdCounter.current = maxId + 1;
     setNodes(rfNodes);
     setEdges(rfEdges);
     setShowAiModal(false);

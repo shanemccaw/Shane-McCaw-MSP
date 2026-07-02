@@ -790,10 +790,15 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
   try {
     const body = z.object({
       description: z.string().min(1).max(2000),
+      triggerContext: z.string().max(100).optional(),
     }).safeParse(req.body);
     if (!body.success) { sendError(res, 400, body.error.message); return; }
 
     const { anthropic } = await import("@workspace/integrations-anthropic-ai");
+
+    const triggerLine = body.data.triggerContext
+      ? `Trigger type selected by user: ${body.data.triggerContext}\n\n`
+      : "";
 
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -801,7 +806,7 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
       system: WORKFLOW_CANVAS_SYSTEM_PROMPT,
       messages: [{
         role: "user",
-        content: `Generate a workflow graph for:\n\n${body.data.description}`,
+        content: `Generate a workflow graph for:\n\n${triggerLine}${body.data.description}`,
       }],
     });
 
@@ -822,8 +827,42 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
       return;
     }
 
-    req.log.info({ nodeCount: validated.data.nodes.length, edgeCount: validated.data.edges.length }, "workflows/ai-generate: success");
-    res.json(validated.data);
+    const { nodes, edges } = validated.data;
+
+    // Unique node IDs
+    const nodeIdSet = new Set(nodes.map(n => n.id));
+    if (nodeIdSet.size !== nodes.length) {
+      sendError(res, 422, "AI generated duplicate node IDs — try rephrasing your description"); return;
+    }
+
+    // Unique edge IDs
+    const edgeIdSet = new Set(edges.map(e => e.id));
+    if (edgeIdSet.size !== edges.length) {
+      sendError(res, 422, "AI generated duplicate edge IDs — try rephrasing your description"); return;
+    }
+
+    // Edge referential integrity — source and target must reference existing nodes
+    for (const e of edges) {
+      if (!nodeIdSet.has(e.source) || !nodeIdSet.has(e.target)) {
+        req.log.warn({ edgeId: e.id, source: e.source, target: e.target }, "workflows/ai-generate: edge references unknown node");
+        sendError(res, 422, "AI generated an edge pointing to a non-existent node — try rephrasing your description"); return;
+      }
+    }
+
+    // Exactly one start node
+    const startCount = nodes.filter(n => n.type === "start").length;
+    if (startCount !== 1) {
+      sendError(res, 422, `AI generated ${startCount} start node${startCount === 1 ? "" : "s"} — expected exactly 1. Try rephrasing your description.`); return;
+    }
+
+    // At least one end node
+    const endCount = nodes.filter(n => n.type === "end").length;
+    if (endCount < 1) {
+      sendError(res, 422, "AI generated no end nodes — at least one is required. Try rephrasing your description."); return;
+    }
+
+    req.log.info({ nodeCount: nodes.length, edgeCount: edges.length }, "workflows/ai-generate: success");
+    res.json({ nodes, edges });
   } catch (err) {
     req.log.error({ err }, "workflows/ai-generate: failed");
     sendError(res, 500, "AI generation failed — please try again");
