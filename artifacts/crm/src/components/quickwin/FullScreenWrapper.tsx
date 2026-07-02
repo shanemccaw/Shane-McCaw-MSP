@@ -125,6 +125,36 @@ export default function FullScreenWrapper() {
     staleTime: 0,
   });
 
+  // ── Completed-task exit animation (same pattern as ProjectTasksLayer) ────────
+  const prevKanbanTasksRef = useRef<KanbanTask[]>([]);
+  const [exitingKanbanIds, setExitingKanbanIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    const prev = prevKanbanTasksRef.current;
+    const newlyCompleted = prev.length === 0
+      ? []
+      : kanbanTasks.filter(t => {
+          if (t.column !== "completed") return false;
+          const p = prev.find(p => p.id === t.id);
+          return p !== undefined && p.column !== "completed";
+        });
+    prevKanbanTasksRef.current = kanbanTasks;
+
+    if (newlyCompleted.length > 0) {
+      const ids = new Set(newlyCompleted.map(t => t.id));
+      setExitingKanbanIds(prev => new Set([...prev, ...ids]));
+      const timer = setTimeout(() => {
+        setExitingKanbanIds(prev => {
+          const next = new Set(prev);
+          ids.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 400);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [kanbanTasks]);
+
   // ── Waiting-task mutation (mark as done) ────────────────────────────────────
   const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
   const markDoneMutation = useMutation({
@@ -637,8 +667,8 @@ export default function FullScreenWrapper() {
                       title={task.title}
                       description={task.description ?? undefined}
                       category={currentCategory}
-                      subState="running"
-                      isExiting={false}
+                      subState={exitingKanbanIds.has(task.id) ? "done" : "running"}
+                      isExiting={exitingKanbanIds.has(task.id)}
                     />
                   ))}
 
