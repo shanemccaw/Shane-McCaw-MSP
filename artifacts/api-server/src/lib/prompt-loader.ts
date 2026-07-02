@@ -1117,6 +1117,49 @@ INSTRUCTIONS:
 - Total length: 1000-2000 words`,
   },
   {
+    key: "insights-consulting-copilot_readiness",
+    name: "Insights — Copilot Readiness Assessment",
+    description: "Generates a Copilot Readiness Assessment consulting deliverable in HTML. Tokens: {{typeLabel}}, {{clientName}}, {{projectDesc}}, {{title}}, {{date}}, {{scores}}, {{findings}}, {{recommendations}}, {{profileSample}}.",
+    category: "insights",
+    featureArea: "Command — Insights",
+    featureRoute: "/command/insights",
+    model: "claude-haiku-4-5",
+    body: `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
+
+Client: {{clientName}}
+{{projectDesc}}Deliverable title: {{title}}
+Date: {{date}}
+
+M365 Health Context:
+{{scores}}
+
+Key Findings: {{findings}}
+Key Recommendations: {{recommendations}}
+
+Configuration Telemetry Sample (from profileUpdates — use in your analysis):
+{{profileSample}}
+
+Document Sections Required:
+Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness (sensitivity labels, DLP, sharing policies), Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)
+
+For the Overall Readiness Rating use these thresholds based on the Composite score:
+- Green (Ready): Composite ≥ 75 — tenant meets minimum Copilot prerequisites with minor remediation needed
+- Amber (Conditionally Ready): Composite 50–74 — key gaps exist; targeted remediation required before rollout
+- Red (Not Ready): Composite < 50 — significant blockers across multiple domains; Copilot deployment not recommended until resolved
+
+Use a clearly styled badge for the rating: green (#107C10), amber (#FF8C00), or red (#D13438) background with white text.
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables
+- Each major section as <h2> with a horizontal rule separator
+- Data tables where appropriate (border-collapse, alternating rows)
+- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
+- Professional consulting tone as Shane McCaw, first person where appropriate
+
+- Total length: 1000-2000 words`,
+  },
+  {
     key: "workflow-generator",
     name: "Workflow Generator",
     description: "System prompt for the Generate Workflow button on the Delivery → Workflows page. Controls the phases, tasks, taskType labels, groupNames, and requiresManualRun rules AI produces when generating or replacing a workflow template from a linked service.",

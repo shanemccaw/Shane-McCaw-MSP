@@ -1007,6 +1007,7 @@ const CONSULTING_TYPE_LABELS: Record<string, string> = {
   security_hardening_plan:    "Security Hardening Plan",
   copilot_enablement_plan:    "Copilot Enablement Plan",
   identity_modernization_plan:"Identity Modernization Plan",
+  copilot_readiness:          "Copilot Readiness Assessment",
 };
 
 const generateConsultingSchema = z.object({
@@ -1268,6 +1269,7 @@ INSTRUCTIONS:
       security_hardening_plan:    "Include: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Privileged Access Workstations, Defender Configuration, Security Monitoring, Incident Response",
       copilot_enablement_plan:    "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy",
       identity_modernization_plan:"Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission",
+      copilot_readiness:          "Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness (sensitivity labels, DLP, sharing policies), Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)",
     };
 
     const typeLabel = CONSULTING_TYPE_LABELS[deliverableType] ?? deliverableType;

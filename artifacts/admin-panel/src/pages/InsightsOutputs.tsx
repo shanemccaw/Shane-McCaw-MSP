@@ -78,6 +78,7 @@ const CONSULTING_TYPES = [
   { key: "security_hardening_plan",     label: "Security Hardening Plan",    icon: Shield,        desc: "Identity, CA, Defender, and MFA hardening roadmap" },
   { key: "copilot_enablement_plan",     label: "Copilot Enablement Plan",    icon: Zap,           desc: "Readiness, data governance, pilot, and adoption strategy" },
   { key: "identity_modernization_plan", label: "Identity Modernization Plan",icon: Users,         desc: "Entra ID modernisation, MFA, PIM, and legacy decommission" },
+  { key: "copilot_readiness",           label: "Copilot Readiness Assessment",icon: CheckCircle,  desc: "Tenant readiness for M365 Copilot — identity, licensing, governance, and security blockers" },
 ] as const;
 
 const AUTOMATION_TYPES = [
