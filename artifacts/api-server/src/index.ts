@@ -288,6 +288,22 @@ app.listen(port, (err) => {
   };
   setInterval(runWfCleanup, WF_CLEANUP_INTERVAL_MS);
 
+  // ── Quick-win result shares: daily cleanup of expired rows ───────────────
+  const runShareCleanup = () => {
+    pool.query(`DELETE FROM quick_win_result_shares WHERE expires_at < NOW()`)
+      .then((result) => {
+        if (result.rowCount && result.rowCount > 0) {
+          logger.info({ deleted: result.rowCount }, "share-cleanup: removed expired quick-win result share rows");
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, "share-cleanup: expired share cleanup failed (non-fatal)");
+      });
+  };
+  // Run once at startup to clear any rows that expired while the server was down
+  runShareCleanup();
+  setInterval(runShareCleanup, WF_CLEANUP_INTERVAL_MS);
+
   pool.query(`
     CREATE TABLE IF NOT EXISTS revenue_forecasts (
       id SERIAL PRIMARY KEY,
