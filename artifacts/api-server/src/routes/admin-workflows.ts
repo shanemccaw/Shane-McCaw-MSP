@@ -434,6 +434,51 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
   }
 });
 
+// ── Draft test run (runs live canvas, no publish required) ───────────────────
+
+router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  if (isNaN(defId)) return sendError(res, 400, "Invalid id");
+
+  const body = z.object({
+    nodes: z.array(z.any()),
+    edges: z.array(z.any()),
+    triggerPayload: z.record(z.unknown()).optional(),
+  }).safeParse(req.body);
+  if (!body.success) return sendError(res, 400, body.error.message);
+
+  try {
+    const [latest] = await db
+      .select({ vn: wfVersionsTable.versionNumber })
+      .from(wfVersionsTable)
+      .where(eq(wfVersionsTable.definitionId, defId))
+      .orderBy(desc(wfVersionsTable.versionNumber))
+      .limit(1);
+
+    const nextVn = (latest?.vn ?? 0) + 1;
+    const [version] = await db.insert(wfVersionsTable).values({
+      definitionId: defId,
+      versionNumber: nextVn,
+      label: `Draft test — ${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
+      status: "draft",
+      graph: { nodes: body.data.nodes as WfGraph["nodes"], edges: body.data.edges as WfGraph["edges"] },
+    }).returning();
+
+    const runId = await fireWorkflowForDefinition(
+      defId, "manual", "draft_test",
+      body.data.triggerPayload ?? {},
+      { versionId: version.id },
+    );
+
+    if (!runId) return sendError(res, 422, "Concurrency limit reached or version resolution failed");
+    req.log.info({ defId, runId, versionId: version.id }, "workflows: draft test-run started");
+    res.status(202).json({ runId });
+  } catch (err) {
+    req.log.error({ err }, "workflows: draft test-run failed");
+    sendError(res, 500, "Failed to start test run");
+  }
+});
+
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
 router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Response) => {

@@ -1288,9 +1288,15 @@ function generateMockValue(key: string): unknown {
   return `test-${key}`;
 }
 
-function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; currentVersionId: number | null; onClose: () => void }) {
+function TestRunPanel({ defId, nodes, edges, onClose }: {
+  defId: number;
+  nodes: Node[];
+  edges: Edge[];
+  onClose: () => void;
+}) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
+  const [wide, setWide] = useState(false);
 
   const { data: triggers = [], isLoading: loadingTriggers } = useQuery<WfTrigger[]>({
     queryKey: ["wf-triggers-testrun", defId],
@@ -1320,7 +1326,7 @@ function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; cur
 
   const [payloadText, setPayloadText] = useState(() => JSON.stringify({}, null, 2));
   const [jsonErr, setJsonErr] = useState<string | null>(null);
-  const [runResult, setRunResult] = useState<{ runId: number } | null>(null);
+  const [runId, setRunId] = useState<number | null>(null);
 
   useEffect(() => {
     setPayloadText(JSON.stringify(defaultPayload, null, 2));
@@ -1334,11 +1340,11 @@ function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; cur
 
   const runMut = useMutation({
     mutationFn: async () => {
-      const payload = JSON.parse(payloadText) as Record<string, unknown>;
-      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/run`, {
+      const triggerPayload = JSON.parse(payloadText) as Record<string, unknown>;
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/test-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payload, versionId: currentVersionId }),
+        body: JSON.stringify({ nodes, edges, triggerPayload }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -1346,40 +1352,136 @@ function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; cur
       }
       return res.json() as Promise<{ runId: number }>;
     },
-    onSuccess: (data) => setRunResult(data),
+    onSuccess: (data) => setRunId(data.runId),
   });
 
+  const { data: runStatus } = useQuery<{
+    id: number;
+    status: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+    errorMessage: string | null;
+    durationMs: number | null;
+    branchPath: string[];
+  }>({
+    queryKey: ["wf-test-run-status", runId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}`);
+      if (!res.ok) throw new Error("Failed to load");
+      return res.json();
+    },
+    enabled: runId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "running" || status === "pending" ? 3000 : false;
+    },
+  });
+
+  const isLive = runStatus?.status === "running" || runStatus?.status === "pending";
+
+  function fmtMs(ms: number | null | undefined): string {
+    if (!ms) return "";
+    if (ms < 1000) return `${ms}ms`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
-      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+    <>
+      <div className="fixed inset-0 z-30 bg-black/40" onClick={onClose} />
+
+      <div className={`fixed right-0 top-0 h-full z-40 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transition-[width] duration-300 ${wide ? "w-[760px]" : "w-[480px]"}`}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm">🧪</span>
-            <h3 className="text-sm font-semibold text-[#E6EDF3]">Test Run</h3>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm flex-shrink-0">🧪</span>
+            <h3 className="text-sm font-semibold text-[#E6EDF3] flex-shrink-0">Test Run</h3>
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider flex-shrink-0">Draft</span>
+            <span className="text-[10px] text-[#484F58] truncate">· {nodes.length} nodes</span>
           </div>
-          <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none">×</button>
+          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+            <button
+              onClick={() => setWide(w => !w)}
+              title={wide ? "Narrow panel" : "Wide panel"}
+              className="text-[#484F58] hover:text-[#E6EDF3] transition-colors p-1 rounded"
+            >
+              {wide ? (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4m0 0H4m5 0L3 10m12-1V4m0 0h5m-5 0l6 6M9 20v-5m0 5H4m5 0l-6-6m12 6v-5m0 5h5m-5 0l6-6" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+              )}
+            </button>
+            <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-4">
 
-          {/* ── Success state ── */}
-          {runResult ? (
-            <div className="space-y-3">
-              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-4 text-center space-y-1.5">
-                <p className="text-emerald-400 font-semibold text-sm">✓ Run started</p>
-                <p className="text-xs text-[#7D8590]">Run #{runResult.runId} is now executing.</p>
+          {/* ── Inline run status (after run starts) ── */}
+          {runId !== null ? (
+            <div className="space-y-4">
+              <div className={`rounded-xl border p-4 space-y-2.5 ${
+                runStatus?.status === "completed" ? "bg-emerald-500/10 border-emerald-500/30" :
+                runStatus?.status === "failed"    ? "bg-red-500/10 border-red-500/30" :
+                                                    "bg-blue-500/10 border-blue-500/30"
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isLive && (
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-ping flex-shrink-0" />
+                  )}
+                  <p className={`font-semibold text-sm ${
+                    runStatus?.status === "completed" ? "text-emerald-400" :
+                    runStatus?.status === "failed"    ? "text-red-400" :
+                                                        "text-blue-300"
+                  }`}>
+                    {!runStatus             ? "Starting…" :
+                     runStatus.status === "completed" ? "✓ Completed" :
+                     runStatus.status === "failed"    ? "✗ Failed" :
+                     runStatus.status === "running"   ? "⟳ Running…" :
+                     runStatus.status === "cancelled" ? "Cancelled" : "⧖ Pending…"}
+                  </p>
+                  {runStatus?.durationMs != null && (
+                    <span className="text-[10px] text-[#7D8590] font-mono">{fmtMs(runStatus.durationMs)}</span>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-[#7D8590]">
+                  Run <span className="font-mono text-[#484F58]">#{runId}</span> · Draft canvas
+                </p>
+
+                {runStatus?.branchPath && runStatus.branchPath.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {runStatus.branchPath.map((nodeId, i) => (
+                      <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono bg-[#0D1117] border border-[#30363D] text-[#7D8590]">
+                        {nodeId}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {runStatus?.errorMessage && (
+                  <p className="text-[10px] text-red-400 font-mono break-all">Error: {runStatus.errorMessage}</p>
+                )}
               </div>
-              <button
-                onClick={() => navigate(`/workflows/runs/${runResult.runId}`)}
-                className="w-full px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
-              >
-                View Run #{runResult.runId} →
-              </button>
-              <button onClick={onClose} className="w-full text-xs text-[#7D8590] hover:text-[#E6EDF3] py-1">
-                Close
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate(`/workflows/runs/${runId}`)}
+                  className="flex-1 px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+                >
+                  View Full Run #{runId} →
+                </button>
+                <button
+                  onClick={() => { setRunId(null); runMut.reset(); }}
+                  className="px-4 py-2 bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] text-xs font-medium rounded-lg transition-colors"
+                >
+                  Run Again
+                </button>
+              </div>
             </div>
           ) : (
             <>
@@ -1461,7 +1563,7 @@ function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; cur
         </div>
 
         {/* Footer */}
-        {!runResult && (
+        {runId === null && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
             <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
@@ -1471,12 +1573,12 @@ function TestRunModal({ defId, currentVersionId, onClose }: { defId: number; cur
             >
               {runMut.isPending
                 ? <><span className="animate-spin inline-block">⟳</span> Starting…</>
-                : <>🧪 Run Test</>}
+                : <>🧪 Run Draft Canvas</>}
             </button>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1956,9 +2058,9 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         )}
       </div>
 
-      {/* Test Run modal */}
+      {/* Test Run panel (right slide-out) */}
       {showTestRun && (
-        <TestRunModal defId={defId} currentVersionId={currentVersionId} onClose={() => setShowTestRun(false)} />
+        <TestRunPanel defId={defId} nodes={nodes} edges={edges} onClose={() => setShowTestRun(false)} />
       )}
 
       {/* Publish dialog */}

@@ -21,6 +21,7 @@ interface WfRunDetail {
   versionLabel: string | null;
   versionNumber: number | null;
   triggerType: string;
+  triggerRef: string | null;
   status: string;
   payload: Record<string, unknown>;
   branchPath: string[];
@@ -267,6 +268,11 @@ export default function RunDetailPage({ runId }: { runId: number }) {
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[run.status] ?? ""}`}>
               {run.status}
             </span>
+            {run.triggerRef === "draft_test" && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">
+                Draft Run
+              </span>
+            )}
           </div>
           <p className="text-sm text-[#7D8590] mt-0.5 truncate">
             {run.definitionName ?? "Unknown workflow"} · {run.versionLabel ?? ""} · {run.triggerType}

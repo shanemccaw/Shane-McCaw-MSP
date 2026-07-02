@@ -10,6 +10,7 @@ interface WfRun {
   definitionName: string | null;
   versionLabel: string | null;
   triggerType: string;
+  triggerRef: string | null;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   durationMs: number | null;
   startedAt: string | null;
@@ -193,10 +194,15 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
                   )}
                 </div>
 
-                <span className="text-sm">
-                  <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
-                  <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
-                </span>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-sm">
+                    <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
+                    <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
+                  </span>
+                  {run.triggerRef === "draft_test" && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">Draft</span>
+                  )}
+                </div>
 
                 <StatusChip status={run.status} />
 
