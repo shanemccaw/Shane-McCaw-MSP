@@ -315,7 +315,7 @@ export default function ProjectTasksLayer() {
       </div>
 
       {/* Task list */}
-      <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+      <div className="space-y-2 pr-1">
         {!isLoading && sorted.length === 0 && (
           <div className="flex items-center gap-2.5 py-3">
             <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />

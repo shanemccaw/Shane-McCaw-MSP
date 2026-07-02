@@ -568,9 +568,9 @@ export default function FullScreenWrapper() {
 
       {/* ── Project Tasks View ── */}
       {isProjectView && (
-        <div className="flex-1 relative z-10 flex items-center justify-center p-6">
-          <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 max-w-2xl w-full overflow-hidden">
-            <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between">
+        <div className="flex-1 relative z-10 flex items-stretch justify-start pl-8 sm:pl-14 py-6 pr-6">
+          <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md flex flex-col overflow-hidden">
+            <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
               <div>
                 <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
                 <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
@@ -589,7 +589,7 @@ export default function FullScreenWrapper() {
                 </span>
               )}
             </div>
-            <div className="px-6 py-5">
+            <div className="px-6 py-5 flex-1 overflow-y-auto">
               <ProjectTasksLayer />
             </div>
           </div>
