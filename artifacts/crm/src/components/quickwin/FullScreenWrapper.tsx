@@ -416,8 +416,6 @@ export default function FullScreenWrapper() {
     return overallScore;
   })();
 
-  // True when we're in real-data mode (no simulation steps)
-  const isKanbanMode = steps.length === 0;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -568,11 +566,11 @@ export default function FullScreenWrapper() {
                     {quickWin?.title ?? "M365 Diagnostic"}
                   </h1>
 
-                  {/* Phase stepper — kanban group names when real data, simulation steps otherwise */}
+                  {/* Phase stepper — kanban group names as phases */}
                   <PhaseStepperBar
-                    steps={isKanbanMode ? kanbanPhases : stepTitles}
-                    activeIndex={isKanbanMode ? activePhaseIndex : currentStepIndex}
-                    completedCount={isKanbanMode ? activePhaseCompletedCount : completedSteps.length}
+                    steps={kanbanPhases.length > 0 ? kanbanPhases : stepTitles}
+                    activeIndex={activePhaseIndex}
+                    completedCount={activePhaseCompletedCount}
                   />
 
                   {/* Velocity progress bar */}
@@ -595,20 +593,14 @@ export default function FullScreenWrapper() {
                       </div>
                     </div>
                     <p className="text-[14px] text-black/50 mt-1">
-                      {isKanbanMode ? (
-                        activeKanbanTask ? (
-                          <>Currently running{" "}
-                            <span className="text-[#0078D4] font-semibold">{activeKanbanTask.title}</span>.
-                          </>
-                        ) : completedKanbanTasks.length === kanbanTasks.length && kanbanTasks.length > 0 ? (
-                          "All tasks complete."
-                        ) : (
-                          "Scripts queued — starting soon."
-                        )
-                      ) : (
-                        <>Scanning M365 endpoints. Currently analyzing{" "}
-                          <span className="text-[#0078D4] font-semibold">{currentStep?.title ?? "subsystems"}</span>.
+                      {activeKanbanTask ? (
+                        <>Currently running{" "}
+                          <span className="text-[#0078D4] font-semibold">{activeKanbanTask.title}</span>.
                         </>
+                      ) : completedKanbanTasks.length === kanbanTasks.length && kanbanTasks.length > 0 ? (
+                        "All tasks complete."
+                      ) : (
+                        "Scripts queued — starting soon."
                       )}
                     </p>
                   </div>
@@ -624,166 +616,111 @@ export default function FullScreenWrapper() {
               {/* Kanban 12-col grid */}
               <div className="w-full max-w-7xl grid grid-cols-12 gap-8 relative flex-1 mb-4">
 
-                {/* Left: Completed tasks */}
-                <CompletedColumn
-                  completedSteps={
-                    isKanbanMode
-                      ? completedKanbanTasks.map(t => t.title)
-                      : completedSteps
-                  }
-                />
+                {/* Left: Completed kanban tasks */}
+                <CompletedColumn completedSteps={completedKanbanTasks.map(t => t.title)} />
 
-                {/* Centre (col-span-7): Active cards */}
+                {/* Centre (col-span-7): Live kanban cards */}
                 <div className="col-span-12 lg:col-span-7 relative flex flex-col justify-center items-center gap-5">
 
-                  {/* ── Kanban mode: real cards ── */}
-                  {isKanbanMode && (
-                    <>
-                      {/* Nothing loaded yet */}
-                      {kanbanTasks.length === 0 && (
-                        <div className="flex items-center gap-3 py-12">
-                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                          <p className="text-sm text-black/50">Loading tasks…</p>
-                        </div>
-                      )}
-
-                      {/* In-progress tasks */}
-                      {inProgressTasks.map(task => (
-                        <ProcessingHeroCard
-                          key={task.id}
-                          title={task.title}
-                          description={task.description ?? undefined}
-                          category={currentCategory}
-                          subState="running"
-                          isExiting={false}
-                        />
-                      ))}
-
-                      {/* Waiting-on-customer tasks */}
-                      {waitingTasks.map(task => {
-                        const meta = task.taskMetadata;
-                        const dl = meta?.customerDownload as { scriptId?: string; scriptTitle?: string } | null | undefined;
-                        return (
-                          <div
-                            key={task.id}
-                            className="rounded-xl p-6 flex flex-col w-full max-w-[380px] border border-amber-300/50 bg-amber-50/80 shadow-lg gap-3"
-                            style={{ backdropFilter: "blur(12px)" }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              </svg>
-                              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
-                            </div>
-                            <p className="text-base font-semibold text-[#0A2540]">{task.title}</p>
-                            {task.description && (
-                              <p className="text-xs text-black/50 leading-snug">{task.description}</p>
-                            )}
-                            <div className="pt-1">
-                              {dl?.scriptId ? (
-                                <a
-                                  href={`/api/portal/tasks/${task.id}/download-script`}
-                                  className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
-                                >
-                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                  </svg>
-                                  {dl.scriptTitle ?? "Download Script"}
-                                </a>
-                              ) : (
-                                <button
-                                  onClick={() => {
-                                    setMarkingDoneId(task.id);
-                                    markDoneMutation.mutate(task.id);
-                                  }}
-                                  disabled={markingDoneId === task.id}
-                                  className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
-                                >
-                                  {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {/* All queued, nothing active yet */}
-                      {kanbanTasks.length > 0 &&
-                        inProgressTasks.length === 0 &&
-                        waitingTasks.length === 0 &&
-                        completedKanbanTasks.length < kanbanTasks.length && (
-                        <div className="flex flex-col items-center gap-3 py-12 text-center">
-                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                          <p className="text-sm text-black/50">Scripts queued — waiting to start…</p>
-                        </div>
-                      )}
-
-                      {/* All complete */}
-                      {kanbanTasks.length > 0 &&
-                        completedKanbanTasks.length === kanbanTasks.length && (
-                        <div className="flex flex-col items-center gap-4 py-12 text-center">
-                          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
-                            <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <div>
-                            <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
-                            <p className="text-sm text-black/50 mt-1">Your M365 environment has been configured.</p>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                  {/* Loading: no project tasks yet */}
+                  {kanbanTasks.length === 0 && (
+                    <div className="flex items-center gap-3 py-12">
+                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <p className="text-sm text-black/50">Loading tasks…</p>
+                    </div>
                   )}
 
-                  {/* ── Simulation mode: original animated cards ── */}
-                  {!isKanbanMode && (
-                    <>
-                      {mode === "RunningAutoStep" && (
-                        <ProcessingHeroCard
-                          title={currentStep?.title ?? "Running Diagnostic"}
-                          description={currentStep?.description}
-                          category={currentCategory}
-                          subState={subState}
-                          isExiting={cardExiting}
-                        />
-                      )}
-                      {mode === "WaitingForUser" && (
-                        <ActionRequiredCard
-                          stepTitle={currentStep?.title ?? "Manual Step"}
-                          procedureNumber={currentStepIndex + 1}
-                          isExiting={cardExiting}
-                          downloadState={downloadState}
-                          onDownloadClick={() => setDownloadState("waiting")}
-                        />
-                      )}
-                      {mode === "StepComplete" && (
-                        <ProcessingHeroCard
-                          title={currentStep?.title ?? "Step Complete"}
-                          description={currentStep?.description}
-                          category={currentCategory}
-                          subState="done"
-                          isExiting={cardExiting}
-                        />
-                      )}
-                      {mode === "Ready" && (
-                        <div className="flex items-center gap-3 py-8">
-                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                          <p className="text-sm text-black/50">Preparing next step…</p>
+                  {/* In-progress tasks → ProcessingHeroCard (running subState) */}
+                  {inProgressTasks.map(task => (
+                    <ProcessingHeroCard
+                      key={task.id}
+                      title={task.title}
+                      description={task.description ?? undefined}
+                      category={currentCategory}
+                      subState="running"
+                      isExiting={false}
+                    />
+                  ))}
+
+                  {/* Waiting-on-customer tasks → amber action card */}
+                  {waitingTasks.map(task => {
+                    const dl = (task.taskMetadata?.customerDownload ?? null) as
+                      | { scriptId?: string; scriptTitle?: string }
+                      | null;
+                    return (
+                      <div
+                        key={task.id}
+                        className="rounded-xl p-6 flex flex-col w-full max-w-[380px] border border-amber-300/50 bg-amber-50/80 shadow-lg gap-3"
+                        style={{ backdropFilter: "blur(12px)" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
                         </div>
-                      )}
-                    </>
+                        <p className="text-base font-semibold text-[#0A2540]">{task.title}</p>
+                        {task.description && (
+                          <p className="text-xs text-black/50 leading-snug">{task.description}</p>
+                        )}
+                        <div className="pt-1">
+                          {dl?.scriptId ? (
+                            <a
+                              href={`/api/portal/tasks/${task.id}/download-script`}
+                              className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              {dl.scriptTitle ?? "Download Script"}
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setMarkingDoneId(task.id);
+                                markDoneMutation.mutate(task.id);
+                              }}
+                              disabled={markingDoneId === task.id}
+                              className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Tasks exist but nothing active yet */}
+                  {kanbanTasks.length > 0 &&
+                    inProgressTasks.length === 0 &&
+                    waitingTasks.length === 0 &&
+                    completedKanbanTasks.length < kanbanTasks.length && (
+                    <div className="flex flex-col items-center gap-3 py-12 text-center">
+                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                      <p className="text-sm text-black/50">Scripts queued — waiting to start…</p>
+                    </div>
+                  )}
+
+                  {/* All tasks complete */}
+                  {kanbanTasks.length > 0 &&
+                    completedKanbanTasks.length === kanbanTasks.length && (
+                    <div className="flex flex-col items-center gap-4 py-12 text-center">
+                      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
+                        <p className="text-sm text-black/50 mt-1">Your M365 environment has been configured.</p>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* Right: Backlog queue */}
-                <QueueColumn
-                  pendingSteps={
-                    isKanbanMode
-                      ? backlogTasks.map(t => t.title)
-                      : pendingSteps
-                  }
-                />
+                {/* Right: Backlog tasks */}
+                <QueueColumn pendingSteps={backlogTasks.map(t => t.title)} />
               </div>
             </>
           )}
@@ -794,7 +731,7 @@ export default function FullScreenWrapper() {
       {!isProjectView && mode !== "EnteringQuickWin" && (
         <QuickWinFooter
           progressPct={kanbanProgress}
-          completedCount={isKanbanMode ? completedKanbanTasks.length : completedSteps.length}
+          completedCount={completedKanbanTasks.length}
           clientName={clientName}
           clientAvatarUrl={undefined}
         />
