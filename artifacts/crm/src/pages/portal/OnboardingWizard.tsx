@@ -415,7 +415,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       {/* ── Left sidebar ──────────────────────────────────────────────────── */}
       <div className="hidden md:flex flex-col w-72 bg-[#0A2540] flex-shrink-0">
         {/* Logo area */}
-        <div className="px-7 pt-8 pb-6 border-b border-white/10">
+        <div className="px-7 pt-8 pb-6 [@media(max-height:700px)]:pt-4 [@media(max-height:700px)]:pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center flex-shrink-0">
               <svg className="w-4.5 h-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -430,20 +430,20 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
         </div>
 
         {/* Welcome */}
-        <div className="px-7 pt-6 pb-5">
+        <div className="px-7 pt-6 pb-5 [@media(max-height:700px)]:pt-3 [@media(max-height:700px)]:pb-2">
           {mode === "update" ? (
             <>
-              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5">Update credentials</p>
-              <h2 className="text-lg font-bold text-white leading-tight">Re-run Automation Setup</h2>
-              <p className="text-xs text-white/40 mt-2 leading-relaxed">
+              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5 [@media(max-height:700px)]:mb-1">Update credentials</p>
+              <h2 className="text-lg font-bold text-white leading-tight [@media(max-height:700px)]:text-base">Re-run Automation Setup</h2>
+              <p className="text-xs text-white/40 mt-2 leading-relaxed [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
                 Update your Azure App Registration credentials. Changes save when you click "Submit &amp; Finish".
               </p>
             </>
           ) : (
             <>
-              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5">Welcome aboard</p>
-              <h2 className="text-lg font-bold text-white leading-tight">Let's set up your workspace</h2>
-              <p className="text-xs text-white/40 mt-2 leading-relaxed">
+              <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5 [@media(max-height:700px)]:mb-1">Welcome aboard</p>
+              <h2 className="text-lg font-bold text-white leading-tight [@media(max-height:700px)]:text-base">Let's set up your workspace</h2>
+              <p className="text-xs text-white/40 mt-2 leading-relaxed [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
                 This takes about 5 minutes. You can skip any step and come back later.
               </p>
             </>
@@ -477,12 +477,12 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
               <div key={step.id} className="relative">
                 {/* Connector line */}
                 {idx < STEPS.length - 1 && (
-                  <div className={`absolute left-[23px] top-[44px] w-0.5 h-8 ${isDone ? "bg-[#0078D4]" : "bg-white/10"}`} />
+                  <div className={`absolute left-[23px] top-[44px] [@media(max-height:700px)]:top-[36px] w-0.5 h-8 [@media(max-height:700px)]:h-5 ${isDone ? "bg-[#0078D4]" : "bg-white/10"}`} />
                 )}
 
-                <div className={`flex items-start gap-3.5 px-3 py-3 rounded-xl transition-all ${isActive ? "bg-white/10" : ""}`}>
+                <div className={`flex items-start gap-3.5 px-3 py-3 [@media(max-height:700px)]:py-1.5 rounded-xl transition-all ${isActive ? "bg-white/10" : ""}`}>
                   {/* Step indicator */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
+                  <div className={`w-8 h-8 [@media(max-height:700px)]:w-6 [@media(max-height:700px)]:h-6 rounded-full flex items-center justify-center flex-shrink-0 border-2 transition-all ${
                     isDone
                       ? "bg-[#0078D4] border-[#0078D4]"
                       : isActive
@@ -490,7 +490,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
                         : "bg-transparent border-white/20"
                   }`}>
                     {isDone ? (
-                      <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <svg className="w-4 h-4 [@media(max-height:700px)]:w-3 [@media(max-height:700px)]:h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     ) : (
@@ -498,15 +498,15 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
                     )}
                   </div>
 
-                  <div className="pt-1 min-w-0">
+                  <div className="pt-1 [@media(max-height:700px)]:pt-0 min-w-0">
                     <p className={`text-sm font-semibold truncate ${isActive ? "text-white" : isDone ? "text-white/70" : "text-white/30"}`}>
                       {step.label}
                     </p>
-                    <p className={`text-xs mt-0.5 truncate ${isActive ? "text-white/50" : "text-white/20"}`}>{step.sublabel}</p>
+                    <p className={`text-xs mt-0.5 [@media(max-height:700px)]:mt-0 [@media(max-height:700px)]:text-[10px] truncate ${isActive ? "text-white/50" : "text-white/20"}`}>{step.sublabel}</p>
                   </div>
 
                   {isActive && (
-                    <div className="flex-shrink-0 pt-1.5">
+                    <div className="flex-shrink-0 pt-1.5 [@media(max-height:700px)]:pt-0.5">
                       <div className="w-1.5 h-1.5 rounded-full bg-[#00B4D8] animate-pulse" />
                     </div>
                   )}
@@ -517,29 +517,29 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
 
           {/* Done step */}
           {currentStep === "done" && (
-            <div className="flex items-start gap-3.5 px-3 py-3 rounded-xl bg-white/10">
-              <div className="w-8 h-8 rounded-full bg-green-500 border-2 border-green-500 flex items-center justify-center flex-shrink-0">
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <div className="flex items-start gap-3.5 px-3 py-3 [@media(max-height:700px)]:py-1.5 rounded-xl bg-white/10">
+              <div className="w-8 h-8 [@media(max-height:700px)]:w-6 [@media(max-height:700px)]:h-6 rounded-full bg-green-500 border-2 border-green-500 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 [@media(max-height:700px)]:w-3 [@media(max-height:700px)]:h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                 </svg>
               </div>
-              <div className="pt-1">
+              <div className="pt-1 [@media(max-height:700px)]:pt-0">
                 <p className="text-sm font-semibold text-white">Complete</p>
-                <p className="text-xs text-white/50 mt-0.5">All set!</p>
+                <p className="text-xs text-white/50 mt-0.5 [@media(max-height:700px)]:mt-0 [@media(max-height:700px)]:text-[10px]">All set!</p>
               </div>
             </div>
           )}
         </div>
 
         {/* Security note */}
-        <div className="px-6 py-5 border-t border-white/10">
-          <div className="flex items-center gap-2 mb-1.5">
+        <div className="px-6 py-5 [@media(max-height:700px)]:py-2.5 border-t border-white/10">
+          <div className="flex items-center gap-2 mb-1.5 [@media(max-height:700px)]:mb-1">
             <svg className="w-3.5 h-3.5 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
             </svg>
             <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">End-to-end encrypted</span>
           </div>
-          <p className="text-[11px] text-white/30 leading-relaxed">
+          <p className="text-[11px] text-white/30 leading-relaxed [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
             Credentials are transmitted via TLS and stored in Azure Key Vault — never in this app's database.
           </p>
         </div>
