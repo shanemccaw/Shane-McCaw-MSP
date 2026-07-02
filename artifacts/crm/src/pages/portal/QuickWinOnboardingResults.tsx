@@ -128,6 +128,12 @@ const RISK_THRESHOLDS: Array<{ key: string; label: string; risk: string; detail:
   },
 ];
 
+interface EngagementStatus {
+  hasActiveEngagement: boolean;
+}
+
+const POLL_INTERVAL_MS = 30_000;
+
 export default function QuickWinOnboardingResults() {
   const { fetchWithAuth, user } = useAuth();
   const [, navigate] = useLocation();
@@ -146,6 +152,35 @@ export default function QuickWinOnboardingResults() {
       .catch(() => setScorecard({ hasData: false }))
       .finally(() => setLoading(false));
   }, [fetchWithAuth]);
+
+  // Poll wizard-status every 30 s so the gate lifts automatically the moment
+  // Shane activates the client's service — no manual navigation needed.
+  useEffect(() => {
+    let active = true;
+
+    async function checkStatus() {
+      try {
+        const r = await fetchWithAuth("/api/portal/onboarding/wizard-status");
+        if (!active) return;
+        if (r.ok) {
+          const data = await r.json() as EngagementStatus;
+          if (data.hasActiveEngagement) {
+            active = false;
+            navigate("/portal");
+          }
+        }
+      } catch {
+        // Network error — silently ignore, retry next interval
+      }
+    }
+
+    const id = setInterval(checkStatus, POLL_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [fetchWithAuth, navigate]);
 
   async function generateShareLink() {
     setShareLoading(true);
