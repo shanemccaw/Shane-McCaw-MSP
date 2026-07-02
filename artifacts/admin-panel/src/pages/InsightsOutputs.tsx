@@ -499,7 +499,7 @@ function DocumentsTab({
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
                     <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {doc.status === "approved" && (
+                    {(doc.status === "approved" || doc.status === "draft") && (
                       <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
                     )}
                     <button onClick={() => void updateStatus(doc.id, "archived")} title="Archive" className="p-1 rounded text-gray-400 hover:text-gray-300 hover:bg-gray-700"><Archive className="w-3.5 h-3.5" /></button>
@@ -519,7 +519,7 @@ function DocumentsTab({
             <div><div className="text-white text-sm font-medium truncate max-w-[260px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
             <div className="flex gap-1">
               <button onClick={() => downloadPdf(selectedDoc)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="Download PDF"><Download className="w-3.5 h-3.5" /></button>
-              {selectedDoc.status === "approved" && (
+              {(selectedDoc.status === "approved" || selectedDoc.status === "draft") && (
                 <button
                   onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) openSend(d); }}
                   className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
@@ -764,7 +764,7 @@ function ConsultingTab({
                   <StatusPill status={doc.status} />
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                     <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {doc.status === "approved" && (
+                    {(doc.status === "approved" || doc.status === "draft") && (
                       <button onClick={() => openSend(doc)} title="Send to Customer" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
                     )}
                     <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -784,7 +784,7 @@ function ConsultingTab({
               <div><div className="text-white text-sm font-medium truncate max-w-[280px]">{selectedDoc.title}</div><StatusPill status={selectedDoc.status} /></div>
               <div className="flex gap-1">
                 <button onClick={() => downloadPdf(selectedDoc)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700" title="Download PDF"><Download className="w-3.5 h-3.5" /></button>
-                {selectedDoc.status === "approved" && (
+                {(selectedDoc.status === "approved" || selectedDoc.status === "draft") && (
                   <button onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) openSend(d); }}
                     className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg">
                     <Send className="w-3 h-3" /> Send

@@ -880,8 +880,17 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
     const [doc] = await db.select().from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id)).limit(1);
     if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    // Auto-promote legacy drafts so they can always be sent
+    if (doc.status === "draft") {
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "approved", approvedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, id));
+      doc.status = "approved";
+    }
+
     if (doc.status !== "approved") {
-      return res.status(400).json({ error: "Document must be approved before sending. Approve it first." });
+      return res.status(400).json({ error: "Document must be approved before sending." });
     }
 
     const recipientEmail = req.body.recipientEmail as string | undefined;
@@ -1341,8 +1350,17 @@ router.post("/admin/insights/consulting/:id/send", requireAdmin, async (req: Req
     const [doc] = await db.select().from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id)).limit(1);
     if (!doc) return res.status(404).json({ error: "Document not found" });
+
+    // Auto-promote legacy drafts so they can always be sent
+    if (doc.status === "draft") {
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "approved", approvedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, id));
+      doc.status = "approved";
+    }
+
     if (doc.status !== "approved") {
-      return res.status(400).json({ error: "Document must be approved before sending. Approve it first." });
+      return res.status(400).json({ error: "Document must be approved before sending." });
     }
 
     const recipientEmail = req.body.recipientEmail as string | undefined;
