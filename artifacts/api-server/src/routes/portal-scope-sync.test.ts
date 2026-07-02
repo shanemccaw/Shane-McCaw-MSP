@@ -309,8 +309,12 @@ const { default: portalRouter } = await import("./portal.ts");
 const { default: express } = await import("express");
 const app = express();
 app.use(express.json());
+// Inject req.log and req.user before every route — requireAuth is stubbed to
+// call next() but does NOT set req.user; the PATCH handler needs req.user!.id.
+const CLIENT_USER_ID = 42;
 app.use((_req: unknown, _res: unknown, next: () => void) => {
-  ((_req as Record<string, unknown>).log = noopLogger);
+  (_req as Record<string, unknown>).log = noopLogger;
+  (_req as Record<string, unknown>).user = { id: CLIENT_USER_ID };
   next();
 });
 app.use("/api", portalRouter);
@@ -388,6 +392,19 @@ type PresentationResponse = {
 
 async function getPresentation(id: number): Promise<{ status: number; body: Record<string, unknown> }> {
   const res = await fetch(`${baseUrl}/api/portal/presentations/${id}?token=${SHARE_TOKEN}`);
+  const body = await res.json() as Record<string, unknown>;
+  return { status: res.status, body };
+}
+
+async function patchSelections(
+  id: number,
+  selectedPhaseIds: string[],
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${baseUrl}/api/portal/presentations/${id}/selections`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selectedPhaseIds }),
+  });
   const body = await res.json() as Record<string, unknown>;
   return { status: res.status, body };
 }
@@ -703,5 +720,165 @@ describe("scope-sync branch (c2): fallback when included SOW doc has no pricing 
 
   it("effectiveTotalPrice uses the stored snapshot total, not zero", () => {
     assert.equal(body.totalPrice, 15_000, `expected totalPrice 15000, got ${body.totalPrice}`);
+  });
+});
+
+// =============================================================================
+// PATCH branch (1): valid subset of live phases — totalPrice matches selected
+// =============================================================================
+
+describe("PATCH /selections (1): valid subset of live phases — totalPrice is correct", () => {
+  const livePricingLines = [
+    { title: "Discovery", scope: "Requirements", priceUsd: 5_000, notes: "" },
+    { title: "Build", scope: "Core implementation", priceUsd: 15_000, notes: "" },
+    { title: "Support", scope: "Post-launch support", priceUsd: 3_000, notes: "" },
+  ];
+
+  // Client selects only sow-0 and sow-2 (skips sow-1)
+  const incoming = ["sow-0", "sow-2"];
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [1],
+      sowPhases: [],
+      selectedPhaseIds: [],
+      totalPrice: "0",
+    });
+    const sowDoc = makeSowDoc(livePricingLines);
+
+    // Queue:
+    //  [0] presentation lookup
+    //  [1] deriveEffectiveSowData → SOW doc pricing
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, incoming));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds contains exactly the valid requested IDs", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(
+      [...ids].sort(),
+      ["sow-0", "sow-2"],
+      `expected ["sow-0","sow-2"], got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("totalPrice equals sum of sow-0 ($5k) + sow-2 ($3k) only", () => {
+    const expected = 5_000 + 3_000;
+    assert.equal(body.totalPrice, expected, `expected ${expected}, got ${body.totalPrice}`);
+  });
+
+  it("totalPrice does NOT include the unselected sow-1 price ($15k)", () => {
+    assert.ok(
+      (body.totalPrice as number) < 15_000,
+      `totalPrice should not include sow-1's $15k; got ${body.totalPrice}`,
+    );
+  });
+});
+
+// =============================================================================
+// PATCH branch (2): stale/invalid IDs are dropped and total is recomputed
+// =============================================================================
+
+describe("PATCH /selections (2): stale/invalid IDs are dropped — total recomputed from valid only", () => {
+  const livePricingLines = [
+    { title: "Phase A", scope: "Scope A", priceUsd: 8_000, notes: "" },
+    { title: "Phase B", scope: "Scope B", priceUsd: 12_000, notes: "" },
+  ];
+
+  // Mix of one valid live ID and two stale IDs that don't exist in the live SOW
+  const incoming = ["sow-0", "stale-id-x", "stale-id-y"];
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [1],
+      sowPhases: [],
+      selectedPhaseIds: ["stale-id-x"],
+      totalPrice: "999",
+    });
+    const sowDoc = makeSowDoc(livePricingLines);
+
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, incoming));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("stale IDs are not present in the returned selectedPhaseIds", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(
+      !ids.includes("stale-id-x") && !ids.includes("stale-id-y"),
+      `stale IDs should be dropped; got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("only the valid live ID (sow-0) is retained", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(ids, ["sow-0"], `expected ["sow-0"], got ${JSON.stringify(ids)}`);
+  });
+
+  it("totalPrice is recomputed from sow-0 price only ($8k), not the stale stored total", () => {
+    assert.equal(body.totalPrice, 8_000, `expected 8000, got ${body.totalPrice}`);
+  });
+});
+
+// =============================================================================
+// PATCH branch (3): no live SOW doc — fallback to creation-time snapshot
+// =============================================================================
+
+describe("PATCH /selections (3): no live SOW doc — snapshot phases used for validation", () => {
+  const snapshotPhases = [
+    { id: "snap-0", title: "Snapshot Alpha", description: "Pre-SOW", price: 4_000, selected: true },
+    { id: "snap-1", title: "Snapshot Beta", description: "Pre-SOW", price: 6_000, selected: true },
+  ];
+
+  // Client requests only snap-0 from the snapshot
+  const incoming = ["snap-0"];
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [],      // no docs → no SOW lookup → fallback to snapshot
+      sowPhases: snapshotPhases,
+      selectedPhaseIds: ["snap-0", "snap-1"],
+      totalPrice: "10000",
+    });
+
+    // Only the presentation lookup; no doc query since documentsIncluded is empty
+    dbQueue = [[presRow]];
+    ({ status, body } = await patchSelections(PRES_ID, incoming));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds contains only snap-0 (the valid requested ID)", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(ids, ["snap-0"], `expected ["snap-0"], got ${JSON.stringify(ids)}`);
+  });
+
+  it("totalPrice equals the snapshot price of snap-0 ($4k) only", () => {
+    assert.equal(body.totalPrice, 4_000, `expected 4000, got ${body.totalPrice}`);
+  });
+
+  it("totalPrice does NOT include the unselected snap-1 price ($6k)", () => {
+    assert.ok(
+      (body.totalPrice as number) < 6_000,
+      `totalPrice should not include snap-1's $6k; got ${body.totalPrice}`,
+    );
   });
 });
