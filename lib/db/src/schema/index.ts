@@ -1468,6 +1468,15 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   status: text("status", { enum: ["draft", "approved", "delivered", "archived"] }).notNull().default("draft"),
   approvedAt: timestamp("approved_at"),
   deliveredAt: timestamp("delivered_at"),
+  // Parsed pricing extracted from SOW/Consolidated SOW — used to populate the
+  // presentation Scope step and Overview total.
+  sowPricingLines: jsonb("sow_pricing_lines").$type<Array<{
+    title: string;
+    scope: string;
+    priceUsd: number;
+    notes: string;
+  }>>(),
+  sowTotalPrice: numeric("sow_total_price", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

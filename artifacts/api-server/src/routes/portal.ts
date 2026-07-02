@@ -9024,19 +9024,74 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
       .orderBy(desc(contractsTable.createdAt))
       .limit(1);
 
-    const baseTotal = latestContract?.finalPrice ? parseFloat(String(latestContract.finalPrice)) : 5000;
-    const phaseCount = steps.length || 1;
-    const pricePerPhase = Math.round(baseTotal / phaseCount);
+    // Look for SOW pricing stored when a SOW/Consolidated SOW was generated.
+    // Try project match first, then fall back to customer match.
+    const [sowDoc] = await db.select({
+      sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
+      sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+    })
+      .from(insightsGeneratedDocumentsTable)
+      .where(and(
+        eq(insightsGeneratedDocumentsTable.projectId, projectId),
+        inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+        isNotNull(insightsGeneratedDocumentsTable.sowTotalPrice),
+      ))
+      .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+      .limit(1);
 
-    const sowPhases = steps.length > 0
-      ? steps.map((s) => ({
-          id: String(s.id),
-          title: s.title,
-          description: s.description ?? "",
-          price: pricePerPhase,
-          selected: true,
-        }))
-      : [{ id: "default", title: "Full Engagement", description: "Complete Microsoft 365 consulting engagement", price: baseTotal, selected: true }];
+    // If no project-scoped SOW found, try customer-scoped
+    const [customerSowDoc] = !sowDoc && userId
+      ? await db.select({
+          sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
+          sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+        })
+          .from(insightsGeneratedDocumentsTable)
+          .where(and(
+            eq(insightsGeneratedDocumentsTable.customerId, userId),
+            inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+            isNotNull(insightsGeneratedDocumentsTable.sowTotalPrice),
+          ))
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          .limit(1)
+      : [null];
+
+    const activeSowDoc = sowDoc ?? customerSowDoc;
+
+    // Price priority: signed contract > SOW document > service price > fallback
+    const baseTotal = latestContract?.finalPrice
+      ? parseFloat(String(latestContract.finalPrice))
+      : activeSowDoc?.sowTotalPrice
+        ? parseFloat(String(activeSowDoc.sowTotalPrice))
+        : 5000;
+
+    // Build SOW phases from stored pricing lines when available, otherwise derive
+    // from workflow steps (evenly split) or a single default phase.
+    type StoredLine = { title: string; scope: string; priceUsd: number; notes: string };
+    const storedLines = (activeSowDoc?.sowPricingLines ?? []) as StoredLine[];
+
+    let sowPhases: Array<{ id: string; title: string; description: string; price: number; selected: boolean }>;
+
+    if (storedLines.length > 0) {
+      sowPhases = storedLines.map((l, i) => ({
+        id: `sow-${i}`,
+        title: l.title,
+        description: l.scope || l.notes || "",
+        price: l.priceUsd,
+        selected: true,
+      }));
+    } else if (steps.length > 0) {
+      const phaseCount = steps.length;
+      const pricePerPhase = Math.round(baseTotal / phaseCount);
+      sowPhases = steps.map((s) => ({
+        id: String(s.id),
+        title: s.title,
+        description: s.description ?? "",
+        price: pricePerPhase,
+        selected: true,
+      }));
+    } else {
+      sowPhases = [{ id: "default", title: "Full Engagement", description: "Complete Microsoft 365 consulting engagement", price: baseTotal, selected: true }];
+    }
 
     const selectedPhaseIds = sowPhases.map(p => p.id);
 
