@@ -157,13 +157,26 @@ export default function PresentationFlow({
     }
   }, [stepIndex]);
 
+  const steps = buildSteps(data.documents, readOnly);
+  const currentStep = steps[stepIndex];
+
+  const [stepReady, setStepReady] = useState(() => {
+    const s = steps[computeInitialStep()];
+    return s?.kind !== "doc" && s?.kind !== "contract";
+  });
+  const stepReadyRef = useRef(stepReady);
+
+  const handleStepReady = useCallback(() => {
+    if (!stepReadyRef.current) {
+      stepReadyRef.current = true;
+      setStepReady(true);
+    }
+  }, []);
+
   const [savingSelections, setSavingSelections] = useState(false);
   const [signing, setSigning] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [showLoginGate, setShowLoginGate] = useState(false);
-
-  const steps = buildSteps(data.documents, readOnly);
-  const currentStep = steps[stepIndex];
 
   const currentSowPhases = data.sowPhases ?? [];
   const selectedPhaseIds = data.selectedPhaseIds ?? currentSowPhases.map(p => p.id);
@@ -242,27 +255,36 @@ export default function PresentationFlow({
     }
   };
 
+  const isAsyncStep = (step: Step | undefined) =>
+    step?.kind === "doc" || step?.kind === "contract";
+
+  const applyStepChange = useCallback((nextIndex: number) => {
+    const nextStep = steps[nextIndex];
+    const ready = !isAsyncStep(nextStep);
+    stepReadyRef.current = ready;
+    setStepReady(ready);
+    setStepIndex(nextIndex);
+  }, [steps]);
+
   const goNext = () => {
     if (readOnly && currentStep?.kind === "sow") {
       setShowLoginGate(true);
       return;
     }
     if (stepIndex < steps.length - 1) {
-      setStepIndex(i => {
-        const next = i + 1;
-        setMaxVisitedStep(m => Math.max(m, next));
-        return next;
-      });
+      const next = stepIndex + 1;
+      setMaxVisitedStep(m => Math.max(m, next));
+      applyStepChange(next);
     }
   };
 
   const goPrev = () => {
-    if (stepIndex > 0) setStepIndex(i => i - 1);
+    if (stepIndex > 0) applyStepChange(stepIndex - 1);
   };
 
   const navigateToStep = (i: number) => {
     if (i <= maxVisitedStep) {
-      setStepIndex(i);
+      applyStepChange(i);
       setSidebarOpen(false);
     }
   };
@@ -429,8 +451,29 @@ export default function PresentationFlow({
         </div>
 
         {/* Body */}
-        <div ref={scrollAreaRef} className="flex-1 overflow-y-auto">
-          <div key={stepIndex} className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col animate-step-in">
+        <div ref={scrollAreaRef} className="flex-1 overflow-y-auto relative">
+          {/* Skeleton overlay — shown while async steps (doc, contract) are loading */}
+          {!stepReady && (
+            <div className="absolute inset-0 z-10 max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-4 pointer-events-none">
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <div className="w-10 h-10 rounded-xl bg-slate-200 overflow-hidden relative flex-shrink-0">
+                  <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/70 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+                </div>
+                <div className="flex-1 flex flex-col gap-2">
+                  <div className="h-4 bg-slate-200 rounded w-2/5 overflow-hidden relative">
+                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/70 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+                  </div>
+                  <div className="h-3 bg-slate-200 rounded w-1/4 overflow-hidden relative">
+                    <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/70 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex-1 bg-slate-100 rounded-xl overflow-hidden relative">
+                <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/50 to-transparent animate-[shimmer_1.4s_ease-in-out_infinite]" />
+              </div>
+            </div>
+          )}
+          <div key={stepIndex} className={`max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col ${stepReady ? "animate-step-in" : "invisible"}`}>
 
             {/* Welcome step */}
             {currentStep?.kind === "welcome" && (
@@ -472,7 +515,7 @@ export default function PresentationFlow({
             {/* Document panels */}
             {currentStep?.kind === "doc" && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <DocumentPanel doc={data.documents[currentStep.index]} />
+                <DocumentPanel doc={data.documents[currentStep.index]} onReady={handleStepReady} />
               </div>
             )}
 
@@ -501,6 +544,7 @@ export default function PresentationFlow({
                   signing={signing}
                   alreadySigned={!!data.signedAt}
                   contractBody={data.contractBody}
+                  onReady={handleStepReady}
                 />
               </div>
             )}

@@ -9,6 +9,7 @@ interface DocumentPanelProps {
     docType: string;
     htmlContent: string;
   };
+  onReady?: () => void;
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -199,9 +200,15 @@ function buildSrcdoc(rawHtml: string): string {
 </html>`;
 }
 
-export default function DocumentPanel({ doc }: DocumentPanelProps) {
+export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
   const { fetchWithAuth } = useAuth();
   const [downloading, setDownloading] = useState(false);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+
+  const handleIframeLoad = () => {
+    setIframeLoaded(true);
+    onReady?.();
+  };
 
   const srcdoc = useMemo(() => buildSrcdoc(doc.htmlContent), [doc.htmlContent]);
 
@@ -269,12 +276,42 @@ export default function DocumentPanel({ doc }: DocumentPanelProps) {
       </div>
 
       {/* Document content rendered in an isolated iframe */}
-      <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm bg-white">
+      <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm bg-white relative">
+        {!iframeLoaded && (
+          <div className="absolute inset-0 bg-white rounded-xl p-6 flex flex-col gap-3 z-10">
+            <div className="h-7 bg-slate-100 rounded-lg w-1/2 overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-full overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-11/12 overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-4/5 overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="mt-2 h-px bg-slate-100 w-full" />
+            <div className="h-4 bg-slate-100 rounded w-full overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-10/12 overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-full overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+            <div className="h-4 bg-slate-100 rounded w-3/4 overflow-hidden relative">
+              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
+            </div>
+          </div>
+        )}
         <iframe
           srcDoc={srcdoc}
           title={doc.title}
           className="w-full h-full border-0"
           sandbox="allow-same-origin"
+          onLoad={handleIframeLoad}
         />
       </div>
     </div>

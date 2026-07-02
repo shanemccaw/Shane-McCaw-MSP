@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import SignatureCanvas from "react-signature-canvas";
 
 const DEFAULT_AGREEMENT_BODY = `1. SCOPE OF SERVICES
@@ -42,6 +42,7 @@ interface ContractSignPanelProps {
   signing: boolean;
   alreadySigned?: boolean;
   contractBody?: string | null;
+  onReady?: () => void;
 }
 
 function formatCurrency(n: number): string {
@@ -57,11 +58,17 @@ export default function ContractSignPanel({
   signing,
   alreadySigned = false,
   contractBody,
+  onReady,
 }: ContractSignPanelProps) {
   const agreementBody = contractBody ?? DEFAULT_AGREEMENT_BODY;
   const sigPad = useRef<SignatureCanvas | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => { onReady?.(); });
+    return () => cancelAnimationFrame(raf);
+  }, [onReady]);
 
   const handleClear = () => {
     sigPad.current?.clear();
