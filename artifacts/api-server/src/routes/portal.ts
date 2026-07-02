@@ -9692,9 +9692,11 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
     }
 
     // First card click: earliest card_click event
+    // totalClicks = distinct card names (deduplicates legacy re-click events already in the DB)
     const cardClicks = rawViews.filter(v => v.eventType === "card_click" && v.cardName);
+    const distinctCardNames = new Set(cardClicks.map(v => v.cardName!));
     const firstCardClick = cardClicks.length > 0
-      ? { cardName: cardClicks[0].cardName!, clickedAt: cardClicks[0].viewedAt, totalClicks: cardClicks.length }
+      ? { cardName: cardClicks[0].cardName!, clickedAt: cardClicks[0].viewedAt, totalClicks: distinctCardNames.size }
       : null;
 
     res.json({

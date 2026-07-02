@@ -408,11 +408,16 @@ export default function PresentationFlow({
     }
   };
 
+  // Tracks which card names have already fired a card_click event this session.
+  // Prevents duplicate events when the client returns to the Overview and re-clicks.
+  const firedCardClicks = useRef(new Set<string>());
+
   // Jump from the Overview teaser cards — unlocks the target step and navigates immediately
-  // Also fires a fire-and-forget card_click event for analytics
+  // Also fires a fire-and-forget card_click event (first click per cardName only)
   const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
-    if (cardName) {
+    if (cardName && !firedCardClicks.current.has(cardName)) {
+      firedCardClicks.current.add(cardName);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
       void fetchFn(`/api/portal/presentations/${presentationId}/doc-views${tokenParam}`, {
         method: "POST",
