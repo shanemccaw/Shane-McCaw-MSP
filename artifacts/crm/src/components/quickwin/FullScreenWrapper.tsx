@@ -649,77 +649,96 @@ export default function FullScreenWrapper() {
                 {/* Left: Completed kanban tasks */}
                 <CompletedColumn completedSteps={completedKanbanTasks.map(t => t.title)} />
 
-                {/* Centre (col-span-7): Live kanban cards */}
-                <div className="col-span-12 lg:col-span-7 relative flex flex-col justify-center items-center gap-5">
+                {/* Centre (col-span-7): Live kanban cards — horizontal scroll row */}
+                <div className="col-span-12 lg:col-span-7 relative flex flex-col justify-center">
 
                   {/* Loading: no project tasks yet */}
                   {kanbanTasks.length === 0 && (
-                    <div className="flex items-center gap-3 py-12">
+                    <div className="flex items-center gap-3 py-12 justify-center">
                       <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
                       <p className="text-sm text-black/50">Loading tasks…</p>
                     </div>
                   )}
 
-                  {/* In-progress tasks → ProcessingHeroCard (running subState) */}
-                  {inProgressTasks.map(task => (
-                    <ProcessingHeroCard
-                      key={task.id}
-                      title={task.title}
-                      description={task.description ?? undefined}
-                      category={currentCategory}
-                      subState={exitingKanbanIds.has(task.id) ? "done" : "running"}
-                      isExiting={exitingKanbanIds.has(task.id)}
-                    />
-                  ))}
-
-                  {/* Waiting-on-customer tasks → amber action card */}
-                  {waitingTasks.map(task => {
-                    const dl = (task.taskMetadata?.customerDownload ?? null) as
-                      | { scriptId?: string; scriptTitle?: string }
-                      | null;
-                    return (
+                  {/* Horizontal scroll row: in-progress + waiting cards side-by-side */}
+                  {(inProgressTasks.length > 0 || waitingTasks.length > 0) && (
+                    <div className="relative">
+                      {/* Scroll container */}
                       <div
-                        key={task.id}
-                        className="rounded-xl p-6 flex flex-col w-full max-w-[380px] border border-amber-300/50 bg-amber-50/80 shadow-lg gap-3"
-                        style={{ backdropFilter: "blur(12px)" }}
+                        className="flex flex-row gap-5 overflow-x-auto pb-3 no-scrollbar"
+                        style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
                       >
-                        <div className="flex items-center gap-2">
-                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
-                        </div>
-                        <p className="text-base font-semibold text-[#0A2540]">{task.title}</p>
-                        {task.description && (
-                          <p className="text-xs text-black/50 leading-snug">{task.description}</p>
-                        )}
-                        <div className="pt-1">
-                          {dl?.scriptId ? (
-                            <a
-                              href={`/api/portal/tasks/${task.id}/download-script`}
-                              className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                              </svg>
-                              {dl.scriptTitle ?? "Download Script"}
-                            </a>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                setMarkingDoneId(task.id);
-                                markDoneMutation.mutate(task.id);
-                              }}
-                              disabled={markingDoneId === task.id}
-                              className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
-                            >
-                              {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
-                            </button>
-                          )}
-                        </div>
+                        {/* In-progress tasks */}
+                        {inProgressTasks.map(task => (
+                          <div key={task.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+                            <ProcessingHeroCard
+                              title={task.title}
+                              description={task.description ?? undefined}
+                              category={currentCategory}
+                              subState={exitingKanbanIds.has(task.id) ? "done" : "running"}
+                              isExiting={exitingKanbanIds.has(task.id)}
+                            />
+                          </div>
+                        ))}
+
+                        {/* Waiting-on-customer tasks */}
+                        {waitingTasks.map(task => {
+                          const dl = (task.taskMetadata?.customerDownload ?? null) as
+                            | { scriptId?: string; scriptTitle?: string }
+                            | null;
+                          return (
+                            <div key={task.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+                              <div
+                                className="rounded-xl p-6 flex flex-col w-[340px] min-h-[300px] border border-amber-300/50 bg-amber-50/80 shadow-lg gap-3"
+                                style={{ backdropFilter: "blur(12px)" }}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                  <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
+                                </div>
+                                <p className="text-base font-semibold text-[#0A2540]">{task.title}</p>
+                                {task.description && (
+                                  <p className="text-xs text-black/50 leading-snug">{task.description}</p>
+                                )}
+                                <div className="pt-1">
+                                  {dl?.scriptId ? (
+                                    <a
+                                      href={`/api/portal/tasks/${task.id}/download-script`}
+                                      className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
+                                    >
+                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                      </svg>
+                                      {dl.scriptTitle ?? "Download Script"}
+                                    </a>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        setMarkingDoneId(task.id);
+                                        markDoneMutation.mutate(task.id);
+                                      }}
+                                      disabled={markingDoneId === task.id}
+                                      className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                                    >
+                                      {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    );
-                  })}
+
+                      {/* Right-edge fade-out gradient (only meaningful when cards overflow) */}
+                      <div
+                        className="pointer-events-none absolute inset-y-0 right-0 w-24"
+                        style={{ background: "linear-gradient(to right, transparent, rgba(248,249,251,0.92))" }}
+                      />
+                    </div>
+                  )}
 
                   {/* Tasks exist but nothing active yet */}
                   {kanbanTasks.length > 0 &&
