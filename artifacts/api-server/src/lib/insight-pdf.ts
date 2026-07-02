@@ -1,428 +1,221 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+/**
+ * Chromium-based PDF generation for AI insights documents.
+ *
+ * Uses the system Chromium binary (installed via Nix) with --print-to-pdf,
+ * rendering the same HTML + CSS + Inter font as the client-side iframe.
+ * This ensures complete visual parity — tables, headings, blockquotes, and
+ * colours all match the in-app preview without any lossy reconstruction.
+ */
 
-// ── Element model ──────────────────────────────────────────────────────────────
+import { spawn } from "child_process";
+import { mkdtemp, writeFile, readFile, rm } from "fs/promises";
+import { tmpdir } from "os";
+import path from "path";
+import { execSync } from "child_process";
 
-export type PdfEl =
-  | { kind: "h1"; text: string }
-  | { kind: "h2"; text: string }
-  | { kind: "h3"; text: string }
-  | { kind: "h4"; text: string }
-  | { kind: "p";  text: string }
-  | { kind: "li"; text: string }
-  | { kind: "quote"; text: string }
-  | { kind: "rule" }
-  | { kind: "table"; headers: string[]; rows: string[][] };
+// ── Chromium path discovery ────────────────────────────────────────────────────
 
-// ── HTML helpers ───────────────────────────────────────────────────────────────
+let _chromiumPath: string | null = null;
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#\d+;/g, " ");
-}
+function getChromiumPath(): string {
+  if (_chromiumPath) return _chromiumPath;
 
-function stripTags(html: string): string {
-  return decodeEntities(
-    html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim(),
+  // 1. Try PATH (works when the Nix module added it to PATH)
+  try {
+    const which = execSync("which chromium 2>/dev/null", { encoding: "utf8" }).trim();
+    if (which) { _chromiumPath = which; return which; }
+  } catch { /* not in PATH */ }
+
+  // 2. Scan /nix/store for any installed chromium build
+  try {
+    const nixEntry = execSync(
+      "ls /nix/store 2>/dev/null | grep '^chromium-' | head -1",
+      { encoding: "utf8" },
+    ).trim();
+    if (nixEntry) {
+      _chromiumPath = `/nix/store/${nixEntry}/bin/chromium`;
+      return _chromiumPath;
+    }
+  } catch { /* /nix/store not available */ }
+
+  throw new Error(
+    "Chromium not found. Install with: installSystemDependencies({ packages: ['chromium'] })",
   );
 }
 
-/** Replace characters pdf-lib's StandardFonts (Helvetica / Latin-1) cannot encode. */
-function sanitize(text: string): string {
-  return text
-    .replace(/[\u2018\u2019]/g, "'")
-    .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2013\u2014\u2015]/g, "-")
-    .replace(/\u2026/g, "...")
-    .replace(/\u00A0/g, " ")
-    .replace(/[^\x20-\x7E\xA0-\xFF]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+// ── Document CSS ───────────────────────────────────────────────────────────────
+// Exact copy of DOC_CSS from DocumentPanel.tsx with added @page / print rules.
+// Keep in sync if the iframe CSS is updated.
+
+const DOC_CSS = `
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #1e293b;
+    background: #fff;
+  }
+  h1 {
+    font-size: 1.75rem; font-weight: 800; color: #0A2540;
+    margin: 0 0 0.25rem; letter-spacing: -0.02em; line-height: 1.2;
+  }
+  h1 + p, h1 + div { margin-top: 0.75rem; }
+  h2 {
+    font-weight: 700; color: #0078D4; margin: 2.25rem 0 0.6rem;
+    text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.08em;
+    padding-bottom: 0.35rem; border-bottom: 1px solid #e2e8f0;
+  }
+  h3 { font-size: 1rem; font-weight: 700; color: #0A2540; margin: 1.5rem 0 0.4rem; }
+  h4 { font-size: 0.875rem; font-weight: 600; color: #334155; margin: 1.25rem 0 0.35rem; }
+  p { margin: 0 0 0.875rem; color: #334155; line-height: 1.8; }
+  ul, ol { margin: 0.25rem 0 1rem 1.5rem; padding: 0; color: #334155; }
+  li { margin-bottom: 0.3rem; line-height: 1.7; }
+  table {
+    width: 100%; border-collapse: collapse;
+    margin: 1rem 0 1.5rem; font-size: 0.85rem;
+  }
+  thead tr { background: #f1f5f9; border-bottom: 2px solid #cbd5e1; }
+  th {
+    text-align: left; padding: 0.55rem 0.75rem; font-weight: 600;
+    color: #475569; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  td {
+    padding: 0.55rem 0.75rem; color: #334155;
+    border-bottom: 1px solid #f1f5f9; vertical-align: top;
+  }
+  tr:last-child td { border-bottom: none; }
+  blockquote {
+    border-left: 3px solid #0078D4; background: #f8fafc;
+    padding: 0.875rem 1.125rem; margin: 0.75rem 0 1.25rem;
+    border-radius: 0 6px 6px 0; color: #475569;
+  }
+  blockquote p { margin: 0; color: #475569; }
+  hr { border: none; border-top: 1px solid #e2e8f0; margin: 1.75rem 0; }
+  strong, b { font-weight: 600; color: #0A2540; }
+  code {
+    font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.8em; background: #f1f5f9; color: #0078D4;
+    padding: 0.15em 0.4em; border-radius: 4px;
+  }
+  pre {
+    background: #0f172a; color: #e2e8f0; padding: 1rem 1.25rem;
+    border-radius: 8px; overflow-x: auto; margin: 1rem 0; font-size: 0.82rem;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  a { color: #0078D4; text-decoration: none; }
+  section { margin-bottom: 1.5rem; }
+
+  /* Print / PDF settings */
+  @page {
+    size: A4;
+    margin: 18mm 22mm;
+  }
+  @media print {
+    body {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    table { page-break-inside: avoid; }
+    h2, h3, h4 { page-break-after: avoid; }
+  }
+`;
+
+// ── HTML helpers ───────────────────────────────────────────────────────────────
+
+/** Strip markdown code fences that AI sometimes adds around HTML output. */
+function stripFence(html: string): string {
+  return html.replace(/^```[a-zA-Z]*\r?\n?/, "").replace(/\r?\n?```\s*$/, "").trim();
 }
 
-// ── HTML → element parser ──────────────────────────────────────────────────────
+/** Remove inline style attributes (mirrors cleanInlineStyles in DocumentPanel). */
+function cleanInlineStyles(html: string): string {
+  return html
+    .replace(/\s+style="[^"]*"/gi, "")
+    .replace(/\s+style='[^']*'/gi, "");
+}
 
-export function parseInsightHtml(rawHtml: string): PdfEl[] {
-  const html = rawHtml
-    .replace(/<script[\s\S]*?<\/script>/gi, "")
-    .replace(/<style[\s\S]*?<\/style>/gi, "")
-    .replace(/<!--[\s\S]*?-->/g, "");
+// ── Public API ─────────────────────────────────────────────────────────────────
 
-  const matches: Array<{ pos: number; el: PdfEl }> = [];
+/**
+ * Build a complete print-ready HTML document from raw AI-generated HTML.
+ * Applies the same CSS and Google Fonts link as the CRM iframe.
+ */
+export function buildHtmlDoc(rawHtml: string): string {
+  const body = cleanInlineStyles(stripFence(rawHtml));
+  return [
+    "<!DOCTYPE html>",
+    '<html lang="en">',
+    "<head>",
+    '  <meta charset="UTF-8">',
+    '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+    '  <link rel="preconnect" href="https://fonts.googleapis.com">',
+    '  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
+    '  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">',
+    `  <style>${DOC_CSS}</style>`,
+    "</head>",
+    `<body>${body}</body>`,
+    "</html>",
+  ].join("\n");
+}
 
-  // Headings h1–h4
-  for (const m of html.matchAll(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi)) {
-    const level = parseInt(m[1] ?? "1") as 1 | 2 | 3 | 4;
-    const text = sanitize(stripTags(m[2] ?? ""));
-    if (text)
-      matches.push({
-        pos: m.index!,
-        el: { kind: `h${level}` as "h1" | "h2" | "h3" | "h4", text },
+/**
+ * Render an HTML string to PDF using the system Chromium binary.
+ *
+ * Writes the HTML to a temp file, launches Chromium in headless mode with
+ * --print-to-pdf, reads the output, cleans up, and returns the PDF bytes.
+ */
+export async function htmlToPdf(htmlContent: string): Promise<Buffer> {
+  const chromiumPath = getChromiumPath();
+
+  const dir = await mkdtemp(path.join(tmpdir(), "insight-pdf-"));
+  const htmlFile = path.join(dir, "doc.html");
+  const pdfFile  = path.join(dir, "doc.pdf");
+
+  try {
+    await writeFile(htmlFile, htmlContent, "utf8");
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(chromiumPath, [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--hide-scrollbars",
+        "--no-first-run",
+        "--no-default-browser-check",
+        `--print-to-pdf=${pdfFile}`,
+        "--print-to-pdf-no-header",
+        `file://${htmlFile}`,
+      ]);
+
+      let stderr = "";
+      proc.stderr?.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+
+      const kill = setTimeout(() => {
+        proc.kill("SIGKILL");
+        reject(new Error("Chromium PDF generation timed out after 30 s"));
+      }, 30_000);
+
+      proc.on("close", (code) => {
+        clearTimeout(kill);
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Chromium exited ${code}. stderr: ${stderr.slice(-800)}`));
+        }
       });
-  }
 
-  // Paragraphs
-  for (const m of html.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)) {
-    const text = sanitize(stripTags(m[1] ?? ""));
-    if (text) matches.push({ pos: m.index!, el: { kind: "p", text } });
-  }
-
-  // List items
-  for (const m of html.matchAll(/<li[^>]*>([\s\S]*?)<\/li>/gi)) {
-    const text = sanitize(stripTags(m[1] ?? ""));
-    if (text) matches.push({ pos: m.index!, el: { kind: "li", text } });
-  }
-
-  // Blockquotes
-  for (const m of html.matchAll(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi)) {
-    const text = sanitize(stripTags(m[1] ?? ""));
-    if (text) matches.push({ pos: m.index!, el: { kind: "quote", text } });
-  }
-
-  // Horizontal rules
-  for (const m of html.matchAll(/<hr[^>]*\/?>/gi)) {
-    matches.push({ pos: m.index!, el: { kind: "rule" } });
-  }
-
-  // Tables — deduplicate by removing cell/row matches that fall inside a table
-  const tableRanges: Array<{ start: number; end: number }> = [];
-  for (const m of html.matchAll(/<table[^>]*>([\s\S]*?)<\/table>/gi)) {
-    const tableHtml = m[1] ?? "";
-    const headers: string[] = [];
-    const theadM = tableHtml.match(/<thead[^>]*>([\s\S]*?)<\/thead>/i);
-    if (theadM) {
-      for (const th of (theadM[1] ?? "").matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)) {
-        const text = sanitize(stripTags(th[1] ?? ""));
-        if (text) headers.push(text);
-      }
-    }
-    const rows: string[][] = [];
-    const tbodyM = tableHtml.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
-    const rowsHtml = tbodyM ? (tbodyM[1] ?? "") : tableHtml;
-    for (const tr of rowsHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
-      const cells: string[] = [];
-      for (const td of (tr[1] ?? "").matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)) {
-        cells.push(sanitize(stripTags(td[1] ?? "")));
-      }
-      if (cells.length > 0) rows.push(cells);
-    }
-    if (headers.length > 0 || rows.length > 0) {
-      const pos = m.index!;
-      const end = pos + m[0].length;
-      tableRanges.push({ start: pos, end });
-      matches.push({ pos, el: { kind: "table", headers, rows } });
-    }
-  }
-
-  // Sort and de-duplicate: remove li/p matches that are inside a table range
-  const finalMatches = matches.filter((item) => {
-    if (item.el.kind === "li" || item.el.kind === "p") {
-      return !tableRanges.some(
-        (r) => item.pos >= r.start && item.pos <= r.end,
-      );
-    }
-    return true;
-  });
-
-  finalMatches.sort((a, b) => a.pos - b.pos);
-  return finalMatches.map((m) => m.el);
-}
-
-// ── PDF constants ──────────────────────────────────────────────────────────────
-
-const NAVY   = rgb(0.039, 0.145, 0.251); // #0A2540
-const BLUE   = rgb(0,     0.471, 0.831); // #0078D4
-const GREY   = rgb(0.45,  0.45,  0.45);
-const SLATE  = rgb(0.20,  0.25,  0.34);  // #334155
-const WHITE  = rgb(1, 1, 1);
-const LIGHT  = rgb(0.97,  0.98,  0.99);
-const RULE_C = rgb(0.88,  0.90,  0.93);
-
-const PAGE_W   = 595;
-const PAGE_H   = 842;
-const MARGIN   = 55;
-const CONTENT_W = PAGE_W - MARGIN * 2;
-
-// Approximate max characters that fit per line at a given font size (Helvetica).
-// Helvetica average char width ≈ fontSize * 0.55.
-const charsPerLine = (fontSize: number, availableWidth = CONTENT_W): number =>
-  Math.floor(availableWidth / (fontSize * 0.55));
-
-// ── Text wrapping ──────────────────────────────────────────────────────────────
-
-function wrapText(text: string, maxChars: number): string[] {
-  const words = text.split(" ").filter(Boolean);
-  const lines: string[] = [];
-  let line = "";
-  for (const word of words) {
-    const candidate = line ? `${line} ${word}` : word;
-    if (candidate.length <= maxChars) {
-      line = candidate;
-    } else {
-      if (line) lines.push(line);
-      // Force-break a word that is itself too long
-      line = word.length > maxChars ? word.slice(0, maxChars) : word;
-    }
-  }
-  if (line) lines.push(line);
-  return lines.length ? lines : [""];
-}
-
-// ── PDF builder ────────────────────────────────────────────────────────────────
-
-export async function buildInsightPdf(
-  title: string,
-  docTypeLabel: string,
-  createdAt: string | null,
-  elements: PdfEl[],
-): Promise<Uint8Array> {
-  const doc  = await PDFDocument.create();
-  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
-  const reg  = await doc.embedFont(StandardFonts.Helvetica);
-
-  let page = doc.addPage([PAGE_W, PAGE_H]);
-  let y    = PAGE_H;
-
-  // ── Running header ───────────────────────────────────────────────────────────
-  const drawRunningHeader = () => {
-    page.drawRectangle({ x: 0, y: PAGE_H - 22, width: PAGE_W, height: 22, color: NAVY });
-    page.drawText("Shane McCaw Consulting", {
-      x: MARGIN, y: PAGE_H - 15, font: bold, size: 8.5, color: WHITE,
+      proc.on("error", (err) => {
+        clearTimeout(kill);
+        reject(new Error(`Failed to spawn Chromium at ${chromiumPath}: ${(err as Error).message}`));
+      });
     });
-    page.drawText("Assessment Document  \u2014  Confidential", {
-      x: PAGE_W - MARGIN - 165, y: PAGE_H - 15, font: reg, size: 8.5,
-      color: rgb(0.60, 0.75, 0.90),
-    });
-  };
 
-  const newPage = () => {
-    page = doc.addPage([PAGE_W, PAGE_H]);
-    drawRunningHeader();
-    y = PAGE_H - 22 - 18; // below header + 18 px padding
-  };
-
-  const ensureSpace = (needed: number) => {
-    if (y - needed < 58) newPage();
-  };
-
-  const dt = (
-    text: string,
-    x: number,
-    yy: number,
-    opts: { font?: typeof bold; size?: number; color?: ReturnType<typeof rgb> } = {},
-  ) => {
-    const safe = sanitize(text);
-    if (!safe) return;
-    page.drawText(safe, {
-      x,
-      y: yy,
-      font:  opts.font  ?? reg,
-      size:  opts.size  ?? 10,
-      color: opts.color ?? SLATE,
-    });
-  };
-
-  // ── Cover / title block ──────────────────────────────────────────────────────
-  drawRunningHeader();
-  y = PAGE_H - 22 - 20; // 800
-
-  // Blue accent left bar (behind title)
-  page.drawRectangle({ x: MARGIN, y: y - 50, width: 4, height: 62, color: BLUE });
-
-  // Title (may wrap)
-  const titleLines = wrapText(sanitize(title), charsPerLine(18));
-  for (const line of titleLines) {
-    dt(line, MARGIN + 12, y, { font: bold, size: 18, color: NAVY });
-    y -= 24;
+    return await readFile(pdfFile);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
-
-  // Doc type label
-  dt(sanitize(docTypeLabel), MARGIN + 12, y, { font: bold, size: 11, color: BLUE });
-  y -= 16;
-
-  // Generated date
-  if (createdAt) {
-    const dateStr = new Date(createdAt).toLocaleDateString("en-US", {
-      month: "long", day: "numeric", year: "numeric",
-    });
-    dt(`Generated ${dateStr}`, MARGIN + 12, y, { size: 9, color: GREY });
-    y -= 14;
-  }
-
-  // Rule below title block
-  y -= 8;
-  page.drawLine({ start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y }, thickness: 1.5, color: BLUE });
-  y -= 22;
-
-  // ── Render elements ──────────────────────────────────────────────────────────
-  for (const el of elements) {
-    switch (el.kind) {
-      case "h1": {
-        const lines = wrapText(el.text, charsPerLine(15));
-        ensureSpace(lines.length * 22 + 12);
-        y -= 8;
-        for (const line of lines) {
-          dt(line, MARGIN, y, { font: bold, size: 15, color: NAVY });
-          y -= 22;
-        }
-        y -= 4;
-        break;
-      }
-
-      case "h2": {
-        ensureSpace(32);
-        y -= 10;
-        dt(el.text.toUpperCase(), MARGIN, y, { font: bold, size: 8, color: BLUE });
-        y -= 8;
-        page.drawLine({
-          start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y },
-          thickness: 0.5, color: RULE_C,
-        });
-        y -= 14;
-        break;
-      }
-
-      case "h3": {
-        const lines = wrapText(el.text, charsPerLine(11));
-        ensureSpace(lines.length * 16 + 10);
-        y -= 6;
-        for (const line of lines) {
-          dt(line, MARGIN, y, { font: bold, size: 11, color: NAVY });
-          y -= 16;
-        }
-        y -= 4;
-        break;
-      }
-
-      case "h4": {
-        const lines = wrapText(el.text, charsPerLine(10));
-        ensureSpace(lines.length * 14 + 6);
-        y -= 4;
-        for (const line of lines) {
-          dt(line, MARGIN, y, { font: bold, size: 10, color: SLATE });
-          y -= 14;
-        }
-        y -= 2;
-        break;
-      }
-
-      case "p": {
-        if (!el.text) break;
-        const lines = wrapText(el.text, charsPerLine(10));
-        for (const line of lines) {
-          ensureSpace(14);
-          dt(line, MARGIN, y, { size: 10, color: SLATE });
-          y -= 14;
-        }
-        y -= 4;
-        break;
-      }
-
-      case "li": {
-        if (!el.text) break;
-        const lines = wrapText(el.text, charsPerLine(10, CONTENT_W - 16));
-        for (let i = 0; i < lines.length; i++) {
-          ensureSpace(14);
-          if (i === 0) {
-            // Filled square bullet
-            page.drawRectangle({ x: MARGIN + 6, y: y + 3, width: 3, height: 3, color: BLUE });
-          }
-          dt(lines[i], MARGIN + 15, y, { size: 10, color: SLATE });
-          y -= 13;
-        }
-        y -= 2;
-        break;
-      }
-
-      case "quote": {
-        if (!el.text) break;
-        const lines = wrapText(el.text, charsPerLine(10, CONTENT_W - 22));
-        const blockH = lines.length * 14 + 14;
-        ensureSpace(blockH + 6);
-        // Light background
-        page.drawRectangle({ x: MARGIN + 3, y: y - blockH + 12, width: CONTENT_W - 3, height: blockH, color: LIGHT });
-        // Blue left bar
-        page.drawRectangle({ x: MARGIN, y: y - blockH + 12, width: 3, height: blockH, color: BLUE });
-        y -= 8;
-        for (const line of lines) {
-          ensureSpace(14);
-          dt(line, MARGIN + 15, y, { size: 10, color: GREY });
-          y -= 14;
-        }
-        y -= 8;
-        break;
-      }
-
-      case "rule": {
-        ensureSpace(18);
-        y -= 8;
-        page.drawLine({
-          start: { x: MARGIN, y }, end: { x: PAGE_W - MARGIN, y },
-          thickness: 0.5, color: RULE_C,
-        });
-        y -= 12;
-        break;
-      }
-
-      case "table": {
-        const { headers, rows } = el;
-        if (headers.length === 0 && rows.length === 0) break;
-
-        const colCount = Math.max(headers.length, ...rows.map((r) => r.length), 1);
-        const colW = Math.floor(CONTENT_W / colCount);
-        const maxCellChars = Math.max(8, Math.floor(colW / 5.5));
-
-        // Header row
-        if (headers.length > 0) {
-          ensureSpace(22);
-          page.drawRectangle({ x: MARGIN, y: y - 6, width: CONTENT_W, height: 20, color: rgb(0.93, 0.95, 0.98) });
-          page.drawLine({
-            start: { x: MARGIN, y: y - 6 }, end: { x: PAGE_W - MARGIN, y: y - 6 },
-            thickness: 1.5, color: BLUE,
-          });
-          headers.forEach((h, i) => {
-            const cell = h.length > maxCellChars ? `${h.slice(0, maxCellChars - 1)}\u2026` : h;
-            dt(cell.toUpperCase(), MARGIN + i * colW + 5, y, { font: bold, size: 7.5, color: GREY });
-          });
-          y -= 22;
-        }
-
-        // Data rows
-        for (let ri = 0; ri < rows.length; ri++) {
-          const row = rows[ri];
-          ensureSpace(18);
-          if (ri % 2 === 0) {
-            page.drawRectangle({ x: MARGIN, y: y - 5, width: CONTENT_W, height: 18, color: rgb(0.985, 0.99, 1) });
-          }
-          row.forEach((cell, ci) => {
-            const cellText = cell.length > maxCellChars ? `${cell.slice(0, maxCellChars - 1)}\u2026` : cell;
-            dt(cellText, MARGIN + ci * colW + 5, y, { size: 9, color: SLATE });
-          });
-          page.drawLine({
-            start: { x: MARGIN, y: y - 5 }, end: { x: PAGE_W - MARGIN, y: y - 5 },
-            thickness: 0.3, color: RULE_C,
-          });
-          y -= 17;
-        }
-        y -= 10;
-        break;
-      }
-    }
-  }
-
-  // ── Footer on last page ──────────────────────────────────────────────────────
-  if (y > 55) {
-    page.drawLine({ start: { x: MARGIN, y: 44 }, end: { x: PAGE_W - MARGIN, y: 44 }, thickness: 0.5, color: RULE_C });
-    dt(
-      "Shane McCaw Consulting  \u00B7  Confidential  \u00B7  shanemccawconsulting.com",
-      MARGIN, 32, { size: 8, color: GREY },
-    );
-  }
-
-  return doc.save();
 }

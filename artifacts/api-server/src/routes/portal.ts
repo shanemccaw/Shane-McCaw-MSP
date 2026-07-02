@@ -22,7 +22,7 @@ import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
-import { parseInsightHtml, buildInsightPdf } from "../lib/insight-pdf.ts";
+import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
 import { broadcastKanbanChange, registerSSEClient } from "../lib/sse-broadcast.ts";
 import multer from "multer";
@@ -2458,23 +2458,6 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
 
 // ── CLIENT: AI Insights Document → branded PDF download ──────────────────────
 
-const INSIGHT_DOC_TYPE_LABELS: Record<string, string> = {
-  executive_summary:           "Executive Summary",
-  full_readiness_report:       "Full Readiness Report",
-  security_posture_report:     "Security Posture Report",
-  governance_maturity_report:  "Governance Maturity Report",
-  data_exposure_risk_report:   "Data Exposure Risk Report",
-  license_optimization_report: "License Optimization Report",
-  sow:                         "Statement of Work",
-  consolidated_sow:            "Consolidated SOW",
-  remediation_plan:            "Remediation Plan",
-  deployment_plan:             "Deployment Plan",
-  governance_framework:        "Governance Framework",
-  security_hardening_plan:     "Security Hardening Plan",
-  copilot_enablement_plan:     "Copilot Enablement Plan",
-  identity_modernization_plan: "Identity Modernization Plan",
-};
-
 router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -2486,10 +2469,8 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
         id:          insightsGeneratedDocumentsTable.id,
         title:       insightsGeneratedDocumentsTable.title,
         htmlContent: insightsGeneratedDocumentsTable.htmlContent,
-        docType:     insightsGeneratedDocumentsTable.docType,
         status:      insightsGeneratedDocumentsTable.status,
         customerId:  insightsGeneratedDocumentsTable.customerId,
-        createdAt:   insightsGeneratedDocumentsTable.createdAt,
       })
       .from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id));
@@ -2498,20 +2479,10 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     if (doc.status !== "delivered") { res.status(403).json({ error: "Document not yet delivered" }); return; }
 
-    // Strip fences + staged-for-review banner (same as /view)
-    const rawHtml = stripStagedForReviewBanner(doc.htmlContent ?? "")
-      .replace(/^```[a-zA-Z]*\r?\n?/, "")
-      .replace(/\r?\n?```\s*$/, "")
-      .trim();
-
-    const docTypeLabel = INSIGHT_DOC_TYPE_LABELS[doc.docType ?? ""] ?? (doc.docType ?? "Assessment Document");
-    const elements = parseInsightHtml(rawHtml);
-    const pdfBytes = await buildInsightPdf(
-      doc.title ?? "Assessment Document",
-      docTypeLabel,
-      doc.createdAt ? String(doc.createdAt) : null,
-      elements,
-    );
+    // Strip staged-for-review banner (same as /view), then build full HTML doc
+    const cleanHtml = stripStagedForReviewBanner(doc.htmlContent ?? "");
+    const htmlDoc   = buildHtmlDoc(cleanHtml);
+    const pdfBuffer = await htmlToPdf(htmlDoc);
 
     const safeTitle = (doc.title ?? "document")
       .replace(/[^a-zA-Z0-9 _-]/g, "")
@@ -2521,8 +2492,8 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.setHeader("Content-Length", String(pdfBytes.length));
-    res.end(Buffer.from(pdfBytes));
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.end(pdfBuffer);
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/pdf failed");
     res.status(500).json({ error: "Failed to generate PDF" });
