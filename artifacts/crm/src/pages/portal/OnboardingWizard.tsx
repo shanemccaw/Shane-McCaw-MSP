@@ -358,16 +358,39 @@ function StepComplete({ onGoToDashboard }: { onGoToDashboard: () => void }) {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
+const WIZARD_STEP_KEY = "onboarding-wizard-step";
+
 export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onboarding" | "update" }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
-  const [currentStep, setCurrentStep] = useState<StepId | "done">("app-reg");
+
+  // Restore last step from sessionStorage so a page refresh lands back on the
+  // Quick Win progress screen without forcing the user to re-enter App Reg.
+  // Only applies in onboarding mode — update mode always starts at app-reg.
+  const [currentStep, setCurrentStep] = useState<StepId | "done">(() => {
+    if (mode !== "onboarding") return "app-reg";
+    const saved = sessionStorage.getItem(WIZARD_STEP_KEY);
+    if (saved === "quick-win") return "quick-win";
+    return "app-reg";
+  });
+
   const [completing, setCompleting] = useState(false);
   const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
+
+  // Keep sessionStorage in sync with the current step.
+  useEffect(() => {
+    if (mode !== "onboarding") return;
+    if (currentStep === "done") {
+      sessionStorage.removeItem(WIZARD_STEP_KEY);
+    } else {
+      sessionStorage.setItem(WIZARD_STEP_KEY, currentStep);
+    }
+  }, [currentStep, mode]);
 
   const completeWizard = useCallback(async () => {
     if (completing) return;
     setCompleting(true);
+    sessionStorage.removeItem(WIZARD_STEP_KEY);
     try {
       await fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" });
     } catch {
