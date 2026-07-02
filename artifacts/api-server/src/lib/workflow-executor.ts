@@ -1,11 +1,16 @@
 /**
  * workflow-executor.ts
  *
- * In-process workflow executor. Walks a WfGraph in topological order,
- * evaluates conditions, handles delays, records per-node logs/outputs,
- * and writes run status transitions.
+ * In-process workflow executor. Uses an edge-based BFS traversal that
+ * correctly handles converging branches: a node only executes once all
+ * predecessors have "resolved" (ran or were skipped), and only skips when
+ * EVERY resolved predecessor was itself skipped.
  *
- * Called fire-and-forget from the trigger handlers.
+ * Algorithm:
+ *   resolvedCount[node] — how many predecessor edges have been resolved
+ *   activeCount[node]   — how many of those were from executed (non-skipped) nodes
+ *   Ready when resolvedCount == inDegree.
+ *   Skip when ready and activeCount == 0.
  */
 
 import { db, pool } from "@workspace/db";
@@ -22,48 +27,9 @@ import {
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger";
 
-// ── Topological sort ──────────────────────────────────────────────────────────
-
-function topoSort(graph: WfGraph): WfNode[] {
-  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
-  const inDegree = new Map<string, number>();
-  const adjList = new Map<string, string[]>();
-
-  for (const node of graph.nodes) {
-    inDegree.set(node.id, 0);
-    adjList.set(node.id, []);
-  }
-
-  for (const edge of graph.edges) {
-    adjList.get(edge.source)?.push(edge.target);
-    inDegree.set(edge.target, (inDegree.get(edge.target) ?? 0) + 1);
-  }
-
-  const queue: string[] = [];
-  for (const [id, deg] of inDegree) {
-    if (deg === 0) queue.push(id);
-  }
-
-  const sorted: WfNode[] = [];
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    const node = nodeMap.get(id);
-    if (node) sorted.push(node);
-    for (const next of adjList.get(id) ?? []) {
-      const newDeg = (inDegree.get(next) ?? 1) - 1;
-      inDegree.set(next, newDeg);
-      if (newDeg === 0) queue.push(next);
-    }
-  }
-
-  return sorted;
-}
-
-// ── Safe condition evaluation ─────────────────────────────────────────────────
-// Does NOT use eval/new Function. Supports:
-//   path op literal   e.g.  status == 'active'  count > 5  name contains 'foo'
-//   boolean path      e.g.  isActive
-//   logical           e.g.  a == 1 && b == 2   x > 0 || y > 0
+// ── Safe condition evaluator ─────────────────────────────────────────────────
+// NO eval/new Function. Supports: path op literal (==,!=,>,<,>=,<=,contains),
+// boolean truthy path, && and || logical operators.
 
 function evalCondition(expression: string, payload: Record<string, unknown>): boolean {
   function resolvePath(p: string): unknown {
@@ -171,7 +137,7 @@ async function executeNode(
             output = { skipped: true, reason: "no url configured" };
           }
         } else {
-          output = { actionType, note: "action executed (no-op in this environment)" };
+          output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
         }
         break;
       }
@@ -181,10 +147,9 @@ async function executeNode(
         const result = expression ? evalCondition(expression, payload) : false;
         conditionResult = result;
         output = { result, expression };
-        // Check for cancel_on_false flag
         if (!result && node.data.cancelOnFalse === true) {
           cancelRun = true;
-          output.cancelledReason = "condition false + cancelOnFalse flag";
+          output.cancelledReason = "cancelOnFalse=true";
         }
         break;
       }
@@ -264,7 +229,7 @@ async function executeNode(
   return { output, nextPayload, cancelRun, nodeError, conditionResult };
 }
 
-// ── Concurrency check ─────────────────────────────────────────────────────────
+// ── Concurrency check (read-only) ─────────────────────────────────────────────
 
 async function countRunningRuns(definitionId: number): Promise<number> {
   const rows = await db
@@ -278,282 +243,224 @@ async function countRunningRuns(definitionId: number): Promise<number> {
 }
 
 // ── Main executor ─────────────────────────────────────────────────────────────
+// Edge-based BFS that correctly handles converging branches.
 
 export async function executeWorkflowRun(runId: number): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
-  if (!run) {
-    logger.warn({ runId }, "wf-executor: run not found");
-    return;
-  }
-
-  const defRows = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, run.definitionId)).limit(1);
-  const def = defRows[0];
-  if (!def) {
-    logger.warn({ runId }, "wf-executor: definition not found");
-    return;
-  }
-
-  const runningCount = await countRunningRuns(run.definitionId);
-  if (runningCount >= def.concurrencyLimit) {
-    await db.update(wfRunsTable)
-      .set({ status: "failed", errorMessage: `Concurrency limit (${def.concurrencyLimit}) exceeded`, finishedAt: new Date() })
-      .where(eq(wfRunsTable.id, runId));
-    logger.warn({ runId, runningCount, limit: def.concurrencyLimit }, "wf-executor: concurrency limit exceeded");
-    return;
-  }
+  if (!run) { logger.warn({ runId }, "wf-executor: run not found"); return; }
 
   const versionRows = await db.select().from(wfVersionsTable).where(eq(wfVersionsTable.id, run.versionId)).limit(1);
   const version = versionRows[0];
   if (!version) {
-    await db.update(wfRunsTable)
-      .set({ status: "failed", errorMessage: "Version not found", finishedAt: new Date() })
-      .where(eq(wfRunsTable.id, runId));
+    await db.update(wfRunsTable).set({ status: "failed", errorMessage: "Version not found", finishedAt: new Date() }).where(eq(wfRunsTable.id, runId));
     return;
   }
 
-  await db.update(wfRunsTable)
-    .set({ status: "running", startedAt: new Date() })
-    .where(eq(wfRunsTable.id, runId));
+  await db.update(wfRunsTable).set({ status: "running", startedAt: new Date() }).where(eq(wfRunsTable.id, runId));
 
   const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
-  const sorted = topoSort(graph);
   const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+
+  // Compute in-degrees
+  const inDegree = new Map<string, number>();
+  for (const n of graph.nodes) inDegree.set(n.id, 0);
+  for (const e of graph.edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+
+  // Per-node activation counters
+  const resolvedCount = new Map<string, number>();
+  const activeCount   = new Map<string, number>();
+  for (const n of graph.nodes) { resolvedCount.set(n.id, 0); activeCount.set(n.id, 0); }
+
   const branchPath: string[] = [];
-  const skippedNodes = new Set<string>();
   let payload: Record<string, unknown> = { ...(run.payload as Record<string, unknown> ?? {}) };
 
-  try {
-    for (const node of sorted) {
-      // Check for external cancellation
-      const freshRun = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
-      if (freshRun[0]?.status === "cancelled") {
-        logger.info({ runId, nodeId: node.id }, "wf-executor: run cancelled mid-execution");
-        return;
-      }
+  // Queue holds { nodeId, skip } — skip=true when all predecessors were skipped
+  const readyQueue: Array<{ nodeId: string; skip: boolean }> = [];
 
-      if (skippedNodes.has(node.id)) {
+  function resolveEdge(targetId: string, active: boolean) {
+    if (active) activeCount.set(targetId, (activeCount.get(targetId) ?? 0) + 1);
+    const r = (resolvedCount.get(targetId) ?? 0) + 1;
+    resolvedCount.set(targetId, r);
+    const total = inDegree.get(targetId) ?? 0;
+    if (r === total) {
+      readyQueue.push({ nodeId: targetId, skip: (activeCount.get(targetId) ?? 0) === 0 });
+    }
+  }
+
+  // Seed with root nodes (no predecessors)
+  for (const n of graph.nodes) {
+    if ((inDegree.get(n.id) ?? 0) === 0) readyQueue.push({ nodeId: n.id, skip: false });
+  }
+
+  try {
+    while (readyQueue.length > 0) {
+      const item = readyQueue.shift()!;
+      const { nodeId } = item;
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+
+      // Periodically check external cancellation
+      const freshStatus = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+      if (freshStatus[0]?.status === "cancelled") { logger.info({ runId, nodeId }, "wf-executor: cancelled mid-execution"); return; }
+
+      // ── Skip path: node is reachable only through skipped predecessors ──
+      if (item.skip) {
         await db.insert(wfRunNodeOutputsTable).values({
-          runId, nodeId: node.id, input: payload, output: { skipped: true }, status: "skipped",
+          runId, nodeId, input: payload, output: { skipped: true }, status: "skipped",
         }).catch(() => { });
+        for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
+          resolveEdge(e.target, false);
+        }
         continue;
       }
 
-      branchPath.push(node.id);
+      // ── Execute ──
+      branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(
-        node, payload, runId,
-      );
+      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId);
       payload = nextPayload;
 
+      await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+
+      // Cancel
       if (cancelRun) {
-        await db.update(wfRunsTable)
-          .set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
-          .where(eq(wfRunsTable.id, runId));
+        await db.update(wfRunsTable).set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+        await db.insert(wfRunNodeLogsTable).values({ runId, nodeId, level: "info", message: "Run cancelled" }).catch(() => { });
         return;
       }
 
-      // On node error: look for an outgoing "error" branch or error node
+      // Node error: route to error-handle edge if present, otherwise fail
       if (nodeError) {
-        const errorEdge = graph.edges.find(e =>
-          e.source === node.id && (e.sourceHandle === "error" || e.sourceHandle === "onError"),
-        );
+        const outEdges = graph.edges.filter(e => e.source === nodeId);
+        const errorEdge = outEdges.find(e => e.sourceHandle === "error" || e.sourceHandle === "onError");
         if (errorEdge) {
-          // Route only through the error branch — skip all other successors
-          for (const edge of graph.edges) {
-            if (edge.source === node.id && edge.target !== errorEdge.target) {
-              skippedNodes.add(edge.target);
-              graph.nodes
-                .filter(n => isDescendant(n.id, edge.target, graph))
-                .forEach(n => skippedNodes.add(n.id));
-            }
-          }
-          await db.insert(wfRunNodeLogsTable).values({
-            runId, nodeId: node.id, level: "warn",
-            message: `Node error — routing to error branch (${errorEdge.target})`,
-          }).catch(() => { });
+          for (const e of outEdges) resolveEdge(e.target, e.target === errorEdge.target);
         } else {
-          // No error handler — fail the run
-          await db.update(wfRunsTable)
-            .set({
-              status: "failed",
-              finishedAt: new Date(),
-              errorMessage: (output.error as string) ?? `Node ${node.id} failed`,
-              branchPath: branchPath as unknown as string[],
-            })
-            .where(eq(wfRunsTable.id, runId));
-          logger.warn({ runId, nodeId: node.id }, "wf-executor: node error — no error handler, run failed");
+          await db.update(wfRunsTable).set({
+            status: "failed", finishedAt: new Date(),
+            errorMessage: (output.error as string) ?? `Node ${nodeId} failed`,
+            branchPath: branchPath as unknown as string[],
+          }).where(eq(wfRunsTable.id, runId));
+          logger.warn({ runId, nodeId }, "wf-executor: node error, no handler — run failed");
           return;
         }
+        continue;
       }
 
-      // Condition node: route true/false branches; cancel if cancelOnFalse flag set
+      // Condition: route true/false branches
       if (node.type === "condition" && conditionResult !== undefined) {
-        const result = conditionResult;
-        const outEdges = graph.edges.filter(e => e.source === node.id);
-
-        const trueEdge  = outEdges.find(e => e.sourceHandle === "true"  || e.sourceHandle == null);
+        const outEdges = graph.edges.filter(e => e.source === nodeId);
+        const trueEdge  = outEdges.find(e => e.sourceHandle === "true"  || !e.sourceHandle);
         const falseEdge = outEdges.find(e => e.sourceHandle === "false");
-
-        // If condition is false and cancelOnFalse is set, cancel the run
-        if (!result && node.data.cancelOnFalse === true) {
-          await db.update(wfRunsTable)
-            .set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
-            .where(eq(wfRunsTable.id, runId));
-          await db.insert(wfRunNodeLogsTable).values({
-            runId, nodeId: node.id, level: "info",
-            message: `Condition false + cancelOnFalse=true — workflow cancelled`,
-          }).catch(() => { });
-          return;
+        for (const e of outEdges) {
+          const isTaken = conditionResult ? (e.id === trueEdge?.id) : (e.id === falseEdge?.id);
+          resolveEdge(e.target, isTaken);
         }
-
-        // Skip the branch NOT taken
-        const skipEdge = result ? falseEdge : trueEdge;
-        if (skipEdge) {
-          skippedNodes.add(skipEdge.target);
-          graph.nodes
-            .filter(n => isDescendant(n.id, skipEdge.target, graph))
-            .forEach(n => skippedNodes.add(n.id));
-        }
+        continue;
       }
 
-      await db.update(wfRunsTable)
-        .set({ branchPath: branchPath as unknown as string[] })
-        .where(eq(wfRunsTable.id, runId));
+      // Normal: all outgoing edges are active
+      for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
+        resolveEdge(e.target, true);
+      }
     }
 
-    // Mark as completed — suppress unused variable warning
-    void nodeMap;
-    await db.update(wfRunsTable)
-      .set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
-      .where(eq(wfRunsTable.id, runId));
-
-    logger.info({ runId, stepCount: sorted.length }, "wf-executor: run completed");
+    await db.update(wfRunsTable).set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+    logger.info({ runId, steps: branchPath.length }, "wf-executor: run completed");
   } catch (err) {
     const errMsg = String(err);
-    await db.update(wfRunsTable)
-      .set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] })
-      .where(eq(wfRunsTable.id, runId));
-
-    await db.insert(wfRunNodeLogsTable).values({
-      runId,
-      nodeId: "__executor__",
-      level: "error",
-      message: `Executor error: ${errMsg}`,
-    }).catch(() => { });
-
+    await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+    await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
     logger.warn({ runId, err }, "wf-executor: run failed");
   }
-}
-
-function isDescendant(nodeId: string, fromId: string, graph: WfGraph): boolean {
-  const visited = new Set<string>();
-  const queue = [fromId];
-  while (queue.length > 0) {
-    const curr = queue.shift()!;
-    if (curr === nodeId) return true;
-    if (visited.has(curr)) continue;
-    visited.add(curr);
-    for (const edge of graph.edges) {
-      if (edge.source === curr) queue.push(edge.target);
-    }
-  }
-  return false;
 }
 
 // ── Scheduled trigger scanner ─────────────────────────────────────────────────
 
 export async function triggerScheduledWorkflows(): Promise<void> {
-  const rows = await pool.query<{
-    id: number;
-    definition_id: number;
-    config: Record<string, unknown>;
-  }>(`
-    SELECT id, definition_id, config
-    FROM wf_triggers
-    WHERE type = 'schedule'
-      AND enabled = true
-      AND next_run_at IS NOT NULL
-      AND next_run_at <= NOW()
-  `);
+  try {
+    const rows = await pool.query<{
+      id: number;
+      definition_id: number;
+      config: Record<string, unknown>;
+    }>(`
+      SELECT id, definition_id, config
+      FROM wf_triggers
+      WHERE type = 'schedule'
+        AND enabled = true
+        AND next_run_at IS NOT NULL
+        AND next_run_at <= NOW()
+    `);
 
-  for (const trigger of rows.rows) {
-    const cronExpr = trigger.config.cron as string | undefined;
-    const nextRun = cronExpr ? computeNextCronRun(cronExpr) : null;
+    for (const trigger of rows.rows) {
+      const cronExpr = trigger.config.cron as string | undefined;
+      const nextRun = cronExpr ? computeNextCronRun(cronExpr) : null;
 
-    // Atomic claim: update next_run_at only if it's still due (prevents double-fire)
-    const claimed = await pool.query(
-      `UPDATE wf_triggers SET next_run_at = $1 WHERE id = $2 AND next_run_at <= NOW() RETURNING id`,
-      [nextRun, trigger.id],
-    );
-    if (!claimed.rowCount || claimed.rowCount === 0) continue;
+      const claimed = await pool.query(
+        `UPDATE wf_triggers SET next_run_at = $1 WHERE id = $2 AND next_run_at <= NOW() RETURNING id`,
+        [nextRun, trigger.id],
+      );
+      if (!claimed.rowCount || claimed.rowCount === 0) continue;
 
-    const fanOutMode = trigger.config.fan_out_mode as string | undefined;
-    const fanOutQuery = trigger.config.fan_out_query as string | undefined;
+      const fanOutMode  = trigger.config.fan_out_mode  as string | undefined;
+      const fanOutQuery = trigger.config.fan_out_query as string | undefined;
 
-    if (fanOutMode === "per_record" && fanOutQuery) {
-      try {
-        // Restrict to read-only SELECT queries — reject anything else.
-        const trimmed = (fanOutQuery as string).trim().toUpperCase();
-        if (!trimmed.startsWith("SELECT")) {
-          logger.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected (not a SELECT)");
+      if (fanOutMode === "per_record" && fanOutQuery) {
+        // Require a single SELECT statement with no semicolons (prevents stacked writes)
+        const trimmed = fanOutQuery.trim();
+        const isSafeSelect = /^SELECT\s+/i.test(trimmed) && !trimmed.includes(";");
+        if (!isSafeSelect) {
+          logger.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
         } else {
-          const records = await pool.query(fanOutQuery as string);
-          for (const row of records.rows) {
-            await fireWorkflowForDefinition(
-              trigger.definition_id, "schedule", `trigger:${trigger.id}`,
-              row as Record<string, unknown>,
-            );
+          try {
+            const records = await pool.query(trimmed);
+            for (const row of records.rows) {
+              await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, row as Record<string, unknown>);
+            }
+            logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
+          } catch (err) {
+            logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query execution failed (non-fatal)");
           }
-          logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
         }
-      } catch (err) {
-        logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query failed (non-fatal)");
+      } else {
         await fireWorkflowForDefinition(
           trigger.definition_id, "schedule", `trigger:${trigger.id}`,
-          trigger.config.payload as Record<string, unknown> ?? {},
+          (trigger.config.payload as Record<string, unknown>) ?? {},
         );
       }
-    } else {
-      await fireWorkflowForDefinition(
-        trigger.definition_id, "schedule", `trigger:${trigger.id}`,
-        trigger.config.payload as Record<string, unknown> ?? {},
-      );
     }
+  } catch (err) {
+    logger.warn({ err }, "wf-executor: scheduled trigger scan failed (non-fatal)");
   }
 }
 
 // ── Event emitter helper ──────────────────────────────────────────────────────
-// Call this from anywhere in the API to fire event-triggered workflows.
 
 export async function emitWorkflowEvent(
   eventType: string,
   payload: Record<string, unknown> = {},
 ): Promise<void> {
   try {
-    const triggers = await db
-      .select()
-      .from(wfTriggersTable)
-      .where(and(
-        eq(wfTriggersTable.type, "event"),
-        eq(wfTriggersTable.enabled, true),
-      ));
-
+    const triggers = await db.select().from(wfTriggersTable).where(and(
+      eq(wfTriggersTable.type, "event"),
+      eq(wfTriggersTable.enabled, true),
+    ));
     for (const trigger of triggers) {
       const cfg = trigger.config as Record<string, unknown>;
-      // TriggersPage stores the field as "eventName"; accept both for forward-compat.
+      // TriggersPage stores eventName; also accept eventType for forward-compat
       const filterName = (cfg.eventName ?? cfg.eventType) as string | undefined;
       if (!filterName || filterName === eventType) {
-        await fireWorkflowForDefinition(
-          trigger.definitionId, "event", `event:${eventType}`,
-          { ...payload, _eventType: eventType },
-        );
+        await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, { ...payload, _eventType: eventType });
       }
     }
   } catch (err) {
     logger.warn({ err, eventType }, "wf-engine: emitWorkflowEvent failed (non-fatal)");
   }
 }
+
+// ── Fire + concurrency-gate ───────────────────────────────────────────────────
+// Concurrency is checked BEFORE inserting the run to avoid noisy post-insertion failures.
 
 export async function fireWorkflowForDefinition(
   definitionId: number,
@@ -562,28 +469,28 @@ export async function fireWorkflowForDefinition(
   payload: Record<string, unknown> = {},
 ): Promise<number | null> {
   try {
-    const versionRows = await db
-      .select()
-      .from(wfVersionsTable)
-      .where(and(
-        eq(wfVersionsTable.definitionId, definitionId),
-        eq(wfVersionsTable.status, "published"),
-      ))
-      .limit(1);
-
+    // Resolve published version
+    const versionRows = await db.select().from(wfVersionsTable).where(and(
+      eq(wfVersionsTable.definitionId, definitionId),
+      eq(wfVersionsTable.status, "published"),
+    )).limit(1);
     const version = versionRows[0];
-    if (!version) {
-      logger.warn({ definitionId }, "wf-executor: no published version found");
+    if (!version) { logger.warn({ definitionId }, "wf-executor: no published version found"); return null; }
+
+    // Fetch definition for concurrency limit
+    const defRows = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, definitionId)).limit(1);
+    const def = defRows[0];
+    const concurrencyLimit = def?.concurrencyLimit ?? 5;
+
+    // Enforce concurrency BEFORE inserting (prevents noisy failed runs)
+    const runningCount = await countRunningRuns(definitionId);
+    if (runningCount >= concurrencyLimit) {
+      logger.warn({ definitionId, runningCount, concurrencyLimit }, "wf-executor: concurrency limit reached — run rejected at admission");
       return null;
     }
 
     const inserted = await db.insert(wfRunsTable).values({
-      versionId: version.id,
-      definitionId,
-      triggerType,
-      triggerRef,
-      payload,
-      status: "pending",
+      versionId: version.id, definitionId, triggerType, triggerRef, payload, status: "pending",
     }).returning({ id: wfRunsTable.id });
 
     const runId = inserted[0]?.id;
@@ -602,9 +509,9 @@ export async function fireWorkflowForDefinition(
   }
 }
 
-// ── Cron "next run" computation ───────────────────────────────────────────────
-// Supports standard 5-field cron (minute hour dom month dow) with * wildcards.
-// Steps through time minute-by-minute until all fields match (max 1 year ahead).
+// ── Full cron "next run" computation ─────────────────────────────────────────
+// 5-field cron: minute hour dom month dow
+// Supports *, n, */step, a-b ranges, and a,b,c lists.
 
 export function computeNextCronRun(cron: string): Date | null {
   try {
@@ -615,7 +522,7 @@ export function computeNextCronRun(cron: string): Date | null {
     function matches(value: number, spec: string): boolean {
       if (spec === "*") return true;
       if (spec.includes(",")) return spec.split(",").some(s => matches(value, s.trim()));
-      if (spec.includes("-")) {
+      if (spec.includes("-") && !spec.includes("/")) {
         const [lo, hi] = spec.split("-").map(Number);
         return value >= lo && value <= hi;
       }
@@ -630,28 +537,18 @@ export function computeNextCronRun(cron: string): Date | null {
 
     const next = new Date();
     next.setSeconds(0, 0);
-    next.setTime(next.getTime() + 60_000); // advance at least 1 minute
+    next.setTime(next.getTime() + 60_000); // always advance at least one minute
 
     for (let i = 0; i < 525_600; i++) {
-      const m     = next.getMinutes();
-      const h     = next.getHours();
-      const dom   = next.getDate();
-      const month = next.getMonth() + 1;
-      const dow   = next.getDay();
-
       if (
-        matches(m, minStr) &&
-        matches(h, hourStr) &&
-        matches(dom, domStr) &&
-        matches(month, monthStr) &&
-        matches(dow, dowStr)
+        matches(next.getMinutes(),     minStr)   &&
+        matches(next.getHours(),       hourStr)  &&
+        matches(next.getDate(),        domStr)   &&
+        matches(next.getMonth() + 1,   monthStr) &&
+        matches(next.getDay(),         dowStr)
       ) return new Date(next);
-
       next.setTime(next.getTime() + 60_000);
     }
-
     return null;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }

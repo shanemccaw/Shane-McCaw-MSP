@@ -44,6 +44,12 @@ export default function TriggersPage({ defId }: { defId: number }) {
   const [eventName, setEventName] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
+  // Schedule payload config
+  const [schedulePayloadMode, setSchedulePayloadMode] = useState<"static" | "per_record">("static");
+  const [staticPayload, setStaticPayload] = useState("{}");
+  const [fanOutQuery, setFanOutQuery] = useState("SELECT id FROM clients WHERE active = true");
+  const [staticPayloadError, setStaticPayloadError] = useState<string | null>(null);
+
   const { data: def } = useQuery<WfDefinition>({
     queryKey: ["wf-def", defId],
     queryFn: async () => {
@@ -62,10 +68,18 @@ export default function TriggersPage({ defId }: { defId: number }) {
 
   const addMut = useMutation({
     mutationFn: async () => {
-      const config: Record<string, unknown> =
-        newType === "schedule" ? { cron: cronExpr }
-        : newType === "event" ? { eventName }
-        : {};
+      let config: Record<string, unknown> = {};
+      if (newType === "schedule") {
+        config = { cron: cronExpr };
+        if (schedulePayloadMode === "static") {
+          try { config.payload = JSON.parse(staticPayload); } catch { throw new Error("Static payload is not valid JSON"); }
+        } else {
+          config.fan_out_mode = "per_record";
+          config.fan_out_query = fanOutQuery.trim();
+        }
+      } else if (newType === "event") {
+        config = { eventName };
+      }
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -162,15 +176,70 @@ export default function TriggersPage({ defId }: { defId: number }) {
               </div>
 
               {newType === "schedule" && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Cron Expression</label>
-                  <input
-                    value={cronExpr}
-                    onChange={e => setCronExpr(e.target.value)}
-                    placeholder="0 9 * * 1"
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
-                  />
-                  <p className="text-[10px] text-[#484F58]">Format: minute hour dom month dow — e.g. "0 9 * * 1" = 9am every Monday</p>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-[#7D8590]">Cron Expression</label>
+                    <input
+                      value={cronExpr}
+                      onChange={e => setCronExpr(e.target.value)}
+                      placeholder="0 9 * * 1"
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono"
+                    />
+                    <p className="text-[10px] text-[#484F58]">Format: minute hour dom month dow — e.g. "0 9 * * 1" = 9am every Monday</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-[#7D8590]">Payload Mode</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSchedulePayloadMode("static")}
+                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${schedulePayloadMode === "static" ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                      >
+                        Static Payload
+                      </button>
+                      <button
+                        onClick={() => setSchedulePayloadMode("per_record")}
+                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${schedulePayloadMode === "per_record" ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                      >
+                        Per-Record Fan-Out
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-[#484F58]">
+                      {schedulePayloadMode === "static"
+                        ? "Fire one workflow run with a fixed JSON payload."
+                        : "Run a SELECT query and fire one workflow run per row returned."}
+                    </p>
+                  </div>
+
+                  {schedulePayloadMode === "static" && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#7D8590]">Payload (JSON)</label>
+                      <textarea
+                        rows={3}
+                        value={staticPayload}
+                        onChange={e => {
+                          setStaticPayload(e.target.value);
+                          try { JSON.parse(e.target.value); setStaticPayloadError(null); }
+                          catch { setStaticPayloadError("Invalid JSON"); }
+                        }}
+                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono resize-none"
+                      />
+                      {staticPayloadError && <p className="text-[10px] text-red-400">{staticPayloadError}</p>}
+                    </div>
+                  )}
+
+                  {schedulePayloadMode === "per_record" && (
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#7D8590]">Fan-Out Query (SELECT only, no semicolons)</label>
+                      <textarea
+                        rows={3}
+                        value={fanOutQuery}
+                        onChange={e => setFanOutQuery(e.target.value)}
+                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono resize-none"
+                      />
+                      <p className="text-[10px] text-amber-500/70">Each returned row becomes the payload of one workflow run. Only SELECT statements are allowed.</p>
+                    </div>
+                  )}
                 </div>
               )}
 

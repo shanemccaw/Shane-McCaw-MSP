@@ -441,15 +441,31 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
   }, [setEdges]);
 
-  function addNode(nodeType: string) {
+  const canvasRef = useRef<HTMLDivElement>(null);
+
+  function addNode(nodeType: string, position?: { x: number; y: number }) {
     const id = `node-${++nodeIdCounter.current}`;
     const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+    const pos = position ?? { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 };
     setNodes(nds => [...nds, {
       id,
       type: "wfNode",
-      position: { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 },
+      position: pos,
       data: { nodeType, label: style.label },
     }]);
+  }
+
+  function handleCanvasDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const nodeType = e.dataTransfer.getData("application/workflow-node-type");
+    if (!nodeType) return;
+    const bounds = canvasRef.current?.getBoundingClientRect();
+    if (bounds) {
+      // approximate canvas-space coordinates (correct at default zoom=1, pan=0)
+      addNode(nodeType, { x: e.clientX - bounds.left - 72, y: e.clientY - bounds.top - 20 });
+    } else {
+      addNode(nodeType);
+    }
   }
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -527,6 +543,13 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         </div>
       </div>
 
+      {isPublished && (
+        <div className="flex-shrink-0 flex items-center gap-2 bg-emerald-500/5 border-b border-emerald-500/20 px-4 py-2">
+          <span className="text-[10px] font-semibold text-emerald-400">● LIVE VERSION</span>
+          <span className="text-[10px] text-[#484F58]">This version is active and running in production. Click Save to auto-create a new draft without affecting live traffic.</span>
+        </div>
+      )}
+
       {runMut.isError && (
         <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-xs text-red-400">
           {(runMut.error as Error).message}
@@ -537,28 +560,39 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         {/* Node library sidebar */}
         <div className="w-44 flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] overflow-y-auto p-3">
           <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-2 px-1">Node Library</p>
+          <p className="text-[10px] text-[#484F58] mb-2 px-1 leading-tight">Click or drag onto canvas</p>
           <div className="space-y-1.5">
             {LIBRARY_NODES.map(n => {
               const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
               return (
-                <button
+                <div
                   key={n.type}
+                  draggable
+                  onDragStart={e => {
+                    e.dataTransfer.setData("application/workflow-node-type", n.type);
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
                   onClick={() => addNode(n.type)}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-[#1C2128] transition-colors text-left border border-transparent hover:border-[#30363D]"
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-[#1C2128] transition-colors text-left border border-transparent hover:border-[#30363D] cursor-grab active:cursor-grabbing"
                 >
                   <span style={{ color: s.border, fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-[#E6EDF3] leading-tight">{n.label}</p>
                     <p className="text-[9px] text-[#484F58] leading-tight truncate">{n.description}</p>
                   </div>
-                </button>
+                </div>
               );
             })}
           </div>
         </div>
 
         {/* Canvas */}
-        <div className="flex-1 bg-[#0D1117] relative">
+        <div
+          ref={canvasRef}
+          className="flex-1 bg-[#0D1117] relative"
+          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+          onDrop={handleCanvasDrop}
+        >
           <ReactFlow
             nodes={nodes}
             edges={edges}
