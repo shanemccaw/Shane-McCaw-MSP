@@ -22,6 +22,7 @@ import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
+import { parseInsightHtml, buildInsightPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
 import { broadcastKanbanChange, registerSSEClient } from "../lib/sse-broadcast.ts";
 import multer from "multer";
@@ -2452,6 +2453,79 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/view failed");
     res.status(500).json({ error: "Failed to fetch document" });
+  }
+});
+
+// ── CLIENT: AI Insights Document → branded PDF download ──────────────────────
+
+const INSIGHT_DOC_TYPE_LABELS: Record<string, string> = {
+  executive_summary:           "Executive Summary",
+  full_readiness_report:       "Full Readiness Report",
+  security_posture_report:     "Security Posture Report",
+  governance_maturity_report:  "Governance Maturity Report",
+  data_exposure_risk_report:   "Data Exposure Risk Report",
+  license_optimization_report: "License Optimization Report",
+  sow:                         "Statement of Work",
+  consolidated_sow:            "Consolidated SOW",
+  remediation_plan:            "Remediation Plan",
+  deployment_plan:             "Deployment Plan",
+  governance_framework:        "Governance Framework",
+  security_hardening_plan:     "Security Hardening Plan",
+  copilot_enablement_plan:     "Copilot Enablement Plan",
+  identity_modernization_plan: "Identity Modernization Plan",
+};
+
+router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const [doc] = await db
+      .select({
+        id:          insightsGeneratedDocumentsTable.id,
+        title:       insightsGeneratedDocumentsTable.title,
+        htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+        docType:     insightsGeneratedDocumentsTable.docType,
+        status:      insightsGeneratedDocumentsTable.status,
+        customerId:  insightsGeneratedDocumentsTable.customerId,
+        createdAt:   insightsGeneratedDocumentsTable.createdAt,
+      })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, id));
+
+    if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
+    if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    if (doc.status !== "delivered") { res.status(403).json({ error: "Document not yet delivered" }); return; }
+
+    // Strip fences + staged-for-review banner (same as /view)
+    const rawHtml = stripStagedForReviewBanner(doc.htmlContent ?? "")
+      .replace(/^```[a-zA-Z]*\r?\n?/, "")
+      .replace(/\r?\n?```\s*$/, "")
+      .trim();
+
+    const docTypeLabel = INSIGHT_DOC_TYPE_LABELS[doc.docType ?? ""] ?? (doc.docType ?? "Assessment Document");
+    const elements = parseInsightHtml(rawHtml);
+    const pdfBytes = await buildInsightPdf(
+      doc.title ?? "Assessment Document",
+      docTypeLabel,
+      doc.createdAt ? String(doc.createdAt) : null,
+      elements,
+    );
+
+    const safeTitle = (doc.title ?? "document")
+      .replace(/[^a-zA-Z0-9 _-]/g, "")
+      .replace(/\s+/g, "-")
+      .slice(0, 80);
+    const filename = `${safeTitle}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Length", String(pdfBytes.length));
+    res.end(Buffer.from(pdfBytes));
+  } catch (err) {
+    req.log.error({ err }, "portal/insights-documents/:id/pdf failed");
+    res.status(500).json({ error: "Failed to generate PDF" });
   }
 });
 

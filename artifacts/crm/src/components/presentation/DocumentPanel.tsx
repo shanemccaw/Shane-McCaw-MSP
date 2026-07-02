@@ -616,14 +616,14 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
   const handleDownload = async () => {
     setDownloading(true);
     try {
-      const res = await fetchWithAuth(`/api/portal/insights-documents/${doc.id}/view`);
-      const data = await res.json() as { htmlContent?: string };
-      const html = data.htmlContent ?? "";
-      const blob = new Blob([html], { type: "text/html" });
+      const res = await fetchWithAuth(`/api/portal/insights-documents/${doc.id}/pdf`);
+      if (!res.ok) throw new Error(`PDF generation failed: ${res.status}`);
+      const ab = await res.arrayBuffer();
+      const blob = new Blob([ab], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${doc.title.replace(/\s+/g, "-")}.html`;
+      a.download = `${doc.title.replace(/\s+/g, "-")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } finally { setDownloading(false); }
