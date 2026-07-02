@@ -208,6 +208,217 @@ function LibraryNodeItem({
   );
 }
 
+// ── Start-node trigger manager ────────────────────────────────────────────────
+
+interface WfTrigger {
+  id: number;
+  type: "manual" | "schedule" | "webhook" | "event";
+  config: Record<string, unknown>;
+  webhookToken: string | null;
+  nextRunAt: string | null;
+  enabled: boolean;
+}
+
+const TRIGGER_ICONS: Record<string, string> = {
+  manual: "🖱", schedule: "📅", webhook: "🔗", event: "📡",
+};
+
+function StartNodeTriggers({ defId }: { defId: number }) {
+  const { fetchWithAuth } = useAuth();
+  const qc = useQueryClient();
+  const [showAdd, setShowAdd] = useState(false);
+  const [newType, setNewType] = useState<"manual" | "schedule" | "webhook" | "event">("schedule");
+  const [cronExpr, setCronExpr] = useState("0 9 * * 1");
+  const [eventName, setEventName] = useState("");
+  const [confirmDel, setConfirmDel] = useState<number | null>(null);
+
+  const { data: triggers = [], isLoading } = useQuery<WfTrigger[]>({
+    queryKey: ["wf-triggers", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`);
+      return res.json();
+    },
+  });
+
+  const addMut = useMutation({
+    mutationFn: async () => {
+      let config: Record<string, unknown> = {};
+      if (newType === "schedule") config = { cron: cronExpr.trim() };
+      else if (newType === "event") config = { eventName: eventName.trim() };
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: newType, config }),
+      });
+      if (!res.ok) throw new Error("Failed to create trigger");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-triggers", defId] });
+      setShowAdd(false);
+      setEventName("");
+    },
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: async ({ id, enabled }: { id: number; enabled: boolean }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!res.ok) throw new Error("Failed to update trigger");
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["wf-triggers", defId] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete trigger");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-triggers", defId] });
+      setConfirmDel(null);
+    },
+  });
+
+  const webhookBase = `${window.location.origin}/api/webhooks/workflow`;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-[#7D8590]">Triggers</span>
+        <button
+          onClick={() => setShowAdd(v => !v)}
+          className="text-[10px] font-medium text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          </svg>
+          Add
+        </button>
+      </div>
+
+      {/* Add form */}
+      {showAdd && (
+        <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-2.5">
+          <select
+            value={newType}
+            onChange={e => setNewType(e.target.value as typeof newType)}
+            className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+          >
+            <option value="manual">🖱 Manual (API / Run Now)</option>
+            <option value="schedule">📅 Schedule (cron)</option>
+            <option value="webhook">🔗 Webhook (HTTP POST)</option>
+            <option value="event">📡 Event (backend emit)</option>
+          </select>
+
+          {newType === "schedule" && (
+            <input
+              value={cronExpr}
+              onChange={e => setCronExpr(e.target.value)}
+              placeholder="Cron expression, e.g. 0 9 * * 1"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            />
+          )}
+          {newType === "event" && (
+            <input
+              value={eventName}
+              onChange={e => setEventName(e.target.value)}
+              placeholder="Event name, e.g. client.created"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs font-mono text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            />
+          )}
+          {newType === "webhook" && (
+            <p className="text-[10px] text-[#7D8590]">A unique webhook URL will be generated automatically.</p>
+          )}
+
+          {addMut.isError && (
+            <p className="text-[10px] text-[#EF4444]">{(addMut.error as Error).message}</p>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={addMut.isPending || (newType === "event" && !eventName.trim())}
+              className="flex-1 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-40 text-white text-[11px] font-medium py-1.5 rounded-lg transition-colors"
+            >
+              {addMut.isPending ? "Adding…" : "Add Trigger"}
+            </button>
+            <button
+              onClick={() => setShowAdd(false)}
+              className="px-3 text-[11px] text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Trigger list */}
+      {isLoading ? (
+        <p className="text-[10px] text-[#484F58] py-1">Loading…</p>
+      ) : triggers.length === 0 ? (
+        <p className="text-[10px] text-[#484F58] py-1">No triggers yet — add one above.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {triggers.map(t => (
+            <div key={t.id} className="rounded-lg bg-[#0D1117] border border-[#30363D] px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-sm">{TRIGGER_ICONS[t.type] ?? "⚡"}</span>
+                  <span className="text-[11px] font-medium text-[#E6EDF3] capitalize">{t.type}</span>
+                  {typeof t.config.cron === "string" && (
+                    <span className="text-[10px] font-mono text-[#7D8590] truncate">{t.config.cron}</span>
+                  )}
+                  {typeof t.config.eventName === "string" && (
+                    <span className="text-[10px] font-mono text-[#7D8590] truncate">{t.config.eventName}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {/* enable toggle */}
+                  <button
+                    onClick={() => toggleMut.mutate({ id: t.id, enabled: !t.enabled })}
+                    title={t.enabled ? "Disable" : "Enable"}
+                    className={`w-7 h-4 rounded-full relative transition-colors ${t.enabled ? "bg-[#22C55E]/70" : "bg-[#30363D]"}`}
+                  >
+                    <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all ${t.enabled ? "left-3.5" : "left-0.5"}`} />
+                  </button>
+                  {/* delete */}
+                  {confirmDel === t.id ? (
+                    <button
+                      onClick={() => deleteMut.mutate(t.id)}
+                      className="text-[10px] text-[#EF4444] hover:text-red-300"
+                    >
+                      {deleteMut.isPending ? "…" : "Confirm"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDel(t.id)}
+                      className="text-[#484F58] hover:text-[#EF4444] transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+              {t.type === "webhook" && t.webhookToken && (
+                <p className="text-[10px] font-mono text-[#484F58] break-all">{webhookBase}/{t.webhookToken}</p>
+              )}
+              {t.nextRunAt && (
+                <p className="text-[10px] text-[#484F58]">Next: {new Date(t.nextRunAt).toLocaleString()}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Config panel ──────────────────────────────────────────────────────────────
 
 function NodeConfigPanel({
@@ -215,11 +426,13 @@ function NodeConfigPanel({
   onChange,
   onClose,
   onDelete,
+  defId,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   onClose: () => void;
   onDelete: (id: string) => void;
+  defId: number;
 }) {
   const nodeType = (node.data.nodeType as string) ?? "action";
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
@@ -264,15 +477,7 @@ function NodeConfigPanel({
         />
 
         {nodeType === "start" && (
-          <div className="rounded-lg bg-[#0A2540]/60 border border-[#22C55E]/20 p-3 space-y-2">
-            <p className="text-xs font-medium text-[#22C55E]">Entry Point</p>
-            <p className="text-[11px] text-[#7D8590] leading-relaxed">
-              This node is where every run begins. What fires it is controlled by <span className="text-[#E6EDF3] font-medium">Triggers</span> — configure them on the Triggers tab of this workflow.
-            </p>
-            <p className="text-[10px] text-[#484F58] leading-relaxed">
-              Supported trigger types: <span className="font-mono text-[#7D8590]">manual</span>, <span className="font-mono text-[#7D8590]">schedule</span>, <span className="font-mono text-[#7D8590]">webhook</span>, <span className="font-mono text-[#7D8590]">event</span>. The payload from each trigger is available as <span className="font-mono text-[#7D8590]">{"{{payload.*}}"}</span> in downstream condition expressions.
-            </p>
-          </div>
+          <StartNodeTriggers defId={defId} />
         )}
 
         {nodeType === "action" && (
@@ -998,6 +1203,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             onChange={updateNodeData}
             onClose={() => setSelectedNodeId(null)}
             onDelete={deleteNode}
+            defId={defId}
           />
         )}
 
