@@ -8,6 +8,7 @@ interface DocumentPanelProps {
     category: "report" | "consulting";
     docType: string;
     htmlContent: string;
+    createdAt: string | null;
   };
   onReady?: () => void;
 }
@@ -20,6 +21,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   data_exposure_risk_report: "Data Exposure Risk Report",
   license_optimization_report: "License Optimization Report",
   sow: "Statement of Work",
+  consolidated_sow: "Consolidated SOW",
   remediation_plan: "Remediation Plan",
   deployment_plan: "Deployment Plan",
   governance_framework: "Governance Framework",
@@ -27,6 +29,118 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   copilot_enablement_plan: "Copilot Enablement Plan",
   identity_modernization_plan: "Identity Modernization Plan",
 };
+
+type RiskLevel = "critical" | "high" | "medium" | "low";
+
+interface DocMeta {
+  riskLevel: RiskLevel;
+  covers: [string, string, string];
+}
+
+const DOC_TYPE_META: Record<string, DocMeta> = {
+  executive_summary: {
+    riskLevel: "high",
+    covers: ["Top-line tenant health at a glance", "Priority remediation highlights", "Recommended next steps"],
+  },
+  full_readiness_report: {
+    riskLevel: "critical",
+    covers: ["End-to-end Microsoft 365 tenant assessment", "Security, compliance & licensing gaps", "Roadmap for Copilot readiness"],
+  },
+  security_posture_report: {
+    riskLevel: "critical",
+    covers: ["Identity & access control gaps", "Conditional Access and MFA coverage", "Immediate hardening priorities"],
+  },
+  governance_maturity_report: {
+    riskLevel: "high",
+    covers: ["Data governance maturity baseline", "SharePoint & Teams sprawl analysis", "Policy and retention gaps"],
+  },
+  data_exposure_risk_report: {
+    riskLevel: "critical",
+    covers: ["External sharing and oversharing risks", "Sensitive data without protection labels", "DLP policy coverage gaps"],
+  },
+  license_optimization_report: {
+    riskLevel: "medium",
+    covers: ["License utilization and waste analysis", "Unlicensed or underused user accounts", "Cost reduction opportunities"],
+  },
+  remediation_plan: {
+    riskLevel: "high",
+    covers: ["Immediate stabilization steps", "90-day hardening roadmap", "Required controls for Copilot readiness"],
+  },
+  deployment_plan: {
+    riskLevel: "medium",
+    covers: ["Phased rollout schedule", "User adoption milestones", "Technical prerequisites and dependencies"],
+  },
+  governance_framework: {
+    riskLevel: "high",
+    covers: ["Governance policies and standards", "Teams and SharePoint provisioning controls", "Lifecycle management procedures"],
+  },
+  security_hardening_plan: {
+    riskLevel: "critical",
+    covers: ["Immediate stabilization steps", "90-day hardening roadmap", "Required controls for Copilot readiness"],
+  },
+  copilot_enablement_plan: {
+    riskLevel: "medium",
+    covers: ["Copilot prerequisite compliance", "User readiness and training plan", "Governance guardrails for AI usage"],
+  },
+  identity_modernization_plan: {
+    riskLevel: "high",
+    covers: ["Identity hygiene and stale account cleanup", "Conditional Access modernization", "MFA and passwordless adoption path"],
+  },
+  consolidated_sow: {
+    riskLevel: "medium",
+    covers: ["Full scope of engagement and deliverables", "Timeline and phased pricing breakdown", "Acceptance criteria per phase"],
+  },
+  sow: {
+    riskLevel: "medium",
+    covers: ["Scope of work and engagement terms", "Deliverables and timeline", "Investment and payment structure"],
+  },
+};
+
+const RISK_CONFIG: Record<RiskLevel, { bg: string; border: string; text: string; dot: string; label: string }> = {
+  critical: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", dot: "bg-red-500", label: "Critical" },
+  high:     { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", dot: "bg-orange-500", label: "High" },
+  medium:   { bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-700", dot: "bg-yellow-400", label: "Medium" },
+  low:      { bg: "bg-green-50", border: "border-green-200", text: "text-green-700", dot: "bg-green-500", label: "Low" },
+};
+
+function extractKeyFindings(html: string): string[] {
+  const text = html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const findings: string[] = [];
+  const seen = new Set<string>();
+
+  const add = (raw: string) => {
+    const s = raw.trim().replace(/\s+/g, " ").slice(0, 72);
+    const key = s.toLowerCase().slice(0, 40);
+    if (!seen.has(key) && s.length >= 5) { seen.add(key); findings.push(s); }
+  };
+
+  for (const m of text.matchAll(/\b([\w ]{2,25}[Ss]core[:\s]+\d+\s*\/\s*100)\b/g)) add(m[0]);
+  for (const m of text.matchAll(/\b(\d+\s*\/\s*100)\b/g)) add(`Score: ${m[1]}`);
+  for (const m of text.matchAll(/\bNo\s+(Conditional Access|MFA|Multi-Factor Auth[\w]*|Intune|Defender|DLP|Sensitivity Labels?|Retention Polic[\w]*|PIM|Privileged Identity|Audit Log[\w]*|DMARC|DKIM)\b/gi)) add(m[0]);
+  for (const m of text.matchAll(/\b(\d{1,3}%\s+(?:unlicensed|inactive|unused|unassigned|exposed|external|overexposed)[\w ]{0,20})\b/gi)) add(m[0].trim().slice(0, 60));
+  if (/cmdlet\s+fail|fail.*cmdlet|\d+\s+cmdlet/i.test(text)) add("Cmdlet failures detected");
+  for (const m of text.matchAll(/\b(\d+\s+(?:cmdlet|command|script)\s+(?:failure|error)s?)\b/gi)) add(m[0]);
+
+  return findings.slice(0, 4);
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
 
 const DOC_CSS = `
   *, *::before, *::after { box-sizing: border-box; }
@@ -167,7 +281,6 @@ const DOC_CSS = `
 
   section { margin-bottom: 1.5rem; }
 
-  /* Score / stat callouts the AI sometimes wraps in divs */
   div > strong:only-child { display: block; }
 `;
 
@@ -178,7 +291,6 @@ function stripFence(html: string): string {
     .trim();
 }
 
-/** Strip inline style attrs so our stylesheet has full control. */
 function cleanInlineStyles(html: string): string {
   return html
     .replace(/\s+style="[^"]*"/gi, "")
@@ -211,6 +323,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
   };
 
   const srcdoc = useMemo(() => buildSrcdoc(doc.htmlContent), [doc.htmlContent]);
+  const findings = useMemo(() => extractKeyFindings(doc.htmlContent), [doc.htmlContent]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -232,11 +345,14 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
 
   const typeLabel = DOC_TYPE_LABELS[doc.docType] ?? doc.docType;
   const categoryLabel = doc.category === "consulting" ? "Consulting Deliverable" : "Assessment Report";
+  const meta = DOC_TYPE_META[doc.docType] ?? null;
+  const riskCfg = meta ? RISK_CONFIG[meta.riskLevel] : null;
+  const formattedDate = formatDate(doc.createdAt);
 
   return (
     <div className="flex flex-col h-full">
       {/* Document header */}
-      <div className="flex items-start justify-between gap-4 mb-4 flex-shrink-0">
+      <div className="flex items-start justify-between gap-4 mb-3 flex-shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
             <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -275,6 +391,58 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
         </button>
       </div>
 
+      {/* Info bar: risk level + tenant tag + what this covers + key findings */}
+      <div className="flex-shrink-0 mb-3 rounded-xl border border-border bg-slate-50 overflow-hidden">
+        {/* Row 1: Risk badge + tenant tag */}
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border flex-wrap gap-y-1.5">
+          {riskCfg ? (
+            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold ${riskCfg.bg} ${riskCfg.border} ${riskCfg.text}`}>
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${riskCfg.dot}`} />
+              Risk Level: {riskCfg.label}
+            </div>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            <span className="font-medium text-[#0078D4]">Generated from your tenant</span>
+            {formattedDate && <span className="text-muted-foreground">· {formattedDate}</span>}
+          </div>
+        </div>
+
+        {/* Row 2: What This Covers + Key Findings */}
+        <div className="flex divide-x divide-border">
+          {meta && (
+            <div className={`px-4 py-3 ${findings.length > 0 ? "w-1/2" : "w-full"}`}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">What This Covers</p>
+              <ul className="space-y-1.5">
+                {meta.covers.map((c, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                    <span className="text-[#0078D4] font-bold mt-px flex-shrink-0">•</span>
+                    {c}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {findings.length > 0 && (
+            <div className={`px-4 py-3 ${meta ? "w-1/2" : "w-full"}`}>
+              <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2">Key Findings</p>
+              <ul className="space-y-1.5">
+                {findings.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-slate-700">
+                    <span className="text-orange-500 font-bold mt-px flex-shrink-0">!</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Document content rendered in an isolated iframe */}
       <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm bg-white relative">
         {!iframeLoaded && (
@@ -296,12 +464,6 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
               <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
             </div>
             <div className="h-4 bg-slate-100 rounded w-10/12 overflow-hidden relative">
-              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
-            </div>
-            <div className="h-4 bg-slate-100 rounded w-full overflow-hidden relative">
-              <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
-            </div>
-            <div className="h-4 bg-slate-100 rounded w-3/4 overflow-hidden relative">
               <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
             </div>
           </div>

@@ -9157,6 +9157,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
           category: insightsGeneratedDocumentsTable.category,
           docType: insightsGeneratedDocumentsTable.docType,
           htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+          createdAt: insightsGeneratedDocumentsTable.createdAt,
         })
           .from(insightsGeneratedDocumentsTable)
           .where(inArray(insightsGeneratedDocumentsTable.id, docIds))

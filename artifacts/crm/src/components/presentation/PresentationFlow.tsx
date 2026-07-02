@@ -11,6 +11,7 @@ interface PresentationDoc {
   category: "report" | "consulting";
   docType: string;
   htmlContent: string;
+  createdAt: string | null;
 }
 
 interface SowPhase {
@@ -650,8 +651,13 @@ export default function PresentationFlow({
                   onClick={goNext}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20"
                 >
-                  Next
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <span>
+                    Next
+                    {steps[stepIndex + 1] && (
+                      <span className="opacity-80">: {stepLabel(steps[stepIndex + 1], sortedDocs)}</span>
+                    )}
+                  </span>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
                 </button>

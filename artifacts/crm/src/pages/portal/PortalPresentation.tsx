@@ -15,6 +15,7 @@ interface PresentationData {
     category: "report" | "consulting";
     docType: string;
     htmlContent: string;
+    createdAt: string | null;
   }>;
   sowPhases: Array<{
     id: string;
