@@ -202,20 +202,32 @@ export default function QuickWinOnboardingResults() {
                 </div>
               )}
               <div className="text-center sm:text-left">
-                <div className="inline-flex items-center gap-1.5 bg-[#0078D4]/20 text-[#00B4D8] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-[#0078D4]/30 mb-3">
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                  Diagnostic Complete
-                </div>
+                {hasData ? (
+                  <div className="inline-flex items-center gap-1.5 bg-[#0078D4]/20 text-[#00B4D8] text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-[#0078D4]/30 mb-3">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    Diagnostic Complete
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 bg-amber-500/20 text-amber-300 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full border border-amber-500/30 mb-3">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+                    Diagnostic Incomplete
+                  </div>
+                )}
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white mb-2 leading-tight">
                   {hasData
                     ? `Your M365 Security Score: ${overallScore}/100`
-                    : "Your Quick Win Diagnostic is Complete"}
+                    : "Diagnostic Didn't Complete"}
                 </h1>
                 <p className="text-sm text-white/60 leading-relaxed max-w-lg">
                   {hasData
                     ? `We scanned ${scoredCats.length} critical areas of your Microsoft 365 tenant. ${criticalCats.length > 0 ? `${criticalCats.length} area${criticalCats.length > 1 ? "s" : ""} require immediate attention.` : attentionCats.length > 0 ? `${attentionCats.length} area${attentionCats.length > 1 ? "s" : ""} need improvement.` : "Your environment is in good shape."}`
-                    : "Your diagnostic results will appear here once the scan finishes. Come back any time — your results are saved."}
+                    : "The diagnostic encountered an issue before it could finish — this can happen if Azure credentials aren't configured yet, or if there was a temporary network interruption. Shane has been notified and will follow up with your results."}
                 </p>
+                {!hasData && (
+                  <p className="text-xs text-white/40 mt-3 leading-relaxed max-w-lg">
+                    You can re-run the diagnostic once your Azure App Registration credentials are in place, or book a call and Shane will run it manually.
+                  </p>
+                )}
                 {scorecard?.latestDate && (
                   <p className="text-[11px] text-white/30 mt-2">
                     Scanned {new Date(scorecard.latestDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
@@ -286,34 +298,65 @@ export default function QuickWinOnboardingResults() {
           </div>
 
           {/* CTA section */}
-          <div className="bg-gradient-to-br from-[#0078D4] to-[#0053a0] rounded-2xl p-7 text-center">
-            <h2 className="text-xl font-extrabold text-white mb-2">Ready to fix what the diagnostic found?</h2>
-            <p className="text-sm text-white/70 mb-6 max-w-md mx-auto leading-relaxed">
-              Upgrade to a full project engagement and Shane will begin remediating your M365 environment within one business day.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <button
-                onClick={() => navigate("/portal/onboarding/select")}
-                className="flex items-center justify-center gap-2 bg-white text-[#0078D4] font-bold px-8 py-3 rounded-xl hover:bg-white/90 transition-colors text-sm w-full sm:w-auto"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                Upgrade to Full Project
-              </button>
-              <a
-                href="/book"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm border border-white/20 w-full sm:w-auto"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Book a Strategy Call
-              </a>
+          {hasData ? (
+            <div className="bg-gradient-to-br from-[#0078D4] to-[#0053a0] rounded-2xl p-7 text-center">
+              <h2 className="text-xl font-extrabold text-white mb-2">Ready to fix what the diagnostic found?</h2>
+              <p className="text-sm text-white/70 mb-6 max-w-md mx-auto leading-relaxed">
+                Upgrade to a full project engagement and Shane will begin remediating your M365 environment within one business day.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => navigate("/portal/onboarding/select")}
+                  className="flex items-center justify-center gap-2 bg-white text-[#0078D4] font-bold px-8 py-3 rounded-xl hover:bg-white/90 transition-colors text-sm w-full sm:w-auto"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Upgrade to Full Project
+                </button>
+                <a
+                  href="/book"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm border border-white/20 w-full sm:w-auto"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Book a Strategy Call
+                </a>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white/5 border border-amber-500/20 rounded-2xl p-7 text-center">
+              <h2 className="text-xl font-extrabold text-white mb-2">What would you like to do next?</h2>
+              <p className="text-sm text-white/60 mb-6 max-w-md mx-auto leading-relaxed">
+                You can re-run the diagnostic once your Azure credentials are set up, or book a call and Shane will review your environment manually.
+              </p>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button
+                  onClick={() => navigate("/portal/onboarding/wizard")}
+                  className="flex items-center justify-center gap-2 bg-white text-[#0078D4] font-bold px-8 py-3 rounded-xl hover:bg-white/90 transition-colors text-sm w-full sm:w-auto"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Re-run diagnostic
+                </button>
+                <a
+                  href="/book"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-xl transition-colors text-sm border border-white/20 w-full sm:w-auto"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  Book a Strategy Call
+                </a>
+              </div>
+            </div>
+          )}
 
           {/* Footer note */}
           <p className="text-center text-xs text-white/30 pb-4">
