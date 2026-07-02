@@ -70,6 +70,14 @@ const TRACKS: TrackConfig[] = [
     color: "#00B4D8",
   },
   {
+    num: "02",
+    type: "quick_win",
+    label: "Quick Wins",
+    description: "Free M365 diagnostic and rapid-result engagements",
+    icon: "bolt",
+    color: "#0078D4",
+  },
+  {
     num: "03",
     type: "retainer",
     label: "Monthly Fractional Retainers",
