@@ -20,6 +20,7 @@ import PowerPlatform from "@/pages/services/PowerPlatform";
 import Governance from "@/pages/services/Governance";
 import CloudMigration from "@/pages/services/CloudMigration";
 import M365Training from "@/pages/services/M365Training";
+import SecurityHardening from "@/pages/services/SecurityHardening";
 import Privacy from "@/pages/Privacy";
 import ArticlePage from "@/pages/ArticlePage";
 import Admin from "@/pages/Admin";
@@ -88,6 +89,7 @@ function Router() {
       <Route path="/services/governance" component={Governance} />
       <Route path="/services/cloud-migration" component={CloudMigration} />
       <Route path="/services/m365-training" component={M365Training} />
+      <Route path="/services/security-hardening" component={SecurityHardening} />
       <Route path="/micro-offers" component={MicroOffers} />
       <Route path="/micro-offers/:slug" component={MicroOfferDetail} />
       <Route path="/pricing" component={Pricing} />

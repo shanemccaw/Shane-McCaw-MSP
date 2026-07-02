@@ -212,6 +212,33 @@ export default function CopilotAI() {
         </div>
       </section>
 
+      {/* ── COST OF INACTION ─────────────────────────────────────────────── */}
+      <section className="bg-white pb-4 pt-2">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="rounded-2xl bg-red-50 border border-red-200 p-8 flex flex-col md:flex-row md:items-center gap-8">
+            <div className="flex-1 flex flex-col md:flex-row md:items-center gap-6">
+              <div className="flex-shrink-0 text-center">
+                <p className="text-5xl font-black text-red-600 leading-none tracking-tight">~$3.8M</p>
+                <p className="text-sm font-bold text-red-500 uppercase tracking-widest mt-1">Avg Breach Cost</p>
+              </div>
+              <div className="border-l-0 md:border-l border-red-200 md:pl-6">
+                <p className="text-xs font-bold text-red-500 uppercase tracking-widest mb-1">Cost of Inaction</p>
+                <h3 className="text-lg font-extrabold text-red-900 mb-2">
+                  The cost of a data exposure incident from an unprepared Copilot rollout.
+                </h3>
+                <p className="text-red-700 text-sm leading-relaxed">
+                  AI/data exposure incidents at organizations of your size average <strong>$3.8M per breach</strong> — IBM Cost of a Data Breach Report 2024. Enabling Copilot into an unprepared tenant isn't just a governance gap, it's a liability.
+                </p>
+                <p className="text-red-400 text-xs mt-2">Source: IBM Cost of a Data Breach Report 2024 — AI/data exposure incidents, orgs your size.</p>
+              </div>
+            </div>
+            <div className="flex-shrink-0">
+              <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── OFFICIAL OFFER ───────────────────────────────────────────────── */}
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
