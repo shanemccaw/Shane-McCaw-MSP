@@ -314,6 +314,24 @@ export default function ProjectTasksLayer() {
         )}
       </div>
 
+      {/* Progress bar */}
+      {tasks.length > 0 && (
+        <div className="flex items-center gap-2.5">
+          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-1.5 rounded-full transition-all duration-500"
+              style={{
+                width: `${Math.round((completedCount / tasks.length) * 100)}%`,
+                background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
+              }}
+            />
+          </div>
+          <span className="text-[10px] font-semibold text-white/40 tabular-nums flex-shrink-0">
+            {completedCount}/{tasks.length}
+          </span>
+        </div>
+      )}
+
       {/* Task list */}
       <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
         {!isLoading && sorted.length === 0 && (
