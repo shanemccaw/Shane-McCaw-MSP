@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
+import { ManualScriptUploadCard, type ManualScriptRecord } from "@/components/ManualScriptUploadCard";
 // ── Outer wizard steps ────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -306,6 +307,67 @@ function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenant
   );
 }
 
+// ── Wizard manual-script block (fetches onboarding scripts, shows centered) ───
+
+type ManualScriptWithProject = ManualScriptRecord & { projectId: number };
+
+function WizardManualScripts({ onAnyCompleted }: { onAnyCompleted?: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const [scripts, setScripts] = useState<ManualScriptWithProject[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/onboarding/manual-scripts")
+      .then(r => r.ok ? (r.json() as Promise<ManualScriptWithProject[]>) : ([] as ManualScriptWithProject[]))
+      .then(data => setScripts(data))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCompleted = (runResultId: number) => {
+    setScripts(prev => prev.map(s =>
+      s.runResultId === runResultId
+        ? { ...s, status: "completed" as const, uploadedAt: new Date().toISOString() }
+        : s
+    ));
+    onAnyCompleted?.();
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-6">
+        <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (scripts.length === 0) return null;
+
+  return (
+    <div className="w-full max-w-xl mx-auto space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="w-5 h-5 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
+          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+        </div>
+        <p className="text-sm font-bold text-[#0A2540]">
+          Manual steps required — download and run the script below
+        </p>
+      </div>
+      {scripts.map(s => (
+        <ManualScriptUploadCard
+          key={s.runResultId}
+          script={s}
+          projectId={s.projectId}
+          onCompleted={() => handleCompleted(s.runResultId)}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ── Step: Quick Win Diagnostic ────────────────────────────────────────────────
 
 function StepQuickWin({
@@ -360,44 +422,49 @@ function StepQuickWin({
   // visible fallback in case the overlay somehow closed without setting Idle.
   if (hasLaunchedRef.current && state.mode === "Error") {
     return (
-      <div className="h-full flex flex-col items-center justify-center px-8 py-10 text-center">
-        <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-5 flex-shrink-0">
-          <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-          </svg>
-        </div>
-        <h2 className="text-xl font-bold text-[#0A2540] mb-2">Diagnostic encountered an issue</h2>
-        <p className="text-sm text-gray-500 mb-1 max-w-xs leading-relaxed">
-          {state.errorMessage ?? "An unexpected error occurred during the automated step."}
-        </p>
-        <p className="text-xs text-gray-400 mb-7 max-w-xs leading-relaxed">
-          Your progress has been saved. You can retry the diagnostic or continue — Shane will follow up with results manually.
-        </p>
-        <div className="flex flex-col gap-3 w-full max-w-xs">
-          <button
-            type="button"
-            onClick={() => {
-              partialSavedRef.current = false;
-              dispatch({ type: "RETRY_STEP" });
-            }}
-            className="flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      <div className="h-full overflow-y-auto px-8 py-10">
+        <div className="max-w-xl mx-auto flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-5 flex-shrink-0">
+            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
-            Retry diagnostic
-          </button>
-          <button
-            type="button"
-            onClick={onComplete}
-            className="flex items-center justify-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
-          >
-            Continue without results
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+          </div>
+          <h2 className="text-xl font-bold text-[#0A2540] mb-2">Diagnostic encountered an issue</h2>
+          <p className="text-sm text-gray-500 mb-1 max-w-xs leading-relaxed">
+            {state.errorMessage ?? "An unexpected error occurred during the automated step."}
+          </p>
+          <p className="text-xs text-gray-400 mb-6 max-w-xs leading-relaxed">
+            Your progress has been saved. If a manual script was generated you can run it below, or retry the diagnostic.
+          </p>
+          <div className="flex flex-col gap-3 w-full max-w-xs mb-8">
+            <button
+              type="button"
+              onClick={() => {
+                partialSavedRef.current = false;
+                dispatch({ type: "RETRY_STEP" });
+              }}
+              className="flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Retry diagnostic
+            </button>
+            <button
+              type="button"
+              onClick={onComplete}
+              className="flex items-center justify-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
+            >
+              Continue without results
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
+
+        {/* Manual script card — full-width, centered, prominent */}
+        <WizardManualScripts onAnyCompleted={onComplete} />
       </div>
     );
   }
@@ -545,19 +612,22 @@ function StepReviewResults({ onFinish }: { onFinish: () => void }) {
             </div>
           </>
         ) : (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4">
-            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-              <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
+          <>
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-amber-800 mb-1">Diagnostic didn't complete automatically</p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  This can happen if Azure credentials aren't configured yet, or if there was a temporary network interruption. If a manual script was generated, complete it below to submit your results.
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-semibold text-amber-800 mb-1">Diagnostic didn't complete</p>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                This can happen if Azure credentials aren't configured yet, or if there was a temporary network interruption. Shane will follow up with your results manually.
-              </p>
-            </div>
-          </div>
+            <WizardManualScripts />
+          </>
         )}
 
         {/* Finish / View results button */}

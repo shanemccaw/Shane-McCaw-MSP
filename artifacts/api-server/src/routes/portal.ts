@@ -1305,6 +1305,105 @@ router.post("/portal/onboarding/wizard-reset", requireAuth, async (req: Request,
   res.json({ reset: true });
 });
 
+// ─── Onboarding: manual scripts for the wizard fallback view ─────────────────
+// Returns manual script tasks associated with the client's quick_win project.
+// Used by the onboarding wizard to surface download + upload directly in step 2.
+router.get("/portal/onboarding/manual-scripts", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const [project] = await db
+      .select({ id: projectsTable.id })
+      .from(projectsTable)
+      .where(and(
+        eq(projectsTable.clientUserId, userId),
+        eq(projectsTable.projectType, "quick_win"),
+      ))
+      .limit(1);
+
+    if (!project) { res.json([]); return; }
+    const projectId = project.id;
+
+    const [clientService] = await db
+      .select({ serviceId: clientServicesTable.serviceId })
+      .from(clientServicesTable)
+      .where(and(eq(clientServicesTable.projectId, projectId), eq(clientServicesTable.clientUserId, userId)))
+      .limit(1);
+
+    if (!clientService) { res.json([]); return; }
+
+    const rows = await db
+      .select({
+        runResultId: scriptRunResultsTable.id,
+        scriptId: scriptRunResultsTable.scriptId,
+        status: scriptRunResultsTable.status,
+        createdAt: scriptRunResultsTable.createdAt,
+        uploadedAt: scriptRunResultsTable.uploadedAt,
+        parsedFindings: scriptRunResultsTable.parsedFindings,
+        recommendations: scriptRunResultsTable.recommendations,
+        scriptName: powershellScriptsTable.title,
+        description: powershellScriptsTable.description,
+        psScriptBody: powershellScriptsTable.scriptBody,
+      })
+      .from(scriptRunResultsTable)
+      .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+      .where(and(
+        eq(scriptRunResultsTable.customerId, userId),
+        eq(scriptRunResultsTable.packageId, clientService.serviceId),
+        eq(scriptRunResultsTable.executionSource, "manual"),
+      ))
+      .orderBy(desc(scriptRunResultsTable.createdAt));
+
+    const filtered = rows.filter(r => r.status === "awaiting_upload" || r.status === "completed");
+
+    const [clientUser] = await db
+      .select({ name: usersTable.name })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    const domains = process.env.REPLIT_DOMAINS;
+    const uploadBaseUrl = domains
+      ? `https://${domains.split(",")[0]?.trim()}`
+      : process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : "http://localhost:8080";
+
+    const enriched = filtered.map(row => {
+      const pkg = generateManualScriptPackage({
+        scriptId: row.scriptId ?? 0,
+        scriptName: row.scriptName ?? "Script",
+        description: row.description ?? null,
+        manualRequirements: [],
+        psScriptBody: row.psScriptBody ?? null,
+        runResultId: row.runResultId,
+        customerDisplayName: clientUser?.name ?? undefined,
+        uploadBaseUrl,
+      });
+      return {
+        runResultId: row.runResultId,
+        scriptId: row.scriptId,
+        projectId,
+        status: row.status,
+        createdAt: row.createdAt,
+        uploadedAt: row.uploadedAt,
+        scriptName: row.scriptName ?? null,
+        description: row.description ?? null,
+        manualRequirements: [] as string[],
+        outputSchema: null as null,
+        filename: pkg.filename,
+        instructions: pkg.instructions,
+        findings: Array.isArray(row.parsedFindings) ? row.parsedFindings as string[] : [],
+        recommendations: Array.isArray(row.recommendations) ? row.recommendations as string[] : [],
+      };
+    });
+
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err, userId }, "portal: failed to list onboarding manual scripts");
+    res.status(500).json({ error: "Failed to load manual scripts" });
+  }
+});
+
 // ─── ADMIN: Mark client App Registration as verified ─────────────────────────
 router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
   const clientId = parseInt(String(req.params.id ?? ""), 10);
