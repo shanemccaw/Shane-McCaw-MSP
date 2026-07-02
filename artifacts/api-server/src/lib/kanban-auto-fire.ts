@@ -421,13 +421,16 @@ interface DocumentCard {
   documentGeneration: DocumentGenerationConfig;
 }
 
-async function findFirstBacklogDocumentCard(clientUserId: number): Promise<DocumentCard | null> {
+/** docTypes that must wait until all other document cards are done */
+const SOW_DOC_TYPES = new Set(["sow", "consolidated_sow"]);
+
+async function findAllBacklogDocumentCards(clientUserId: number): Promise<DocumentCard[]> {
   const projects = await db
     .select({ id: projectsTable.id })
     .from(projectsTable)
     .where(eq(projectsTable.clientUserId, clientUserId));
 
-  if (projects.length === 0) return null;
+  if (projects.length === 0) return [];
   const projectIds = projects.map(p => p.id);
 
   const activeSteps = await db
@@ -441,7 +444,7 @@ async function findFirstBacklogDocumentCard(clientUserId: number): Promise<Docum
     );
 
   const activeStepIds = activeSteps.map(s => s.id);
-  if (activeStepIds.length === 0) return null;
+  if (activeStepIds.length === 0) return [];
 
   const candidates = await db
     .select({
@@ -461,110 +464,207 @@ async function findFirstBacklogDocumentCard(clientUserId: number): Promise<Docum
     )
     .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
 
+  const results: DocumentCard[] = [];
   for (const card of candidates) {
     const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
     const dg = meta.documentGeneration as DocumentGenerationConfig | undefined;
     if (dg?.category && dg?.docType && dg?.title) {
-      return {
+      results.push({
         id: card.id,
         projectId: card.projectId,
         workflowStepId: card.workflowStepId,
         documentGeneration: dg,
-      };
+      });
     }
   }
-  return null;
+  return results;
 }
 
 /**
- * Auto-fires the first eligible "backlog" document_generation kanban card in
- * a client's active project phase.  Unlike script tasks, document generation
- * is synchronous (AI call + DB write), so no external polling is needed.
- *
- * Called alongside autoFireFirstBacklogScript everywhere so both task types are
- * picked up in the same chain reaction.
+ * Returns the count of non-SOW document_generation cards that are currently
+ * in_progress for the client. Used to gate SOW firing — we only start the SOW
+ * once this count reaches zero.
  */
-export async function autoFireDocumentCard(clientUserId: number): Promise<void> {
+async function countInProgressNonSowDocCards(clientUserId: number): Promise<number> {
+  const projects = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.clientUserId, clientUserId));
+
+  if (projects.length === 0) return 0;
+  const projectIds = projects.map(p => p.id);
+
+  const rows = await db
+    .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+    .from(kanbanTasksTable)
+    .where(
+      and(
+        inArray(kanbanTasksTable.projectId, projectIds),
+        eq(kanbanTasksTable.column, "in_progress"),
+        eq(kanbanTasksTable.taskType, "document_generation"),
+      ),
+    );
+
+  return rows.filter(row => {
+    const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
+    const dg = meta.documentGeneration as { docType?: string } | undefined;
+    return dg?.docType !== undefined && !SOW_DOC_TYPES.has(dg.docType);
+  }).length;
+}
+
+/**
+ * Generates and completes a single document_generation card.
+ * Moves card → in_progress (caller's responsibility, done atomically before
+ * parallel dispatch), calls AI, moves → completed, advances the phase, then
+ * triggers the next round of auto-fire (for newly-unlocked cards).
+ */
+async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promise<void> {
+  logger.info(
+    { clientUserId, cardId: card.id, docType: card.documentGeneration.docType },
+    "kanban-auto-fire: auto-firing document generation card",
+  );
+
+  let documentId: number;
   try {
-    const card = await findFirstBacklogDocumentCard(clientUserId);
-    if (!card) {
-      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog document card found");
-      return;
-    }
-
-    logger.info(
-      { clientUserId, cardId: card.id, docType: card.documentGeneration.docType },
-      "kanban-auto-fire: auto-firing document generation card",
-    );
-
-    // Move card to in_progress
+    const result = await generateAndDeliverDocument(clientUserId, card.projectId, card.documentGeneration);
+    documentId = result.documentId;
+  } catch (genErr) {
+    // Revert to backlog so the card can be retried
     await db.update(kanbanTasksTable)
-      .set({ column: "in_progress", updatedAt: new Date() })
+      .set({ column: "backlog", updatedAt: new Date() })
       .where(eq(kanbanTasksTable.id, card.id));
-    {
-      const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
-      if (updated) broadcastKanbanChange(card.projectId, { action: "updated", task: updated });
-    }
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    logger.error({ genErr, clientUserId, cardId: card.id }, "kanban-auto-fire: document generation failed — card reverted to backlog");
+    return;
+  }
 
-    let documentId: number;
-    try {
-      const result = await generateAndDeliverDocument(clientUserId, card.projectId, card.documentGeneration);
-      documentId = result.documentId;
-    } catch (genErr) {
-      // Revert to backlog if generation fails
+  // Stamp documentId into metadata and move to completed
+  const [metaRow] = await db
+    .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.id, card.id));
+  const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
+
+  await db.update(kanbanTasksTable)
+    .set({
+      column:           "completed",
+      completionStatus: "document_generated",
+      completionNotes:  `Document "${card.documentGeneration.title}" generated and delivered to client portal (ID: ${documentId}).`,
+      taskMetadata:     { ...prevMeta, generatedDocumentId: documentId },
+      updatedAt:        new Date(),
+    })
+    .where(eq(kanbanTasksTable.id, card.id));
+  {
+    const [completed] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
+  }
+
+  logger.info(
+    { clientUserId, cardId: card.id, documentId },
+    "kanban-auto-fire: document generated and card completed",
+  );
+
+  // Phase advance — activates next workflow phase if all cards in this step are done
+  if (card.workflowStepId != null) {
+    const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
+    if (spawnedTasks.length > 0) {
+      logger.info(
+        { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
+        "kanban-auto-fire: next phase activated after document generation",
+      );
+    }
+  }
+
+  // Trigger a new round — picks up newly-unlocked cards AND checks whether the
+  // SOW gate condition is now satisfied (all non-SOW docs done).
+  void autoFireAllDocumentCards(clientUserId);
+  void autoFireFirstBacklogScript(clientUserId);
+}
+
+/**
+ * Fires ALL eligible backlog document_generation cards for a client in parallel,
+ * with one exception: SOW cards are held back until every non-SOW document card
+ * is in "completed" state (i.e. none remain in backlog OR in_progress).
+ *
+ * This replaces the old sequential chain-reaction pattern where completing one
+ * card triggered the next, producing needlessly long wall-clock times.
+ *
+ * Called alongside autoFireFirstBacklogScript everywhere.
+ */
+export async function autoFireAllDocumentCards(clientUserId: number): Promise<void> {
+  try {
+    const allBacklog = await findAllBacklogDocumentCards(clientUserId);
+
+    const nonSow = allBacklog.filter(c => !SOW_DOC_TYPES.has(c.documentGeneration.docType));
+    const sow    = allBacklog.filter(c =>  SOW_DOC_TYPES.has(c.documentGeneration.docType));
+
+    // ── 1. Fire all non-SOW docs simultaneously ───────────────────────────
+    if (nonSow.length > 0) {
+      logger.info(
+        { clientUserId, count: nonSow.length, docTypes: nonSow.map(c => c.documentGeneration.docType) },
+        "kanban-auto-fire: firing non-SOW document cards in parallel",
+      );
+
+      // Move ALL cards to in_progress atomically before dispatching any AI calls.
+      // This prevents concurrent callers from picking up the same cards.
+      const nonSowIds = nonSow.map(c => c.id);
       await db.update(kanbanTasksTable)
-        .set({ column: "backlog", updatedAt: new Date() })
-        .where(eq(kanbanTasksTable.id, card.id));
-      const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
-      if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-      logger.error({ genErr, clientUserId, cardId: card.id }, "kanban-auto-fire: document generation failed — card reverted to backlog");
-      return;
-    }
+        .set({ column: "in_progress", updatedAt: new Date() })
+        .where(inArray(kanbanTasksTable.id, nonSowIds));
 
-    // Stamp documentId into metadata and move to completed
-    const [metaRow] = await db
-      .select({ taskMetadata: kanbanTasksTable.taskMetadata })
-      .from(kanbanTasksTable)
-      .where(eq(kanbanTasksTable.id, card.id));
-    const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
-
-    await db.update(kanbanTasksTable)
-      .set({
-        column:           "completed",
-        completionStatus: "document_generated",
-        completionNotes:  `Document "${card.documentGeneration.title}" generated and delivered to client portal (ID: ${documentId}).`,
-        taskMetadata:     { ...prevMeta, generatedDocumentId: documentId },
-        updatedAt:        new Date(),
-      })
-      .where(eq(kanbanTasksTable.id, card.id));
-    {
-      const [completed] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
-      if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
-    }
-
-    logger.info(
-      { clientUserId, cardId: card.id, documentId },
-      "kanban-auto-fire: document generated and card completed",
-    );
-
-    // Phase advance (activates next workflow phase if all cards in this step are done)
-    if (card.workflowStepId != null) {
-      const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
-      if (spawnedTasks.length > 0) {
-        logger.info(
-          { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
-          "kanban-auto-fire: next phase activated after document generation",
-        );
+      for (const card of nonSow) {
+        const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+        if (updated) broadcastKanbanChange(card.projectId, { action: "updated", task: updated });
       }
+
+      // Fire all in parallel — Promise.allSettled so one failure doesn't abort the rest
+      await Promise.allSettled(nonSow.map(card => fireDocumentCard(clientUserId, card)));
     }
 
-    // Chain: check for more document or script cards that are now first in queue
-    void autoFireDocumentCard(clientUserId);
-    void autoFireFirstBacklogScript(clientUserId);
+    // ── 2. Fire SOW only when all non-SOW docs are fully done ────────────
+    if (sow.length > 0) {
+      // Count non-SOW cards still in_progress (could have been started by a
+      // concurrent autoFireAllDocumentCards call or a prior parallel batch).
+      const inProgressNonSow = await countInProgressNonSowDocCards(clientUserId);
+      if (inProgressNonSow > 0) {
+        logger.info(
+          { clientUserId, inProgressNonSow, sowCount: sow.length },
+          "kanban-auto-fire: SOW deferred — non-SOW documents still in progress",
+        );
+        // The last non-SOW to complete will call autoFireAllDocumentCards again,
+        // which will re-evaluate this condition and fire the SOW at that point.
+        return;
+      }
+
+      logger.info(
+        { clientUserId, count: sow.length },
+        "kanban-auto-fire: all non-SOW docs complete — firing SOW document cards",
+      );
+
+      const sowIds = sow.map(c => c.id);
+      await db.update(kanbanTasksTable)
+        .set({ column: "in_progress", updatedAt: new Date() })
+        .where(inArray(kanbanTasksTable.id, sowIds));
+
+      for (const card of sow) {
+        const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+        if (updated) broadcastKanbanChange(card.projectId, { action: "updated", task: updated });
+      }
+
+      await Promise.allSettled(sow.map(card => fireDocumentCard(clientUserId, card)));
+    }
+
+    if (nonSow.length === 0 && sow.length === 0) {
+      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog document cards found");
+    }
   } catch (err) {
-    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireDocumentCard unexpected error (non-fatal)");
+    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireAllDocumentCards unexpected error (non-fatal)");
   }
 }
+
+/** @deprecated Use autoFireAllDocumentCards — kept for call-site backward compatibility */
+export const autoFireDocumentCard = autoFireAllDocumentCards;
 
 export async function autoFireFirstBacklogScript(clientUserId: number): Promise<void> {
   if (!isAzureConfigured()) {
