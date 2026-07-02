@@ -426,7 +426,7 @@ export default function PresentationFlow({
 
         {/* Body */}
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto">
-          <div key={stepIndex} className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col">
+          <div key={stepIndex} className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col animate-step-in">
 
             {/* Welcome step */}
             {currentStep?.kind === "welcome" && (
