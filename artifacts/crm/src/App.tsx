@@ -31,6 +31,7 @@ import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import PortalPresentation from "@/pages/portal/PortalPresentation";
+import SharedResultsPage from "@/pages/SharedResultsPage";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 
@@ -159,6 +160,11 @@ function Router() {
       {/* Admin dashboard moved to /admin-panel — redirect any direct hits */}
       <Route path="/dashboard">
         {() => { window.location.replace("/admin-panel/"); return null; }}
+      </Route>
+
+      {/* Public shared diagnostic results — no auth required */}
+      <Route path="/shared-results/:token">
+        {(params) => <SharedResultsPage />}
       </Route>
 
       {/* Wizard — inside RequireAuth but NOT RequireEngagement to avoid redirect loop */}

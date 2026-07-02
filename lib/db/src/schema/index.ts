@@ -1603,6 +1603,21 @@ export const presentationDocViewsTable = pgTable("presentation_doc_views", {
 export type InsertPresentationDocView = typeof presentationDocViewsTable.$inferInsert;
 export type PresentationDocView = typeof presentationDocViewsTable.$inferSelect;
 
+// ── Quick Win Result Shares ────────────────────────────────────────────────────
+export const quickWinResultSharesTable = pgTable("quick_win_result_shares", {
+  id: serial("id").primaryKey(),
+  clientUserId: integer("client_user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
+  shareToken: text("share_token").notNull().unique(),
+  scoresSnapshot: jsonb("scores_snapshot").$type<Partial<Record<string, number>>>().notNull(),
+  latestDate: timestamp("latest_date"),
+  expiresAt: timestamp("expires_at").notNull(),
+  viewCount: integer("view_count").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertQuickWinResultShare = typeof quickWinResultSharesTable.$inferInsert;
+export type QuickWinResultShare = typeof quickWinResultSharesTable.$inferSelect;
+
 // ── Workflow Engine ────────────────────────────────────────────────────────────
 
 export interface WfNodeData {

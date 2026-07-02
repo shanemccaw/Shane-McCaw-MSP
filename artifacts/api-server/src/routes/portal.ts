@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -9950,6 +9950,92 @@ router.get("/admin/messages/clients", requireAdmin, async (_req: Request, res: R
     lastMessage: sql<string>`(SELECT created_at FROM messages WHERE client_user_id = ${usersTable.id} ORDER BY created_at DESC LIMIT 1)`,
   }).from(usersTable).where(eq(usersTable.role, "client")).orderBy(desc(usersTable.createdAt));
   res.json(clients);
+});
+
+// POST /portal/quick-win/share-results — generate a 30-day public share link for the client's latest diagnostic scores
+router.post("/portal/quick-win/share-results", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    // Fetch the client's latest scores
+    const rows = await db
+      .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score, recordedAt: clientHealthHistoryTable.recordedAt })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, userId))
+      .orderBy(asc(clientHealthHistoryTable.recordedAt));
+
+    if (rows.length === 0) {
+      res.status(400).json({ error: "No diagnostic results to share yet" });
+      return;
+    }
+
+    const CATS = ["security", "compliance", "copilot", "governance", "productivity"] as const;
+    const scoresSnapshot: Partial<Record<string, number>> = {};
+    let latestDate: Date | null = null;
+
+    for (const cat of CATS) {
+      const catRows = rows.filter(r => r.category === cat);
+      if (catRows.length === 0) continue;
+      scoresSnapshot[cat] = catRows[catRows.length - 1].score;
+      const catLatest = catRows[catRows.length - 1].recordedAt;
+      if (!latestDate || catLatest > latestDate) latestDate = catLatest;
+    }
+
+    const { randomUUID } = await import("crypto");
+    const shareToken = randomUUID();
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30);
+
+    const [share] = await db.insert(quickWinResultSharesTable).values({
+      clientUserId: userId,
+      shareToken,
+      scoresSnapshot,
+      latestDate,
+      expiresAt,
+    }).returning({ id: quickWinResultSharesTable.id, shareToken: quickWinResultSharesTable.shareToken });
+
+    const baseUrl = getPortalBaseUrl();
+    const shareUrl = `${baseUrl}/shared-results/${share.shareToken}`;
+
+    res.json({ shareUrl, expiresAt: expiresAt.toISOString() });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to generate quick win result share link");
+    res.status(500).json({ error: "Failed to generate share link" });
+  }
+});
+
+// GET /portal/quick-win/shared/:token — public endpoint, returns diagnostic scores (no auth required)
+router.get("/portal/quick-win/shared/:token", async (req: Request, res: Response) => {
+  try {
+    const { token } = req.params as { token: string };
+    if (!token) { res.status(400).json({ error: "Missing token" }); return; }
+
+    const [share] = await db.select().from(quickWinResultSharesTable)
+      .where(eq(quickWinResultSharesTable.shareToken, token))
+      .limit(1);
+
+    if (!share) { res.status(404).json({ error: "Share link not found" }); return; }
+
+    if (new Date() > share.expiresAt) {
+      res.status(410).json({ error: "This share link has expired" });
+      return;
+    }
+
+    // Increment view count (fire and forget)
+    db.update(quickWinResultSharesTable)
+      .set({ viewCount: share.viewCount + 1 })
+      .where(eq(quickWinResultSharesTable.id, share.id))
+      .catch(() => { /* ignore */ });
+
+    res.json({
+      scoresSnapshot: share.scoresSnapshot,
+      latestDate: share.latestDate?.toISOString() ?? null,
+      expiresAt: share.expiresAt.toISOString(),
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to fetch shared quick win results");
+    res.status(500).json({ error: "Failed to load results" });
+  }
 });
 
 export default router;
