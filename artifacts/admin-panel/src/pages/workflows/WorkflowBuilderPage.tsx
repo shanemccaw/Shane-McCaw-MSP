@@ -24,12 +24,27 @@ import { useLocation, useRoute } from "wouter";
 // ── Node type colours ─────────────────────────────────────────────────────────
 
 const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; label: string }> = {
-  start:     { bg: "#0F2A1A", border: "#22C55E",  icon: "▶",  label: "Start"      },
-  end:       { bg: "#1A1A2E", border: "#6366F1",  icon: "⏹",  label: "End"        },
-  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"     },
-  condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"  },
-  delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"      },
-  error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"      },
+  // ── Core / structural ──
+  start:     { bg: "#0F2A1A", border: "#22C55E",  icon: "▶",  label: "Start"               },
+  end:       { bg: "#1A1A2E", border: "#6366F1",  icon: "⏹",  label: "End"                 },
+  condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"           },
+  delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"               },
+  error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"               },
+  // ── Platform (generic) ──
+  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"              },
+  // ── CRM ──
+  score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
+  assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
+  create_opportunity:    { bg: "#061A18", border: "#00B4D8", icon: "🚀", label: "Create Opportunity"  },
+  // ── Diagnostics / Quiz ──
+  parse_quiz_results:       { bg: "#1C1100", border: "#F59E0B", icon: "📋", label: "Parse Quiz"          },
+  generate_readiness_score: { bg: "#1C1100", border: "#F59E0B", icon: "📊", label: "Readiness Score"     },
+  attach_quiz_insights:     { bg: "#1C1100", border: "#F59E0B", icon: "💡", label: "Attach Insights"     },
+  // ── M365 Health ──
+  validate_m365_permissions: { bg: "#110D22", border: "#8B5CF6", icon: "🔐", label: "Validate Perms"      },
+  update_intelligence_tables:{ bg: "#110D22", border: "#8B5CF6", icon: "🧠", label: "Update Intel"        },
+  generate_diff_report:      { bg: "#110D22", border: "#8B5CF6", icon: "📄", label: "Diff Report"         },
+  notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -50,11 +65,13 @@ const KNOWN_EVENTS: Array<{
   { name: "m365.health_check_complete", description: "An M365 health check script finished running",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "score", label: "Overall health score" }, { key: "status", label: "Job completion status" }] },
   { name: "m365.diagnostic_failed",    description: "A Quick Win diagnostic run failed mid-way (Azure credentials absent or network error)", payloadFields: [{ key: "clientId", label: "Client user ID" }, { key: "failed", label: "Always true for this event" }, { key: "completedAt", label: "ISO timestamp of failure" }] },
   { name: "onboarding.complete",      description: "A client completed the onboarding questionnaire",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "projectId", label: "Linked project ID" }] },
+  { name: "quiz.lead_submitted",      description: "A lead completed the M365 readiness quiz and their results were scored",  payloadFields: [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "leadName", label: "Lead full name" }, { key: "leadEmail", label: "Lead email" }, { key: "company", label: "Company name" }, { key: "totalScore", label: "Overall quiz score 0–100" }, { key: "tier", label: "Score tier (Beginner/Intermediate/Advanced)" }, { key: "recommendedService", label: "Top recommended service" }] },
 ];
 
 // ── Node output registry (what each action injects into the next payload) ─────
 
 const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
+  // platform / generic action sub-types
   create_lead:            [{ key: "leadId", label: "Created lead ID" }, { key: "leadName", label: "Full name" }, { key: "leadEmail", label: "Email" }],
   convert_to_opportunity: [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   create_client:          [{ key: "clientId", label: "Created client user ID" }, { key: "clientEmail", label: "Client email" }],
@@ -67,6 +84,19 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   emit_event:             [{ key: "eventName", label: "Name of the emitted event" }],
   send_email:             [{ key: "sent", label: "true if email was sent" }],
   send_sms:               [{ key: "sent", label: "true if SMS was sent" }],
+  // CRM nodes
+  score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High" }, { key: "qualified", label: "true if score ≥ threshold" }],
+  assign_pipeline_stage: [{ key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage name" }],
+  create_opportunity:    [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
+  // Diagnostics nodes
+  parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier" }, { key: "recommendedService", label: "Top recommended service" }],
+  generate_readiness_score: [{ key: "readinessScore", label: "Composite readiness score 0–100" }, { key: "readinessLabel", label: "Low / Medium / High" }, { key: "recordId", label: "Health history record ID" }],
+  attach_quiz_insights:     [{ key: "insightsAttached", label: "true when saved" }, { key: "documentId", label: "Created insight document ID" }],
+  // M365 Health nodes
+  validate_m365_permissions: [{ key: "permissionsValid", label: "true if all perms present" }, { key: "missingCount", label: "Number of missing permissions" }, { key: "jobId", label: "Azure job ID" }],
+  update_intelligence_tables:[{ key: "updated", label: "true on success" }, { key: "recordId", label: "Health history record ID" }, { key: "jobId", label: "Azure job ID" }],
+  generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
+  notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -174,25 +204,40 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "start",     label: "Start",     description: "Workflow entry point",    tags: ["core", "flow"] },
       { type: "end",       label: "End",       description: "Workflow exit point",     tags: ["core", "flow"] },
+      { type: "condition", label: "Condition", description: "Branch on expression",    tags: ["logic", "branch", "if"] },
+      { type: "delay",     label: "Delay",     description: "Wait / poll condition",   tags: ["control", "wait", "pause"] },
+      { type: "error",     label: "Error",     description: "Catch-all error handler", tags: ["control", "error", "catch"] },
     ],
   },
   {
-    name: "Logic",
+    name: "CRM",
     nodes: [
-      { type: "condition", label: "Condition", description: "Branch on expression",   tags: ["logic", "branch", "if"] },
+      { type: "score_lead",            label: "Score Lead",           description: "Score a lead 0–100 and write qualification record",  tags: ["crm", "lead", "score", "qualify"] },
+      { type: "assign_pipeline_stage", label: "Assign Stage",         description: "Move opportunity to a named pipeline stage",         tags: ["crm", "pipeline", "stage", "opportunity"] },
+      { type: "create_opportunity",    label: "Create Opportunity",   description: "Convert a lead into a CRM opportunity",              tags: ["crm", "opportunity", "lead", "convert"] },
     ],
   },
   {
-    name: "Control",
+    name: "Diagnostics",
     nodes: [
-      { type: "delay",     label: "Delay",     description: "Wait / poll condition",  tags: ["control", "wait", "pause"] },
-      { type: "error",     label: "Error",     description: "Catch-all error handler",tags: ["control", "error", "catch"] },
+      { type: "parse_quiz_results",       label: "Parse Quiz Results",    description: "Read latest quiz lead record and extract scores",   tags: ["quiz", "diagnostic", "parse", "score"] },
+      { type: "generate_readiness_score", label: "Readiness Score",       description: "Compute composite M365 readiness score from history", tags: ["quiz", "diagnostic", "score", "readiness"] },
+      { type: "attach_quiz_insights",     label: "Attach Insights",       description: "Save quiz insights as a client document",           tags: ["quiz", "diagnostic", "insights", "document"] },
     ],
   },
   {
-    name: "Action",
+    name: "M365 Health",
     nodes: [
-      { type: "action",    label: "Action",    description: "HTTP, SQL, email, SMS",  tags: ["action", "http", "sql", "email"] },
+      { type: "validate_m365_permissions",  label: "Validate Permissions",    description: "Check required M365 app permissions via Azure",      tags: ["m365", "health", "permissions", "azure"] },
+      { type: "update_intelligence_tables", label: "Update Intel Tables",     description: "Refresh client health history from a runbook",       tags: ["m365", "health", "intelligence", "runbook"] },
+      { type: "generate_diff_report",       label: "Diff Report",             description: "Compare last two health snapshots and create a doc",  tags: ["m365", "health", "diff", "report"] },
+      { type: "notify_major_changes",       label: "Notify Major Changes",    description: "Alert Shane if health score changed significantly",   tags: ["m365", "health", "notify", "alert"] },
+    ],
+  },
+  {
+    name: "Platform",
+    nodes: [
+      { type: "action",    label: "Action",    description: "HTTP request, SQL query, email, SMS, emit event", tags: ["action", "http", "sql", "email", "sms", "platform"] },
     ],
   },
 ];
@@ -923,6 +968,152 @@ function NodeConfigPanel({
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {/* ── CRM nodes ─────────────────────────────────────── */}
+
+        {nodeType === "score_lead" && (
+          <>
+            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Qualification Threshold</label>
+              <input
+                type="number" min={0} max={100}
+                value={(node.data.threshold as number) ?? 50}
+                onChange={e => onChange(node.id, { ...node.data, threshold: Number(e.target.value) })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              />
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Scores the lead on fit, pain, intent, and urgency. Writes a qualification record. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{score}}"} · {"{{scoreLabel}}"} · {"{{qualified}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "assign_pipeline_stage" && (
+          <>
+            <PayloadField label="Opportunity ID" value={(node.data.opportunityId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, opportunityId: v })} placeholder="{{opportunityId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Stage</label>
+              <select
+                value={(node.data.stage as string) ?? "DiscoveryCall"}
+                onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding","Closed Won","Closed Lost"].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Updates the opportunity's pipeline stage. Output: <span className="font-mono text-[#7D8590]">{"{{stage}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_opportunity" && (
+          <>
+            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+              <select
+                value={(node.data.workflowType as string) ?? "DiscoveryCall"}
+                onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Creates a new opportunity from a lead. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Diagnostics / Quiz nodes ───────────────────────── */}
+
+        {nodeType === "parse_quiz_results" && (
+          <>
+            <PayloadField label="Quiz Lead ID" value={(node.data.quizLeadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, quizLeadId: v })} placeholder="{{quizLeadId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Reads the quiz lead record and surfaces scores. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{totalScore}}"} · {"{{tier}}"} · {"{{recommendedService}}"} · {"{{categoryScores}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "generate_readiness_score" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Averages the client's health history records to compute a composite readiness score and writes a summary record. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{readinessScore}}"} · {"{{readinessLabel}}"} · {"{{recordId}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "attach_quiz_insights" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Insight Text / Document Name" value={(node.data.insightText as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, insightText: v })} placeholder="M365 Readiness — {{tier}} ({{totalScore}})" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Saves quiz insights as a client document. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {/* ── M365 Health nodes ──────────────────────────────── */}
+
+        {nodeType === "validate_m365_permissions" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="Validate-M365-Permissions" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Runs a permission-check runbook against the client's Azure tenant. Requires Azure secrets. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{permissionsValid}}"} · {"{{missingCount}}"} · {"{{jobId}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "update_intelligence_tables" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="Update-M365-Intelligence" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Triggers a health-data collection runbook and appends a new health history record. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{updated}}"} · {"{{recordId}}"} · {"{{jobId}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "generate_diff_report" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Compares the two most recent health snapshots for the client and creates a diff report document. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{documentId}}"} · {"{{changesFound}}"} · {"{{changeCount}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "notify_major_changes" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Notify Email" value={(node.data.notifyEmail as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, notifyEmail: v })} placeholder="shane@example.com" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Alert Threshold (changes)</label>
+              <input
+                type="number" min={1} max={100}
+                value={(node.data.changeThreshold as number) ?? 15}
+                onChange={e => onChange(node.id, { ...node.data, changeThreshold: Number(e.target.value) })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              />
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Sends an email alert if <span className="font-mono text-[#7D8590]">{"{{changeCount}}"}</span> (from a prior Diff Report node) meets or exceeds the threshold. Uses <span className="font-mono text-[#7D8590]">CRM_ADMIN_EMAIL</span> as fallback if no email is specified.</p>
+            </div>
           </>
         )}
 

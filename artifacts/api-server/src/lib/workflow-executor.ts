@@ -26,6 +26,9 @@ import {
   projectsTable,
   opportunitiesTable,
   clientDocumentsTable,
+  leadQualificationsTable,
+  quizLeadsTable,
+  clientHealthHistoryTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -319,6 +322,245 @@ async function executeNode(
       case "error":
         output = { caught: true, label: node.data.label ?? "Error handler" };
         break;
+
+      // ── CRM nodes ─────────────────────────────────────────────────────────
+
+      case "score_lead": {
+        const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
+        const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
+        if (isNaN(leadId)) {
+          nodeError = true;
+          output = { error: "score_lead requires a valid leadId" };
+        } else {
+          const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
+          if (!lead) {
+            nodeError = true;
+            output = { error: `Lead #${leadId} not found` };
+          } else {
+            const threshold = parseInt(String(node.data.threshold ?? "50"), 10);
+            let score = 20;
+            if (lead.company) score += 20;
+            if (lead.serviceArea) score += 20;
+            if ((lead.message ?? "").length > 50) score += 20;
+            if (lead.stage !== "Lead") score += 20;
+            const scoreLabel = score >= 80 ? "High" : score >= 50 ? "Medium" : "Low";
+            const qualified = score >= threshold;
+            const stage = qualified ? "SQL" : "AQL";
+            await db.insert(leadQualificationsTable).values({
+              leadId,
+              newScore: score,
+              previousScore: 0,
+              stage,
+              recommendedNextStep: qualified ? "Book discovery call" : "Send nurture email",
+              workflowType: lead.serviceArea ?? undefined,
+              evidence: [
+                ...(lead.company ? ["Has company name"] : []),
+                ...(lead.serviceArea ? [`Service interest: ${lead.serviceArea}`] : []),
+                ...((lead.message ?? "").length > 50 ? ["Detailed message"] : []),
+              ],
+              scoreFit: lead.company ? 25 : 0,
+              scorePain: lead.serviceArea ? 25 : 0,
+              scoreMaturity: 0,
+              scoreIntent: (lead.message ?? "").length > 50 ? 25 : 0,
+              scoreUrgency: 25,
+              status: "pending",
+            });
+            output = { leadId, score, scoreLabel, qualified };
+          }
+        }
+        break;
+      }
+
+      case "assign_pipeline_stage": {
+        const oppIdRaw = interp(node.data.opportunityId as string | undefined, payload);
+        const opportunityId = oppIdRaw ? parseInt(oppIdRaw, 10) : NaN;
+        const stage = interp(node.data.stage as string | undefined, payload);
+        if (isNaN(opportunityId) || !stage) {
+          nodeError = true;
+          output = { error: "assign_pipeline_stage requires opportunityId and stage" };
+        } else {
+          await db.update(opportunitiesTable)
+            .set({ workflowType: stage })
+            .where(eq(opportunitiesTable.id, opportunityId));
+          output = { opportunityId, stage };
+        }
+        break;
+      }
+
+      case "create_opportunity": {
+        const coLeadIdRaw = interp(node.data.leadId as string | undefined, payload);
+        const coLeadId = coLeadIdRaw ? parseInt(coLeadIdRaw, 10) : NaN;
+        if (isNaN(coLeadId)) {
+          nodeError = true;
+          output = { error: "create_opportunity requires a valid leadId" };
+        } else {
+          const [opp] = await db.insert(opportunitiesTable).values({
+            leadId: coLeadId,
+            workflowType: (node.data.workflowType as string | undefined) ?? "DiscoveryCall",
+          }).returning();
+          output = { opportunityId: opp.id, leadId: coLeadId };
+        }
+        break;
+      }
+
+      // ── Diagnostics / Quiz nodes ───────────────────────────────────────────
+
+      case "parse_quiz_results": {
+        const quizLeadIdRaw = interp(node.data.quizLeadId as string | undefined, payload);
+        const quizLeadId = quizLeadIdRaw ? parseInt(quizLeadIdRaw, 10) : NaN;
+        if (isNaN(quizLeadId)) {
+          nodeError = true;
+          output = { error: "parse_quiz_results requires a valid quizLeadId" };
+        } else {
+          const [qLead] = await db.select().from(quizLeadsTable).where(eq(quizLeadsTable.id, quizLeadId)).limit(1);
+          if (!qLead) {
+            nodeError = true;
+            output = { error: `Quiz lead #${quizLeadId} not found` };
+          } else {
+            output = {
+              quizLeadId: qLead.id,
+              totalScore: qLead.totalScore,
+              tier: qLead.tier,
+              recommendedService: qLead.recommendedService ?? null,
+              leadName: qLead.name,
+              leadEmail: qLead.email,
+              company: qLead.company ?? null,
+              categoryScores: qLead.categoryScores,
+            };
+          }
+        }
+        break;
+      }
+
+      case "generate_readiness_score": {
+        const grClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const grClientId = grClientIdRaw ? parseInt(grClientIdRaw, 10) : NaN;
+        if (isNaN(grClientId)) {
+          nodeError = true;
+          output = { error: "generate_readiness_score requires a valid clientId" };
+        } else {
+          const history = await db.select()
+            .from(clientHealthHistoryTable)
+            .where(eq(clientHealthHistoryTable.clientId, grClientId))
+            .limit(20);
+          if (history.length === 0) {
+            output = { readinessScore: 0, readinessLabel: "Low", recordId: null };
+          } else {
+            const avg = Math.round(history.reduce((s, r) => s + r.score, 0) / history.length);
+            const readinessLabel = avg >= 75 ? "High" : avg >= 45 ? "Medium" : "Low";
+            const [rec] = await db.insert(clientHealthHistoryTable).values({
+              clientId: grClientId,
+              category: "productivity",
+              score: avg,
+            }).returning();
+            output = { readinessScore: avg, readinessLabel, recordId: rec.id };
+          }
+        }
+        break;
+      }
+
+      case "attach_quiz_insights": {
+        const aqClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const aqClientId = aqClientIdRaw ? parseInt(aqClientIdRaw, 10) : NaN;
+        if (isNaN(aqClientId)) {
+          nodeError = true;
+          output = { error: "attach_quiz_insights requires a valid clientId" };
+        } else {
+          const insightText = interp(node.data.insightText as string | undefined, payload) ?? "Quiz insights";
+          const [doc] = await db.insert(clientDocumentsTable).values({
+            clientUserId: aqClientId,
+            name: insightText,
+            category: "reports",
+          }).returning();
+          output = { insightsAttached: true, documentId: doc.id };
+        }
+        break;
+      }
+
+      // ── M365 Health nodes ─────────────────────────────────────────────────
+
+      case "validate_m365_permissions": {
+        const vpClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const runbookName = interp(node.data.runbookName as string | undefined, payload) ?? "Validate-M365-Permissions";
+        if (!vpClientIdRaw) {
+          nodeError = true;
+          output = { error: "validate_m365_permissions requires clientId" };
+        } else if (!isAzureConfigured()) {
+          nodeError = true;
+          output = { error: "Azure Automation is not configured — add required secrets" };
+        } else {
+          const job = await createRunbookJob({ runbookName, parameters: { ClientId: vpClientIdRaw } });
+          output = { permissionsValid: true, missingCount: 0, jobId: job.jobId };
+        }
+        break;
+      }
+
+      case "update_intelligence_tables": {
+        const uitClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const uitClientId = uitClientIdRaw ? parseInt(uitClientIdRaw, 10) : NaN;
+        const uitRunbook = interp(node.data.runbookName as string | undefined, payload) ?? "Update-M365-Intelligence";
+        if (isNaN(uitClientId)) {
+          nodeError = true;
+          output = { error: "update_intelligence_tables requires a valid clientId" };
+        } else if (!isAzureConfigured()) {
+          nodeError = true;
+          output = { error: "Azure Automation is not configured — add required secrets" };
+        } else {
+          const job = await createRunbookJob({ runbookName: uitRunbook, parameters: { ClientId: String(uitClientId) } });
+          const [rec] = await db.insert(clientHealthHistoryTable).values({
+            clientId: uitClientId,
+            category: "governance",
+            score: 0,
+          }).returning();
+          output = { updated: true, recordId: rec.id, jobId: job.jobId };
+        }
+        break;
+      }
+
+      case "generate_diff_report": {
+        const gdrClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const gdrClientId = gdrClientIdRaw ? parseInt(gdrClientIdRaw, 10) : NaN;
+        if (isNaN(gdrClientId)) {
+          nodeError = true;
+          output = { error: "generate_diff_report requires a valid clientId" };
+        } else {
+          const snapshots = await db.select()
+            .from(clientHealthHistoryTable)
+            .where(eq(clientHealthHistoryTable.clientId, gdrClientId))
+            .limit(2);
+          const changesFound = snapshots.length >= 2 && snapshots[0].score !== snapshots[1].score;
+          const changeCount = changesFound ? Math.abs(snapshots[0].score - snapshots[1].score) : 0;
+          const [doc] = await db.insert(clientDocumentsTable).values({
+            clientUserId: gdrClientId,
+            name: `M365 Health Diff Report — ${new Date().toLocaleDateString("en-GB")}`,
+            category: "reports",
+          }).returning();
+          output = { documentId: doc.id, changesFound, changeCount };
+        }
+        break;
+      }
+
+      case "notify_major_changes": {
+        const nmcClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const nmcThreshold = parseInt(String(node.data.changeThreshold ?? "15"), 10);
+        const changesFound = Boolean(payload.changesFound);
+        const changeCount = parseInt(String(payload.changeCount ?? "0"), 10);
+        if (!changesFound || changeCount < nmcThreshold) {
+          output = { notified: false, skipped: true };
+        } else {
+          const to = interp(node.data.notifyEmail as string | undefined, payload) ?? process.env.CRM_ADMIN_EMAIL;
+          if (to) {
+            const { sendEmail } = await import("./mailer");
+            await sendEmail(
+              to,
+              `M365 Health Alert — significant changes detected${nmcClientIdRaw ? ` for client #${nmcClientIdRaw}` : ""}`,
+              `<p>A health diff report detected <strong>${changeCount}</strong> changed fields${nmcClientIdRaw ? ` for client #${nmcClientIdRaw}` : ""}.</p><p>Check the Admin Panel for the full diff report.</p>`,
+            );
+          }
+          output = { notified: true, skipped: false };
+        }
+        break;
+      }
 
       default:
         output = { note: "unknown node type", nodeType: node.type };

@@ -1635,7 +1635,15 @@ export interface WfNodeData {
 
 export interface WfNode {
   id: string;
-  type: "start" | "end" | "action" | "condition" | "delay" | "error";
+  type:
+    | "start" | "end" | "action" | "condition" | "delay" | "error"
+    // CRM
+    | "score_lead" | "assign_pipeline_stage" | "create_opportunity"
+    // Diagnostics
+    | "parse_quiz_results" | "generate_readiness_score" | "attach_quiz_insights"
+    // M365 Health
+    | "validate_m365_permissions" | "update_intelligence_tables"
+    | "generate_diff_report" | "notify_major_changes";
   position: { x: number; y: number };
   data: WfNodeData;
 }
