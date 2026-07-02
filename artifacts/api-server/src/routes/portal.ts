@@ -9162,6 +9162,89 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
   }
 });
 
+// ---------------------------------------------------------------------------
+// Shared helper — derive the "effective" SOW phases for a presentation.
+//
+// Reads the live sowPricingLines from whichever included document is a SOW or
+// Consolidated SOW and has parsed pricing.  If none exists, falls back to the
+// creation-time snapshot stored in pres.sowPhases.
+//
+// storedSelectedIds  — the selections previously saved by the client (or []).
+//                      When provided, they are INTERSECTED with the live phase
+//                      IDs so toggle preferences are honoured where possible.
+//                      Pass [] to default all phases to selected.
+// ---------------------------------------------------------------------------
+type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean };
+
+async function deriveEffectiveSowData(
+  pres: {
+    documentsIncluded: unknown;
+    sowPhases: unknown;
+    selectedPhaseIds: unknown;
+    totalPrice: unknown;
+  },
+  storedSelectedIds?: string[],
+): Promise<{
+  effectiveSowPhases: SowPhaseObj[];
+  effectiveSelectedPhaseIds: string[];
+  effectiveTotalPrice: number;
+}> {
+  const docIds = (pres.documentsIncluded ?? []) as number[];
+
+  const docsWithPricing = docIds.length > 0
+    ? await db.select({
+        docType: insightsGeneratedDocumentsTable.docType,
+        sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      })
+        .from(insightsGeneratedDocumentsTable)
+        .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
+    : [];
+
+  const sowDoc = docsWithPricing.find(
+    d =>
+      (d.docType === "consolidated_sow" || d.docType === "sow") &&
+      Array.isArray(d.sowPricingLines) &&
+      (d.sowPricingLines as unknown[]).length > 0,
+  );
+
+  if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
+    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string }>;
+    const allPhases: SowPhaseObj[] = livelines.map((l, i) => ({
+      id: `sow-${i}`,
+      title: l.title,
+      description: l.scope || l.notes || "",
+      price: l.priceUsd,
+      selected: true,
+    }));
+
+    const allNewIds = allPhases.map(p => p.id);
+    const stored = storedSelectedIds ?? (pres.selectedPhaseIds ?? []) as string[];
+    // Intersect stored selections with the live phase IDs; default to all if empty
+    const intersection = stored.filter(sid => allNewIds.includes(sid));
+    const effectiveSelectedPhaseIds = intersection.length > 0 ? intersection : allNewIds;
+
+    const effectiveSowPhases = allPhases.map(p => ({
+      ...p,
+      selected: effectiveSelectedPhaseIds.includes(p.id),
+    }));
+    const effectiveTotalPrice = effectiveSowPhases
+      .filter(p => p.selected)
+      .reduce((sum, p) => sum + p.price, 0);
+
+    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice };
+  }
+
+  // No live SOW pricing — fall back to creation-time snapshot
+  const fallbackPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
+  const fallbackSelected = (pres.selectedPhaseIds ?? fallbackPhases.map(p => p.id)) as string[];
+  const fallbackTotal = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
+  return {
+    effectiveSowPhases: fallbackPhases,
+    effectiveSelectedPhaseIds: fallbackSelected,
+    effectiveTotalPrice: fallbackTotal,
+  };
+}
+
 // GET /portal/presentations/:id — fetch presentation data
 router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
   try {
@@ -9193,7 +9276,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
-    // Fetch full document HTML
+    // Fetch full document HTML (including SOW pricing for live scope sync)
     const docIds = (pres.documentsIncluded ?? []) as number[];
     const docsRaw = docIds.length > 0
       ? await db.select({
@@ -9202,12 +9285,19 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
           category: insightsGeneratedDocumentsTable.category,
           docType: insightsGeneratedDocumentsTable.docType,
           htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+          sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+          sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
           createdAt: insightsGeneratedDocumentsTable.createdAt,
         })
           .from(insightsGeneratedDocumentsTable)
           .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
       : [];
     const docs = docsRaw.map(d => ({ ...d, htmlContent: stripStagedForReviewBanner(d.htmlContent) }));
+
+    // Derive sowPhases from the live SOW document — uses shared helper so GET,
+    // PATCH, and checkout all stay consistent.
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice } =
+      await deriveEffectiveSowData(pres);
 
     // Fetch project + client name + service id for template lookup
     const [project] = pres.projectId
@@ -9235,18 +9325,15 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
         .where(eq(contractTemplatesTable.serviceId, project.serviceId))
         .limit(1);
       if (tmpl?.body) {
-        const phases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number }>;
-        const selectedIds = (pres.selectedPhaseIds ?? phases.map((p) => p.id)) as string[];
-        const selectionsSummary = phases
-          .filter(p => selectedIds.includes(p.id))
+        const selectionsSummary = effectiveSowPhases
+          .filter(p => effectiveSelectedPhaseIds.includes(p.id))
           .map(p => `- ${p.title}: $${p.price.toLocaleString()}`)
           .join("\n");
-        const totalPrice = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
         const signedDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
         contractBody = tmpl.body
           .replace(/\{\{client_name\}\}/g, clientUser?.name ?? "")
           .replace(/\{\{service_name\}\}/g, project.title ?? "M365 Consulting Engagement")
-          .replace(/\{\{price\}\}/g, `$${totalPrice.toLocaleString()}`)
+          .replace(/\{\{price\}\}/g, `$${effectiveTotalPrice.toLocaleString()}`)
           .replace(/\{\{date\}\}/g, signedDate)
           .replace(/\{\{selections_summary\}\}/g, selectionsSummary);
       }
@@ -9278,9 +9365,9 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       clientUserId: pres.clientUserId,
       shareToken: pres.shareToken,
       documents: docs,
-      sowPhases: pres.sowPhases ?? [],
-      selectedPhaseIds: pres.selectedPhaseIds ?? [],
-      totalPrice: pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0,
+      sowPhases: effectiveSowPhases,
+      selectedPhaseIds: effectiveSelectedPhaseIds,
+      totalPrice: effectiveTotalPrice,
       signatureData: pres.signatureData,
       signedAt: pres.signedAt,
       signerName: pres.signerName,
@@ -9309,16 +9396,20 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
-    const phases = (pres.sowPhases ?? []) as Array<{ id: string; price: number; selected: boolean }>;
-    const newTotal = phases
-      .filter(p => selectedPhaseIds.includes(p.id))
+    // Validate incoming IDs against the live SOW phase list and compute total
+    // from live prices so a stale snapshot never produces a wrong total.
+    const { effectiveSowPhases } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const validIds = effectiveSowPhases.map(p => p.id);
+    const safeSelectedIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
+    const newTotal = effectiveSowPhases
+      .filter(p => safeSelectedIds.includes(p.id))
       .reduce((sum, p) => sum + p.price, 0);
 
     await db.update(quickWinPresentationsTable)
-      .set({ selectedPhaseIds, totalPrice: String(newTotal), updatedAt: new Date() })
+      .set({ selectedPhaseIds: safeSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ totalPrice: newTotal, selectedPhaseIds });
+    res.json({ totalPrice: newTotal, selectedPhaseIds: safeSelectedIds });
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });
@@ -9374,7 +9465,11 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
-    const totalPrice = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
+    // Use live SOW pricing so the Stripe charge always matches what the client
+    // saw on page 3, even if the SOW was regenerated after presentation creation.
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice } =
+      await deriveEffectiveSowData(pres);
+    const totalPrice = effectiveTotalPrice;
     if (totalPrice <= 0) { res.status(400).json({ error: "Invalid total price" }); return; }
 
     let stripeKey: string;
@@ -9438,9 +9533,8 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
     });
 
     // Build payment schedule for phased plan — phases sum exactly to 80% of total
-    const phases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number }>;
-    const selectedIds = (pres.selectedPhaseIds ?? phases.map(p => p.id)) as string[];
-    const selectedPhases = phases.filter(p => selectedIds.includes(p.id));
+    // Use the same effective phases that determined the Stripe charge amount.
+    const selectedPhases = effectiveSowPhases.filter(p => effectiveSelectedPhaseIds.includes(p.id));
     const depositAmount = Math.round(totalPrice * 0.2 * 100) / 100;
     const remainingAmount = Math.round((totalPrice - depositAmount) * 100) / 100;
     const phasesTotal = selectedPhases.reduce((s, p) => s + p.price, 0) || 1;
