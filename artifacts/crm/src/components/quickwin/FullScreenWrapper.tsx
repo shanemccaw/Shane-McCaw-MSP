@@ -648,7 +648,12 @@ export default function FullScreenWrapper() {
                       <span className="text-[11px] font-bold text-[#0078D4] uppercase tracking-widest">
                         Project Completion
                       </span>
-                      <span className="text-xl font-semibold text-[#0078D4]">{kanbanProgress}%</span>
+                      <span className="text-xl font-semibold text-[#0078D4]">
+                        {completedKanbanTasks.length}
+                        <span className="text-sm font-medium text-black/40 ml-1">
+                          / {kanbanTasks.length} tasks
+                        </span>
+                      </span>
                     </div>
                     <div className="h-3 w-full bg-[#0078D4]/10 rounded-full overflow-hidden relative border border-[#0078D4]/5">
                       <div
