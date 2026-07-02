@@ -10006,6 +10006,50 @@ router.post("/portal/quick-win/share-results", requireAuth, async (req: Request,
   }
 });
 
+// GET /admin/quick-win/result-shares — list all client diagnostic result shares with client info
+router.get("/admin/quick-win/result-shares", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: quickWinResultSharesTable.id,
+        shareToken: quickWinResultSharesTable.shareToken,
+        scoresSnapshot: quickWinResultSharesTable.scoresSnapshot,
+        latestDate: quickWinResultSharesTable.latestDate,
+        expiresAt: quickWinResultSharesTable.expiresAt,
+        viewCount: quickWinResultSharesTable.viewCount,
+        createdAt: quickWinResultSharesTable.createdAt,
+        clientId: usersTable.id,
+        clientName: usersTable.name,
+        clientEmail: usersTable.email,
+        clientCompany: usersTable.company,
+      })
+      .from(quickWinResultSharesTable)
+      .innerJoin(usersTable, eq(quickWinResultSharesTable.clientUserId, usersTable.id))
+      .orderBy(desc(quickWinResultSharesTable.viewCount), desc(quickWinResultSharesTable.createdAt));
+
+    res.json({
+      shares: rows.map(r => ({
+        id: r.id,
+        shareToken: r.shareToken,
+        scoresSnapshot: r.scoresSnapshot,
+        latestDate: r.latestDate?.toISOString() ?? null,
+        expiresAt: r.expiresAt.toISOString(),
+        viewCount: r.viewCount,
+        createdAt: r.createdAt.toISOString(),
+        client: {
+          id: r.clientId,
+          name: r.clientName,
+          email: r.clientEmail,
+          company: r.clientCompany,
+        },
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "admin: failed to list quick win result shares");
+    res.status(500).json({ error: "Failed to load result shares" });
+  }
+});
+
 // GET /portal/quick-win/shared/:token — public endpoint, returns diagnostic scores (no auth required)
 router.get("/portal/quick-win/shared/:token", async (req: Request, res: Response) => {
   try {
