@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
@@ -15,7 +15,9 @@ export default function PortalDiagnostic() {
   const [, navigate] = useLocation();
   const { state, dispatch } = useQuickWinMode();
   const { fetchWithAuth } = useAuth();
-  const bindedRef = useRef(false);
+  // useState (not useRef) so toggling to true triggers a re-render and hides the spinner
+  const [hasBound, setHasBound] = useState(false);
+  const dispatchedRef = useRef(false);
 
   // Fetch client projects to auto-resolve the quick_win project when no ID in URL
   const { data: projects } = useQuery<PortalProject[]>({
@@ -29,9 +31,11 @@ export default function PortalDiagnostic() {
     staleTime: 0,
   });
 
-  // Dispatch BIND_PROJECT once we have a resolved project ID
+  // Dispatch BIND_PROJECT once we have a resolved project ID.
+  // Uses dispatchedRef (not hasBound) to guard against double-dispatch
+  // because setHasBound is async and won't block a second effect run.
   useEffect(() => {
-    if (bindedRef.current) return;
+    if (dispatchedRef.current) return;
 
     let resolvedId: string | null = null;
 
@@ -44,22 +48,23 @@ export default function PortalDiagnostic() {
 
     if (!resolvedId) return;
 
-    bindedRef.current = true;
+    dispatchedRef.current = true;
     dispatch({ type: "BIND_PROJECT", payload: { projectId: resolvedId } });
+    setHasBound(true);
   }, [urlProjectId, projects, dispatch]);
 
-  // Navigate away when the overlay is dismissed
+  // Navigate back when the overlay is closed (mode returns to Idle after having been bound)
   useEffect(() => {
-    if (state.mode === "Idle" && bindedRef.current) {
+    if (hasBound && state.mode === "Idle") {
       navigate("/portal");
     }
-  }, [state.mode, navigate]);
+  }, [hasBound, state.mode, navigate]);
 
   // The overlay renders via FullScreenWrapper (mounted globally in App.tsx).
   // This page just provides the deep-link entry point and the backdrop.
   return (
     <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
-      {!bindedRef.current && (
+      {!hasBound && (
         <div className="flex flex-col items-center gap-3 text-center">
           <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-[#0A2540]/50 font-medium">Loading diagnostic…</p>

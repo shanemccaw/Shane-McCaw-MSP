@@ -142,10 +142,10 @@ function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinM
       };
 
     // BIND_PROJECT: bypass the diagnostic phase entirely when a project already
-    // exists for this client. Can fire from any non-terminal mode so both
-    // entry-time detection (EnteringQuickWin) and mid-diagnostic recovery work.
+    // exists for this client. Can fire from Idle (deep-link entry) or from any
+    // non-terminal mode so both entry-time detection and mid-diagnostic recovery work.
     case "BIND_PROJECT":
-      if (state.mode === "Idle" || state.mode === "ExitQuickWin" || state.mode === "EscalatingToProject") return state;
+      if (state.mode === "ExitQuickWin" || state.mode === "EscalatingToProject") return state;
       return {
         ...state,
         mode: "ProjectTasksView",
