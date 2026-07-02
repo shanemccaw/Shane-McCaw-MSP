@@ -9954,7 +9954,48 @@ router.get("/admin/messages/clients", requireAdmin, async (_req: Request, res: R
   res.json(clients);
 });
 
-// POST /portal/quick-win/share-results — generate a 30-day public share link for the client's latest diagnostic scores
+// GET /portal/quick-win/share-results — return the client's current active share link, or null
+router.get("/portal/quick-win/share-results", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const now = new Date();
+
+    const [existing] = await db
+      .select({
+        shareToken: quickWinResultSharesTable.shareToken,
+        expiresAt: quickWinResultSharesTable.expiresAt,
+        createdAt: quickWinResultSharesTable.createdAt,
+      })
+      .from(quickWinResultSharesTable)
+      .where(
+        and(
+          eq(quickWinResultSharesTable.clientUserId, userId),
+          gte(quickWinResultSharesTable.expiresAt, now),
+        ),
+      )
+      .orderBy(desc(quickWinResultSharesTable.createdAt))
+      .limit(1);
+
+    if (!existing) {
+      res.json({ share: null });
+      return;
+    }
+
+    const baseUrl = getPortalBaseUrl();
+    res.json({
+      share: {
+        shareUrl: `${baseUrl}/shared-results/${existing.shareToken}`,
+        expiresAt: existing.expiresAt.toISOString(),
+        createdAt: existing.createdAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to fetch quick win result share link");
+    res.status(500).json({ error: "Failed to load share link" });
+  }
+});
+
+// POST /portal/quick-win/share-results — revoke any existing share and generate a fresh 30-day public link
 router.post("/portal/quick-win/share-results", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -9982,6 +10023,10 @@ router.post("/portal/quick-win/share-results", requireAuth, async (req: Request,
       const catLatest = catRows[catRows.length - 1].recordedAt;
       if (!latestDate || catLatest > latestDate) latestDate = catLatest;
     }
+
+    // Revoke any existing shares for this client (enforces at most one active share)
+    await db.delete(quickWinResultSharesTable)
+      .where(eq(quickWinResultSharesTable.clientUserId, userId));
 
     const { randomUUID } = await import("crypto");
     const shareToken = randomUUID();

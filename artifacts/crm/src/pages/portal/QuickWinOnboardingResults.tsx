@@ -138,19 +138,33 @@ export default function QuickWinOnboardingResults() {
   const { fetchWithAuth, user } = useAuth();
   const [, navigate] = useLocation();
 
+  interface ActiveShare {
+    shareUrl: string;
+    expiresAt: string;
+    createdAt: string;
+  }
+
   const [scorecard, setScorecard] = useState<ScorecardHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [shareLoading, setShareLoading] = useState(false);
-  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [activeShare, setActiveShare] = useState<ActiveShare | null | undefined>(undefined);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
-    fetchWithAuth("/api/portal/m365-scorecard-history")
-      .then(r => r.ok ? (r.json() as Promise<ScorecardHistory>) : Promise.resolve({ hasData: false }))
-      .then(d => setScorecard(d))
-      .catch(() => setScorecard({ hasData: false }))
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetchWithAuth("/api/portal/m365-scorecard-history")
+        .then(r => r.ok ? (r.json() as Promise<ScorecardHistory>) : Promise.resolve({ hasData: false }))
+        .catch(() => ({ hasData: false } as ScorecardHistory)),
+      fetchWithAuth("/api/portal/quick-win/share-results")
+        .then(r => r.ok ? (r.json() as Promise<{ share: ActiveShare | null }>) : Promise.resolve({ share: null }))
+        .then(d => d.share)
+        .catch(() => null),
+    ]).then(([sc, share]) => {
+      setScorecard(sc);
+      setActiveShare(share);
+    }).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
   // Poll wizard-status every 30 s so the gate lifts automatically the moment
@@ -182,8 +196,9 @@ export default function QuickWinOnboardingResults() {
     };
   }, [fetchWithAuth, navigate]);
 
-  async function generateShareLink() {
-    setShareLoading(true);
+  async function generateShareLink(isRegenerate = false) {
+    if (isRegenerate) setRegenerating(true);
+    else setShareLoading(true);
     setShareError(null);
     try {
       const res = await fetchWithAuth("/api/portal/quick-win/share-results", { method: "POST" });
@@ -191,19 +206,21 @@ export default function QuickWinOnboardingResults() {
         const body = await res.json() as { error?: string };
         throw new Error(body.error ?? "Failed to generate link");
       }
-      const data = await res.json() as { shareUrl: string };
-      setShareUrl(data.shareUrl);
+      const data = await res.json() as { shareUrl: string; expiresAt: string };
+      setActiveShare({ shareUrl: data.shareUrl, expiresAt: data.expiresAt, createdAt: new Date().toISOString() });
+      setShareCopied(false);
     } catch (e) {
       setShareError(e instanceof Error ? e.message : "Failed to generate link");
     } finally {
       setShareLoading(false);
+      setRegenerating(false);
     }
   }
 
   async function copyShareLink() {
-    if (!shareUrl) return;
+    if (!activeShare?.shareUrl) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(activeShare.shareUrl);
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2500);
     } catch {
@@ -331,13 +348,17 @@ export default function QuickWinOnboardingResults() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-white leading-tight">Share these results</p>
-                    <p className="text-xs text-white/50 leading-snug">Generate a read-only link for your IT team, manager, or board. Valid for 30 days.</p>
+                    <p className="text-xs text-white/50 leading-snug">
+                      {activeShare
+                        ? `Link active · expires ${new Date(activeShare.expiresAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+                        : "Generate a read-only link for your IT team, manager, or board. Valid for 30 days."}
+                    </p>
                   </div>
                 </div>
-                {!shareUrl ? (
+                {!activeShare ? (
                   <button
-                    onClick={generateShareLink}
-                    disabled={shareLoading}
+                    onClick={() => generateShareLink(false)}
+                    disabled={shareLoading || activeShare === undefined}
                     className="flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#0053a0] disabled:opacity-60 text-white font-semibold px-5 py-2.5 rounded-xl text-xs transition-colors flex-shrink-0 w-full sm:w-auto"
                   >
                     {shareLoading ? (
@@ -350,25 +371,42 @@ export default function QuickWinOnboardingResults() {
                     {shareLoading ? "Generating…" : "Generate link"}
                   </button>
                 ) : (
-                  <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <div className="flex-1 sm:w-64 min-w-0 bg-black/30 border border-white/20 rounded-lg px-3 py-2 flex items-center gap-2">
-                      <span className="text-xs text-white/60 truncate flex-1 min-w-0">{shareUrl}</span>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center gap-2 flex-1 sm:w-auto min-w-0">
+                      <div className="flex-1 sm:w-52 min-w-0 bg-black/30 border border-white/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                        <span className="text-xs text-white/60 truncate flex-1 min-w-0">{activeShare.shareUrl}</span>
+                      </div>
+                      <button
+                        onClick={copyShareLink}
+                        className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 transition-colors flex-shrink-0"
+                      >
+                        {shareCopied ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                            Copy
+                          </>
+                        )}
+                      </button>
                     </div>
                     <button
-                      onClick={copyShareLink}
-                      className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-white/20 transition-colors flex-shrink-0"
+                      onClick={() => generateShareLink(true)}
+                      disabled={regenerating}
+                      title="Revoke this link and generate a fresh one"
+                      className="flex items-center justify-center gap-1.5 bg-white/8 hover:bg-white/15 disabled:opacity-60 text-white/60 hover:text-white text-xs font-semibold px-3 py-2 rounded-lg border border-white/15 transition-colors flex-shrink-0"
                     >
-                      {shareCopied ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                          Copied!
-                        </>
+                      {regenerating ? (
+                        <div className="w-3.5 h-3.5 border-2 border-white/60 border-t-transparent rounded-full animate-spin" />
                       ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                          Copy
-                        </>
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
                       )}
+                      {regenerating ? "Regenerating…" : "Regenerate"}
                     </button>
                   </div>
                 )}
@@ -376,8 +414,8 @@ export default function QuickWinOnboardingResults() {
               {shareError && (
                 <p className="mt-3 text-xs text-red-400">{shareError}</p>
               )}
-              {shareUrl && (
-                <p className="mt-3 text-[11px] text-white/30">Anyone with this link can view your scores for 30 days. No account needed.</p>
+              {activeShare && !shareError && (
+                <p className="mt-3 text-[11px] text-white/30">Anyone with this link can view your scores until {new Date(activeShare.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}. Regenerating immediately revokes the old link.</p>
               )}
             </div>
           )}
