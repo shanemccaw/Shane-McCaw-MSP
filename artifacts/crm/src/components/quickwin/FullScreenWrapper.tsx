@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { QW_COPY, DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
+import { CATEGORY_TO_SCORE_KEY } from "@/hooks/useQuickWinRealImpl";
 import AnimatedBackground from "./AnimatedBackground";
 import PhaseStepperBar from "./PhaseStepperBar";
 import HealthPanel from "./HealthPanel";
@@ -51,6 +52,9 @@ export default function FullScreenWrapper() {
   // ── Scorecard state ───────────────────────────────────────────────────────
   const [categoryScores, setCategoryScores] = useState<Record<string, number>>({});
   const scorecardRef = useRef<Scorecard | null>(null);
+  // Last score emitted by onScoreUpdate — used as fallback if scorecard cache
+  // isn't ready when reconciliation runs after a step completes.
+  const lastStepScoreRef = useRef<number>(0);
 
   const addTelemetry = useCallback((_line: string) => {
     // Telemetry is no longer shown in the full-screen view — no-op kept
@@ -64,7 +68,8 @@ export default function FullScreenWrapper() {
       if (res.ok) {
         const sc = (await res.json()) as Scorecard;
         scorecardRef.current = sc;
-        if (sc.scores) setCategoryScores(sc.scores);
+        // Intentionally NOT bulk-setting categoryScores here — scores are
+        // revealed progressively as each step completes via onScoreUpdate.
       }
     } catch { /* non-fatal */ }
   }, [fetchWithAuth]);
@@ -141,14 +146,36 @@ export default function FullScreenWrapper() {
     const t1 = setTimeout(() => setSubState("starting"), 350);
     const t2 = setTimeout(() => setSubState("running"), 700);
 
+    const category = quickWin?.category ?? "";
+    const scoreKey = CATEGORY_TO_SCORE_KEY[category] ?? null;
+
     runAutoStep(
       quickWin!,
       currentStepIndex,
       (pct) => setProgress(pct),
-      (s) => dispatch({ type: "SET_SCORE", payload: s }),
+      (s) => {
+        lastStepScoreRef.current = s;
+        dispatch({ type: "SET_SCORE", payload: s });
+        // Optimistic update — animates the bar immediately while awaiting
+        // the post-step reconciliation against the authoritative cache.
+        if (scoreKey) {
+          setCategoryScores((prev) => ({ ...prev, [scoreKey]: s }));
+        }
+      },
       addTelemetry,
     ).then(() => {
       setSubState("done");
+
+      // Reconcile with the canonical scorecard cache once the step is done.
+      // scorecardRef is populated by fetchScorecard() (called at step start)
+      // so it should be ready by the time the async step resolves.
+      // Fall back to the last onScoreUpdate value if the cache isn't ready yet.
+      if (scoreKey) {
+        const authoritativeScore =
+          scorecardRef.current?.scores?.[scoreKey] ?? lastStepScoreRef.current;
+        setCategoryScores((prev) => ({ ...prev, [scoreKey]: authoritativeScore }));
+      }
+
       dispatch({ type: "AUTO_STEP_COMPLETE" });
       runnerActive.current = false;
     }).catch((err: unknown) => {

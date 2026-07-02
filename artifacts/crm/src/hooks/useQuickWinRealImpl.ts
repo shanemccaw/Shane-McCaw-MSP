@@ -2,12 +2,15 @@ import { useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AsyncRunAutoStep, AsyncEscalateToProject, QuickWinItem } from "@/context/QuickWinModeContext";
 
-// Maps Quick Win category labels to M365 score keys
-const CATEGORY_TO_SCORE_KEY: Record<string, string> = {
+// Maps Quick Win category labels to M365 score keys.
+// Exported so FullScreenWrapper can use the same canonical mapping
+// when updating category bars — prevents key drift between the two files.
+export const CATEGORY_TO_SCORE_KEY: Record<string, string> = {
   Security: "security",
   "Copilot AI": "copilot",
   Governance: "governance",
   Compliance: "compliance",
+  Adoption: "productivity",
 };
 
 interface Scorecard {
