@@ -38,6 +38,7 @@ interface PresentationData {
   projectTitle: string | null;
   clientName: string | null;
   contractBody: string | null;
+  workflowName: string | null;
 }
 
 interface PresentationFlowProps {
@@ -522,7 +523,7 @@ export default function PresentationFlow({
                     {data.projectTitle ?? "Your Assessment Results"}
                   </h1>
                   <p className="text-muted-foreground mt-2 leading-relaxed">
-                    {data.clientName ? `Hi ${data.clientName.split(" ")[0]}, your` : "Your"} Microsoft 365 assessment is complete.
+                    {data.clientName ? `Hi ${data.clientName.split(" ")[0]}, your` : "Your"} {data.workflowName ?? "assessment"} is complete.
                     This presentation walks you through all generated deliverables, the recommended scope of work,
                     and your engagement options.
                   </p>

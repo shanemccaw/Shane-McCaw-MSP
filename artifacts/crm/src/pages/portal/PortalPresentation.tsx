@@ -33,6 +33,7 @@ interface PresentationData {
   projectTitle: string | null;
   clientName: string | null;
   contractBody: string | null;
+  workflowName: string | null;
 }
 
 export default function PortalPresentation() {
