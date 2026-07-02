@@ -869,5 +869,116 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
   }
 });
 
+// ── AI Workflow Refiner ───────────────────────────────────────────────────────
+
+const WORKFLOW_REFINE_SYSTEM_PROMPT = `You are a Microsoft 365 consulting workflow architect. You are given an existing React Flow workflow graph and a refinement instruction from the user. Apply the instruction to the graph while preserving all unchanged parts.
+
+Return the COMPLETE updated graph as a JSON object — no preamble, no explanation:
+{
+  "nodes": [...],
+  "edges": [...]
+}
+
+## Node schema (same as generation)
+Each node must have:
+- "id": keep existing IDs for unchanged nodes; use new unique IDs like "node-new-1" for added nodes
+- "type": one of start | end | condition | delay | error | score_lead | assign_pipeline_stage | create_opportunity | parse_quiz_results | generate_readiness_score | attach_quiz_insights | validate_m365_permissions | update_intelligence_tables | generate_diff_report | notify_major_changes | action
+- "position": {"x": number, "y": number} — keep existing positions for unchanged nodes; place new nodes appropriately nearby
+- "data": keep existing data fields for unchanged nodes; add required fields for new nodes
+
+## Edge schema
+Each edge:
+- "id": keep existing IDs for unchanged edges; use new unique IDs like "edge-new-1" for added edges
+- "source", "target": node IDs
+- "sourceHandle": "true" or "false" only for condition nodes; omit otherwise
+
+## Rules
+- Preserve all nodes/edges not affected by the refinement
+- Every graph must have exactly one "start" node and at least one "end" node
+- Condition nodes branch into "true" and "false" paths
+- Use {{fieldName}} handlebars for payload references
+- Return the full graph, not a diff — every node and edge that should exist must be in the output`;
+
+router.post("/admin/workflows/ai-refine", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = z.object({
+      instruction: z.string().min(1).max(2000),
+      graph: z.object({
+        nodes: z.array(z.object({
+          id: z.string(),
+          type: z.string(),
+          position: z.object({ x: z.number(), y: z.number() }),
+          data: z.record(z.unknown()),
+        })).min(1),
+        edges: z.array(z.object({
+          id: z.string(),
+          source: z.string(),
+          target: z.string(),
+          sourceHandle: z.string().nullable().optional(),
+        })),
+      }),
+    }).safeParse(req.body);
+    if (!body.success) { sendError(res, 400, body.error.message); return; }
+
+    const { anthropic } = await import("@workspace/integrations-anthropic-ai");
+
+    const graphSummary = JSON.stringify(body.data.graph, null, 2);
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 8192,
+      system: WORKFLOW_REFINE_SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: `Current workflow graph:\n\`\`\`json\n${graphSummary}\n\`\`\`\n\nRefinement instruction: ${body.data.instruction}`,
+      }],
+    });
+
+    const block = msg.content.find(b => b.type === "text");
+    if (!block || block.type !== "text") { sendError(res, 500, "AI returned no text"); return; }
+
+    const parsed = extractJsonFromText(block.text);
+    if (!parsed) {
+      req.log.warn({ preview: block.text.slice(0, 300) }, "workflows/ai-refine: could not extract JSON");
+      sendError(res, 422, "AI response could not be parsed. Try rephrasing your instruction.");
+      return;
+    }
+
+    const validated = AI_GRAPH_SCHEMA.safeParse(parsed);
+    if (!validated.success) {
+      req.log.warn({ issues: validated.error.issues }, "workflows/ai-refine: schema validation failed");
+      sendError(res, 422, `AI produced an invalid graph: ${validated.error.issues[0]?.message ?? "schema mismatch"}`);
+      return;
+    }
+
+    const { nodes, edges } = validated.data;
+
+    const nodeIdSet = new Set(nodes.map(n => n.id));
+    if (nodeIdSet.size !== nodes.length) { sendError(res, 422, "AI produced duplicate node IDs"); return; }
+
+    const edgeIdSet = new Set(edges.map(e => e.id));
+    if (edgeIdSet.size !== edges.length) { sendError(res, 422, "AI produced duplicate edge IDs"); return; }
+
+    for (const e of edges) {
+      if (!nodeIdSet.has(e.source) || !nodeIdSet.has(e.target)) {
+        sendError(res, 422, "AI produced an edge referencing a non-existent node"); return;
+      }
+    }
+
+    const startCount = nodes.filter(n => n.type === "start").length;
+    if (startCount !== 1) { sendError(res, 422, `Expected exactly 1 start node, AI produced ${startCount}`); return; }
+
+    const endCount = nodes.filter(n => n.type === "end").length;
+    if (endCount < 1) { sendError(res, 422, "AI produced no end nodes — at least one is required"); return; }
+
+    req.log.info({ nodeCount: nodes.length, edgeCount: edges.length }, "workflows/ai-refine: success");
+    res.json({ nodes, edges });
+  } catch (err) {
+    req.log.error({ err }, "workflows/ai-refine: failed");
+    sendError(res, 500, "AI refinement failed — please try again");
+  }
+});
+
 export default router;
+
 

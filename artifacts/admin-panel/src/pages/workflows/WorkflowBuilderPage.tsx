@@ -1811,6 +1811,144 @@ function AiWorkflowModal({
   );
 }
 
+// ── AI Refine Modal ───────────────────────────────────────────────────────────
+
+function AiRefineModal({
+  nodes,
+  edges,
+  onClose,
+  onGenerate,
+}: {
+  nodes: Node[];
+  edges: Edge[];
+  onClose: () => void;
+  onGenerate: (result: AiWorkflowResult) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRefine() {
+    if (!instruction.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      // Serialize React Flow nodes to the API-expected format (type = data.nodeType)
+      const apiNodes = nodes.map(n => ({
+        id: n.id,
+        type: (n.data.nodeType as string | undefined) ?? (n.type ?? "action"),
+        position: n.position,
+        data: n.data,
+      }));
+      const apiEdges = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: (e.sourceHandle as string | null | undefined) ?? undefined,
+      }));
+      const res = await fetchWithAuth(`/api/admin/workflows/ai-refine`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: instruction.trim(), graph: { nodes: apiNodes, edges: apiEdges } }),
+      });
+      const data = await res.json() as { nodes?: unknown; edges?: unknown; error?: string };
+      if (!res.ok) {
+        setError((data as { error?: string }).error ?? "AI refinement failed");
+        return;
+      }
+      onGenerate(data as AiWorkflowResult);
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 max-w-md w-full mx-4 space-y-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-semibold text-[#E6EDF3]">Refine with AI</h2>
+            <p className="text-xs text-[#7D8590]">
+              Current canvas: {nodes.length} node{nodes.length !== 1 ? "s" : ""}, {edges.length} edge{edges.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">What would you like to change?</label>
+          <textarea
+            value={instruction}
+            onChange={e => setInstruction(e.target.value)}
+            placeholder="e.g. Add an error handler after the scoring node. Split the condition into two branches — one for High and one for Medium leads."
+            rows={4}
+            maxLength={2000}
+            disabled={loading}
+            autoFocus
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
+          />
+          <div className="flex justify-end">
+            <span className="text-[10px] text-[#484F58]">{instruction.length}/2000</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleRefine}
+            disabled={loading || !instruction.trim()}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {loading ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Refining…
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Apply Refinement
+              </>
+            )}
+          </button>
+        </div>
+
+        <p className="text-[10px] text-[#484F58] border-t border-[#30363D] pt-3">
+          AI will update the canvas and preserve unchanged nodes. Ctrl+Z undoes the change. Uses Replit AI (Anthropic).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main builder ──────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilderPage({ defId, versionId }: { defId: number; versionId?: number }) {
@@ -1828,6 +1966,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [showPublish, setShowPublish] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
   const [showAiModal, setShowAiModal] = useState(false);
+  const [showRefineModal, setShowRefineModal] = useState(false);
   const [aiToast, setAiToast] = useState<string | null>(null);
 
   // Node library state
@@ -2063,14 +2202,15 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setSelectedNodeId(null);
   }
 
-  // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions
-  function handleAiGenerate(result: AiWorkflowResult) {
+  // Shared canvas hydration for both AI generate and AI refine
+  // Re-maps AI-provided IDs to stable node-N IDs to prevent React Flow key collisions.
+  // For refine, existing node IDs that Claude preserved are also remapped so the result
+  // is always collision-free with any pre-existing state left in the counter.
+  function hydrateAiResult(result: AiWorkflowResult, toastMsg: string) {
     pushHistory();
-    // Build stable id map: AI-provided id → normalised node-N id
     const idMap = new Map<string, string>();
     result.nodes.forEach(n => {
-      const newId = `node-${++nodeIdCounter.current}`;
-      idMap.set(n.id, newId);
+      idMap.set(n.id, `node-${++nodeIdCounter.current}`);
     });
     const rfNodes = result.nodes.map(n => ({
       id: idMap.get(n.id)!,
@@ -2087,11 +2227,21 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     }));
     setNodes(rfNodes);
     setEdges(rfEdges);
-    setShowAiModal(false);
-    setAiToast("Workflow generated — review and save when ready");
+    setAiToast(toastMsg);
     setTimeout(() => setAiToast(null), 5000);
-    // fitView after React has committed the new nodes
     setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.15, duration: 400 }), 80);
+  }
+
+  // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions
+  function handleAiGenerate(result: AiWorkflowResult) {
+    setShowAiModal(false);
+    hydrateAiResult(result, "Workflow generated — review and save when ready");
+  }
+
+  // Hydrate canvas from AI-refined graph
+  function handleAiRefine(result: AiWorkflowResult) {
+    setShowRefineModal(false);
+    hydrateAiResult(result, `Workflow refined — ${result.nodes.length} node${result.nodes.length !== 1 ? "s" : ""}. Ctrl+Z to undo.`);
   }
 
   // Ctrl+Z / Cmd+Z undo
@@ -2198,6 +2348,19 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             </svg>
             Build with AI
           </button>
+
+          {nodes.length > 0 && (
+            <button
+              onClick={() => setShowRefineModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
+              title="Refine the current workflow with an AI instruction"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Refine…
+            </button>
+          )}
 
           <button
             onClick={() => setShowTestRun(true)}
@@ -2557,6 +2720,16 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           </svg>
           {aiToast}
         </div>
+      )}
+
+      {/* AI refine modal */}
+      {showRefineModal && (
+        <AiRefineModal
+          nodes={nodes}
+          edges={edges}
+          onClose={() => setShowRefineModal(false)}
+          onGenerate={handleAiRefine}
+        />
       )}
     </div>
   );
