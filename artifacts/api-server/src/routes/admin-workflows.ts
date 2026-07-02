@@ -599,6 +599,43 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
   }
 });
 
+// ── Revert to default ─────────────────────────────────────────────────────────
+// Restores the active version to the pinned v1 default for a system workflow.
+
+router.post("/admin/workflows/definitions/:id/revert-to-default", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  if (isNaN(defId)) return sendError(res, 400, "Invalid id");
+
+  try {
+    const [v1] = await db
+      .select()
+      .from(wfVersionsTable)
+      .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.versionNumber, 1)))
+      .limit(1);
+
+    if (!v1) return sendError(res, 404, "No default version (v1) found for this workflow");
+
+    // Archive currently published version
+    await db
+      .update(wfVersionsTable)
+      .set({ status: "archived" })
+      .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
+
+    // Publish v1
+    const [published] = await db
+      .update(wfVersionsTable)
+      .set({ status: "published" })
+      .where(eq(wfVersionsTable.id, v1.id))
+      .returning();
+
+    req.log.info({ defId, versionId: v1.id }, "workflows: reverted to default v1");
+    res.json(published);
+  } catch (err) {
+    req.log.error({ err }, "workflows: revert-to-default failed");
+    sendError(res, 500, "Failed to revert to default");
+  }
+});
+
 router.post("/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");

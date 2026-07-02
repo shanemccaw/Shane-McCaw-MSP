@@ -35,6 +35,7 @@ import {
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger";
+import { handleSystemAction } from "./system-action-handlers";
 
 // ── Payload interpolation ────────────────────────────────────────────────────
 // Replaces {{key}} and {{payload.key}} tokens with values from payload.
@@ -562,6 +563,16 @@ async function executeNode(
         break;
       }
 
+      case "system_action": {
+        const task = node.data.task as string | undefined;
+        if (!task) {
+          output = { skipped: true, reason: "no task configured" };
+        } else {
+          output = await handleSystemAction(task, payload);
+        }
+        break;
+      }
+
       default:
         output = { note: "unknown node type", nodeType: node.type };
     }
@@ -792,6 +803,16 @@ export async function triggerScheduledWorkflows(): Promise<void> {
       );
       if (!claimed.rowCount || claimed.rowCount === 0) continue;
 
+      // Concurrency guard: skip if a run is already in progress for this definition
+      const inProgress = await pool.query<{ cnt: string }>(
+        `SELECT COUNT(*) AS cnt FROM wf_runs WHERE definition_id = $1 AND status = 'running'`,
+        [trigger.definition_id],
+      );
+      if (parseInt(inProgress.rows[0]?.cnt ?? "0", 10) > 0) {
+        logger.warn({ triggerId: trigger.id, definitionId: trigger.definition_id }, "wf-engine: skipping scheduled trigger — run already in progress");
+        continue;
+      }
+
       const fanOutMode  = trigger.config.fan_out_mode  as string | undefined;
       const fanOutQuery = trigger.config.fan_out_query as string | undefined;
 
@@ -833,6 +854,42 @@ export async function triggerScheduledWorkflows(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, "wf-executor: scheduled trigger scan failed (non-fatal)");
+  }
+}
+
+// ── Startup trigger firing ────────────────────────────────────────────────────
+// Called once on server init. Finds all enabled startup triggers, fires each
+// definition once, then marks them as consumed (next_run_at set to far future)
+// so they don't re-fire on the next scheduler tick.
+
+export async function fireStartupTriggers(): Promise<void> {
+  try {
+    const rows = await pool.query<{ id: number; definition_id: number }>(
+      `SELECT id, definition_id FROM wf_triggers WHERE type = 'startup' AND enabled = true`,
+    );
+
+    for (const trigger of rows.rows) {
+      // Consume immediately to prevent double-fire on restart
+      await pool.query(
+        `UPDATE wf_triggers SET next_run_at = NOW() + INTERVAL '100 years' WHERE id = $1`,
+        [trigger.id],
+      );
+
+      const runId = await fireWorkflowForDefinition(
+        trigger.definition_id,
+        "manual",
+        `startup:trigger:${trigger.id}`,
+        {},
+      );
+
+      logger.info({ triggerId: trigger.id, definitionId: trigger.definition_id, runId }, "wf-engine: startup trigger fired");
+    }
+
+    if (rows.rowCount && rows.rowCount > 0) {
+      logger.info({ count: rows.rowCount }, "wf-engine: all startup triggers fired");
+    }
+  } catch (err) {
+    logger.warn({ err }, "wf-engine: fireStartupTriggers failed (non-fatal)");
   }
 }
 

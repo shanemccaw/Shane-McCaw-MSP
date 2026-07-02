@@ -3,14 +3,11 @@ import { logger } from "./lib/logger";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
-import { checkManualScriptEscalations } from "./lib/manual-script-escalation";
-import { reconcileOrphanedRuns, reconcileStalledPhases } from "./lib/kanban-auto-fire";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
-import { pool, db, insightsAutomationsTable } from "@workspace/db";
-import { triggerScheduledWorkflows } from "./lib/workflow-executor";
-import { executeAutomation, nextRunFromCron } from "./routes/admin-insights";
-import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { pool } from "@workspace/db";
+import { triggerScheduledWorkflows, fireStartupTriggers } from "./lib/workflow-executor";
+import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 
 const rawPort = process.env["PORT"];
 
@@ -85,135 +82,33 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Article seed failed (non-fatal)");
   });
 
-  // Recover kanban cards orphaned by a server restart mid-run.
-  // Also detect phases that advanced but whose auto-fire chain never started.
-  // Runs once on startup, ~2 s after the server is ready (gives DB pool time to warm up).
+  // ── Workflow Engine: seed system workflows then fire startup triggers ──────
+  // Runs after a short delay to give the DB pool time to warm up.
   setTimeout(() => {
-    reconcileOrphanedRuns()
-      .then(() => reconcileStalledPhases())
-      .catch((err) => {
-        logger.warn({ err }, "kanban startup reconciliation failed (non-fatal)");
+    seedSystemWorkflows()
+      .then(() => fireStartupTriggers())
+      .catch((err: unknown) => {
+        logger.warn({ err }, "wf-engine: system workflow seeding or startup triggers failed (non-fatal)");
       });
   }, 2_000);
 
-  // ── Daily escalation check: manual script cards stalled in Waiting on Customer ──
-  // Runs once at startup (to catch any overnight stalls) then every 24 h.
-  // The check is idempotent — each card can only trigger one alert per 24 h.
-  //
-  // To trigger manually or from an external scheduler (GitHub Actions, Azure
-  // Logic Apps, etc.):
-  //   POST /api/admin/kanban/check-escalations
-  //   Authorization: Bearer <ADMIN_PASSWORD>
-  // ── Insights automation cron scheduler ────────────────────────────────────
-  // On startup: reconcile any automations missing nextRunAt so the scheduler
-  // can fire them correctly on the next tick.
-  db.select({
-    id: insightsAutomationsTable.id,
-    cronExpression: insightsAutomationsTable.cronExpression,
-  }).from(insightsAutomationsTable)
-    .where(and(
-      eq(insightsAutomationsTable.enabled, true),
-      sql`next_run_at IS NULL`,
-    ))
-    .then(async (stale) => {
-      for (const row of stale) {
-        const nextRunAt = nextRunFromCron(row.cronExpression);
-        await db.update(insightsAutomationsTable)
-          .set({ nextRunAt })
-          .where(eq(insightsAutomationsTable.id, row.id));
-      }
-      if (stale.length > 0) {
-        logger.info({ count: stale.length }, "insights: reconciled automations with missing nextRunAt");
-      }
-    })
-    .catch((err: unknown) => {
-      logger.warn({ err }, "insights: startup nextRunAt reconciliation failed (non-fatal)");
-    });
-
-  // Count and log active automations so the log makes it clear the scheduler is live.
-  db.select({ id: insightsAutomationsTable.id })
-    .from(insightsAutomationsTable)
-    .where(eq(insightsAutomationsTable.enabled, true))
-    .then((rows) => {
-      logger.info({ count: rows.length }, "insights: automation scheduler started — enabled automations loaded");
-    })
-    .catch(() => { /* non-fatal */ });
-
-  // Every 60 seconds: fire any enabled automation whose nextRunAt has arrived.
-  //
-  // Duplicate-run prevention (optimistic lock):
-  //   Before handing off to executeAutomation, we atomically advance nextRunAt
-  //   to the next occurrence using a conditional UPDATE that matches the row's
-  //   current nextRunAt value.  If the UPDATE returns 0 rows, another tick
-  //   already claimed the row, so we skip it.  This makes the scheduler safe
-  //   against runs that take >60s (e.g. AI generation + Azure runbook), where
-  //   a naive poll would re-select the same row and generate duplicate documents.
-  const runInsightsCron = () => {
-    db.select({
-      id:             insightsAutomationsTable.id,
-      cronExpression: insightsAutomationsTable.cronExpression,
-      nextRunAt:      insightsAutomationsTable.nextRunAt,
-    }).from(insightsAutomationsTable)
-      .where(and(
-        eq(insightsAutomationsTable.enabled, true),
-        isNotNull(insightsAutomationsTable.nextRunAt),
-        sql`next_run_at <= NOW()`,
-      ))
-      .then(async (rows) => {
-        for (const row of rows) {
-          // Optimistic lock: advance nextRunAt atomically.
-          // Only fire if this tick wins the claim.
-          const nextRun = nextRunFromCron(row.cronExpression);
-          const claimed = await db.update(insightsAutomationsTable)
-            .set({ nextRunAt: nextRun })
-            .where(and(
-              eq(insightsAutomationsTable.id, row.id),
-              sql`next_run_at = ${row.nextRunAt}`,
-            ))
-            .returning({ id: insightsAutomationsTable.id });
-
-          if (claimed.length === 0) {
-            logger.info({ automationId: row.id }, "insights: cron tick — skipped (already claimed)");
-            continue;
-          }
-
-          logger.info({ automationId: row.id }, "insights: cron tick — firing automation");
-          executeAutomation(row.id).catch((err: unknown) => {
-            logger.warn({ err, automationId: row.id }, "insights: automation execution error (non-fatal)");
-          });
-        }
-      })
-      .catch((err: unknown) => {
-        logger.warn({ err }, "insights: cron tick query failed (non-fatal)");
-      });
-  };
-  setInterval(runInsightsCron, 60_000); // every 1 minute
-
-  // ── Workflow Engine schedule scanner ─────────────────────────────────────
-  // Piggybacks on the existing 60s interval to fire scheduled workflow triggers.
+  // ── Workflow Engine: 60-second schedule scanner ───────────────────────────
   setInterval(() => {
     triggerScheduledWorkflows().catch((err: unknown) => {
       logger.warn({ err }, "wf-engine: scheduled trigger scan failed (non-fatal)");
     });
   }, 60_000);
 
-  const ESCALATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-  const runEscalationCheck = () => {
-    checkManualScriptEscalations().then((result) => {
-      if (result.alerted > 0) {
-        logger.info(
-          { alerted: result.alerted, cardIds: result.cardIds },
-          "escalation: daily check complete — alert sent",
-        );
-      } else {
-        logger.info("escalation: daily check complete — no overdue cards");
-      }
-    }).catch((err: unknown) => {
-      logger.warn({ err }, "escalation: daily check failed (non-fatal)");
-    });
-  };
-  runEscalationCheck();
-  setInterval(runEscalationCheck, ESCALATION_INTERVAL_MS);
+  // ── Workflow Engine: schema additions ────────────────────────────────────
+  pool.query(`
+    ALTER TABLE wf_definitions ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';
+    ALTER TABLE wf_versions    ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false;
+    CREATE UNIQUE INDEX IF NOT EXISTS wf_definitions_name_uidx ON wf_definitions (name);
+  `).then(() => {
+    logger.info("Migration: wf_definitions.metadata, wf_versions.is_default, wf_definitions name unique index ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: wf engine schema additions failed (non-fatal)");
+  });
 
   // ── Insights & Outputs tables ─────────────────────────────────────────────
   pool.query(`

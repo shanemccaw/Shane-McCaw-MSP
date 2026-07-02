@@ -1719,7 +1719,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     queryKey: ["wf-versions", defId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions`);
-      return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; graph: { nodes: unknown[]; edges: unknown[] } }>>;
+      return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; isDefault: boolean; graph: { nodes: unknown[]; edges: unknown[] } }>>;
     },
   });
 
@@ -2264,14 +2264,32 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
               </button>
             </div>
             {versions.map(v => (
-              <button
-                key={v.id}
-                onClick={() => { setCurrentVersionId(v.id); setShowVersionHistory(false); }}
-                className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
-              >
-                <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
-                <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
-              </button>
+              <div key={v.id} className="space-y-1">
+                <button
+                  onClick={() => { setCurrentVersionId(v.id); setShowVersionHistory(false); }}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                >
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
+                    {v.isDefault && (
+                      <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full font-medium">Default</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
+                </button>
+                {v.isDefault && v.id !== currentVersionId && (
+                  <button
+                    onClick={async () => {
+                      await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/revert-to-default`, { method: "POST" });
+                      setCurrentVersionId(v.id);
+                      setShowVersionHistory(false);
+                    }}
+                    className="w-full text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg py-1.5 transition-colors"
+                  >
+                    Revert to default
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         )}

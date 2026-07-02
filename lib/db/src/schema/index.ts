@@ -1643,7 +1643,9 @@ export interface WfNode {
     | "parse_quiz_results" | "generate_readiness_score" | "attach_quiz_insights"
     // M365 Health
     | "validate_m365_permissions" | "update_intelligence_tables"
-    | "generate_diff_report" | "notify_major_changes";
+    | "generate_diff_report" | "notify_major_changes"
+    // System
+    | "system_action";
   position: { x: number; y: number };
   data: WfNodeData;
 }
@@ -1666,6 +1668,7 @@ export const wfDefinitionsTable = pgTable("wf_definitions", {
   name: text("name").notNull(),
   description: text("description"),
   concurrencyLimit: integer("concurrency_limit").notNull().default(5),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -1680,6 +1683,7 @@ export const wfVersionsTable = pgTable("wf_versions", {
   label: text("label"),
   status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
   graph: jsonb("graph").$type<WfGraph>().notNull().default({ nodes: [], edges: [] }),
+  isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -1734,7 +1738,7 @@ export type WfRunNodeOutput = typeof wfRunNodeOutputsTable.$inferSelect;
 export const wfTriggersTable = pgTable("wf_triggers", {
   id: serial("id").primaryKey(),
   definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
-  type: text("type", { enum: ["manual", "schedule", "webhook", "event"] }).notNull(),
+  type: text("type", { enum: ["manual", "schedule", "webhook", "event", "startup"] }).notNull(),
   config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
   webhookToken: text("webhook_token").unique(),
   nextRunAt: timestamp("next_run_at"),
