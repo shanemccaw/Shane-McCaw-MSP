@@ -4,8 +4,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
-import CopilotAura from "@/components/wizard/CopilotAura";
-
 // ── Outer wizard steps ────────────────────────────────────────────────────────
 
 const STEPS = [
@@ -576,12 +574,9 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       </div>
 
       {/* ── Right content panel ───────────────────────────────────────────── */}
-      <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
-        {/* 3D Copilot Aura — immersive animated background */}
-        <CopilotAura />
-
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Top progress bar + mobile header */}
-        <div className="flex-shrink-0 relative z-10">
+        <div className="flex-shrink-0">
           {/* Mobile header */}
           <div className="md:hidden flex items-center justify-between px-5 py-4 bg-[#0A2540]">
             <p className="text-sm font-bold text-white">Workspace Setup</p>
@@ -685,7 +680,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
         </div>
 
         {/* Step content */}
-        <div className="flex-1 min-h-0 relative z-10">
+        <div className="flex-1 min-h-0 bg-[#F7F9FC]">
           {currentStep === "app-reg" && (
             <StepAppRegistration
               onSaveAndContinue={handleAppRegSaveAndContinue}

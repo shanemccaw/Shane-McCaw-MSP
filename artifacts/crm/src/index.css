@@ -255,3 +255,25 @@ html {
   100% { transform: translateX(100%); }
 }
 
+/* ── Copilot Aura screen-edge glow ──────────────────────────────────────── */
+@keyframes copilot-aura-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 1.0;  }
+}
+@keyframes copilot-aura-pulse-slow {
+  0%, 100% { opacity: 0.40; }
+  50%       { opacity: 0.85; }
+}
+@keyframes copilot-aura-pulse-fast {
+  0%, 100% { opacity: 0.50; }
+  50%       { opacity: 0.95; }
+}
+
+.copilot-aura-top         { animation: copilot-aura-pulse      3.8s ease-in-out infinite; }
+.copilot-aura-bottom      { animation: copilot-aura-pulse-slow  5.2s ease-in-out infinite 0.6s; }
+.copilot-aura-side        { animation: copilot-aura-pulse-fast  4.4s ease-in-out infinite 1.1s; }
+.copilot-aura-corner-tl   { animation: copilot-aura-pulse-slow  6.0s ease-in-out infinite 0.2s; }
+.copilot-aura-corner-tr   { animation: copilot-aura-pulse-fast  4.8s ease-in-out infinite 1.6s; }
+.copilot-aura-corner-br   { animation: copilot-aura-pulse      5.5s ease-in-out infinite 0.9s; }
+.copilot-aura-corner-bl   { animation: copilot-aura-pulse-slow  4.2s ease-in-out infinite 2.0s; }
+

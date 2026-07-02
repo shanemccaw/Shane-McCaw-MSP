@@ -6,6 +6,7 @@ import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { QW_COPY, DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import { CATEGORY_TO_SCORE_KEY } from "@/hooks/useQuickWinRealImpl";
 import AnimatedBackground from "./AnimatedBackground";
+import CopilotAura from "@/components/wizard/CopilotAura";
 import PhaseStepperBar from "./PhaseStepperBar";
 import HealthPanel from "./HealthPanel";
 import QueueColumn from "./QueueColumn";
@@ -651,8 +652,11 @@ export default function FullScreenWrapper() {
         backgroundColor: "rgb(248,249,251)",
       }}
     >
-      {/* 3D Torus Knot Background Aura */}
+      {/* 3D Torus Knot Background */}
       <AnimatedBackground />
+
+      {/* Screen-edge Copilot Aura — brand colour glow around the perimeter */}
+      <CopilotAura />
 
       {/* Close button — hidden while viewing active project tasks */}
       {!isProjectView && (
