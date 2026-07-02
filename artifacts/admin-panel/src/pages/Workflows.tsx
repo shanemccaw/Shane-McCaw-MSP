@@ -46,6 +46,7 @@ const REPORT_DOC_TYPES: { value: string; label: string }[] = [
 
 const CONSULTING_DOC_TYPES: { value: string; label: string }[] = [
   { value: "sow",                         label: "Statement of Work" },
+  { value: "task_execution_guide",        label: "SOW Task Execution Guide" },
   { value: "remediation_plan",            label: "Remediation Plan" },
   { value: "deployment_plan",             label: "Deployment Plan" },
   { value: "governance_framework",        label: "Governance Framework" },
