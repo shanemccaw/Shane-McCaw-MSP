@@ -363,6 +363,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   const [, navigate] = useLocation();
   const [currentStep, setCurrentStep] = useState<StepId | "done">("app-reg");
   const [completing, setCompleting] = useState(false);
+  const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
 
   const completeWizard = useCallback(async () => {
     if (completing) return;
@@ -393,6 +394,11 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       setCurrentStep("quick-win");
     }
   }
+
+  // Auto-dismiss the mobile steps drawer whenever the active step changes
+  useEffect(() => {
+    setStepsDrawerOpen(false);
+  }, [currentStep]);
 
   async function handleSkip() {
     if (mode === "update") {
@@ -552,7 +558,81 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
           {/* Mobile header */}
           <div className="md:hidden flex items-center justify-between px-5 py-4 bg-[#0A2540]">
             <p className="text-sm font-bold text-white">Workspace Setup</p>
-            <span className="text-xs text-white/50">Step {stepIndex + 1} of {STEPS.length}</span>
+            {/* Tappable steps indicator — opens the slide-up drawer */}
+            <button
+              type="button"
+              onClick={() => setStepsDrawerOpen(o => !o)}
+              className="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 active:bg-white/25 transition-colors rounded-lg px-3 py-1.5"
+              aria-label="Show all steps"
+              aria-expanded={stepsDrawerOpen}
+            >
+              <span className="text-xs font-semibold text-white/80">
+                Step {currentStep === "done" ? STEPS.length : stepIndex + 1} of {STEPS.length}
+              </span>
+              <svg
+                className={`w-3.5 h-3.5 text-white/60 transition-transform duration-200 ${stepsDrawerOpen ? "rotate-180" : ""}`}
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Mobile steps drawer — slide down when open */}
+          <div
+            className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-[#0A2540] border-b border-white/10 ${stepsDrawerOpen ? "max-h-96" : "max-h-0"}`}
+            aria-hidden={!stepsDrawerOpen}
+          >
+            {/* Backdrop tap-to-close */}
+            {stepsDrawerOpen && (
+              <div
+                className="fixed inset-0 z-40"
+                style={{ top: 0 }}
+                onClick={() => setStepsDrawerOpen(false)}
+              />
+            )}
+            <div className="relative z-50 px-4 py-4 space-y-1">
+              {STEPS.map((step, idx) => {
+                const isActive = currentStep === step.id;
+                const stepPos = currentStep === "done" ? STEPS.length : STEPS.findIndex(s => s.id === currentStep);
+                const isDone = stepPos > idx;
+                return (
+                  <div key={step.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${isActive ? "bg-white/10" : ""}`}>
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 border-2 ${
+                      isDone ? "bg-[#0078D4] border-[#0078D4]" : isActive ? "bg-[#0078D4]/20 border-[#0078D4]" : "bg-transparent border-white/20"
+                    }`}>
+                      {isDone ? (
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <span className={`text-xs font-bold ${isActive ? "text-[#0078D4]" : "text-white/30"}`}>{idx + 1}</span>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-sm font-semibold truncate ${isActive ? "text-white" : isDone ? "text-white/70" : "text-white/30"}`}>
+                        {step.label}
+                      </p>
+                      <p className={`text-xs truncate ${isActive ? "text-white/50" : "text-white/20"}`}>{step.sublabel}</p>
+                    </div>
+                    {isActive && <div className="flex-shrink-0 ml-auto w-1.5 h-1.5 rounded-full bg-[#00B4D8] animate-pulse" />}
+                  </div>
+                );
+              })}
+              {currentStep === "done" && (
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/10">
+                  <div className="w-7 h-7 rounded-full bg-green-500 border-2 border-green-500 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-white">Complete</p>
+                    <p className="text-xs text-white/50">All set!</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           {/* Desktop header */}
           {currentStep !== "done" && (
