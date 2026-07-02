@@ -1,7 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
+import { useQuickWinMode } from "@/context/QuickWinModeContext";
+import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 
 // ── Outer wizard steps ────────────────────────────────────────────────────────
 
@@ -13,6 +15,16 @@ const STEPS = [
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+      </svg>
+    ),
+  },
+  {
+    id: "quick-win",
+    label: "Quick Win Diagnostic",
+    sublabel: "Free M365 health check",
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
       </svg>
     ),
   },
@@ -284,6 +296,126 @@ function StepAppRegistration({ onSaveAndContinue, onSkip }: { onSaveAndContinue:
   );
 }
 
+// ── Step: Quick Win Diagnostic ────────────────────────────────────────────────
+
+function StepQuickWin({ onComplete, onSkip }: { onComplete: () => void; onSkip: () => void }) {
+  const { state, dispatch } = useQuickWinMode();
+  const hasLaunchedRef = useRef(false);
+
+  // When the overlay closes (mode → Idle) after having been launched, auto-advance
+  useEffect(() => {
+    if (hasLaunchedRef.current && state.mode === "Idle") {
+      onComplete();
+    }
+  }, [state.mode, onComplete]);
+
+  function handleLaunch() {
+    hasLaunchedRef.current = true;
+    dispatch({
+      type: "SELECT_QUICK_WIN",
+      payload: {
+        id: "qw-onboarding-security",
+        title: "Security Baseline Diagnostic",
+        description: "Automated scan of your M365 security posture with actionable findings.",
+        category: "Security",
+        steps: DEFAULT_QUICK_WIN_STEPS,
+      },
+    });
+  }
+
+  const isRunning = state.mode !== "Idle";
+
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex-1 overflow-y-auto px-8 py-8 space-y-5">
+        <div className="mb-2">
+          <h2 className="text-2xl font-bold text-[#0A2540]">Run Your Free Diagnostic</h2>
+          <p className="text-sm text-gray-500 mt-1.5">
+            Get an instant M365 health check — three automated steps that scan your security posture and produce a scored report, all in about 60 seconds.
+          </p>
+        </div>
+
+        {/* What you get */}
+        <div className="rounded-xl border border-[#0078D4]/30 overflow-hidden">
+          <div className="bg-[#0078D4]/8 px-4 py-2.5 border-b border-[#0078D4]/20">
+            <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wider">What the diagnostic checks</p>
+          </div>
+          <div className="bg-white divide-y divide-gray-50">
+            {[
+              { icon: "🔐", label: "Security baseline scan", desc: "MFA, Conditional Access, Defender, DLP, and identity protection coverage" },
+              { icon: "📋", label: "Compliance check", desc: "Retention policies, sensitivity labels, and Compliance Center posture" },
+              { icon: "🤖", label: "Copilot readiness", desc: "Licence coverage, security prerequisites, and data sensitivity hygiene" },
+            ].map(item => (
+              <div key={item.label} className="flex items-start gap-3 px-4 py-3">
+                <span className="text-xl flex-shrink-0">{item.icon}</span>
+                <div>
+                  <p className="text-xs font-semibold text-[#0A2540]">{item.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5 leading-snug">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA card */}
+        <div className="bg-[#0A2540] rounded-2xl p-6 flex flex-col items-center text-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-[#0078D4]/20 flex items-center justify-center">
+            <svg className="w-7 h-7 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white">Ready to launch your diagnostic?</p>
+            <p className="text-xs text-white/50 mt-1">The overlay opens full-screen. You can exit at any time.</p>
+          </div>
+          <button
+            onClick={handleLaunch}
+            disabled={isRunning}
+            className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 text-white text-sm font-semibold px-6 py-3 rounded-xl transition-colors"
+          >
+            {isRunning ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            )}
+            {isRunning ? "Diagnostic running…" : "Launch Quick Win Diagnostic"}
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom controls */}
+      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-8 py-4 flex items-center justify-between gap-4">
+        <button
+          type="button"
+          onClick={onSkip}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          Skip for now
+        </button>
+        <button
+          type="button"
+          onClick={handleLaunch}
+          disabled={isRunning}
+          className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 disabled:opacity-50 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
+        >
+          {isRunning ? (
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              Launch Diagnostic
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Complete step (success) ───────────────────────────────────────────────────
 
 function StepComplete({ onGoToDashboard }: { onGoToDashboard: () => void }) {
@@ -339,14 +471,20 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       const err = await res.json() as { error?: string };
       throw new Error(err.error ?? "Could not save credentials.");
     }
-    await completeWizard();
+    // In onboarding mode advance to step 2; in update mode finish immediately
+    if (mode === "update") {
+      await completeWizard();
+    } else {
+      setCurrentStep("quick-win");
+    }
   }
 
   async function handleSkip() {
     if (mode === "update") {
       navigate("/portal/app-registration");
     } else {
-      await completeWizard();
+      // Skip Azure credentials — go to the Quick Win step
+      setCurrentStep("quick-win");
     }
   }
 
@@ -521,6 +659,12 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
             <StepAppRegistration
               onSaveAndContinue={handleAppRegSaveAndContinue}
               onSkip={handleSkip}
+            />
+          )}
+          {currentStep === "quick-win" && (
+            <StepQuickWin
+              onComplete={completeWizard}
+              onSkip={completeWizard}
             />
           )}
           {currentStep === "done" && (

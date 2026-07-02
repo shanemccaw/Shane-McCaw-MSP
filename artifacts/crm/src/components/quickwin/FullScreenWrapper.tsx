@@ -259,7 +259,7 @@ export default function FullScreenWrapper() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col"
+      className="fixed inset-0 z-[10000] flex flex-col"
       style={{
         opacity: backdropOpacity,
         transition: "opacity 240ms cubic-bezier(0.42,0,0.58,1)",
@@ -272,7 +272,7 @@ export default function FullScreenWrapper() {
       {/* Close button */}
       <button
         onClick={() => dispatch({ type: "EXIT" })}
-        className="fixed top-10 right-10 z-[100] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
+        className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
         style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
         aria-label="Close"
       >
