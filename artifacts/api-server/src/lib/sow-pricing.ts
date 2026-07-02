@@ -23,8 +23,8 @@ export function stripMarkdownFence(text: string): string {
  */
 export function stripStagedForReviewBanner(html: string): string {
   return html
-    .replace(/<div[^>]*>⚠️[^<]*Staged for Review[^<]*<\/div>/gi, "")
-    .replace(/<div[^>]*>📋[^<]*Staged for Review[^<]*<\/div>/gi, "");
+    .replace(/<div[^>]*>\s*⚠️[\s\S]*?Staged for Review[\s\S]*?<\/div>/gi, "")
+    .replace(/<div[^>]*>\s*📋[\s\S]*?Staged for Review[\s\S]*?<\/div>/gi, "");
 }
 
 /**
