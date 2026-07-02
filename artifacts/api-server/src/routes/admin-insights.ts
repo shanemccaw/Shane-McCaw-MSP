@@ -31,6 +31,7 @@ import {
   db,
   scriptRunResultsTable,
   clientScoresTable,
+  clientM365ProfilesTable,
   usersTable,
   projectsTable,
   kanbanTasksTable,
@@ -1002,7 +1003,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
       const stripHtml = (html: string) =>
         html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 1800);
 
-      const [existingDocs, engagementProjects, customerRow] = await Promise.all([
+      const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
         customerId
           ? db.select({
               id:       insightsGeneratedDocumentsTable.id,
@@ -1031,6 +1032,44 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
           ? db.select({ name: usersTable.name, company: usersTable.company })
               .from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
           : Promise.resolve([] as { name: string | null; company: string | null }[]),
+        // M365 Health Profile (profile flags)
+        customerId
+          ? db.select({ profile: clientM365ProfilesTable.profile })
+              .from(clientM365ProfilesTable)
+              .where(eq(clientM365ProfilesTable.clientId, customerId))
+              .limit(1)
+          : Promise.resolve([] as { profile: Record<string, unknown> | null }[]),
+        // Script run results — findings, recommendations, and profile updates
+        customerId
+          ? db.select({
+              scriptName:     scriptRunResultsTable.scriptName,
+              parsedFindings: scriptRunResultsTable.parsedFindings,
+              recommendations: scriptRunResultsTable.recommendations,
+              profileUpdates: scriptRunResultsTable.profileUpdates,
+              scoreImpact:    scriptRunResultsTable.scoreImpact,
+              createdAt:      scriptRunResultsTable.createdAt,
+            })
+            .from(scriptRunResultsTable)
+            .where(and(
+              eq(scriptRunResultsTable.customerId, customerId),
+              eq(scriptRunResultsTable.status, "completed"),
+            ))
+            .orderBy(desc(scriptRunResultsTable.createdAt))
+            .limit(50)
+          : Promise.resolve([] as { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null; scoreImpact: Record<string, unknown> | null; createdAt: Date }[]),
+        // Aggregated health scores
+        customerId
+          ? db.select({
+              identity:        clientScoresTable.identity,
+              security:        clientScoresTable.security,
+              collaboration:   clientScoresTable.collaboration,
+              compliance:      clientScoresTable.compliance,
+              copilotReadiness: clientScoresTable.copilotReadiness,
+            })
+            .from(clientScoresTable)
+            .where(eq(clientScoresTable.clientId, customerId))
+            .limit(1)
+          : Promise.resolve([] as { identity: number | null; security: number | null; collaboration: number | null; compliance: number | null; copilotReadiness: number | null }[]),
       ]);
 
       const clientName = (customerRow as { company: string | null; name: string | null }[])[0]?.company
@@ -1048,6 +1087,60 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
           ).join("\n\n")
         : "No engagement project pricing configured.";
 
+      // ── Build tenant telemetry block ───────────────────────────────────────
+      const telemetryLines: string[] = [];
+
+      // 1. M365 Health Profile flags
+      const profile = (m365ProfileRow as { profile: Record<string, unknown> | null }[])[0]?.profile;
+      if (profile && Object.keys(profile).length > 0) {
+        telemetryLines.push("M365 HEALTH PROFILE FLAGS:");
+        for (const [k, v] of Object.entries(profile)) {
+          telemetryLines.push(`  ${k}: ${String(v)}`);
+        }
+      }
+
+      // 2. Health scores
+      const scores = (scoresRow as { identity: number | null; security: number | null; collaboration: number | null; compliance: number | null; copilotReadiness: number | null }[])[0];
+      if (scores) {
+        telemetryLines.push("\nHEALTH SCORES:");
+        if (scores.identity        != null) telemetryLines.push(`  Identity Score:          ${scores.identity}/100`);
+        if (scores.security        != null) telemetryLines.push(`  Security Score:          ${scores.security}/100`);
+        if (scores.collaboration   != null) telemetryLines.push(`  Collaboration Score:     ${scores.collaboration}/100`);
+        if (scores.compliance      != null) telemetryLines.push(`  Compliance Score:        ${scores.compliance}/100`);
+        if (scores.copilotReadiness != null) telemetryLines.push(`  Copilot Readiness Score: ${scores.copilotReadiness}/100`);
+      }
+
+      // 3. Script run findings & recommendations
+      type RunRow = { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null };
+      const typedRuns = scriptRuns as RunRow[];
+      const allFindings = [...new Set(typedRuns.flatMap(r => r.parsedFindings ?? []))].slice(0, 40);
+      const allRecs     = [...new Set(typedRuns.flatMap(r => r.recommendations ?? []))].slice(0, 30);
+
+      if (allFindings.length > 0) {
+        telemetryLines.push(`\nSCRIPT FINDINGS (${typedRuns.length} completed run${typedRuns.length === 1 ? "" : "s"}):`);
+        for (const f of allFindings) telemetryLines.push(`  • ${f}`);
+      }
+
+      if (allRecs.length > 0) {
+        telemetryLines.push("\nRECOMMENDATIONS FROM SCRIPTS:");
+        for (const r of allRecs) telemetryLines.push(`  • ${r}`);
+      }
+
+      // 4. Profile key-value updates from script runs (additional telemetry keys)
+      const profileKV = typedRuns
+        .flatMap(r => Object.entries(r.profileUpdates ?? {}))
+        .slice(0, 40)
+        .map(([k, v]) => `  ${k}: ${String(v)}`);
+      if (profileKV.length > 0) {
+        telemetryLines.push("\nCONFIGURATION TELEMETRY (from script runs):");
+        telemetryLines.push(...profileKV);
+      }
+
+      const tenantTelemetryBlock = telemetryLines.length > 0
+        ? telemetryLines.join("\n")
+        : "No tenant telemetry collected yet — generate this SOW after running assessment scripts.";
+      // ── End tenant telemetry block ─────────────────────────────────────────
+
       const CONSOLIDATED_SOW_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
 
 Client: {{clientName}}
@@ -1060,11 +1153,16 @@ EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommend
 ENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and deliverables to populate real pricing in the SOW — select only the projects relevant to this client's needs):
 {{engagementProjects}}
 
+TENANT TELEMETRY (live M365 health profile flags, scores, and script findings — use this data to scope the work accurately and to justify pricing decisions):
+{{tenantTelemetry}}
+
 INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
 - Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
-- The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Estimated Price Range, Notes — populated from the engagement projects catalogue above; do NOT use [TBD] for pricing if catalogue data is available
+- The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Fixed Price (USD), Notes — populated from the engagement projects catalogue and the telemetry above
+- You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends")
+- You MUST calculate pricing using the telemetry and pricing rules provided; show brief justification per line item
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
@@ -1077,7 +1175,8 @@ INSTRUCTIONS:
         .replace(/\{\{title\}\}/g, title)
         .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
-        .replace(/\{\{engagementProjects\}\}/g, projectsBlock);
+        .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
+        .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock);
 
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",

@@ -50,6 +50,7 @@ async function resolveTemplateTaskMetadata(
     runbookId?: string | null;
     customerDownloadScriptId?: string | null;
     triggersHealthScore?: boolean | null;
+    taskMetadata?: Record<string, unknown> | null;
   }>
 ): Promise<Array<{
   instructions: string[];
@@ -61,6 +62,7 @@ async function resolveTemplateTaskMetadata(
   linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null;
   customerDownload: { scriptId: string; scriptTitle: string } | null;
   triggersHealthScore: boolean;
+  documentGeneration: { category: string; docType: string; title: string } | null;
 }>> {
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const linkedInstrIds = [...new Set(templateTasks.map(t => t.instructionSetId).filter((id): id is number => id != null))];
