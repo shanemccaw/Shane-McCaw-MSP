@@ -4891,6 +4891,31 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         req.log.warn({ err: notifyErr, sessionId: session.id, eventType: event.type }, "processStripeEvent: post-provision notification failed (non-fatal)");
       }
     }
+  } else if (event.type === "checkout.session.expired") {
+    const session = event.data.object as import("stripe").Stripe.Checkout.Session;
+    if (session.metadata?.type === "presentation_checkout") {
+      const presentationId = parseInt(session.metadata.presentationId ?? "", 10);
+      if (!isNaN(presentationId)) {
+        // Only roll back if this specific session is still the live one AND the
+        // presentation has not already been paid or signed — guards against:
+        //   • late/out-of-order expiry webhooks arriving after a newer session was created
+        //   • downgrading a presentation that was already completed
+        await db.update(quickWinPresentationsTable)
+          .set({ stripeSessionId: null, status: "draft", updatedAt: new Date() })
+          .where(
+            and(
+              eq(quickWinPresentationsTable.id, presentationId),
+              eq(quickWinPresentationsTable.stripeSessionId, session.id),
+              ne(quickWinPresentationsTable.status, "paid"),
+              ne(quickWinPresentationsTable.status, "signed"),
+            ),
+          );
+        req.log.info(
+          { presentationId, sessionId: session.id },
+          "processStripeEvent: cleared expired checkout session from presentation",
+        );
+      }
+    }
   }
   } catch (err) {
     req.log.error(
