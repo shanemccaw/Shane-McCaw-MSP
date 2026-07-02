@@ -642,3 +642,119 @@ describe("PATCH selections (B2): no SOW doc — all snapshot phases selected giv
     );
   });
 });
+
+// =============================================================================
+// Path (A3): Live SOW — empty selectedPhaseIds returns totalPrice: 0
+// =============================================================================
+
+describe("PATCH selections (A3): live SOW — empty selectedPhaseIds returns totalPrice 0", () => {
+  const livePricingLines = [
+    { title: "Phase 1 — Discovery", scope: "Requirements", priceUsd: 10_000, notes: "" },
+    { title: "Phase 2 — Implementation", scope: "Core build", priceUsd: 25_000, notes: "" },
+    { title: "Phase 3 — Rollout", scope: "Go-live", priceUsd: 8_000, notes: "" },
+  ];
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [1],
+      sowPhases: [],
+      selectedPhaseIds: ["sow-0", "sow-1", "sow-2"],
+      totalPrice: "43000", // stale stored total — must NOT be echoed
+    });
+    const sowDoc = makeSowDoc(livePricingLines);
+
+    // Queue:
+    //  [0] quickWinPresentationsTable → presRow  (ownership check)
+    //  [1] insightsGeneratedDocumentsTable        (deriveEffectiveSowData pricing lookup)
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, []));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds is an empty array", () => {
+    assert.deepEqual(
+      body.selectedPhaseIds,
+      [],
+      `expected [], got ${JSON.stringify(body.selectedPhaseIds)}`,
+    );
+  });
+
+  it("totalPrice is 0 — not the stale stored value ($43k)", () => {
+    assert.equal(
+      body.totalPrice,
+      0,
+      `expected totalPrice 0 when no phases selected, got ${body.totalPrice}`,
+    );
+  });
+
+  it("stale stored totalPrice ($43k) is NOT returned", () => {
+    assert.notEqual(
+      body.totalPrice,
+      43_000,
+      "deselecting all phases must zero out the total, not echo the stored value",
+    );
+  });
+});
+
+// =============================================================================
+// Path (B3): No SOW doc — empty selectedPhaseIds returns totalPrice: 0
+// =============================================================================
+
+describe("PATCH selections (B3): no SOW doc — empty selectedPhaseIds returns totalPrice 0", () => {
+  const snapshotPhases = [
+    { id: "snap-0", title: "Phase A", description: "Kick-off", price: 4_000, selected: true },
+    { id: "snap-1", title: "Phase B", description: "Delivery", price: 11_000, selected: true },
+    { id: "snap-2", title: "Phase C", description: "Closure", price: 5_000, selected: true },
+  ];
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    // No documents included → deriveEffectiveSowData uses the sowPhases snapshot.
+    const presRow = makePresRow({
+      documentsIncluded: [],
+      sowPhases: snapshotPhases,
+      selectedPhaseIds: ["snap-0", "snap-1", "snap-2"],
+      totalPrice: "20000", // stale stored total — must NOT be echoed
+    });
+
+    // Only one DB read needed (quickWinPresentationsTable); no doc query.
+    dbQueue = [[presRow]];
+    ({ status, body } = await patchSelections(PRES_ID, []));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds is an empty array", () => {
+    assert.deepEqual(
+      body.selectedPhaseIds,
+      [],
+      `expected [], got ${JSON.stringify(body.selectedPhaseIds)}`,
+    );
+  });
+
+  it("totalPrice is 0 — not the stale stored value ($20k)", () => {
+    assert.equal(
+      body.totalPrice,
+      0,
+      `expected totalPrice 0 when no snapshot phases selected, got ${body.totalPrice}`,
+    );
+  });
+
+  it("stale stored totalPrice ($20k) is NOT returned", () => {
+    assert.notEqual(
+      body.totalPrice,
+      20_000,
+      "deselecting all snapshot phases must zero out the total, not echo the stored value",
+    );
+  });
+});
