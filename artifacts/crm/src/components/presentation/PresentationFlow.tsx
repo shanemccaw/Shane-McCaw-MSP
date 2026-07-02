@@ -152,8 +152,22 @@ export default function PresentationFlow({
     const idx = steps.findIndex(s => s.kind === targetKind);
     return idx >= 0 ? idx : 0;
   };
+
+  const lsKey = `pf-progress-${presentationId}`;
+
+  const computeInitialMaxVisited = () => {
+    const base = computeInitialStep();
+    try {
+      const stored = localStorage.getItem(lsKey);
+      if (stored !== null) return Math.max(base, parseInt(stored, 10) || 0);
+    } catch {
+      // localStorage unavailable (private browsing, etc.) — fall through
+    }
+    return base;
+  };
+
   const [stepIndex, setStepIndex] = useState(computeInitialStep);
-  const [maxVisitedStep, setMaxVisitedStep] = useState(computeInitialStep);
+  const [maxVisitedStep, setMaxVisitedStep] = useState(computeInitialMaxVisited);
   const [signerName, setSignerName] = useState(data.signerName ?? user?.name ?? "");
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -340,6 +354,15 @@ export default function PresentationFlow({
     }, 220);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps, stepIndex, flushDocDwell]);
+
+  // Persist visited progress across sessions — keyed by presentationId
+  useEffect(() => {
+    try {
+      localStorage.setItem(lsKey, String(maxVisitedStep));
+    } catch {
+      // localStorage unavailable — silently skip
+    }
+  }, [lsKey, maxVisitedStep]);
 
   // Track when we enter a doc step — record start time
   useEffect(() => {
