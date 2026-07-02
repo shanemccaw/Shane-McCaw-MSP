@@ -2018,11 +2018,13 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const nodeIdCounter = useRef(100);
   const rfInstanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const redoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
 
-  // Snapshot current canvas state (max 10 entries)
+  // Snapshot current canvas state (max 10 entries); clears redo stack on any new mutation
   function pushHistory() {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    redoRef.current = [];
   }
 
   const { data: prodDbStatus } = useQuery<{ connected: boolean }>({
@@ -2170,6 +2172,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
   const onConnect = useCallback((connection: Connection) => {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    redoRef.current = [];
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
   }, [setEdges, nodes, edges]);
 
@@ -2180,6 +2183,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     );
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+      redoRef.current = [];
     }
     onNodesChange(changes);
   }, [onNodesChange, nodes, edges]);
@@ -2189,6 +2193,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     const needsSnapshot = changes.some(c => c.type === "remove");
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+      redoRef.current = [];
     }
     onEdgesChange(changes);
   }, [onEdgesChange, nodes, edges]);
@@ -2237,6 +2242,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
 
   function updateNodeData(id: string, data: Record<string, unknown>) {
+    redoRef.current = [];
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data } : n));
   }
 
@@ -2289,18 +2295,32 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     hydrateAiResult(result, `Workflow refined — ${result.nodes.length} node${result.nodes.length !== 1 ? "s" : ""}. Ctrl+Z to undo.`);
   }
 
-  // Ctrl+Z / Cmd+Z undo
+  // Ctrl+Z / Cmd+Z undo  |  Ctrl+Shift+Z / Cmd+Shift+Z redo
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey) || e.key !== "z" || e.shiftKey) return;
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
-      const prev = historyRef.current.pop();
-      if (prev) { setNodes(prev.nodes); setEdges(prev.edges); }
+      e.preventDefault();
+      if (e.shiftKey) {
+        // Redo
+        const next = redoRef.current.pop();
+        if (!next) return;
+        historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+        setNodes(next.nodes);
+        setEdges(next.edges);
+      } else {
+        // Undo
+        const prev = historyRef.current.pop();
+        if (!prev) return;
+        redoRef.current = [...redoRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+        setNodes(prev.nodes);
+        setEdges(prev.edges);
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [setNodes, setEdges]);
+  }, [nodes, edges, setNodes, setEdges]);
 
   // Dismiss context menu on outside click / Escape
   useEffect(() => {
