@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DocumentPanel from "./DocumentPanel";
 import SowSelectorPanel from "./SowSelectorPanel";
@@ -148,6 +148,14 @@ export default function PresentationFlow({
   const [stepIndex, setStepIndex] = useState(computeInitialStep);
   const [maxVisitedStep, setMaxVisitedStep] = useState(computeInitialStep);
   const [signerName, setSignerName] = useState(data.signerName ?? user?.name ?? "");
+
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = 0;
+    }
+  }, [stepIndex]);
 
   const [savingSelections, setSavingSelections] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -417,8 +425,8 @@ export default function PresentationFlow({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-hidden">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col">
+        <div ref={scrollAreaRef} className="flex-1 overflow-y-auto">
+          <div key={stepIndex} className="max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col">
 
             {/* Welcome step */}
             {currentStep?.kind === "welcome" && (
@@ -479,7 +487,7 @@ export default function PresentationFlow({
 
             {/* Contract & signature */}
             {currentStep?.kind === "contract" && (
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1">
                 <ContractSignPanel
                   signerName={signerName}
                   selectedPhases={selectedPhases}
