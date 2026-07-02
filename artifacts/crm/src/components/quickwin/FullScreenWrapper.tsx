@@ -569,6 +569,40 @@ export default function FullScreenWrapper() {
       {/* ── Project Tasks View ── */}
       {isProjectView && (
         <div className="flex-1 relative z-10 flex items-stretch justify-start pl-8 sm:pl-14 py-6 pr-6">
+
+          {/* Branding overlay — right side, over the spinning knot */}
+          <div className="hidden sm:flex absolute right-0 top-0 bottom-0 w-[55%] flex-col items-center justify-center gap-6 pointer-events-none select-none px-12 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-[#0078D4] flex items-center justify-center shadow-xl shadow-[#0078D4]/30">
+                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-2xl font-black text-[#0A2540] leading-tight drop-shadow-sm">Shane McCaw Consulting</p>
+                <p className="text-sm font-semibold text-[#0078D4] mt-1 tracking-wide">Microsoft 365 Architect &amp; AI Transformation Partner</p>
+              </div>
+            </div>
+            <p className="text-sm text-[#0A2540]/60 max-w-xs leading-relaxed">
+              Turning your Microsoft 365 investment into a measurable competitive advantage — from security hardening to Copilot AI adoption.
+            </p>
+            <div className="flex flex-col gap-2 w-full max-w-xs">
+              {[
+                "30 years Microsoft ecosystem expertise",
+                "NASA Lead M365 Architect",
+                "Fixed-price, no-surprise engagements",
+              ].map(item => (
+                <div key={item} className="flex items-center gap-2.5">
+                  <div className="w-4 h-4 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-2.5 h-2.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <span className="text-xs font-medium text-[#0A2540]/70">{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md flex flex-col overflow-hidden">
             <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
               <div>
