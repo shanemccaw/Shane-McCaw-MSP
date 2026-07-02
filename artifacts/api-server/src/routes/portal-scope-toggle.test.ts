@@ -1,25 +1,26 @@
 /**
- * Tests for the scope-sync logic in GET /portal/presentations/:id.
+ * Tests for PATCH /portal/presentations/:id/selections.
  *
- * The handler calls deriveEffectiveSowData() which reads live sowPricingLines
- * from the SOW document included in the presentation. These tests verify all
- * three branches:
+ * The handler re-derives phase totals from the live SOW pricing each time a
+ * client toggles phases, so a stale snapshot can never produce a wrong total
+ * at checkout. These tests verify the two critical paths:
  *
- *   (a) SOW doc with pricing lines overrides the creation-time snapshot
- *   (b) Stored client selections are preserved when still valid (intersection)
- *   (c) Fallback to creation-time snapshot when no SOW pricing exists
+ *   (A) Live SOW doc present — toggling a subset of phases returns a totalPrice
+ *       that equals the sum of ONLY the selected phases' live prices.
+ *
+ *   (B) No SOW doc (fallback) — phase toggle still returns a totalPrice derived
+ *       from the snapshot prices, not the stale stored totalPrice.
  *
  * Also verifies:
- *   (b2) Stale stored selections (not in live phase IDs) default to all selected
- *   - effectiveTotalPrice always matches the sum of the selected phases
+ *   (A2) IDs not in the live phase set are silently dropped (validation).
+ *   (B2) Selecting all snapshot phases returns the correct snapshot total.
  *
  * Approach:
- *  - mock.module() stubs @workspace/db so no real DB connections are opened.
- *  - The mock DB uses a chainable thenable queue: each db.select() call pops
- *    the next result from the queue, allowing per-scenario DB response control.
- *  - Auth uses ?token=<shareToken> — no JWT needed.
- *  - projectId and clientUserId are null to avoid extra DB round-trips.
- *  - getStripeKey() is stubbed to throw (caught silently in the handler).
+ *  - mock.module() stubs @workspace/db — no real DB connections.
+ *  - A chainable queue mock lets each test scenario control DB responses.
+ *  - requireAuth is stubbed to call next(); a custom express middleware
+ *    injects req.user so the handler's `req.user!.id` check is satisfied.
+ *  - db.update() is stubbed with a no-op so writes don't fail.
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
@@ -30,12 +31,11 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 
 // ── JWT secret (must be set before portal.ts is imported) ─────────────────────
-process.env.JWT_SECRET = "scope-sync-test-secret-xyz";
+process.env.JWT_SECRET = "scope-toggle-test-secret-xyz";
 
 // ── Queue-based mock DB ───────────────────────────────────────────────────────
 // Each db.select() call pops one entry. The returned object is a thenable that
-// also exposes .from(), .where(), .limit(), and .leftJoin() for full chaining
-// without any real DB interaction.
+// also exposes .from(), .where(), .limit(), and other chainable methods.
 let dbQueue: unknown[][] = [];
 
 function makeChain(result: unknown[]): Record<string, unknown> {
@@ -180,8 +180,6 @@ mock.module("../lib/audit.ts", {
   namedExports: { createAuditLog: async () => {} },
 });
 
-// Stripe stubs — getStripeKey() throws so the stripe session check is
-// caught and skipped silently, letting the handler complete normally.
 mock.module("../lib/stripe.ts", {
   namedExports: {
     getStripeKey: () => { throw new Error("Stripe not configured in tests"); },
@@ -309,8 +307,13 @@ const { default: portalRouter } = await import("./portal.ts");
 const { default: express } = await import("express");
 const app = express();
 app.use(express.json());
+
+// Inject req.user and req.log before every route — requireAuth is stubbed to
+// call next() but does NOT set req.user; the handler needs req.user!.id.
+const CLIENT_USER_ID = 7;
 app.use((_req: unknown, _res: unknown, next: () => void) => {
-  ((_req as Record<string, unknown>).log = noopLogger);
+  (_req as Record<string, unknown>).user = { id: CLIENT_USER_ID };
+  (_req as Record<string, unknown>).log = noopLogger;
   next();
 });
 app.use("/api", portalRouter);
@@ -340,15 +343,13 @@ after(
 
 // ── Canned data ────────────────────────────────────────────────────────────────
 
-const SHARE_TOKEN = "test-share-token-abc";
-const PRES_ID = 101;
+const PRES_ID = 202;
 
-/** Minimal presentation row shared by all scenarios. */
 function makePresRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: PRES_ID,
-    shareToken: SHARE_TOKEN,
-    clientUserId: null,
+    shareToken: "toggle-test-token",
+    clientUserId: CLIENT_USER_ID,
     projectId: null,
     status: "pending",
     stripeSessionId: null,
@@ -364,8 +365,9 @@ function makePresRow(overrides: Record<string, unknown> = {}): Record<string, un
   };
 }
 
-/** Build a document row that looks like a SOW with pricing. */
-function makeSowDoc(pricingLines: Array<{ title: string; scope: string; priceUsd: number; notes: string }>): Record<string, unknown> {
+function makeSowDoc(
+  pricingLines: Array<{ title: string; scope: string; priceUsd: number; notes: string }>,
+): Record<string, unknown> {
   return {
     id: 1,
     title: "Statement of Work",
@@ -380,32 +382,35 @@ function makeSowDoc(pricingLines: Array<{ title: string; scope: string; priceUsd
 
 // ── Request helper ─────────────────────────────────────────────────────────────
 
-type PresentationResponse = {
-  sowPhases: Array<{ id: string; title: string; description: string; price: number; selected: boolean }>;
-  selectedPhaseIds: string[];
-  totalPrice: number;
-};
+type SelectionsResponse = { totalPrice: number; selectedPhaseIds: string[] };
 
-async function getPresentation(id: number): Promise<{ status: number; body: Record<string, unknown> }> {
-  const res = await fetch(`${baseUrl}/api/portal/presentations/${id}?token=${SHARE_TOKEN}`);
+async function patchSelections(
+  presId: number,
+  selectedPhaseIds: string[],
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${baseUrl}/api/portal/presentations/${presId}/selections`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ selectedPhaseIds }),
+  });
   const body = await res.json() as Record<string, unknown>;
   return { status: res.status, body };
 }
 
 // =============================================================================
-// Branch (a): Live SOW pricing overrides the creation-time snapshot
+// Path (A): Live SOW doc — toggling a subset of phases computes correct total
 // =============================================================================
 
-describe("scope-sync branch (a): live SOW doc overrides creation-time snapshot", () => {
+describe("PATCH selections (A): live SOW — toggled subset gives correct total", () => {
   const livePricingLines = [
-    { title: "Phase 1 — Discovery", scope: "Requirements gathering", priceUsd: 10_000, notes: "" },
-    { title: "Phase 2 — Implementation", scope: "Core build", priceUsd: 20_000, notes: "" },
-    { title: "Phase 3 — Rollout", scope: "Go-live support", priceUsd: 8_000, notes: "" },
+    { title: "Phase 1 — Discovery", scope: "Requirements", priceUsd: 10_000, notes: "" },
+    { title: "Phase 2 — Implementation", scope: "Core build", priceUsd: 25_000, notes: "" },
+    { title: "Phase 3 — Rollout", scope: "Go-live", priceUsd: 8_000, notes: "" },
   ];
 
-  const snapshotPhases = [
-    { id: "snap-0", title: "Old Snapshot Phase", description: "Stale", price: 5_000, selected: true },
-  ];
+  // Client selects only phases 0 and 2, skipping phase 1
+  const requestedIds = ["sow-0", "sow-2"];
+  const expectedTotal = 10_000 + 8_000;
 
   let status: number;
   let body: Record<string, unknown>;
@@ -413,76 +418,62 @@ describe("scope-sync branch (a): live SOW doc overrides creation-time snapshot",
   before(async () => {
     const presRow = makePresRow({
       documentsIncluded: [1],
-      sowPhases: snapshotPhases,
-      selectedPhaseIds: ["snap-0"],
-      totalPrice: "5000",
+      sowPhases: [],
+      selectedPhaseIds: [],
+      totalPrice: "43000",
     });
     const sowDoc = makeSowDoc(livePricingLines);
 
     // Queue:
-    //  [0] quickWinPresentationsTable → presRow
-    //  [1] insightsGeneratedDocumentsTable (full doc for display)
-    //  [2] insightsGeneratedDocumentsTable (pricing in deriveEffectiveSowData)
-    dbQueue = [[presRow], [sowDoc], [sowDoc]];
-    ({ status, body } = await getPresentation(PRES_ID));
+    //  [0] quickWinPresentationsTable → presRow  (ownership check)
+    //  [1] insightsGeneratedDocumentsTable        (deriveEffectiveSowData pricing lookup)
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, requestedIds));
   });
 
   it("returns HTTP 200", () => {
     assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
   });
 
-  it("sowPhases are derived from the live SOW doc, not the snapshot", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases.length, 3, `expected 3 live phases, got ${phases.length}`);
-    assert.equal(phases[0].id, "sow-0");
-    assert.equal(phases[1].id, "sow-1");
-    assert.equal(phases[2].id, "sow-2");
+  it("selectedPhaseIds contains exactly the requested phase IDs", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(
+      [...ids].sort(),
+      [...requestedIds].sort(),
+      `expected ${JSON.stringify(requestedIds.sort())}, got ${JSON.stringify(ids)}`,
+    );
   });
 
-  it("phase titles match the live SOW pricing lines", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases[0].title, "Phase 1 — Discovery");
-    assert.equal(phases[1].title, "Phase 2 — Implementation");
-    assert.equal(phases[2].title, "Phase 3 — Rollout");
+  it("totalPrice equals the sum of the live prices of the selected phases only", () => {
+    assert.equal(
+      body.totalPrice,
+      expectedTotal,
+      `expected totalPrice ${expectedTotal} (sow-0 $10k + sow-2 $8k), got ${body.totalPrice}`,
+    );
   });
 
-  it("phase prices match the live SOW pricing lines", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases[0].price, 10_000);
-    assert.equal(phases[1].price, 20_000);
-    assert.equal(phases[2].price, 8_000);
-  });
-
-  it("snapshot phase ID is NOT present (live phases took over)", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    const ids = phases.map((p) => p.id);
-    assert.ok(!ids.includes("snap-0"), `snapshot id 'snap-0' should not appear; ids: ${JSON.stringify(ids)}`);
-  });
-
-  it("all phases are selected by default when no prior selections exist", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.ok(phases.every((p) => p.selected), `all phases should be selected by default`);
-  });
-
-  it("effectiveTotalPrice equals the sum of all selected phase prices", () => {
-    const expectedTotal = 10_000 + 20_000 + 8_000;
-    assert.equal(body.totalPrice, expectedTotal, `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`);
+  it("omitted phase (sow-1, $25k) is NOT included in the total", () => {
+    assert.notEqual(
+      body.totalPrice,
+      10_000 + 25_000 + 8_000,
+      "full total should not appear — sow-1 was not selected",
+    );
   });
 });
 
 // =============================================================================
-// Branch (b): Stored client selections are preserved when still valid
+// Path (A2): Invalid / unknown phase IDs are silently dropped
 // =============================================================================
 
-describe("scope-sync branch (b): stored selections preserved when still valid", () => {
+describe("PATCH selections (A2): live SOW — invalid phase IDs are silently dropped", () => {
   const livePricingLines = [
     { title: "Foundation", scope: "Identity setup", priceUsd: 6_000, notes: "" },
-    { title: "Governance", scope: "Policy and compliance", priceUsd: 9_000, notes: "" },
-    { title: "Migration", scope: "Mailbox migration", priceUsd: 12_000, notes: "" },
+    { title: "Governance", scope: "Policy", priceUsd: 9_000, notes: "" },
   ];
 
-  // Client previously selected sow-0 and sow-2 (skipping sow-1)
-  const storedSelectedIds = ["sow-0", "sow-2"];
+  // Mix of a valid id and an unknown id that is not in the live phase set
+  const requestedIds = ["sow-0", "unknown-phase-999"];
+  const expectedTotal = 6_000; // only sow-0 survives validation
 
   let status: number;
   let body: Record<string, unknown>;
@@ -491,122 +482,121 @@ describe("scope-sync branch (b): stored selections preserved when still valid", 
     const presRow = makePresRow({
       documentsIncluded: [1],
       sowPhases: [],
-      selectedPhaseIds: storedSelectedIds,
-      totalPrice: "18000",
+      selectedPhaseIds: [],
+      totalPrice: "0",
     });
     const sowDoc = makeSowDoc(livePricingLines);
 
-    dbQueue = [[presRow], [sowDoc], [sowDoc]];
-    ({ status, body } = await getPresentation(PRES_ID));
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, requestedIds));
   });
 
   it("returns HTTP 200", () => {
     assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
   });
 
-  it("selectedPhaseIds honours the stored selection (sow-0 and sow-2)", () => {
-    const selectedIds = body.selectedPhaseIds as string[];
-    assert.deepEqual(
-      [...selectedIds].sort(),
-      ["sow-0", "sow-2"],
-      `expected ["sow-0","sow-2"], got ${JSON.stringify(selectedIds)}`,
-    );
-  });
-
-  it("sow-0 phase is marked selected", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    const phase0 = phases.find((p) => p.id === "sow-0");
-    assert.ok(phase0?.selected, "sow-0 should be selected");
-  });
-
-  it("sow-1 phase is NOT selected (client deselected it)", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    const phase1 = phases.find((p) => p.id === "sow-1");
-    assert.ok(phase1 && !phase1.selected, "sow-1 should not be selected");
-  });
-
-  it("sow-2 phase is marked selected", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    const phase2 = phases.find((p) => p.id === "sow-2");
-    assert.ok(phase2?.selected, "sow-2 should be selected");
-  });
-
-  it("effectiveTotalPrice equals sum of sow-0 ($6k) + sow-2 ($12k) only", () => {
-    const expectedTotal = 6_000 + 12_000;
-    assert.equal(body.totalPrice, expectedTotal, `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`);
-  });
-});
-
-// =============================================================================
-// Branch (b2): Stale stored selections (none valid) default to all selected
-// =============================================================================
-
-describe("scope-sync branch (b2): stale stored selections default to all phases selected", () => {
-  const livePricingLines = [
-    { title: "Quick Win Pack", scope: "Immediate wins", priceUsd: 4_500, notes: "" },
-    { title: "Roadmap Build", scope: "12-month plan", priceUsd: 7_500, notes: "" },
-  ];
-
-  // These IDs don't exist in the live SOW (stale snapshot IDs)
-  const staleSelectedIds = ["phase-old-1", "phase-old-2"];
-
-  let status: number;
-  let body: Record<string, unknown>;
-
-  before(async () => {
-    const presRow = makePresRow({
-      documentsIncluded: [1],
-      sowPhases: [],
-      selectedPhaseIds: staleSelectedIds,
-      totalPrice: "3000",
-    });
-    const sowDoc = makeSowDoc(livePricingLines);
-
-    dbQueue = [[presRow], [sowDoc], [sowDoc]];
-    ({ status, body } = await getPresentation(PRES_ID));
-  });
-
-  it("returns HTTP 200", () => {
-    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
-  });
-
-  it("stale selection IDs are not present in selectedPhaseIds", () => {
-    const selectedIds = body.selectedPhaseIds as string[];
+  it("unknown phase ID is not present in the returned selectedPhaseIds", () => {
+    const ids = body.selectedPhaseIds as string[];
     assert.ok(
-      !selectedIds.includes("phase-old-1") && !selectedIds.includes("phase-old-2"),
-      `stale IDs should not appear; selectedPhaseIds: ${JSON.stringify(selectedIds)}`,
+      !ids.includes("unknown-phase-999"),
+      `unknown phase should have been dropped; got selectedPhaseIds: ${JSON.stringify(ids)}`,
     );
   });
 
-  it("falls back to all live phases selected (intersection was empty)", () => {
-    const selectedIds = body.selectedPhaseIds as string[];
-    assert.deepEqual(
-      [...selectedIds].sort(),
-      ["sow-0", "sow-1"],
-      `expected both live phases selected, got ${JSON.stringify(selectedIds)}`,
+  it("valid phase ID sow-0 is retained", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(ids.includes("sow-0"), `sow-0 should be retained; got ${JSON.stringify(ids)}`);
+  });
+
+  it("totalPrice only reflects the valid selected phase (sow-0 = $6k)", () => {
+    assert.equal(
+      body.totalPrice,
+      expectedTotal,
+      `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`,
     );
-  });
-
-  it("all live phases are marked selected", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.ok(phases.every((p) => p.selected), "all phases should be selected when stored selections are stale");
-  });
-
-  it("effectiveTotalPrice equals sum of all live phases ($4.5k + $7.5k)", () => {
-    const expectedTotal = 4_500 + 7_500;
-    assert.equal(body.totalPrice, expectedTotal, `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`);
   });
 });
 
 // =============================================================================
-// Branch (c): Fallback to creation-time snapshot when no SOW pricing exists
+// Path (B): No SOW doc — fallback to snapshot, total derived from snapshot prices
 // =============================================================================
 
-describe("scope-sync branch (c): fallback to creation-time snapshot when no SOW doc", () => {
+describe("PATCH selections (B): no SOW doc — total derived from snapshot phase prices", () => {
   const snapshotPhases = [
-    { id: "snap-0", title: "Snapshot Phase A", description: "From creation", price: 3_000, selected: true },
-    { id: "snap-1", title: "Snapshot Phase B", description: "From creation", price: 7_000, selected: true },
+    { id: "snap-0", title: "Phase A", description: "Kick-off", price: 4_000, selected: true },
+    { id: "snap-1", title: "Phase B", description: "Delivery", price: 11_000, selected: true },
+    { id: "snap-2", title: "Phase C", description: "Closure", price: 5_000, selected: true },
   ];
+
+  // Client selects phases 0 and 2 — skipping snap-1
+  const requestedIds = ["snap-0", "snap-2"];
+  const expectedTotal = 4_000 + 5_000;
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    // No documents included → deriveEffectiveSowData skips the DB query and
+    // falls back to the sowPhases snapshot stored on the presentation row.
+    const presRow = makePresRow({
+      documentsIncluded: [],
+      sowPhases: snapshotPhases,
+      selectedPhaseIds: ["snap-0", "snap-1", "snap-2"],
+      totalPrice: "20000",
+    });
+
+    // Only one DB read needed (quickWinPresentationsTable); no doc query.
+    dbQueue = [[presRow]];
+    ({ status, body } = await patchSelections(PRES_ID, requestedIds));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds reflects only the requested snapshot phases", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(
+      [...ids].sort(),
+      [...requestedIds].sort(),
+      `expected ${JSON.stringify(requestedIds.sort())}, got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("totalPrice equals the snapshot prices of the selected phases only ($4k + $5k)", () => {
+    assert.equal(
+      body.totalPrice,
+      expectedTotal,
+      `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`,
+    );
+  });
+
+  it("totalPrice does NOT equal the stale stored totalPrice ($20k)", () => {
+    assert.notEqual(
+      body.totalPrice,
+      20_000,
+      "stale stored totalPrice should have been replaced by a freshly computed value",
+    );
+  });
+
+  it("omitted snapshot phase (snap-1, $11k) is not included in the total", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(!ids.includes("snap-1"), `snap-1 should not be in selectedPhaseIds; got ${JSON.stringify(ids)}`);
+  });
+});
+
+// =============================================================================
+// Path (B2): No SOW doc — selecting ALL snapshot phases gives the full total
+// =============================================================================
+
+describe("PATCH selections (B2): no SOW doc — all snapshot phases selected gives full total", () => {
+  const snapshotPhases = [
+    { id: "snap-0", title: "Phase A", description: "Kick-off", price: 3_500, selected: true },
+    { id: "snap-1", title: "Phase B", description: "Delivery", price: 8_500, selected: true },
+  ];
+
+  const requestedIds = ["snap-0", "snap-1"];
+  const expectedTotal = 3_500 + 8_500;
 
   let status: number;
   let body: Record<string, unknown>;
@@ -615,93 +605,40 @@ describe("scope-sync branch (c): fallback to creation-time snapshot when no SOW 
     const presRow = makePresRow({
       documentsIncluded: [],
       sowPhases: snapshotPhases,
-      selectedPhaseIds: ["snap-0", "snap-1"],
-      totalPrice: "10000",
+      selectedPhaseIds: [],
+      totalPrice: "99999", // Intentionally wrong stored total — should be ignored
     });
 
-    // No doc queries will be made since documentsIncluded is empty
     dbQueue = [[presRow]];
-    ({ status, body } = await getPresentation(PRES_ID));
+    ({ status, body } = await patchSelections(PRES_ID, requestedIds));
   });
 
   it("returns HTTP 200", () => {
     assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
   });
 
-  it("sowPhases are the creation-time snapshot phases", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases.length, 2, `expected 2 snapshot phases, got ${phases.length}`);
-    assert.equal(phases[0].id, "snap-0");
-    assert.equal(phases[1].id, "snap-1");
-  });
-
-  it("snapshot phase titles are preserved", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases[0].title, "Snapshot Phase A");
-    assert.equal(phases[1].title, "Snapshot Phase B");
-  });
-
-  it("selectedPhaseIds matches the creation-time snapshot", () => {
-    const selectedIds = body.selectedPhaseIds as string[];
+  it("both snapshot phases are in selectedPhaseIds", () => {
+    const ids = body.selectedPhaseIds as string[];
     assert.deepEqual(
-      [...selectedIds].sort(),
+      [...ids].sort(),
       ["snap-0", "snap-1"],
-      `expected snapshot IDs, got ${JSON.stringify(selectedIds)}`,
+      `expected both snapshot IDs, got ${JSON.stringify(ids)}`,
     );
   });
 
-  it("effectiveTotalPrice matches the stored totalPrice from the snapshot", () => {
-    assert.equal(body.totalPrice, 10_000, `expected totalPrice 10000, got ${body.totalPrice}`);
-  });
-});
-
-// =============================================================================
-// Branch (c2): Fallback when included doc exists but has null/empty sowPricingLines
-// =============================================================================
-
-describe("scope-sync branch (c2): fallback when included SOW doc has no pricing lines", () => {
-  const snapshotPhases = [
-    { id: "snap-0", title: "Legacy Phase", description: "Pre-SOW estimate", price: 15_000, selected: true },
-  ];
-
-  let status: number;
-  let body: Record<string, unknown>;
-
-  before(async () => {
-    const presRow = makePresRow({
-      documentsIncluded: [1],
-      sowPhases: snapshotPhases,
-      selectedPhaseIds: ["snap-0"],
-      totalPrice: "15000",
-    });
-    const emptyPricingDoc = {
-      id: 1,
-      title: "Statement of Work",
-      category: "sow",
-      docType: "sow",
-      htmlContent: "<p>No pricing parsed yet</p>",
-      sowPricingLines: [],
-      sowTotalPrice: null,
-      createdAt: new Date(),
-    };
-
-    // doc is present but has empty sowPricingLines — should fall back to snapshot
-    dbQueue = [[presRow], [emptyPricingDoc], [emptyPricingDoc]];
-    ({ status, body } = await getPresentation(PRES_ID));
+  it("totalPrice equals the sum of ALL snapshot phase prices ($3.5k + $8.5k)", () => {
+    assert.equal(
+      body.totalPrice,
+      expectedTotal,
+      `expected totalPrice ${expectedTotal}, got ${body.totalPrice}`,
+    );
   });
 
-  it("returns HTTP 200", () => {
-    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
-  });
-
-  it("falls back to the creation-time snapshot phases", () => {
-    const phases = body.sowPhases as PresentationResponse["sowPhases"];
-    assert.equal(phases.length, 1, `expected 1 snapshot phase, got ${phases.length}`);
-    assert.equal(phases[0].id, "snap-0");
-    assert.equal(phases[0].title, "Legacy Phase");
-  });
-
-  it("effectiveTotalPrice uses the stored snapshot total, not zero", () => {
-    assert.equal(body.totalPrice, 15_000, `expected totalPrice 15000, got ${body.totalPrice}`);
+  it("stale stored totalPrice ($99999) is NOT returned", () => {
+    assert.notEqual(
+      body.totalPrice,
+      99_999,
+      "the handler must compute a fresh total, not echo the stored one",
+    );
   });
 });
