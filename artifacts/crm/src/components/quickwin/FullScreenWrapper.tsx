@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { QW_COPY, DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
@@ -27,6 +28,26 @@ interface Scorecard {
 }
 
 type SubState = "queued" | "starting" | "running" | "done";
+
+interface KanbanTask {
+  id: number;
+  title: string;
+  column: "backlog" | "in_progress" | "waiting_on_customer" | "completed";
+  groupName: string | null;
+  description: string | null;
+  taskType: string | null;
+  taskMetadata: Record<string, unknown> | null;
+}
+
+type M365ScoreKey = "security" | "compliance" | "copilot" | "governance" | "productivity";
+
+interface ScorecardHistoryData {
+  hasData: boolean;
+  latest?: Partial<Record<M365ScoreKey, number>>;
+  first?: Partial<Record<M365ScoreKey, number>>;
+  firstDate?: string;
+  latestDate?: string;
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -60,6 +81,67 @@ export default function FullScreenWrapper() {
     // Telemetry is no longer shown in the full-screen view — no-op kept
     // for API compatibility with runAutoStep
   }, []);
+
+  // ── Live: client projects (to get a project ID when escalation hasn't happened yet) ──
+  const { data: portalProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
+    queryKey: ["portal-projects-for-overlay"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/portal/projects");
+      if (!res.ok) return [];
+      const body = await res.json() as unknown;
+      return Array.isArray(body) ? (body as Array<{ id: number; name: string }>) : [];
+    },
+    enabled: isVisible,
+    staleTime: 60_000,
+  });
+
+  const kanbanProjectId = state.projectId ?? portalProjects[0]?.id;
+  const queryClient = useQueryClient();
+
+  // ── Live: kanban tasks for the project (5 s poll) ──────────────────────────
+  const { data: kanbanTasks = [] } = useQuery<KanbanTask[]>({
+    queryKey: ["qw-overlay-kanban", kanbanProjectId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/portal/projects/${kanbanProjectId}`);
+      if (!res.ok) return [];
+      const body = await res.json() as { tasks?: KanbanTask[] };
+      return body.tasks ?? [];
+    },
+    enabled: !!kanbanProjectId && isVisible,
+    refetchInterval: 5_000,
+    staleTime: 0,
+  });
+
+  // ── Live: M365 scorecard history — same endpoint as the portal dashboard ───
+  const { data: scorecardHistory } = useQuery<ScorecardHistoryData>({
+    queryKey: ["portal-scorecard-history-overlay"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/portal/m365-scorecard-history");
+      if (!res.ok) return { hasData: false };
+      return res.json() as Promise<ScorecardHistoryData>;
+    },
+    enabled: isVisible,
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+
+  // ── Waiting-task mutation (mark as done) ────────────────────────────────────
+  const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
+  const markDoneMutation = useMutation({
+    mutationFn: async (taskId: number) => {
+      const res = await fetchWithAuth(`/api/portal/kanban-tasks/${taskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column: "completed" }),
+      });
+      if (!res.ok) throw new Error("Failed to update task");
+      return res.json();
+    },
+    onSettled: () => {
+      setMarkingDoneId(null);
+      void queryClient.invalidateQueries({ queryKey: ["qw-overlay-kanban", kanbanProjectId] });
+    },
+  });
 
   const fetchScorecard = useCallback(async () => {
     if (scorecardRef.current) return;
@@ -282,6 +364,61 @@ export default function FullScreenWrapper() {
 
   const isProjectView = mode === "ProjectTasksView";
 
+  // ── Real kanban-derived display data ──────────────────────────────────────
+
+  const backlogTasks    = kanbanTasks.filter(t => t.column === "backlog");
+  const inProgressTasks = kanbanTasks.filter(t => t.column === "in_progress");
+  const waitingTasks    = kanbanTasks.filter(t => t.column === "waiting_on_customer");
+  const completedKanbanTasks = kanbanTasks.filter(t => t.column === "completed");
+
+  // Progress derived from real kanban completion
+  const kanbanProgress = kanbanTasks.length > 0
+    ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
+    : progressPct;
+
+  // Phases = unique group names in task order; fall back to simulation stepTitles
+  const kanbanPhases: string[] = (() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const t of kanbanTasks) {
+      const g = t.groupName ?? t.title;
+      if (!seen.has(g)) { seen.add(g); result.push(g); }
+    }
+    return result.length > 0 ? result : stepTitles;
+  })();
+
+  // Active phase = phase of the first in_progress or waiting task
+  const activeKanbanTask = inProgressTasks[0] ?? waitingTasks[0] ?? null;
+  const activePhaseIndex = (() => {
+    if (!activeKanbanTask) {
+      return completedKanbanTasks.length > 0 ? kanbanPhases.length - 1 : 0;
+    }
+    const g = activeKanbanTask.groupName ?? activeKanbanTask.title;
+    const idx = kanbanPhases.indexOf(g);
+    return idx >= 0 ? idx : 0;
+  })();
+  const activePhaseCompletedCount = activeKanbanTask
+    ? kanbanPhases.indexOf(activeKanbanTask.groupName ?? activeKanbanTask.title)
+    : completedKanbanTasks.length > 0 ? kanbanPhases.length : 0;
+
+  // Real M365 health scores — same data as portal dashboard
+  const realCategoryScores: Record<string, number> = (() => {
+    if (!scorecardHistory?.hasData || !scorecardHistory.latest) return categoryScores;
+    const out: Record<string, number> = {};
+    for (const [k, v] of Object.entries(scorecardHistory.latest)) {
+      if (v !== undefined) out[k] = v;
+    }
+    return out;
+  })();
+  const realOverallScore = (() => {
+    const vals = Object.values(realCategoryScores);
+    if (vals.length > 0) return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    return overallScore;
+  })();
+
+  // True when we're in real-data mode (no simulation steps)
+  const isKanbanMode = steps.length === 0;
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -426,30 +563,31 @@ export default function FullScreenWrapper() {
                     ACTIVE DIAGNOSTIC SESSION
                   </div>
 
+                  {/* Title = active Quick Win project name */}
                   <h1 className="text-[28px] font-bold text-[#191c1e] tracking-tight leading-tight">
-                    Microsoft 365 &amp; Copilot Health &amp; Diagnostics
+                    {quickWin?.title ?? "M365 Diagnostic"}
                   </h1>
 
-                  {/* Phase stepper */}
+                  {/* Phase stepper — kanban group names when real data, simulation steps otherwise */}
                   <PhaseStepperBar
-                    steps={stepTitles}
-                    activeIndex={currentStepIndex}
-                    completedCount={completedSteps.length}
+                    steps={isKanbanMode ? kanbanPhases : stepTitles}
+                    activeIndex={isKanbanMode ? activePhaseIndex : currentStepIndex}
+                    completedCount={isKanbanMode ? activePhaseCompletedCount : completedSteps.length}
                   />
 
                   {/* Velocity progress bar */}
                   <div className="w-full space-y-3">
                     <div className="flex justify-between items-end">
                       <span className="text-[11px] font-bold text-[#0078D4] uppercase tracking-widest">
-                        Diagnostic Pipeline Velocity
+                        Project Completion
                       </span>
-                      <span className="text-xl font-semibold text-[#0078D4]">{progress}%</span>
+                      <span className="text-xl font-semibold text-[#0078D4]">{kanbanProgress}%</span>
                     </div>
                     <div className="h-3 w-full bg-[#0078D4]/10 rounded-full overflow-hidden relative border border-[#0078D4]/5">
                       <div
                         className="absolute inset-y-0 left-0 bg-[#0078D4] shadow-[0_0_12px_rgba(0,95,170,0.4)] rounded-full"
                         style={{
-                          width: `${progress}%`,
+                          width: `${kanbanProgress}%`,
                           transition: "width 800ms cubic-bezier(0.42,0,0.58,1)",
                         }}
                       >
@@ -457,64 +595,195 @@ export default function FullScreenWrapper() {
                       </div>
                     </div>
                     <p className="text-[14px] text-black/50 mt-1">
-                      Scanning M365 endpoints. Currently analyzing{" "}
-                      <span className="text-[#0078D4] font-semibold">{currentStep?.title ?? "subsystems"}</span>.
+                      {isKanbanMode ? (
+                        activeKanbanTask ? (
+                          <>Currently running{" "}
+                            <span className="text-[#0078D4] font-semibold">{activeKanbanTask.title}</span>.
+                          </>
+                        ) : completedKanbanTasks.length === kanbanTasks.length && kanbanTasks.length > 0 ? (
+                          "All tasks complete."
+                        ) : (
+                          "Scripts queued — starting soon."
+                        )
+                      ) : (
+                        <>Scanning M365 endpoints. Currently analyzing{" "}
+                          <span className="text-[#0078D4] font-semibold">{currentStep?.title ?? "subsystems"}</span>.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Consolidated Health Panel */}
+              {/* Consolidated Health Panel — real M365 scorecard scores */}
               <HealthPanel
-                overallScore={overallScore}
-                categoryScores={categoryScores}
+                overallScore={realOverallScore}
+                categoryScores={realCategoryScores}
               />
 
               {/* Kanban 12-col grid */}
               <div className="w-full max-w-7xl grid grid-cols-12 gap-8 relative flex-1 mb-4">
 
-                {/* Left: Completed */}
-                <CompletedColumn completedSteps={completedSteps} />
+                {/* Left: Completed tasks */}
+                <CompletedColumn
+                  completedSteps={
+                    isKanbanMode
+                      ? completedKanbanTasks.map(t => t.title)
+                      : completedSteps
+                  }
+                />
 
                 {/* Centre (col-span-7): Active cards */}
-                <div className="col-span-12 lg:col-span-7 relative flex justify-center items-start gap-6">
-                  {mode === "RunningAutoStep" && (
-                    <ProcessingHeroCard
-                      title={currentStep?.title ?? "Running Diagnostic"}
-                      description={currentStep?.description}
-                      category={currentCategory}
-                      subState={subState}
-                      isExiting={cardExiting}
-                    />
+                <div className="col-span-12 lg:col-span-7 relative flex flex-col justify-center items-center gap-5">
+
+                  {/* ── Kanban mode: real cards ── */}
+                  {isKanbanMode && (
+                    <>
+                      {/* Nothing loaded yet */}
+                      {kanbanTasks.length === 0 && (
+                        <div className="flex items-center gap-3 py-12">
+                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          <p className="text-sm text-black/50">Loading tasks…</p>
+                        </div>
+                      )}
+
+                      {/* In-progress tasks */}
+                      {inProgressTasks.map(task => (
+                        <ProcessingHeroCard
+                          key={task.id}
+                          title={task.title}
+                          description={task.description ?? undefined}
+                          category={currentCategory}
+                          subState="running"
+                          isExiting={false}
+                        />
+                      ))}
+
+                      {/* Waiting-on-customer tasks */}
+                      {waitingTasks.map(task => {
+                        const meta = task.taskMetadata;
+                        const dl = meta?.customerDownload as { scriptId?: string; scriptTitle?: string } | null | undefined;
+                        return (
+                          <div
+                            key={task.id}
+                            className="rounded-xl p-6 flex flex-col w-full max-w-[380px] border border-amber-300/50 bg-amber-50/80 shadow-lg gap-3"
+                            style={{ backdropFilter: "blur(12px)" }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
+                            </div>
+                            <p className="text-base font-semibold text-[#0A2540]">{task.title}</p>
+                            {task.description && (
+                              <p className="text-xs text-black/50 leading-snug">{task.description}</p>
+                            )}
+                            <div className="pt-1">
+                              {dl?.scriptId ? (
+                                <a
+                                  href={`/api/portal/tasks/${task.id}/download-script`}
+                                  className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                  </svg>
+                                  {dl.scriptTitle ?? "Download Script"}
+                                </a>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setMarkingDoneId(task.id);
+                                    markDoneMutation.mutate(task.id);
+                                  }}
+                                  disabled={markingDoneId === task.id}
+                                  className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                                >
+                                  {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {/* All queued, nothing active yet */}
+                      {kanbanTasks.length > 0 &&
+                        inProgressTasks.length === 0 &&
+                        waitingTasks.length === 0 &&
+                        completedKanbanTasks.length < kanbanTasks.length && (
+                        <div className="flex flex-col items-center gap-3 py-12 text-center">
+                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          <p className="text-sm text-black/50">Scripts queued — waiting to start…</p>
+                        </div>
+                      )}
+
+                      {/* All complete */}
+                      {kanbanTasks.length > 0 &&
+                        completedKanbanTasks.length === kanbanTasks.length && (
+                        <div className="flex flex-col items-center gap-4 py-12 text-center">
+                          <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                            <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
+                            <p className="text-sm text-black/50 mt-1">Your M365 environment has been configured.</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
-                  {mode === "WaitingForUser" && (
-                    <ActionRequiredCard
-                      stepTitle={currentStep?.title ?? "Manual Step"}
-                      procedureNumber={currentStepIndex + 1}
-                      isExiting={cardExiting}
-                      downloadState={downloadState}
-                      onDownloadClick={() => setDownloadState("waiting")}
-                    />
-                  )}
-                  {mode === "StepComplete" && (
-                    <ProcessingHeroCard
-                      title={currentStep?.title ?? "Step Complete"}
-                      description={currentStep?.description}
-                      category={currentCategory}
-                      subState="done"
-                      isExiting={cardExiting}
-                    />
-                  )}
-                  {mode === "Ready" && (
-                    <div className="flex items-center gap-3 py-8">
-                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                      <p className="text-sm text-black/50">Preparing next step…</p>
-                    </div>
+
+                  {/* ── Simulation mode: original animated cards ── */}
+                  {!isKanbanMode && (
+                    <>
+                      {mode === "RunningAutoStep" && (
+                        <ProcessingHeroCard
+                          title={currentStep?.title ?? "Running Diagnostic"}
+                          description={currentStep?.description}
+                          category={currentCategory}
+                          subState={subState}
+                          isExiting={cardExiting}
+                        />
+                      )}
+                      {mode === "WaitingForUser" && (
+                        <ActionRequiredCard
+                          stepTitle={currentStep?.title ?? "Manual Step"}
+                          procedureNumber={currentStepIndex + 1}
+                          isExiting={cardExiting}
+                          downloadState={downloadState}
+                          onDownloadClick={() => setDownloadState("waiting")}
+                        />
+                      )}
+                      {mode === "StepComplete" && (
+                        <ProcessingHeroCard
+                          title={currentStep?.title ?? "Step Complete"}
+                          description={currentStep?.description}
+                          category={currentCategory}
+                          subState="done"
+                          isExiting={cardExiting}
+                        />
+                      )}
+                      {mode === "Ready" && (
+                        <div className="flex items-center gap-3 py-8">
+                          <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                          <p className="text-sm text-black/50">Preparing next step…</p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
 
-                {/* Right: Queue */}
-                <QueueColumn pendingSteps={pendingSteps} />
+                {/* Right: Backlog queue */}
+                <QueueColumn
+                  pendingSteps={
+                    isKanbanMode
+                      ? backlogTasks.map(t => t.title)
+                      : pendingSteps
+                  }
+                />
               </div>
             </>
           )}
@@ -524,8 +793,8 @@ export default function FullScreenWrapper() {
       {/* Pinned footer */}
       {!isProjectView && mode !== "EnteringQuickWin" && (
         <QuickWinFooter
-          progressPct={progressPct}
-          completedCount={completedSteps.length}
+          progressPct={kanbanProgress}
+          completedCount={isKanbanMode ? completedKanbanTasks.length : completedSteps.length}
           clientName={clientName}
           clientAvatarUrl={undefined}
         />

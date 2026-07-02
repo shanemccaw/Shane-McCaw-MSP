@@ -59,7 +59,7 @@ export default function HealthPanel({ overallScore, categoryScores }: HealthPane
         <div className="flex items-center gap-4 pr-6 border-r border-black/10 shrink-0">
           <ScoreRingSvg score={overallScore} />
           <div className="space-y-0.5">
-            <h3 className="text-[11px] font-bold text-black/60 uppercase tracking-wider">Session Health</h3>
+            <h3 className="text-[11px] font-bold text-black/60 uppercase tracking-wider">M365 Health</h3>
             <p className="text-[10px] text-black/40">Updated {today}</p>
           </div>
         </div>

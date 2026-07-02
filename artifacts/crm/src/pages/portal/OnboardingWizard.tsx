@@ -313,7 +313,7 @@ function StepQuickWin({ onComplete, onSkip }: { onComplete: () => void; onSkip: 
         title: "Security Baseline Diagnostic",
         description: "Automated scan of your M365 security posture with actionable findings.",
         category: "Security",
-        steps: DEFAULT_QUICK_WIN_STEPS,
+        steps: [],
       },
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
