@@ -387,22 +387,23 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
         }
       }
 
-      // Condition node: route true/false/cancel branches
+      // Condition node: route true/false branches; cancel if cancelOnFalse flag set
       if (node.type === "condition" && conditionResult !== undefined) {
         const result = conditionResult;
         const outEdges = graph.edges.filter(e => e.source === node.id);
 
-        // Identify special handles
-        const trueEdge   = outEdges.find(e => e.sourceHandle === "true"   || e.sourceHandle == null);
-        const falseEdge  = outEdges.find(e => e.sourceHandle === "false");
-        const cancelEdge = outEdges.find(e => e.sourceHandle === "cancel");
+        const trueEdge  = outEdges.find(e => e.sourceHandle === "true"  || e.sourceHandle == null);
+        const falseEdge = outEdges.find(e => e.sourceHandle === "false");
 
-        // If the selected branch leads to the cancel edge target, cancel the run
-        const takenEdge = result ? trueEdge : (falseEdge ?? cancelEdge);
-        if (takenEdge && cancelEdge && takenEdge.target === cancelEdge.target) {
+        // If condition is false and cancelOnFalse is set, cancel the run
+        if (!result && node.data.cancelOnFalse === true) {
           await db.update(wfRunsTable)
             .set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
             .where(eq(wfRunsTable.id, runId));
+          await db.insert(wfRunNodeLogsTable).values({
+            runId, nodeId: node.id, level: "info",
+            message: `Condition false + cancelOnFalse=true — workflow cancelled`,
+          }).catch(() => { });
           return;
         }
 
@@ -492,14 +493,20 @@ export async function triggerScheduledWorkflows(): Promise<void> {
 
     if (fanOutMode === "per_record" && fanOutQuery) {
       try {
-        const records = await pool.query(fanOutQuery);
-        for (const row of records.rows) {
-          await fireWorkflowForDefinition(
-            trigger.definition_id, "schedule", `trigger:${trigger.id}`,
-            row as Record<string, unknown>,
-          );
+        // Restrict to read-only SELECT queries — reject anything else.
+        const trimmed = (fanOutQuery as string).trim().toUpperCase();
+        if (!trimmed.startsWith("SELECT")) {
+          logger.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected (not a SELECT)");
+        } else {
+          const records = await pool.query(fanOutQuery as string);
+          for (const row of records.rows) {
+            await fireWorkflowForDefinition(
+              trigger.definition_id, "schedule", `trigger:${trigger.id}`,
+              row as Record<string, unknown>,
+            );
+          }
+          logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
         }
-        logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
       } catch (err) {
         logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query failed (non-fatal)");
         await fireWorkflowForDefinition(
@@ -534,8 +541,9 @@ export async function emitWorkflowEvent(
 
     for (const trigger of triggers) {
       const cfg = trigger.config as Record<string, unknown>;
-      const filterEventType = cfg.eventType as string | undefined;
-      if (!filterEventType || filterEventType === eventType) {
+      // TriggersPage stores the field as "eventName"; accept both for forward-compat.
+      const filterName = (cfg.eventName ?? cfg.eventType) as string | undefined;
+      if (!filterName || filterName === eventType) {
         await fireWorkflowForDefinition(
           trigger.definitionId, "event", `event:${eventType}`,
           { ...payload, _eventType: eventType },

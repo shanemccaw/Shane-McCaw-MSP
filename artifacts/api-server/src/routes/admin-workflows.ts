@@ -38,7 +38,7 @@ import {
   wfTriggersTable,
   type WfGraph,
 } from "@workspace/db";
-import { eq, and, desc, asc, count, sql } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, gte, lte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { fireWorkflowForDefinition, computeNextCronRun } from "../lib/workflow-executor";
@@ -434,6 +434,8 @@ router.post("/api/admin/workflows/definitions/:id/run", requireAdmin, async (req
 router.get("/api/admin/workflows/runs", requireAdmin, async (req: Request, res: Response) => {
   const definitionId = req.query.definitionId ? parseInt(req.query.definitionId as string) : null;
   const status = req.query.status as string | undefined;
+  const fromDate = req.query.from as string | undefined;
+  const toDate   = req.query.to   as string | undefined;
   const limit = Math.min(parseInt(req.query.limit as string || "50", 10), 200);
   const offset = parseInt(req.query.offset as string || "0", 10);
 
@@ -441,6 +443,14 @@ router.get("/api/admin/workflows/runs", requireAdmin, async (req: Request, res: 
     const conditions = [];
     if (definitionId && !isNaN(definitionId)) conditions.push(eq(wfRunsTable.definitionId, definitionId));
     if (status) conditions.push(eq(wfRunsTable.status, status as "pending" | "running" | "completed" | "failed" | "cancelled"));
+    if (fromDate) {
+      const d = new Date(fromDate);
+      if (!isNaN(d.getTime())) conditions.push(gte(wfRunsTable.createdAt, d));
+    }
+    if (toDate) {
+      const d = new Date(toDate);
+      if (!isNaN(d.getTime())) conditions.push(lte(wfRunsTable.createdAt, d));
+    }
 
     const runs = await db
       .select({

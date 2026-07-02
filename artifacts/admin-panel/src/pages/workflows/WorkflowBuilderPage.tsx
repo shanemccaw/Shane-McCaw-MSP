@@ -175,13 +175,32 @@ function NodeConfigPanel({
         )}
 
         {nodeType === "condition" && (
-          <ConfigField
-            label="Expression"
-            value={(node.data.expression as string) ?? ""}
-            onChange={v => onChange(node.id, { ...node.data, expression: v })}
-            placeholder="payload.status === 'active'"
-            multiline
-          />
+          <>
+            <ConfigField
+              label="Expression"
+              value={(node.data.expression as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, expression: v })}
+              placeholder="status == 'active' && count > 0"
+              multiline
+            />
+            <div className="flex items-center gap-2 pt-0.5">
+              <input
+                id={`cancel-on-false-${node.id}`}
+                type="checkbox"
+                checked={Boolean(node.data.cancelOnFalse)}
+                onChange={e => onChange(node.id, { ...node.data, cancelOnFalse: e.target.checked })}
+                className="w-3.5 h-3.5 rounded accent-amber-500"
+              />
+              <label htmlFor={`cancel-on-false-${node.id}`} className="text-xs text-[#7D8590] cursor-pointer">
+                Cancel workflow when condition is false
+              </label>
+            </div>
+            <p className="text-[10px] text-[#484F58] leading-relaxed">
+              true → follow <span className="text-emerald-400 font-mono">true</span> edge &nbsp;·&nbsp;
+              false → follow <span className="text-amber-400 font-mono">false</span> edge
+              {node.data.cancelOnFalse ? " (or cancel if no false edge)" : ""}
+            </p>
+          </>
         )}
 
         {nodeType === "delay" && (
@@ -194,15 +213,24 @@ function NodeConfigPanel({
                 className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
               >
                 <option value="fixed">Fixed Duration</option>
+                <option value="until_timestamp">Until Timestamp</option>
                 <option value="until_condition">Until Condition</option>
               </select>
             </div>
-            {(node.data.mode as string) !== "until_condition" && (
+            {(node.data.mode as string | undefined) === "fixed" || !(node.data.mode as string) ? (
               <ConfigField
                 label="Duration (seconds)"
                 value={String(node.data.duration ?? 0)}
                 onChange={v => onChange(node.id, { ...node.data, duration: parseInt(v, 10) || 0 })}
                 type="number"
+              />
+            ) : null}
+            {(node.data.mode as string) === "until_timestamp" && (
+              <ConfigField
+                label="Wait Until (ISO timestamp or ms epoch)"
+                placeholder="2025-12-31T23:59:00Z"
+                value={String(node.data.timestamp ?? "")}
+                onChange={v => onChange(node.id, { ...node.data, timestamp: v })}
               />
             )}
             {(node.data.mode as string) === "until_condition" && (

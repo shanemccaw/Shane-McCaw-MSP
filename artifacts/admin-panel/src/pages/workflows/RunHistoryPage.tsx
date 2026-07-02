@@ -51,17 +51,21 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
   const [, navigate] = useLocation();
   const [defIdFilter, setDefIdFilter] = useState(initialDefinitionId ?? 0);
   const [statusFilter, setStatusFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [offset, setOffset] = useState(0);
   const limit = 30;
 
   const params = new URLSearchParams();
   if (defIdFilter) params.set("definitionId", String(defIdFilter));
   if (statusFilter) params.set("status", statusFilter);
+  if (fromDate) params.set("from", fromDate);
+  if (toDate)   params.set("to",   toDate);
   params.set("limit", String(limit));
   params.set("offset", String(offset));
 
   const { data, isLoading } = useQuery<{ runs: WfRun[]; total: number }>({
-    queryKey: ["wf-runs", defIdFilter, statusFilter, offset],
+    queryKey: ["wf-runs", defIdFilter, statusFilter, fromDate, toDate, offset],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/runs?${params}`);
       if (!res.ok) throw new Error("Failed to load runs");
@@ -122,6 +126,32 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             <option value="pending">Pending</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-[#484F58]">From</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={e => { setFromDate(e.target.value); setOffset(0); }}
+              className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-[#484F58]">To</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={e => { setToDate(e.target.value); setOffset(0); }}
+              className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
+            />
+          </div>
+          {(fromDate || toDate) && (
+            <button
+              onClick={() => { setFromDate(""); setToDate(""); setOffset(0); }}
+              className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+            >
+              Clear dates
+            </button>
+          )}
         </div>
 
         {/* Table */}
