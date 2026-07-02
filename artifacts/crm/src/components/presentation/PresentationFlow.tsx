@@ -313,11 +313,11 @@ export default function PresentationFlow({
           return (
             <button
               key={i}
-              onClick={() => navigateToStep(i)}
-              disabled={isFuture}
+              onClick={() => { if (!isFuture) navigateToStep(i); }}
+              title={isActive ? "Current step" : isVisited ? "Click to go back to this step" : "Complete previous steps to unlock"}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all mb-0.5 ${
                 isActive
-                  ? "bg-[#0078D4] text-white"
+                  ? "bg-[#0078D4] text-white cursor-pointer"
                   : isVisited
                   ? "text-white/70 hover:bg-white/10 hover:text-white cursor-pointer"
                   : isFuture
