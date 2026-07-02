@@ -41,12 +41,40 @@ function DataRow({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function BoolPill({ value, urgentWhenFalse = false, criticalWhenFalse = false }: { value: boolean | undefined; urgentWhenFalse?: boolean; criticalWhenFalse?: boolean }) {
+function BoolPill({ value, urgentWhenFalse = false, criticalWhenFalse = false, goodWhenFalse = false, warnWhenTrue = false, neutral = false }: { value: boolean | undefined; urgentWhenFalse?: boolean; criticalWhenFalse?: boolean; goodWhenFalse?: boolean; warnWhenTrue?: boolean; neutral?: boolean }) {
   if (value === undefined) return <span className="inline-flex items-center text-[11px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">— Not set</span>;
-  if (value) return (
+
+  if (value) {
+    if (warnWhenTrue) return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" /></svg>
+        Yes — review
+      </span>
+    );
+    if (goodWhenFalse || neutral) return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+        Yes
+      </span>
+    );
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+        Yes
+      </span>
+    );
+  }
+
+  if (goodWhenFalse) return (
     <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-      Yes
+      No
+    </span>
+  );
+  if (warnWhenTrue || neutral) return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+      No
     </span>
   );
   const colorClass = criticalWhenFalse
@@ -376,7 +404,7 @@ export default function PortalM365Profile() {
             <DataRow label="Industry" value={profile.industry} />
             <DataRow label="IT Contact" value={profile.itContactName} />
             <DataRow label="IT Email" value={profile.itContactEmail} />
-            <DataRow label="Microsoft Partner" value={profile.isMicrosoftPartner !== undefined ? <BoolPill value={profile.isMicrosoftPartner} /> : undefined} />
+            <DataRow label="Microsoft Partner" value={profile.isMicrosoftPartner !== undefined ? <BoolPill value={profile.isMicrosoftPartner} neutral={!profile.isMicrosoftPartner} /> : undefined} />
           </SectionCard>
 
           {/* Scale */}
@@ -466,11 +494,11 @@ export default function PortalM365Profile() {
           <SectionCard title="Environment Flags" icon={
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" /></svg>
           }>
-            <DataRow label="Hybrid Environment"     value={<BoolPill value={profile.isHybrid} />} />
-            <DataRow label="On-prem Exchange"       value={<BoolPill value={profile.hasOnPremExchange} />} />
-            <DataRow label="Entra Connect"          value={<BoolPill value={profile.usesAADConnect} />} />
-            <DataRow label="External Sharing"       value={<BoolPill value={profile.externalSharingEnabled} urgentWhenFalse={false} />} />
-            <DataRow label="Guest Users"            value={<BoolPill value={profile.guestUsersPresent} />} />
+            <DataRow label="Hybrid Environment"     value={<BoolPill value={profile.isHybrid} goodWhenFalse />} />
+            <DataRow label="On-prem Exchange"       value={<BoolPill value={profile.hasOnPremExchange} goodWhenFalse />} />
+            <DataRow label="Entra Connect"          value={<BoolPill value={profile.usesAADConnect} neutral />} />
+            <DataRow label="External Sharing"       value={<BoolPill value={profile.externalSharingEnabled} goodWhenFalse warnWhenTrue />} />
+            <DataRow label="Guest Users"            value={<BoolPill value={profile.guestUsersPresent} warnWhenTrue />} />
           </SectionCard>
 
           {/* Copilot Readiness — full-width */}
@@ -482,8 +510,6 @@ export default function PortalM365Profile() {
                 <div>
                   <DataRow label="Copilot Licensed"     value={<BoolPill value={profile.hasCopilotLicenses} />} />
                   <DataRow label="License Count"        value={profile.copilotLicenseCount} />
-                  <DataRow label="Readiness Score"      value={profile.copilotReadinessScore ? `${profile.copilotReadinessScore} / 5` : undefined} />
-                  <DataRow label="Primary Blocker"      value={profile.copilotBlockedBy && profile.copilotBlockedBy !== "None" ? profile.copilotBlockedBy : (profile.copilotBlockedBy === "None" ? "None identified" : undefined)} />
                 </div>
                 <div>
                   {profile.copilotUseCase && (
