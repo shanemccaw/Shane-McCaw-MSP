@@ -129,6 +129,43 @@ INSTRUCTIONS:
 - Include a professional header ("Shane McCaw Consulting") and footer
 - Total length: 1000-2000 words`;
 
+const TASK_EXECUTION_GUIDE_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional SOW Task Execution Guide in HTML format.
+
+Client: {{clientName}}
+{{projectDesc}}Document title: {{title}}
+Date: {{date}}
+
+M365 Environment Health Scores (current):
+{{scores}}
+
+PROJECT TASK LIST (these are the SOW work items — use these as the source of truth):
+{{taskList}}
+
+Key Findings from assessments: {{findings}}
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS: white background, #0078D4 accent (#0A2540 for headers), professional enterprise typography; use alternating row shading on any tables
+- Structure the document as follows:
+  1. Professional header: "Shane McCaw Consulting" + document title + client name + date
+  2. Introduction: one paragraph explaining the purpose of this guide and the M365 environment context (reference the actual scores)
+  3. For EACH task in the PROJECT TASK LIST above, produce a clearly formatted section:
+     - Task name as a styled heading
+     - Purpose: one sentence — why this task matters for this client
+     - Prerequisites: what must be true / already done before starting
+     - Step-by-step instructions: numbered list, technically specific for Microsoft 365 Admin Center / Entra ID / PowerShell / SharePoint — use the actual Microsoft UI paths and cmdlet names where relevant
+     - Expected outcome: what success looks like
+     - How to validate: a specific check (UI screenshot, PowerShell command, or report) that confirms completion
+     - Common pitfalls: 1-3 things that commonly go wrong and how to avoid them
+  4. Group task sections by their phase/group label exactly as provided in the task list
+  5. Completion Checklist: a simple HTML checkbox-style table listing every task title for sign-off
+  6. Footer: Shane McCaw's name, title, and the date
+- Write in first person as Shane McCaw
+- Be technically precise — this is an engineer's execution guide, not a marketing document
+- Do NOT invent tasks not in the list; do NOT skip any tasks in the list
+- Total length: produce complete content for every task — do not truncate`;
+
+
 // ── Utilities ──────────────────────────────────────────────────────────────────
 
 function substituteTokens(template: string, vars: Record<string, string>): string {
@@ -238,6 +275,45 @@ function collectFindings(runs: { parsedFindings: string[]; recommendations: stri
   return { findings: [...findings].slice(0, 50), recommendations: [...recommendations].slice(0, 50) };
 }
 
+// ── Fetch the project's own Kanban tasks (SOW work items) ─────────────────────
+
+async function fetchProjectTasks(projectId: number) {
+  const rows = await db
+    .select({
+      title:       kanbanTasksTable.title,
+      description: kanbanTasksTable.description,
+      groupName:   kanbanTasksTable.groupName,
+      taskType:    kanbanTasksTable.taskType,
+      column:      kanbanTasksTable.column,
+      order:       kanbanTasksTable.order,
+    })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.projectId, projectId))
+    .orderBy(kanbanTasksTable.order);
+  return rows;
+}
+
+function formatTaskList(tasks: Awaited<ReturnType<typeof fetchProjectTasks>>): string {
+  if (tasks.length === 0) return "No tasks found for this project.";
+
+  // Group by groupName (phase), preserving order
+  const groups = new Map<string, typeof tasks>();
+  for (const t of tasks) {
+    const g = t.groupName ?? "General";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g)!.push(t);
+  }
+
+  const lines: string[] = [];
+  for (const [group, items] of groups) {
+    lines.push(`\n### ${group}`);
+    for (const t of items) {
+      lines.push(`- **${t.title}**${t.description ? `: ${t.description}` : ""}${t.taskType ? ` [${t.taskType}]` : ""}`);
+    }
+  }
+  return lines.join("\n");
+}
+
 async function fetchRunsForClient(clientUserId: number, projectId: number, limit: number) {
   const taskRows = await db
     .select({ id: kanbanTasksTable.id })
@@ -275,7 +351,7 @@ export async function generateAndDeliverDocument(
 ): Promise<GenerateAndDeliverResult> {
   const { category, docType, title } = config;
 
-  const [userRows, projectRows, runs, realScores] = await Promise.all([
+  const [userRows, projectRows, runs, realScores, projectTasks] = await Promise.all([
     db.select({ name: usersTable.name, company: usersTable.company })
       .from(usersTable)
       .where(eq(usersTable.id, clientUserId))
@@ -286,6 +362,7 @@ export async function generateAndDeliverDocument(
       .limit(1),
     fetchRunsForClient(clientUserId, projectId, 50),
     fetchRealScores(clientUserId),
+    fetchProjectTasks(projectId),
   ]);
 
   const clientName = userRows[0]?.company ?? userRows[0]?.name ?? "Client";
@@ -328,6 +405,19 @@ export async function generateAndDeliverDocument(
       recommendations: recommendationsBlock,
       profileSample,
       runCount: String(runs.length),
+    });
+  } else if (docType === "task_execution_guide") {
+    const taskList = formatTaskList(projectTasks);
+    const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+    const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_PROMPT);
+    prompt = substituteTokens(rawTemplate, {
+      clientName,
+      projectDesc,
+      title,
+      date,
+      scores: scoresBlock,
+      taskList,
+      findings: findingsInline,
     });
   } else {
     const typeLabel = CONSULTING_TYPE_LABELS[docType] ?? docType;
