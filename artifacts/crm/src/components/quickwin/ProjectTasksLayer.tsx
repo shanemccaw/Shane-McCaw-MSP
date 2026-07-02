@@ -285,7 +285,7 @@ export default function ProjectTasksLayer() {
     tasks.filter(t => t.column === "backlog").length === 0;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 min-h-0 flex-1">
       {/* Summary chips */}
       <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
         {inProgressCount > 0 && (
@@ -333,7 +333,7 @@ export default function ProjectTasksLayer() {
       )}
 
       {/* Task list */}
-      <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+      <div className="space-y-2">
         {!isLoading && sorted.length === 0 && (
           <div className="flex items-center gap-2.5 py-3">
             <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
