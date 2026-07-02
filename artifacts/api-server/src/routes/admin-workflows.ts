@@ -1002,6 +1002,124 @@ router.post("/admin/workflows/ai-refine", requireAdmin, async (req: Request, res
   }
 });
 
+// ── POST /api/admin/workflows/:id/publish-to-prod ─────────────────────────────
+// Upserts the workflow definition + latest published version graph + triggers
+// into the production database. Returns 503 if DATABASE_URL_PROD is not set.
+
+router.post("/admin/workflows/definitions/:id/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  if (isNaN(defId)) return sendError(res, 400, "Invalid id");
+
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    return sendError(res, 503, "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets.");
+  }
+
+  try {
+    const [def] = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, defId)).limit(1);
+    if (!def) return sendError(res, 404, "Workflow not found");
+
+    const [publishedVersion] = await db
+      .select()
+      .from(wfVersionsTable)
+      .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")))
+      .orderBy(desc(wfVersionsTable.versionNumber))
+      .limit(1);
+
+    const triggers = await db
+      .select()
+      .from(wfTriggersTable)
+      .where(eq(wfTriggersTable.definitionId, defId));
+
+    const { db: prodDb, pool: prodPool } = buildProdDb();
+
+    await prodDb
+      .insert(wfDefinitionsTable)
+      .values({
+        id: def.id,
+        name: def.name,
+        description: def.description,
+        concurrencyLimit: def.concurrencyLimit,
+        metadata: def.metadata,
+        createdAt: def.createdAt,
+        updatedAt: def.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: wfDefinitionsTable.id,
+        set: {
+          name: def.name,
+          description: def.description,
+          concurrencyLimit: def.concurrencyLimit,
+          metadata: def.metadata,
+          updatedAt: new Date(),
+        },
+      });
+
+    if (publishedVersion) {
+      await prodDb
+        .insert(wfVersionsTable)
+        .values({
+          id: publishedVersion.id,
+          definitionId: def.id,
+          versionNumber: publishedVersion.versionNumber,
+          label: publishedVersion.label,
+          status: "published" as const,
+          graph: publishedVersion.graph,
+          isDefault: publishedVersion.isDefault,
+          createdAt: publishedVersion.createdAt,
+        })
+        .onConflictDoUpdate({
+          target: wfVersionsTable.id,
+          set: {
+            label: publishedVersion.label,
+            status: "published" as const,
+            graph: publishedVersion.graph,
+            isDefault: publishedVersion.isDefault,
+          },
+        });
+    }
+
+    for (const trigger of triggers) {
+      await prodDb
+        .insert(wfTriggersTable)
+        .values({
+          id: trigger.id,
+          definitionId: def.id,
+          type: trigger.type,
+          config: trigger.config,
+          webhookToken: trigger.webhookToken ?? null,
+          nextRunAt: trigger.nextRunAt,
+          enabled: trigger.enabled,
+          createdAt: trigger.createdAt,
+        })
+        .onConflictDoUpdate({
+          target: wfTriggersTable.id,
+          set: {
+            type: trigger.type,
+            config: trigger.config,
+            webhookToken: trigger.webhookToken ?? null,
+            nextRunAt: trigger.nextRunAt,
+            enabled: trigger.enabled,
+          },
+        });
+    }
+
+    await prodPool.end();
+
+    req.log.info({ defId, name: def.name, triggerCount: triggers.length }, "workflows: published to prod DB");
+    res.json({
+      ok: true,
+      definitionId: def.id,
+      name: def.name,
+      publishedVersionId: publishedVersion?.id ?? null,
+      triggersPublished: triggers.length,
+    });
+  } catch (err) {
+    req.log.error({ err, defId }, "workflows: publish-to-prod failed");
+    sendError(res, 500, err instanceof Error ? err.message : "Failed to publish to production");
+  }
+});
+
 export default router;
 
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 
@@ -40,11 +41,15 @@ function WorkflowCard({
   isSystem,
   onDelete,
   navigate,
+  prodDbConnected,
+  onPublishToProd,
 }: {
   def: WfDefinition;
   isSystem: boolean;
   onDelete: (id: number) => void;
   navigate: (path: string) => void;
+  prodDbConnected: boolean;
+  onPublishToProd: (id: number) => void;
 }) {
   return (
     <div className="bg-[#161B22] border border-[#30363D] hover:border-[#0078D4]/40 rounded-xl p-4 flex items-center gap-4 group transition-colors">
@@ -118,6 +123,18 @@ function WorkflowCard({
           Open Builder
         </button>
 
+        <button
+          onClick={() => onPublishToProd(def.id)}
+          disabled={!prodDbConnected}
+          title={!prodDbConnected ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this workflow to the production database"}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg border border-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Publish to Prod
+        </button>
+
         {isSystem ? (
           <span
             className="p-1.5 text-[#30363D] rounded-lg cursor-not-allowed"
@@ -145,6 +162,7 @@ function WorkflowCard({
 
 export default function WorkflowListPage() {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const [showCreate, setShowCreate] = useState(false);
@@ -184,6 +202,17 @@ export default function WorkflowListPage() {
     },
   });
 
+  const { data: prodDbStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["prod-db-status"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/prod-db/status");
+      if (!res.ok) return { connected: false };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const prodDbConnected = prodDbStatus?.connected ?? false;
+
   const deleteMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}`, { method: "DELETE" });
@@ -192,6 +221,21 @@ export default function WorkflowListPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       setDeleteId(null);
+    },
+  });
+
+  const publishToProdMut = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}/publish-to-prod`, { method: "POST" });
+      const body = await res.json() as { ok?: boolean; name?: string; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish to production");
+      return body;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Published to production", description: `"${data.name ?? "Workflow"}" is now in the production database.` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Publish failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -303,6 +347,8 @@ export default function WorkflowListPage() {
                     isSystem={false}
                     onDelete={setDeleteId}
                     navigate={navigate}
+                    prodDbConnected={prodDbConnected}
+                    onPublishToProd={id => publishToProdMut.mutate(id)}
                   />
                 ))}
               </div>
@@ -340,6 +386,8 @@ export default function WorkflowListPage() {
                         isSystem={true}
                         onDelete={setDeleteId}
                         navigate={navigate}
+                        prodDbConnected={prodDbConnected}
+                        onPublishToProd={id => publishToProdMut.mutate(id)}
                       />
                     ))}
                   </div>

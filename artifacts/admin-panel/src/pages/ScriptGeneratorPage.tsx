@@ -3829,6 +3829,9 @@ export default function ScriptGeneratorPage() {
   const [genPct, setGenPct] = useState(5);
   const [genPhaseLabel, setGenPhaseLabel] = useState("Generating…");
   const [updating, setUpdating] = useState(false);
+  const [publishingToProd, setPublishingToProd] = useState(false);
+  const [publishingPkgToProd, setPublishingPkgToProd] = useState(false);
+  const [prodDbConnected, setProdDbConnected] = useState<boolean | null>(null);
   const [modularizing, setModularizing] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [azurePushDialog, setAzurePushDialog] = useState<AzurePushDialogState>({
@@ -3937,6 +3940,14 @@ export default function ScriptGeneratorPage() {
   }, [libraryLoaded, token, toast]);
 
   useEffect(() => { void loadLibrary(); }, [loadLibrary]);
+
+  // ── Prod DB status ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!token) return;
+    (apiFetch("/admin/prod-db/status", token) as Promise<{ connected: boolean }>)
+      .then(d => setProdDbConnected(d.connected))
+      .catch(() => setProdDbConnected(false));
+  }, [token]);
 
   // Fullscreen Escape key handler
   useEffect(() => {
@@ -4196,6 +4207,32 @@ export default function ScriptGeneratorPage() {
       toast({ title: "Failed to link runbook", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
     } finally {
       setLinkRunbookSaving(false);
+    }
+  };
+
+  const publishToProd = async () => {
+    if (!editorScript?.id) return;
+    setPublishingToProd(true);
+    try {
+      await apiFetch(`/admin/ps-scripts/${editorScript.id}/publish-to-prod`, token, { method: "POST" });
+      toast({ title: "Published to production", description: `"${editorScript.title ?? "Script"}" is now in the production database.` });
+    } catch (e) {
+      toast({ title: "Publish failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingToProd(false);
+    }
+  };
+
+  const publishPkgToProd = async () => {
+    if (!loadedPackage?.id) return;
+    setPublishingPkgToProd(true);
+    try {
+      const result = await apiFetch(`/admin/ps-scripts/packages/${loadedPackage.id}/publish-to-prod`, token, { method: "POST" }) as { title?: string; moduleCount?: number };
+      toast({ title: "Package published to production", description: `"${result.title ?? loadedPackage.title}" and ${result.moduleCount ?? 0} module(s) are now in the production database.` });
+    } catch (e) {
+      toast({ title: "Package publish failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingPkgToProd(false);
     }
   };
 
@@ -4505,6 +4542,19 @@ export default function ScriptGeneratorPage() {
                 {pushValidating ? "Validating…" : "Azure"}
               </button>
             )}
+            {editorScript?.id && (
+              <button
+                onClick={() => void publishToProd()}
+                disabled={publishingToProd || prodDbConnected === false}
+                title={prodDbConnected === false ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this script to the production database"}
+                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {publishingToProd
+                  ? <div className="w-3 h-3 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                  : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                {publishingToProd ? "Publishing…" : "Publish to Prod"}
+              </button>
+            )}
             {editorScript?.id && !editingModuleId && (
               linkRunbookOpen ? (
                 <span className="flex items-center gap-1">
@@ -4531,6 +4581,19 @@ export default function ScriptGeneratorPage() {
                   {editorScript.azureRunbookName ? editorScript.azureRunbookName : "Link runbook"}
                 </button>
               )
+            )}
+            {loadedPackage?.id && !editorScript?.id && (
+              <button
+                onClick={() => void publishPkgToProd()}
+                disabled={publishingPkgToProd || prodDbConnected === false}
+                title={prodDbConnected === false ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this package and all its modules to the production database"}
+                className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {publishingPkgToProd
+                  ? <div className="w-3 h-3 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+                  : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                {publishingPkgToProd ? "Publishing…" : "Publish Pkg to Prod"}
+              </button>
             )}
             <button onClick={() => setShowSaveModal(true)} className="flex items-center gap-1 text-[11px] px-2 py-1 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors">
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>

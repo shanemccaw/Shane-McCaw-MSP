@@ -3169,6 +3169,161 @@ router.post("/admin/services/:id/run-script-sets", requireAdmin, async (req: Req
   }
 });
 
+// ─── POST /api/admin/ps-scripts/:id/publish-to-prod ──────────────────────────
+// Reads the full script record from dev DB and upserts it into the prod DB.
+// Uses DATABASE_URL_PROD (or PROD_DATABASE_URL) — returns 503 if not set.
+
+router.post("/admin/ps-scripts/:id/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const scriptId = String(req.params.id ?? "");
+  if (!scriptId) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    const [script] = await db
+      .select()
+      .from(powershellScriptsTable)
+      .where(eq(powershellScriptsTable.id, scriptId))
+      .limit(1);
+
+    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
+
+    const { db: prodDb, pool: prodPool } = buildProdDb();
+
+    await prodDb
+      .insert(powershellScriptsTable)
+      .values({
+        id: script.id,
+        title: script.title,
+        description: script.description,
+        category: script.category,
+        scriptBody: script.scriptBody,
+        permissions: script.permissions,
+        tags: script.tags,
+        azureRunbookName: script.azureRunbookName,
+        azureSyncedAt: script.azureSyncedAt,
+        createdAt: script.createdAt,
+        updatedAt: script.updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: powershellScriptsTable.id,
+        set: {
+          title: script.title,
+          description: script.description,
+          category: script.category,
+          scriptBody: script.scriptBody,
+          permissions: script.permissions,
+          tags: script.tags,
+          azureRunbookName: script.azureRunbookName,
+          azureSyncedAt: script.azureSyncedAt,
+          updatedAt: new Date(),
+        },
+      });
+
+    await prodPool.end();
+
+    logger.info({ scriptId, title: script.title }, "admin-ps-scripts: published to prod DB");
+    res.json({ ok: true, scriptId, title: script.title });
+  } catch (err) {
+    logger.error({ err, scriptId }, "admin-ps-scripts: publish-to-prod failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/packages/:id/publish-to-prod ─────────────────
+// Upserts the script package + all its modules into the production database.
+
+router.post("/admin/ps-scripts/packages/:id/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const packageId = String(req.params.id ?? "");
+  if (!packageId) { res.status(400).json({ error: "Invalid id" }); return; }
+
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    const [pkg] = await db
+      .select()
+      .from(scriptPackagesTable)
+      .where(eq(scriptPackagesTable.id, packageId))
+      .limit(1);
+
+    if (!pkg) { res.status(404).json({ error: "Package not found" }); return; }
+
+    const mods = await db
+      .select()
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.packageId, packageId))
+      .orderBy(asc(scriptModulesTable.sortOrder));
+
+    const { db: prodDb, pool: prodPool } = buildProdDb();
+
+    await prodDb
+      .insert(scriptPackagesTable)
+      .values({
+        id: pkg.id,
+        title: pkg.title,
+        category: pkg.category,
+        permissions: pkg.permissions,
+        tags: pkg.tags,
+        createdAt: pkg.createdAt,
+      })
+      .onConflictDoUpdate({
+        target: scriptPackagesTable.id,
+        set: {
+          title: pkg.title,
+          category: pkg.category,
+          permissions: pkg.permissions,
+          tags: pkg.tags,
+        },
+      });
+
+    for (const mod of mods) {
+      await prodDb
+        .insert(scriptModulesTable)
+        .values({
+          id: mod.id,
+          packageId: pkg.id,
+          filename: mod.filename,
+          description: mod.description,
+          content: mod.content,
+          sortOrder: mod.sortOrder,
+          azureRunbookName: mod.azureRunbookName,
+          sourceScriptId: mod.sourceScriptId,
+          sourceTaskIds: mod.sourceTaskIds,
+          azureSyncedAt: mod.azureSyncedAt,
+          permissions: mod.permissions,
+          createdAt: mod.createdAt,
+        })
+        .onConflictDoUpdate({
+          target: scriptModulesTable.id,
+          set: {
+            filename: mod.filename,
+            description: mod.description,
+            content: mod.content,
+            sortOrder: mod.sortOrder,
+            azureRunbookName: mod.azureRunbookName,
+            permissions: mod.permissions,
+          },
+        });
+    }
+
+    await prodPool.end();
+
+    logger.info({ packageId, title: pkg.title, moduleCount: mods.length }, "admin-ps-scripts: package published to prod DB");
+    res.json({ ok: true, packageId, title: pkg.title, moduleCount: mods.length });
+  } catch (err) {
+    logger.error({ err, packageId }, "admin-ps-scripts: packages publish-to-prod failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish package to production" });
+  }
+});
+
 // DELETE /api/admin/services/:id/script-sets/:packageId
 router.delete("/admin/services/:id/script-sets/:packageId", requireAdmin, async (req: Request, res: Response) => {
   const serviceId = parseInt(String(req.params.id));

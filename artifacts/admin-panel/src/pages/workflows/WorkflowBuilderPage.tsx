@@ -1985,6 +1985,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [showAiModal, setShowAiModal] = useState(false);
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [aiToast, setAiToast] = useState<string | null>(null);
+  const [publishingToProd, setPublishingToProd] = useState(false);
 
   // Node library state
   const [libSearch, setLibSearch] = useState("");
@@ -2023,6 +2024,33 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   function pushHistory() {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
   }
+
+  const { data: prodDbStatus } = useQuery<{ connected: boolean }>({
+    queryKey: ["prod-db-status"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/prod-db/status");
+      if (!res.ok) return { connected: false };
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+  const prodDbConnected = prodDbStatus?.connected ?? false;
+
+  const publishToProd = async () => {
+    setPublishingToProd(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/publish-to-prod`, { method: "POST" });
+      const body = await res.json() as { ok?: boolean; name?: string; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish to production");
+      setAiToast(`"${body.name ?? "Workflow"}" published to the production database.`);
+      setTimeout(() => setAiToast(null), 4000);
+    } catch (err) {
+      setAiToast(`Publish failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setTimeout(() => setAiToast(null), 5000);
+    } finally {
+      setPublishingToProd(false);
+    }
+  };
 
   const { data: def } = useQuery({
     queryKey: ["wf-def", defId],
@@ -2384,6 +2412,22 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
+          </button>
+
+          <button
+            onClick={() => void publishToProd()}
+            disabled={publishingToProd || !prodDbConnected}
+            title={!prodDbConnected ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this workflow to the production database"}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {publishingToProd ? (
+              <div className="w-3 h-3 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {publishingToProd ? "Publishing…" : "Publish to Prod"}
           </button>
         </div>
       </div>

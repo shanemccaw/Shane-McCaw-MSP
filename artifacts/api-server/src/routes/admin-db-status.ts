@@ -173,4 +173,10 @@ router.post("/admin/db-migrate", requireAdmin, async (req: Request, res: Respons
   );
 });
 
+// GET /admin/prod-db/status — lightweight check whether the prod DB URL is configured
+router.get("/admin/prod-db/status", requireAdmin, (_req: Request, res: Response) => {
+  const prodUrl = process.env.DATABASE_URL_PROD ?? process.env.PROD_DATABASE_URL;
+  res.json({ connected: !!prodUrl });
+});
+
 export default router;
