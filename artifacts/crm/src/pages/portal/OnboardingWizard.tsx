@@ -450,6 +450,22 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
           )}
         </div>
 
+        {/* Progress bar */}
+        <div className="px-7 pb-5">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">Progress</span>
+            <span className="text-[10px] font-semibold text-white/50">
+              {stepIndex} of {STEPS.length} tasks completed
+            </span>
+          </div>
+          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-2 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%`, background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
+            />
+          </div>
+        </div>
+
         {/* Steps */}
         <div className="px-4 flex-1 overflow-y-auto">
           {STEPS.map((step, idx) => {
@@ -537,13 +553,6 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
           <div className="md:hidden flex items-center justify-between px-5 py-4 bg-[#0A2540]">
             <p className="text-sm font-bold text-white">Workspace Setup</p>
             <span className="text-xs text-white/50">Step {stepIndex + 1} of {STEPS.length}</span>
-          </div>
-          {/* Progress bar */}
-          <div className="h-1 bg-gray-200">
-            <div
-              className="h-1 transition-all duration-500"
-              style={{ width: `${progress}%`, background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)" }}
-            />
           </div>
           {/* Desktop header */}
           {currentStep !== "done" && (
