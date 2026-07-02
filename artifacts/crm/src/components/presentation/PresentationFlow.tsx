@@ -165,13 +165,27 @@ export default function PresentationFlow({
     return s?.kind !== "doc" && s?.kind !== "contract" && s?.kind !== "sow";
   });
   const stepReadyRef = useRef(stepReady);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
 
   const handleStepReady = useCallback(() => {
     if (!stepReadyRef.current) {
       stepReadyRef.current = true;
       setStepReady(true);
     }
+    setLoadingTimedOut(false);
   }, []);
+
+  useEffect(() => {
+    if (stepReady) return;
+    const timer = setTimeout(() => {
+      setLoadingTimedOut(true);
+      if (!stepReadyRef.current) {
+        stepReadyRef.current = true;
+        setStepReady(true);
+      }
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [stepReady]);
 
   const [savingSelections, setSavingSelections] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -263,6 +277,7 @@ export default function PresentationFlow({
     const ready = !isAsyncStep(nextStep);
     stepReadyRef.current = ready;
     setStepReady(ready);
+    setLoadingTimedOut(false);
     setStepIndex(nextIndex);
   }, [steps]);
 
@@ -452,6 +467,15 @@ export default function PresentationFlow({
 
         {/* Body */}
         <div ref={scrollAreaRef} className="flex-1 overflow-y-auto relative">
+          {/* Timeout notice — shown when content took longer than 3s to signal ready */}
+          {loadingTimedOut && (
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-700 text-xs font-medium">
+              <svg className="w-3.5 h-3.5 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Still loading… content may be incomplete until fully available.
+            </div>
+          )}
           {/* Skeleton overlay — shown while async steps (doc, contract) are loading */}
           {!stepReady && (
             <div className="absolute inset-0 z-10 max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-4 pointer-events-none">
