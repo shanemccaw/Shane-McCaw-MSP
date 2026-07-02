@@ -17,6 +17,17 @@ export function stripMarkdownFence(text: string): string {
 }
 
 /**
+ * Strip the admin-only "Staged for Review" banner divs that older AI-generated
+ * documents may still contain in their stored HTML.  Safe to run on any HTML —
+ * if the divs aren't present nothing changes.
+ */
+export function stripStagedForReviewBanner(html: string): string {
+  return html
+    .replace(/<div[^>]*>⚠️[^<]*Staged for Review[^<]*<\/div>/gi, "")
+    .replace(/<div[^>]*>📋[^<]*Staged for Review[^<]*<\/div>/gi, "");
+}
+
+/**
  * Canonical extraction point used by all document-generation routes.
  *
  * Pulls the text body from the first content block of an Anthropic message

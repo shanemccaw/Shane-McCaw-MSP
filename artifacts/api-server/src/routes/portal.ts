@@ -13,6 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
+import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -2447,7 +2448,7 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
     if (doc.status !== "delivered") { res.status(403).json({ error: "Document not yet delivered" }); return; }
-    res.json({ id: doc.id, title: doc.title, htmlContent: doc.htmlContent });
+    res.json({ id: doc.id, title: doc.title, htmlContent: stripStagedForReviewBanner(doc.htmlContent) });
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/view failed");
     res.status(500).json({ error: "Failed to fetch document" });
@@ -9149,7 +9150,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
 
     // Fetch full document HTML
     const docIds = (pres.documentsIncluded ?? []) as number[];
-    const docs = docIds.length > 0
+    const docsRaw = docIds.length > 0
       ? await db.select({
           id: insightsGeneratedDocumentsTable.id,
           title: insightsGeneratedDocumentsTable.title,
@@ -9160,6 +9161,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
           .from(insightsGeneratedDocumentsTable)
           .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
       : [];
+    const docs = docsRaw.map(d => ({ ...d, htmlContent: stripStagedForReviewBanner(d.htmlContent) }));
 
     // Fetch project + client name + service id for template lookup
     const [project] = pres.projectId

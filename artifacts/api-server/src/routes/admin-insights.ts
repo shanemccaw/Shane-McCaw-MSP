@@ -57,7 +57,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, stripStagedForReviewBanner, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -121,10 +121,7 @@ function wrapText(text: string, maxW: number, font: PDFFont, size: number): stri
  * Handles the patterns used by the AI-generated insight documents.
  */
 function htmlToLines(html: string): string[] {
-  return html
-    // Remove the staged-for-review banner (it's admin-only context)
-    .replace(/<div[^>]*>⚠️[^<]*Staged for Review[^<]*<\/div>/gi, "")
-    .replace(/<div[^>]*>📋[^<]*Staged for Review[^<]*<\/div>/gi, "")
+  return stripStagedForReviewBanner(html)
     // Headings
     .replace(/<h1[^>]*>(.*?)<\/h1>/gis, "\n# $1\n")
     .replace(/<h2[^>]*>(.*?)<\/h2>/gis, "\n## $1\n")
