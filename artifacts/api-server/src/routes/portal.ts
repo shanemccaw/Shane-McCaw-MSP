@@ -15,7 +15,7 @@ import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
-import { autoFireFirstBacklogScript } from "../lib/kanban-auto-fire.ts";
+import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
@@ -966,11 +966,13 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
       req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
     });
 
-  // Auto-fire the first backlog Kanban script card for this client (new linkedRunbook-based flow).
-  // This runs in parallel with runClientScriptSequence (the legacy module-based flow) and is
-  // a no-op if no eligible card is found or Azure is not configured.
+  // Auto-fire the first backlog Kanban card for this client (script or document generation).
+  // Both run in parallel and are no-ops if no eligible card is found.
   autoFireFirstBacklogScript(userId).catch(err => {
     req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
+  });
+  autoFireDocumentCard(userId).catch(err => {
+    req.log.warn({ err, userId }, "portal/app-registration: autoFireDocumentCard error (non-fatal)");
   });
 });
 

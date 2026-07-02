@@ -13,7 +13,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { checkManualScriptEscalations } from "../lib/manual-script-escalation";
-import { autoFireFirstBacklogScript, reconcileStalledPhases } from "../lib/kanban-auto-fire";
+import { autoFireFirstBacklogScript, autoFireDocumentCard, reconcileStalledPhases } from "../lib/kanban-auto-fire";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -61,8 +61,9 @@ router.post(
       return;
     }
     try {
-      // Fire-and-forget — the job runs in the background
+      // Fire-and-forget — kick off both script cards and document generation cards
       void autoFireFirstBacklogScript(clientUserId);
+      void autoFireDocumentCard(clientUserId);
       req.log.info({ clientUserId }, "admin triggered auto-fire for client");
       res.json({ ok: true, message: `Auto-fire triggered for clientUserId ${clientUserId}` });
     } catch (err) {
