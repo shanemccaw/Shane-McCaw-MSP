@@ -463,16 +463,11 @@ export function computeOverviewStats(
       // Critical severity cards → count as "critical findings"
       // Exclude breach-cost advisory cards (label = "Avg Breach Cost") as they
       // are static industry benchmarks, not tenant-specific issues.
+      // Each card always counts as exactly 1, regardless of its displayed value,
+      // so the Overview number reflects distinct critical findings (stable across
+      // different document-set compositions).
       if (card.severity === "critical" && card.label !== "Avg Breach Cost") {
-        // Only treat a plain integer value (no /, %, $, letters) as a count of
-        // discrete findings. Everything else — scores like "9/100", percentages
-        // like "91%", or keywords like "ZERO" — counts as exactly one finding.
-        if (/^\d[\d,]*$/.test(card.value.trim())) {
-          const numVal = parseInt(card.value.replace(/,/g, ""), 10);
-          criticalCount += isNaN(numVal) || numVal < 1 ? 1 : numVal;
-        } else {
-          criticalCount += 1;
-        }
+        criticalCount += 1;
       }
 
       // License waste — highest unused-license count wins
