@@ -688,7 +688,6 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
 - Total length: 800-1500 words of body content`;
 
 const INSIGHTS_CONSULTING_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
@@ -716,7 +715,6 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
 - Total length: 1000-2000 words`;
 
 const generateDocSchema = z.object({
@@ -793,7 +791,8 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       docType,
       title,
       htmlContent,
-      status: "draft",
+      status: "approved",
+      approvedAt: new Date(),
       pdfUrl: null, // will be set below
     }).returning();
 
@@ -1185,7 +1184,6 @@ INSTRUCTIONS:
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
 - Total length: 2000-3500 words`;
 
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK);
@@ -1214,7 +1212,8 @@ INSTRUCTIONS:
         docType:    "consolidated_sow",
         title,
         htmlContent,
-        status: "draft",
+        status: "approved",
+        approvedAt: new Date(),
         pdfUrl: null,
         sowPricingLines: sowLines.length > 0 ? sowLines : null,
         sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
@@ -1308,7 +1307,8 @@ INSTRUCTIONS:
       docType:    deliverableType,
       title,
       htmlContent,
-      status: "draft",
+      status: "approved",
+      approvedAt: new Date(),
       pdfUrl: null,
       sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
       sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
@@ -1844,7 +1844,8 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         docType,
         title:      `${automation.name} — ${reportDate}`,
         htmlContent,
-        status:     "draft",
+        status:     "approved",
+        approvedAt: new Date(),
         pdfUrl:     null,
       }).returning();
 
@@ -1853,7 +1854,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         .set({ pdfUrl })
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id));
 
-      logger.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and staged for review");
+      logger.info({ automationId, docType, docId: newDoc!.id }, "insights: automation document generated and auto-approved");
       log("info", `Document saved as draft — "${automation.name} — ${reportDate}" (ID ${newDoc!.id})`);
 
       // ── Notify admins that a new report is ready for review ─────────────────

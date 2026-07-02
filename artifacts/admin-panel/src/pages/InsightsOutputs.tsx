@@ -499,9 +499,6 @@ function DocumentsTab({
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
                     <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {doc.status === "draft" && (
-                      <button onClick={() => void updateStatus(doc.id, "approved")} title="Approve" className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700"><CheckCircle className="w-3.5 h-3.5" /></button>
-                    )}
                     {doc.status === "approved" && (
                       <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
                     )}
@@ -553,7 +550,7 @@ function DocumentsTab({
               <ul className="list-disc list-inside flex flex-col gap-1">
                 <li>Fetch real telemetry from script_run_results{customerId ? " for the selected customer" : ""}{projectId ? " and project" : ""}</li>
                 <li>Generate AI narrative using Claude Haiku with structured profileUpdates context</li>
-                <li>Stage as <strong className="text-yellow-400">Draft</strong> — no delivery until you approve</li>
+                <li>Auto-approve the document — Send button is available immediately</li>
                 <li>Provide a downloadable <strong className="text-blue-400">PDF</strong> via pdf-lib</li>
               </ul>
             </div>
@@ -574,7 +571,7 @@ function DocumentsTab({
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
               <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
-              <div><div className="text-white font-medium text-sm">Report generated</div><div className="text-gray-400 text-xs">Staged as Draft. Approve it to allow delivery.</div></div>
+              <div><div className="text-white font-medium text-sm">Report generated</div><div className="text-gray-400 text-xs">Ready to send — click Send to deliver it to the client.</div></div>
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Close</button>
@@ -688,14 +685,6 @@ function ConsultingTab({
     setSelectedDoc(((await r.json()) as { document: InsightsDocFull }).document);
   };
 
-  const approve = async (doc: InsightsDoc) => {
-    await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "approved" }),
-    });
-    void loadDocs();
-  };
-
   const openSend = (doc: InsightsDoc) => {
     setSendDoc(doc); setSendEmail(""); setSendSubject(doc.title); setSendResult(null); setSendOpen(true);
   };
@@ -775,9 +764,6 @@ function ConsultingTab({
                   <StatusPill status={doc.status} />
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                     <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {doc.status === "draft" && (
-                      <button onClick={() => void approve(doc)} title="Approve" className="p-1 rounded text-gray-400 hover:text-green-400 hover:bg-gray-700"><CheckCircle className="w-3.5 h-3.5" /></button>
-                    )}
                     {doc.status === "approved" && (
                       <button onClick={() => openSend(doc)} title="Send to Customer" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
                     )}
@@ -804,12 +790,6 @@ function ConsultingTab({
                     <Send className="w-3 h-3" /> Send
                   </button>
                 )}
-                {selectedDoc.status === "draft" && (
-                  <button onClick={() => { const d = docs.find(x => x.id === selectedDoc.id); if (d) void approve(d).then(() => void loadDocs()); }}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg">
-                    <CheckCircle className="w-3 h-3" /> Approve
-                  </button>
-                )}
                 <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
               </div>
             </div>
@@ -834,7 +814,7 @@ function ConsultingTab({
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
             <div className="bg-[#0D1117] rounded-lg p-3 text-xs text-gray-400">
-              Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry and Claude AI. Staged as Draft — you must explicitly approve and send. SharePoint upload occurs automatically on delivery if the client site is configured.
+              Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry and Claude AI. Auto-approved on generation — Send is available immediately. SharePoint upload occurs automatically on delivery if the client site is configured.
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
@@ -853,7 +833,7 @@ function ConsultingTab({
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-3 p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
               <CheckCircle className="w-5 h-5 text-green-400 shrink-0" />
-              <div><div className="text-white font-medium text-sm">Deliverable generated</div><div className="text-gray-400 text-xs">Staged as Draft. Approve it before sending to the customer.</div></div>
+              <div><div className="text-white font-medium text-sm">Deliverable generated</div><div className="text-gray-400 text-xs">Ready to send — click Send to deliver it to the customer.</div></div>
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium">Done</button>

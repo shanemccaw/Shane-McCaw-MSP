@@ -644,7 +644,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   {
@@ -681,7 +681,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   {
@@ -718,7 +718,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   {
@@ -755,7 +755,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   {
@@ -792,7 +792,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   {
@@ -829,7 +829,7 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Include at the very top: <div style="background:#fff3cd;border:1px solid #ffc107;padding:10px 16px;margin-bottom:20px;border-radius:6px;font-size:13px">⚠️ <strong>Staged for Review</strong> — This document has not been delivered to the client. Approve it in the Admin Panel before sending.</div>
+
 - Total length: 800-1500 words of body content`,
   },
   // ── Insights: Consulting Deliverables (7 types) ──────────────────────────────
@@ -861,7 +861,7 @@ INSTRUCTIONS:
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 2000-3500 words`,
   },
   {
@@ -897,7 +897,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -933,7 +933,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -969,7 +969,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -1005,7 +1005,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -1041,7 +1041,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -1077,7 +1077,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
@@ -1113,7 +1113,7 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+
 - Total length: 1000-2000 words`,
   },
   {
