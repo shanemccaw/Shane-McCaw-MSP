@@ -151,6 +151,7 @@ export default function QuickWinOnboardingResults() {
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -226,6 +227,17 @@ export default function QuickWinOnboardingResults() {
     } catch {
       /* clipboard unavailable — show URL instead */
     }
+  }
+
+  async function handleRetryDiagnostic() {
+    setRetrying(true);
+    try {
+      await fetchWithAuth("/api/portal/onboarding/wizard-reset", { method: "POST" });
+    } catch {
+      // Non-fatal — navigate anyway; the wizard will re-check status on mount
+    }
+    sessionStorage.removeItem("onboarding-wizard-step");
+    navigate("/portal/onboarding/wizard");
   }
 
   const scores = scorecard?.latest ?? {};
@@ -309,9 +321,28 @@ export default function QuickWinOnboardingResults() {
                     : "The diagnostic encountered an issue before it could finish — this can happen if Azure credentials aren't configured yet, or if there was a temporary network interruption. Shane has been notified and will follow up with your results."}
                 </p>
                 {!hasData && (
-                  <p className="text-xs text-white/40 mt-3 leading-relaxed max-w-lg">
-                    You can re-run the diagnostic once your Azure App Registration credentials are in place, or book a call and Shane will run it manually.
-                  </p>
+                  <button
+                    onClick={() => void handleRetryDiagnostic()}
+                    disabled={retrying}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0078D4] hover:bg-[#005a9e] disabled:opacity-60 text-white text-sm font-semibold transition-colors"
+                  >
+                    {retrying ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                        </svg>
+                        Starting…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Run diagnostic again
+                      </>
+                    )}
+                  </button>
                 )}
                 {scorecard?.latestDate && (
                   <p className="text-[11px] text-white/30 mt-2">

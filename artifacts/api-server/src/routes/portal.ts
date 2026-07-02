@@ -1299,7 +1299,7 @@ router.post("/portal/onboarding/wizard-reset", requireAuth, async (req: Request,
   const userId = req.user!.id;
 
   await db.update(usersTable)
-    .set({ onboardingWizardCompletedAt: null })
+    .set({ onboardingWizardCompletedAt: null, quickWinCompletedAt: null })
     .where(eq(usersTable.id, userId));
 
   res.json({ reset: true });
