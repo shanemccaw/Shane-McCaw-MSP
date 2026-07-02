@@ -483,24 +483,59 @@ function extractDeploymentCards(text: string): StatCard[] {
   return cards.slice(0, 4);
 }
 
+// ─── Cost-of-inaction cards (static, well-researched defaults) ────────────────
+// Source: IBM Cost of a Data Breach Report 2024 + Ponemon Institute SMB data.
+// Shane can update these values here without touching anything else.
+
+const BREACH_COST_CARD: Partial<Record<string, StatCard>> = {
+  security_hardening_plan: {
+    value: "~$4.9M",
+    label: "Avg Breach Cost",
+    detail: "IBM 2024 — misconfiguration is the #1 breach vector",
+    severity: "critical",
+  },
+  copilot_enablement_plan: {
+    value: "~$3.8M",
+    label: "Avg Breach Cost",
+    detail: "IBM 2024 — AI/data exposure incidents, orgs your size",
+    severity: "critical",
+  },
+  full_readiness_report: {
+    value: "~$4.9M",
+    label: "Avg Breach Cost",
+    detail: "IBM 2024 — global avg when multiple control domains are unprotected",
+    severity: "critical",
+  },
+};
+
 // ─── Main dispatcher ──────────────────────────────────────────────────────────
 
 function extractStatCards(html: string, docType: string): StatCard[] {
   if (!html) return [];
   const text = htmlToText(html);
   const family: DocTypeFamily = DOC_FAMILY[docType] ?? "executive";
+  const breachCard = BREACH_COST_CARD[docType];
+
+  // For doc types that carry a breach-cost card, cap the family extractor at 3
+  // so the breach-cost card always occupies the final slot (4th position).
+  const limit = breachCard ? 3 : 4;
+
+  let cards: StatCard[];
   switch (family) {
-    case "security":    return extractSecurityCards(text);
-    case "license":     return extractLicenseCards(text);
-    case "governance":  return extractGovernanceCards(text);
-    case "copilot":     return extractCopilotCards(text);
-    case "remediation": return extractRemediationCards(text);
-    case "exposure":    return extractExposureCards(text);
-    case "executive":   return extractExecutiveCards(text);
-    case "deployment":  return extractDeploymentCards(text);
+    case "security":    cards = extractSecurityCards(text).slice(0, limit);    break;
+    case "license":     cards = extractLicenseCards(text).slice(0, limit);     break;
+    case "governance":  cards = extractGovernanceCards(text).slice(0, limit);  break;
+    case "copilot":     cards = extractCopilotCards(text).slice(0, limit);     break;
+    case "remediation": cards = extractRemediationCards(text).slice(0, limit); break;
+    case "exposure":    cards = extractExposureCards(text).slice(0, limit);    break;
+    case "executive":   cards = extractExecutiveCards(text).slice(0, limit);   break;
+    case "deployment":  cards = extractDeploymentCards(text).slice(0, limit);  break;
     case "sow":         return []; // always compact fallback
-    default:            return extractExecutiveCards(text);
+    default:            cards = extractExecutiveCards(text).slice(0, limit);   break;
   }
+
+  if (breachCard) cards.push(breachCard);
+  return cards;
 }
 
 // ─── Visual theme per risk level ──────────────────────────────────────────────
