@@ -178,18 +178,23 @@ export default function ProjectTasksLayer() {
   const queryClient = useQueryClient();
 
   // ── Live data: poll every 5 s so task statuses stay in sync with the board ──
-  const { data: tasks = [], isLoading } = useQuery<ProjectTaskRow[]>({
+  const { data: queryData, isLoading } = useQuery<{ tasks: ProjectTaskRow[]; previewCount: number }>({
     queryKey: ["quick-win-project-tasks", projectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/portal/projects/${projectId}`);
       if (!res.ok) throw new Error("Failed to fetch project tasks");
-      const body = await res.json() as { tasks?: ProjectTaskRow[] };
-      return body.tasks ?? [];
+      const body = await res.json() as { tasks?: ProjectTaskRow[]; previewTasks?: unknown[] };
+      return {
+        tasks: body.tasks ?? [],
+        previewCount: body.previewTasks?.length ?? 0,
+      };
     },
     enabled: !!projectId,
     refetchInterval: 5000,
     staleTime: 0,
   });
+  const tasks = queryData?.tasks ?? [];
+  const totalTaskCount = tasks.length + (queryData?.previewCount ?? 0);
 
   // ── Completed-task exit animation ──────────────────────────────────────────
   // Track which tasks just transitioned to "completed" so we can play a
@@ -315,19 +320,19 @@ export default function ProjectTasksLayer() {
       </div>
 
       {/* Progress bar */}
-      {tasks.length > 0 && (
+      {totalTaskCount > 0 && (
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Progress</span>
             <span className="text-xs font-semibold text-foreground tabular-nums">
-              {completedCount} / {tasks.length} tasks
+              {completedCount} / {totalTaskCount} tasks
             </span>
           </div>
           <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
             <div
               className="h-1.5 rounded-full transition-all duration-500"
               style={{
-                width: `${Math.round((completedCount / tasks.length) * 100)}%`,
+                width: `${Math.round((completedCount / totalTaskCount) * 100)}%`,
                 background: "linear-gradient(90deg, #0078D4 0%, #00B4D8 100%)",
               }}
             />
