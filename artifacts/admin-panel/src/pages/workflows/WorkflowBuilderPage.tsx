@@ -1690,8 +1690,12 @@ function AiWorkflowModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const MIN_DESC_LEN = 20;
+  const descTrimmed = description.trim();
+  const descTooShort = descTrimmed.length > 0 && descTrimmed.length < MIN_DESC_LEN;
+
   async function handleGenerate() {
-    if (!description.trim()) return;
+    if (descTrimmed.length < MIN_DESC_LEN) return;
     setLoading(true);
     setError(null);
     try {
@@ -1763,9 +1767,13 @@ function AiWorkflowModal({
             disabled={loading}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
           />
-          <div className="flex justify-between">
-            <span className="text-[10px] text-[#484F58]">Be specific about conditions, actions, and data fields</span>
-            <span className="text-[10px] text-[#484F58]">{description.length}/2000</span>
+          <div className="flex justify-between items-start gap-2">
+            {descTooShort ? (
+              <span className="text-[10px] text-amber-400">Add more detail — at least {MIN_DESC_LEN} characters, describing specific steps, conditions, and actions</span>
+            ) : (
+              <span className="text-[10px] text-[#484F58]">Be specific about conditions, actions, and data fields</span>
+            )}
+            <span className="text-[10px] text-[#484F58] flex-shrink-0">{description.length}/2000</span>
           </div>
         </div>
 
@@ -1781,7 +1789,7 @@ function AiWorkflowModal({
           </button>
           <button
             onClick={handleGenerate}
-            disabled={loading || !description.trim()}
+            disabled={loading || descTrimmed.length < MIN_DESC_LEN}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
           >
             {loading ? (
@@ -1829,8 +1837,12 @@ function AiRefineModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const MIN_INSTR_LEN = 20;
+  const instrTrimmed = instruction.trim();
+  const instrTooShort = instrTrimmed.length > 0 && instrTrimmed.length < MIN_INSTR_LEN;
+
   async function handleRefine() {
-    if (!instruction.trim()) return;
+    if (instrTrimmed.length < MIN_INSTR_LEN) return;
     setLoading(true);
     setError(null);
     try {
@@ -1902,8 +1914,13 @@ function AiRefineModal({
             autoFocus
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
           />
-          <div className="flex justify-end">
-            <span className="text-[10px] text-[#484F58]">{instruction.length}/2000</span>
+          <div className="flex justify-between items-start gap-2">
+            {instrTooShort ? (
+              <span className="text-[10px] text-amber-400">Add more detail — describe a specific change like "add an error handler" or "split the lead scoring into two branches"</span>
+            ) : (
+              <span className="text-[10px] text-[#484F58]">e.g. "add an error handler after scoring" or "split the condition into High and Medium paths"</span>
+            )}
+            <span className="text-[10px] text-[#484F58] flex-shrink-0">{instruction.length}/2000</span>
           </div>
         </div>
 
@@ -1919,7 +1936,7 @@ function AiRefineModal({
           </button>
           <button
             onClick={handleRefine}
-            disabled={loading || !instruction.trim()}
+            disabled={loading || instrTrimmed.length < MIN_INSTR_LEN}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
           >
             {loading ? (

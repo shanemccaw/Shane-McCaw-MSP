@@ -710,6 +710,23 @@ function extractJsonFromText(text: string): unknown {
   return null;
 }
 
+// ── AI prompt quality guard ───────────────────────────────────────────────────
+// Detects at least one workflow-relevant term so vague/off-topic inputs (e.g.
+// "write a poem", "email") are rejected before burning AI credits.
+const WORKFLOW_KEYWORDS_RE =
+  /\b(send|creat|notif|assign|qualif|trigger|check|generat|pars|validat|process|schedul|rout|filter|approv|reject|invit|enroll|activat|updat|scor|assess|alert|review|detect|monitor|escalat|dela|wait|branch|loop|lead|client|email|workflow|form|contract|payment|message|task|stage|pipeline|m365|sharepoint|teams|opportunity|deal|contact|account|user|notification|condition|step|webhook|invoice|calendar|follow.?up|onboard|handl)\w*/i;
+
+function checkWorkflowRelevance(text: string): string | null {
+  const trimmed = text.trim();
+  if (trimmed.length < 20) {
+    return "Description is too short — add more detail (minimum 20 characters). Describe the specific steps, conditions, and actions you want in the workflow.";
+  }
+  if (!WORKFLOW_KEYWORDS_RE.test(trimmed)) {
+    return "Description doesn't seem to describe a workflow. Include specific actions or steps such as 'send an email', 'qualify a lead', 'trigger when payment received', or 'notify Shane'. The more specific, the better.";
+  }
+  return null;
+}
+
 const AI_GRAPH_NODE_SCHEMA = z.object({
   id: z.string(),
   type: z.string(),
@@ -793,6 +810,9 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
       triggerContext: z.string().max(100).optional(),
     }).safeParse(req.body);
     if (!body.success) { sendError(res, 400, body.error.message); return; }
+
+    const qualityErr = checkWorkflowRelevance(body.data.description);
+    if (qualityErr) { sendError(res, 400, qualityErr); return; }
 
     const { anthropic } = await import("@workspace/integrations-anthropic-ai");
 
@@ -919,6 +939,9 @@ router.post("/admin/workflows/ai-refine", requireAdmin, async (req: Request, res
       }),
     }).safeParse(req.body);
     if (!body.success) { sendError(res, 400, body.error.message); return; }
+
+    const qualityErr = checkWorkflowRelevance(body.data.instruction);
+    if (qualityErr) { sendError(res, 400, qualityErr); return; }
 
     const { anthropic } = await import("@workspace/integrations-anthropic-ai");
 
