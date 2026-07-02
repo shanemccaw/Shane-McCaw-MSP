@@ -265,6 +265,8 @@ mock.module("../lib/sse-broadcast.ts", {
   namedExports: {
     broadcastKanbanChange: () => {},
     registerSSEClient: () => {},
+    registerPresentationSSEClient: () => {},
+    broadcastPresentationScopeChange: () => {},
   },
 });
 
@@ -879,6 +881,123 @@ describe("PATCH /selections (3): no live SOW doc — snapshot phases used for va
     assert.ok(
       (body.totalPrice as number) < 6_000,
       `totalPrice should not include snap-1's $6k; got ${body.totalPrice}`,
+    );
+  });
+});
+
+// =============================================================================
+// PATCH branch (4): empty selectedPhaseIds with live SOW doc present
+// — must NOT zero out the total; handler must fall back to all phases
+// =============================================================================
+
+describe("PATCH /selections (4): empty selectedPhaseIds [] with live SOW doc — falls back to all phases, not zero", () => {
+  const livePricingLines = [
+    { title: "Phase A", scope: "Scope A", priceUsd: 6_000, notes: "" },
+    { title: "Phase B", scope: "Scope B", priceUsd: 9_000, notes: "" },
+  ];
+  const expectedTotal = 6_000 + 9_000;
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [1],
+      sowPhases: [],
+      selectedPhaseIds: ["sow-0", "sow-1"],
+      totalPrice: String(expectedTotal),
+    });
+    const sowDoc = makeSowDoc(livePricingLines);
+
+    // Queue:
+    //  [0] presentation lookup
+    //  [1] deriveEffectiveSowData → SOW doc pricing
+    dbQueue = [[presRow], [sowDoc]];
+    ({ status, body } = await patchSelections(PRES_ID, []));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds falls back to all live phases (not empty)", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(
+      ids.length > 0,
+      `selectedPhaseIds should not be empty when [] is sent with a live SOW doc; got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("selectedPhaseIds contains all live SOW phase IDs", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(
+      [...ids].sort(),
+      ["sow-0", "sow-1"],
+      `expected all live phases ["sow-0","sow-1"], got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("totalPrice equals the full SOW total ($15k), not zero", () => {
+    assert.equal(
+      body.totalPrice,
+      expectedTotal,
+      `sending [] must not zero out the total; expected ${expectedTotal}, got ${body.totalPrice}`,
+    );
+  });
+
+  it("totalPrice is greater than zero", () => {
+    assert.ok(
+      (body.totalPrice as number) > 0,
+      `totalPrice must not be zero when a live SOW doc is present; got ${body.totalPrice}`,
+    );
+  });
+});
+
+// =============================================================================
+// PATCH branch (5): empty selectedPhaseIds with snapshot-only fallback
+// — no SOW doc; stored selections are preserved (not zeroed out)
+// =============================================================================
+
+describe("PATCH /selections (5): empty selectedPhaseIds [] with snapshot-only — stored selections preserved", () => {
+  const snapshotPhases = [
+    { id: "snap-0", title: "Snapshot X", description: "Desc X", price: 5_000, selected: true },
+    { id: "snap-1", title: "Snapshot Y", description: "Desc Y", price: 7_000, selected: true },
+  ];
+  // Stored total from creation time
+  const storedTotal = 12_000;
+
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    const presRow = makePresRow({
+      documentsIncluded: [],        // no docs → no SOW lookup → snapshot path
+      sowPhases: snapshotPhases,
+      selectedPhaseIds: ["snap-0", "snap-1"],   // both phases previously selected
+      totalPrice: String(storedTotal),
+    });
+
+    // Only the presentation lookup; documentsIncluded is empty so no doc query
+    dbQueue = [[presRow]];
+    ({ status, body } = await patchSelections(PRES_ID, []));
+  });
+
+  it("returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("selectedPhaseIds falls back to the stored snapshot selections (not empty)", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(
+      ids.length > 0,
+      `selectedPhaseIds should not be empty when [] is sent and snapshot phases exist; got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("totalPrice is greater than zero", () => {
+    assert.ok(
+      (body.totalPrice as number) > 0,
+      `totalPrice must not be zero when snapshot phases exist; got ${body.totalPrice}`,
     );
   });
 });

@@ -263,6 +263,8 @@ mock.module("../lib/sse-broadcast.ts", {
   namedExports: {
     broadcastKanbanChange: () => {},
     registerSSEClient: () => {},
+    registerPresentationSSEClient: () => {},
+    broadcastPresentationScopeChange: () => {},
   },
 });
 
@@ -644,15 +646,16 @@ describe("PATCH selections (B2): no SOW doc — all snapshot phases selected giv
 });
 
 // =============================================================================
-// Path (A3): Live SOW — empty selectedPhaseIds returns totalPrice: 0
+// Path (A3): Live SOW — empty selectedPhaseIds falls back to all phases (never zeros total)
 // =============================================================================
 
-describe("PATCH selections (A3): live SOW — empty selectedPhaseIds returns totalPrice 0", () => {
+describe("PATCH selections (A3): live SOW — empty selectedPhaseIds [] falls back to all phases", () => {
   const livePricingLines = [
     { title: "Phase 1 — Discovery", scope: "Requirements", priceUsd: 10_000, notes: "" },
     { title: "Phase 2 — Implementation", scope: "Core build", priceUsd: 25_000, notes: "" },
     { title: "Phase 3 — Rollout", scope: "Go-live", priceUsd: 8_000, notes: "" },
   ];
+  const fullTotal = 10_000 + 25_000 + 8_000; // 43 000
 
   let status: number;
   let body: Record<string, unknown>;
@@ -662,7 +665,7 @@ describe("PATCH selections (A3): live SOW — empty selectedPhaseIds returns tot
       documentsIncluded: [1],
       sowPhases: [],
       selectedPhaseIds: ["sow-0", "sow-1", "sow-2"],
-      totalPrice: "43000", // stale stored total — must NOT be echoed
+      totalPrice: String(fullTotal),
     });
     const sowDoc = makeSowDoc(livePricingLines);
 
@@ -677,41 +680,50 @@ describe("PATCH selections (A3): live SOW — empty selectedPhaseIds returns tot
     assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
   });
 
-  it("selectedPhaseIds is an empty array", () => {
-    assert.deepEqual(
-      body.selectedPhaseIds,
-      [],
-      `expected [], got ${JSON.stringify(body.selectedPhaseIds)}`,
+  it("selectedPhaseIds falls back to all live SOW phases (not empty)", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(
+      ids.length > 0,
+      `sending [] with a live SOW must not produce an empty selection; got ${JSON.stringify(ids)}`,
     );
   });
 
-  it("totalPrice is 0 — not the stale stored value ($43k)", () => {
+  it("selectedPhaseIds contains all three live phases", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.deepEqual(
+      [...ids].sort(),
+      ["sow-0", "sow-1", "sow-2"],
+      `expected all live phases, got ${JSON.stringify(ids)}`,
+    );
+  });
+
+  it("totalPrice equals the full live SOW total ($43k), not zero", () => {
     assert.equal(
       body.totalPrice,
-      0,
-      `expected totalPrice 0 when no phases selected, got ${body.totalPrice}`,
+      fullTotal,
+      `expected ${fullTotal} (full SOW total), got ${body.totalPrice}`,
     );
   });
 
-  it("stale stored totalPrice ($43k) is NOT returned", () => {
-    assert.notEqual(
-      body.totalPrice,
-      43_000,
-      "deselecting all phases must zero out the total, not echo the stored value",
+  it("totalPrice is greater than zero", () => {
+    assert.ok(
+      (body.totalPrice as number) > 0,
+      `totalPrice must not be zero when a live SOW doc has phases; got ${body.totalPrice}`,
     );
   });
 });
 
 // =============================================================================
-// Path (B3): No SOW doc — empty selectedPhaseIds returns totalPrice: 0
+// Path (B3): No SOW doc — empty selectedPhaseIds falls back to stored selections
 // =============================================================================
 
-describe("PATCH selections (B3): no SOW doc — empty selectedPhaseIds returns totalPrice 0", () => {
+describe("PATCH selections (B3): no SOW doc — empty selectedPhaseIds [] falls back to stored snapshot selections", () => {
   const snapshotPhases = [
     { id: "snap-0", title: "Phase A", description: "Kick-off", price: 4_000, selected: true },
     { id: "snap-1", title: "Phase B", description: "Delivery", price: 11_000, selected: true },
     { id: "snap-2", title: "Phase C", description: "Closure", price: 5_000, selected: true },
   ];
+  const fullSnapshotTotal = 4_000 + 11_000 + 5_000; // 20 000
 
   let status: number;
   let body: Record<string, unknown>;
@@ -722,7 +734,7 @@ describe("PATCH selections (B3): no SOW doc — empty selectedPhaseIds returns t
       documentsIncluded: [],
       sowPhases: snapshotPhases,
       selectedPhaseIds: ["snap-0", "snap-1", "snap-2"],
-      totalPrice: "20000", // stale stored total — must NOT be echoed
+      totalPrice: String(fullSnapshotTotal),
     });
 
     // Only one DB read needed (quickWinPresentationsTable); no doc query.
@@ -734,27 +746,18 @@ describe("PATCH selections (B3): no SOW doc — empty selectedPhaseIds returns t
     assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
   });
 
-  it("selectedPhaseIds is an empty array", () => {
-    assert.deepEqual(
-      body.selectedPhaseIds,
-      [],
-      `expected [], got ${JSON.stringify(body.selectedPhaseIds)}`,
+  it("selectedPhaseIds falls back to stored snapshot selections (not empty)", () => {
+    const ids = body.selectedPhaseIds as string[];
+    assert.ok(
+      ids.length > 0,
+      `sending [] with snapshot phases must not produce an empty selection; got ${JSON.stringify(ids)}`,
     );
   });
 
-  it("totalPrice is 0 — not the stale stored value ($20k)", () => {
-    assert.equal(
-      body.totalPrice,
-      0,
-      `expected totalPrice 0 when no snapshot phases selected, got ${body.totalPrice}`,
-    );
-  });
-
-  it("stale stored totalPrice ($20k) is NOT returned", () => {
-    assert.notEqual(
-      body.totalPrice,
-      20_000,
-      "deselecting all snapshot phases must zero out the total, not echo the stored value",
+  it("totalPrice is greater than zero", () => {
+    assert.ok(
+      (body.totalPrice as number) > 0,
+      `totalPrice must not be zero when snapshot phases exist; got ${body.totalPrice}`,
     );
   });
 });

@@ -9482,18 +9482,23 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
 
     // Validate incoming IDs against the live SOW phase list and compute total
     // from live prices so a stale snapshot never produces a wrong total.
-    const { effectiveSowPhases, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
     const validIds = effectiveSowPhases.map(p => p.id);
     const safeSelectedIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
+    // If the client sends an empty list (or only stale IDs), fall back to the
+    // effective selection computed by deriveEffectiveSowData, which already
+    // defaults to all live phases when the intersection is empty.  This
+    // prevents a client from zeroing out their order total by sending [].
+    const finalSelectedIds = safeSelectedIds.length > 0 ? safeSelectedIds : effectiveSelectedPhaseIds;
     const newTotal = effectiveSowPhases
-      .filter(p => safeSelectedIds.includes(p.id))
+      .filter(p => finalSelectedIds.includes(p.id))
       .reduce((sum, p) => sum + p.price, 0);
 
     await db.update(quickWinPresentationsTable)
-      .set({ selectedPhaseIds: safeSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
+      .set({ selectedPhaseIds: finalSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ totalPrice: newTotal, selectedPhaseIds: safeSelectedIds, sowVersion });
+    res.json({ totalPrice: newTotal, selectedPhaseIds: finalSelectedIds, sowVersion });
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });

@@ -282,6 +282,8 @@ mock.module("../lib/sse-broadcast.ts", {
   namedExports: {
     broadcastKanbanChange: () => {},
     registerSSEClient: () => {},
+    registerPresentationSSEClient: () => {},
+    broadcastPresentationScopeChange: () => {},
   },
 });
 
