@@ -1585,3 +1585,17 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
 
 export type InsertQuickWinPresentation = typeof quickWinPresentationsTable.$inferInsert;
 export type QuickWinPresentation = typeof quickWinPresentationsTable.$inferSelect;
+
+// ── Presentation document dwell-time analytics ────────────────────────────────
+export const presentationDocViewsTable = pgTable("presentation_doc_views", {
+  id: serial("id").primaryKey(),
+  presentationId: integer("presentation_id").notNull().references(() => quickWinPresentationsTable.id, { onDelete: "cascade" }),
+  documentId: integer("document_id").references(() => insightsGeneratedDocumentsTable.id, { onDelete: "set null" }),
+  documentTitle: text("document_title"),
+  viewedAt: timestamp("viewed_at").notNull().defaultNow(),
+  dwellSeconds: integer("dwell_seconds"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertPresentationDocView = typeof presentationDocViewsTable.$inferInsert;
+export type PresentationDocView = typeof presentationDocViewsTable.$inferSelect;

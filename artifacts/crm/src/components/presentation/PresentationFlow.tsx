@@ -141,6 +141,9 @@ export default function PresentationFlow({
   const [data, setData] = useState<PresentationData>(initialData);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Dwell-time tracking: record when the client entered the current doc step
+  const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
+
   const computeInitialStep = () => {
     if (!startAtPayment) return 0;
     const steps = buildSteps(initialData.documents, readOnly);
@@ -219,6 +222,24 @@ export default function PresentationFlow({
     return fetch(url, opts);
   }, [user, fetchWithAuth]);
 
+  // Flush dwell time for the doc step that was just left
+  const flushDocDwell = useCallback((leavingStepIndex: number) => {
+    const entry = docStepStartRef.current;
+    if (!entry || entry.stepIndex !== leavingStepIndex) return;
+    docStepStartRef.current = null;
+    const dwellSeconds = Math.max(0, Math.round((Date.now() - entry.startMs) / 1000));
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    void fetchFn(`/api/portal/presentations/${presentationId}/doc-views${tokenParam}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        documentId: entry.docId,
+        documentTitle: entry.docTitle,
+        dwellSeconds,
+      }),
+    }).catch(() => { /* fire-and-forget */ });
+  }, [fetchFn, presentationId, shareToken]);
+
   const handleTogglePhase = async (phaseId: string) => {
     if (readOnly || !user) return;
     const newIds = selectedPhaseIds.includes(phaseId)
@@ -286,13 +307,32 @@ export default function PresentationFlow({
     step?.kind === "doc" || step?.kind === "contract" || step?.kind === "sow";
 
   const applyStepChange = useCallback((nextIndex: number) => {
+    // Flush dwell time for the step we're leaving if it was a doc step
+    flushDocDwell(stepIndex);
     const nextStep = steps[nextIndex];
     const ready = !isAsyncStep(nextStep);
     stepReadyRef.current = ready;
     setStepReady(ready);
     setLoadingTimedOut(false);
     setStepIndex(nextIndex);
-  }, [steps]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [steps, stepIndex, flushDocDwell]);
+
+  // Track when we enter a doc step — record start time
+  useEffect(() => {
+    if (currentStep?.kind === "doc") {
+      const doc = sortedDocs[currentStep.index];
+      docStepStartRef.current = {
+        stepIndex,
+        docId: doc?.id ?? null,
+        docTitle: doc?.title ?? `Document ${currentStep.index + 1}`,
+        startMs: Date.now(),
+      };
+    } else {
+      docStepStartRef.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex]);
 
   const goNext = () => {
     if (readOnly && currentStep?.kind === "sow") {
@@ -316,6 +356,27 @@ export default function PresentationFlow({
       setSidebarOpen(false);
     }
   };
+
+  // Flush on unmount (e.g. user closes via browser back / ESC) for the current doc step
+  useEffect(() => {
+    return () => {
+      const entry = docStepStartRef.current;
+      if (!entry) return;
+      const dwellSeconds = Math.max(0, Math.round((Date.now() - entry.startMs) / 1000));
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      // Use fetch directly (fetchFn may be stale at unmount time)
+      fetch(`/api/portal/presentations/${presentationId}/doc-views${tokenParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          documentId: entry.docId,
+          documentTitle: entry.docTitle,
+          dwellSeconds,
+        }),
+      }).catch(() => { /* fire-and-forget */ });
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;

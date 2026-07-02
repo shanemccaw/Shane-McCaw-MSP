@@ -1187,6 +1187,13 @@ export default function ProjectDetailPage() {
   const [automationFiring, setAutomationFiring] = useState(false);
   const [sendingPresentation, setSendingPresentation] = useState(false);
   const [presentationShareUrl, setPresentationShareUrl] = useState<string | null>(null);
+  const [docAnalytics, setDocAnalytics] = useState<{
+    presentationId: number | null;
+    presentationStatus: string | null;
+    presentationCreatedAt: string | null;
+    views: Array<{ documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>;
+  } | null>(null);
+  const [docAnalyticsLoading, setDocAnalyticsLoading] = useState(false);
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
   const [generateArtifactsError, setGenerateArtifactsError] = useState<string | null>(null);
   const [regeneratingArtifact, setRegeneratingArtifact] = useState<string | null>(null);
@@ -1535,6 +1542,25 @@ export default function ProjectDetailPage() {
     }
   };
 
+  const loadDocAnalytics = async () => {
+    if (!projectId) return;
+    setDocAnalyticsLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/engagements/${projectId}/presentation-analytics`);
+      if (res.ok) {
+        const data = await res.json() as {
+          presentationId: number | null;
+          presentationStatus: string | null;
+          presentationCreatedAt: string | null;
+          views: Array<{ documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>;
+        };
+        setDocAnalytics(data);
+      }
+    } catch { /* silently ignore */ } finally {
+      setDocAnalyticsLoading(false);
+    }
+  };
+
   const handleSendPresentation = async () => {
     if (!projectId) return;
     setSendingPresentation(true);
@@ -1545,6 +1571,7 @@ export default function ProjectDetailPage() {
         setPresentationShareUrl(data.shareUrl);
         await navigator.clipboard.writeText(data.shareUrl).catch(() => undefined);
         toast({ title: "Presentation link copied!", description: "Shareable link is now on your clipboard." });
+        void loadDocAnalytics();
       } else {
         toast({ title: "Failed to generate link", description: data.error ?? "Could not generate presentation link.", variant: "destructive" });
       }
@@ -1709,6 +1736,9 @@ export default function ProjectDetailPage() {
   }, [tasks]);
 
   useEffect(() => { void reloadAll(); }, [reloadAll]);
+
+  // Load presentation analytics when project loads
+  useEffect(() => { void loadDocAnalytics(); }, [projectId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Kanban real-time SSE subscription ─────────────────────────────────────
   const reloadAllRef = useRef(reloadAll);
@@ -2234,6 +2264,101 @@ export default function ProjectDetailPage() {
               </button>
             )}
           </div>
+        </section>
+      )}
+
+      {/* ── Presentation Doc Analytics ─────────────────────────────────── */}
+      {project?.clientUserId != null && (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-[#E6EDF3]">Presentation Analytics</h2>
+            <button
+              onClick={() => void loadDocAnalytics()}
+              disabled={docAnalyticsLoading}
+              className="flex items-center gap-1 text-[11px] text-[#8B949E] hover:text-[#E6EDF3] transition-colors disabled:opacity-50"
+            >
+              <svg className={`w-3 h-3 ${docAnalyticsLoading ? "animate-spin" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Refresh
+            </button>
+          </div>
+
+          {docAnalyticsLoading && !docAnalytics && (
+            <div className="bg-[#161B22] border border-border rounded-xl p-6 flex items-center justify-center">
+              <div className="w-4 h-4 border border-[#0078D4]/40 border-t-[#0078D4] rounded-full animate-spin" />
+              <span className="ml-2 text-xs text-[#8B949E]">Loading…</span>
+            </div>
+          )}
+
+          {!docAnalyticsLoading && docAnalytics && docAnalytics.presentationId === null && (
+            <div className="bg-[#161B22] border border-border rounded-xl p-5 text-center">
+              <p className="text-xs text-[#8B949E]">No presentation sent yet. Click <strong className="text-[#E6EDF3]">Send Presentation</strong> to generate a shareable link and start tracking engagement.</p>
+            </div>
+          )}
+
+          {docAnalytics && docAnalytics.presentationId !== null && (
+            <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-border flex items-center gap-3 flex-wrap">
+                <span className="text-[11px] text-[#8B949E]">Presentation #{docAnalytics.presentationId}</span>
+                {docAnalytics.presentationStatus && (
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    docAnalytics.presentationStatus === "paid"
+                      ? "bg-green-500/15 text-green-400"
+                      : docAnalytics.presentationStatus === "signed"
+                      ? "bg-blue-500/15 text-blue-400"
+                      : "bg-white/10 text-[#8B949E]"
+                  }`}>{docAnalytics.presentationStatus.toUpperCase()}</span>
+                )}
+                {docAnalytics.views.length > 0 && (
+                  <span className="text-[11px] text-[#8B949E]">
+                    Total read time: <strong className="text-[#E6EDF3]">
+                      {(() => {
+                        const total = docAnalytics.views.reduce((s, v) => s + v.totalSeconds, 0);
+                        return total >= 60 ? `${Math.round(total / 60)}m ${total % 60}s` : `${total}s`;
+                      })()}
+                    </strong>
+                  </span>
+                )}
+              </div>
+
+              {docAnalytics.views.length === 0 ? (
+                <div className="px-4 py-5 text-center">
+                  <p className="text-xs text-[#8B949E]">No document views recorded yet. The client hasn't opened the presentation, or tracking data will appear here as they browse.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-border">
+                  {docAnalytics.views.map((v, i) => {
+                    const maxSeconds = docAnalytics.views[0]?.totalSeconds ?? 1;
+                    const pct = Math.round((v.totalSeconds / Math.max(maxSeconds, 1)) * 100);
+                    const mins = Math.floor(v.totalSeconds / 60);
+                    const secs = v.totalSeconds % 60;
+                    const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+                    return (
+                      <div key={i} className="px-4 py-3 flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-full bg-[#0A2540] flex items-center justify-center flex-shrink-0">
+                          <span className="text-[9px] font-bold text-[#0078D4]">{i + 1}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-[#E6EDF3] truncate">{v.documentTitle}</p>
+                          <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-[#0078D4] transition-all"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className={`text-xs font-bold ${v.totalSeconds >= 120 ? "text-green-400" : v.totalSeconds >= 30 ? "text-[#E6EDF3]" : "text-[#8B949E]"}`}>{timeStr}</p>
+                          {v.visits > 1 && <p className="text-[10px] text-[#8B949E]">{v.visits}× viewed</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 

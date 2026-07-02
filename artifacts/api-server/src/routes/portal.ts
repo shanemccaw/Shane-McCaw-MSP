@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -9482,6 +9482,68 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
   }
 });
 
+// GET /admin/engagements/:id/presentation-analytics — doc dwell-time analytics for project's latest presentation
+router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const projectId = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+    const [pres] = await db.select({
+      id: quickWinPresentationsTable.id,
+      status: quickWinPresentationsTable.status,
+      createdAt: quickWinPresentationsTable.createdAt,
+    })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId))
+      .orderBy(desc(quickWinPresentationsTable.createdAt))
+      .limit(1);
+
+    if (!pres) {
+      res.json({ presentationId: null, views: [], rawViews: [] });
+      return;
+    }
+
+    const rawViews = await db.select({
+      id: presentationDocViewsTable.id,
+      documentId: presentationDocViewsTable.documentId,
+      documentTitle: presentationDocViewsTable.documentTitle,
+      viewedAt: presentationDocViewsTable.viewedAt,
+      dwellSeconds: presentationDocViewsTable.dwellSeconds,
+    })
+      .from(presentationDocViewsTable)
+      .where(eq(presentationDocViewsTable.presentationId, pres.id))
+      .orderBy(asc(presentationDocViewsTable.viewedAt));
+
+    const byDoc = new Map<string, { documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>();
+    for (const v of rawViews) {
+      const key = v.documentTitle ?? `doc-${v.documentId ?? "unknown"}`;
+      const existing = byDoc.get(key);
+      if (existing) {
+        existing.totalSeconds += v.dwellSeconds ?? 0;
+        existing.visits += 1;
+      } else {
+        byDoc.set(key, {
+          documentId: v.documentId,
+          documentTitle: v.documentTitle ?? key,
+          totalSeconds: v.dwellSeconds ?? 0,
+          visits: 1,
+        });
+      }
+    }
+
+    res.json({
+      presentationId: pres.id,
+      presentationStatus: pres.status,
+      presentationCreatedAt: pres.createdAt,
+      views: Array.from(byDoc.values()).sort((a, b) => b.totalSeconds - a.totalSeconds),
+      rawViews,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to fetch presentation analytics");
+    res.status(500).json({ error: "Failed to fetch presentation analytics" });
+  }
+});
+
 // POST /admin/engagements/:id/send-presentation — generate shareable URL for a project
 router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -9589,6 +9651,111 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
   } catch (err) {
     logger.error({ err }, "portal: failed to generate presentation share URL");
     res.status(500).json({ error: "Failed to generate shareable link" });
+  }
+});
+
+// POST /portal/presentations/:id/doc-views — record dwell time for a doc step
+router.post("/portal/presentations/:id/doc-views", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const { documentId, documentTitle, dwellSeconds } = req.body as {
+      documentId?: number;
+      documentTitle?: string;
+      dwellSeconds?: number;
+    };
+
+    if (typeof dwellSeconds !== "number" || dwellSeconds < 0) {
+      res.status(400).json({ error: "dwellSeconds must be a non-negative number" });
+      return;
+    }
+
+    // Verify presentation exists and is accessible (owner or share token)
+    const token = String(req.query.token ?? "");
+    const [pres] = await db.select({
+      id: quickWinPresentationsTable.id,
+      clientUserId: quickWinPresentationsTable.clientUserId,
+      shareToken: quickWinPresentationsTable.shareToken,
+    }).from(quickWinPresentationsTable).where(eq(quickWinPresentationsTable.id, id)).limit(1);
+
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const hasValidToken = token && pres.shareToken && token === pres.shareToken;
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+
+    if (!isOwner && !hasValidToken) {
+      res.status(403).json({ error: "Forbidden" });
+      return;
+    }
+
+    await db.insert(presentationDocViewsTable).values({
+      presentationId: id,
+      documentId: documentId ?? null,
+      documentTitle: documentTitle ?? null,
+      dwellSeconds: Math.round(dwellSeconds),
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to record doc view");
+    res.status(500).json({ error: "Failed to record doc view" });
+  }
+});
+
+// GET /admin/presentations/:id/doc-views — admin analytics: dwell time per document
+router.get("/admin/presentations/:id/doc-views", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const views = await db.select({
+      id: presentationDocViewsTable.id,
+      documentId: presentationDocViewsTable.documentId,
+      documentTitle: presentationDocViewsTable.documentTitle,
+      viewedAt: presentationDocViewsTable.viewedAt,
+      dwellSeconds: presentationDocViewsTable.dwellSeconds,
+    })
+      .from(presentationDocViewsTable)
+      .where(eq(presentationDocViewsTable.presentationId, id))
+      .orderBy(asc(presentationDocViewsTable.viewedAt));
+
+    // Aggregate: sum dwell time per document, count visits
+    const byDoc = new Map<string, { documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>();
+    for (const v of views) {
+      const key = v.documentTitle ?? `doc-${v.documentId ?? "unknown"}`;
+      const existing = byDoc.get(key);
+      if (existing) {
+        existing.totalSeconds += v.dwellSeconds ?? 0;
+        existing.visits += 1;
+      } else {
+        byDoc.set(key, {
+          documentId: v.documentId,
+          documentTitle: v.documentTitle ?? key,
+          totalSeconds: v.dwellSeconds ?? 0,
+          visits: 1,
+        });
+      }
+    }
+
+    res.json({
+      presentationId: id,
+      views: Array.from(byDoc.values()).sort((a, b) => b.totalSeconds - a.totalSeconds),
+      rawViews: views,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to fetch doc views");
+    res.status(500).json({ error: "Failed to fetch doc views" });
   }
 });
 
