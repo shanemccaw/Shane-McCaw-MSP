@@ -9468,11 +9468,63 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
         .where(eq(workflowStepsTable.projectId, projectId))
         .orderBy(asc(workflowStepsTable.order));
 
-      const baseTotal = 5000;
-      const pricePerPhase = steps.length > 0 ? Math.round(baseTotal / steps.length) : baseTotal;
-      const sowPhases = steps.length > 0
-        ? steps.map(s => ({ id: String(s.id), title: s.title, description: s.description ?? "", price: pricePerPhase, selected: true }))
-        : [{ id: "default", title: "Full Engagement", description: "", price: baseTotal, selected: true }];
+      // Look for SOW pricing lines stored when a SOW was generated for this project
+      const [sowDoc] = await db.select({
+        sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
+        sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+          isNotNull(insightsGeneratedDocumentsTable.sowTotalPrice),
+        ))
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+        .limit(1);
+
+      // If no project-scoped SOW, try customer-scoped
+      const [customerSowDoc] = !sowDoc
+        ? await db.select({
+            sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
+            sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+          })
+            .from(insightsGeneratedDocumentsTable)
+            .where(and(
+              eq(insightsGeneratedDocumentsTable.customerId, project.clientUserId),
+              inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+              isNotNull(insightsGeneratedDocumentsTable.sowTotalPrice),
+            ))
+            .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+            .limit(1)
+        : [null];
+
+      const activeSowDoc = sowDoc ?? customerSowDoc;
+
+      // Price: SOW total > fallback $5k
+      const baseTotal = activeSowDoc?.sowTotalPrice
+        ? parseFloat(String(activeSowDoc.sowTotalPrice))
+        : 5000;
+
+      // Build phases: SOW pricing lines > workflow steps evenly split > single default phase
+      type StoredLine = { title: string; scope: string; priceUsd: number; notes: string };
+      const storedLines = (activeSowDoc?.sowPricingLines ?? []) as StoredLine[];
+
+      let sowPhases: Array<{ id: string; title: string; description: string; price: number; selected: boolean }>;
+
+      if (storedLines.length > 0) {
+        sowPhases = storedLines.map((l, i) => ({
+          id: `sow-${i}`,
+          title: l.title,
+          description: l.scope || l.notes || "",
+          price: l.priceUsd,
+          selected: true,
+        }));
+      } else if (steps.length > 0) {
+        const pricePerPhase = Math.round(baseTotal / steps.length);
+        sowPhases = steps.map(s => ({ id: String(s.id), title: s.title, description: s.description ?? "", price: pricePerPhase, selected: true }));
+      } else {
+        sowPhases = [{ id: "default", title: "Full Engagement", description: "Complete Microsoft 365 consulting engagement", price: baseTotal, selected: true }];
+      }
 
       const shareToken = randomUUID();
       const [inserted] = await db.insert(quickWinPresentationsTable).values({
@@ -9482,7 +9534,7 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
         documentsIncluded: docs.map(d => d.id),
         sowPhases,
         selectedPhaseIds: sowPhases.map(p => p.id),
-        totalPrice: String(baseTotal),
+        totalPrice: String(storedLines.length > 0 ? sowPhases.reduce((s, p) => s + p.price, 0) : baseTotal),
         status: "draft",
       }).returning({ id: quickWinPresentationsTable.id, shareToken: quickWinPresentationsTable.shareToken });
       pres = inserted;
