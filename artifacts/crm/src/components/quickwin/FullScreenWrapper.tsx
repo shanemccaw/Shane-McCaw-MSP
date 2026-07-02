@@ -552,17 +552,19 @@ export default function FullScreenWrapper() {
       {/* 3D Torus Knot Background Aura */}
       <AnimatedBackground />
 
-      {/* Close button */}
-      <button
-        onClick={() => dispatch({ type: "EXIT" })}
-        className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
-        style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
-        aria-label="Close"
-      >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* Close button — hidden while viewing active project tasks */}
+      {!isProjectView && (
+        <button
+          onClick={() => dispatch({ type: "EXIT" })}
+          className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
+          style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
+          aria-label="Close"
+        >
+          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
 
       {/* ── Project Tasks View ── */}
       {isProjectView && (
@@ -573,12 +575,19 @@ export default function FullScreenWrapper() {
                 <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
                 <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
               </div>
-              <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-                Ready
-              </span>
+              {backlogTasks.length === 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && completedKanbanTasks.length > 0 ? (
+                <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  Ready
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-[#0078D4] flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                  In Progress…
+                </span>
+              )}
             </div>
             <div className="px-6 py-5">
               <ProjectTasksLayer />

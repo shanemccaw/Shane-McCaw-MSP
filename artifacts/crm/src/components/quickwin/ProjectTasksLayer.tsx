@@ -281,6 +281,8 @@ export default function ProjectTasksLayer() {
   const inProgressCount = tasks.filter(t => t.column === "in_progress").length;
   const waitingCount = tasks.filter(t => t.column === "waiting_on_customer").length;
   const completedCount = tasks.filter(t => t.column === "completed").length;
+  const allDone = tasks.length > 0 && inProgressCount === 0 && waitingCount === 0 &&
+    tasks.filter(t => t.column === "backlog").length === 0;
 
   return (
     <div className="flex flex-col gap-4">
@@ -333,26 +335,28 @@ export default function ProjectTasksLayer() {
         ))}
       </div>
 
-      {/* CTAs */}
-      <div className="flex gap-3 pt-1">
-        <button
-          onClick={() => dispatch({ type: "OPEN_PROJECT" })}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20"
-          style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-        >
-          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-          </svg>
-          Open Project
-        </button>
-        <button
-          onClick={() => dispatch({ type: "EXIT" })}
-          className="flex-1 px-4 py-2.5 rounded-xl border border-border text-[#0A2540] font-bold text-sm hover:bg-[#F7F9FC] active:scale-[0.98]"
-          style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-        >
-          Close
-        </button>
-      </div>
+      {/* CTAs — only shown once every task is completed */}
+      {allDone && (
+        <div className="flex gap-3 pt-1">
+          <button
+            onClick={() => dispatch({ type: "OPEN_PROJECT" })}
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20"
+            style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Open Project
+          </button>
+          <button
+            onClick={() => dispatch({ type: "EXIT" })}
+            className="flex-1 px-4 py-2.5 rounded-xl border border-border text-[#0A2540] font-bold text-sm hover:bg-[#F7F9FC] active:scale-[0.98]"
+            style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+          >
+            Close
+          </button>
+        </div>
+      )}
     </div>
   );
 }
