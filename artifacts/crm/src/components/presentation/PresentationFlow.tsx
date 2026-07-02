@@ -5,6 +5,7 @@ import SowSelectorPanel from "./SowSelectorPanel";
 import ContractSignPanel from "./ContractSignPanel";
 import PaymentOptionsPanel from "./PaymentOptionsPanel";
 import AnimatedBackground from "../quickwin/AnimatedBackground";
+import { computeOverviewStats } from "@/lib/doc-stat-extractors";
 
 interface PresentationDoc {
   id: number;
@@ -217,53 +218,12 @@ export default function PresentationFlow({
   const selectedPhases = phasesWithSelection.filter(p => p.selected);
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0) || data.totalPrice;
 
-  // Aggregate stats for the Overview teaser cards — scans all doc HTML for real numbers
-  const overviewStats = useMemo(() => {
-    let worstScore: number | null = null;
-    let criticalMentions = 0;
-    let wastedLicenses: number | null = null;
-    let annualWaste: string | null = null;
-    let hasZeroDlp = false;
-
-    for (const doc of data.documents) {
-      const text = doc.htmlContent
-        .replace(/<style[\s\S]*?<\/style>/gi, " ")
-        .replace(/<script[\s\S]*?<\/script>/gi, " ")
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ");
-
-      // Security scores (X/100)
-      const scores = [...text.matchAll(/\b(\d{1,3})\s*\/\s*100\b/g)]
-        .map(m => parseInt(m[1]))
-        .filter(n => !isNaN(n) && n >= 0 && n <= 100);
-      if (scores.length) {
-        const min = Math.min(...scores);
-        if (worstScore === null || min < worstScore) worstScore = min;
-      }
-
-      // Critical keyword count
-      criticalMentions += [...text.matchAll(/\bCRITICAL\b/gi)].length;
-
-      // Wasted / unused licenses
-      const wastedM = text.match(/\b(\d+)\s+unused\s+licens|\b(\d+)\s+(?:unassigned|wasted)\s+(?:licens|seats?)/i);
-      if (wastedM) {
-        const n = parseInt(wastedM[1] ?? wastedM[2]);
-        if (!isNaN(n) && (wastedLicenses === null || n > wastedLicenses)) wastedLicenses = n;
-      }
-
-      // Annual license waste in dollars
-      const costM = text.match(/\$\s*(\d[\d,]+)\s*(?:per year|\/year|annual|wasted)/i)
-        ?? text.match(/annual[^.]{0,20}waste[^.]{0,20}\$\s*(\d[\d,]+)/i);
-      if (costM && annualWaste === null) annualWaste = `$${costM[1]}`;
-
-      // Exposure risk — zero DLP policies
-      if (/0\s+dlp\s+polic|zero\s+dlp|no\s+dlp\s+polic|dlp\s+polic.*not\s+configured/i.test(text)) {
-        hasZeroDlp = true;
-      }
-    }
-
-    return { worstScore, criticalMentions, wastedLicenses, annualWaste, hasZeroDlp };
-  }, [data.documents]);
+  // Aggregate stats for the Overview teaser cards — uses the same per-family
+  // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
+  const overviewStats = useMemo(
+    () => computeOverviewStats(data.documents),
+    [data.documents]
+  );
 
   const fetchFn = useCallback((url: string, opts?: RequestInit) => {
     if (user) return fetchWithAuth(url, opts);
