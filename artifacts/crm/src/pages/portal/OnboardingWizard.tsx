@@ -486,7 +486,11 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   // gate the UI on its success. Calling it multiple times is idempotent since
   // the endpoint only sets quickWinCompletedAt if not already set.
   const savePartialResult = useCallback(() => {
-    void fetchWithAuth("/api/portal/onboarding/quick-win-complete", { method: "POST" }).catch(() => {
+    void fetchWithAuth("/api/portal/onboarding/quick-win-complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ failed: true }),
+    }).catch(() => {
       // Silently ignore — the user is already stuck; best effort only.
     });
   }, [fetchWithAuth]);

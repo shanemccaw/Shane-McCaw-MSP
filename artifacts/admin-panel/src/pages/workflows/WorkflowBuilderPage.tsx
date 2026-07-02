@@ -48,6 +48,7 @@ const KNOWN_EVENTS: Array<{
   { name: "payment.received",         description: "A Stripe payment was successfully processed",                            payloadFields: [{ key: "amount", label: "Amount in pence/cents" }, { key: "currency", label: "Currency code (e.g. gbp)" }, { key: "productName", label: "Product purchased" }] },
   { name: "contract.signed",          description: "A client signed their engagement contract",                              payloadFields: [{ key: "projectId", label: "Project ID" }, { key: "clientId", label: "Client ID" }, { key: "signedAt", label: "ISO timestamp" }] },
   { name: "m365.health_check_complete", description: "An M365 health check script finished running",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "score", label: "Overall health score" }, { key: "status", label: "Job completion status" }] },
+  { name: "m365.diagnostic_failed",    description: "A Quick Win diagnostic run failed mid-way (Azure credentials absent or network error)", payloadFields: [{ key: "clientId", label: "Client user ID" }, { key: "failed", label: "Always true for this event" }, { key: "completedAt", label: "ISO timestamp of failure" }] },
   { name: "onboarding.complete",      description: "A client completed the onboarding questionnaire",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "projectId", label: "Linked project ID" }] },
 ];
 

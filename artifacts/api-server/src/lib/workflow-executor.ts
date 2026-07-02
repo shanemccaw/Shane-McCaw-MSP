@@ -664,6 +664,50 @@ export async function fireWorkflowForDefinition(
   }
 }
 
+// ── Event dispatch ───────────────────────────────────────────────────────────
+// Finds all enabled event-type triggers whose config.eventName matches the given
+// name and fires a workflow run for each one.
+
+export async function fireWorkflowsForEvent(
+  eventName: string,
+  payload: Record<string, unknown> = {},
+): Promise<number[]> {
+  try {
+    const allEventTriggers = await db
+      .select()
+      .from(wfTriggersTable)
+      .where(and(eq(wfTriggersTable.type, "event"), eq(wfTriggersTable.enabled, true)));
+
+    const matching = allEventTriggers.filter(
+      t => (t.config as Record<string, unknown>).eventName === eventName,
+    );
+
+    const runIds: number[] = [];
+    await Promise.all(
+      matching.map(async t => {
+        const runId = await fireWorkflowForDefinition(
+          t.definitionId,
+          "event",
+          `event:${eventName}:trigger:${t.id}`,
+          { ...payload, eventName },
+        );
+        if (runId != null) runIds.push(runId);
+      }),
+    );
+
+    if (matching.length > 0) {
+      logger.info(
+        { eventName, triggered: runIds.length, total: matching.length },
+        "wf-executor: event dispatched",
+      );
+    }
+    return runIds;
+  } catch (err) {
+    logger.warn({ err, eventName }, "wf-executor: fireWorkflowsForEvent failed (non-fatal)");
+    return [];
+  }
+}
+
 // ── Full cron "next run" computation ─────────────────────────────────────────
 // 5-field cron: minute hour dom month dow
 // Supports *, n, */step, a-b ranges, and a,b,c lists.

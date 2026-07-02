@@ -20,6 +20,7 @@ import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
@@ -1263,11 +1264,19 @@ router.post("/portal/onboarding/complete", requireAuth, async (req: Request, res
 // ─── Quick Win diagnostic completed — mark results as ready ──────────────────
 router.post("/portal/onboarding/quick-win-complete", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
+  const { failed } = (req.body ?? {}) as { failed?: boolean };
   const now = new Date();
 
   await db.update(usersTable)
     .set({ quickWinCompletedAt: now })
     .where(eq(usersTable.id, userId));
+
+  const eventName = failed ? "m365.diagnostic_failed" : "m365.health_check_complete";
+  void fireWorkflowsForEvent(eventName, {
+    clientId: userId,
+    failed: failed ?? false,
+    completedAt: now.toISOString(),
+  });
 
   res.json({ completedAt: now.toISOString() });
 });
