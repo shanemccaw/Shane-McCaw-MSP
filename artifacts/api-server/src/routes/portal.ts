@@ -1522,6 +1522,32 @@ router.post("/portal/projects/:id/signoff", requireAuth, async (req: Request, re
   res.json(updated);
 });
 
+router.patch("/portal/projects/:id/timing", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+  const { elapsedSeconds } = req.body as { elapsedSeconds?: unknown };
+  if (typeof elapsedSeconds !== "number" || !Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
+    res.status(400).json({ error: "elapsedSeconds must be a non-negative number" }); return;
+  }
+
+  const isAdmin = req.user!.role === "admin";
+  const [project] = await db.select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(isAdmin
+      ? eq(projectsTable.id, id)
+      : and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  await db.update(projectsTable)
+    .set({ quickWinElapsedSeconds: Math.round(elapsedSeconds) })
+    .where(eq(projectsTable.id, id));
+
+  req.log.info({ projectId: id, elapsedSeconds: Math.round(elapsedSeconds) }, "quick-win elapsed time recorded");
+  res.json({ ok: true, elapsedSeconds: Math.round(elapsedSeconds) });
+});
+
 router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
   const id = parseInt(String(req.params.id ?? ""), 10);

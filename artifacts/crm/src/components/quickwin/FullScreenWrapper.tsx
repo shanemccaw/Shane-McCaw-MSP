@@ -228,6 +228,42 @@ export default function FullScreenWrapper() {
     };
   }, [mode]);
 
+  // ── Elapsed time timer ────────────────────────────────────────────────────
+  const timerStartRef = useRef<number | null>(null);
+  const timingSavedRef = useRef(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  // Start/stop the clock based on mode
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") {
+      timerStartRef.current = null;
+      timingSavedRef.current = false;
+      setElapsedSeconds(0);
+      return undefined;
+    }
+    if (timerStartRef.current === null) timerStartRef.current = Date.now();
+    const interval = setInterval(() => {
+      if (timerStartRef.current !== null)
+        setElapsedSeconds(Math.floor((Date.now() - timerStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [mode]);
+
+  // Save elapsed time to DB once when all tasks are done
+  const allTasksDoneForSave = kanbanTasks.length > 0 && kanbanTasks.every(t => t.column === "completed");
+  useEffect(() => {
+    if (!allTasksDoneForSave || !kanbanProjectId || timingSavedRef.current) return;
+    timingSavedRef.current = true;
+    const secs = timerStartRef.current
+      ? Math.floor((Date.now() - timerStartRef.current) / 1000)
+      : elapsedSeconds;
+    void fetchWithAuth(`/api/portal/projects/${kanbanProjectId}/timing`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ elapsedSeconds: secs }),
+    }).catch(() => { /* non-fatal */ });
+  }, [allTasksDoneForSave, kanbanProjectId, elapsedSeconds, fetchWithAuth]);
+
   // ── Waiting-task mutation (mark as done) ────────────────────────────────────
   const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
   const markDoneMutation = useMutation({
@@ -627,6 +663,9 @@ export default function FullScreenWrapper() {
                 <div>
                   <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
                   <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
+                  <p className="text-[10px] font-mono text-white/35 mt-0.5">
+                    ⏱ {String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}
+                  </p>
                 </div>
                 {backlogTasks.length === 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && completedKanbanTasks.length > 0 ? (
                   <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
