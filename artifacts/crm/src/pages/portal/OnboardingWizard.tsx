@@ -80,7 +80,7 @@ function CopyButton({ text }: { text: string }) {
 
 // ── Step: App Registration ────────────────────────────────────────────────────
 
-function StepAppRegistration({ onSaveAndContinue, onSkip }: { onSaveAndContinue: (tenantId: string, clientId: string, secret: string) => Promise<void>; onSkip: () => void }) {
+function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenantId: string, clientId: string, secret: string) => Promise<void> }) {
   const [tenantId, setTenantId] = useState("");
   const [azureClientId, setAzureClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -283,14 +283,7 @@ function StepAppRegistration({ onSaveAndContinue, onSkip }: { onSaveAndContinue:
       </div>
 
       {/* Bottom controls */}
-      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-8 py-4 flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={onSkip}
-          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Skip for now
-        </button>
+      <div className="flex-shrink-0 border-t border-gray-100 bg-white px-8 py-4 flex items-center justify-end gap-4">
         <button
           type="submit"
           disabled={saving}
@@ -309,11 +302,9 @@ function StepAppRegistration({ onSaveAndContinue, onSkip }: { onSaveAndContinue:
 
 function StepQuickWin({
   onComplete,
-  onSkip,
   onSavePartial,
 }: {
   onComplete: () => void;
-  onSkip: () => void;
   onSavePartial: () => void;
 }) {
   const { state, dispatch } = useQuickWinMode();
@@ -698,15 +689,6 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
     setStepsDrawerOpen(false);
   }, [currentStep]);
 
-  async function handleSkip() {
-    if (mode === "update") {
-      navigate("/portal/automation-setup");
-    } else {
-      // Skip Azure credentials — go to the Quick Win step
-      setCurrentStep("quick-win");
-    }
-  }
-
   function handleGoToDashboard() {
     navigate("/portal");
   }
@@ -748,7 +730,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
               <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5 [@media(max-height:700px)]:mb-1">Welcome aboard</p>
               <h2 className="text-lg font-bold text-white leading-tight [@media(max-height:700px)]:text-base">Let's set up your workspace</h2>
               <p className="text-xs text-white/40 mt-2 leading-relaxed [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
-                This takes about 5 minutes. You can skip any step and come back later.
+                This takes about 5 minutes. Complete each step to get your results.
               </p>
               {/* Update credentials link — visible when credentials exist and we're not already on app-reg */}
               {hasCredentials && currentStep !== "app-reg" && (
@@ -973,13 +955,11 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
           {currentStep === "app-reg" && (
             <StepAppRegistration
               onSaveAndContinue={handleAppRegSaveAndContinue}
-              onSkip={handleSkip}
             />
           )}
           {currentStep === "quick-win" && (
             <StepQuickWin
               onComplete={completeWizard}
-              onSkip={completeWizard}
               onSavePartial={savePartialResult}
             />
           )}
