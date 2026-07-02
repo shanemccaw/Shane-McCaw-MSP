@@ -1735,12 +1735,23 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   useEffect(() => {
     if (!currentVersion?.graph) return;
     const g = currentVersion.graph;
-    setNodes((g.nodes as Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>).map(n => ({
+    const loadedNodes = (g.nodes as Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>).map(n => ({
       id: n.id,
       type: "wfNode",
       position: n.position,
       data: { ...n.data, nodeType: n.data.nodeType ?? n.type },
-    })));
+    }));
+
+    // Sync the ID counter so newly added nodes never collide with existing ones.
+    // Parse every "node-{N}" ID and set the counter to max(current, N).
+    let maxId = nodeIdCounter.current;
+    for (const n of loadedNodes) {
+      const m = /^node-(\d+)$/.exec(n.id);
+      if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+    }
+    nodeIdCounter.current = maxId;
+
+    setNodes(loadedNodes);
     setEdges((g.edges as Array<{ id: string; source: string; target: string; sourceHandle?: string }>).map(e => ({
       id: e.id,
       source: e.source,
