@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   ComposedChart, Area, ReferenceLine,
+  BarChart, Bar, Cell,
 } from "recharts";
 
 type Preset = "today" | "7d" | "30d" | "90d";
@@ -23,6 +24,8 @@ interface TopCta { page: string; label: string; clicks: number; pageViews: numbe
 
 interface ForecastRow { period: string; forecast: number; lowerBound: number; upperBound: number }
 interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; generatedAt: string | null }
+
+interface CardClickRow { cardName: string; firstClicks: number; pct: number }
 
 type SortDir = "asc" | "desc";
 
@@ -127,7 +130,11 @@ export default function AnalyticsPage() {
   const [topCtasSort, setTopCtasSort] = useState<{ col: string; dir: SortDir }>({ col: "Clicks", dir: "desc" });
 
   const [live, setLive] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"analytics" | "forecasting">("analytics");
+  const [activeTab, setActiveTab] = useState<"analytics" | "forecasting" | "engagement">("analytics");
+
+  const [cardClicks, setCardClicks] = useState<CardClickRow[] | null>(null);
+  const [cardClicksLoading, setCardClicksLoading] = useState(true);
+  const [cardClicksError, setCardClicksError] = useState<string | null>(null);
 
   function buildQs(extra?: Record<string, string>): string {
     const params = new URLSearchParams(extra ?? {});
@@ -145,6 +152,7 @@ export default function AnalyticsPage() {
     setSeriesLoading(true); setTopPagesLoading(true);
     setTopEventsLoading(true); setTopReferrersLoading(true);
     setTopLinksLoading(true); setTopCtasLoading(true);
+    setCardClicksLoading(true); setCardClicksError(null);
 
     function qs(): string {
       const params = new URLSearchParams();
@@ -181,6 +189,10 @@ export default function AnalyticsPage() {
       fetchWithAuth(`/api/admin/analytics/top-ctas?${qs()}`)
         .then(async res => { const d = await res.json(); setTopCtas(Array.isArray(d) ? d as TopCta[] : []); setTopCtasLoading(false); })
         .catch(() => { setTopCtas([]); setTopCtasLoading(false); }),
+
+      fetchWithAuth(`/api/admin/analytics/card-clicks?${qs()}`)
+        .then(async res => { const d = await res.json(); if (Array.isArray(d)) { setCardClicks(d as CardClickRow[]); } else { setCardClicksError("Could not load card click data"); } setCardClicksLoading(false); })
+        .catch(() => { setCardClicksError("Could not load card click data"); setCardClicksLoading(false); }),
     ]);
   }, [fetchWithAuth]);
 
@@ -329,17 +341,21 @@ export default function AnalyticsPage() {
 
       {/* Tab Bar */}
       <div className="flex items-center border-b border-[#30363D] -mt-2 mb-2">
-        {(["analytics", "forecasting"] as const).map(tab => (
+        {([
+          { id: "analytics", label: "Site Analytics" },
+          { id: "engagement", label: "Portal Engagement" },
+          { id: "forecasting", label: "Revenue Forecasting" },
+        ] as const).map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 text-xs font-semibold capitalize transition-colors border-b-2 -mb-px ${
-              activeTab === tab
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-2 text-xs font-semibold transition-colors border-b-2 -mb-px ${
+              activeTab === tab.id
                 ? "border-[#0078D4] text-[#58A6FF]"
                 : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
             }`}
           >
-            {tab === "forecasting" ? "Revenue Forecasting" : "Site Analytics"}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -688,6 +704,134 @@ export default function AnalyticsPage() {
           </>
         )}
       </section>
+      )}
+
+      {/* ── Portal Engagement Tab ── */}
+      {activeTab === "engagement" && (
+      <div className="space-y-6">
+        <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+            <div>
+              <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest">Overview Card Engagement</h2>
+              <p className="text-[10px] text-[#7D8590] mt-0.5">
+                Which overview card did each client click <em>first</em> — aggregated across all Quick Win presentations.
+              </p>
+            </div>
+          </div>
+
+          {cardClicksLoading ? (
+            <div className="space-y-3 mt-5">
+              {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 bg-[#1C2128] rounded-lg animate-pulse" />)}
+            </div>
+          ) : cardClicksError ? (
+            <SectionError message={cardClicksError} />
+          ) : !cardClicks || cardClicks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <div className="w-12 h-12 rounded-xl bg-[#0078D4]/15 flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-[#58A6FF]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-[#E6EDF3]">No card-click data yet</p>
+              <p className="text-xs text-[#7D8590] mt-1 max-w-[280px]">
+                First-click events will appear here once clients interact with the Quick Win overview cards.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Summary KPI strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 mb-6">
+                {cardClicks.map((row, i) => {
+                  const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#10B981"];
+                  const color = COLORS[i % COLORS.length];
+                  return (
+                    <div key={row.cardName} className="bg-[#1C2128] border border-[#30363D] rounded-xl p-4 flex flex-col gap-1">
+                      <p className="text-2xl font-bold text-[#E6EDF3]">{row.pct}%</p>
+                      <p className="text-xs font-semibold truncate" style={{ color }}>{row.cardName}</p>
+                      <p className="text-[10px] text-[#7D8590]">{row.firstClicks} first {row.firstClicks === 1 ? "click" : "clicks"}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Horizontal bar chart */}
+              <div className="mb-2">
+                <h3 className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-3">First-Click Distribution</h3>
+                <ResponsiveContainer width="100%" height={Math.max(120, cardClicks.length * 48)}>
+                  <BarChart
+                    data={cardClicks}
+                    layout="vertical"
+                    margin={{ top: 0, right: 60, left: 0, bottom: 0 }}
+                  >
+                    <XAxis type="number" hide domain={[0, 100]} />
+                    <YAxis
+                      type="category"
+                      dataKey="cardName"
+                      tick={{ fontSize: 11, fill: "#C9D1D9" }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={110}
+                    />
+                    <RechartsTooltip
+                      contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
+                      formatter={(v: number, _name: string, props: { payload?: CardClickRow }) => [
+                        `${v}% (${props.payload?.firstClicks ?? 0} first ${(props.payload?.firstClicks ?? 0) === 1 ? "click" : "clicks"})`,
+                        "First Click",
+                      ]}
+                    />
+                    <Bar dataKey="pct" radius={[0, 4, 4, 0]} label={{ position: "right", fontSize: 11, fill: "#7D8590", formatter: (v: number) => `${v}%` }}>
+                      {cardClicks.map((_row, i) => {
+                        const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#10B981"];
+                        return <Cell key={i} fill={COLORS[i % COLORS.length]} />;
+                      })}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Table breakdown */}
+              <div className="mt-4 pt-4 border-t border-[#30363D]">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-[#30363D]">
+                      <th className="text-left py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Card</th>
+                      <th className="text-right py-2 pr-4 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">First Clicks</th>
+                      <th className="text-right py-2 font-semibold text-[#7D8590] uppercase tracking-widest text-[10px]">Share</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cardClicks.map((row, i) => {
+                      const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#10B981"];
+                      const color = COLORS[i % COLORS.length];
+                      return (
+                        <tr key={row.cardName} className="border-b border-[#30363D] hover:bg-[#1C2128] transition-colors">
+                          <td className="py-2.5 pr-4 font-medium text-[#E6EDF3] flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full inline-block shrink-0" style={{ backgroundColor: color }} />
+                            {row.cardName}
+                          </td>
+                          <td className="py-2.5 pr-4 text-right font-bold text-[#C9D1D9]">{row.firstClicks}</td>
+                          <td className="py-2.5 text-right">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${row.pct >= 40 ? "bg-[#0078D4]/15 text-[#58A6FF]" : "bg-[#30363D]/50 text-[#7D8590]"}`}>
+                              {row.pct}%
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-[#30363D]">
+                      <td className="pt-3 pr-4 text-[10px] font-bold text-[#7D8590] uppercase tracking-widest">Total</td>
+                      <td className="pt-3 pr-4 text-right font-bold text-[#E6EDF3]">{cardClicks.reduce((s, r) => s + r.firstClicks, 0)}</td>
+                      <td className="pt-3 text-right text-[10px] text-[#7D8590]">100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
       )}
 
       {activeTab === "analytics" && (

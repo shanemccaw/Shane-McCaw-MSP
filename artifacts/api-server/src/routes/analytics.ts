@@ -474,6 +474,45 @@ router.get("/admin/analytics/top-links", adminLimiter, requireAdmin, async (req,
   }
 });
 
+// ─── Admin: overview card first-click breakdown ───────────────────────────────
+// For each presentation that has at least one card_click event in the window,
+// pick the FIRST card clicked (by viewed_at ASC), then aggregate across all
+// presentations to produce a per-card count + percentage.
+router.get("/admin/analytics/card-clicks", adminLimiter, requireAdmin, async (req, res) => {
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
+  try {
+    const rows = await execRows<{ card_name: string; first_click_count: string }>(sql`
+      WITH first_clicks AS (
+        SELECT DISTINCT ON (presentation_id)
+          presentation_id,
+          card_name
+        FROM presentation_doc_views
+        WHERE event_type = 'card_click'
+          AND card_name IS NOT NULL
+          AND viewed_at >= ${since}
+          AND viewed_at <= ${until}
+        ORDER BY presentation_id, viewed_at ASC
+      )
+      SELECT
+        card_name,
+        count(*)::text AS first_click_count
+      FROM first_clicks
+      GROUP BY card_name
+      ORDER BY count(*) DESC
+    `);
+
+    const total = rows.reduce((s, r) => s + parseInt(r.first_click_count), 0);
+    return res.json(rows.map(r => ({
+      cardName: r.card_name,
+      firstClicks: parseInt(r.first_click_count),
+      pct: total > 0 ? Math.round((parseInt(r.first_click_count) / total) * 1000) / 10 : 0,
+    })));
+  } catch (err) {
+    req.log.warn({ err }, "analytics card-clicks failed");
+    return res.status(500).json({ error: "Failed" });
+  }
+});
+
 // ─── Admin: live visitors ─────────────────────────────────────────────────────
 router.get("/admin/analytics/live", adminLimiter, requireAdmin, async (req, res) => {
   try {
