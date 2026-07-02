@@ -27,6 +27,16 @@ const STEPS = [
       </svg>
     ),
   },
+  {
+    id: "review-results",
+    label: "Review Results",
+    sublabel: "M365 health check results",
+    icon: (
+      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
 ] as const;
 type StepId = (typeof STEPS)[number]["id"];
 
@@ -423,6 +433,149 @@ function StepComplete({ onGoToDashboard }: { onGoToDashboard: () => void }) {
   );
 }
 
+// ── Step: Review Results ──────────────────────────────────────────────────────
+
+function StepReviewResults({ onFinish }: { onFinish: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const [scorecard, setScorecard] = useState<{ hasData: boolean; latest?: Record<string, number> } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/m365-scorecard-history")
+      .then(r => r.ok ? (r.json() as Promise<{ hasData: boolean; latest?: Record<string, number> }>) : { hasData: false })
+      .then(data => setScorecard(data))
+      .catch(() => setScorecard({ hasData: false }))
+      .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const LABELS: Record<string, string> = {
+    security: "Security Posture",
+    compliance: "Compliance Coverage",
+    copilot: "Copilot Readiness",
+    governance: "Governance Maturity",
+    productivity: "Adoption Score",
+  };
+
+  const scores = scorecard?.latest ?? {};
+  const cats = Object.keys(LABELS).filter(k => scores[k] !== undefined);
+  const overall = cats.length > 0
+    ? Math.round(cats.reduce((a, k) => a + (scores[k] ?? 0), 0) / cats.length)
+    : 0;
+  const hasData = !!(scorecard?.hasData) && cats.length > 0;
+
+  function ringColor(s: number) {
+    if (s >= 70) return "#22c55e";
+    if (s >= 40) return "#f59e0b";
+    return "#ef4444";
+  }
+  function barColor(s: number) {
+    if (s >= 70) return "bg-green-500";
+    if (s >= 40) return "bg-amber-400";
+    return "bg-red-500";
+  }
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-full overflow-y-auto px-8 py-10">
+      <div className="max-w-lg mx-auto space-y-6">
+        {/* Header */}
+        <div>
+          <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-wider mb-1">Step 3 of 3</p>
+          <h2 className="text-2xl font-bold text-[#0A2540] leading-tight">
+            {hasData ? "Your M365 health check results" : "Diagnostic results"}
+          </h2>
+          <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+            {hasData
+              ? "Here's a summary of your Microsoft 365 environment health. Full details are available on the results page."
+              : "The diagnostic encountered an issue — Shane has been notified and will follow up with your results manually."}
+          </p>
+        </div>
+
+        {hasData ? (
+          <>
+            {/* Score ring */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 flex items-center gap-6">
+              <div className="flex-shrink-0">
+                <svg width="80" height="80" viewBox="0 0 80 80">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="#f1f5f9" strokeWidth="8" />
+                  <circle
+                    cx="40" cy="40" r="34"
+                    fill="none"
+                    stroke={ringColor(overall)}
+                    strokeWidth="8"
+                    strokeLinecap="round"
+                    strokeDasharray={`${2 * Math.PI * 34}`}
+                    strokeDashoffset={`${2 * Math.PI * 34 * (1 - overall / 100)}`}
+                    transform="rotate(-90 40 40)"
+                  />
+                  <text x="40" y="46" textAnchor="middle" fill="#0A2540" fontSize="20" fontWeight="700">{overall}</text>
+                </svg>
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-500">Overall M365 Score</p>
+                <p className="text-3xl font-extrabold text-[#0A2540]">{overall}<span className="text-lg font-normal text-gray-400">/100</span></p>
+                <p className="text-xs text-gray-400 mt-1">{overall >= 70 ? "Healthy" : overall >= 40 ? "Needs Work" : "Critical"}</p>
+              </div>
+            </div>
+
+            {/* Category bars */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 space-y-4">
+              <p className="text-sm font-semibold text-[#0A2540]">Category breakdown</p>
+              {cats.map(k => (
+                <div key={k}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-xs font-medium text-gray-600">{LABELS[k]}</span>
+                    <span className="text-xs font-bold text-[#0A2540]">{scores[k]}</span>
+                  </div>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-2 rounded-full transition-all duration-700 ${barColor(scores[k] ?? 0)}`}
+                      style={{ width: `${scores[k] ?? 0}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-amber-800 mb-1">Diagnostic didn't complete</p>
+              <p className="text-xs text-amber-700 leading-relaxed">
+                This can happen if Azure credentials aren't configured yet, or if there was a temporary network interruption. Shane will follow up with your results manually.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Finish / View results button */}
+        <button
+          onClick={onFinish}
+          className="w-full flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#005a9e] text-white text-sm font-semibold px-6 py-3 rounded-xl transition-colors"
+        >
+          {hasData ? "View full results" : "Finish setup"}
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
 const WIZARD_STEP_KEY = "onboarding-wizard-step";
@@ -441,7 +594,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   const [currentStep, setCurrentStep] = useState<StepId | "done">(() => {
     if (mode !== "onboarding") return "app-reg";
     const saved = sessionStorage.getItem(WIZARD_STEP_KEY);
-    if (saved === "quick-win") return "quick-win";
+    if (saved === "quick-win" || saved === "review-results") return saved as StepId;
     return "app-reg";
   });
 
@@ -506,16 +659,20 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       // Also mark the overall wizard complete
       await fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" });
     } catch {
-      // non-fatal — navigate to results regardless
+      // non-fatal — advance to review step regardless
     }
     if (mode === "update") {
       setCurrentStep("done");
     } else {
-      // In onboarding mode go directly to the results page
-      navigate("/portal/onboarding/results");
+      // In onboarding mode advance to the inline results review step
+      setCurrentStep("review-results");
     }
     setCompleting(false);
-  }, [fetchWithAuth, completing, mode, navigate]);
+  }, [fetchWithAuth, completing, mode]);
+
+  function handleFinish() {
+    navigate("/portal/onboarding/results");
+  }
 
   async function handleAppRegSaveAndContinue(tenantId: string, clientId: string, secret: string) {
     const res = await fetchWithAuth("/api/portal/app-registration", {
@@ -825,6 +982,9 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
               onSkip={completeWizard}
               onSavePartial={savePartialResult}
             />
+          )}
+          {currentStep === "review-results" && (
+            <StepReviewResults onFinish={handleFinish} />
           )}
           {currentStep === "done" && (
             <StepComplete onGoToDashboard={handleGoToDashboard} />
