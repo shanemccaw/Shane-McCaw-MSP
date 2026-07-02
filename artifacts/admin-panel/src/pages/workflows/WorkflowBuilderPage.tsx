@@ -1494,6 +1494,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
                   {runStatus?.durationMs != null && (
                     <span className="text-[10px] text-[#7D8590] font-mono">{fmtMs(runStatus.durationMs)}</span>
                   )}
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 uppercase tracking-wider" title="No real database reads or writes were performed">Dry Run</span>
                 </div>
 
                 <p className="text-[10px] text-[#7D8590]">

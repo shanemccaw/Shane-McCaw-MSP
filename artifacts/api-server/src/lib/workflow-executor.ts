@@ -117,12 +117,87 @@ function evalCondition(expression: string, payload: Record<string, unknown>): bo
   }
 }
 
+// ── Dry-run synthetic outputs ─────────────────────────────────────────────────
+// Returns a realistic-looking output for every DB-touching node type without
+// actually reading or writing the database.  Keys match real node outputs so
+// downstream condition expressions still evaluate correctly.
+
+function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Record<string, unknown> {
+  const p = payload;
+  const num = (key: string) => {
+    const v = interp(`{{${key}}}`, p);
+    const n = v ? parseInt(v, 10) : NaN;
+    return isNaN(n) ? 1 : n;
+  };
+  const str = (key: string, fallback: string) => interp(`{{${key}}}`, p) ?? String(p[key] ?? fallback);
+
+  switch (node.type) {
+    case "delay":
+      return { dryRun: true, mode: (node.data.mode ?? "fixed") as string, skipped: true };
+
+    case "action": {
+      const at = node.data.actionType as string | undefined;
+      if (at === "cancel_workflow")      return { dryRun: true, cancelled: false, note: "cancel skipped in dry run" };
+      if (at === "http_request")         return { dryRun: true, status: 200, ok: true };
+      if (at === "create_lead")          return { dryRun: true, leadId: 1, leadEmail: str("email", "test@example.com"), leadName: str("name", "Test Lead") };
+      if (at === "convert_to_opportunity") return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
+      if (at === "create_client")        return { dryRun: true, clientId: 1, clientEmail: str("email", "test@example.com") };
+      if (at === "create_project")       return { dryRun: true, projectId: 1, projectTitle: str("title", "Test Project") };
+      if (at === "execute_runbook" || at === "update_m365_profile")
+        return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
+      if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
+      return { dryRun: true, actionType: at ?? "none", note: "dry run — action skipped" };
+    }
+
+    case "score_lead":
+      return { dryRun: true, leadId: num("leadId"), score: 80, scoreLabel: "High", qualified: true };
+
+    case "assign_pipeline_stage":
+      return { dryRun: true, opportunityId: num("opportunityId"), stage: str("stage", "discovery") };
+
+    case "create_opportunity":
+      return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
+
+    case "parse_quiz_results":
+      return {
+        dryRun: true, quizLeadId: num("quizLeadId"), totalScore: 72, tier: "Intermediate",
+        recommendedService: "Microsoft 365 Assessment", leadName: "Test Lead",
+        leadEmail: "test@example.com", company: "Contoso Ltd", categoryScores: {},
+      };
+
+    case "generate_readiness_score":
+      return { dryRun: true, readinessScore: 72, readinessLabel: "Medium", recordId: null };
+
+    case "attach_quiz_insights":
+      return { dryRun: true, insightsAttached: true, documentId: 1 };
+
+    case "validate_m365_permissions":
+      return { dryRun: true, permissionsValid: true, missingCount: 0, jobId: "dry-run-job" };
+
+    case "update_intelligence_tables":
+      return { dryRun: true, updated: true, recordId: null, jobId: "dry-run-job" };
+
+    case "generate_diff_report":
+      return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
+
+    case "notify_major_changes":
+      return { dryRun: true, notified: false, skipped: true };
+
+    case "system_action":
+      return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
+
+    default:
+      return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
+  }
+}
+
 // ── Node execution ────────────────────────────────────────────────────────────
 
 async function executeNode(
   node: WfNode,
   payload: Record<string, unknown>,
   runId: number,
+  dryRun = false,
 ): Promise<{
   output: Record<string, unknown>;
   nextPayload: Record<string, unknown>;
@@ -136,8 +211,13 @@ async function executeNode(
   let nodeError = false;
   let conditionResult: boolean | undefined;
 
+  // Structural nodes always execute normally; everything else is stubbed in dry-run.
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error"]);
+
   try {
-    switch (node.type) {
+    if (dryRun && !STRUCTURAL_TYPES.has(node.type)) {
+      output = makeDryRunOutput(node, payload);
+    } else switch (node.type) {
       case "start":
         output = { started: true };
         break;
@@ -629,7 +709,7 @@ async function countRunningRuns(definitionId: number): Promise<number> {
 
 export async function executeWorkflowRun(
   runId: number,
-  opts: { inlineGraph?: WfGraph } = {},
+  opts: { inlineGraph?: WfGraph; dryRun?: boolean } = {},
 ): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
@@ -704,7 +784,7 @@ export async function executeWorkflowRun(
       // ── Execute ──
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId);
+      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId, opts.dryRun ?? false);
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));

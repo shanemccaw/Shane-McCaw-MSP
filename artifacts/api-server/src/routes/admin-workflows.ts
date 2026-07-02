@@ -477,7 +477,7 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
     };
 
     setImmediate(() => {
-      executeWorkflowRun(runId, { inlineGraph }).catch(err => {
+      executeWorkflowRun(runId, { inlineGraph, dryRun: true }).catch(err => {
         logger.warn({ err, runId }, "workflows: draft test-run execution failed (non-fatal)");
       });
     });
