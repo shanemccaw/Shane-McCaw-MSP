@@ -40,7 +40,9 @@ import {
   insightsAutomationsTable,
   notificationsTable,
   engagementProjectsTable,
+  quickWinPresentationsTable,
 } from "@workspace/db";
+import { broadcastPresentationScopeChange } from "../lib/sse-broadcast";
 import { eq, desc, and, sql, inArray, isNull, notInArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -68,6 +70,25 @@ import {
 } from "pdf-lib";
 
 const router = Router();
+
+// ── Helper: broadcast scope change to all presentations for a project ──────────
+// Called fire-and-forget after a SOW document is created or its pricing updated.
+// Finds all presentations for the project and notifies open SSE clients so the
+// client tab can show a "scope updated" banner and re-fetch the latest pricing.
+async function broadcastSowChangeForProject(projectId: number): Promise<void> {
+  try {
+    const presentations = await db
+      .select({ id: quickWinPresentationsTable.id })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId));
+    const ts = String(Date.now());
+    for (const p of presentations) {
+      broadcastPresentationScopeChange(p.id, ts);
+    }
+  } catch (err) {
+    logger.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
+  }
+}
 
 // ── Brand colours ─────────────────────────────────────────────────────────────
 
@@ -842,6 +863,13 @@ router.put("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
       void ensureOpportunityForSow(updated.customerId, updated.id);
     }
 
+    // If HTML content was updated on a SOW document, the pricing may have changed —
+    // notify any open client tabs so they can re-fetch and show the stale-scope banner.
+    if (body.data.htmlContent !== undefined && updated.projectId &&
+        (updated.docType === "sow" || updated.docType === "consolidated_sow")) {
+      void broadcastSowChangeForProject(updated.projectId);
+    }
+
     return res.json({ document: updated });
   } catch (err) {
     logger.error({ err }, "insights document update error");
@@ -1232,6 +1260,11 @@ INSTRUCTIONS:
         .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
         .returning();
 
+      // Notify any open client tabs for this project that the scope has changed
+      if (projectId) {
+        void broadcastSowChangeForProject(projectId);
+      }
+
       return res.json({ document: withPdf });
     }
     // ── End Consolidated SOW ─────────────────────────────────────────────────────
@@ -1327,6 +1360,11 @@ INSTRUCTIONS:
       .set({ pdfUrl })
       .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
       .returning();
+
+    // Notify any open client tabs for this project that the scope has changed
+    if (isSowType && projectId) {
+      void broadcastSowChangeForProject(projectId);
+    }
 
     return res.json({ document: withPdf });
   } catch (err) {

@@ -25,7 +25,7 @@ import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
-import { broadcastKanbanChange, registerSSEClient } from "../lib/sse-broadcast.ts";
+import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange } from "../lib/sse-broadcast.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -9251,6 +9251,12 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
 // ---------------------------------------------------------------------------
 type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean };
 
+// Compute a stable fingerprint for the current SOW pricing so clients can
+// detect when the scope has changed without comparing full phase arrays.
+function computeSowVersion(phases: SowPhaseObj[]): string {
+  return phases.map(p => `${p.id}:${p.price}`).join("|");
+}
+
 async function deriveEffectiveSowData(
   pres: {
     documentsIncluded: unknown;
@@ -9263,6 +9269,7 @@ async function deriveEffectiveSowData(
   effectiveSowPhases: SowPhaseObj[];
   effectiveSelectedPhaseIds: string[];
   effectiveTotalPrice: number;
+  sowVersion: string;
 }> {
   const docIds = (pres.documentsIncluded ?? []) as number[];
 
@@ -9306,7 +9313,7 @@ async function deriveEffectiveSowData(
       .filter(p => p.selected)
       .reduce((sum, p) => sum + p.price, 0);
 
-    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice };
+    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, sowVersion: computeSowVersion(effectiveSowPhases) };
   }
 
   // No live SOW pricing — fall back to creation-time snapshot
@@ -9317,6 +9324,7 @@ async function deriveEffectiveSowData(
     effectiveSowPhases: fallbackPhases,
     effectiveSelectedPhaseIds: fallbackSelected,
     effectiveTotalPrice: fallbackTotal,
+    sowVersion: computeSowVersion(fallbackPhases),
   };
 }
 
@@ -9371,7 +9379,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
 
     // Derive sowPhases from the live SOW document — uses shared helper so GET,
     // PATCH, and checkout all stay consistent.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice } =
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, sowVersion } =
       await deriveEffectiveSowData(pres);
 
     // Fetch project + client name + service id for template lookup
@@ -9443,6 +9451,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       sowPhases: effectiveSowPhases,
       selectedPhaseIds: effectiveSelectedPhaseIds,
       totalPrice: effectiveTotalPrice,
+      sowVersion,
       signatureData: pres.signatureData,
       signedAt: pres.signedAt,
       signerName: pres.signerName,
@@ -9473,7 +9482,7 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
 
     // Validate incoming IDs against the live SOW phase list and compute total
     // from live prices so a stale snapshot never produces a wrong total.
-    const { effectiveSowPhases } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const { effectiveSowPhases, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
     const validIds = effectiveSowPhases.map(p => p.id);
     const safeSelectedIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
     const newTotal = effectiveSowPhases
@@ -9484,11 +9493,57 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
       .set({ selectedPhaseIds: safeSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ totalPrice: newTotal, selectedPhaseIds: safeSelectedIds });
+    res.json({ totalPrice: newTotal, selectedPhaseIds: safeSelectedIds, sowVersion });
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });
   }
+});
+
+// GET /portal/presentations/:id/scope-events — SSE stream for scope/pricing changes
+// The client subscribes when the presentation page is open. When Shane regenerates
+// the SOW the server broadcasts a scope_changed event so the tab updates immediately.
+router.get("/portal/presentations/:id/scope-events", async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).end(); return; }
+
+  const token = String(req.query.token ?? "");
+  const authHeader = req.headers.authorization;
+  const jwtSecret = process.env.JWT_SECRET;
+  let authed = false;
+
+  if (authHeader && jwtSecret) {
+    const tok = authHeader.replace(/^Bearer\s+/i, "");
+    try {
+      jwt.verify(tok, jwtSecret);
+      authed = true;
+    } catch { /* invalid token */ }
+  }
+
+  if (!authed) {
+    // Allow valid share-token access too
+    try {
+      const [pres] = await db.select({ shareToken: quickWinPresentationsTable.shareToken })
+        .from(quickWinPresentationsTable).where(eq(quickWinPresentationsTable.id, id)).limit(1);
+      if (pres && token && pres.shareToken === token) authed = true;
+    } catch { /* db error */ }
+  }
+
+  if (!authed) { res.status(403).end(); return; }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(": connected\n\n");
+
+  const keepAlive = setInterval(() => {
+    try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25000);
+
+  registerPresentationSSEClient(id, res, () => clearInterval(keepAlive));
 });
 
 // POST /portal/presentations/:id/sign — record signature

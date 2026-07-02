@@ -21,3 +21,33 @@ export function broadcastKanbanChange(projectId: number, payload: { action: stri
     try { res.write(line); } catch { }
   }
 }
+
+// ── Presentation scope SSE ─────────────────────────────────────────────────
+// Keyed by presentation ID. Broadcasts whenever the SOW scope/pricing changes
+// so open client tabs can refresh immediately without waiting for a poll cycle.
+
+const presentationSSEClients = new Map<number, Set<Response>>();
+
+export function registerPresentationSSEClient(presentationId: number, res: Response, onClose: () => void): void {
+  if (!presentationSSEClients.has(presentationId)) presentationSSEClients.set(presentationId, new Set());
+  const clients = presentationSSEClients.get(presentationId)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) presentationSSEClients.delete(presentationId);
+    onClose();
+  });
+}
+
+export function broadcastPresentationScopeChange(presentationId: number, sowVersion: string): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "scope_changed", sowVersion })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function getPresentationSSEClientCount(presentationId: number): number {
+  return presentationSSEClients.get(presentationId)?.size ?? 0;
+}

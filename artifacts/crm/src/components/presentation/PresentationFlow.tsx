@@ -33,6 +33,7 @@ interface PresentationData {
   sowPhases: SowPhase[];
   selectedPhaseIds: string[];
   totalPrice: number;
+  sowVersion?: string;
   signatureData: string | null;
   signedAt: string | null;
   signerName: string | null;
@@ -142,6 +143,12 @@ export default function PresentationFlow({
   const [data, setData] = useState<PresentationData>(initialData);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Track the SOW version that was in effect when the page first loaded.
+  // If a poll or SSE push reveals a different version the stale-scope banner appears.
+  const initialSowVersionRef = useRef<string | undefined>(initialData.sowVersion);
+  const [scopeStale, setScopeStale] = useState(false);
+  const [refreshingScope, setRefreshingScope] = useState(false);
+
   // Dwell-time tracking: record when the client entered the current doc step
   const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
 
@@ -243,6 +250,71 @@ export default function PresentationFlow({
     if (user) return fetchWithAuth(url, opts);
     return fetch(url, opts);
   }, [user, fetchWithAuth]);
+
+  // ── Stale-scope detection: SSE + 30-second polling fallback ──────────────
+  // The page may stay open while Shane regenerates the SOW on the admin side.
+  // When that happens, we need to alert the client before they sign/pay.
+
+  const checkScopeVersion = useCallback(async () => {
+    if (!initialSowVersionRef.current) return;
+    try {
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
+      if (!res.ok) return;
+      const fresh = await res.json() as { sowVersion?: string };
+      if (fresh.sowVersion && fresh.sowVersion !== initialSowVersionRef.current) {
+        setScopeStale(true);
+      }
+    } catch { /* non-fatal — ignore network errors */ }
+  }, [fetchFn, presentationId, shareToken]);
+
+  // SSE subscription — receives immediate push when Shane regenerates the SOW
+  useEffect(() => {
+    if (readOnly && !shareToken) return;
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    const url = `/api/portal/presentations/${presentationId}/scope-events${tokenParam}`;
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource(url);
+      es.onmessage = (event: MessageEvent) => {
+        try {
+          const payload = JSON.parse(event.data as string) as { type?: string; sowVersion?: string };
+          if (payload.type === "scope_changed") {
+            void checkScopeVersion();
+          }
+        } catch { /* ignore malformed events */ }
+      };
+      es.onerror = () => {
+        es?.close();
+        es = null;
+      };
+    } catch { /* EventSource not available in this context */ }
+    return () => { es?.close(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentationId, shareToken]);
+
+  // Polling fallback — checks every 30 seconds regardless of SSE
+  useEffect(() => {
+    const interval = setInterval(() => { void checkScopeVersion(); }, 30_000);
+    return () => clearInterval(interval);
+  }, [checkScopeVersion]);
+
+  // Reload the presentation data after the admin updates the SOW
+  const handleRefreshScope = useCallback(async () => {
+    setRefreshingScope(true);
+    try {
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
+      if (res.ok) {
+        const fresh = await res.json() as PresentationData;
+        initialSowVersionRef.current = fresh.sowVersion;
+        setData(fresh);
+        setScopeStale(false);
+      }
+    } catch { /* non-fatal */ } finally {
+      setRefreshingScope(false);
+    }
+  }, [fetchFn, presentationId, shareToken]);
 
   // Flush dwell time for the doc step that was just left
   const flushDocDwell = useCallback((leavingStepIndex: number) => {
@@ -593,6 +665,44 @@ export default function PresentationFlow({
 
       {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0">
+
+        {/* Stale-scope banner — shown when the SOW has been updated since the page loaded */}
+        {scopeStale && (
+          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="flex-1 text-sm text-amber-800 font-medium">
+              The scope of work has been updated. Please review the latest pricing before signing or paying.
+            </p>
+            <button
+              onClick={() => { void handleRefreshScope(); }}
+              disabled={refreshingScope}
+              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-60 transition-colors"
+            >
+              {refreshingScope ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              {refreshingScope ? "Refreshing…" : "Refresh scope"}
+            </button>
+            <button
+              onClick={() => setScopeStale(false)}
+              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
 
         {/* Mobile top bar */}
         <div className="sm:hidden flex-shrink-0 bg-[#0A2540] border-b border-white/10 px-4 py-3 flex items-center justify-between gap-3">
