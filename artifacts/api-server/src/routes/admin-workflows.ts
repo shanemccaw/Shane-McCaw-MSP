@@ -41,7 +41,7 @@ import {
 import { eq, and, desc, asc, count, sql, gte, lte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { fireWorkflowForDefinition, computeNextCronRun } from "../lib/workflow-executor";
+import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun } from "../lib/workflow-executor";
 import crypto from "crypto";
 
 const router = Router();
@@ -434,7 +434,10 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
   }
 });
 
-// ── Draft test run (runs live canvas, no publish required) ───────────────────
+// ── Draft test run (runs live canvas graph inline, no publish required) ──────
+// Uses the latest existing version row only for the FK constraint — it does NOT
+// create a new version record. The submitted nodes/edges are passed directly to
+// the executor as an inlineGraph override, so version history stays clean.
 
 router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
@@ -448,30 +451,38 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
   if (!body.success) return sendError(res, 400, body.error.message);
 
   try {
-    const [latest] = await db
-      .select({ vn: wfVersionsTable.versionNumber })
+    // Use the latest existing version (any status) for the FK — do NOT insert a new one
+    const [latestVersion] = await db
+      .select({ id: wfVersionsTable.id })
       .from(wfVersionsTable)
       .where(eq(wfVersionsTable.definitionId, defId))
       .orderBy(desc(wfVersionsTable.versionNumber))
       .limit(1);
 
-    const nextVn = (latest?.vn ?? 0) + 1;
-    const [version] = await db.insert(wfVersionsTable).values({
+    if (!latestVersion) return sendError(res, 422, "No version found — save the workflow canvas first");
+
+    const [inserted] = await db.insert(wfRunsTable).values({
+      versionId: latestVersion.id,
       definitionId: defId,
-      versionNumber: nextVn,
-      label: `Draft test — ${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
-      status: "draft",
-      graph: { nodes: body.data.nodes as WfGraph["nodes"], edges: body.data.edges as WfGraph["edges"] },
-    }).returning();
+      triggerType: "manual",
+      triggerRef: "draft_test",
+      payload: body.data.triggerPayload ?? {},
+      status: "pending",
+    }).returning({ id: wfRunsTable.id });
 
-    const runId = await fireWorkflowForDefinition(
-      defId, "manual", "draft_test",
-      body.data.triggerPayload ?? {},
-      { versionId: version.id },
-    );
+    const runId = inserted.id;
+    const inlineGraph: WfGraph = {
+      nodes: body.data.nodes as WfGraph["nodes"],
+      edges: body.data.edges as WfGraph["edges"],
+    };
 
-    if (!runId) return sendError(res, 422, "Concurrency limit reached or version resolution failed");
-    req.log.info({ defId, runId, versionId: version.id }, "workflows: draft test-run started");
+    setImmediate(() => {
+      executeWorkflowRun(runId, { inlineGraph }).catch(err => {
+        logger.warn({ err, runId }, "workflows: draft test-run execution failed (non-fatal)");
+      });
+    });
+
+    req.log.info({ defId, runId, nodeCount: inlineGraph.nodes.length }, "workflows: draft test-run started");
     res.status(202).json({ runId });
   } catch (err) {
     req.log.error({ err }, "workflows: draft test-run failed");

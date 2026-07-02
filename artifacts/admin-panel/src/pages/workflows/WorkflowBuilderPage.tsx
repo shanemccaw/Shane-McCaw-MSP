@@ -1297,6 +1297,23 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [wide, setWide] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    requestAnimationFrame(() => setMounted(true));
+  }, []);
+
+  function handleClose() {
+    setClosing(true);
+    setTimeout(onClose, 250);
+  }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") handleClose(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: triggers = [], isLoading: loadingTriggers } = useQuery<WfTrigger[]>({
     queryKey: ["wf-triggers-testrun", defId],
@@ -1363,6 +1380,13 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
     errorMessage: string | null;
     durationMs: number | null;
     branchPath: string[];
+    nodeOutputs: Array<{
+      id: number;
+      nodeId: string;
+      status: string;
+      durationMs: number | null;
+      errorMessage: string | null;
+    }>;
   }>({
     queryKey: ["wf-test-run-status", runId],
     queryFn: async () => {
@@ -1385,12 +1409,12 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
     return `${(ms / 1000).toFixed(1)}s`;
   }
 
+  const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
+
   return (
-    <>
-      <div className="fixed inset-0 z-30 bg-black/40" onClick={onClose} />
-
-      <div className={`fixed right-0 top-0 h-full z-40 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transition-[width] duration-300 ${wide ? "w-[760px]" : "w-[480px]"}`}>
-
+    <div
+      className={`fixed right-0 top-0 h-full z-40 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transform transition-all duration-250 ease-in-out ${slideClass} ${wide ? "w-[760px]" : "w-[480px]"}`}
+    >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -1415,7 +1439,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
                 </svg>
               )}
             </button>
-            <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
+            <button onClick={handleClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
           </div>
         </div>
 
@@ -1453,13 +1477,37 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
                   Run <span className="font-mono text-[#484F58]">#{runId}</span> · Draft canvas
                 </p>
 
-                {runStatus?.branchPath && runStatus.branchPath.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {runStatus.branchPath.map((nodeId, i) => (
-                      <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-mono bg-[#0D1117] border border-[#30363D] text-[#7D8590]">
-                        {nodeId}
-                      </span>
-                    ))}
+                {/* ── Per-node status badges ── */}
+                {runStatus?.nodeOutputs && runStatus.nodeOutputs.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Node results</p>
+                    <div className="space-y-1">
+                      {runStatus.nodeOutputs.map(no => (
+                        <div key={no.id} className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] text-[#7D8590] truncate">{no.nodeId}</span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {no.durationMs != null && (
+                              <span className="text-[9px] text-[#484F58] font-mono">{fmtMs(no.durationMs)}</span>
+                            )}
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                              no.status === "ok"      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
+                              no.status === "error"   ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                              no.status === "skipped" ? "bg-[#0D1117] text-[#484F58] border-[#30363D]" :
+                                                        "bg-blue-500/10 text-blue-300 border-blue-500/20"
+                            }`}>
+                              {no.status === "ok" ? "✓" : no.status === "error" ? "✗" : no.status === "skipped" ? "skip" : no.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {runStatus.nodeOutputs.some(no => no.errorMessage) && (
+                      <div className="mt-1 space-y-0.5">
+                        {runStatus.nodeOutputs.filter(no => no.errorMessage).map(no => (
+                          <p key={no.id} className="text-[9px] text-red-400 font-mono break-all">{no.nodeId}: {no.errorMessage}</p>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1565,7 +1613,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
         {/* Footer */}
         {runId === null && (
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
-            <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
               onClick={() => runMut.mutate()}
               disabled={!!jsonErr || runMut.isPending}
@@ -1577,8 +1625,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
             </button>
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 }
 

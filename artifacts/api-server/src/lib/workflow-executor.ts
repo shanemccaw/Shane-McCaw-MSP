@@ -616,7 +616,10 @@ async function countRunningRuns(definitionId: number): Promise<number> {
 // ── Main executor ─────────────────────────────────────────────────────────────
 // Edge-based BFS that correctly handles converging branches.
 
-export async function executeWorkflowRun(runId: number): Promise<void> {
+export async function executeWorkflowRun(
+  runId: number,
+  opts: { inlineGraph?: WfGraph } = {},
+): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
   if (!run) { logger.warn({ runId }, "wf-executor: run not found"); return; }
@@ -630,7 +633,8 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
 
   await db.update(wfRunsTable).set({ status: "running", startedAt: new Date() }).where(eq(wfRunsTable.id, runId));
 
-  const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
+  // opts.inlineGraph overrides the stored version graph (used by draft test runs)
+  const graph: WfGraph = opts.inlineGraph ?? ((version.graph as WfGraph) ?? { nodes: [], edges: [] });
   const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
 
   // Compute in-degrees
