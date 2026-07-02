@@ -50,6 +50,7 @@
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@types/react-signature-canvas": "^1.0.7",
+    "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
     "@workspace/offer-card": "workspace:*",
@@ -85,6 +86,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@simplewebauthn/browser": "^13.3.0",
     "canvas-confetti": "^1.9.4",
-    "react-signature-canvas": "1.1.0-alpha.2"
+    "react-signature-canvas": "1.1.0-alpha.2",
+    "three": "^0.185.0"
   }
 }
