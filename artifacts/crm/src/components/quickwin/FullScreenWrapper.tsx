@@ -8,7 +8,6 @@ import { CATEGORY_TO_SCORE_KEY } from "@/hooks/useQuickWinRealImpl";
 import AnimatedBackground from "./AnimatedBackground";
 import PhaseStepperBar from "./PhaseStepperBar";
 import HealthPanel from "./HealthPanel";
-import CompletedColumn from "./CompletedColumn";
 import QueueColumn from "./QueueColumn";
 import ProcessingHeroCard from "./ProcessingHeroCard";
 import ActionRequiredCard from "./ActionRequiredCard";
@@ -690,11 +689,8 @@ export default function FullScreenWrapper() {
               {/* Kanban 12-col grid */}
               <div className="w-full max-w-7xl grid grid-cols-12 gap-8 relative flex-1 mb-4">
 
-                {/* Left: Completed kanban tasks */}
-                <CompletedColumn completedSteps={completedKanbanTasks.map(t => t.title)} />
-
-                {/* Centre (col-span-7): Live kanban cards — horizontal scroll row */}
-                <div className="col-span-12 lg:col-span-7 relative flex flex-col justify-center">
+                {/* Centre (col-span-9): Live kanban cards — horizontal scroll row */}
+                <div className="col-span-12 lg:col-span-9 relative flex flex-col justify-center">
 
                   {/* Loading: no project tasks yet */}
                   {kanbanTasks.length === 0 && (
