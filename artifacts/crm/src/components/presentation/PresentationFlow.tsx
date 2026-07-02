@@ -221,12 +221,18 @@ export default function PresentationFlow({
   const overviewStats = useMemo(() => {
     let worstScore: number | null = null;
     let criticalMentions = 0;
+    let wastedLicenses: number | null = null;
+    let annualWaste: string | null = null;
+    let hasZeroDlp = false;
+
     for (const doc of data.documents) {
       const text = doc.htmlContent
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<[^>]+>/g, " ")
         .replace(/\s+/g, " ");
+
+      // Security scores (X/100)
       const scores = [...text.matchAll(/\b(\d{1,3})\s*\/\s*100\b/g)]
         .map(m => parseInt(m[1]))
         .filter(n => !isNaN(n) && n >= 0 && n <= 100);
@@ -234,9 +240,29 @@ export default function PresentationFlow({
         const min = Math.min(...scores);
         if (worstScore === null || min < worstScore) worstScore = min;
       }
+
+      // Critical keyword count
       criticalMentions += [...text.matchAll(/\bCRITICAL\b/gi)].length;
+
+      // Wasted / unused licenses
+      const wastedM = text.match(/\b(\d+)\s+unused\s+licens|\b(\d+)\s+(?:unassigned|wasted)\s+(?:licens|seats?)/i);
+      if (wastedM) {
+        const n = parseInt(wastedM[1] ?? wastedM[2]);
+        if (!isNaN(n) && (wastedLicenses === null || n > wastedLicenses)) wastedLicenses = n;
+      }
+
+      // Annual license waste in dollars
+      const costM = text.match(/\$\s*(\d[\d,]+)\s*(?:per year|\/year|annual|wasted)/i)
+        ?? text.match(/annual[^.]{0,20}waste[^.]{0,20}\$\s*(\d[\d,]+)/i);
+      if (costM && annualWaste === null) annualWaste = `$${costM[1]}`;
+
+      // Exposure risk — zero DLP policies
+      if (/0\s+dlp\s+polic|zero\s+dlp|no\s+dlp\s+polic|dlp\s+polic.*not\s+configured/i.test(text)) {
+        hasZeroDlp = true;
+      }
     }
-    return { worstScore, criticalMentions };
+
+    return { worstScore, criticalMentions, wastedLicenses, annualWaste, hasZeroDlp };
   }, [data.documents]);
 
   const fetchFn = useCallback((url: string, opts?: RequestInit) => {
@@ -386,6 +412,7 @@ export default function PresentationFlow({
     applyStepChange(idx);
   }, [steps.length, applyStepChange]);
 
+  const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
   const contractStepIndex = steps.findIndex(s => s.kind === "contract");
   const paymentStepIndex  = steps.findIndex(s => s.kind === "payment");
@@ -662,49 +689,69 @@ export default function PresentationFlow({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full text-left">
 
                       {/* 1 — Documents / findings */}
-                      <button
-                        onClick={() => jumpToStep(1)}
-                        className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
-                      >
-                        <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500 rounded-t-xl" />
-                        <div className="flex items-center gap-2 mb-3">
-                          <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
-                            <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
+                      {firstDocStepIndex >= 0 && (
+                        <button
+                          onClick={() => jumpToStep(firstDocStepIndex)}
+                          className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500 rounded-t-xl" />
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-red-500">Your Reports</span>
                           </div>
-                          <span className="text-xs font-bold uppercase tracking-widest text-red-500">Your Reports</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 mb-4 min-h-[3rem]">
-                          {overviewStats.criticalMentions > 0 && (
-                            <div>
-                              <p className="text-2xl font-extrabold text-[#0A2540]">{overviewStats.criticalMentions}</p>
-                              <p className="text-[11px] text-muted-foreground leading-tight">Critical issues found</p>
+                          {/* Stat grid — shows whichever of the four metrics were found */}
+                          {(overviewStats.criticalMentions > 0 || overviewStats.worstScore !== null || overviewStats.wastedLicenses !== null || overviewStats.annualWaste !== null || overviewStats.hasZeroDlp) ? (
+                            <div className="grid grid-cols-2 gap-3 mb-4">
+                              {overviewStats.criticalMentions > 0 && (
+                                <div>
+                                  <p className="text-2xl font-extrabold text-red-600">{overviewStats.criticalMentions}</p>
+                                  <p className="text-[11px] text-muted-foreground leading-tight">Critical issues found</p>
+                                </div>
+                              )}
+                              {overviewStats.worstScore !== null && (
+                                <div>
+                                  <p className={`text-2xl font-extrabold ${overviewStats.worstScore <= 20 ? "text-red-600" : overviewStats.worstScore <= 40 ? "text-amber-600" : "text-[#0078D4]"}`}>
+                                    {overviewStats.worstScore}/100
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground leading-tight">Lowest security score</p>
+                                </div>
+                              )}
+                              {(overviewStats.wastedLicenses !== null || overviewStats.annualWaste !== null) && (
+                                <div>
+                                  <p className="text-2xl font-extrabold text-amber-600">
+                                    {overviewStats.annualWaste ?? `${overviewStats.wastedLicenses}`}
+                                  </p>
+                                  <p className="text-[11px] text-muted-foreground leading-tight">
+                                    {overviewStats.annualWaste ? "Annual license waste" : "Unused licenses"}
+                                  </p>
+                                </div>
+                              )}
+                              {overviewStats.hasZeroDlp && (
+                                <div>
+                                  <p className="text-2xl font-extrabold text-red-600">ZERO</p>
+                                  <p className="text-[11px] text-muted-foreground leading-tight">DLP policies active</p>
+                                </div>
+                              )}
                             </div>
-                          )}
-                          {overviewStats.worstScore !== null && (
-                            <div>
-                              <p className={`text-2xl font-extrabold ${overviewStats.worstScore <= 20 ? "text-red-600" : overviewStats.worstScore <= 40 ? "text-amber-600" : "text-[#0078D4]"}`}>
-                                {overviewStats.worstScore}/100
-                              </p>
-                              <p className="text-[11px] text-muted-foreground leading-tight">Lowest security score</p>
-                            </div>
-                          )}
-                          {overviewStats.criticalMentions === 0 && overviewStats.worstScore === null && (
-                            <div className="col-span-2">
+                          ) : (
+                            <div className="mb-4 min-h-[3rem]">
                               <p className="text-sm font-bold text-[#0A2540]">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} ready</p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5">Click to review your findings</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">Your full assessment is waiting</p>
                             </div>
                           )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-muted-foreground">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} included</span>
-                          <span className="text-xs font-bold text-[#0078D4] group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
-                            Review findings
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                          </span>
-                        </div>
-                      </button>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-muted-foreground">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} included</span>
+                            <span className="text-xs font-bold text-[#0078D4] group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                              See your reports
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            </span>
+                          </div>
+                        </button>
+                      )}
 
                       {/* 2 — Scope & Investment */}
                       {sowStepIndex >= 0 && (
