@@ -15,7 +15,8 @@ import ActionRequiredCard from "./ActionRequiredCard";
 import QuickWinFooter from "./QuickWinFooter";
 import ProjectTasksLayer from "./ProjectTasksLayer";
 import ScoreRing from "@/components/ScoreRing";
-import { ManualScriptUploadCard, type ManualScriptRecord } from "@/components/ManualScriptUploadCard";
+import type { ManualScriptRecord } from "@/components/ManualScriptUploadCard";
+import DiagnosticScriptPanel from "./DiagnosticScriptPanel";
 import type { DownloadState } from "./ActionRequiredCard";
 import type { QuickWinStep } from "@/context/QuickWinModeContext";
 
@@ -193,6 +194,10 @@ export default function FullScreenWrapper() {
     staleTime: 0,
   });
   const pendingManualScripts = overlayManualScripts.filter(s => s.status === "awaiting_upload");
+  // Tracks whether the user has dismissed all manual-script cards for this session.
+  // Resets automatically when kanbanProjectId changes (new project = fresh prompts).
+  const [allScriptsDismissed, setAllScriptsDismissed] = useState(false);
+  useEffect(() => { setAllScriptsDismissed(false); }, [kanbanProjectId]);
 
   // ── Completed-task exit animation ───────────────────────────────────────────
   // We store the FULL task objects (not just IDs) so we can render ghost cards
@@ -768,28 +773,13 @@ export default function FullScreenWrapper() {
             </div>
           </div>
 
-          {/* ── Center panel: manual script card(s) between task list and branding ── */}
-          {pendingManualScripts.length > 0 && (
-            <div className="flex-1 flex items-center justify-center px-8 py-10 relative z-10 overflow-y-auto">
-              <div className="w-full max-w-lg space-y-4">
-                <div className="flex items-center gap-2.5 mb-1">
-                  <div className="w-6 h-6 rounded-full bg-amber-500 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-bold text-[#0A2540]">Action required — run the script below</p>
-                </div>
-                {pendingManualScripts.map(script => (
-                  <ManualScriptUploadCard
-                    key={script.runResultId}
-                    script={script}
-                    projectId={script.projectId}
-                    onCompleted={() => void refetchManualScripts()}
-                  />
-                ))}
-              </div>
-            </div>
+          {/* ── Center panel: manual script hero — shown between task list and branding ── */}
+          {pendingManualScripts.length > 0 && !allScriptsDismissed && (
+            <DiagnosticScriptPanel
+              scripts={pendingManualScripts}
+              onCompleted={() => void refetchManualScripts()}
+              onAllDismissed={() => setAllScriptsDismissed(true)}
+            />
           )}
 
           {/* Branding: absolutely centred on the full overlay */}
