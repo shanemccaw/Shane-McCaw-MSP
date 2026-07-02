@@ -1653,6 +1653,132 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   );
 }
 
+// ── AI Workflow Modal ─────────────────────────────────────────────────────────
+
+interface AiWorkflowResult {
+  nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
+  edges: Array<{ id: string; source: string; target: string; sourceHandle?: string | null }>;
+}
+
+function AiWorkflowModal({
+  defId,
+  onClose,
+  onGenerate,
+}: {
+  defId: number;
+  onClose: () => void;
+  onGenerate: (result: AiWorkflowResult) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [description, setDescription] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleGenerate() {
+    if (!description.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflows/ai-generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: description.trim() }),
+      });
+      const data = await res.json() as { nodes?: unknown; edges?: unknown; error?: string };
+      if (!res.ok) {
+        setError((data as { error?: string }).error ?? "AI generation failed");
+        return;
+      }
+      onGenerate(data as AiWorkflowResult);
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center flex-shrink-0">
+            <svg className="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3l14 9-14 9V3z" />
+            </svg>
+          </div>
+          <div className="min-w-0">
+            <h2 className="font-semibold text-[#E6EDF3]">Build with AI</h2>
+            <p className="text-xs text-[#7D8590]">Describe the workflow and AI will generate the canvas nodes and connections.</p>
+          </div>
+          <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Describe your workflow</label>
+          <textarea
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder="e.g. When a new lead submits the contact form, score them, create an opportunity if they qualify, then send a welcome email and assign a pipeline stage."
+            rows={5}
+            maxLength={2000}
+            disabled={loading}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none disabled:opacity-50"
+          />
+          <div className="flex justify-between">
+            <span className="text-[10px] text-[#484F58]">Be specific about triggers, conditions, and actions</span>
+            <span className="text-[10px] text-[#484F58]">{description.length}/2000</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-xs text-red-400">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end pt-1">
+          <button onClick={onClose} disabled={loading} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors disabled:opacity-50">
+            Cancel
+          </button>
+          <button
+            onClick={handleGenerate}
+            disabled={loading || !description.trim()}
+            className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            {loading ? (
+              <>
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+                Generating…
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate
+              </>
+            )}
+          </button>
+        </div>
+
+        <p className="text-[10px] text-[#484F58] border-t border-[#30363D] pt-3">
+          Existing canvas content will be replaced. Save first if you want to keep it. Uses Replit AI (Anthropic) — billed to your credits.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main builder ──────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilderPage({ defId, versionId }: { defId: number; versionId?: number }) {
@@ -1669,6 +1795,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [publishLabel, setPublishLabel] = useState("");
   const [showPublish, setShowPublish] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiToast, setAiToast] = useState<string | null>(null);
 
   // Node library state
   const [libSearch, setLibSearch] = useState("");
@@ -1903,6 +2031,34 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setSelectedNodeId(null);
   }
 
+  // Hydrate canvas from AI-generated graph
+  function handleAiGenerate(result: AiWorkflowResult) {
+    pushHistory();
+    const rfNodes = result.nodes.map(n => ({
+      id: n.id,
+      type: "wfNode" as const,
+      position: n.position,
+      data: { ...n.data, nodeType: n.data.nodeType ?? n.type },
+    }));
+    const rfEdges = result.edges.map(e => ({
+      ...e,
+      style: { stroke: "#30363D", strokeWidth: 2 },
+    }));
+    // Sync nodeIdCounter above the highest generated id
+    const maxId = result.nodes.reduce((max, n) => {
+      const num = parseInt(n.id.replace(/\D+/g, ""), 10);
+      return isNaN(num) ? max : Math.max(max, num);
+    }, 0);
+    if (maxId >= nodeIdCounter.current) nodeIdCounter.current = maxId + 1;
+    setNodes(rfNodes);
+    setEdges(rfEdges);
+    setShowAiModal(false);
+    setAiToast("Workflow generated — review and save when ready");
+    setTimeout(() => setAiToast(null), 5000);
+    // fitView after React has committed the new nodes
+    setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.15, duration: 400 }), 80);
+  }
+
   // Ctrl+Z / Cmd+Z undo
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1996,6 +2152,17 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
               Publish
             </button>
           )}
+
+          <button
+            onClick={() => setShowAiModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+            title="Describe a workflow and let AI build it on the canvas"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            Build with AI
+          </button>
 
           <button
             onClick={() => setShowTestRun(true)}
@@ -2335,6 +2502,25 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* AI workflow builder modal */}
+      {showAiModal && (
+        <AiWorkflowModal
+          defId={defId}
+          onClose={() => setShowAiModal(false)}
+          onGenerate={handleAiGenerate}
+        />
+      )}
+
+      {/* AI generation success toast */}
+      {aiToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-violet-600 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-xl pointer-events-none">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          {aiToast}
         </div>
       )}
     </div>

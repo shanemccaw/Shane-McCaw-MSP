@@ -683,4 +683,152 @@ router.post("/webhooks/workflow/:token", async (req: Request, res: Response) => 
   }
 });
 
+// ── AI Workflow Graph Generator ───────────────────────────────────────────────
+
+function extractJsonFromText(text: string): unknown {
+  const jsonTagPos = text.indexOf("```json");
+  if (jsonTagPos !== -1) {
+    const bodyStart = text.indexOf("\n", jsonTagPos) + 1;
+    const closingPos = text.lastIndexOf("```");
+    if (closingPos > bodyStart) {
+      try { return JSON.parse(text.slice(bodyStart, closingPos).trim()); } catch { /* fall through */ }
+    }
+  }
+  const anyOpen = text.indexOf("```");
+  if (anyOpen !== -1) {
+    const afterTag = text.indexOf("\n", anyOpen);
+    const closingPos = text.lastIndexOf("```");
+    if (afterTag !== -1 && closingPos > afterTag) {
+      try { return JSON.parse(text.slice(afterTag + 1, closingPos).trim()); } catch { /* fall through */ }
+    }
+  }
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)); } catch { /* fall through */ }
+  }
+  return null;
+}
+
+const AI_GRAPH_NODE_SCHEMA = z.object({
+  id: z.string(),
+  type: z.string(),
+  position: z.object({ x: z.number(), y: z.number() }),
+  data: z.record(z.unknown()),
+});
+
+const AI_GRAPH_EDGE_SCHEMA = z.object({
+  id: z.string(),
+  source: z.string(),
+  target: z.string(),
+  sourceHandle: z.string().nullable().optional(),
+});
+
+const AI_GRAPH_SCHEMA = z.object({
+  nodes: z.array(AI_GRAPH_NODE_SCHEMA).min(1),
+  edges: z.array(AI_GRAPH_EDGE_SCHEMA),
+});
+
+const WORKFLOW_CANVAS_SYSTEM_PROMPT = `You are a Microsoft 365 consulting workflow architect. Generate a React Flow workflow canvas graph.
+
+Respond with a JSON object ONLY — no preamble, no explanation, no markdown prose outside the JSON. Format:
+{
+  "nodes": [...],
+  "edges": [...]
+}
+
+## Node schema
+Each node must have:
+- "id": unique string like "node-1", "node-2", etc.
+- "type": one of the valid node types listed below
+- "position": {"x": number, "y": number} — lay nodes out top-to-bottom; start at x=400 y=80; each row adds 150px to y; sibling branches spread 300px apart in x
+- "data": object with "nodeType" (same as type) and "label" plus type-specific fields
+
+## Valid node types
+
+### Structural
+- "start" — data: {nodeType:"start", label:"Start"}
+- "end" — data: {nodeType:"end", label:"End"}
+- "condition" — data: {nodeType:"condition", label:"Check: ...", expression:"fieldName == 'value'"} — supports == != > < >= <= contains operators on payload field paths
+- "delay" — data: {nodeType:"delay", label:"Wait ...", mode:"fixed", duration:3600} (duration in seconds)
+- "error" — data: {nodeType:"error", label:"Error Handler"}
+
+### CRM
+- "score_lead" — data: {nodeType:"score_lead", label:"Score Lead", leadId:"{{leadId}}", threshold:"50"}
+- "assign_pipeline_stage" — data: {nodeType:"assign_pipeline_stage", label:"Assign Stage", opportunityId:"{{opportunityId}}", stage:"DiscoveryCall"}
+- "create_opportunity" — data: {nodeType:"create_opportunity", label:"Create Opportunity", leadId:"{{leadId}}", workflowType:"DiscoveryCall"}
+
+### Diagnostics / Quiz
+- "parse_quiz_results" — data: {nodeType:"parse_quiz_results", label:"Parse Quiz Results", quizLeadId:"{{quizLeadId}}"}
+- "generate_readiness_score" — data: {nodeType:"generate_readiness_score", label:"Readiness Score", clientId:"{{clientId}}"}
+- "attach_quiz_insights" — data: {nodeType:"attach_quiz_insights", label:"Attach Insights", clientId:"{{clientId}}"}
+
+### M365 Health
+- "validate_m365_permissions" — data: {nodeType:"validate_m365_permissions", label:"Validate Permissions", clientId:"{{clientId}}"}
+- "update_intelligence_tables" — data: {nodeType:"update_intelligence_tables", label:"Update Intel Tables", clientId:"{{clientId}}"}
+- "generate_diff_report" — data: {nodeType:"generate_diff_report", label:"Generate Diff Report", clientId:"{{clientId}}"}
+- "notify_major_changes" — data: {nodeType:"notify_major_changes", label:"Notify Changes", clientId:"{{clientId}}", changeThreshold:"15"}
+
+### Action (actionType controls behaviour)
+- "action" — data: {nodeType:"action", label:"...", actionType:"send_email"|"send_sms"|"http_request"|"create_lead"|"convert_to_opportunity"|"create_client"|"create_project"|"execute_runbook"|"update_m365_profile"|"generate_document"|"emit_event"}
+
+## Edge schema
+Each edge:
+- "id": unique string like "edge-1"
+- "source": source node id
+- "target": target node id
+- "sourceHandle": use "true" or "false" only when source is a condition node; omit for all other node types
+
+## Rules
+- Every graph must have exactly one "start" node and at least one "end" node
+- Condition nodes fork into "true" and "false" edge paths — both paths should eventually reach an "end" node
+- Use {{fieldName}} handlebars syntax for payload references in data strings
+- Keep graphs focused: 4–12 nodes is ideal; never exceed 20
+- Generate clean, readable layouts — nodes should not overlap`;
+
+router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = z.object({
+      description: z.string().min(1).max(2000),
+    }).safeParse(req.body);
+    if (!body.success) { sendError(res, 400, body.error.message); return; }
+
+    const { anthropic } = await import("@workspace/integrations-anthropic-ai");
+
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 8192,
+      system: WORKFLOW_CANVAS_SYSTEM_PROMPT,
+      messages: [{
+        role: "user",
+        content: `Generate a workflow graph for:\n\n${body.data.description}`,
+      }],
+    });
+
+    const block = msg.content.find(b => b.type === "text");
+    if (!block || block.type !== "text") { sendError(res, 500, "AI returned no text"); return; }
+
+    const parsed = extractJsonFromText(block.text);
+    if (!parsed) {
+      req.log.warn({ preview: block.text.slice(0, 300) }, "workflows/ai-generate: could not extract JSON");
+      sendError(res, 422, "AI response could not be parsed. Try rephrasing your description.");
+      return;
+    }
+
+    const validated = AI_GRAPH_SCHEMA.safeParse(parsed);
+    if (!validated.success) {
+      req.log.warn({ issues: validated.error.issues, preview: block.text.slice(0, 300) }, "workflows/ai-generate: schema validation failed");
+      sendError(res, 422, `AI generated an invalid graph: ${validated.error.issues[0]?.message ?? "schema mismatch"}`);
+      return;
+    }
+
+    req.log.info({ nodeCount: validated.data.nodes.length, edgeCount: validated.data.edges.length }, "workflows/ai-generate: success");
+    res.json(validated.data);
+  } catch (err) {
+    req.log.error({ err }, "workflows/ai-generate: failed");
+    sendError(res, 500, "AI generation failed — please try again");
+  }
+});
+
 export default router;
+
