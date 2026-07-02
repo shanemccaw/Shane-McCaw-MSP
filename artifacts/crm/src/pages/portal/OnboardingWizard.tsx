@@ -220,11 +220,19 @@ function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenant
         </div>
 
         {/* Credential fields */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-gray-100 bg-[#F7F9FC]">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Your App Registration Credentials</p>
+        <div className="rounded-2xl border-2 border-[#0078D4] shadow-lg overflow-hidden">
+          <div className="px-6 py-4 bg-[#0078D4] flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white leading-tight">Your App Registration Credentials</p>
+              <p className="text-xs text-white/70 mt-0.5">Paste the values from Azure — this is the action required to proceed</p>
+            </div>
           </div>
-          <div className="px-5 py-5 space-y-4">
+          <div className="bg-white px-5 py-5 space-y-4">
             {error && (
               <div className="flex items-start gap-2.5 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
                 <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
