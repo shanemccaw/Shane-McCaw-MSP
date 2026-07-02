@@ -258,7 +258,7 @@ export default function PresentationFlow({
   const isPaid = data.status === "paid";
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full min-h-0">
       {/* Sidebar header */}
       <div className="flex-shrink-0 px-4 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-start justify-between gap-2">
