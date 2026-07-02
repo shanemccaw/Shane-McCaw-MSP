@@ -316,8 +316,14 @@ export default function ProjectTasksLayer() {
 
       {/* Progress bar */}
       {tasks.length > 0 && (
-        <div className="flex items-center gap-2.5">
-          <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Progress</span>
+            <span className="text-xs font-semibold text-foreground tabular-nums">
+              {completedCount} / {tasks.length} tasks
+            </span>
+          </div>
+          <div className="h-1.5 bg-black/10 rounded-full overflow-hidden">
             <div
               className="h-1.5 rounded-full transition-all duration-500"
               style={{
@@ -326,9 +332,6 @@ export default function ProjectTasksLayer() {
               }}
             />
           </div>
-          <span className="text-[10px] font-semibold text-white/40 tabular-nums flex-shrink-0">
-            {completedCount}/{tasks.length}
-          </span>
         </div>
       )}
 
