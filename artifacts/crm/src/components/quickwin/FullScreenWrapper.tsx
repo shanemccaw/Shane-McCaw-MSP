@@ -648,7 +648,7 @@ export default function FullScreenWrapper() {
       style={{
         opacity: backdropOpacity,
         transition: "opacity 240ms cubic-bezier(0.42,0,0.58,1)",
-        backgroundColor: "rgba(248,249,251,0.95)",
+        backgroundColor: "rgb(248,249,251)",
       }}
     >
       {/* 3D Torus Knot Background Aura */}
