@@ -249,10 +249,10 @@ export default function QuickWinOnboardingResults() {
     try {
       await fetchWithAuth("/api/portal/onboarding/wizard-reset", { method: "POST" });
     } catch {
-      // Non-fatal — navigate anyway; the wizard will re-check status on mount
+      // Non-fatal — navigate anyway
     }
     sessionStorage.removeItem("onboarding-wizard-step");
-    navigate("/portal/onboarding/wizard");
+    navigate("/portal/diagnostic");
   }
 
   const scores = scorecard?.latest ?? {};
@@ -550,7 +550,7 @@ export default function QuickWinOnboardingResults() {
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <button
-                  onClick={() => navigate("/portal/onboarding/wizard")}
+                  onClick={() => navigate("/portal/diagnostic")}
                   className="flex items-center justify-center gap-2 bg-white text-[#0078D4] font-bold px-8 py-3 rounded-xl hover:bg-white/90 transition-colors text-sm w-full sm:w-auto"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
