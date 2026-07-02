@@ -522,6 +522,12 @@ export default function FullScreenWrapper() {
     });
   })();
 
+  // All tasks done — gate the CTA buttons
+  const allTasksDone = kanbanTasks.length > 0 &&
+    backlogTasks.length === 0 &&
+    inProgressTasks.length === 0 &&
+    waitingTasks.length === 0;
+
   // Progress derived from real kanban completion
   const kanbanProgress = kanbanTasks.length > 0
     ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
@@ -639,6 +645,49 @@ export default function FullScreenWrapper() {
               <div className="px-6 py-5 flex-1 overflow-y-auto min-h-0">
                 <ProjectTasksLayer />
               </div>
+
+              {/* CTAs — appear once every task is complete */}
+              {allTasksDone && (
+                <div className="px-6 pb-5 flex flex-col gap-2.5 flex-shrink-0 border-t border-black/5 pt-4">
+                  <button
+                    onClick={() => void handleViewPresentation()}
+                    disabled={openingPresentation}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 disabled:opacity-60"
+                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                  >
+                    {openingPresentation ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        Opening…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        View Deliverables &amp; SOW
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/services"); }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0A2540] text-white font-bold text-sm hover:bg-[#0A2540]/90 active:scale-[0.98]"
+                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    Purchase Full Plan
+                  </button>
+                  <button
+                    onClick={() => dispatch({ type: "EXIT" })}
+                    className="w-full px-4 py-2.5 rounded-xl border border-black/10 text-[#0A2540]/60 font-semibold text-sm hover:bg-black/5 active:scale-[0.98]"
+                    style={{ transition: "all 200ms" }}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
