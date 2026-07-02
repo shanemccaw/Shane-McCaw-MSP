@@ -4,8 +4,7 @@
  * Run with:
  *   pnpm --filter @workspace/api-server run test
  *
- * Uses the Node.js built-in test runner (node:test) and
- * --experimental-strip-types so no transpile step is needed.
+ * Uses Vitest (describe / it / expect).
  *
  * WHY extractAiHtml is the key regression guard
  * ---------------------------------------------
@@ -15,8 +14,7 @@
  * stripMarkdownFence() call inside it will cause these tests to fail —
  * matching the intent of the integration path tests.
  */
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, expect } from "vitest";
 import { stripMarkdownFence, extractAiHtml } from "./sow-pricing.ts";
 
 // ---------------------------------------------------------------------------
@@ -26,70 +24,96 @@ import { stripMarkdownFence, extractAiHtml } from "./sow-pricing.ts";
 describe("stripMarkdownFence() — no fence", () => {
   it("returns plain HTML unchanged", () => {
     const html = "<h1>Hello</h1><p>World</p>";
-    assert.equal(stripMarkdownFence(html), html);
+    expect(stripMarkdownFence(html)).toBe(html);
   });
 
   it("returns an empty string unchanged", () => {
-    assert.equal(stripMarkdownFence(""), "");
+    expect(stripMarkdownFence("")).toBe("");
   });
 
   it("trims leading/trailing whitespace on plain content", () => {
-    assert.equal(stripMarkdownFence("  <p>hi</p>  "), "<p>hi</p>");
+    expect(stripMarkdownFence("  <p>hi</p>  ")).toBe("<p>hi</p>");
   });
 });
 
 describe("stripMarkdownFence() — ```html fence", () => {
   it("strips ```html ... ``` wrapper", () => {
     const fenced = "```html\n<h1>Hello</h1>\n```";
-    assert.equal(stripMarkdownFence(fenced), "<h1>Hello</h1>");
+    expect(stripMarkdownFence(fenced)).toBe("<h1>Hello</h1>");
   });
 
   it("strips ```html fence with no newline before closing fence", () => {
     const fenced = "```html\n<p>body</p>```";
-    assert.equal(stripMarkdownFence(fenced), "<p>body</p>");
+    expect(stripMarkdownFence(fenced)).toBe("<p>body</p>");
   });
 
   it("strips ```html fence and removes surrounding whitespace", () => {
     const fenced = "```html\n  <p>indented</p>\n```";
-    assert.equal(stripMarkdownFence(fenced), "<p>indented</p>");
+    expect(stripMarkdownFence(fenced)).toBe("<p>indented</p>");
   });
 
   it("does not strip ``` that appears mid-string (only leading/trailing fences)", () => {
     const inner = "<p>some ``` text</p>";
     const fenced = "```html\n" + inner + "\n```";
     const result = stripMarkdownFence(fenced);
-    assert.ok(!result.startsWith("```"), "leading fence not removed");
-    assert.ok(!result.endsWith("```"), "trailing fence not removed");
-    assert.ok(result.includes("some ``` text"), "inner ``` preserved");
+    expect(result.startsWith("```")).toBe(false);
+    expect(result.endsWith("```")).toBe(false);
+    expect(result).toContain("some ``` text");
   });
 });
 
 describe("stripMarkdownFence() — bare ``` fence", () => {
   it("strips bare ``` ... ``` wrapper", () => {
     const fenced = "```\n<div>content</div>\n```";
-    assert.equal(stripMarkdownFence(fenced), "<div>content</div>");
+    expect(stripMarkdownFence(fenced)).toBe("<div>content</div>");
   });
 
   it("strips bare fence with no language tag", () => {
     const fenced = "```\n<p>hi</p>\n```";
-    assert.equal(stripMarkdownFence(fenced), "<p>hi</p>");
+    expect(stripMarkdownFence(fenced)).toBe("<p>hi</p>");
   });
 });
 
 describe("stripMarkdownFence() — fence with trailing whitespace", () => {
   it("strips closing ``` followed by spaces", () => {
     const fenced = "```html\n<p>x</p>\n```   ";
-    assert.equal(stripMarkdownFence(fenced), "<p>x</p>");
+    expect(stripMarkdownFence(fenced)).toBe("<p>x</p>");
   });
 
   it("strips closing ``` followed by a newline and spaces", () => {
     const fenced = "```html\n<p>x</p>\n```\n  ";
-    assert.equal(stripMarkdownFence(fenced), "<p>x</p>");
+    expect(stripMarkdownFence(fenced)).toBe("<p>x</p>");
   });
 
   it("strips closing ``` with mixed trailing whitespace", () => {
     const fenced = "```\n<span>ok</span>\n```  \t  ";
-    assert.equal(stripMarkdownFence(fenced), "<span>ok</span>");
+    expect(stripMarkdownFence(fenced)).toBe("<span>ok</span>");
+  });
+});
+
+describe("stripMarkdownFence() — CRLF line endings", () => {
+  it("strips ```html fence with CRLF after the opening tag", () => {
+    const fenced = "```html\r\n<h1>Hello</h1>\r\n```";
+    const result = stripMarkdownFence(fenced);
+    expect(result).not.toMatch(/^```/);
+    expect(result).not.toMatch(/```\s*$/);
+    expect(result).toContain("<h1>Hello</h1>");
+  });
+
+  it("strips bare ``` fence with CRLF line endings", () => {
+    const fenced = "```\r\n<p>CRLF content</p>\r\n```";
+    const result = stripMarkdownFence(fenced);
+    expect(result).not.toMatch(/^```/);
+    expect(result).not.toMatch(/```\s*$/);
+    expect(result).toContain("<p>CRLF content</p>");
+  });
+
+  it("strips closing ``` with CRLF after the fence", () => {
+    const fenced = "```html\r\n<div>body</div>\n```\r\n";
+    const result = stripMarkdownFence(fenced);
+    expect(result).not.toMatch(/^```/);
+    expect(result).not.toContain("```");
+    expect(result).toContain("<div>body</div>");
   });
 });
 
@@ -112,9 +136,9 @@ describe("extractAiHtml() — POST /generate path (report & SOW generation)", ()
 
     const htmlContent = extractAiHtml(mockAiResponse);
 
-    assert.ok(!htmlContent.startsWith("```"), "leading ``` must be stripped");
-    assert.ok(!htmlContent.endsWith("```"), "trailing ``` must be stripped");
-    assert.ok(htmlContent.includes("<h1>Report</h1>"), "HTML content is preserved");
+    expect(htmlContent.startsWith("```")).toBe(false);
+    expect(htmlContent.endsWith("```")).toBe(false);
+    expect(htmlContent).toContain("<h1>Report</h1>");
   });
 
   it("strips bare ``` fence from Claude SOW response", () => {
@@ -124,16 +148,16 @@ describe("extractAiHtml() — POST /generate path (report & SOW generation)", ()
 
     const htmlContent = extractAiHtml(mockAiResponse);
 
-    assert.ok(!htmlContent.startsWith("```"), "leading ``` must be stripped");
-    assert.ok(!htmlContent.endsWith("```"), "trailing ``` must be stripped");
-    assert.ok(htmlContent.includes("<section>SOW content</section>"), "HTML content is preserved");
+    expect(htmlContent.startsWith("```")).toBe(false);
+    expect(htmlContent.endsWith("```")).toBe(false);
+    expect(htmlContent).toContain("<section>SOW content</section>");
   });
 
   it("passes through plain HTML from Claude response unchanged", () => {
     const rawHtml = "<html><body><p>Clean output</p></body></html>";
     const mockAiResponse = { content: [{ text: rawHtml }] };
 
-    assert.equal(extractAiHtml(mockAiResponse), rawHtml);
+    expect(extractAiHtml(mockAiResponse)).toBe(rawHtml);
   });
 
   it("handles undefined .text via ?? fallback — returns empty string, not an error", () => {
@@ -141,7 +165,7 @@ describe("extractAiHtml() — POST /generate path (report & SOW generation)", ()
       content: [{ text: undefined as unknown as string }],
     };
 
-    assert.equal(extractAiHtml(mockAiResponse), "");
+    expect(extractAiHtml(mockAiResponse)).toBe("");
   });
 
   it("strips ```html fence with trailing whitespace on the closing fence", () => {
@@ -151,8 +175,8 @@ describe("extractAiHtml() — POST /generate path (report & SOW generation)", ()
 
     const htmlContent = extractAiHtml(mockAiResponse);
 
-    assert.ok(!htmlContent.includes("```"), "no fence characters remain");
-    assert.ok(htmlContent.includes("<table>"), "table HTML is preserved");
+    expect(htmlContent).not.toContain("```");
+    expect(htmlContent).toContain("<table>");
   });
 });
 
@@ -166,16 +190,16 @@ describe("extractAiHtml() — automation run path (scheduled report generation)"
 
     const htmlContent = extractAiHtml(mockAiResponse);
 
-    assert.ok(!htmlContent.startsWith("```"), "leading fence stripped");
-    assert.ok(!htmlContent.endsWith("```"), "trailing fence stripped");
-    assert.ok(htmlContent.includes("<h2>Automation Report</h2>"), "content preserved");
+    expect(htmlContent.startsWith("```")).toBe(false);
+    expect(htmlContent.endsWith("```")).toBe(false);
+    expect(htmlContent).toContain("<h2>Automation Report</h2>");
   });
 
   it("leaves clean HTML from automated generation untouched", () => {
     const rawHtml = "<article><h2>Monthly Summary</h2></article>";
     const mockAiResponse = { content: [{ text: rawHtml }] };
 
-    assert.equal(extractAiHtml(mockAiResponse), rawHtml);
+    expect(extractAiHtml(mockAiResponse)).toBe(rawHtml);
   });
 });
 
@@ -187,7 +211,7 @@ describe("extractAiHtml() — document-generator path (generateDocument helper)"
 
     const htmlContent = extractAiHtml(mockAiResponse);
 
-    assert.ok(!htmlContent.includes("```"), "no fence characters in result");
-    assert.ok(htmlContent.includes("<body>SOW</body>"), "body HTML preserved");
+    expect(htmlContent).not.toContain("```");
+    expect(htmlContent).toContain("<body>SOW</body>");
   });
 });
