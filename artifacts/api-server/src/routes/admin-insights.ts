@@ -783,7 +783,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       messages: [{ role: "user", content: prompt }],
     });
 
-    const htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
+    const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
 
     // Insert with placeholder pdfUrl — updated after we have the id
     const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
@@ -1834,7 +1834,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         messages: [{ role: "user", content: prompt }],
       });
 
-      const htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
+      const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
       log("info", "AI generation complete — saving document draft…");
 
       const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({

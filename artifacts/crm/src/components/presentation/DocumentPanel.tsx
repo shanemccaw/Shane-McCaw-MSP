@@ -98,7 +98,7 @@ export default function DocumentPanel({ doc }: DocumentPanelProps) {
       <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-border shadow-sm">
         <div
           className="p-6"
-          dangerouslySetInnerHTML={{ __html: doc.htmlContent }}
+          dangerouslySetInnerHTML={{ __html: doc.htmlContent.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```\s*$/, "").trim() }}
         />
       </div>
     </div>
