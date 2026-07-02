@@ -19,6 +19,8 @@ import {
   insightsGeneratedDocumentsTable,
   scriptRunResultsTable,
   kanbanTasksTable,
+  clientScoresTable,
+  clientHealthHistoryTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -134,25 +136,92 @@ function substituteTokens(template: string, vars: Record<string, string>): strin
   );
 }
 
-function computeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]): {
-  security: number; governance: number; readiness: number; composite: number;
-} {
-  const sums: Record<string, number> = {};
-  const counts: Record<string, number> = {};
-  for (const run of runs) {
-    for (const [k, v] of Object.entries(run.scoreImpact ?? {})) {
-      sums[k] = (sums[k] ?? 0) + v;
-      counts[k] = (counts[k] ?? 0) + 1;
-    }
-  }
-  const avg = (key: string, fallback = 0): number =>
-    counts[key] ? Math.min(100, Math.max(0, Math.round(sums[key]! / counts[key]!))) : fallback;
+// ── Real M365 score fetch — reads stored clientScoresTable + clientHealthHistoryTable ─
 
-  const security = avg("security", avg("Security", 60));
-  const governance = avg("governance", avg("Governance", 55));
-  const readiness = avg("copilotReadiness", avg("copilot_readiness", avg("CopilotReadiness", 50)));
-  const composite = Math.round((security + governance + readiness) / 3);
-  return { security, governance, readiness, composite };
+interface RealScores {
+  identity: number;
+  security: number;
+  collaboration: number;
+  compliance: number;
+  copilotReadiness: number;
+  /** Average of all five dimensions */
+  composite: number;
+  /** Whether any scores were actually found in the database */
+  hasData: boolean;
+  /** Recent per-category snapshots for trend context */
+  recentHistory: { category: string; score: number; recordedAt: Date }[];
+}
+
+async function fetchRealScores(clientUserId: number): Promise<RealScores> {
+  const [scoreRow, historyRows] = await Promise.all([
+    db
+      .select({
+        identity:         clientScoresTable.identity,
+        security:         clientScoresTable.security,
+        collaboration:    clientScoresTable.collaboration,
+        compliance:       clientScoresTable.compliance,
+        copilotReadiness: clientScoresTable.copilotReadiness,
+        updatedAt:        clientScoresTable.updatedAt,
+      })
+      .from(clientScoresTable)
+      .where(eq(clientScoresTable.clientId, clientUserId))
+      .limit(1),
+    db
+      .select({
+        category:   clientHealthHistoryTable.category,
+        score:      clientHealthHistoryTable.score,
+        recordedAt: clientHealthHistoryTable.recordedAt,
+      })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, clientUserId))
+      .orderBy(desc(clientHealthHistoryTable.recordedAt))
+      .limit(40),
+  ]);
+
+  const row = scoreRow[0];
+  if (!row) {
+    return {
+      identity: 0, security: 0, collaboration: 0, compliance: 0, copilotReadiness: 0,
+      composite: 0, hasData: false, recentHistory: [],
+    };
+  }
+
+  const vals = [row.identity, row.security, row.collaboration, row.compliance, row.copilotReadiness];
+  const composite = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+
+  return {
+    identity:         row.identity,
+    security:         row.security,
+    collaboration:    row.collaboration,
+    compliance:       row.compliance,
+    copilotReadiness: row.copilotReadiness,
+    composite,
+    hasData: true,
+    recentHistory: historyRows,
+  };
+}
+
+function formatScoresBlock(s: RealScores): string {
+  if (!s.hasData) {
+    return "No M365 health scores on record yet — assessment runs are pending.";
+  }
+  const lines = [
+    `- Identity & Access:    ${s.identity}/100`,
+    `- Security:             ${s.security}/100`,
+    `- Collaboration:        ${s.collaboration}/100`,
+    `- Compliance:           ${s.compliance}/100`,
+    `- Copilot Readiness:    ${s.copilotReadiness}/100`,
+    `- Composite (avg):      ${s.composite}/100`,
+  ];
+  if (s.recentHistory.length > 0) {
+    // Show most recent score per category as a trend snapshot
+    const seen = new Set<string>();
+    const trend = s.recentHistory
+      .filter(h => { if (seen.has(h.category)) return false; seen.add(h.category); return true; })
+      .map(h => `  ${h.category}: ${h.score}/100 (${new Date(h.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`);
+    if (trend.length > 0) lines.push("", "Recent snapshot per category:", ...trend);
+  }
+  return lines.join("\n");
 }
 
 function collectFindings(runs: { parsedFindings: string[]; recommendations: string[] }[]): {
@@ -204,7 +273,7 @@ export async function generateAndDeliverDocument(
 ): Promise<GenerateAndDeliverResult> {
   const { category, docType, title } = config;
 
-  const [userRows, projectRows, runs] = await Promise.all([
+  const [userRows, projectRows, runs, realScores] = await Promise.all([
     db.select({ name: usersTable.name, company: usersTable.company })
       .from(usersTable)
       .where(eq(usersTable.id, clientUserId))
@@ -214,6 +283,7 @@ export async function generateAndDeliverDocument(
       .where(eq(projectsTable.id, projectId))
       .limit(1),
     fetchRunsForClient(clientUserId, projectId, 50),
+    fetchRealScores(clientUserId),
   ]);
 
   const clientName = userRows[0]?.company ?? userRows[0]?.name ?? "Client";
@@ -223,8 +293,9 @@ export async function generateAndDeliverDocument(
     ? `Project: ${projRow.title}${projRow.phase ? ` (${projRow.phase})` : ""}${projRow.description ? ` — ${projRow.description}` : ""}\n`
     : "";
 
-  const scores = computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
   const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
+
+  const scoresBlock = formatScoresBlock(realScores);
 
   const profileSample = (runs as { profileUpdates: Record<string, unknown> }[])
     .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
@@ -238,7 +309,6 @@ export async function generateAndDeliverDocument(
 
   if (category === "report") {
     const docLabel = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
-    const scoresBlock = `- Security: ${scores.security}/100\n- Governance: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
@@ -259,7 +329,6 @@ export async function generateAndDeliverDocument(
     });
   } else {
     const typeLabel = CONSULTING_TYPE_LABELS[docType] ?? docType;
-    const scoresBlock = `- Security Score: ${scores.security}/100\n- Governance Score: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
     const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
     const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include relevant sections for this type of consulting deliverable";
@@ -282,9 +351,16 @@ export async function generateAndDeliverDocument(
 
   const aiResponse = await anthropic.messages.create({
     model: "claude-haiku-4-5",
-    max_tokens: 4096,
+    max_tokens: 8000,
     messages: [{ role: "user", content: prompt }],
   });
+
+  if (aiResponse.stop_reason === "max_tokens") {
+    logger.warn(
+      { clientUserId, projectId, docType, outputLen: (aiResponse.content[0] as { text: string }).text?.length },
+      "document-generator: output hit max_tokens — document may be truncated. Consider raising max_tokens or shortening prompt.",
+    );
+  }
 
   let htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
   // Strip any "Staged for Review" banner that may have leaked in from a prompt template
