@@ -1192,6 +1192,7 @@ export default function ProjectDetailPage() {
     presentationStatus: string | null;
     presentationCreatedAt: string | null;
     views: Array<{ documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>;
+    firstCardClick: { cardName: string; clickedAt: string; totalClicks: number } | null;
   } | null>(null);
   const [docAnalyticsLoading, setDocAnalyticsLoading] = useState(false);
   const [generateArtifactsLoading, setGenerateArtifactsLoading] = useState(false);
@@ -1553,6 +1554,7 @@ export default function ProjectDetailPage() {
           presentationStatus: string | null;
           presentationCreatedAt: string | null;
           views: Array<{ documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>;
+          firstCardClick: { cardName: string; clickedAt: string; totalClicks: number } | null;
         };
         setDocAnalytics(data);
       }
@@ -2318,6 +2320,17 @@ export default function ProjectDetailPage() {
                         return total >= 60 ? `${Math.round(total / 60)}m ${total % 60}s` : `${total}s`;
                       })()}
                     </strong>
+                  </span>
+                )}
+                {docAnalytics.firstCardClick && (
+                  <span className="text-[11px] text-[#8B949E] flex items-center gap-1.5">
+                    <svg className="w-3 h-3 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
+                    </svg>
+                    First click: <strong className="text-amber-300 capitalize">{docAnalytics.firstCardClick.cardName}</strong>
+                    {docAnalytics.firstCardClick.totalClicks > 1 && (
+                      <span className="text-[#8B949E]">({docAnalytics.firstCardClick.totalClicks} total)</span>
+                    )}
                   </span>
                 )}
               </div>

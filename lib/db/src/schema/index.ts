@@ -1595,6 +1595,8 @@ export const presentationDocViewsTable = pgTable("presentation_doc_views", {
   documentTitle: text("document_title"),
   viewedAt: timestamp("viewed_at").notNull().defaultNow(),
   dwellSeconds: integer("dwell_seconds"),
+  eventType: text("event_type").default("dwell"),
+  cardName: text("card_name"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

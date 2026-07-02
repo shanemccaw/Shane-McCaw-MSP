@@ -386,12 +386,21 @@ export default function PresentationFlow({
   };
 
   // Jump from the Overview teaser cards — unlocks the target step and navigates immediately
-  const jumpToStep = useCallback((idx: number) => {
+  // Also fires a fire-and-forget card_click event for analytics
+  const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
+    if (cardName) {
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      void fetchFn(`/api/portal/presentations/${presentationId}/doc-views${tokenParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ eventType: "card_click", cardName }),
+      }).catch(() => { /* fire-and-forget */ });
+    }
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken]);
 
   const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
@@ -701,7 +710,7 @@ export default function PresentationFlow({
                           {/* 1 — Documents / findings */}
                           {firstDocStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(firstDocStepIndex)}
+                              onClick={() => jumpToStep(firstDocStepIndex, "documents")}
                               className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${docsVisited ? "bg-emerald-500" : "bg-red-500"}`} />
@@ -773,7 +782,7 @@ export default function PresentationFlow({
                           {/* 2 — Scope & Investment */}
                           {sowStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(sowStepIndex)}
+                              onClick={() => jumpToStep(sowStepIndex, "scope")}
                               className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowVisited ? "bg-emerald-500" : "bg-[#0078D4]"}`} />
@@ -816,7 +825,7 @@ export default function PresentationFlow({
                           {/* 3 — Agreement */}
                           {contractStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(contractStepIndex)}
+                              onClick={() => jumpToStep(contractStepIndex, "agreement")}
                               className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
@@ -850,7 +859,7 @@ export default function PresentationFlow({
                           {/* 4 — Payment */}
                           {paymentStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(paymentStepIndex)}
+                              onClick={() => jumpToStep(paymentStepIndex, "payment")}
                               className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${paymentVisited ? "bg-emerald-500" : "bg-purple-500"}`} />

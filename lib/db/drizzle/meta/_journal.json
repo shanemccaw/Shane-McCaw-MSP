@@ -904,6 +904,13 @@
       "when": 1751500000000,
       "tag": "0125_add_wf_versions_archived_status",
       "breakpoints": true
+    },
+    {
+      "idx": 126,
+      "version": "7",
+      "when": 1751760000000,
+      "tag": "0126_add_card_click_to_doc_views",
+      "breakpoints": true
     }
   ]
 }

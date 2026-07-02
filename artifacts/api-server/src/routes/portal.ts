@@ -9646,7 +9646,7 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
       .limit(1);
 
     if (!pres) {
-      res.json({ presentationId: null, views: [], rawViews: [] });
+      res.json({ presentationId: null, views: [], rawViews: [], firstCardClick: null });
       return;
     }
 
@@ -9656,13 +9656,17 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
       documentTitle: presentationDocViewsTable.documentTitle,
       viewedAt: presentationDocViewsTable.viewedAt,
       dwellSeconds: presentationDocViewsTable.dwellSeconds,
+      eventType: presentationDocViewsTable.eventType,
+      cardName: presentationDocViewsTable.cardName,
     })
       .from(presentationDocViewsTable)
       .where(eq(presentationDocViewsTable.presentationId, pres.id))
       .orderBy(asc(presentationDocViewsTable.viewedAt));
 
+    // Aggregate dwell time per document (dwell events only)
     const byDoc = new Map<string, { documentId: number | null; documentTitle: string; totalSeconds: number; visits: number }>();
     for (const v of rawViews) {
+      if ((v.eventType ?? "dwell") !== "dwell") continue;
       const key = v.documentTitle ?? `doc-${v.documentId ?? "unknown"}`;
       const existing = byDoc.get(key);
       if (existing) {
@@ -9678,12 +9682,19 @@ router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async 
       }
     }
 
+    // First card click: earliest card_click event
+    const cardClicks = rawViews.filter(v => v.eventType === "card_click" && v.cardName);
+    const firstCardClick = cardClicks.length > 0
+      ? { cardName: cardClicks[0].cardName!, clickedAt: cardClicks[0].viewedAt, totalClicks: cardClicks.length }
+      : null;
+
     res.json({
       presentationId: pres.id,
       presentationStatus: pres.status,
       presentationCreatedAt: pres.createdAt,
       views: Array.from(byDoc.values()).sort((a, b) => b.totalSeconds - a.totalSeconds),
       rawViews,
+      firstCardClick,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to fetch presentation analytics");
@@ -9801,21 +9812,32 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
   }
 });
 
-// POST /portal/presentations/:id/doc-views — record dwell time for a doc step
+// POST /portal/presentations/:id/doc-views — record dwell time for a doc step OR a teaser card click
 router.post("/portal/presentations/:id/doc-views", async (req: Request, res: Response) => {
   try {
     const id = parseInt(String(req.params.id ?? ""), 10);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
-    const { documentId, documentTitle, dwellSeconds } = req.body as {
+    const { documentId, documentTitle, dwellSeconds, eventType, cardName } = req.body as {
       documentId?: number;
       documentTitle?: string;
       dwellSeconds?: number;
+      eventType?: string;
+      cardName?: string;
     };
 
-    if (typeof dwellSeconds !== "number" || dwellSeconds < 0) {
-      res.status(400).json({ error: "dwellSeconds must be a non-negative number" });
-      return;
+    const resolvedEventType = eventType ?? "dwell";
+
+    if (resolvedEventType === "dwell") {
+      if (typeof dwellSeconds !== "number" || dwellSeconds < 0) {
+        res.status(400).json({ error: "dwellSeconds must be a non-negative number" });
+        return;
+      }
+    } else if (resolvedEventType === "card_click") {
+      if (!cardName || typeof cardName !== "string") {
+        res.status(400).json({ error: "cardName is required for card_click events" });
+        return;
+      }
     }
 
     // Verify presentation exists and is accessible (owner or share token)
@@ -9850,7 +9872,9 @@ router.post("/portal/presentations/:id/doc-views", async (req: Request, res: Res
       presentationId: id,
       documentId: documentId ?? null,
       documentTitle: documentTitle ?? null,
-      dwellSeconds: Math.round(dwellSeconds),
+      dwellSeconds: resolvedEventType === "dwell" && typeof dwellSeconds === "number" ? Math.round(dwellSeconds) : null,
+      eventType: resolvedEventType,
+      cardName: cardName ?? null,
     });
 
     res.json({ ok: true });
