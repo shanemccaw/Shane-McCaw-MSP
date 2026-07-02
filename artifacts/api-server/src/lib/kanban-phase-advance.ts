@@ -124,6 +124,7 @@ async function resolveTemplateTaskMetadata(
       }
     }
 
+    const rawMeta = (t.taskMetadata ?? {}) as Record<string, unknown>;
     return {
       instructions:       t.instructionSetId ? (instrMap.get(t.instructionSetId)  ?? (t.instructions  as string[]|null) ?? []) : ((t.instructions  as string[]|null) ?? []),
       checklist:          t.checklistId      ? (clMap.get(t.checklistId)           ?? (t.checklist     as Array<{id:string;label:string}>|null) ?? []) : ((t.checklist as Array<{id:string;label:string}>|null) ?? []),
@@ -134,6 +135,7 @@ async function resolveTemplateTaskMetadata(
       linkedRunbook,
       customerDownload,
       triggersHealthScore: t.triggersHealthScore === true,
+      documentGeneration: (rawMeta.documentGeneration as { category: string; docType: string; title: string } | undefined) ?? null,
     };
   });
 }

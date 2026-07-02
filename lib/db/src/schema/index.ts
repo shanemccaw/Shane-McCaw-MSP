@@ -474,6 +474,7 @@ export const workflowTemplateStepTasksTable = pgTable("workflow_template_step_ta
   artifactsId: integer("artifacts_id").references(() => artifactSetsTable.id, { onDelete: "set null" }),
   deliverablesId: integer("deliverables_id").references(() => deliverableSetsTable.id, { onDelete: "set null" }),
   taskType: text("task_type"),
+  taskMetadata: jsonb("task_metadata").$type<Record<string, unknown>>(),
   requiresManualRun: boolean("requires_manual_run").default(false),
   isCustomerTask: boolean("is_customer_task").default(false),
   runbookId: uuid("runbook_id"),

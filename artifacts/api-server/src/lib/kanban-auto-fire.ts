@@ -37,6 +37,7 @@ import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { runAiAnalyzer } from "./ai-analyzer";
+import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./document-generator";
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS   = 10 * 60 * 1000;
@@ -364,11 +365,12 @@ async function runInBackground(
         }
       }
 
-      // Always look for the next backlog script in this client's active phase.
+      // Always look for the next backlog card (script or document) in this client's active phase.
       // Without this, only the first card fires — subsequent cards in the same phase
       // never get picked up because advancePhaseIfComplete only fires when ALL cards
       // in the step are complete.
       void autoFireFirstBacklogScript(clientUserId);
+      void autoFireDocumentCard(clientUserId);
     } else {
       // On failure: stamp completionNotes but leave column as in_progress
       await db.update(kanbanTasksTable)
@@ -410,6 +412,160 @@ async function runInBackground(
  * Finds the first backlog script card in the client's active phase, fires the runbook,
  * and handles completion in the background.
  */
+// ── Document-generation auto-fire ────────────────────────────────────────────
+
+interface DocumentCard {
+  id: number;
+  projectId: number;
+  workflowStepId: number | null;
+  documentGeneration: DocumentGenerationConfig;
+}
+
+async function findFirstBacklogDocumentCard(clientUserId: number): Promise<DocumentCard | null> {
+  const projects = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.clientUserId, clientUserId));
+
+  if (projects.length === 0) return null;
+  const projectIds = projects.map(p => p.id);
+
+  const activeSteps = await db
+    .select({ id: workflowStepsTable.id })
+    .from(workflowStepsTable)
+    .where(
+      and(
+        inArray(workflowStepsTable.projectId, projectIds),
+        eq(workflowStepsTable.status, "in_progress"),
+      ),
+    );
+
+  const activeStepIds = activeSteps.map(s => s.id);
+  if (activeStepIds.length === 0) return null;
+
+  const candidates = await db
+    .select({
+      id:             kanbanTasksTable.id,
+      projectId:      kanbanTasksTable.projectId,
+      workflowStepId: kanbanTasksTable.workflowStepId,
+      taskType:       kanbanTasksTable.taskType,
+      taskMetadata:   kanbanTasksTable.taskMetadata,
+    })
+    .from(kanbanTasksTable)
+    .where(
+      and(
+        inArray(kanbanTasksTable.workflowStepId, activeStepIds),
+        eq(kanbanTasksTable.column, "backlog"),
+        eq(kanbanTasksTable.taskType, "document_generation"),
+      ),
+    )
+    .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
+
+  for (const card of candidates) {
+    const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
+    const dg = meta.documentGeneration as DocumentGenerationConfig | undefined;
+    if (dg?.category && dg?.docType && dg?.title) {
+      return {
+        id: card.id,
+        projectId: card.projectId,
+        workflowStepId: card.workflowStepId,
+        documentGeneration: dg,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Auto-fires the first eligible "backlog" document_generation kanban card in
+ * a client's active project phase.  Unlike script tasks, document generation
+ * is synchronous (AI call + DB write), so no external polling is needed.
+ *
+ * Called alongside autoFireFirstBacklogScript everywhere so both task types are
+ * picked up in the same chain reaction.
+ */
+export async function autoFireDocumentCard(clientUserId: number): Promise<void> {
+  try {
+    const card = await findFirstBacklogDocumentCard(clientUserId);
+    if (!card) {
+      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog document card found");
+      return;
+    }
+
+    logger.info(
+      { clientUserId, cardId: card.id, docType: card.documentGeneration.docType },
+      "kanban-auto-fire: auto-firing document generation card",
+    );
+
+    // Move card to in_progress
+    await db.update(kanbanTasksTable)
+      .set({ column: "in_progress", updatedAt: new Date() })
+      .where(eq(kanbanTasksTable.id, card.id));
+    {
+      const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+      if (updated) broadcastKanbanChange(card.projectId, { action: "updated", task: updated });
+    }
+
+    let documentId: number;
+    try {
+      const result = await generateAndDeliverDocument(clientUserId, card.projectId, card.documentGeneration);
+      documentId = result.documentId;
+    } catch (genErr) {
+      // Revert to backlog if generation fails
+      await db.update(kanbanTasksTable)
+        .set({ column: "backlog", updatedAt: new Date() })
+        .where(eq(kanbanTasksTable.id, card.id));
+      const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+      if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+      logger.error({ genErr, clientUserId, cardId: card.id }, "kanban-auto-fire: document generation failed — card reverted to backlog");
+      return;
+    }
+
+    // Stamp documentId into metadata and move to completed
+    const [metaRow] = await db
+      .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+      .from(kanbanTasksTable)
+      .where(eq(kanbanTasksTable.id, card.id));
+    const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
+
+    await db.update(kanbanTasksTable)
+      .set({
+        column:           "completed",
+        completionStatus: "document_generated",
+        completionNotes:  `Document "${card.documentGeneration.title}" generated and delivered to client portal (ID: ${documentId}).`,
+        taskMetadata:     { ...prevMeta, generatedDocumentId: documentId },
+        updatedAt:        new Date(),
+      })
+      .where(eq(kanbanTasksTable.id, card.id));
+    {
+      const [completed] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+      if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
+    }
+
+    logger.info(
+      { clientUserId, cardId: card.id, documentId },
+      "kanban-auto-fire: document generated and card completed",
+    );
+
+    // Phase advance (activates next workflow phase if all cards in this step are done)
+    if (card.workflowStepId != null) {
+      const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
+      if (spawnedTasks.length > 0) {
+        logger.info(
+          { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
+          "kanban-auto-fire: next phase activated after document generation",
+        );
+      }
+    }
+
+    // Chain: check for more document or script cards that are now first in queue
+    void autoFireDocumentCard(clientUserId);
+    void autoFireFirstBacklogScript(clientUserId);
+  } catch (err) {
+    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireDocumentCard unexpected error (non-fatal)");
+  }
+}
+
 export async function autoFireFirstBacklogScript(clientUserId: number): Promise<void> {
   if (!isAzureConfigured()) {
     logger.warn({ clientUserId }, "kanban-auto-fire: Azure not configured — skipping auto-fire");
@@ -691,6 +847,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
     // Continue the auto-fire chain for any client whose cards were just resolved
     for (const clientUserId of processedClientIds) {
       void autoFireFirstBacklogScript(clientUserId);
+      void autoFireDocumentCard(clientUserId);
     }
   } catch (err) {
     logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
@@ -767,6 +924,7 @@ export async function reconcileStalledPhases(): Promise<void> {
 
     for (const clientUserId of stalledClientIds) {
       void autoFireFirstBacklogScript(clientUserId);
+      void autoFireDocumentCard(clientUserId);
     }
   } catch (err) {
     logger.warn({ err }, "kanban-auto-fire: reconcileStalledPhases failed (non-fatal)");

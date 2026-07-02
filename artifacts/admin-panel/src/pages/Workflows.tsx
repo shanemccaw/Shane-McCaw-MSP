@@ -30,9 +30,33 @@ const TASK_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "governanceSetup", label: "Governance Setup" },
   { value: "automationBuild", label: "Automation Build" },
   { value: "documentDelivery", label: "Document Delivery" },
+  { value: "document_generation", label: "Document Generation (AI)" },
   { value: "script", label: "Script" },
   { value: "manualScript", label: "Manual Script" },
 ];
+
+const REPORT_DOC_TYPES: { value: string; label: string }[] = [
+  { value: "executive_summary",           label: "Executive Summary" },
+  { value: "full_readiness_report",       label: "Full Readiness Report" },
+  { value: "security_posture_report",     label: "Security Posture Report" },
+  { value: "governance_maturity_report",  label: "Governance Maturity Report" },
+  { value: "data_exposure_risk_report",   label: "Data Exposure Risk Report" },
+  { value: "license_optimization_report", label: "License Optimization Report" },
+];
+
+const CONSULTING_DOC_TYPES: { value: string; label: string }[] = [
+  { value: "sow",                         label: "Statement of Work" },
+  { value: "remediation_plan",            label: "Remediation Plan" },
+  { value: "deployment_plan",             label: "Deployment Plan" },
+  { value: "governance_framework",        label: "Governance Framework" },
+  { value: "security_hardening_plan",     label: "Security Hardening Plan" },
+  { value: "copilot_enablement_plan",     label: "Copilot Enablement Plan" },
+  { value: "identity_modernization_plan", label: "Identity Modernization Plan" },
+];
+
+const ALL_DOC_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  [...REPORT_DOC_TYPES, ...CONSULTING_DOC_TYPES].map(o => [o.value, o.label]),
+);
 
 const TASK_TYPE_LABELS: Record<string, string> = Object.fromEntries(
   TASK_TYPE_OPTIONS.map(o => [o.value, o.label])
@@ -55,6 +79,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   runbookId: null,
   customerDownloadScriptId: null,
   triggersHealthScore: false,
+  documentGeneration: null,
 };
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -90,6 +115,7 @@ interface StepTask {
   runbookId: string | null;
   customerDownloadScriptId: string | null;
   triggersHealthScore: boolean | null;
+  taskMetadata?: Record<string, unknown> | null;
 }
 
 interface WorkflowStep {
@@ -111,6 +137,12 @@ interface WorkflowTemplate {
 
 interface Service { id: number; name: string; category?: string; workflowTemplateId?: number | null; }
 
+interface DocumentGenerationMeta {
+  category: "report" | "consulting";
+  docType: string;
+  title: string;
+}
+
 interface EditingTaskForm {
   title: string;
   groupName: string;
@@ -128,6 +160,7 @@ interface EditingTaskForm {
   runbookId: string | null;
   customerDownloadScriptId: string | null;
   triggersHealthScore: boolean;
+  documentGeneration: DocumentGenerationMeta | null;
 }
 
 interface AllPsScript {
@@ -1291,7 +1324,16 @@ function TaskDrawer({
                   <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Type</label>
                   <select
                     value={form.taskType}
-                    onChange={e => setForm(p => ({ ...p, taskType: e.target.value }))}
+                    onChange={e => {
+                      const newType = e.target.value;
+                      setForm(p => ({
+                        ...p,
+                        taskType: newType,
+                        documentGeneration: newType === "document_generation"
+                          ? (p.documentGeneration ?? { category: "report", docType: "executive_summary", title: "Executive Summary" })
+                          : null,
+                      }));
+                    }}
                     className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
                   >
                     <option value="">No type</option>
@@ -1299,6 +1341,87 @@ function TaskDrawer({
                   </select>
                 </div>
               </div>
+
+              {form.taskType === "document_generation" && (
+                <div className="rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wide">Document Generation Config</p>
+                  </div>
+                  <p className="text-[10px] text-[#7D8590] leading-relaxed -mt-1">
+                    When this card becomes active, the AI automatically generates and delivers the selected document to the client portal.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Category</label>
+                    <div className="flex gap-2">
+                      {(["report", "consulting"] as const).map(cat => (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => {
+                            const defaultType = cat === "report" ? REPORT_DOC_TYPES[0] : CONSULTING_DOC_TYPES[0];
+                            setForm(p => ({
+                              ...p,
+                              documentGeneration: {
+                                category: cat,
+                                docType: defaultType!.value,
+                                title: defaultType!.label,
+                              },
+                            }));
+                          }}
+                          className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
+                            form.documentGeneration?.category === cat
+                              ? "bg-[#0078D4] border-[#0078D4] text-white"
+                              : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+                          }`}
+                        >
+                          {cat === "report" ? "Report" : "Consulting"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Document Type</label>
+                    <select
+                      value={form.documentGeneration?.docType ?? ""}
+                      onChange={e => {
+                        const docType = e.target.value;
+                        const label = ALL_DOC_TYPE_LABELS[docType] ?? docType;
+                        setForm(p => ({
+                          ...p,
+                          documentGeneration: p.documentGeneration
+                            ? { ...p.documentGeneration, docType, title: label }
+                            : { category: "report", docType, title: label },
+                        }));
+                      }}
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                    >
+                      {(form.documentGeneration?.category === "consulting" ? CONSULTING_DOC_TYPES : REPORT_DOC_TYPES).map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Document Title</label>
+                    <input
+                      type="text"
+                      value={form.documentGeneration?.title ?? ""}
+                      onChange={e => setForm(p => ({
+                        ...p,
+                        documentGeneration: p.documentGeneration
+                          ? { ...p.documentGeneration, title: e.target.value }
+                          : { category: "report", docType: "executive_summary", title: e.target.value },
+                      }))}
+                      placeholder="e.g. Q1 Executive Summary"
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+                    />
+                    <p className="text-[10px] text-[#7D8590] mt-1">Auto-filled from document type — edit to customize.</p>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Description</label>
                 <textarea
@@ -1834,6 +1957,7 @@ export default function WorkflowsPage() {
       runbookId: task.runbookId ?? null,
       customerDownloadScriptId: task.customerDownloadScriptId ?? null,
       triggersHealthScore: task.triggersHealthScore ?? false,
+      documentGeneration: (task.taskMetadata?.documentGeneration as DocumentGenerationMeta | undefined) ?? null,
     });
     setDrawerIsNew(false);
     setDrawerOpen(true);
@@ -1859,6 +1983,9 @@ export default function WorkflowsPage() {
       runbookId: taskForm.runbookId || null,
       customerDownloadScriptId: taskForm.customerDownloadScriptId || null,
       triggersHealthScore: taskForm.triggersHealthScore,
+      taskMetadata: taskForm.taskType === "document_generation" && taskForm.documentGeneration
+        ? { documentGeneration: taskForm.documentGeneration }
+        : null,
     };
 
     if (drawerIsNew) {
