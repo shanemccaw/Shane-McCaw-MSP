@@ -17,6 +17,27 @@ export function stripMarkdownFence(text: string): string {
 }
 
 /**
+ * Canonical extraction point used by all document-generation routes.
+ *
+ * Pulls the text body from the first content block of an Anthropic message
+ * response and strips any markdown code fence Claude may have wrapped around
+ * its HTML output (e.g. ```html … ```).  Centralising the call here means a
+ * missing or bypassed stripMarkdownFence() at a call site is immediately
+ * visible in tests that import this helper.
+ *
+ * The parameter is typed as `{ content: ReadonlyArray<unknown> }` so that the
+ * real Anthropic `Message` type (whose content is `ContentBlock[]`, a
+ * discriminated union that is NOT `Array<{ text: string }>`) is assignable
+ * without an explicit cast at every call site.
+ */
+export function extractAiHtml(
+  response: { content: ReadonlyArray<unknown> },
+): string {
+  const block = response.content[0] as { text?: string } | undefined;
+  return stripMarkdownFence(block?.text ?? "");
+}
+
+/**
  * Parse a pricing table out of SOW HTML.
  * Returns individual line items and their summed total.
  */

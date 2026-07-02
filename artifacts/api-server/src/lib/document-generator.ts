@@ -26,7 +26,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
-import { stripMarkdownFence, parseSowPricing } from "./sow-pricing";
+import { extractAiHtml, parseSowPricing } from "./sow-pricing";
 import { ensureOpportunityForSow } from "./crm-pipeline";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -456,9 +456,7 @@ export async function generateAndDeliverDocument(
     );
   }
 
-  let htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
-  // Strip markdown code fences Claude sometimes wraps around HTML output
-  htmlContent = stripMarkdownFence(htmlContent);
+  let htmlContent = extractAiHtml(aiResponse);
   // Strip any "Staged for Review" banner that may have leaked in from a prompt template
   htmlContent = htmlContent.replace(
     /<div[^>]*>⚠️\s*<strong>Staged for Review<\/strong>[\s\S]*?<\/div>/gi,

@@ -57,7 +57,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { stripMarkdownFence, parseSowPricing, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -781,7 +781,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       messages: [{ role: "user", content: prompt }],
     });
 
-    const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
+    const htmlContent = extractAiHtml(aiResponse);
 
     // Insert with placeholder pdfUrl — updated after we have the id
     const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
@@ -1210,7 +1210,7 @@ INSTRUCTIONS:
         messages: [{ role: "user", content: prompt }],
       });
 
-      const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
+      const htmlContent = extractAiHtml(aiResponse);
 
       const { lines: sowLines, totalPrice: sowTotal } = parseSowPricing(htmlContent);
 
@@ -1303,7 +1303,7 @@ INSTRUCTIONS:
       messages: [{ role: "user", content: prompt }],
     });
 
-    const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
+    const htmlContent = extractAiHtml(aiResponse);
 
     // Parse pricing if this is a SOW type — even regular SOWs may contain a pricing table
     const isSowType = deliverableType === "sow" || deliverableType === "consolidated_sow";
@@ -1852,7 +1852,7 @@ Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Incl
         messages: [{ role: "user", content: prompt }],
       });
 
-      const htmlContent = stripMarkdownFence((aiResponse.content[0] as { text: string }).text ?? "");
+      const htmlContent = extractAiHtml(aiResponse);
       log("info", "AI generation complete — saving document draft…");
 
       const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
