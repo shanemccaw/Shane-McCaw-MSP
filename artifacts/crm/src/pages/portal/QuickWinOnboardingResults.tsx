@@ -153,6 +153,21 @@ export default function QuickWinOnboardingResults() {
   const [regenerating, setRegenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
+  // On mount, if the client has no App Registration credentials redirect them
+  // back to the wizard start so they can enter credentials before reviewing results.
+  useEffect(() => {
+    fetchWithAuth("/api/portal/onboarding/wizard-status")
+      .then(r => r.ok ? (r.json() as Promise<{ hasCredentials?: boolean }>) : { hasCredentials: true })
+      .then(data => {
+        if (!data.hasCredentials) {
+          sessionStorage.removeItem("onboarding-wizard-step");
+          navigate("/portal/onboarding/wizard");
+        }
+      })
+      .catch(() => { /* non-fatal — stay on page */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     Promise.all([
       fetchWithAuth("/api/portal/m365-scorecard-history")
