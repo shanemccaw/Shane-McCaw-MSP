@@ -48,7 +48,11 @@ export type QuickWinAction =
   | { type: "EXIT" }
   | { type: "OPEN_PROJECT" }
   | { type: "SET_SCORE"; payload: number }
-  | { type: "INCREMENT_STEP" };
+  | { type: "INCREMENT_STEP" }
+  // Skip the diagnostic phase and bind directly to an already-created project.
+  // Valid from any non-terminal state so both entry-time detection and
+  // mid-diagnostic recovery can use it.
+  | { type: "BIND_PROJECT"; payload: { projectId: string } };
 
 export interface QuickWinMachineState {
   mode: QuickWinState;
@@ -131,6 +135,17 @@ function reducer(state: QuickWinMachineState, action: QuickWinAction): QuickWinM
     // re-open the overlay when the stale promise eventually dispatches.
     case "SET_PROJECT":
       if (state.mode !== "EscalatingToProject") return state;
+      return {
+        ...state,
+        mode: "ProjectTasksView",
+        projectId: action.payload.projectId,
+      };
+
+    // BIND_PROJECT: bypass the diagnostic phase entirely when a project already
+    // exists for this client. Can fire from any non-terminal mode so both
+    // entry-time detection (EnteringQuickWin) and mid-diagnostic recovery work.
+    case "BIND_PROJECT":
+      if (state.mode === "Idle" || state.mode === "ExitQuickWin" || state.mode === "EscalatingToProject") return state;
       return {
         ...state,
         mode: "ProjectTasksView",

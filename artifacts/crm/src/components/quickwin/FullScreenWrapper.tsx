@@ -106,13 +106,12 @@ export default function FullScreenWrapper() {
     staleTime: 60_000,
   });
 
-  // Use state.projectId when set (post-escalation); only fall back to
-  // portalProjects[0] when the client has exactly one project (onboarding).
-  // If multiple projects exist and no ID is pinned, we wait rather than
-  // guessing — the overlay will show the loading spinner until state resolves.
-  const kanbanProjectId =
-    state.projectId ??
-    (portalProjects.length === 1 ? portalProjects[0].id : undefined);
+  // Use ONLY state.projectId — set either by escalation (SET_PROJECT) or by
+  // entry-time detection (BIND_PROJECT). We no longer fall back to
+  // "first/only portal project" because that guesses incorrectly when a
+  // client has multiple projects and produces a different source of truth
+  // from the Kanban board.
+  const kanbanProjectId = state.projectId ? parseInt(state.projectId, 10) : undefined;
   const queryClient = useQueryClient();
 
   // ── Live: kanban tasks + workflow steps for the project (5 s poll) ───────────
@@ -246,13 +245,30 @@ export default function FullScreenWrapper() {
     return undefined;
   }, [isVisible, mounted]);
 
-  // ── EnteringQuickWin: brief entry → Ready ─────────────────────────────────
+  // ── EnteringQuickWin: detect existing project → skip diagnostic if found ───
+  // If the client already has a project that matches this Quick Win (by title
+  // or by being the only project), bind immediately via BIND_PROJECT and skip
+  // the diagnostic simulation entirely. This prevents the dialog from running
+  // steps from the local step array while live Kanban tasks already exist.
 
   useEffect(() => {
     if (mode !== "EnteringQuickWin") return undefined;
-    const t = setTimeout(() => dispatch({ type: "ENTRY_COMPLETE" }), 400);
+    const t = setTimeout(() => {
+      const titleLower = quickWin?.title?.toLowerCase() ?? "";
+      // Prefer exact title match, then case-insensitive contains, then single project.
+      const matching =
+        portalProjects.find(p => p.name?.toLowerCase() === titleLower) ??
+        (titleLower ? portalProjects.find(p => p.name?.toLowerCase().includes(titleLower) || titleLower.includes(p.name?.toLowerCase() ?? "")) : undefined) ??
+        (portalProjects.length === 1 ? portalProjects[0] : undefined);
+
+      if (matching) {
+        dispatch({ type: "BIND_PROJECT", payload: { projectId: String(matching.id) } });
+      } else {
+        dispatch({ type: "ENTRY_COMPLETE" });
+      }
+    }, 400);
     return () => clearTimeout(t);
-  }, [mode, dispatch]);
+  }, [mode, dispatch, quickWin, portalProjects]);
 
   // ── Ready: dispatch auto or manual step ───────────────────────────────────
 
@@ -344,7 +360,14 @@ export default function FullScreenWrapper() {
 
       const nextIndex = currentStepIndex + 1;
       if (nextIndex >= steps.length) {
-        dispatch({ type: "ALL_STEPS_DONE" });
+        // If Kanban data already exists for a bound project (edge case: project was
+        // detected mid-diagnostic), skip QuickWinComplete and go straight to the
+        // live Kanban view so we never fire ALL_STEPS_DONE while tasks are active.
+        if (kanbanProjectId && kanbanTasks.length > 0) {
+          dispatch({ type: "BIND_PROJECT", payload: { projectId: String(kanbanProjectId) } });
+        } else {
+          dispatch({ type: "ALL_STEPS_DONE" });
+        }
       } else {
         dispatch({ type: "INCREMENT_STEP" });
         setTimeout(() => dispatch({ type: "NEXT_STEP" }), 24);
@@ -352,7 +375,7 @@ export default function FullScreenWrapper() {
     }, 500);
 
     return () => clearTimeout(t);
-  }, [mode, quickWin, currentStepIndex, dispatch]);
+  }, [mode, quickWin, currentStepIndex, dispatch, kanbanProjectId, kanbanTasks]);
 
   // ── EscalatingToProject ───────────────────────────────────────────────────
 
