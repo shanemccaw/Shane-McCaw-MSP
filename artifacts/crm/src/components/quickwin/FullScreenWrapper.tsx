@@ -95,7 +95,13 @@ export default function FullScreenWrapper() {
     staleTime: 60_000,
   });
 
-  const kanbanProjectId = state.projectId ?? portalProjects[0]?.id;
+  // Use state.projectId when set (post-escalation); only fall back to
+  // portalProjects[0] when the client has exactly one project (onboarding).
+  // If multiple projects exist and no ID is pinned, we wait rather than
+  // guessing — the overlay will show the loading spinner until state resolves.
+  const kanbanProjectId =
+    state.projectId ??
+    (portalProjects.length === 1 ? portalProjects[0].id : undefined);
   const queryClient = useQueryClient();
 
   // ── Live: kanban tasks for the project (5 s poll) ──────────────────────────
@@ -125,34 +131,37 @@ export default function FullScreenWrapper() {
     staleTime: 0,
   });
 
-  // ── Completed-task exit animation (same pattern as ProjectTasksLayer) ────────
+  // ── Completed-task exit animation ───────────────────────────────────────────
+  // We store the FULL task objects (not just IDs) so we can render ghost cards
+  // even after the task has been removed from inProgressTasks. Without this,
+  // the card disappears immediately instead of animating out.
   const prevKanbanTasksRef = useRef<KanbanTask[]>([]);
-  const [exitingKanbanIds, setExitingKanbanIds] = useState<Set<number>>(new Set());
+  const [exitingKanbanTasks, setExitingKanbanTasks] = useState<KanbanTask[]>([]);
 
   useEffect(() => {
     const prev = prevKanbanTasksRef.current;
+    // Find tasks that just transitioned into the "completed" column
     const newlyCompleted = prev.length === 0
       ? []
       : kanbanTasks.filter(t => {
           if (t.column !== "completed") return false;
-          const p = prev.find(p => p.id === t.id);
-          return p !== undefined && p.column !== "completed";
+          const prior = prev.find(p => p.id === t.id);
+          return prior !== undefined && prior.column !== "completed";
         });
     prevKanbanTasksRef.current = kanbanTasks;
 
-    if (newlyCompleted.length > 0) {
-      const ids = new Set(newlyCompleted.map(t => t.id));
-      setExitingKanbanIds(prev => new Set([...prev, ...ids]));
-      const timer = setTimeout(() => {
-        setExitingKanbanIds(prev => {
-          const next = new Set(prev);
-          ids.forEach(id => next.delete(id));
-          return next;
-        });
-      }, 400);
-      return () => clearTimeout(timer);
-    }
-    return undefined;
+    if (newlyCompleted.length === 0) return undefined;
+
+    // Add ghost cards; clear them after the animation completes (450 ms)
+    setExitingKanbanTasks(prev => {
+      const existingIds = new Set(prev.map(t => t.id));
+      return [...prev, ...newlyCompleted.filter(t => !existingIds.has(t.id))];
+    });
+    const completedIds = new Set(newlyCompleted.map(t => t.id));
+    const timer = setTimeout(() => {
+      setExitingKanbanTasks(prev => prev.filter(t => !completedIds.has(t.id)));
+    }, 450);
+    return () => clearTimeout(timer);
   }, [kanbanTasks]);
 
   // ── Waiting-task mutation (mark as done) ────────────────────────────────────
@@ -668,15 +677,31 @@ export default function FullScreenWrapper() {
                         className="flex flex-row gap-5 overflow-x-auto pb-3 no-scrollbar"
                         style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
                       >
-                        {/* In-progress tasks */}
+                        {/* Ghost cards: tasks that just moved to completed,
+                            held here for 450 ms so the exit animation plays.
+                            These are rendered BEFORE the live in-progress list
+                            so they appear in-place while fading/sliding out. */}
+                        {exitingKanbanTasks.map(task => (
+                          <div key={`exit-${task.id}`} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
+                            <ProcessingHeroCard
+                              title={task.title}
+                              description={task.description ?? undefined}
+                              category={currentCategory}
+                              subState="done"
+                              isExiting={true}
+                            />
+                          </div>
+                        ))}
+
+                        {/* Live in-progress tasks */}
                         {inProgressTasks.map(task => (
                           <div key={task.id} className="flex-shrink-0" style={{ scrollSnapAlign: "start" }}>
                             <ProcessingHeroCard
                               title={task.title}
                               description={task.description ?? undefined}
                               category={currentCategory}
-                              subState={exitingKanbanIds.has(task.id) ? "done" : "running"}
-                              isExiting={exitingKanbanIds.has(task.id)}
+                              subState="running"
+                              isExiting={false}
                             />
                           </div>
                         ))}
