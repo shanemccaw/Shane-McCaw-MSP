@@ -20,6 +20,7 @@ import OnboardingSelect from "@/pages/portal/OnboardingSelect";
 import OnboardingContract from "@/pages/portal/OnboardingContract";
 import OnboardingSuccess from "@/pages/portal/OnboardingSuccess";
 import OnboardingWizard from "@/pages/portal/OnboardingWizard";
+import QuickWinOnboardingResults from "@/pages/portal/QuickWinOnboardingResults";
 import PortalProfile from "@/pages/portal/PortalProfile";
 import PortalArchive from "@/pages/portal/PortalArchive";
 import PortalM365Profile from "@/pages/portal/PortalM365Profile";
@@ -67,24 +68,51 @@ function RequireAuth({ children, role }: { children: ReactNode; role?: "admin" |
   return <>{children}</>;
 }
 
-function RequireOnboarding({ children }: { children: ReactNode }) {
+interface EngagementStatus {
+  needsOnboarding: boolean;
+  hasActiveEngagement: boolean;
+  hasCredentials: boolean;
+  wizardResultsReady: boolean;
+}
+
+// RequireEngagement: the main portal gate.
+// - If client has an active engagement → render full portal (children)
+// - If no engagement + results ready → redirect to /portal/onboarding/results
+// - If no engagement + no results → redirect to /portal/onboarding/wizard
+// Re-checks on every navigation so the gate lifts immediately after payment.
+function RequireEngagement({ children }: { children: ReactNode }) {
   const { user, fetchWithAuth } = useAuth();
-  const [, navigate] = useLocation();
+  const [location] = useLocation();
+  const [status, setStatus] = useState<EngagementStatus | null>(null);
   const [checked, setChecked] = useState(false);
-  const [needsOnboarding, setNeedsOnboarding] = useState(false);
-  const fetchedRef = useRef(false);
+  const fetchingRef = useRef(false);
 
   useEffect(() => {
-    if (!user || user.role !== "client" || fetchedRef.current) return;
-    fetchedRef.current = true;
+    if (!user || user.role !== "client") return;
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setChecked(false);
+
     fetchWithAuth("/api/portal/onboarding/wizard-status")
-      .then(r => r.ok ? r.json() as Promise<{ needsOnboarding: boolean }> : { needsOnboarding: false })
-      .then(data => {
-        setNeedsOnboarding(data.needsOnboarding);
-        setChecked(true);
+      .then(r => {
+        if (!r.ok) {
+          // Non-OK response → fail-closed: treat as no active engagement
+          setStatus({ needsOnboarding: true, hasActiveEngagement: false, hasCredentials: false, wizardResultsReady: false });
+          return;
+        }
+        return r.json().then((data: EngagementStatus) => setStatus(data));
       })
-      .catch(() => setChecked(true));
-  }, [user, fetchWithAuth]);
+      .catch(() => {
+        // Network/parse error → fail-closed: redirect to wizard so client isn't silently unblocked
+        setStatus({ needsOnboarding: true, hasActiveEngagement: false, hasCredentials: false, wizardResultsReady: false });
+      })
+      .finally(() => {
+        setChecked(true);
+        fetchingRef.current = false;
+      });
+  // Re-run when location changes so the gate re-evaluates after Stripe redirect etc.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, location]);
 
   if (!user || user.role !== "client") return <>{children}</>;
 
@@ -96,12 +124,15 @@ function RequireOnboarding({ children }: { children: ReactNode }) {
     );
   }
 
-  if (needsOnboarding) {
-    navigate("/portal/onboarding/wizard");
-    return null;
+  // Gate lifted — full portal accessible
+  if (status?.hasActiveEngagement) return <>{children}</>;
+
+  // No active engagement (or status unknown after fail-closed): redirect based on wizard state
+  if (status?.wizardResultsReady) {
+    return <Redirect to="/portal/onboarding/results" />;
   }
 
-  return <>{children}</>;
+  return <Redirect to="/portal/onboarding/wizard" />;
 }
 
 function Router() {
@@ -130,73 +161,78 @@ function Router() {
         {() => { window.location.replace("/admin-panel/"); return null; }}
       </Route>
 
-      {/* Wizard — inside RequireAuth but NOT RequireOnboarding to avoid redirect loop */}
+      {/* Wizard — inside RequireAuth but NOT RequireEngagement to avoid redirect loop */}
       <Route path="/portal/onboarding/wizard">
         <RequireAuth role="client"><OnboardingWizard /></RequireAuth>
       </Route>
 
-      {/* Re-run wizard from Profile page — update mode for Automation Setup credentials */}
-      <Route path="/portal/m365-wizard">
-        <RequireAuth role="client"><RequireOnboarding><OnboardingWizard mode="update" /></RequireOnboarding></RequireAuth>
+      {/* Quick Win Results — inside RequireAuth but NOT RequireEngagement to avoid redirect loop */}
+      <Route path="/portal/onboarding/results">
+        <RequireAuth role="client"><QuickWinOnboardingResults /></RequireAuth>
       </Route>
 
-      {/* Client portal routes — gated behind RequireOnboarding */}
+      {/* Re-run wizard from Profile page — update mode for Automation Setup credentials */}
+      <Route path="/portal/m365-wizard">
+        <RequireAuth role="client"><RequireEngagement><OnboardingWizard mode="update" /></RequireEngagement></RequireAuth>
+      </Route>
+
+      {/* Client portal routes — gated behind RequireEngagement */}
       <Route path="/portal">
-        <RequireAuth role="client"><RequireOnboarding><ClientProjectDashboard /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><ClientProjectDashboard /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/projects">
-        <RequireAuth role="client"><RequireOnboarding><PortalProjects /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalProjects /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/projects/:id">
-        <RequireAuth role="client"><RequireOnboarding><PortalProjectDetail /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalProjectDetail /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/services">
-        <RequireAuth role="client"><RequireOnboarding><PortalServices /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalServices /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/billing">
-        <RequireAuth role="client"><RequireOnboarding><PortalBilling /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalBilling /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/billing/invoices/:id">
-        <RequireAuth role="client"><RequireOnboarding><PortalInvoiceDetail /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalInvoiceDetail /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/billing/contracts/:id">
-        <RequireAuth role="client"><RequireOnboarding><PortalContractDetail /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalContractDetail /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/messages">
-        <RequireAuth role="client"><RequireOnboarding><PortalMessages /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalMessages /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/activity">
-        <RequireAuth role="client"><RequireOnboarding><PortalActivity /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalActivity /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/book-meeting">
-        <RequireAuth role="client"><RequireOnboarding><PortalBookMeeting /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalBookMeeting /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/profile">
-        <RequireAuth role="client"><RequireOnboarding><PortalProfile /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalProfile /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/archive">
-        <RequireAuth role="client"><RequireOnboarding><PortalArchive /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalArchive /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/m365-profile">
-        <RequireAuth role="client"><RequireOnboarding><PortalM365Profile /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalM365Profile /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/automation-setup">
-        <RequireAuth role="client"><RequireOnboarding><PortalAppRegistration /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalAppRegistration /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/security">
-        <RequireAuth role="client"><RequireOnboarding><PortalSecurity /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalSecurity /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/insights">
-        <RequireAuth role="client"><RequireOnboarding><PortalInsights /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalInsights /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/journey">
-        <RequireAuth role="client"><RequireOnboarding><PortalJourneyMap /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalJourneyMap /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/health">
-        <RequireAuth role="client"><RequireOnboarding><PortalHealthScore /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><PortalHealthScore /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/quick-wins">
-        <RequireAuth role="client"><RequireOnboarding><QuickWinResultsPage /></RequireOnboarding></RequireAuth>
+        <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/presentation/:id">
         <PortalPresentation />

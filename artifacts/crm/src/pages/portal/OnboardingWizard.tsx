@@ -363,6 +363,10 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
 
+  // Whether the client already has Azure credentials saved — used to auto-skip
+  // the app-reg step and to show the "Update credentials" link.
+  const [hasCredentials, setHasCredentials] = useState(false);
+
   // Restore last step from sessionStorage so a page refresh lands back on the
   // Quick Win progress screen without forcing the user to re-enter App Reg.
   // Only applies in onboarding mode — update mode always starts at app-reg.
@@ -375,6 +379,29 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
 
   const [completing, setCompleting] = useState(false);
   const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
+
+  // On mount in onboarding mode, check if credentials already exist so we can
+  // auto-skip the App Registration step and go straight to the diagnostic.
+  const credentialCheckRef = useRef(false);
+  useEffect(() => {
+    if (mode !== "onboarding") return;
+    if (credentialCheckRef.current) return;
+    credentialCheckRef.current = true;
+
+    fetchWithAuth("/api/portal/onboarding/wizard-status")
+      .then(r => r.ok ? (r.json() as Promise<{ hasCredentials?: boolean }>) : { hasCredentials: false })
+      .then(data => {
+        const creds = !!data.hasCredentials;
+        setHasCredentials(creds);
+        // Only auto-skip if currently on app-reg step (not if already advanced)
+        setCurrentStep(prev => {
+          if (prev === "app-reg" && creds) return "quick-win";
+          return prev;
+        });
+      })
+      .catch(() => { /* non-fatal — keep showing app-reg */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Keep sessionStorage in sync with the current step.
   useEffect(() => {
@@ -391,13 +418,22 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
     setCompleting(true);
     sessionStorage.removeItem(WIZARD_STEP_KEY);
     try {
+      // Mark the quick-win diagnostic as complete — this sets wizardResultsReady
+      // so the RequireEngagement gate knows to send the client to the results page.
+      await fetchWithAuth("/api/portal/onboarding/quick-win-complete", { method: "POST" });
+      // Also mark the overall wizard complete
       await fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" });
     } catch {
-      // non-fatal, continue to dashboard
+      // non-fatal — navigate to results regardless
     }
-    setCurrentStep("done");
+    if (mode === "update") {
+      setCurrentStep("done");
+    } else {
+      // In onboarding mode go directly to the results page
+      navigate("/portal/onboarding/results");
+    }
     setCompleting(false);
-  }, [fetchWithAuth, completing]);
+  }, [fetchWithAuth, completing, mode, navigate]);
 
   async function handleAppRegSaveAndContinue(tenantId: string, clientId: string, secret: string) {
     const res = await fetchWithAuth("/api/portal/app-registration", {
@@ -409,6 +445,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       const err = await res.json() as { error?: string };
       throw new Error(err.error ?? "Could not save credentials.");
     }
+    setHasCredentials(true);
     // In onboarding mode advance to step 2; in update mode finish immediately
     if (mode === "update") {
       await completeWizard();
@@ -424,7 +461,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
 
   async function handleSkip() {
     if (mode === "update") {
-      navigate("/portal/app-registration");
+      navigate("/portal/automation-setup");
     } else {
       // Skip Azure credentials — go to the Quick Win step
       setCurrentStep("quick-win");
@@ -474,6 +511,19 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
               <p className="text-xs text-white/40 mt-2 leading-relaxed [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
                 This takes about 5 minutes. You can skip any step and come back later.
               </p>
+              {/* Update credentials link — visible when credentials exist and we're not already on app-reg */}
+              {hasCredentials && currentStep !== "app-reg" && (
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep("app-reg")}
+                  className="mt-3 flex items-center gap-1.5 text-[11px] text-[#00B4D8]/70 hover:text-[#00B4D8] transition-colors"
+                >
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  Update credentials
+                </button>
+              )}
             </>
           )}
         </div>

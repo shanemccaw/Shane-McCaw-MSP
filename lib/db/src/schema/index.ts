@@ -29,6 +29,7 @@ export const usersTable = pgTable("users", {
   sharepointSiteUrl: text("sharepoint_site_url"),
   sharepointSiteId: text("sharepoint_site_id"),
   onboardingWizardCompletedAt: timestamp("onboarding_wizard_completed_at"),
+  quickWinCompletedAt: timestamp("quick_win_completed_at"),
   linkedLeadId: integer("linked_lead_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

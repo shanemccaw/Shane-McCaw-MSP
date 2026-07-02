@@ -1188,23 +1188,64 @@ router.get("/portal/automation-history", requireAuth, async (req: Request, res: 
 router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
 
-  const [user] = await db.select({ onboardingWizardCompletedAt: usersTable.onboardingWizardCompletedAt })
+  const [user] = await db.select({
+    onboardingWizardCompletedAt: usersTable.onboardingWizardCompletedAt,
+    quickWinCompletedAt: usersTable.quickWinCompletedAt,
+  })
     .from(usersTable)
     .where(eq(usersTable.id, userId));
 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
-
-  if (user.onboardingWizardCompletedAt !== null) {
-    res.json({ needsOnboarding: false });
-    return;
-  }
 
   // Check for any existing M365 profile data — if present, treat as already onboarded
   const [profile] = await db.select({ id: clientM365ProfilesTable.clientId })
     .from(clientM365ProfilesTable)
     .where(eq(clientM365ProfilesTable.clientId, userId));
 
-  res.json({ needsOnboarding: !profile });
+  // Check whether the client has submitted Azure App Registration credentials
+  const [appReg] = await db.select({ id: clientAppRegistrationsTable.id })
+    .from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, userId));
+
+  // hasActiveEngagement: any active project or active/paused client service
+  const [activeProject] = await db.select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(
+      eq(projectsTable.clientUserId, userId),
+      eq(projectsTable.status, "active"),
+    ))
+    .limit(1);
+
+  let hasActiveEngagement = !!activeProject;
+  if (!hasActiveEngagement) {
+    const [activeService] = await db.select({ id: clientServicesTable.id })
+      .from(clientServicesTable)
+      .where(and(
+        eq(clientServicesTable.clientUserId, userId),
+        inArray(clientServicesTable.status, ["active", "paused"]),
+      ))
+      .limit(1);
+    hasActiveEngagement = !!activeService;
+  }
+
+  const wizardResultsReady = user.quickWinCompletedAt !== null;
+
+  if (user.onboardingWizardCompletedAt !== null || profile) {
+    res.json({
+      needsOnboarding: false,
+      hasActiveEngagement,
+      hasCredentials: !!appReg,
+      wizardResultsReady,
+    });
+    return;
+  }
+
+  res.json({
+    needsOnboarding: true,
+    hasActiveEngagement,
+    hasCredentials: !!appReg,
+    wizardResultsReady,
+  });
 });
 
 // ─── Onboarding wizard complete ───────────────────────────────────────────────
@@ -1214,6 +1255,18 @@ router.post("/portal/onboarding/complete", requireAuth, async (req: Request, res
 
   await db.update(usersTable)
     .set({ onboardingWizardCompletedAt: now })
+    .where(eq(usersTable.id, userId));
+
+  res.json({ completedAt: now.toISOString() });
+});
+
+// ─── Quick Win diagnostic completed — mark results as ready ──────────────────
+router.post("/portal/onboarding/quick-win-complete", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const now = new Date();
+
+  await db.update(usersTable)
+    .set({ quickWinCompletedAt: now })
     .where(eq(usersTable.id, userId));
 
   res.json({ completedAt: now.toISOString() });

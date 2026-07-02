@@ -883,6 +883,13 @@
       "when": 1751464800000,
       "tag": "0122_add_presentation_doc_views",
       "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1751500800000,
+      "tag": "0123_add_quick_win_completed_at",
+      "breakpoints": true
     }
   ]
 }
