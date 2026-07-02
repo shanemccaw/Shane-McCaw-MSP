@@ -217,6 +217,28 @@ export default function PresentationFlow({
   const selectedPhases = phasesWithSelection.filter(p => p.selected);
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0) || data.totalPrice;
 
+  // Aggregate stats for the Overview teaser cards — scans all doc HTML for real numbers
+  const overviewStats = useMemo(() => {
+    let worstScore: number | null = null;
+    let criticalMentions = 0;
+    for (const doc of data.documents) {
+      const text = doc.htmlContent
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ");
+      const scores = [...text.matchAll(/\b(\d{1,3})\s*\/\s*100\b/g)]
+        .map(m => parseInt(m[1]))
+        .filter(n => !isNaN(n) && n >= 0 && n <= 100);
+      if (scores.length) {
+        const min = Math.min(...scores);
+        if (worstScore === null || min < worstScore) worstScore = min;
+      }
+      criticalMentions += [...text.matchAll(/\bCRITICAL\b/gi)].length;
+    }
+    return { worstScore, criticalMentions };
+  }, [data.documents]);
+
   const fetchFn = useCallback((url: string, opts?: RequestInit) => {
     if (user) return fetchWithAuth(url, opts);
     return fetch(url, opts);
@@ -356,6 +378,17 @@ export default function PresentationFlow({
       setSidebarOpen(false);
     }
   };
+
+  // Jump from the Overview teaser cards — unlocks the target step and navigates immediately
+  const jumpToStep = useCallback((idx: number) => {
+    if (idx < 0 || idx >= steps.length) return;
+    setMaxVisitedStep(m => Math.max(m, idx));
+    applyStepChange(idx);
+  }, [steps.length, applyStepChange]);
+
+  const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
+  const contractStepIndex = steps.findIndex(s => s.kind === "contract");
+  const paymentStepIndex  = steps.findIndex(s => s.kind === "payment");
 
   // Flush on unmount (e.g. user closes via browser back / ESC) for the current doc step
   useEffect(() => {
@@ -574,46 +607,226 @@ export default function PresentationFlow({
           <div key={stepIndex} className={`max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col ${stepReady ? "animate-step-in" : "invisible"}`}>
 
             {/* Welcome step */}
-            {currentStep?.kind === "welcome" && (
-              <>
-                <div className="fixed inset-0 -z-10 pointer-events-none">
-                  <AnimatedBackground />
-                </div>
-              <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-6 max-w-xl mx-auto">
-                <div className="w-20 h-20 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h1 className="text-2xl font-extrabold text-[#0A2540]">
-                    {data.projectTitle ?? "Your Assessment Results"}
-                  </h1>
-                  <p className="text-muted-foreground mt-2 leading-relaxed">
-                    {data.clientName ? `Hi ${data.clientName.split(" ")[0]}, your` : "Your"} {data.workflowName ?? "assessment"} is complete.
-                    This presentation walks you through all generated deliverables, the recommended scope of work,
-                    and your engagement options.
-                  </p>
-                </div>
-                <div className="grid grid-cols-3 gap-4 w-full text-center">
-                  <div className="bg-white rounded-xl border border-border p-4">
-                    <p className="text-2xl font-extrabold text-[#0078D4]">{data.documents.length}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Reports</p>
+            {currentStep?.kind === "welcome" && (() => {
+              const total      = selectedTotal || data.totalPrice;
+              const fmtCur     = (n: number) =>
+                new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
+              const totalFmt   = total > 0 ? fmtCur(total) : "";
+              const upfrontFmt = total > 0 ? fmtCur(Math.round(total * 0.2)) : "";
+              const topPhases  = (data.sowPhases ?? []).slice(0, 3);
+              const extraPhases = Math.max(0, (data.sowPhases?.length ?? 0) - 3);
+              return (
+                <>
+                  <div className="fixed inset-0 -z-10 pointer-events-none">
+                    <AnimatedBackground />
                   </div>
-                  <div className="bg-white rounded-xl border border-border p-4">
-                    <p className="text-2xl font-extrabold text-[#0078D4]">{data.sowPhases?.length ?? 0}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Phases</p>
+                  <div className="relative z-10 flex-1 flex flex-col items-center text-center gap-6 py-2 max-w-2xl mx-auto w-full">
+
+                    {/* Icon + heading */}
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h1 className="text-2xl font-extrabold text-[#0A2540]">
+                          {data.projectTitle ?? "Your Assessment Results"}
+                        </h1>
+                        <p className="text-muted-foreground mt-1.5 leading-relaxed max-w-md mx-auto text-sm">
+                          {data.clientName ? `Hi ${data.clientName.split(" ")[0]}, your` : "Your"} {data.workflowName ?? "assessment"} is complete.
+                          Walk through your deliverables, scope, and engagement options below.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Summary counters */}
+                    <div className="grid grid-cols-3 gap-3 w-full text-center">
+                      <div className="bg-white rounded-xl border border-border p-4">
+                        <p className="text-2xl font-extrabold text-[#0078D4]">{data.documents.length}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Reports</p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-border p-4">
+                        <p className="text-2xl font-extrabold text-[#0078D4]">{data.sowPhases?.length ?? 0}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Phases</p>
+                      </div>
+                      <div className="bg-white rounded-xl border border-border p-4">
+                        <p className="text-2xl font-extrabold text-[#0078D4]">
+                          {total >= 1000 ? `$${Math.round(total / 1000)}k` : total > 0 ? `$${total}` : "TBD"}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Investment</p>
+                      </div>
+                    </div>
+
+                    {/* ── Teaser cards ────────────────────────────────────────── */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full text-left">
+
+                      {/* 1 — Documents / findings */}
+                      <button
+                        onClick={() => jumpToStep(1)}
+                        className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                      >
+                        <div className="absolute top-0 left-0 right-0 h-0.5 bg-red-500 rounded-t-xl" />
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                          </div>
+                          <span className="text-xs font-bold uppercase tracking-widest text-red-500">Your Reports</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 mb-4 min-h-[3rem]">
+                          {overviewStats.criticalMentions > 0 && (
+                            <div>
+                              <p className="text-2xl font-extrabold text-[#0A2540]">{overviewStats.criticalMentions}</p>
+                              <p className="text-[11px] text-muted-foreground leading-tight">Critical issues found</p>
+                            </div>
+                          )}
+                          {overviewStats.worstScore !== null && (
+                            <div>
+                              <p className={`text-2xl font-extrabold ${overviewStats.worstScore <= 20 ? "text-red-600" : overviewStats.worstScore <= 40 ? "text-amber-600" : "text-[#0078D4]"}`}>
+                                {overviewStats.worstScore}/100
+                              </p>
+                              <p className="text-[11px] text-muted-foreground leading-tight">Lowest security score</p>
+                            </div>
+                          )}
+                          {overviewStats.criticalMentions === 0 && overviewStats.worstScore === null && (
+                            <div className="col-span-2">
+                              <p className="text-sm font-bold text-[#0A2540]">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} ready</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">Click to review your findings</p>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-muted-foreground">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} included</span>
+                          <span className="text-xs font-bold text-[#0078D4] group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                            Review findings
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* 2 — Scope & Investment */}
+                      {sowStepIndex >= 0 && (
+                        <button
+                          onClick={() => jumpToStep(sowStepIndex)}
+                          className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#0078D4] rounded-t-xl" />
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-[#0078D4]">Scope & Investment</span>
+                          </div>
+                          <div className="mb-4 min-h-[3rem]">
+                            {totalFmt && (
+                              <p className="text-2xl font-extrabold text-[#0A2540] mb-2">{totalFmt}</p>
+                            )}
+                            {topPhases.length > 0 && (
+                              <ul className="space-y-0.5">
+                                {topPhases.map((phase, i) => (
+                                  <li key={i} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                    <div className="w-1 h-1 rounded-full bg-[#0078D4] flex-shrink-0" />
+                                    <span className="truncate">{phase.title}</span>
+                                  </li>
+                                ))}
+                                {extraPhases > 0 && (
+                                  <li className="text-[11px] text-muted-foreground ml-2.5">+{extraPhases} more phase{extraPhases !== 1 ? "s" : ""}</li>
+                                )}
+                              </ul>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <span className="text-xs font-bold text-[#0078D4] group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                              Review scope
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            </span>
+                          </div>
+                        </button>
+                      )}
+
+                      {/* 3 — Agreement */}
+                      {contractStepIndex >= 0 && (
+                        <button
+                          onClick={() => jumpToStep(contractStepIndex)}
+                          className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-slate-400 rounded-t-xl" />
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Agreement</span>
+                          </div>
+                          <p className="text-sm font-bold text-[#0A2540] mb-3">Personalised, legally binding e-signature contract</p>
+                          <div className="flex flex-wrap gap-1.5 mb-4">
+                            {(["E-Signature", "Legally Binding", "Personalised Contract"] as const).map(pill => (
+                              <span key={pill} className="inline-flex items-center gap-1 text-[10px] font-semibold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                {pill}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <span className="text-xs font-bold text-slate-500 group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                              Preview agreement
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            </span>
+                          </div>
+                        </button>
+                      )}
+
+                      {/* 4 — Payment */}
+                      {paymentStepIndex >= 0 && (
+                        <button
+                          onClick={() => jumpToStep(paymentStepIndex)}
+                          className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                        >
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-purple-500 rounded-t-xl" />
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+                              <svg className="w-4 h-4 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                            </div>
+                            <span className="text-xs font-bold uppercase tracking-widest text-purple-600">Payment</span>
+                          </div>
+                          {upfrontFmt ? (
+                            <div className="mb-3 min-h-[3rem]">
+                              <p className="text-2xl font-extrabold text-[#0A2540]">
+                                {upfrontFmt} <span className="text-sm font-bold text-muted-foreground">to start</span>
+                              </p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">20% deposit · remaining billed per milestone</p>
+                            </div>
+                          ) : (
+                            <div className="mb-3 min-h-[3rem]">
+                              <p className="text-sm font-bold text-[#0A2540]">Flexible payment options</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5">Pay in full or by milestone</p>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 mb-4">
+                            <span className="inline-flex items-center text-[10px] font-semibold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">Milestone billing</span>
+                            <span className="inline-flex items-center text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Or pay in full</span>
+                          </div>
+                          <div className="flex items-center justify-end">
+                            <span className="text-xs font-bold text-purple-600 group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5">
+                              View payment options
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                            </span>
+                          </div>
+                        </button>
+                      )}
+
+                    </div>
                   </div>
-                  <div className="bg-white rounded-xl border border-border p-4">
-                    <p className="text-2xl font-extrabold text-[#0078D4]">
-                      ${Math.round((data.totalPrice ?? 0) / 1000)}k
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Investment</p>
-                  </div>
-                </div>
-              </div>
-              </>
-            )}
+                </>
+              );
+            })()}
 
             {/* Document panels */}
             {currentStep?.kind === "doc" && (
