@@ -198,6 +198,13 @@ export default function FullScreenWrapper() {
   // Resets automatically when kanbanProjectId changes (new project = fresh prompts).
   const [allScriptsDismissed, setAllScriptsDismissed] = useState(false);
   useEffect(() => { setAllScriptsDismissed(false); }, [kanbanProjectId]);
+  // Show the panel whenever a waiting_on_customer kanban task of type manualScript
+  // exists — regardless of whether the script_run_result is awaiting_upload or
+  // completed (customer still needs to mark the task done in that case).
+  const waitingManualScriptCount = kanbanTasks.filter(
+    t => t.column === "waiting_on_customer" && t.taskType === "manualScript"
+  ).length;
+  const showScriptPanel = (waitingManualScriptCount > 0 || pendingManualScripts.length > 0) && !allScriptsDismissed;
 
   // ── Completed-task exit animation ───────────────────────────────────────────
   // We store the FULL task objects (not just IDs) so we can render ghost cards
@@ -774,9 +781,10 @@ export default function FullScreenWrapper() {
           </div>
 
           {/* ── Center panel: manual script hero — shown between task list and branding ── */}
-          {pendingManualScripts.length > 0 && !allScriptsDismissed && (
+          {showScriptPanel && (
             <DiagnosticScriptPanel
-              scripts={pendingManualScripts}
+              scripts={overlayManualScripts}
+              waitingManualScriptCount={waitingManualScriptCount}
               onCompleted={() => void refetchManualScripts()}
               onAllDismissed={() => setAllScriptsDismissed(true)}
             />
