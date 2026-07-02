@@ -760,15 +760,29 @@ export default function FullScreenWrapper() {
                                 )}
                                 <div className="pt-1">
                                   {dl?.scriptId ? (
-                                    <a
-                                      href={`/api/portal/tasks/${task.id}/download-script`}
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetchWithAuth(`/api/portal/tasks/${task.id}/download-script`);
+                                          if (!res.ok) throw new Error("Download failed");
+                                          const blob = await res.blob();
+                                          const url = URL.createObjectURL(blob);
+                                          const a = document.createElement("a");
+                                          a.href = url;
+                                          const cd = res.headers.get("content-disposition") ?? "";
+                                          const match = /filename="?([^"]+)"?/.exec(cd);
+                                          a.download = match?.[1] ?? `script-${task.id}.ps1`;
+                                          a.click();
+                                          setTimeout(() => URL.revokeObjectURL(url), 10_000);
+                                        } catch { /* non-fatal */ }
+                                      }}
                                       className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
                                     >
                                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                                       </svg>
                                       {dl.scriptTitle ?? "Download Script"}
-                                    </a>
+                                    </button>
                                   ) : (
                                     <button
                                       onClick={() => {
