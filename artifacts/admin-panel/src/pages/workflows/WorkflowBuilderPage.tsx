@@ -1358,10 +1358,24 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const runMut = useMutation({
     mutationFn: async () => {
       const triggerPayload = JSON.parse(payloadText) as Record<string, unknown>;
+      // Serialize the same way as the save path: replace RF's type:"wfNode" with
+      // the real workflow node type stored in data.nodeType, and strip extra edge fields.
+      const graphNodes = nodes.map(n => ({
+        id: n.id,
+        type: (n.data.nodeType as string) ?? "action",
+        position: n.position,
+        data: n.data,
+      }));
+      const graphEdges = edges.map(e => ({
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        sourceHandle: e.sourceHandle ?? null,
+      }));
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/test-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes, edges, triggerPayload }),
+        body: JSON.stringify({ nodes: graphNodes, edges: graphEdges, triggerPayload }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
