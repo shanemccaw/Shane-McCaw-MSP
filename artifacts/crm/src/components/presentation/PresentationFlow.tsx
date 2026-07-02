@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import DocumentPanel from "./DocumentPanel";
 import SowSelectorPanel from "./SowSelectorPanel";
@@ -157,7 +157,17 @@ export default function PresentationFlow({
     }
   }, [stepIndex]);
 
-  const steps = buildSteps(data.documents, readOnly);
+  const sortedDocs = useMemo(() => {
+    const isSow = (d: PresentationDoc) =>
+      d.docType === "consolidated_sow" || d.docType === "sow";
+    return [...data.documents].sort((a, b) => {
+      if (isSow(a) && !isSow(b)) return 1;
+      if (!isSow(a) && isSow(b)) return -1;
+      return 0;
+    });
+  }, [data.documents]);
+
+  const steps = buildSteps(sortedDocs, readOnly);
   const currentStep = steps[stepIndex];
 
   const [stepReady, setStepReady] = useState(() => {
@@ -383,7 +393,7 @@ export default function PresentationFlow({
                 )}
               </span>
               <span className="text-[12px] font-medium leading-tight line-clamp-2">
-                {stepLabel(step, data.documents)}
+                {stepLabel(step, sortedDocs)}
               </span>
             </button>
           );
@@ -451,7 +461,7 @@ export default function PresentationFlow({
           </button>
 
           <p className="text-white text-sm font-semibold truncate flex-1 text-center">
-            {stepLabel(currentStep, data.documents)}
+            {stepLabel(currentStep, sortedDocs)}
           </p>
 
           <button
@@ -539,7 +549,7 @@ export default function PresentationFlow({
             {/* Document panels */}
             {currentStep?.kind === "doc" && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <DocumentPanel doc={data.documents[currentStep.index]} onReady={handleStepReady} />
+                <DocumentPanel doc={sortedDocs[currentStep.index]} onReady={handleStepReady} />
               </div>
             )}
 
@@ -627,7 +637,7 @@ export default function PresentationFlow({
               </button>
 
               <p className="text-xs text-muted-foreground hidden sm:block">
-                {stepLabel(currentStep, data.documents)}
+                {stepLabel(currentStep, sortedDocs)}
               </p>
 
               {currentStep?.kind === "contract" && !data.signedAt ? (
