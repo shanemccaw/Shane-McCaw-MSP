@@ -9468,8 +9468,10 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
         .where(eq(workflowStepsTable.projectId, projectId))
         .orderBy(asc(workflowStepsTable.order));
 
-      // Look for SOW pricing lines stored when a SOW was generated for this project
-      const [sowDoc] = await db.select({
+      // Look for SOW pricing lines stored when a SOW was generated for this project.
+      // Only use a project-scoped SOW — a customer-scoped fallback could pull pricing
+      // from a different engagement for the same client and produce incorrect line items.
+      const [activeSowDoc] = await db.select({
         sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
         sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
       })
@@ -9481,24 +9483,6 @@ router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req
         ))
         .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
         .limit(1);
-
-      // If no project-scoped SOW, try customer-scoped
-      const [customerSowDoc] = !sowDoc
-        ? await db.select({
-            sowTotalPrice:   insightsGeneratedDocumentsTable.sowTotalPrice,
-            sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
-          })
-            .from(insightsGeneratedDocumentsTable)
-            .where(and(
-              eq(insightsGeneratedDocumentsTable.customerId, project.clientUserId),
-              inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
-              isNotNull(insightsGeneratedDocumentsTable.sowTotalPrice),
-            ))
-            .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
-            .limit(1)
-        : [null];
-
-      const activeSowDoc = sowDoc ?? customerSowDoc;
 
       // Price: SOW total > fallback $5k
       const baseTotal = activeSowDoc?.sowTotalPrice
