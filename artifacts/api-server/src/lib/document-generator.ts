@@ -26,6 +26,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
+import { stripMarkdownFence, parseSowPricing } from "./sow-pricing";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -455,11 +456,16 @@ export async function generateAndDeliverDocument(
   }
 
   let htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
+  // Strip markdown code fences Claude sometimes wraps around HTML output
+  htmlContent = stripMarkdownFence(htmlContent);
   // Strip any "Staged for Review" banner that may have leaked in from a prompt template
   htmlContent = htmlContent.replace(
     /<div[^>]*>⚠️\s*<strong>Staged for Review<\/strong>[\s\S]*?<\/div>/gi,
     "",
   );
+
+  const isSowDoc = docType === "sow" || docType === "consolidated_sow";
+  const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
 
   const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
     customerId:  clientUserId,
@@ -471,6 +477,8 @@ export async function generateAndDeliverDocument(
     status:      "delivered",
     deliveredAt: new Date(),
     pdfUrl:      null,
+    sowPricingLines: sowLines.length > 0 ? sowLines : null,
+    sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
   }).returning();
 
   if (!newDoc) throw new Error("document-generator: insert returned no row");
