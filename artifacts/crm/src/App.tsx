@@ -242,10 +242,10 @@ function Router() {
         <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/diagnostic/:projectId">
-        <RequireAuth role="client"><RequireEngagement><PortalDiagnostic /></RequireEngagement></RequireAuth>
+        <RequireAuth role="client"><PortalDiagnostic /></RequireAuth>
       </Route>
       <Route path="/portal/diagnostic">
-        <RequireAuth role="client"><RequireEngagement><PortalDiagnostic /></RequireEngagement></RequireAuth>
+        <RequireAuth role="client"><PortalDiagnostic /></RequireAuth>
       </Route>
       <Route path="/portal/presentation/:id">
         <PortalPresentation />
