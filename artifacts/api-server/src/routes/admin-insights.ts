@@ -38,8 +38,9 @@ import {
   insightsGeneratedDocumentsTable,
   insightsAutomationsTable,
   notificationsTable,
+  engagementProjectsTable,
 } from "@workspace/db";
-import { eq, desc, and, sql, inArray, isNull } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, isNull, notInArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
@@ -973,6 +974,7 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
 // ── POST /api/admin/insights/consulting/generate ──────────────────────────────
 
 const CONSULTING_TYPE_LABELS: Record<string, string> = {
+  consolidated_sow:           "Consolidated Statement of Work",
   sow:                        "Statement of Work",
   remediation_plan:           "Remediation Plan",
   deployment_plan:            "Deployment Plan",
@@ -994,6 +996,117 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
     const body = generateConsultingSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
     const { customerId, projectId, deliverableType, title } = body.data;
+
+    // ── Special path: Consolidated SOW ──────────────────────────────────────────
+    if (deliverableType === "consolidated_sow") {
+      const stripHtml = (html: string) =>
+        html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 1800);
+
+      const [existingDocs, engagementProjects, customerRow] = await Promise.all([
+        customerId
+          ? db.select({
+              id:       insightsGeneratedDocumentsTable.id,
+              title:    insightsGeneratedDocumentsTable.title,
+              docType:  insightsGeneratedDocumentsTable.docType,
+              category: insightsGeneratedDocumentsTable.category,
+              htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+            })
+            .from(insightsGeneratedDocumentsTable)
+            .where(and(
+              eq(insightsGeneratedDocumentsTable.customerId, customerId),
+              notInArray(insightsGeneratedDocumentsTable.docType, ["sow", "consolidated_sow"]),
+            ))
+            .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          : Promise.resolve([] as { id: number; title: string; docType: string; category: string; htmlContent: string }[]),
+        db.select({
+          title:       engagementProjectsTable.title,
+          priceRange:  engagementProjectsTable.priceRange,
+          description: engagementProjectsTable.description,
+          sowItems:    engagementProjectsTable.sowItems,
+        })
+        .from(engagementProjectsTable)
+        .where(eq(engagementProjectsTable.isVisible, true))
+        .orderBy(engagementProjectsTable.sortOrder),
+        customerId
+          ? db.select({ name: usersTable.name, company: usersTable.company })
+              .from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
+          : Promise.resolve([] as { name: string | null; company: string | null }[]),
+      ]);
+
+      const clientName = (customerRow as { company: string | null; name: string | null }[])[0]?.company
+        ?? (customerRow as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
+
+      const docsBlock = existingDocs.length > 0
+        ? existingDocs.map((d, i) =>
+            `[Document ${i + 1}] ${d.title} (${d.docType})\n${stripHtml(d.htmlContent)}`
+          ).join("\n\n---\n\n")
+        : "No prior documents found for this client — generate from scratch using best practices.";
+
+      const projectsBlock = engagementProjects.length > 0
+        ? engagementProjects.map(p =>
+            `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`
+          ).join("\n\n")
+        : "No engagement project pricing configured.";
+
+      const CONSOLIDATED_SOW_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
+
+Client: {{clientName}}
+Deliverable title: {{title}}
+Date: {{date}}
+
+EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
+{{existingDocs}}
+
+ENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and deliverables to populate real pricing in the SOW — select only the projects relevant to this client's needs):
+{{engagementProjects}}
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
+- Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
+- The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Estimated Price Range, Notes — populated from the engagement projects catalogue above; do NOT use [TBD] for pricing if catalogue data is available
+- Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
+- Each major section as <h2> with a horizontal rule separator
+- Professional consulting tone as Shane McCaw, first person where appropriate
+- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+- Total length: 2000-3500 words`;
+
+      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK);
+      const prompt = rawTemplate
+        .replace(/\{\{clientName\}\}/g, clientName)
+        .replace(/\{\{title\}\}/g, title)
+        .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
+        .replace(/\{\{existingDocs\}\}/g, docsBlock)
+        .replace(/\{\{engagementProjects\}\}/g, projectsBlock);
+
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 8000,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const htmlContent = (aiResponse.content[0] as { text: string }).text ?? "";
+
+      const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
+        customerId: customerId ?? null,
+        projectId:  projectId ?? null,
+        category:   "consulting",
+        docType:    "consolidated_sow",
+        title,
+        htmlContent,
+        status: "draft",
+        pdfUrl: null,
+      }).returning();
+
+      const pdfUrl = `/api/admin/insights/documents/${newDoc!.id}/download`;
+      const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
+        .set({ pdfUrl })
+        .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
+        .returning();
+
+      return res.json({ document: withPdf });
+    }
+    // ── End Consolidated SOW ─────────────────────────────────────────────────────
 
     const [runs, customer, project] = await Promise.all([
       fetchRunsForCustomer(customerId, projectId, 50),

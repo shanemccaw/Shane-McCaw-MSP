@@ -6,7 +6,7 @@ import {
 import {
   BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight, ChevronDown,
   Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
-  Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2,
+  Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2, Layers,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -69,6 +69,7 @@ const REPORT_TYPES = [
 ] as const;
 
 const CONSULTING_TYPES = [
+  { key: "consolidated_sow",            label: "Consolidated SOW",           icon: Layers,        desc: "Aggregates all generated docs + project pricing into one comprehensive SOW" },
   { key: "sow",                         label: "Statement of Work",          icon: FileText,      desc: "Formal SOW with scope, timeline, pricing placeholders" },
   { key: "remediation_plan",            label: "Remediation Plan",           icon: AlertTriangle, desc: "Prioritised steps for identified security and governance gaps" },
   { key: "deployment_plan",             label: "Deployment Plan",            icon: Settings,      desc: "Phased rollout with pre-checks, milestones, rollback procedures" },

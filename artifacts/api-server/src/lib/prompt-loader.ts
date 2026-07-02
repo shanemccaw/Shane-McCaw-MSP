@@ -834,6 +834,37 @@ INSTRUCTIONS:
   },
   // ── Insights: Consulting Deliverables (7 types) ──────────────────────────────
   {
+    key: "insights-consulting-consolidated_sow",
+    name: "Insights — Consolidated Statement of Work",
+    description: "Synthesises ALL prior generated documents for the client (excluding other SOWs) plus the Engagement Projects pricing catalogue into one comprehensive SOW. Tokens: {{clientName}}, {{title}}, {{date}}, {{existingDocs}}, {{engagementProjects}}.",
+    category: "insights",
+    featureArea: "Command — Insights",
+    featureRoute: "/command/insights",
+    model: "claude-haiku-4-5",
+    body: `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
+
+Client: {{clientName}}
+Deliverable title: {{title}}
+Date: {{date}}
+
+EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
+{{existingDocs}}
+
+ENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and deliverables to populate real pricing in the SOW — select only the projects relevant to this client's needs):
+{{engagementProjects}}
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
+- Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
+- The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Estimated Price Range, Notes — populated from the engagement projects catalogue above; do NOT use [TBD] for pricing if catalogue data is available
+- Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
+- Each major section as <h2> with a horizontal rule separator
+- Professional consulting tone as Shane McCaw, first person where appropriate
+- Include at the very top: <div style="background:#d1ecf1;border:1px solid #bee5eb;padding:10px 16px;margin-bottom:24px;border-radius:6px;font-size:13px">📋 <strong>Staged for Review</strong> — Review this deliverable and click <em>Send to Customer</em> only after explicit approval.</div>
+- Total length: 2000-3500 words`,
+  },
+  {
     key: "insights-consulting-sow",
     name: "Insights — Statement of Work",
     description: "Generates a Statement of Work consulting deliverable in HTML. Tokens: {{typeLabel}}, {{clientName}}, {{projectDesc}}, {{title}}, {{date}}, {{scores}}, {{findings}}, {{recommendations}}, {{profileSample}}.",
