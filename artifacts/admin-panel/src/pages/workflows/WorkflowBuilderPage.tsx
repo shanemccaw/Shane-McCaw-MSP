@@ -489,12 +489,27 @@ function NodeConfigPanel({
                 onChange={e => onChange(node.id, { ...node.data, actionType: e.target.value })}
                 className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
               >
-                <option value="http_request">HTTP Request</option>
-                <option value="sql_query">SQL Query</option>
-                <option value="send_email">Send Email</option>
-                <option value="send_sms">Send SMS</option>
-                <option value="emit_event">Emit Event</option>
-                <option value="cancel_workflow">Cancel Workflow</option>
+                <optgroup label="Platform">
+                  <option value="http_request">🌐 HTTP Request</option>
+                  <option value="sql_query">🗄️ SQL Query</option>
+                  <option value="send_email">📧 Send Email</option>
+                  <option value="send_sms">💬 Send SMS</option>
+                  <option value="emit_event">📡 Emit Event</option>
+                  <option value="cancel_workflow">🛑 Cancel Workflow</option>
+                </optgroup>
+                <optgroup label="CRM">
+                  <option value="create_lead">➕ Create Lead</option>
+                  <option value="convert_to_opportunity">🚀 Convert to Opportunity</option>
+                  <option value="create_client">👤 Create Client</option>
+                  <option value="create_project">📁 Create Project</option>
+                </optgroup>
+                <optgroup label="Microsoft 365">
+                  <option value="update_m365_profile">☁️ Update M365 Profile</option>
+                  <option value="execute_runbook">⚙️ Execute Runbook</option>
+                </optgroup>
+                <optgroup label="Documents">
+                  <option value="generate_document">📄 Generate Document</option>
+                </optgroup>
               </select>
             </div>
 
@@ -606,6 +621,120 @@ function NodeConfigPanel({
                 <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
                 <p className="text-[11px] text-[#7D8590] mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
               </div>
+            )}
+
+            {(node.data.actionType as string) === "create_lead" && (
+              <>
+                <ConfigField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.name}}" />
+                <ConfigField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.email}}" />
+                <ConfigField label="Company" value={(node.data.company as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, company: v })} placeholder="{{payload.company}}" />
+                <ConfigField label="Service Area" value={(node.data.serviceArea as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, serviceArea: v })} placeholder="Microsoft 365" />
+                <ConfigField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="{{payload.message}}" multiline />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Use <span className="font-mono text-[#7D8590]">{"{{payload.field}}"}</span> to pull values from the trigger or previous nodes.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "convert_to_opportunity" && (
+              <>
+                <ConfigField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{payload.leadId}}" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+                  <select
+                    value={(node.data.workflowType as string) ?? "DiscoveryCall"}
+                    onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Creates an opportunity linked to the lead and generates the matching workflow task set. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "create_client" && (
+              <>
+                <ConfigField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.name}}" />
+                <ConfigField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.email}}" />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Creates a CRM user account with role <span className="font-mono text-[#7D8590]">client</span>. Output: <span className="font-mono text-[#7D8590]">{"{{clientId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{clientEmail}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "create_project" && (
+              <>
+                <ConfigField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="{{payload.name}} Onboarding" />
+                <ConfigField label="Description" value={(node.data.description as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, description: v })} placeholder="Auto-created by workflow" multiline />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Project Type</label>
+                  <select
+                    value={(node.data.projectType as string) ?? "project"}
+                    onChange={e => onChange(node.id, { ...node.data, projectType: e.target.value })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    <option value="project">Project</option>
+                    <option value="retainer">Retainer</option>
+                  </select>
+                </div>
+                <ConfigField label="Client User ID (optional)" value={(node.data.clientUserId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientUserId: v })} placeholder="{{payload.clientId}}" />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Output: <span className="font-mono text-[#7D8590]">{"{{projectId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{projectTitle}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "update_m365_profile" && (
+              <>
+                <ConfigField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{payload.clientId}}" />
+                <ConfigField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="M365-Health-Check" />
+                <ConfigField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "execute_runbook" && (
+              <>
+                <ConfigField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="My-Runbook-Name" />
+                <ConfigField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets to be configured. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "generate_document" && (
+              <>
+                <ConfigField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{payload.clientId}}" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
+                  <select
+                    value={(node.data.docType as string) ?? "security"}
+                    onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    {[
+                      ["security","Security Assessment"],
+                      ["license","License Review"],
+                      ["governance","Governance Report"],
+                      ["copilot","Copilot Readiness"],
+                      ["remediation","Remediation Plan"],
+                      ["exposure","Exposure Report"],
+                      ["executive","Executive Summary"],
+                      ["deployment","Deployment Plan"],
+                    ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <ConfigField label="Title (optional)" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="Q1 Security Review — {{payload.company}}" />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Creates a document record for the client. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+                </div>
+              </>
             )}
           </>
         )}

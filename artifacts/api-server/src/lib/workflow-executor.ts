@@ -21,11 +21,38 @@ import {
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
   wfTriggersTable,
+  leadsTable,
+  usersTable,
+  projectsTable,
+  opportunitiesTable,
+  clientDocumentsTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
+import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger";
+
+// ── Payload interpolation ────────────────────────────────────────────────────
+// Replaces {{key}} and {{payload.key}} tokens with values from payload.
+function interp(template: string | undefined, payload: Record<string, unknown>): string | undefined {
+  if (!template) return undefined;
+  return template.replace(/\{\{([\w.]+)\}\}/g, (_match, path: string) => {
+    const key = path.startsWith("payload.") ? path.slice(8) : path;
+    const parts = key.split(".");
+    let cur: unknown = payload;
+    for (const part of parts) {
+      if (cur == null || typeof cur !== "object") return "";
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur != null ? String(cur) : "";
+  });
+}
+
+function interpOrNull(template: string | undefined, payload: Record<string, unknown>): string | null {
+  const result = interp(template, payload);
+  return result?.trim() ? result : null;
+}
 
 // ── Safe condition evaluator ─────────────────────────────────────────────────
 // NO eval/new Function. Supports: path op literal (==,!=,>,<,>=,<=,contains),
@@ -135,6 +162,105 @@ async function executeNode(
             }
           } else {
             output = { skipped: true, reason: "no url configured" };
+          }
+        } else if (actionType === "create_lead") {
+          const name = interp(node.data.name as string | undefined, payload);
+          const email = interp(node.data.email as string | undefined, payload);
+          if (!name || !email) {
+            nodeError = true;
+            output = { error: "create_lead requires name and email" };
+          } else {
+            const [lead] = await db.insert(leadsTable).values({
+              name,
+              email: email.toLowerCase(),
+              company: interpOrNull(node.data.company as string | undefined, payload),
+              serviceArea: interpOrNull(node.data.serviceArea as string | undefined, payload),
+              message: interpOrNull(node.data.message as string | undefined, payload),
+              source: "contact_form",
+              status: "new",
+            }).returning();
+            output = { leadId: lead.id, leadEmail: lead.email, leadName: lead.name };
+          }
+        } else if (actionType === "convert_to_opportunity") {
+          const leadId = parseInt(interp(node.data.leadId as string | undefined, payload) ?? "", 10);
+          if (isNaN(leadId)) {
+            nodeError = true;
+            output = { error: "convert_to_opportunity requires a valid leadId" };
+          } else {
+            const [opp] = await db.insert(opportunitiesTable).values({
+              leadId,
+              workflowType: (node.data.workflowType as string | undefined) ?? "DiscoveryCall",
+            }).returning();
+            output = { opportunityId: opp.id, leadId };
+          }
+        } else if (actionType === "create_client") {
+          const name = interp(node.data.name as string | undefined, payload);
+          const email = interp(node.data.email as string | undefined, payload);
+          if (!email) {
+            nodeError = true;
+            output = { error: "create_client requires email" };
+          } else {
+            const [client] = await db.insert(usersTable).values({
+              email: email.toLowerCase(),
+              name: name ?? email,
+              role: "client",
+            }).returning();
+            output = { clientId: client.id, clientEmail: client.email };
+          }
+        } else if (actionType === "create_project") {
+          const title = interp(node.data.title as string | undefined, payload);
+          if (!title) {
+            nodeError = true;
+            output = { error: "create_project requires title" };
+          } else {
+            const clientUserIdRaw = interp(node.data.clientUserId as string | undefined, payload);
+            const clientUserId = clientUserIdRaw ? parseInt(clientUserIdRaw, 10) : null;
+            const [project] = await db.insert(projectsTable).values({
+              title,
+              description: interpOrNull(node.data.description as string | undefined, payload),
+              projectType: (node.data.projectType as "project" | "retainer" | undefined) ?? "project",
+              clientUserId: clientUserId && !isNaN(clientUserId) ? clientUserId : null,
+              status: "active",
+            }).returning();
+            output = { projectId: project.id, projectTitle: project.title };
+          }
+        } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {
+          const runbookName = interp(node.data.runbookName as string | undefined, payload);
+          if (!runbookName) {
+            nodeError = true;
+            output = { error: "execute_runbook requires runbookName" };
+          } else if (!isAzureConfigured()) {
+            nodeError = true;
+            output = { error: "Azure Automation is not configured — add the required secrets" };
+          } else {
+            let parameters: Record<string, string> = {};
+            const rawParams = node.data.runbookParams as string | undefined;
+            if (rawParams?.trim()) {
+              try { parameters = JSON.parse(interp(rawParams, payload) ?? "{}") as Record<string, string>; }
+              catch { /* ignore bad JSON — run with no params */ }
+            }
+            if (actionType === "update_m365_profile") {
+              const clientId = interp(node.data.clientId as string | undefined, payload);
+              if (clientId) parameters["ClientId"] = clientId;
+            }
+            const job = await createRunbookJob({ runbookName, parameters });
+            output = { jobId: job.jobId, jobStatus: job.status, runbookName };
+          }
+        } else if (actionType === "generate_document") {
+          const clientIdRaw = interp(node.data.clientId as string | undefined, payload);
+          const clientUserId = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
+          if (isNaN(clientUserId)) {
+            nodeError = true;
+            output = { error: "generate_document requires a valid clientId" };
+          } else {
+            const docType = (node.data.docType as string | undefined) ?? "security";
+            const docName = interp(node.data.docTitle as string | undefined, payload) ?? `${docType} report`;
+            const [doc] = await db.insert(clientDocumentsTable).values({
+              clientUserId,
+              name: docName,
+              category: "reports",
+            }).returning();
+            output = { documentId: doc.id, docType, name: doc.name };
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
