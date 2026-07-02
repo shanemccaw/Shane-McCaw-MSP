@@ -1544,3 +1544,33 @@ export const pushSubscriptionsTable = pgTable("push_subscriptions", {
 
 export type InsertPushSubscription = typeof pushSubscriptionsTable.$inferInsert;
 export type PushSubscription = typeof pushSubscriptionsTable.$inferSelect;
+
+// ── Quick Win Presentation sessions ───────────────────────────────────────────
+export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").references(() => projectsTable.id, { onDelete: "cascade" }),
+  clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "cascade" }),
+  shareToken: text("share_token").unique(),
+  documentsIncluded: jsonb("documents_included").$type<number[]>(),
+  sowPhases: jsonb("sow_phases").$type<Array<{
+    id: string;
+    title: string;
+    description: string;
+    price: number;
+    selected: boolean;
+  }>>(),
+  selectedPhaseIds: jsonb("selected_phase_ids").$type<string[]>(),
+  totalPrice: numeric("total_price"),
+  signatureData: text("signature_data"),
+  signedAt: timestamp("signed_at"),
+  signerName: text("signer_name"),
+  paymentPlan: text("payment_plan", { enum: ["full", "phased"] }),
+  stripeSessionId: text("stripe_session_id"),
+  paymentSchedule: jsonb("payment_schedule"),
+  status: text("status", { enum: ["draft", "signed", "paid"] }).notNull().default("draft"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertQuickWinPresentation = typeof quickWinPresentationsTable.$inferInsert;
+export type QuickWinPresentation = typeof quickWinPresentationsTable.$inferSelect;

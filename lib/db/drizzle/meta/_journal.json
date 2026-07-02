@@ -855,6 +855,13 @@
       "when": 1782944000000,
       "tag": "0118_add_task_metadata_to_template_tasks",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1782963600000,
+      "tag": "0119_add_quick_win_presentations",
+      "breakpoints": true
     }
   ]
 }

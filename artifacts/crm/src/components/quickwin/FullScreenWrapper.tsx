@@ -93,6 +93,36 @@ export default function FullScreenWrapper() {
     // for API compatibility with runAutoStep
   }, []);
 
+  // ── Presentation CTA state ───────────────────────────────────────────────────
+  const [openingPresentation, setOpeningPresentation] = useState(false);
+
+  const handleViewPresentation = useCallback(async () => {
+    const pid = state.projectId ? parseInt(state.projectId, 10) : null;
+    if (!pid) {
+      navigate("/portal/insights");
+      return;
+    }
+    setOpeningPresentation(true);
+    try {
+      const res = await fetchWithAuth("/api/portal/presentations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: pid }),
+      });
+      if (res.ok) {
+        const { id } = await res.json() as { id: number };
+        dispatch({ type: "EXIT" });
+        navigate(`/portal/presentation/${id}`);
+      } else {
+        navigate("/portal/insights");
+      }
+    } catch {
+      navigate("/portal/insights");
+    } finally {
+      setOpeningPresentation(false);
+    }
+  }, [state.projectId, fetchWithAuth, navigate, dispatch]);
+
   // ── Live: client projects (to get a project ID when escalation hasn't happened yet) ──
   const { data: portalProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ["portal-projects-for-overlay"],
@@ -577,21 +607,44 @@ export default function FullScreenWrapper() {
                 <h2 className="text-2xl font-black text-[#0A2540]">{QW_COPY.complete.heading}</h2>
                 <p className="text-sm text-black/50 mt-1">{QW_COPY.complete.subtext}</p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3 w-full">
+              <div className="flex flex-col gap-3 w-full">
+                {/* Primary CTA: view the full presentation deck */}
                 <button
-                  onClick={() => dispatch({ type: "ESCALATE_TO_PROJECT" })}
-                  className="flex-1 px-5 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20"
+                  onClick={() => void handleViewPresentation()}
+                  disabled={openingPresentation}
+                  className="w-full px-5 py-3.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 flex items-center justify-center gap-2"
                   style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
                 >
-                  {QW_COPY.complete.escalateBtn}
+                  {openingPresentation ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Opening…
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      View Your Presentation
+                    </>
+                  )}
                 </button>
-                <button
-                  onClick={() => dispatch({ type: "EXIT" })}
-                  className="flex-1 px-5 py-3 rounded-xl border border-black/10 text-[#0A2540] font-bold text-sm hover:bg-black/5 active:scale-[0.98]"
-                  style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-                >
-                  {QW_COPY.complete.exitBtn}
-                </button>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => dispatch({ type: "ESCALATE_TO_PROJECT" })}
+                    className="flex-1 px-5 py-3 rounded-xl border border-[#0078D4]/40 text-[#0078D4] font-bold text-sm hover:bg-[#0078D4]/5 active:scale-[0.98]"
+                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                  >
+                    {QW_COPY.complete.escalateBtn}
+                  </button>
+                  <button
+                    onClick={() => dispatch({ type: "EXIT" })}
+                    className="flex-1 px-5 py-3 rounded-xl border border-black/10 text-[#0A2540] font-bold text-sm hover:bg-black/5 active:scale-[0.98]"
+                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                  >
+                    {QW_COPY.complete.exitBtn}
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -29,6 +29,7 @@ import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
+import PortalPresentation from "@/pages/portal/PortalPresentation";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 
@@ -196,6 +197,9 @@ function Router() {
       </Route>
       <Route path="/portal/quick-wins">
         <RequireAuth role="client"><RequireOnboarding><QuickWinResultsPage /></RequireOnboarding></RequireAuth>
+      </Route>
+      <Route path="/portal/presentation/:id">
+        <PortalPresentation />
       </Route>
 
       {/* Public reset-password route — token validated server-side */}

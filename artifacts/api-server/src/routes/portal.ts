@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -8929,6 +8929,493 @@ router.post("/portal/manual-scripts/:scriptRunId/upload", requireAuth, async (re
     }
     logger.error({ err, scriptRunId }, "portal: manual script upload failed");
     res.status(500).json({ error: "Failed to process uploaded results" });
+  }
+});
+
+// ─── Quick Win Presentations ──────────────────────────────────────────────────
+
+// POST /portal/presentations — create a presentation session from a completed Quick Win
+router.post("/portal/presentations", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { projectId } = req.body as { projectId?: number };
+
+    if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+
+    // Verify project belongs to this client
+    const [project] = await db.select({
+      id: projectsTable.id,
+      title: projectsTable.title,
+      clientUserId: projectsTable.clientUserId,
+    }).from(projectsTable).where(and(eq(projectsTable.id, projectId), eq(projectsTable.clientUserId, userId))).limit(1);
+
+    if (!project) { res.status(403).json({ error: "Project not found" }); return; }
+
+    // Check for existing draft presentation for this project
+    const [existing] = await db.select({ id: quickWinPresentationsTable.id })
+      .from(quickWinPresentationsTable)
+      .where(and(
+        eq(quickWinPresentationsTable.projectId, projectId),
+        eq(quickWinPresentationsTable.clientUserId, userId),
+      ))
+      .orderBy(desc(quickWinPresentationsTable.createdAt))
+      .limit(1);
+
+    if (existing) {
+      res.json({ id: existing.id });
+      return;
+    }
+
+    // Fetch AI-generated documents for this project
+    const docs = await db.select({
+      id: insightsGeneratedDocumentsTable.id,
+      title: insightsGeneratedDocumentsTable.title,
+      category: insightsGeneratedDocumentsTable.category,
+      docType: insightsGeneratedDocumentsTable.docType,
+    })
+      .from(insightsGeneratedDocumentsTable)
+      .where(and(
+        eq(insightsGeneratedDocumentsTable.projectId, projectId),
+        eq(insightsGeneratedDocumentsTable.status, "delivered"),
+      ))
+      .orderBy(asc(insightsGeneratedDocumentsTable.createdAt));
+
+    // Fetch workflow steps as SOW phases
+    const steps = await db.select({
+      id: workflowStepsTable.id,
+      title: workflowStepsTable.title,
+      description: workflowStepsTable.description,
+      order: workflowStepsTable.order,
+    })
+      .from(workflowStepsTable)
+      .where(eq(workflowStepsTable.projectId, projectId))
+      .orderBy(asc(workflowStepsTable.order));
+
+    // Get total from latest contract if available
+    const [latestContract] = await db.select({ finalPrice: contractsTable.finalPrice })
+      .from(contractsTable)
+      .where(eq(contractsTable.projectId, projectId))
+      .orderBy(desc(contractsTable.createdAt))
+      .limit(1);
+
+    const baseTotal = latestContract?.finalPrice ? parseFloat(String(latestContract.finalPrice)) : 5000;
+    const phaseCount = steps.length || 1;
+    const pricePerPhase = Math.round(baseTotal / phaseCount);
+
+    const sowPhases = steps.length > 0
+      ? steps.map((s) => ({
+          id: String(s.id),
+          title: s.title,
+          description: s.description ?? "",
+          price: pricePerPhase,
+          selected: true,
+        }))
+      : [{ id: "default", title: "Full Engagement", description: "Complete Microsoft 365 consulting engagement", price: baseTotal, selected: true }];
+
+    const selectedPhaseIds = sowPhases.map(p => p.id);
+
+    const [newPresentation] = await db.insert(quickWinPresentationsTable).values({
+      projectId,
+      clientUserId: userId,
+      documentsIncluded: docs.map(d => d.id),
+      sowPhases,
+      selectedPhaseIds,
+      totalPrice: String(baseTotal),
+      status: "draft",
+    }).returning({ id: quickWinPresentationsTable.id });
+
+    res.json({ id: newPresentation.id });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to create presentation");
+    res.status(500).json({ error: "Failed to create presentation" });
+  }
+});
+
+// GET /portal/presentations/:id — fetch presentation data
+router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id)).limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    // Auth: either owner (via JWT) or valid share token
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+
+    if (!isOwner && !isValidToken) {
+      res.status(403).json({ error: "Access denied" }); return;
+    }
+
+    // Fetch full document HTML
+    const docIds = (pres.documentsIncluded ?? []) as number[];
+    const docs = docIds.length > 0
+      ? await db.select({
+          id: insightsGeneratedDocumentsTable.id,
+          title: insightsGeneratedDocumentsTable.title,
+          category: insightsGeneratedDocumentsTable.category,
+          docType: insightsGeneratedDocumentsTable.docType,
+          htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+        })
+          .from(insightsGeneratedDocumentsTable)
+          .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
+      : [];
+
+    // Fetch project + client name + service id for template lookup
+    const [project] = pres.projectId
+      ? await db.select({
+          title: projectsTable.title,
+          serviceId: clientServicesTable.serviceId,
+        })
+          .from(projectsTable)
+          .leftJoin(clientServicesTable, eq(clientServicesTable.projectId, projectsTable.id))
+          .where(eq(projectsTable.id, pres.projectId))
+          .limit(1)
+      : [null];
+    const [clientUser] = pres.clientUserId
+      ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1)
+      : [null];
+
+    // Contract body — use service-linked template if available, fall back to generic
+    let contractBody: string | null = null;
+    if (project?.serviceId) {
+      const [tmpl] = await db.select({ body: contractTemplatesTable.body })
+        .from(contractTemplatesTable)
+        .where(eq(contractTemplatesTable.serviceId, project.serviceId))
+        .limit(1);
+      if (tmpl?.body) {
+        const phases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number }>;
+        const selectedIds = (pres.selectedPhaseIds ?? phases.map((p) => p.id)) as string[];
+        const selectionsSummary = phases
+          .filter(p => selectedIds.includes(p.id))
+          .map(p => `- ${p.title}: $${p.price.toLocaleString()}`)
+          .join("\n");
+        const totalPrice = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
+        const signedDate = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+        contractBody = tmpl.body
+          .replace(/\{\{client_name\}\}/g, clientUser?.name ?? "")
+          .replace(/\{\{service_name\}\}/g, project.title ?? "M365 Consulting Engagement")
+          .replace(/\{\{price\}\}/g, `$${totalPrice.toLocaleString()}`)
+          .replace(/\{\{date\}\}/g, signedDate)
+          .replace(/\{\{selections_summary\}\}/g, selectionsSummary);
+      }
+    }
+
+    // Auto-sync payment status from Stripe if session exists and not yet paid
+    let currentStatus = pres.status;
+    if (pres.stripeSessionId && currentStatus !== "paid") {
+      try {
+        let stripeKey: string | null = null;
+        try { stripeKey = getStripeKey(); } catch { /* stripe not configured */ }
+        if (stripeKey) {
+          const { default: Stripe } = await import("stripe");
+          const stripe = new Stripe(stripeKey);
+          const session = await stripe.checkout.sessions.retrieve(pres.stripeSessionId);
+          if (session.payment_status === "paid") {
+            await db.update(quickWinPresentationsTable)
+              .set({ status: "paid", updatedAt: new Date() })
+              .where(eq(quickWinPresentationsTable.id, id));
+            currentStatus = "paid";
+          }
+        }
+      } catch { /* non-fatal — proceed with existing status */ }
+    }
+
+    res.json({
+      id: pres.id,
+      projectId: pres.projectId,
+      clientUserId: pres.clientUserId,
+      shareToken: pres.shareToken,
+      documents: docs,
+      sowPhases: pres.sowPhases ?? [],
+      selectedPhaseIds: pres.selectedPhaseIds ?? [],
+      totalPrice: pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0,
+      signatureData: pres.signatureData,
+      signedAt: pres.signedAt,
+      signerName: pres.signerName,
+      paymentPlan: pres.paymentPlan,
+      status: currentStatus,
+      projectTitle: project?.title ?? null,
+      clientName: clientUser?.name ?? null,
+      contractBody,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to get presentation");
+    res.status(500).json({ error: "Failed to get presentation" });
+  }
+});
+
+// PATCH /portal/presentations/:id/selections — update selected SOW phases
+router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    const userId = req.user!.id;
+    const { selectedPhaseIds } = req.body as { selectedPhaseIds: string[] };
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const phases = (pres.sowPhases ?? []) as Array<{ id: string; price: number; selected: boolean }>;
+    const newTotal = phases
+      .filter(p => selectedPhaseIds.includes(p.id))
+      .reduce((sum, p) => sum + p.price, 0);
+
+    await db.update(quickWinPresentationsTable)
+      .set({ selectedPhaseIds, totalPrice: String(newTotal), updatedAt: new Date() })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    res.json({ totalPrice: newTotal, selectedPhaseIds });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to update presentation selections");
+    res.status(500).json({ error: "Failed to update selections" });
+  }
+});
+
+// POST /portal/presentations/:id/sign — record signature
+router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    const userId = req.user!.id;
+    const { signatureData, signerName } = req.body as { signatureData: string; signerName: string };
+
+    if (!signatureData || !signerName) {
+      res.status(400).json({ error: "signatureData and signerName are required" }); return;
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    await db.update(quickWinPresentationsTable)
+      .set({
+        signatureData,
+        signerName,
+        signedAt: new Date(),
+        status: "signed",
+        updatedAt: new Date(),
+      })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    res.json({ ok: true, signedAt: new Date().toISOString() });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to sign presentation");
+    res.status(500).json({ error: "Failed to sign" });
+  }
+});
+
+// POST /portal/presentations/:id/checkout — create Stripe Checkout session
+router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    const userId = req.user!.id;
+    const { paymentPlan } = req.body as { paymentPlan: "full" | "phased" };
+
+    if (!paymentPlan || !["full", "phased"].includes(paymentPlan)) {
+      res.status(400).json({ error: "paymentPlan must be 'full' or 'phased'" }); return;
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const totalPrice = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
+    if (totalPrice <= 0) { res.status(400).json({ error: "Invalid total price" }); return; }
+
+    let stripeKey: string;
+    try { stripeKey = getStripeKey(); } catch (e) { res.status(503).json({ error: (e as Error).message }); return; }
+
+    const { default: Stripe } = await import("stripe");
+    const stripe = new Stripe(stripeKey);
+
+    const [userProfile] = await db.select({
+      email: usersTable.email,
+      name: usersTable.name,
+      address: usersTable.address,
+      addressCity: usersTable.addressCity,
+      addressState: usersTable.addressState,
+      addressZip: usersTable.addressZip,
+    }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    const customerId = userProfile
+      ? await getOrCreateStripeCustomer(stripe, userProfile)
+      : undefined;
+
+    const chargeAmount = paymentPlan === "full"
+      ? Math.round(totalPrice * 100)
+      : Math.round(totalPrice * 0.2 * 100);
+
+    const projectTitle = pres.projectId
+      ? (await db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, pres.projectId)).limit(1))[0]?.title ?? "M365 Consulting"
+      : "M365 Consulting";
+
+    const portalBase = getPortalBaseUrl(); // already ends in /crm
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ["card"],
+      customer: customerId,
+      billing_address_collection: "required",
+      line_items: [{
+        price_data: {
+          currency: "usd",
+          product_data: {
+            name: paymentPlan === "full"
+              ? `${projectTitle} — Full Payment`
+              : `${projectTitle} — 20% Deposit (Phase 1)`,
+            description: paymentPlan === "phased"
+              ? `20% upfront deposit. Remaining phases invoiced upon completion.`
+              : undefined,
+          },
+          unit_amount: chargeAmount,
+        },
+        quantity: 1,
+      }],
+      mode: "payment",
+      success_url: `${portalBase}/portal/presentation/${id}?payment=success`,
+      cancel_url: `${portalBase}/portal/presentation/${id}?payment=cancelled`,
+      metadata: {
+        type: "presentation_checkout",
+        presentationId: String(id),
+        userId: String(userId),
+        paymentPlan,
+        totalPrice: String(totalPrice),
+      },
+    });
+
+    // Build payment schedule for phased plan — phases sum exactly to 80% of total
+    const phases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number }>;
+    const selectedIds = (pres.selectedPhaseIds ?? phases.map(p => p.id)) as string[];
+    const selectedPhases = phases.filter(p => selectedIds.includes(p.id));
+    const depositAmount = Math.round(totalPrice * 0.2 * 100) / 100;
+    const remainingAmount = Math.round((totalPrice - depositAmount) * 100) / 100;
+    const phasesTotal = selectedPhases.reduce((s, p) => s + p.price, 0) || 1;
+    let phasesAllocated = 0;
+    const phasedAmounts = selectedPhases.map((p, i) => {
+      if (i === selectedPhases.length - 1) {
+        // Last phase gets the remainder to avoid rounding drift
+        return Math.round((remainingAmount - phasesAllocated) * 100) / 100;
+      }
+      const amount = Math.round((remainingAmount * (p.price / phasesTotal)) * 100) / 100;
+      phasesAllocated += amount;
+      return amount;
+    });
+    const paymentSchedule = paymentPlan === "phased"
+      ? {
+          deposit: depositAmount,
+          phases: selectedPhases.map((p, i) => ({
+            phaseId: p.id,
+            phaseTitle: p.title,
+            amount: phasedAmounts[i],
+            status: "pending",
+          })),
+        }
+      : null;
+
+    await db.update(quickWinPresentationsTable)
+      .set({
+        paymentPlan,
+        stripeSessionId: session.id,
+        paymentSchedule,
+        updatedAt: new Date(),
+      })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    res.json({ url: session.url });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to create presentation checkout");
+    res.status(500).json({ error: "Failed to create checkout session" });
+  }
+});
+
+// POST /admin/engagements/:id/send-presentation — generate shareable URL for a project
+router.post("/admin/engagements/:id/send-presentation", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const projectId = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(projectId)) { res.status(400).json({ error: "Invalid project ID" }); return; }
+
+    const [project] = await db.select({
+      id: projectsTable.id,
+      title: projectsTable.title,
+      clientUserId: projectsTable.clientUserId,
+    }).from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1);
+
+    if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+    if (!project.clientUserId) { res.status(400).json({ error: "Project has no linked client" }); return; }
+
+    // Find or create a presentation for this project
+    let [pres] = await db.select({ id: quickWinPresentationsTable.id, shareToken: quickWinPresentationsTable.shareToken })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId))
+      .orderBy(desc(quickWinPresentationsTable.createdAt))
+      .limit(1);
+
+    const { randomUUID } = await import("crypto");
+
+    if (!pres) {
+      // Auto-create a presentation
+      const docs = await db.select({ id: insightsGeneratedDocumentsTable.id })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          eq(insightsGeneratedDocumentsTable.status, "delivered"),
+        ));
+
+      const steps = await db.select({ id: workflowStepsTable.id, title: workflowStepsTable.title, description: workflowStepsTable.description })
+        .from(workflowStepsTable)
+        .where(eq(workflowStepsTable.projectId, projectId))
+        .orderBy(asc(workflowStepsTable.order));
+
+      const baseTotal = 5000;
+      const pricePerPhase = steps.length > 0 ? Math.round(baseTotal / steps.length) : baseTotal;
+      const sowPhases = steps.length > 0
+        ? steps.map(s => ({ id: String(s.id), title: s.title, description: s.description ?? "", price: pricePerPhase, selected: true }))
+        : [{ id: "default", title: "Full Engagement", description: "", price: baseTotal, selected: true }];
+
+      const shareToken = randomUUID();
+      const [inserted] = await db.insert(quickWinPresentationsTable).values({
+        projectId,
+        clientUserId: project.clientUserId,
+        shareToken,
+        documentsIncluded: docs.map(d => d.id),
+        sowPhases,
+        selectedPhaseIds: sowPhases.map(p => p.id),
+        totalPrice: String(baseTotal),
+        status: "draft",
+      }).returning({ id: quickWinPresentationsTable.id, shareToken: quickWinPresentationsTable.shareToken });
+      pres = inserted;
+    } else if (!pres.shareToken) {
+      const shareToken = randomUUID();
+      await db.update(quickWinPresentationsTable)
+        .set({ shareToken, updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, pres.id));
+      pres = { id: pres.id, shareToken };
+    }
+
+    const baseUrl = getPortalBaseUrl(); // already ends in /crm
+    const shareUrl = `${baseUrl}/portal/presentation/${pres.id}?token=${pres.shareToken}`;
+
+    res.json({ presentationId: pres.id, shareUrl });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to generate presentation share URL");
+    res.status(500).json({ error: "Failed to generate shareable link" });
   }
 });
 
