@@ -96,14 +96,82 @@ const nodeTypes: NodeTypes = { wfNode: WfNode };
 
 // ── Node library ──────────────────────────────────────────────────────────────
 
-const LIBRARY_NODES = [
-  { type: "start",     label: "Start",     description: "Workflow entry point" },
-  { type: "end",       label: "End",       description: "Workflow exit point" },
-  { type: "action",    label: "Action",    description: "HTTP, SQL, email, SMS" },
-  { type: "condition", label: "Condition", description: "Branch on expression" },
-  { type: "delay",     label: "Delay",     description: "Wait / poll condition" },
-  { type: "error",     label: "Error",     description: "Catch-all error handler" },
+const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; label: string; description: string; tags: string[] }> }> = [
+  {
+    name: "Core",
+    nodes: [
+      { type: "start",     label: "Start",     description: "Workflow entry point",    tags: ["core", "flow"] },
+      { type: "end",       label: "End",       description: "Workflow exit point",     tags: ["core", "flow"] },
+    ],
+  },
+  {
+    name: "Logic",
+    nodes: [
+      { type: "condition", label: "Condition", description: "Branch on expression",   tags: ["logic", "branch", "if"] },
+    ],
+  },
+  {
+    name: "Control",
+    nodes: [
+      { type: "delay",     label: "Delay",     description: "Wait / poll condition",  tags: ["control", "wait", "pause"] },
+      { type: "error",     label: "Error",     description: "Catch-all error handler",tags: ["control", "error", "catch"] },
+    ],
+  },
+  {
+    name: "Action",
+    nodes: [
+      { type: "action",    label: "Action",    description: "HTTP, SQL, email, SMS",  tags: ["action", "http", "sql", "email"] },
+    ],
+  },
 ];
+
+const ALL_LIBRARY_NODES = LIBRARY_CATEGORIES.flatMap(c => c.nodes);
+
+// ── Library node item ─────────────────────────────────────────────────────────
+
+function LibraryNodeItem({
+  n, s, isFav, onAdd, onToggleFav, isArchived,
+}: {
+  n: { type: string; label: string; description: string; tags: string[] };
+  s: { bg: string; border: string; icon: string; label: string };
+  isFav: boolean;
+  onAdd: () => void;
+  onToggleFav: (e: React.MouseEvent) => void;
+  isArchived: boolean;
+}) {
+  return (
+    <div
+      draggable={!isArchived}
+      onDragStart={e => {
+        if (isArchived) { e.preventDefault(); return; }
+        e.dataTransfer.setData("application/workflow-node-type", n.type);
+        e.dataTransfer.effectAllowed = "copy";
+      }}
+      onClick={() => { if (!isArchived) onAdd(); }}
+      className={`w-full flex items-start gap-2 p-2 rounded-lg border transition-colors group ${isArchived ? "opacity-40 cursor-not-allowed border-transparent" : "hover:bg-[#1C2128] border-transparent hover:border-[#30363D] cursor-grab active:cursor-grabbing"}`}
+    >
+      <span style={{ color: s.border, fontSize: 13, lineHeight: 1, marginTop: 2 }}>{s.icon}</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-[#E6EDF3] leading-tight">{n.label}</p>
+        <p className="text-[9px] text-[#484F58] leading-tight mt-0.5 truncate">{n.description}</p>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {n.tags.slice(0, 2).map(tag => (
+            <span key={tag} className="text-[8px] bg-[#1C2128] border border-[#30363D] text-[#484F58] px-1 rounded">{tag}</span>
+          ))}
+        </div>
+      </div>
+      {!isArchived && (
+        <button
+          onClick={onToggleFav}
+          className={`flex-shrink-0 text-[10px] mt-0.5 transition-colors ${isFav ? "text-amber-400" : "text-[#30363D] group-hover:text-[#484F58]"}`}
+          title={isFav ? "Remove from favourites" : "Add to favourites"}
+        >
+          {isFav ? "★" : "☆"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 // ── Config panel ──────────────────────────────────────────────────────────────
 
@@ -316,6 +384,35 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [publishLabel, setPublishLabel] = useState("");
   const [showPublish, setShowPublish] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
+
+  // Node library state
+  const [libSearch, setLibSearch] = useState("");
+  const [libFavs, setLibFavs] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("wf-fav-nodes") ?? "[]") as string[]); }
+    catch { return new Set(); }
+  });
+  const [recentTypes, setRecentTypes] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("wf-recent-nodes") ?? "[]") as string[]; }
+    catch { return []; }
+  });
+
+  function toggleFav(type: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    setLibFavs(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      localStorage.setItem("wf-fav-nodes", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
+  function trackRecent(type: string) {
+    setRecentTypes(prev => {
+      const next = [type, ...prev.filter(t => t !== type)].slice(0, 5);
+      localStorage.setItem("wf-recent-nodes", JSON.stringify(next));
+      return next;
+    });
+  }
   const nodeIdCounter = useRef(100);
 
   const { data: def } = useQuery({
@@ -453,6 +550,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       position: pos,
       data: { nodeType, label: style.label },
     }]);
+    trackRecent(nodeType);
   }
 
   function handleCanvasDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -475,6 +573,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   }
 
   const isPublished = currentVersion?.status === "published";
+  const isArchived  = currentVersion?.status === "archived";
+  const isDraft     = currentVersion?.status === "draft";
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -496,8 +596,11 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
               {isPublished && (
                 <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-semibold">LIVE</span>
               )}
-              {!isPublished && (
+              {isDraft && (
                 <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-semibold">DRAFT</span>
+              )}
+              {isArchived && (
+                <span className="text-[9px] bg-[#30363D] border border-[#484F58] text-[#7D8590] px-1.5 py-0.5 rounded-full font-semibold">ARCHIVED</span>
               )}
             </div>
           </div>
@@ -511,17 +614,22 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             History ({versions.length})
           </button>
 
-          {!isPublished && (
+          {!isArchived && (
             <button
               onClick={() => saveMut.mutate()}
               disabled={saveMut.isPending}
               className="px-3 py-1.5 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
+              title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
             >
-              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : saveStatus === "error" ? "Error" : "Save"}
+              {saveStatus === "saving" ? "Saving…"
+               : saveStatus === "saved" ? "✓ Saved"
+               : saveStatus === "error" ? "Error"
+               : isPublished ? "Save as Draft"
+               : "Save"}
             </button>
           )}
 
-          {!isPublished && (
+          {isDraft && (
             <button
               onClick={() => setShowPublish(true)}
               className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
@@ -543,10 +651,17 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         </div>
       </div>
 
+      {/* Context banners */}
       {isPublished && (
         <div className="flex-shrink-0 flex items-center gap-2 bg-emerald-500/5 border-b border-emerald-500/20 px-4 py-2">
           <span className="text-[10px] font-semibold text-emerald-400">● LIVE VERSION</span>
-          <span className="text-[10px] text-[#484F58]">This version is active and running in production. Click Save to auto-create a new draft without affecting live traffic.</span>
+          <span className="text-[10px] text-[#484F58]">Active in production. "Save as Draft" creates an editable copy — live traffic is unaffected.</span>
+        </div>
+      )}
+      {isArchived && (
+        <div className="flex-shrink-0 flex items-center gap-2 bg-[#30363D]/30 border-b border-[#484F58]/30 px-4 py-2">
+          <span className="text-[10px] font-semibold text-[#7D8590]">🔒 ARCHIVED — Read-only</span>
+          <span className="text-[10px] text-[#484F58]">This is a historical snapshot. Select a different version to edit, or publish a new one from the Builder.</span>
         </div>
       )}
 
@@ -558,31 +673,113 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Node library sidebar */}
-        <div className="w-44 flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] overflow-y-auto p-3">
-          <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-2 px-1">Node Library</p>
-          <p className="text-[10px] text-[#484F58] mb-2 px-1 leading-tight">Click or drag onto canvas</p>
-          <div className="space-y-1.5">
-            {LIBRARY_NODES.map(n => {
-              const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
-              return (
-                <div
-                  key={n.type}
-                  draggable
-                  onDragStart={e => {
-                    e.dataTransfer.setData("application/workflow-node-type", n.type);
-                    e.dataTransfer.effectAllowed = "copy";
-                  }}
-                  onClick={() => addNode(n.type)}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-[#1C2128] transition-colors text-left border border-transparent hover:border-[#30363D] cursor-grab active:cursor-grabbing"
-                >
-                  <span style={{ color: s.border, fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-[#E6EDF3] leading-tight">{n.label}</p>
-                    <p className="text-[9px] text-[#484F58] leading-tight truncate">{n.description}</p>
+        <div className="w-52 flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] overflow-y-auto flex flex-col">
+          {/* Search */}
+          <div className="flex-shrink-0 p-3 border-b border-[#1C2128]">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Node Library</p>
+            <input
+              value={libSearch}
+              onChange={e => setLibSearch(e.target.value)}
+              placeholder="Search nodes…"
+              className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-2 space-y-3">
+            {/* Recently Used */}
+            {recentTypes.length > 0 && !libSearch && (
+              <div>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Recent</p>
+                <div className="space-y-1">
+                  {recentTypes.map(type => {
+                    const n = ALL_LIBRARY_NODES.find(x => x.type === type);
+                    const s = NODE_STYLES[type] ?? NODE_STYLES.action;
+                    if (!n) return null;
+                    return (
+                      <LibraryNodeItem
+                        key={`recent-${type}`}
+                        n={n} s={s}
+                        isFav={libFavs.has(type)}
+                        onAdd={() => addNode(type)}
+                        onToggleFav={e => toggleFav(type, e)}
+                        isArchived={isArchived}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Favourites */}
+            {libFavs.size > 0 && !libSearch && (
+              <div>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Favourites</p>
+                <div className="space-y-1">
+                  {[...libFavs].map(type => {
+                    const n = ALL_LIBRARY_NODES.find(x => x.type === type);
+                    const s = NODE_STYLES[type] ?? NODE_STYLES.action;
+                    if (!n) return null;
+                    return (
+                      <LibraryNodeItem
+                        key={`fav-${type}`}
+                        n={n} s={s}
+                        isFav
+                        onAdd={() => addNode(type)}
+                        onToggleFav={e => toggleFav(type, e)}
+                        isArchived={isArchived}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Categories (or filtered) */}
+            {libSearch ? (
+              <div>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">Results</p>
+                <div className="space-y-1">
+                  {ALL_LIBRARY_NODES.filter(n =>
+                    n.label.toLowerCase().includes(libSearch.toLowerCase()) ||
+                    n.description.toLowerCase().includes(libSearch.toLowerCase()) ||
+                    n.tags.some(t => t.includes(libSearch.toLowerCase()))
+                  ).map(n => {
+                    const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
+                    return (
+                      <LibraryNodeItem
+                        key={n.type}
+                        n={n} s={s}
+                        isFav={libFavs.has(n.type)}
+                        onAdd={() => addNode(n.type)}
+                        onToggleFav={e => toggleFav(n.type, e)}
+                        isArchived={isArchived}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              LIBRARY_CATEGORIES.map(cat => (
+                <div key={cat.name}>
+                  <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] px-1 mb-1">{cat.name}</p>
+                  <div className="space-y-1">
+                    {cat.nodes.map(n => {
+                      const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
+                      return (
+                        <LibraryNodeItem
+                          key={n.type}
+                          n={n} s={s}
+                          isFav={libFavs.has(n.type)}
+                          onAdd={() => addNode(n.type)}
+                          onToggleFav={e => toggleFav(n.type, e)}
+                          isArchived={isArchived}
+                        />
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })}
+              ))
+            )}
           </div>
         </div>
 

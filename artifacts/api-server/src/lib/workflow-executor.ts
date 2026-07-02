@@ -406,19 +406,31 @@ export async function triggerScheduledWorkflows(): Promise<void> {
       const fanOutMode  = trigger.config.fan_out_mode  as string | undefined;
       const fanOutQuery = trigger.config.fan_out_query as string | undefined;
 
-      if (fanOutMode === "per_record" && fanOutQuery) {
-        // Require a single SELECT statement with no semicolons (prevents stacked writes)
-        const trimmed = fanOutQuery.trim();
-        const isSafeSelect = /^SELECT\s+/i.test(trimmed) && !trimmed.includes(";");
-        if (!isSafeSelect) {
+      function safeFanOutQuery(q: string): string | null {
+        const t = q.trim();
+        return /^SELECT\s+/i.test(t) && !t.includes(";") ? t : null;
+      }
+
+      if ((fanOutMode === "per_record" || fanOutMode === "batched") && fanOutQuery) {
+        const safeQ = safeFanOutQuery(fanOutQuery);
+        if (!safeQ) {
           logger.warn({ triggerId: trigger.id }, "wf-engine: fan_out_query rejected — must be a single SELECT with no semicolons");
         } else {
           try {
-            const records = await pool.query(trimmed);
-            for (const row of records.rows) {
-              await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, row as Record<string, unknown>);
+            const records = await pool.query(safeQ);
+            if (fanOutMode === "per_record") {
+              for (const row of records.rows) {
+                await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, row as Record<string, unknown>);
+              }
+              logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
+            } else {
+              // batched: one run with all rows
+              await fireWorkflowForDefinition(
+                trigger.definition_id, "schedule", `trigger:${trigger.id}`,
+                { records: records.rows as Record<string, unknown>[] },
+              );
+              logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: batched fan-out fired");
             }
-            logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
           } catch (err) {
             logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query execution failed (non-fatal)");
           }

@@ -45,7 +45,7 @@ export default function TriggersPage({ defId }: { defId: number }) {
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
   // Schedule payload config
-  const [schedulePayloadMode, setSchedulePayloadMode] = useState<"static" | "per_record">("static");
+  const [schedulePayloadMode, setSchedulePayloadMode] = useState<"static" | "per_record" | "batched">("static");
   const [staticPayload, setStaticPayload] = useState("{}");
   const [fanOutQuery, setFanOutQuery] = useState("SELECT id FROM clients WHERE active = true");
   const [staticPayloadError, setStaticPayloadError] = useState<string | null>(null);
@@ -73,8 +73,11 @@ export default function TriggersPage({ defId }: { defId: number }) {
         config = { cron: cronExpr };
         if (schedulePayloadMode === "static") {
           try { config.payload = JSON.parse(staticPayload); } catch { throw new Error("Static payload is not valid JSON"); }
-        } else {
+        } else if (schedulePayloadMode === "per_record") {
           config.fan_out_mode = "per_record";
+          config.fan_out_query = fanOutQuery.trim();
+        } else {
+          config.fan_out_mode = "batched";
           config.fan_out_query = fanOutQuery.trim();
         }
       } else if (newType === "event") {
@@ -190,24 +193,23 @@ export default function TriggersPage({ defId }: { defId: number }) {
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-[#7D8590]">Payload Mode</label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setSchedulePayloadMode("static")}
-                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${schedulePayloadMode === "static" ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
-                      >
-                        Static Payload
-                      </button>
-                      <button
-                        onClick={() => setSchedulePayloadMode("per_record")}
-                        className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${schedulePayloadMode === "per_record" ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
-                      >
-                        Per-Record Fan-Out
-                      </button>
+                    <div className="flex gap-1">
+                      {(["static", "per_record", "batched"] as const).map(mode => (
+                        <button
+                          key={mode}
+                          onClick={() => setSchedulePayloadMode(mode)}
+                          className={`flex-1 px-2 py-1.5 rounded-lg text-[10px] font-medium border transition-colors ${schedulePayloadMode === mode ? "bg-[#0078D4]/10 border-[#0078D4]/40 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                        >
+                          {mode === "static" ? "Static" : mode === "per_record" ? "Per-Record" : "Batched"}
+                        </button>
+                      ))}
                     </div>
                     <p className="text-[10px] text-[#484F58]">
                       {schedulePayloadMode === "static"
-                        ? "Fire one workflow run with a fixed JSON payload."
-                        : "Run a SELECT query and fire one workflow run per row returned."}
+                        ? "Fire one run with a fixed JSON payload each tick."
+                        : schedulePayloadMode === "per_record"
+                        ? "Run a SELECT; fire one workflow run per row."
+                        : "Run a SELECT; fire one run with all rows as { records: [...] }."}
                     </p>
                   </div>
 
@@ -228,16 +230,22 @@ export default function TriggersPage({ defId }: { defId: number }) {
                     </div>
                   )}
 
-                  {schedulePayloadMode === "per_record" && (
+                  {(schedulePayloadMode === "per_record" || schedulePayloadMode === "batched") && (
                     <div className="space-y-1.5">
-                      <label className="text-xs font-medium text-[#7D8590]">Fan-Out Query (SELECT only, no semicolons)</label>
+                      <label className="text-xs font-medium text-[#7D8590]">
+                        {schedulePayloadMode === "per_record" ? "Fan-Out Query (one run per row)" : "Batch Query (one run with all rows)"}
+                      </label>
                       <textarea
                         rows={3}
                         value={fanOutQuery}
                         onChange={e => setFanOutQuery(e.target.value)}
                         className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 font-mono resize-none"
                       />
-                      <p className="text-[10px] text-amber-500/70">Each returned row becomes the payload of one workflow run. Only SELECT statements are allowed.</p>
+                      <p className="text-[10px] text-amber-500/70">
+                        {schedulePayloadMode === "per_record"
+                          ? "Each row becomes an individual run payload. SELECT only, no semicolons."
+                          : "All rows collected into { records: [...] } and sent as one run payload. SELECT only, no semicolons."}
+                      </p>
                     </div>
                   )}
                 </div>
