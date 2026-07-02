@@ -208,6 +208,26 @@ export default function FullScreenWrapper() {
     return () => clearTimeout(timer);
   }, [kanbanTasks]);
 
+  // ── Live status ticker (cycles through active task titles) ──────────────────
+  const [tickerIdx, setTickerIdx] = useState(0);
+  const [tickerVisible, setTickerVisible] = useState(true);
+
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") return undefined;
+    let fadeTimer: ReturnType<typeof setTimeout>;
+    const interval = setInterval(() => {
+      setTickerVisible(false);
+      fadeTimer = setTimeout(() => {
+        setTickerIdx(i => i + 1);
+        setTickerVisible(true);
+      }, 400);
+    }, 3000);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(fadeTimer);
+    };
+  }, [mode]);
+
   // ── Waiting-task mutation (mark as done) ────────────────────────────────────
   const [markingDoneId, setMarkingDoneId] = useState<number | null>(null);
   const markDoneMutation = useMutation({
@@ -478,6 +498,30 @@ export default function FullScreenWrapper() {
   const waitingTasks    = kanbanTasks.filter(t => t.column === "waiting_on_customer");
   const completedKanbanTasks = kanbanTasks.filter(t => t.column === "completed");
 
+  // Live ticker messages — cycle through active task titles with action verbs
+  const tickerMessages: string[] = (() => {
+    const active = inProgressTasks.length > 0 ? inProgressTasks : backlogTasks.slice(0, 6);
+    if (active.length === 0) return ["Connecting to your Microsoft 365 tenant…"];
+    return active.map(t => {
+      const lower = t.title.toLowerCase();
+      const type  = t.taskType ?? "";
+      let verb = "Processing";
+      if (type === "script" || lower.includes("execut") || lower.includes("graph") || lower.includes("audit") || lower.includes("scan"))
+        verb = "Executing";
+      else if (lower.includes("generat") || lower.includes("creat") || lower.includes("document") || lower.includes("report"))
+        verb = "Generating";
+      else if (lower.includes("provision") || lower.includes("deploy") || lower.includes("site"))
+        verb = "Provisioning";
+      else if (lower.includes("configur") || lower.includes("setup") || lower.includes("policy") || lower.includes("policies"))
+        verb = "Configuring";
+      else if (lower.includes("analyz") || lower.includes("review") || lower.includes("assess") || lower.includes("check"))
+        verb = "Analyzing";
+      else if (lower.includes("harden") || lower.includes("secur"))
+        verb = "Hardening";
+      return `${verb}: ${t.title}…`;
+    });
+  })();
+
   // Progress derived from real kanban completion
   const kanbanProgress = kanbanTasks.length > 0
     ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
@@ -568,63 +612,85 @@ export default function FullScreenWrapper() {
 
       {/* ── Project Tasks View ── */}
       {isProjectView && (
-        <div className="flex-1 relative z-10 flex items-stretch justify-start pl-8 sm:pl-14 py-6 pr-6">
+        <div className="flex-1 z-10 flex min-h-0">
 
-          {/* Branding overlay — right side, over the spinning knot */}
-          <div className="hidden sm:flex absolute right-0 top-0 bottom-0 w-[55%] flex-col items-center justify-center gap-6 pointer-events-none select-none px-12 text-center">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-[#0078D4] flex items-center justify-center shadow-xl shadow-[#0078D4]/30">
-                <svg className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
+          {/* Left panel: task card */}
+          <div className="w-[400px] flex-shrink-0 flex flex-col p-6 pl-10">
+            <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
+                  <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
+                </div>
+                {backlogTasks.length === 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && completedKanbanTasks.length > 0 ? (
+                  <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                    Ready
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-[#0078D4] flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                    In Progress…
+                  </span>
+                )}
               </div>
-              <div>
-                <p className="text-2xl font-black text-[#0A2540] leading-tight drop-shadow-sm">Shane McCaw Consulting</p>
-                <p className="text-sm font-semibold text-[#0078D4] mt-1 tracking-wide">Microsoft 365 Architect &amp; AI Transformation Partner</p>
+              <div className="px-6 py-5 flex-1 overflow-y-auto min-h-0">
+                <ProjectTasksLayer />
               </div>
             </div>
-            <p className="text-sm text-[#0A2540]/60 max-w-xs leading-relaxed">
+          </div>
+
+          {/* Right panel: branding centred over the spinning knot */}
+          <div className="hidden sm:flex flex-1 flex-col items-center justify-center gap-7 px-16 text-center pointer-events-none select-none">
+            {/* Icon */}
+            <div className="w-20 h-20 rounded-3xl bg-[#0078D4] flex items-center justify-center shadow-2xl shadow-[#0078D4]/40">
+              <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            {/* Name + subtitle */}
+            <div className="flex flex-col gap-2">
+              <p className="text-4xl font-black text-[#0A2540] leading-tight">
+                Shane McCaw<br />Consulting
+              </p>
+              <p className="text-base font-semibold text-[#0078D4] tracking-wide">
+                Microsoft 365 Architect &amp; AI Transformation Partner
+              </p>
+            </div>
+            {/* Value prop */}
+            <p className="text-sm text-[#0A2540]/60 max-w-sm leading-relaxed">
               Turning your Microsoft 365 investment into a measurable competitive advantage — from security hardening to Copilot AI adoption.
             </p>
-            <div className="flex flex-col gap-2 w-full max-w-xs">
+            {/* Proof points */}
+            <div className="flex flex-col gap-2.5 text-left">
               {[
                 "30 years Microsoft ecosystem expertise",
                 "NASA Lead M365 Architect",
                 "Fixed-price, no-surprise engagements",
               ].map(item => (
                 <div key={item} className="flex items-center gap-2.5">
-                  <div className="w-4 h-4 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-2.5 h-2.5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <div className="w-5 h-5 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-3 h-3 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
-                  <span className="text-xs font-medium text-[#0A2540]/70">{item}</span>
+                  <span className="text-sm font-medium text-[#0A2540]/70">{item}</span>
                 </div>
               ))}
             </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md flex flex-col overflow-hidden">
-            <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
-              <div>
-                <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
-                <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
+            {/* Live cycling status ticker */}
+            <div className="px-5 py-3 rounded-xl bg-white/60 ring-1 ring-black/5 w-full max-w-sm" style={{ backdropFilter: "blur(8px)" }}>
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
+                <p
+                  className="text-xs font-medium text-[#0A2540]/70 text-left"
+                  style={{ opacity: tickerVisible ? 1 : 0, transition: "opacity 400ms ease-in-out" }}
+                >
+                  {tickerMessages[tickerIdx % tickerMessages.length]}
+                </p>
               </div>
-              {backlogTasks.length === 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && completedKanbanTasks.length > 0 ? (
-                <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                  Ready
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-[#0078D4] flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-                  In Progress…
-                </span>
-              )}
-            </div>
-            <div className="px-6 py-5 flex-1 overflow-y-auto">
-              <ProjectTasksLayer />
             </div>
           </div>
         </div>
