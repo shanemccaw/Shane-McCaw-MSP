@@ -93,7 +93,35 @@ function WfNode({ data, selected, id }: NodeProps) {
           </div>
         </>
       ) : (
-        <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
+        <>
+          <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
+          {!["start", "end", "error"].includes(nodeType) && (
+            <>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id="error"
+                style={{ background: "#EF4444", border: "none" }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  right: -28,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  fontSize: 8,
+                  color: "#EF4444",
+                  fontWeight: 700,
+                  letterSpacing: "0.02em",
+                  pointerEvents: "none",
+                  userSelect: "none",
+                }}
+              >
+                err
+              </div>
+            </>
+          )}
+        </>
       )}
     </div>
   );

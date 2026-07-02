@@ -897,6 +897,13 @@
       "when": 1751587200000,
       "tag": "0124_add_workflow_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1751500000000,
+      "tag": "0125_add_wf_versions_archived_status",
+      "breakpoints": true
     }
   ]
 }
