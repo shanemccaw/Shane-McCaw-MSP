@@ -359,10 +359,19 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         body: JSON.stringify({ graph }),
       });
       if (!res.ok) throw new Error("Save failed");
-      return res.json();
+      return res.json() as Promise<{ id: number; autoDraftedFrom?: number; status: string }>;
     },
     onMutate: () => setSaveStatus("saving"),
-    onSuccess: () => { setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000); qc.invalidateQueries({ queryKey: ["wf-version", currentVersionId] }); },
+    onSuccess: (data) => {
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+      if (data.autoDraftedFrom) {
+        setCurrentVersionId(data.id);
+        qc.invalidateQueries({ queryKey: ["wf-versions", defId] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["wf-version", currentVersionId] });
+      }
+    },
     onError: () => setSaveStatus("error"),
   });
 

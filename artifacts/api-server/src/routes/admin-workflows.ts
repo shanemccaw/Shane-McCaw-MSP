@@ -238,8 +238,9 @@ router.get("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, a
 });
 
 router.put("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
   const vid = parseInt(req.params.vid as string);
-  if (isNaN(vid)) return sendError(res, 400, "Invalid version id");
+  if (isNaN(vid) || isNaN(defId)) return sendError(res, 400, "Invalid version id");
 
   const body = z.object({
     graph: z.object({ nodes: z.array(z.any()), edges: z.array(z.any()) }).optional(),
@@ -250,7 +251,27 @@ router.put("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, a
   try {
     const [existing] = await db.select().from(wfVersionsTable).where(eq(wfVersionsTable.id, vid)).limit(1);
     if (!existing) return sendError(res, 404, "Not found");
-    if (existing.status === "published") return sendError(res, 400, "Cannot edit a published version. Create a new draft.");
+
+    // If trying to edit a published version, auto-create a new draft from it
+    if (existing.status === "published") {
+      const [latest] = await db
+        .select({ vn: wfVersionsTable.versionNumber })
+        .from(wfVersionsTable)
+        .where(eq(wfVersionsTable.definitionId, defId))
+        .orderBy(desc(wfVersionsTable.versionNumber))
+        .limit(1);
+
+      const nextVn = (latest?.vn ?? existing.versionNumber) + 1;
+      const [newDraft] = await db.insert(wfVersionsTable).values({
+        definitionId: defId,
+        versionNumber: nextVn,
+        label: body.data.label ?? `v${nextVn} — Draft (from v${existing.versionNumber})`,
+        status: "draft",
+        graph: (body.data.graph as WfGraph) ?? (existing.graph as WfGraph),
+      }).returning();
+
+      return res.status(201).json({ ...newDraft, autoDraftedFrom: existing.id });
+    }
 
     const [updated] = await db
       .update(wfVersionsTable)
@@ -373,6 +394,23 @@ router.delete("/api/admin/workflows/definitions/:id/triggers/:tid", requireAdmin
     res.status(204).end();
   } catch (err) {
     sendError(res, 500, "Failed to delete trigger");
+  }
+});
+
+router.post("/api/admin/workflows/definitions/:id/triggers/:tid/rotate-token", requireAdmin, async (req: Request, res: Response) => {
+  const tid = parseInt(req.params.tid as string);
+  if (isNaN(tid)) return sendError(res, 400, "Invalid id");
+  try {
+    const newToken = crypto.randomBytes(32).toString("hex");
+    const [updated] = await db
+      .update(wfTriggersTable)
+      .set({ webhookToken: newToken })
+      .where(eq(wfTriggersTable.id, tid))
+      .returning();
+    if (!updated) return sendError(res, 404, "Not found");
+    res.json(updated);
+  } catch (err) {
+    sendError(res, 500, "Failed to rotate token");
   }
 });
 

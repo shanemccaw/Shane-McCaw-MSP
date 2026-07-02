@@ -15,10 +15,11 @@ import {
   wfDefinitionsTable,
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
+  wfTriggersTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
-import { eq, and, sql, count } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger";
 
 // ── Topological sort ──────────────────────────────────────────────────────────
@@ -58,12 +59,62 @@ function topoSort(graph: WfGraph): WfNode[] {
   return sorted;
 }
 
-// ── Condition evaluation ──────────────────────────────────────────────────────
+// ── Safe condition evaluation ─────────────────────────────────────────────────
+// Does NOT use eval/new Function. Supports:
+//   path op literal   e.g.  status == 'active'  count > 5  name contains 'foo'
+//   boolean path      e.g.  isActive
+//   logical           e.g.  a == 1 && b == 2   x > 0 || y > 0
 
 function evalCondition(expression: string, payload: Record<string, unknown>): boolean {
+  function resolvePath(p: string): unknown {
+    const parts = p.trim().split(".");
+    let cur: unknown = payload;
+    for (const part of parts) {
+      if (cur == null || typeof cur !== "object") return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur;
+  }
+
+  function parseValue(s: string): unknown {
+    const t = s.trim();
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (t === "null") return null;
+    if (t === "undefined") return undefined;
+    if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+    if (/^["'].*["']$/.test(t)) return t.slice(1, -1);
+    return resolvePath(t);
+  }
+
+  function evalClause(clause: string): boolean {
+    const c = clause.trim();
+    for (const op of [">=", "<=", "!=", "==", ">", "<", " contains "]) {
+      const idx = c.indexOf(op);
+      if (idx !== -1) {
+        const lhs = resolvePath(c.slice(0, idx).trim());
+        const rhs = parseValue(c.slice(idx + op.length));
+        switch (op.trim()) {
+          case "==": return lhs == rhs; // eslint-disable-line eqeqeq
+          case "!=": return lhs != rhs; // eslint-disable-line eqeqeq
+          case ">":  return Number(lhs) > Number(rhs);
+          case "<":  return Number(lhs) < Number(rhs);
+          case ">=": return Number(lhs) >= Number(rhs);
+          case "<=": return Number(lhs) <= Number(rhs);
+          case "contains": return String(lhs).includes(String(rhs));
+        }
+      }
+    }
+    return Boolean(resolvePath(c));
+  }
+
   try {
-    const fn = new Function(...Object.keys(payload), `"use strict"; return !!(${expression});`);
-    return fn(...Object.values(payload));
+    const orParts = expression.split(" || ");
+    for (const orPart of orParts) {
+      const andParts = orPart.split(" && ");
+      if (andParts.every(p => evalClause(p))) return true;
+    }
+    return false;
   } catch {
     return false;
   }
@@ -75,13 +126,18 @@ async function executeNode(
   node: WfNode,
   payload: Record<string, unknown>,
   runId: number,
-  branchPath: string[],
-  skippedNodes: Set<string>,
-): Promise<{ output: Record<string, unknown>; nextPayload: Record<string, unknown>; cancelRun: boolean; skipTargets: Set<string> }> {
+): Promise<{
+  output: Record<string, unknown>;
+  nextPayload: Record<string, unknown>;
+  cancelRun: boolean;
+  nodeError: boolean;
+  conditionResult?: boolean;
+}> {
   const startMs = Date.now();
   let output: Record<string, unknown> = {};
   let cancelRun = false;
-  const skipTargets = new Set<string>();
+  let nodeError = false;
+  let conditionResult: boolean | undefined;
 
   try {
     switch (node.type) {
@@ -101,15 +157,15 @@ async function executeNode(
         } else if (actionType === "http_request") {
           const url = node.data.params?.url as string | undefined;
           if (url) {
-            try {
-              const resp = await fetch(url, {
-                method: (node.data.params?.method as string | undefined) ?? "GET",
-                headers: (node.data.params?.headers as Record<string, string> | undefined),
-                body: node.data.params?.body ? JSON.stringify(node.data.params.body) : undefined,
-              });
-              output = { status: resp.status, ok: resp.ok };
-            } catch (fetchErr) {
-              output = { error: String(fetchErr) };
+            const resp = await fetch(url, {
+              method: (node.data.params?.method as string | undefined) ?? "GET",
+              headers: (node.data.params?.headers as Record<string, string> | undefined),
+              body: node.data.params?.body ? JSON.stringify(node.data.params.body) : undefined,
+            });
+            output = { status: resp.status, ok: resp.ok };
+            if (!resp.ok) {
+              nodeError = true;
+              output.errorDetail = `HTTP ${resp.status}`;
             }
           } else {
             output = { skipped: true, reason: "no url configured" };
@@ -123,30 +179,46 @@ async function executeNode(
       case "condition": {
         const expression = node.data.expression as string | undefined;
         const result = expression ? evalCondition(expression, payload) : false;
-        output = { result };
+        conditionResult = result;
+        output = { result, expression };
+        // Check for cancel_on_false flag
+        if (!result && node.data.cancelOnFalse === true) {
+          cancelRun = true;
+          output.cancelledReason = "condition false + cancelOnFalse flag";
+        }
         break;
       }
 
       case "delay": {
-        const mode = node.data.mode ?? "fixed";
+        const mode = (node.data.mode ?? "fixed") as string;
         if (mode === "fixed") {
           const durationMs = ((node.data.duration as number | undefined) ?? 0) * 1000;
           if (durationMs > 0 && durationMs <= 300_000) {
             await new Promise(r => setTimeout(r, durationMs));
           }
+          output = { mode, durationMs };
+        } else if (mode === "until_timestamp") {
+          const ts = node.data.timestamp as string | number | undefined;
+          if (ts) {
+            const targetMs = typeof ts === "number" ? ts : new Date(ts).getTime();
+            const waitMs = Math.max(0, Math.min(targetMs - Date.now(), 300_000));
+            if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
+          }
+          output = { mode, waitedUntil: ts ?? null };
         } else if (mode === "until_condition") {
           const expression = node.data.expression as string | undefined;
-          const intervalMs = ((node.data.interval as number | undefined) ?? 30) * 1000;
-          const timeoutMs = ((node.data.timeout as number | undefined) ?? 300) * 1000;
+          const intervalMs = Math.max(1000, ((node.data.interval as number | undefined) ?? 30) * 1000);
+          const timeoutMs = Math.min(300_000, ((node.data.timeout as number | undefined) ?? 300) * 1000);
           const deadline = Date.now() + timeoutMs;
           let met = false;
           while (Date.now() < deadline) {
             if (expression && evalCondition(expression, payload)) { met = true; break; }
             await new Promise(r => setTimeout(r, Math.min(intervalMs, deadline - Date.now())));
           }
-          output = { conditionMet: met };
+          output = { mode, conditionMet: met };
+        } else {
+          output = { mode, note: "unknown delay mode" };
         }
-        output = { ...output, mode };
         break;
       }
 
@@ -155,13 +227,15 @@ async function executeNode(
         break;
 
       default:
-        output = { note: "unknown node type" };
+        output = { note: "unknown node type", nodeType: node.type };
     }
   } catch (err) {
-    output = { error: String(err) };
+    nodeError = true;
+    output = { error: String(err), nodeType: node.type };
   }
 
   const durationMs = Date.now() - startMs;
+  const status = nodeError ? "error" : "ok";
 
   await db.insert(wfRunNodeOutputsTable).values({
     runId,
@@ -169,19 +243,25 @@ async function executeNode(
     input: payload,
     output,
     durationMs,
-    status: "ok",
+    status,
+    errorMessage: nodeError ? (output.error as string ?? "node error") : null,
   }).catch(() => { /* non-fatal */ });
 
   await db.insert(wfRunNodeLogsTable).values({
     runId,
     nodeId: node.id,
-    level: "info",
-    message: `Node ${node.type} (${node.id}) completed in ${durationMs}ms`,
+    level: nodeError ? "error" : "info",
+    message: nodeError
+      ? `Node ${node.type} (${node.id}) failed: ${output.error ?? "error"}`
+      : `Node ${node.type} (${node.id}) completed in ${durationMs}ms`,
   }).catch(() => { /* non-fatal */ });
 
-  const nextPayload = { ...payload, [`nodes`]: { ...(payload.nodes as Record<string, unknown> ?? {}), [node.id]: output } };
+  const nextPayload = {
+    ...payload,
+    nodes: { ...(payload.nodes as Record<string, unknown> ?? {}), [node.id]: output },
+  };
 
-  return { output, nextPayload, cancelRun, skipTargets };
+  return { output, nextPayload, cancelRun, nodeError, conditionResult };
 }
 
 // ── Concurrency check ─────────────────────────────────────────────────────────
@@ -238,12 +318,14 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
 
   const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
   const sorted = topoSort(graph);
+  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
   const branchPath: string[] = [];
   const skippedNodes = new Set<string>();
   let payload: Record<string, unknown> = { ...(run.payload as Record<string, unknown> ?? {}) };
 
   try {
     for (const node of sorted) {
+      // Check for external cancellation
       const freshRun = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
       if (freshRun[0]?.status === "cancelled") {
         logger.info({ runId, nodeId: node.id }, "wf-executor: run cancelled mid-execution");
@@ -252,15 +334,15 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
 
       if (skippedNodes.has(node.id)) {
         await db.insert(wfRunNodeOutputsTable).values({
-          runId, nodeId: node.id, input: payload, output: {}, status: "skipped",
+          runId, nodeId: node.id, input: payload, output: { skipped: true }, status: "skipped",
         }).catch(() => { });
         continue;
       }
 
       branchPath.push(node.id);
 
-      const { output, nextPayload, cancelRun } = await executeNode(
-        node, payload, runId, branchPath, skippedNodes,
+      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(
+        node, payload, runId,
       );
       payload = nextPayload;
 
@@ -271,15 +353,65 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
         return;
       }
 
-      if (node.type === "condition") {
-        const result = output.result as boolean;
-        const trueEdge = graph.edges.find(e => e.source === node.id && (e.sourceHandle === "true" || e.sourceHandle === null || e.sourceHandle === undefined));
-        const falseEdge = graph.edges.find(e => e.source === node.id && e.sourceHandle === "false");
-        if (trueEdge && falseEdge) {
-          const losingTarget = result ? falseEdge.target : trueEdge.target;
-          skippedNodes.add(losingTarget);
+      // On node error: look for an outgoing "error" branch or error node
+      if (nodeError) {
+        const errorEdge = graph.edges.find(e =>
+          e.source === node.id && (e.sourceHandle === "error" || e.sourceHandle === "onError"),
+        );
+        if (errorEdge) {
+          // Route only through the error branch — skip all other successors
+          for (const edge of graph.edges) {
+            if (edge.source === node.id && edge.target !== errorEdge.target) {
+              skippedNodes.add(edge.target);
+              graph.nodes
+                .filter(n => isDescendant(n.id, edge.target, graph))
+                .forEach(n => skippedNodes.add(n.id));
+            }
+          }
+          await db.insert(wfRunNodeLogsTable).values({
+            runId, nodeId: node.id, level: "warn",
+            message: `Node error — routing to error branch (${errorEdge.target})`,
+          }).catch(() => { });
+        } else {
+          // No error handler — fail the run
+          await db.update(wfRunsTable)
+            .set({
+              status: "failed",
+              finishedAt: new Date(),
+              errorMessage: (output.error as string) ?? `Node ${node.id} failed`,
+              branchPath: branchPath as unknown as string[],
+            })
+            .where(eq(wfRunsTable.id, runId));
+          logger.warn({ runId, nodeId: node.id }, "wf-executor: node error — no error handler, run failed");
+          return;
+        }
+      }
+
+      // Condition node: route true/false/cancel branches
+      if (node.type === "condition" && conditionResult !== undefined) {
+        const result = conditionResult;
+        const outEdges = graph.edges.filter(e => e.source === node.id);
+
+        // Identify special handles
+        const trueEdge   = outEdges.find(e => e.sourceHandle === "true"   || e.sourceHandle == null);
+        const falseEdge  = outEdges.find(e => e.sourceHandle === "false");
+        const cancelEdge = outEdges.find(e => e.sourceHandle === "cancel");
+
+        // If the selected branch leads to the cancel edge target, cancel the run
+        const takenEdge = result ? trueEdge : (falseEdge ?? cancelEdge);
+        if (takenEdge && cancelEdge && takenEdge.target === cancelEdge.target) {
+          await db.update(wfRunsTable)
+            .set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
+            .where(eq(wfRunsTable.id, runId));
+          return;
+        }
+
+        // Skip the branch NOT taken
+        const skipEdge = result ? falseEdge : trueEdge;
+        if (skipEdge) {
+          skippedNodes.add(skipEdge.target);
           graph.nodes
-            .filter(n => isDescendant(n.id, losingTarget, graph))
+            .filter(n => isDescendant(n.id, skipEdge.target, graph))
             .forEach(n => skippedNodes.add(n.id));
         }
       }
@@ -289,6 +421,8 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
         .where(eq(wfRunsTable.id, runId));
     }
 
+    // Mark as completed — suppress unused variable warning
+    void nodeMap;
     await db.update(wfRunsTable)
       .set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] })
       .where(eq(wfRunsTable.id, runId));
@@ -326,38 +460,90 @@ function isDescendant(nodeId: string, fromId: string, graph: WfGraph): boolean {
   return false;
 }
 
-// ── Schedule trigger helper ───────────────────────────────────────────────────
+// ── Scheduled trigger scanner ─────────────────────────────────────────────────
 
 export async function triggerScheduledWorkflows(): Promise<void> {
-  try {
-    const rows = await pool.query<{
-      id: number;
-      definition_id: number;
-      config: Record<string, unknown>;
-    }>(`
-      SELECT id, definition_id, config
-      FROM wf_triggers
-      WHERE type = 'schedule'
-        AND enabled = true
-        AND next_run_at IS NOT NULL
-        AND next_run_at <= NOW()
-    `);
+  const rows = await pool.query<{
+    id: number;
+    definition_id: number;
+    config: Record<string, unknown>;
+  }>(`
+    SELECT id, definition_id, config
+    FROM wf_triggers
+    WHERE type = 'schedule'
+      AND enabled = true
+      AND next_run_at IS NOT NULL
+      AND next_run_at <= NOW()
+  `);
 
-    for (const trigger of rows.rows) {
-      const cronExpr = trigger.config.cron as string | undefined;
-      const nextRun = cronExpr ? computeNextCronRun(cronExpr) : null;
+  for (const trigger of rows.rows) {
+    const cronExpr = trigger.config.cron as string | undefined;
+    const nextRun = cronExpr ? computeNextCronRun(cronExpr) : null;
 
-      const claimed = await pool.query(
-        `UPDATE wf_triggers SET next_run_at = $1 WHERE id = $2 AND next_run_at <= NOW() RETURNING id`,
-        [nextRun, trigger.id],
+    // Atomic claim: update next_run_at only if it's still due (prevents double-fire)
+    const claimed = await pool.query(
+      `UPDATE wf_triggers SET next_run_at = $1 WHERE id = $2 AND next_run_at <= NOW() RETURNING id`,
+      [nextRun, trigger.id],
+    );
+    if (!claimed.rowCount || claimed.rowCount === 0) continue;
+
+    const fanOutMode = trigger.config.fan_out_mode as string | undefined;
+    const fanOutQuery = trigger.config.fan_out_query as string | undefined;
+
+    if (fanOutMode === "per_record" && fanOutQuery) {
+      try {
+        const records = await pool.query(fanOutQuery);
+        for (const row of records.rows) {
+          await fireWorkflowForDefinition(
+            trigger.definition_id, "schedule", `trigger:${trigger.id}`,
+            row as Record<string, unknown>,
+          );
+        }
+        logger.info({ triggerId: trigger.id, rowCount: records.rowCount }, "wf-engine: per_record fan-out fired");
+      } catch (err) {
+        logger.warn({ err, triggerId: trigger.id }, "wf-engine: fan_out_query failed (non-fatal)");
+        await fireWorkflowForDefinition(
+          trigger.definition_id, "schedule", `trigger:${trigger.id}`,
+          trigger.config.payload as Record<string, unknown> ?? {},
+        );
+      }
+    } else {
+      await fireWorkflowForDefinition(
+        trigger.definition_id, "schedule", `trigger:${trigger.id}`,
+        trigger.config.payload as Record<string, unknown> ?? {},
       );
+    }
+  }
+}
 
-      if (claimed.rowCount === 0) continue;
+// ── Event emitter helper ──────────────────────────────────────────────────────
+// Call this from anywhere in the API to fire event-triggered workflows.
 
-      await fireWorkflowForDefinition(trigger.definition_id, "schedule", `trigger:${trigger.id}`, trigger.config.payload as Record<string, unknown> ?? {});
+export async function emitWorkflowEvent(
+  eventType: string,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    const triggers = await db
+      .select()
+      .from(wfTriggersTable)
+      .where(and(
+        eq(wfTriggersTable.type, "event"),
+        eq(wfTriggersTable.enabled, true),
+      ));
+
+    for (const trigger of triggers) {
+      const cfg = trigger.config as Record<string, unknown>;
+      const filterEventType = cfg.eventType as string | undefined;
+      if (!filterEventType || filterEventType === eventType) {
+        await fireWorkflowForDefinition(
+          trigger.definitionId, "event", `event:${eventType}`,
+          { ...payload, _eventType: eventType },
+        );
+      }
     }
   } catch (err) {
-    logger.warn({ err }, "wf-executor: scheduled trigger scan failed (non-fatal)");
+    logger.warn({ err, eventType }, "wf-engine: emitWorkflowEvent failed (non-fatal)");
   }
 }
 
@@ -408,23 +594,55 @@ export async function fireWorkflowForDefinition(
   }
 }
 
-// ── Simple cron "next run" computation ───────────────────────────────────────
-// Supports "0 9 * * *" style 5-field cron (minute hour dom month dow).
-// Returns next Date rounded to the nearest minute after now.
+// ── Cron "next run" computation ───────────────────────────────────────────────
+// Supports standard 5-field cron (minute hour dom month dow) with * wildcards.
+// Steps through time minute-by-minute until all fields match (max 1 year ahead).
 
 export function computeNextCronRun(cron: string): Date | null {
   try {
     const parts = cron.trim().split(/\s+/);
     if (parts.length !== 5) return null;
-    const [minStr, hourStr] = parts;
-    const minute = minStr === "*" ? 0 : parseInt(minStr, 10);
-    const hour = hourStr === "*" ? 0 : parseInt(hourStr, 10);
+    const [minStr, hourStr, domStr, monthStr, dowStr] = parts;
+
+    function matches(value: number, spec: string): boolean {
+      if (spec === "*") return true;
+      if (spec.includes(",")) return spec.split(",").some(s => matches(value, s.trim()));
+      if (spec.includes("-")) {
+        const [lo, hi] = spec.split("-").map(Number);
+        return value >= lo && value <= hi;
+      }
+      if (spec.includes("/")) {
+        const [base, step] = spec.split("/");
+        const stepN = parseInt(step, 10);
+        const start = base === "*" ? 0 : parseInt(base, 10);
+        return (value - start) % stepN === 0;
+      }
+      return value === parseInt(spec, 10);
+    }
+
     const next = new Date();
     next.setSeconds(0, 0);
-    next.setMinutes(isNaN(minute) ? 0 : minute);
-    next.setHours(isNaN(hour) ? 0 : hour);
-    if (next <= new Date()) next.setDate(next.getDate() + 1);
-    return next;
+    next.setTime(next.getTime() + 60_000); // advance at least 1 minute
+
+    for (let i = 0; i < 525_600; i++) {
+      const m     = next.getMinutes();
+      const h     = next.getHours();
+      const dom   = next.getDate();
+      const month = next.getMonth() + 1;
+      const dow   = next.getDay();
+
+      if (
+        matches(m, minStr) &&
+        matches(h, hourStr) &&
+        matches(dom, domStr) &&
+        matches(month, monthStr) &&
+        matches(dow, dowStr)
+      ) return new Date(next);
+
+      next.setTime(next.getTime() + 60_000);
+    }
+
+    return null;
   } catch {
     return null;
   }

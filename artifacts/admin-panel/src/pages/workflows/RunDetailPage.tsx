@@ -53,31 +53,50 @@ const NODE_BORDER: Record<string, string> = {
 // ── Replay node ───────────────────────────────────────────────────────────────
 
 function ReplayNode({ data }: NodeProps) {
-  const nodeType = (data.nodeType as string) ?? "action";
-  const inPath = data.inPath as boolean;
+  const nodeType  = (data.nodeType as string) ?? "action";
+  const inPath    = data.inPath as boolean;
   const isCurrent = data.isCurrent as boolean;
   const isSkipped = data.isSkipped as boolean;
-  const border = NODE_BORDER[nodeType] ?? "#0078D4";
+  const hasError  = data.hasError as boolean;
+  const isMutated = data.isMutated as boolean;
+  const border    = hasError ? "#EF4444" : NODE_BORDER[nodeType] ?? "#0078D4";
+
+  const bgColor = isSkipped    ? "#0D1117"
+                : hasError     ? "#1A0808"
+                : isCurrent    ? `${border}22`
+                : inPath       ? "#161B22"
+                                : "#0D1117";
+
+  const borderColor = isCurrent ? border
+                    : hasError  ? "#EF4444"
+                    : inPath    ? border + "80"
+                                : "#30363D";
 
   return (
     <div
       style={{
-        background: isSkipped ? "#0D1117" : isCurrent ? `${border}22` : inPath ? "#161B22" : "#0D1117",
-        border: `2px solid ${isCurrent ? border : inPath ? border + "80" : "#30363D"}`,
+        background: bgColor,
+        border: `2px solid ${borderColor}`,
         borderRadius: 10,
         padding: "8px 14px",
         minWidth: 130,
         opacity: isSkipped ? 0.35 : 1,
-        boxShadow: isCurrent ? `0 0 12px ${border}60` : "none",
+        boxShadow: isCurrent ? `0 0 12px ${border}60` : hasError ? "0 0 8px #EF444440" : "none",
         transition: "all 0.2s",
       }}
     >
       <Handle type="target" position={Position.Top} style={{ background: border, border: "none" }} />
-      <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: border }}>{nodeType}</div>
+      <div className="flex items-center gap-1">
+        <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: border }}>{nodeType}</div>
+        {hasError  && <span className="text-[9px] text-red-400 font-semibold">⚠ error</span>}
+        {isMutated && !hasError && <span className="text-[9px] text-amber-400">✎</span>}
+        {isSkipped && <span className="text-[9px] text-[#484F58]">skipped</span>}
+      </div>
       <div className="text-xs font-medium text-[#E6EDF3] truncate leading-snug">
         {(data.label as string) || nodeType}
       </div>
-      {isCurrent && <div className="text-[9px] text-blue-300 mt-0.5">▶ Current step</div>}
+      {isCurrent && !hasError && <div className="text-[9px] text-blue-300 mt-0.5">▶ Current step</div>}
+      {isCurrent && hasError   && <div className="text-[9px] text-red-400 mt-0.5">⚠ Failed here</div>}
       <Handle type="source" position={Position.Bottom} style={{ background: border, border: "none" }} />
     </div>
   );
@@ -86,6 +105,43 @@ function ReplayNode({ data }: NodeProps) {
 const replayNodeTypes: NodeTypes = { replayNode: ReplayNode };
 
 // ── JSON diff viewer ──────────────────────────────────────────────────────────
+// Shows side-by-side input/output with per-key change highlighting.
+
+function DiffViewer({ before, after }: { before: Record<string, unknown>; after: Record<string, unknown> }) {
+  const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
+  if (allKeys.length === 0) {
+    return <p className="text-[10px] text-[#484F58] font-mono italic">empty</p>;
+  }
+  return (
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-52 space-y-0.5">
+      {allKeys.map(key => {
+        const bVal = JSON.stringify(before[key] ?? undefined);
+        const aVal = JSON.stringify(after[key] ?? undefined);
+        const added   = !(key in before);
+        const removed = !(key in after);
+        const changed = !added && !removed && bVal !== aVal;
+        const rowCls  = added ? "bg-emerald-500/10" : removed ? "bg-red-500/10" : changed ? "bg-amber-500/8" : "";
+        const keyCls  = added ? "text-emerald-400" : removed ? "text-red-400" : changed ? "text-amber-300" : "text-[#7D8590]";
+        const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-[#E6EDF3]" : "text-[#E6EDF3]";
+        const prefix  = added ? "+ " : removed ? "- " : changed ? "~ " : "  ";
+        return (
+          <div key={key} className={`flex gap-1 px-1 py-0.5 rounded ${rowCls}`}>
+            <span className="text-[#484F58] w-4 shrink-0">{prefix}</span>
+            <span className={`${keyCls} shrink-0`}>{key}:</span>
+            {changed ? (
+              <span className={valCls}>
+                <span className="line-through text-red-400 mr-1">{bVal}</span>
+                {aVal}
+              </span>
+            ) : (
+              <span className={valCls}>{removed ? bVal : aVal}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function JsonBlock({ data, label }: { data: Record<string, unknown>; label: string }) {
   return (
@@ -154,6 +210,11 @@ export default function RunDetailPage({ runId }: { runId: number }) {
     const inPath = nodeIdx !== -1 && nodeIdx <= replayStep;
     const isCurrent = n.id === currentNodeId;
     const isSkipped = nodeIdx === -1 && branchPath.length > 0;
+    const nodeOutput = run.nodeOutputs.find(o => o.nodeId === n.id);
+    const hasError = nodeOutput?.status === "error";
+    const isMutated = !hasError && nodeOutput != null
+      && Object.keys(nodeOutput.output).length > 0
+      && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
     return {
       id: n.id,
       type: "replayNode",
@@ -164,6 +225,8 @@ export default function RunDetailPage({ runId }: { runId: number }) {
         inPath,
         isCurrent,
         isSkipped,
+        hasError,
+        isMutated,
       },
     };
   }) ?? [];
@@ -393,13 +456,13 @@ export default function RunDetailPage({ runId }: { runId: number }) {
                       </div>
                       <span className="text-[10px] text-[#484F58] font-mono">{fmtDuration(output.durationMs)}</span>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <JsonBlock data={output.input} label="Input" />
-                      <JsonBlock data={output.output} label="Output" />
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Payload diff (input → output)</p>
+                      <DiffViewer before={output.input} after={output.output} />
+                      {output.errorMessage && (
+                        <p className="text-[10px] text-red-400 font-mono mt-1">Error: {output.errorMessage}</p>
+                      )}
                     </div>
-                    {output.errorMessage && (
-                      <p className="text-xs text-red-400 font-mono">{output.errorMessage}</p>
-                    )}
                   </div>
                 ))
               )}
