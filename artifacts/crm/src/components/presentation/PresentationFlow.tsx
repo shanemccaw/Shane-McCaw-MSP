@@ -146,6 +146,7 @@ export default function PresentationFlow({
     return idx >= 0 ? idx : 0;
   };
   const [stepIndex, setStepIndex] = useState(computeInitialStep);
+  const [maxVisitedStep, setMaxVisitedStep] = useState(computeInitialStep);
   const [signerName, setSignerName] = useState(data.signerName ?? user?.name ?? "");
 
   const [savingSelections, setSavingSelections] = useState(false);
@@ -238,7 +239,13 @@ export default function PresentationFlow({
       setShowLoginGate(true);
       return;
     }
-    if (stepIndex < steps.length - 1) setStepIndex(i => i + 1);
+    if (stepIndex < steps.length - 1) {
+      setStepIndex(i => {
+        const next = i + 1;
+        setMaxVisitedStep(m => Math.max(m, next));
+        return next;
+      });
+    }
   };
 
   const goPrev = () => {
@@ -246,7 +253,7 @@ export default function PresentationFlow({
   };
 
   const navigateToStep = (i: number) => {
-    if (i < stepIndex) {
+    if (i <= maxVisitedStep) {
       setStepIndex(i);
       setSidebarOpen(false);
     }
@@ -293,17 +300,17 @@ export default function PresentationFlow({
       <nav className="flex-1 overflow-y-auto py-3 px-2">
         {steps.map((step, i) => {
           const isActive = i === stepIndex;
-          const isPast = i < stepIndex;
-          const isFuture = i > stepIndex;
+          const isVisited = i <= maxVisitedStep && i !== stepIndex;
+          const isFuture = i > maxVisitedStep;
           return (
             <button
               key={i}
               onClick={() => navigateToStep(i)}
-              disabled={!isPast}
+              disabled={isFuture}
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all mb-0.5 ${
                 isActive
                   ? "bg-[#0078D4] text-white"
-                  : isPast
+                  : isVisited
                   ? "text-white/70 hover:bg-white/10 hover:text-white cursor-pointer"
                   : isFuture
                   ? "text-white/25 cursor-not-allowed"
@@ -314,11 +321,11 @@ export default function PresentationFlow({
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
                 isActive
                   ? "bg-white/20 text-white"
-                  : isPast
+                  : isVisited
                   ? "bg-white/20 text-white/70"
                   : "bg-white/10 text-white/30"
               }`}>
-                {isPast ? (
+                {isVisited ? (
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
