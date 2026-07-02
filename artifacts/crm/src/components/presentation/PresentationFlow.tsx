@@ -515,7 +515,9 @@ export default function PresentationFlow({
             {/* Welcome step */}
             {currentStep?.kind === "welcome" && (
               <>
-                <AnimatedBackground />
+                <div className="fixed inset-0 -z-10 pointer-events-none">
+                  <AnimatedBackground />
+                </div>
               <div className="relative z-10 flex-1 flex flex-col items-center justify-center text-center gap-6 max-w-xl mx-auto">
                 <div className="w-20 h-20 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
                   <svg className="w-10 h-10 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
