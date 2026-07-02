@@ -60,6 +60,14 @@ import portalQuickWinScoringRouter from "./portal-quick-win-scoring";
 
 const router: IRouter = Router();
 
+// Dev-only seed endpoint — registered at runtime, not imported at module level,
+// so the conditional stays out of the production bundle entirely.
+if (process.env.NODE_ENV !== "production") {
+  void import("./admin-dev-seed").then(m => {
+    router.use(m.default);
+  });
+}
+
 router.use(healthRouter);
 router.use(adminArticlesRouter);
 router.use(adminServicesRouter);

@@ -3,6 +3,7 @@ import { useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import DevSeedPanel from "@/components/DevSeedPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -521,6 +522,11 @@ export default function RunningScriptsPage() {
           </button>
         </div>
       </div>
+
+      {/* Dev Seed Panel — only visible in development */}
+      {import.meta.env.DEV && (
+        <DevSeedPanel onSeeded={() => { setLoading(true); void fetchRuns(); }} />
+      )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
