@@ -525,7 +525,12 @@ interface AncestorGroup {
   outputs: Array<{ key: string; label: string }>;
 }
 
-function getAncestorOutputs(nodeId: string, nodes: Node[], edges: Edge[]): AncestorGroup[] {
+function getAncestorOutputs(
+  nodeId: string,
+  nodes: Node[],
+  edges: Edge[],
+  eventTriggers: WfTrigger[] = [],
+): AncestorGroup[] {
   const visited = new Set<string>();
   const queue: string[] = edges.filter(e => e.target === nodeId).map(e => e.source);
   const result: AncestorGroup[] = [];
@@ -539,15 +544,23 @@ function getAncestorOutputs(nodeId: string, nodes: Node[], edges: Edge[]): Ances
     const actionType = node.data.actionType as string | undefined;
     let outputs: Array<{ key: string; label: string }> = [];
     if (type === "start") {
+      // Look up the configured event trigger and surface its exact payload fields
+      const evTrigger = eventTriggers.find(t => t.type === "event" && t.enabled);
+      const eventName = evTrigger ? (evTrigger.config.eventName as string | undefined) : undefined;
+      const knownEv = eventName ? KNOWN_EVENTS.find(e => e.name === eventName) : undefined;
       outputs = [
-        { key: "payload", label: "Full trigger payload (object)" },
+        ...(knownEv ? knownEv.payloadFields : [{ key: "payload", label: "Full trigger payload (object)" }]),
         { key: "triggeredAt", label: "ISO timestamp when this run started" },
       ];
     } else if (type === "action" && actionType) {
       outputs = NODE_OUTPUTS[actionType] ?? [];
+    } else if (type !== "end" && type !== "condition" && type !== "delay" && type !== "error") {
+      // First-class node types (score_lead, assign_pipeline_stage, etc.)
+      outputs = NODE_OUTPUTS[type] ?? [];
     }
     if (outputs.length > 0) {
-      const name = (node.data.label as string | undefined) || (actionType ? actionType.replace(/_/g, " ") : type);
+      const name = (node.data.label as string | undefined)
+        || (actionType ? actionType.replace(/_/g, " ") : type.replace(/_/g, " "));
       result.unshift({ nodeId: id, nodeName: name, outputs });
     }
     edges.filter(e => e.target === id).forEach(e => { if (!visited.has(e.source)) queue.push(e.source); });
@@ -653,10 +666,22 @@ function NodeConfigPanel({
   nodes: Node[];
   edges: Edge[];
 }) {
+  const { fetchWithAuth } = useAuth();
   const nodeType = (node.data.nodeType as string) ?? "action";
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
   const p = (node.data.params as Record<string, unknown>) ?? {};
-  const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges);
+
+  // Fetch triggers so the variable picker can surface the event's exact payload fields.
+  // Same cache key as StartNodeTriggers — React Query deduplicates the request.
+  const { data: triggers = [] } = useQuery<WfTrigger[]>({
+    queryKey: ["wf-triggers", defId],
+    queryFn: async () => {
+      const r = await fetchWithAuth(`/api/admin/workflows/${defId}/triggers`);
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+  const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges, triggers);
 
   return (
     <div className="absolute right-4 top-4 bottom-4 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-y-auto z-10">
