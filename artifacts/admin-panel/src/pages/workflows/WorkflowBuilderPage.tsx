@@ -214,13 +214,16 @@ function NodeConfigPanel({
   node,
   onChange,
   onClose,
+  onDelete,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   onClose: () => void;
+  onDelete: (id: string) => void;
 }) {
   const nodeType = (node.data.nodeType as string) ?? "action";
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+  const p = (node.data.params as Record<string, unknown>) ?? {};
 
   return (
     <div className="absolute right-4 top-4 bottom-4 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-y-auto z-10">
@@ -229,11 +232,22 @@ function NodeConfigPanel({
           <span style={{ color: style.border, fontSize: 16 }}>{style.icon}</span>
           <span className="text-sm font-semibold text-[#E6EDF3]">{nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node</span>
         </div>
-        <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { onDelete(node.id); }}
+            title="Delete node (Del)"
+            className="text-[#484F58] hover:text-[#EF4444] transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+          <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       <div className="p-4 space-y-4">
@@ -248,6 +262,18 @@ function NodeConfigPanel({
           onChange={v => onChange(node.id, { ...node.data, description: v })}
           multiline
         />
+
+        {nodeType === "start" && (
+          <div className="rounded-lg bg-[#0A2540]/60 border border-[#22C55E]/20 p-3 space-y-2">
+            <p className="text-xs font-medium text-[#22C55E]">Entry Point</p>
+            <p className="text-[11px] text-[#7D8590] leading-relaxed">
+              This node is where every run begins. What fires it is controlled by <span className="text-[#E6EDF3] font-medium">Triggers</span> — configure them on the Triggers tab of this workflow.
+            </p>
+            <p className="text-[10px] text-[#484F58] leading-relaxed">
+              Supported trigger types: <span className="font-mono text-[#7D8590]">manual</span>, <span className="font-mono text-[#7D8590]">schedule</span>, <span className="font-mono text-[#7D8590]">webhook</span>, <span className="font-mono text-[#7D8590]">event</span>. The payload from each trigger is available as <span className="font-mono text-[#7D8590]">{"{{payload.*}}"}</span> in downstream condition expressions.
+            </p>
+          </div>
+        )}
 
         {nodeType === "action" && (
           <>
@@ -266,13 +292,115 @@ function NodeConfigPanel({
                 <option value="cancel_workflow">Cancel Workflow</option>
               </select>
             </div>
-            {(node.data.actionType as string) === "http_request" && (
-              <ConfigField
-                label="URL"
-                value={(node.data.params as Record<string, string>)?.url ?? ""}
-                onChange={v => onChange(node.id, { ...node.data, params: { ...(node.data.params as Record<string, unknown> ?? {}), url: v } })}
-                placeholder="https://…"
-              />
+
+            {(node.data.actionType as string | undefined) === "http_request" || !(node.data.actionType as string) ? (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Method</label>
+                  <select
+                    value={(p.method as string) ?? "GET"}
+                    onChange={e => onChange(node.id, { ...node.data, params: { ...p, method: e.target.value } })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    {["GET","POST","PUT","PATCH","DELETE"].map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+                <ConfigField
+                  label="URL"
+                  value={(p.url as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, params: { ...p, url: v } })}
+                  placeholder="https://…"
+                />
+                <ConfigField
+                  label="Body (JSON)"
+                  value={(p.bodyRaw as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, params: { ...p, bodyRaw: v } })}
+                  placeholder='{"key": "value"}'
+                  multiline
+                />
+              </>
+            ) : null}
+
+            {(node.data.actionType as string) === "sql_query" && (
+              <>
+                <ConfigField
+                  label="SQL Query"
+                  value={(node.data.query as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, query: v })}
+                  placeholder="SELECT * FROM clients WHERE status = 'active'"
+                  multiline
+                />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Results are injected into the payload as <span className="font-mono text-[#7D8590]">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "send_email" && (
+              <>
+                <ConfigField
+                  label="To (email)"
+                  value={(node.data.to as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, to: v })}
+                  placeholder="client@example.com"
+                />
+                <ConfigField
+                  label="Subject"
+                  value={(node.data.subject as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, subject: v })}
+                  placeholder="Your onboarding is ready"
+                />
+                <ConfigField
+                  label="Body"
+                  value={(node.data.body as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, body: v })}
+                  placeholder="Hi {{payload.name}}, …"
+                  multiline
+                />
+              </>
+            )}
+
+            {(node.data.actionType as string) === "send_sms" && (
+              <>
+                <ConfigField
+                  label="To (E.164 phone)"
+                  value={(node.data.to as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, to: v })}
+                  placeholder="+12025550100"
+                />
+                <ConfigField
+                  label="Message"
+                  value={(node.data.message as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, message: v })}
+                  placeholder="Hi {{payload.name}}, your project is ready."
+                  multiline
+                />
+              </>
+            )}
+
+            {(node.data.actionType as string) === "emit_event" && (
+              <>
+                <ConfigField
+                  label="Event Name"
+                  value={(node.data.eventName as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, eventName: v })}
+                  placeholder="onboarding.completed"
+                />
+                <ConfigField
+                  label="Payload (JSON)"
+                  value={(node.data.eventPayload as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, eventPayload: v })}
+                  placeholder='{"clientId": "{{payload.clientId}}"}'
+                  multiline
+                />
+              </>
+            )}
+
+            {(node.data.actionType as string) === "cancel_workflow" && (
+              <div className="rounded-lg bg-[#1A0D0D] border border-[#EF4444]/30 p-3">
+                <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
+                <p className="text-[11px] text-[#7D8590] mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
+              </div>
             )}
           </>
         )}
@@ -607,6 +735,12 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data } : n));
   }
 
+  function deleteNode(id: string) {
+    setNodes(nds => nds.filter(n => n.id !== id));
+    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
+    setSelectedNodeId(null);
+  }
+
   const isPublished = currentVersion?.status === "published";
   const isArchived  = currentVersion?.status === "archived";
   const isDraft     = currentVersion?.status === "draft";
@@ -834,6 +968,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             nodeTypes={nodeTypes}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
             onPaneClick={() => setSelectedNodeId(null)}
+            onNodesDelete={deleted => { if (deleted.some(n => n.id === selectedNodeId)) setSelectedNodeId(null); }}
+            deleteKeyCode={["Delete", "Backspace"]}
             fitView
             proOptions={{ hideAttribution: true }}
             style={{ background: "#0D1117" }}
@@ -861,6 +997,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             node={{ id: selectedNode.id, data: selectedNode.data as Record<string, unknown> }}
             onChange={updateNodeData}
             onClose={() => setSelectedNodeId(null)}
+            onDelete={deleteNode}
           />
         )}
 
