@@ -39,6 +39,18 @@ interface KanbanTask {
   taskMetadata: Record<string, unknown> | null;
 }
 
+interface WorkflowStep {
+  id: number;
+  title: string;
+  status: "not_started" | "in_progress" | "completed";
+  order: number;
+}
+
+interface ProjectData {
+  tasks: KanbanTask[];
+  steps: WorkflowStep[];
+}
+
 type M365ScoreKey = "security" | "compliance" | "copilot" | "governance" | "productivity";
 
 interface ScorecardHistoryData {
@@ -104,19 +116,23 @@ export default function FullScreenWrapper() {
     (portalProjects.length === 1 ? portalProjects[0].id : undefined);
   const queryClient = useQueryClient();
 
-  // ── Live: kanban tasks for the project (5 s poll) ──────────────────────────
-  const { data: kanbanTasks = [] } = useQuery<KanbanTask[]>({
+  // ── Live: kanban tasks + workflow steps for the project (5 s poll) ───────────
+  // The API returns { tasks, steps, ... } — we parse both so that the phase
+  // stepper uses real workflow step titles, not kanban task groupName values.
+  const { data: projectData } = useQuery<ProjectData>({
     queryKey: ["qw-overlay-kanban", kanbanProjectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/portal/projects/${kanbanProjectId}`);
-      if (!res.ok) return [];
-      const body = await res.json() as { tasks?: KanbanTask[] };
-      return body.tasks ?? [];
+      if (!res.ok) return { tasks: [], steps: [] };
+      const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[] };
+      return { tasks: body.tasks ?? [], steps: body.steps ?? [] };
     },
     enabled: !!kanbanProjectId && isVisible,
     refetchInterval: 5_000,
     staleTime: 0,
   });
+  const kanbanTasks = projectData?.tasks ?? [];
+  const workflowSteps = projectData?.steps ?? [];
 
   // ── Live: M365 scorecard history — same endpoint as the portal dashboard ───
   const { data: scorecardHistory } = useQuery<ScorecardHistoryData>({
@@ -415,8 +431,12 @@ export default function FullScreenWrapper() {
     ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
     : progressPct;
 
-  // Phases = unique group names in task order; fall back to simulation stepTitles
+  // Phases = workflow step titles (already ordered by `order`).
+  // Fall back to task groupNames, then to simulation stepTitles — so the
+  // stepper is never blank while data is loading.
   const kanbanPhases: string[] = (() => {
+    if (workflowSteps.length > 0) return workflowSteps.map(s => s.title);
+    // Fallback: unique groupNames from task list
     const seen = new Set<string>();
     const result: string[] = [];
     for (const t of kanbanTasks) {
@@ -426,19 +446,29 @@ export default function FullScreenWrapper() {
     return result.length > 0 ? result : stepTitles;
   })();
 
-  // Active phase = phase of the first in_progress or waiting task
-  const activeKanbanTask = inProgressTasks[0] ?? waitingTasks[0] ?? null;
+  // Active phase = the in_progress workflow step; fall back to task column
   const activePhaseIndex = (() => {
-    if (!activeKanbanTask) {
-      return completedKanbanTasks.length > 0 ? kanbanPhases.length - 1 : 0;
+    if (workflowSteps.length > 0) {
+      const idx = workflowSteps.findIndex(s => s.status === "in_progress");
+      if (idx >= 0) return idx;
+      // All done or not started yet
+      const doneCount = workflowSteps.filter(s => s.status === "completed").length;
+      return doneCount > 0 ? doneCount - 1 : 0;
     }
+    // Fallback: derive from task groupName
+    const activeKanbanTask = inProgressTasks[0] ?? waitingTasks[0] ?? null;
+    if (!activeKanbanTask) return completedKanbanTasks.length > 0 ? kanbanPhases.length - 1 : 0;
     const g = activeKanbanTask.groupName ?? activeKanbanTask.title;
     const idx = kanbanPhases.indexOf(g);
     return idx >= 0 ? idx : 0;
   })();
-  const activePhaseCompletedCount = activeKanbanTask
-    ? kanbanPhases.indexOf(activeKanbanTask.groupName ?? activeKanbanTask.title)
-    : completedKanbanTasks.length > 0 ? kanbanPhases.length : 0;
+
+  const activePhaseCompletedCount = workflowSteps.length > 0
+    ? workflowSteps.filter(s => s.status === "completed").length
+    : activePhaseIndex;
+
+  // For JSX: first in-progress or waiting task (used in the subtitle below the progress bar)
+  const activeKanbanTask = inProgressTasks[0] ?? waitingTasks[0] ?? null;
 
   // Real M365 health scores — same data as portal dashboard
   const realCategoryScores: Record<string, number> = (() => {
