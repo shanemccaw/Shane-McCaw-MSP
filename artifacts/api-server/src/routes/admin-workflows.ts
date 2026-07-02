@@ -54,7 +54,7 @@ function sendError(res: Response, status: number, message: string) {
 
 // ── Definitions ───────────────────────────────────────────────────────────────
 
-router.get("/api/admin/workflows/definitions", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, res: Response) => {
   try {
     const defs = await db
       .select()
@@ -98,7 +98,7 @@ router.get("/api/admin/workflows/definitions", requireAdmin, async (req: Request
   }
 });
 
-router.post("/api/admin/workflows/definitions", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, res: Response) => {
   const body = z.object({
     name: z.string().min(1).max(200),
     description: z.string().optional(),
@@ -128,7 +128,7 @@ router.post("/api/admin/workflows/definitions", requireAdmin, async (req: Reques
   }
 });
 
-router.get("/api/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
   try {
@@ -140,7 +140,7 @@ router.get("/api/admin/workflows/definitions/:id", requireAdmin, async (req: Req
   }
 });
 
-router.put("/api/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
+router.put("/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
 
@@ -164,7 +164,7 @@ router.put("/api/admin/workflows/definitions/:id", requireAdmin, async (req: Req
   }
 });
 
-router.delete("/api/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
   try {
@@ -177,7 +177,7 @@ router.delete("/api/admin/workflows/definitions/:id", requireAdmin, async (req: 
 
 // ── Versions ──────────────────────────────────────────────────────────────────
 
-router.get("/api/admin/workflows/definitions/:id/versions", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/definitions/:id/versions", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
   try {
@@ -192,7 +192,7 @@ router.get("/api/admin/workflows/definitions/:id/versions", requireAdmin, async 
   }
 });
 
-router.post("/api/admin/workflows/definitions/:id/versions", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions/:id/versions", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
 
@@ -225,7 +225,7 @@ router.post("/api/admin/workflows/definitions/:id/versions", requireAdmin, async
   }
 });
 
-router.get("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async (req: Request, res: Response) => {
   const vid = parseInt(req.params.vid as string);
   if (isNaN(vid)) return sendError(res, 400, "Invalid version id");
   try {
@@ -237,7 +237,7 @@ router.get("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, a
   }
 });
 
-router.put("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async (req: Request, res: Response) => {
+router.put("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   const vid = parseInt(req.params.vid as string);
   if (isNaN(vid) || isNaN(defId)) return sendError(res, 400, "Invalid version id");
@@ -284,7 +284,7 @@ router.put("/api/admin/workflows/definitions/:id/versions/:vid", requireAdmin, a
   }
 });
 
-router.post("/api/admin/workflows/definitions/:id/versions/:vid/publish", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions/:id/versions/:vid/publish", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   const vid = parseInt(req.params.vid as string);
   if (isNaN(defId) || isNaN(vid)) return sendError(res, 400, "Invalid id");
@@ -312,7 +312,7 @@ router.post("/api/admin/workflows/definitions/:id/versions/:vid/publish", requir
 
 // ── Triggers ──────────────────────────────────────────────────────────────────
 
-router.get("/api/admin/workflows/definitions/:id/triggers", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/definitions/:id/triggers", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
   try {
@@ -327,7 +327,7 @@ router.get("/api/admin/workflows/definitions/:id/triggers", requireAdmin, async 
   }
 });
 
-router.post("/api/admin/workflows/definitions/:id/triggers", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions/:id/triggers", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
 
@@ -359,7 +359,7 @@ router.post("/api/admin/workflows/definitions/:id/triggers", requireAdmin, async
   }
 });
 
-router.patch("/api/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
+router.patch("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
   const tid = parseInt(req.params.tid as string);
   if (isNaN(tid)) return sendError(res, 400, "Invalid id");
 
@@ -386,7 +386,7 @@ router.patch("/api/admin/workflows/definitions/:id/triggers/:tid", requireAdmin,
   }
 });
 
-router.delete("/api/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
+router.delete("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
   const tid = parseInt(req.params.tid as string);
   if (isNaN(tid)) return sendError(res, 400, "Invalid id");
   try {
@@ -397,7 +397,7 @@ router.delete("/api/admin/workflows/definitions/:id/triggers/:tid", requireAdmin
   }
 });
 
-router.post("/api/admin/workflows/definitions/:id/triggers/:tid/rotate-token", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions/:id/triggers/:tid/rotate-token", requireAdmin, async (req: Request, res: Response) => {
   const tid = parseInt(req.params.tid as string);
   if (isNaN(tid)) return sendError(res, 400, "Invalid id");
   try {
@@ -416,7 +416,7 @@ router.post("/api/admin/workflows/definitions/:id/triggers/:tid/rotate-token", r
 
 // ── Manual trigger ────────────────────────────────────────────────────────────
 
-router.post("/api/admin/workflows/definitions/:id/run", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Request, res: Response) => {
   const defId = parseInt(req.params.id as string);
   if (isNaN(defId)) return sendError(res, 400, "Invalid id");
 
@@ -431,7 +431,7 @@ router.post("/api/admin/workflows/definitions/:id/run", requireAdmin, async (req
 
 // ── Runs ──────────────────────────────────────────────────────────────────────
 
-router.get("/api/admin/workflows/runs", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Response) => {
   const definitionId = req.query.definitionId ? parseInt(req.query.definitionId as string) : null;
   const status = req.query.status as string | undefined;
   const fromDate = req.query.from as string | undefined;
@@ -488,7 +488,7 @@ router.get("/api/admin/workflows/runs", requireAdmin, async (req: Request, res: 
   }
 });
 
-router.get("/api/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: Response) => {
+router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
 
@@ -538,7 +538,7 @@ router.get("/api/admin/workflows/runs/:id", requireAdmin, async (req: Request, r
   }
 });
 
-router.post("/api/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
 
@@ -558,7 +558,7 @@ router.post("/api/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Re
 
 // ── Webhook trigger (public endpoint) ─────────────────────────────────────────
 
-router.post("/api/webhooks/workflow/:token", async (req: Request, res: Response) => {
+router.post("/webhooks/workflow/:token", async (req: Request, res: Response) => {
   const token = req.params.token as string;
   if (!token) return sendError(res, 400, "Missing token");
 
