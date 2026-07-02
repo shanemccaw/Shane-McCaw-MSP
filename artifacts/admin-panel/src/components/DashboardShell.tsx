@@ -97,6 +97,17 @@ const WORKSPACES: WorkspaceEntry[] = [
       </svg>
     ),
   },
+  {
+    label: "Workflows",
+    prefix: "/workflows",
+    defaultPath: "/workflows/list",
+    description: "Design, automate & monitor",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+      </svg>
+    ),
+  },
 ];
 
 // ─── LocalStorage helpers ─────────────────────────────────────────────────────
@@ -152,6 +163,9 @@ const SECTION_LABELS: Record<string, { group: string; label: string }> = {
   "/system/signal-mappings":  { group: "System", label: "Signal Mappings" },
   "/system/integrations":     { group: "System", label: "Integrations" },
   "/system/environment":      { group: "System", label: "Environment Settings" },
+  // Workflows
+  "/workflows/list":          { group: "Workflows", label: "Workflows" },
+  "/workflows/runs":          { group: "Workflows", label: "Run History" },
 };
 
 // Prefix-based labels for detail pages that don't match exact paths
@@ -166,7 +180,10 @@ const PREFIX_LABELS: Array<{ prefix: string; group: string; label: string }> = [
   { prefix: "/crm/status-reports", group: "Delivery", label: "Status Reports" },
   { prefix: "/crm/testimonials",  group: "Delivery",  label: "Testimonials" },
   { prefix: "/prompt-center/",    group: "Command",   label: "Edit Prompt" },
-  { prefix: "/asset-library/",    group: "Content & Offers", label: "Asset Library" },
+  { prefix: "/asset-library/",        group: "Content & Offers", label: "Asset Library" },
+  { prefix: "/workflows/builder/",    group: "Workflows",       label: "Builder" },
+  { prefix: "/workflows/triggers/",   group: "Workflows",       label: "Triggers" },
+  { prefix: "/workflows/runs/",       group: "Workflows",       label: "Run Detail" },
 ];
 
 function computeBreadcrumb(location: string): { group: string; label: string } | null {

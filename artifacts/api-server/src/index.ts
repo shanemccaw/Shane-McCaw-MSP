@@ -8,6 +8,7 @@ import { reconcileOrphanedRuns, reconcileStalledPhases } from "./lib/kanban-auto
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool, db, insightsAutomationsTable } from "@workspace/db";
+import { triggerScheduledWorkflows } from "./lib/workflow-executor";
 import { executeAutomation, nextRunFromCron } from "./routes/admin-insights";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 
@@ -188,6 +189,14 @@ app.listen(port, (err) => {
   };
   setInterval(runInsightsCron, 60_000); // every 1 minute
 
+  // ── Workflow Engine schedule scanner ─────────────────────────────────────
+  // Piggybacks on the existing 60s interval to fire scheduled workflow triggers.
+  setInterval(() => {
+    triggerScheduledWorkflows().catch((err: unknown) => {
+      logger.warn({ err }, "wf-engine: scheduled trigger scan failed (non-fatal)");
+    });
+  }, 60_000);
+
   const ESCALATION_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
   const runEscalationCheck = () => {
     checkManualScriptEscalations().then((result) => {
@@ -300,6 +309,89 @@ app.listen(port, (err) => {
   }).catch((err: unknown) => {
     logger.warn({ err }, "Migration: next_best_actions table failed (non-fatal)");
   });
+
+  // ── Workflow Engine tables ───────────────────────────────────────────────
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS wf_definitions (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      concurrency_limit INTEGER NOT NULL DEFAULT 5,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS wf_versions (
+      id SERIAL PRIMARY KEY,
+      definition_id INTEGER NOT NULL REFERENCES wf_definitions(id) ON DELETE CASCADE,
+      version_number INTEGER NOT NULL DEFAULT 1,
+      label TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      graph JSONB NOT NULL DEFAULT '{"nodes":[],"edges":[]}',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS wf_runs (
+      id SERIAL PRIMARY KEY,
+      version_id INTEGER NOT NULL REFERENCES wf_versions(id) ON DELETE CASCADE,
+      definition_id INTEGER NOT NULL REFERENCES wf_definitions(id) ON DELETE CASCADE,
+      trigger_type TEXT NOT NULL DEFAULT 'manual',
+      trigger_ref TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      payload JSONB NOT NULL DEFAULT '{}',
+      branch_path JSONB NOT NULL DEFAULT '[]',
+      started_at TIMESTAMP,
+      finished_at TIMESTAMP,
+      error_message TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS wf_run_node_logs (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES wf_runs(id) ON DELETE CASCADE,
+      node_id TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'info',
+      message TEXT NOT NULL,
+      timestamp TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS wf_run_node_outputs (
+      id SERIAL PRIMARY KEY,
+      run_id INTEGER NOT NULL REFERENCES wf_runs(id) ON DELETE CASCADE,
+      node_id TEXT NOT NULL,
+      input JSONB NOT NULL DEFAULT '{}',
+      output JSONB NOT NULL DEFAULT '{}',
+      duration_ms INTEGER,
+      status TEXT NOT NULL DEFAULT 'ok',
+      error_message TEXT,
+      timestamp TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS wf_triggers (
+      id SERIAL PRIMARY KEY,
+      definition_id INTEGER NOT NULL REFERENCES wf_definitions(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      config JSONB NOT NULL DEFAULT '{}',
+      webhook_token TEXT UNIQUE,
+      next_run_at TIMESTAMP,
+      enabled BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `).then(() => {
+    logger.info("Migration: workflow engine tables ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: workflow engine tables failed (non-fatal)");
+  });
+
+  // ── Workflow Engine: nightly cleanup (runs older than 90 days) ───────────
+  const WF_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  const runWfCleanup = () => {
+    pool.query(`DELETE FROM wf_runs WHERE created_at < NOW() - INTERVAL '90 days'`)
+      .then((result) => {
+        if (result.rowCount && result.rowCount > 0) {
+          logger.info({ deleted: result.rowCount }, "wf-engine: cleaned up old runs");
+        }
+      })
+      .catch((err: unknown) => {
+        logger.warn({ err }, "wf-engine: cleanup failed (non-fatal)");
+      });
+  };
+  setInterval(runWfCleanup, WF_CLEANUP_INTERVAL_MS);
 
   pool.query(`
     CREATE TABLE IF NOT EXISTS revenue_forecasts (

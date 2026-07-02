@@ -1600,3 +1600,122 @@ export const presentationDocViewsTable = pgTable("presentation_doc_views", {
 
 export type InsertPresentationDocView = typeof presentationDocViewsTable.$inferInsert;
 export type PresentationDocView = typeof presentationDocViewsTable.$inferSelect;
+
+// ── Workflow Engine ────────────────────────────────────────────────────────────
+
+export interface WfNodeData {
+  label?: string;
+  description?: string;
+  actionType?: string;
+  params?: Record<string, unknown>;
+  expression?: string;
+  mode?: string;
+  duration?: number;
+  interval?: number;
+  timeout?: number;
+  [key: string]: unknown;
+}
+
+export interface WfNode {
+  id: string;
+  type: "start" | "end" | "action" | "condition" | "delay" | "error";
+  position: { x: number; y: number };
+  data: WfNodeData;
+}
+
+export interface WfEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceHandle?: string | null;
+  label?: string;
+}
+
+export interface WfGraph {
+  nodes: WfNode[];
+  edges: WfEdge[];
+}
+
+export const wfDefinitionsTable = pgTable("wf_definitions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  concurrencyLimit: integer("concurrency_limit").notNull().default(5),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertWfDefinition = typeof wfDefinitionsTable.$inferInsert;
+export type WfDefinition = typeof wfDefinitionsTable.$inferSelect;
+
+export const wfVersionsTable = pgTable("wf_versions", {
+  id: serial("id").primaryKey(),
+  definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull().default(1),
+  label: text("label"),
+  status: text("status", { enum: ["draft", "published"] }).notNull().default("draft"),
+  graph: jsonb("graph").$type<WfGraph>().notNull().default({ nodes: [], edges: [] }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWfVersion = typeof wfVersionsTable.$inferInsert;
+export type WfVersion = typeof wfVersionsTable.$inferSelect;
+
+export const wfRunsTable = pgTable("wf_runs", {
+  id: serial("id").primaryKey(),
+  versionId: integer("version_id").notNull().references(() => wfVersionsTable.id, { onDelete: "cascade" }),
+  definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
+  triggerType: text("trigger_type", { enum: ["manual", "schedule", "webhook", "event"] }).notNull().default("manual"),
+  triggerRef: text("trigger_ref"),
+  status: text("status", { enum: ["pending", "running", "completed", "failed", "cancelled"] }).notNull().default("pending"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  branchPath: jsonb("branch_path").$type<string[]>().notNull().default([]),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWfRun = typeof wfRunsTable.$inferInsert;
+export type WfRun = typeof wfRunsTable.$inferSelect;
+
+export const wfRunNodeLogsTable = pgTable("wf_run_node_logs", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  level: text("level", { enum: ["info", "warn", "error"] }).notNull().default("info"),
+  message: text("message").notNull(),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
+export type InsertWfRunNodeLog = typeof wfRunNodeLogsTable.$inferInsert;
+export type WfRunNodeLog = typeof wfRunNodeLogsTable.$inferSelect;
+
+export const wfRunNodeOutputsTable = pgTable("wf_run_node_outputs", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),
+  output: jsonb("output").$type<Record<string, unknown>>().notNull().default({}),
+  durationMs: integer("duration_ms"),
+  status: text("status", { enum: ["ok", "error", "skipped"] }).notNull().default("ok"),
+  errorMessage: text("error_message"),
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+});
+
+export type InsertWfRunNodeOutput = typeof wfRunNodeOutputsTable.$inferInsert;
+export type WfRunNodeOutput = typeof wfRunNodeOutputsTable.$inferSelect;
+
+export const wfTriggersTable = pgTable("wf_triggers", {
+  id: serial("id").primaryKey(),
+  definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
+  type: text("type", { enum: ["manual", "schedule", "webhook", "event"] }).notNull(),
+  config: jsonb("config").$type<Record<string, unknown>>().notNull().default({}),
+  webhookToken: text("webhook_token").unique(),
+  nextRunAt: timestamp("next_run_at"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertWfTrigger = typeof wfTriggersTable.$inferInsert;
+export type WfTrigger = typeof wfTriggersTable.$inferSelect;

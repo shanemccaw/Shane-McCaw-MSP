@@ -14,6 +14,7 @@ import DeliveryWorkspace from "@/pages/workspaces/DeliveryWorkspace";
 import FinanceWorkspace from "@/pages/workspaces/FinanceWorkspace";
 import ContentWorkspace from "@/pages/workspaces/ContentWorkspace";
 import SystemWorkspace from "@/pages/workspaces/SystemWorkspace";
+import WorkflowsWorkspace from "@/pages/workspaces/WorkflowsWorkspace";
 
 // ─── Detail pages (open without workspace layout) ─────────────────────────────
 import LeadDetailPage from "@/pages/crm/LeadDetail";
@@ -168,6 +169,39 @@ function Router() {
         )}
       </Route>
 
+      {/* ── WORKFLOWS workspace ── */}
+      <Route path="/workflows">
+        <Redirect to="/workflows/list" />
+      </Route>
+      <Route path="/workflows/runs/:id">
+        {(params) => (
+          <AdminRoute>
+            <WorkflowsWorkspace section="runs" params={params as Record<string, string>} />
+          </AdminRoute>
+        )}
+      </Route>
+      <Route path="/workflows/builder/:id">
+        {(params) => (
+          <AdminRoute>
+            <WorkflowsWorkspace section="builder" params={params as Record<string, string>} />
+          </AdminRoute>
+        )}
+      </Route>
+      <Route path="/workflows/triggers/:id">
+        {(params) => (
+          <AdminRoute>
+            <WorkflowsWorkspace section="triggers" params={params as Record<string, string>} />
+          </AdminRoute>
+        )}
+      </Route>
+      <Route path="/workflows/:section">
+        {(params) => (
+          <AdminRoute>
+            <WorkflowsWorkspace section={params?.section ?? "list"} />
+          </AdminRoute>
+        )}
+      </Route>
+
       {/* ── Detail pages (no workspace layout changes needed) ── */}
       <Route path="/crm/leads/:id">
         {(params) => <AdminRoute><LeadDetailPage params={params} /></AdminRoute>}
@@ -232,7 +266,6 @@ function Router() {
 
       <Route path="/crm/projects"><Redirect to="/delivery/projects" /></Route>
       <Route path="/engagement-projects"><Redirect to="/delivery/engagement-projects" /></Route>
-      <Route path="/workflows"><Redirect to="/delivery/workflows" /></Route>
       <Route path="/activity-log"><Redirect to="/delivery/activity-logs" /></Route>
       <Route path="/sharepoint"><Redirect to="/delivery/hub-storage" /></Route>
 

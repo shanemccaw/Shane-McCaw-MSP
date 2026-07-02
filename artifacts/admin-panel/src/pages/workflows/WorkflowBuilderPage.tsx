@@ -1,0 +1,616 @@
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  addEdge,
+  useNodesState,
+  useEdgesState,
+  type Connection,
+  type NodeTypes,
+  type Node,
+  type Edge,
+  Handle,
+  Position,
+  type NodeProps,
+  Panel,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import { useLocation, useRoute } from "wouter";
+
+// ── Node type colours ─────────────────────────────────────────────────────────
+
+const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; label: string }> = {
+  start:     { bg: "#0F2A1A", border: "#22C55E",  icon: "▶",  label: "Start"      },
+  end:       { bg: "#1A1A2E", border: "#6366F1",  icon: "⏹",  label: "End"        },
+  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"     },
+  condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"  },
+  delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"      },
+  error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"      },
+};
+
+// ── Custom node component ─────────────────────────────────────────────────────
+
+function WfNode({ data, selected, id }: NodeProps) {
+  const nodeType = (data.nodeType as string) ?? "action";
+  const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+  const label = (data.label as string) || style.label;
+
+  return (
+    <div
+      style={{
+        background: style.bg,
+        border: `2px solid ${selected ? "#0078D4" : style.border}`,
+        borderRadius: 10,
+        padding: "10px 16px",
+        minWidth: 140,
+        maxWidth: 200,
+        boxShadow: selected ? `0 0 0 2px #0078D440` : "0 2px 8px rgba(0,0,0,0.4)",
+      }}
+    >
+      <Handle type="target" position={Position.Top} style={{ background: style.border, border: "none" }} />
+
+      <div className="flex items-center gap-2">
+        <span style={{ fontSize: 16 }}>{style.icon}</span>
+        <div className="min-w-0">
+          <div className="text-[10px] uppercase tracking-wider font-bold" style={{ color: style.border }}>
+            {nodeType}
+          </div>
+          <div className="text-xs font-medium text-[#E6EDF3] truncate leading-snug">{label}</div>
+          {(data.description as string | undefined) && (
+            <div className="text-[10px] text-[#7D8590] truncate mt-0.5">{data.description as string}</div>
+          )}
+        </div>
+      </div>
+
+      {nodeType === "condition" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="true"
+            style={{ left: "30%", background: "#22C55E", border: "none" }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="false"
+            style={{ left: "70%", background: "#EF4444", border: "none" }}
+          />
+          <div className="flex justify-between text-[9px] font-semibold mt-1 px-1">
+            <span className="text-emerald-400">True</span>
+            <span className="text-red-400">False</span>
+          </div>
+        </>
+      ) : (
+        <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
+      )}
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = { wfNode: WfNode };
+
+// ── Node library ──────────────────────────────────────────────────────────────
+
+const LIBRARY_NODES = [
+  { type: "start",     label: "Start",     description: "Workflow entry point" },
+  { type: "end",       label: "End",       description: "Workflow exit point" },
+  { type: "action",    label: "Action",    description: "HTTP, SQL, email, SMS" },
+  { type: "condition", label: "Condition", description: "Branch on expression" },
+  { type: "delay",     label: "Delay",     description: "Wait / poll condition" },
+  { type: "error",     label: "Error",     description: "Catch-all error handler" },
+];
+
+// ── Config panel ──────────────────────────────────────────────────────────────
+
+function NodeConfigPanel({
+  node,
+  onChange,
+  onClose,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  onClose: () => void;
+}) {
+  const nodeType = (node.data.nodeType as string) ?? "action";
+  const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+
+  return (
+    <div className="absolute right-4 top-4 bottom-4 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-y-auto z-10">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+        <div className="flex items-center gap-2">
+          <span style={{ color: style.border, fontSize: 16 }}>{style.icon}</span>
+          <span className="text-sm font-semibold text-[#E6EDF3]">{nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node</span>
+        </div>
+        <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="p-4 space-y-4">
+        <ConfigField
+          label="Label"
+          value={(node.data.label as string) ?? ""}
+          onChange={v => onChange(node.id, { ...node.data, label: v })}
+        />
+        <ConfigField
+          label="Description"
+          value={(node.data.description as string) ?? ""}
+          onChange={v => onChange(node.id, { ...node.data, description: v })}
+          multiline
+        />
+
+        {nodeType === "action" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Action Type</label>
+              <select
+                value={(node.data.actionType as string) ?? "http_request"}
+                onChange={e => onChange(node.id, { ...node.data, actionType: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                <option value="http_request">HTTP Request</option>
+                <option value="sql_query">SQL Query</option>
+                <option value="send_email">Send Email</option>
+                <option value="send_sms">Send SMS</option>
+                <option value="emit_event">Emit Event</option>
+                <option value="cancel_workflow">Cancel Workflow</option>
+              </select>
+            </div>
+            {(node.data.actionType as string) === "http_request" && (
+              <ConfigField
+                label="URL"
+                value={(node.data.params as Record<string, string>)?.url ?? ""}
+                onChange={v => onChange(node.id, { ...node.data, params: { ...(node.data.params as Record<string, unknown> ?? {}), url: v } })}
+                placeholder="https://…"
+              />
+            )}
+          </>
+        )}
+
+        {nodeType === "condition" && (
+          <ConfigField
+            label="Expression"
+            value={(node.data.expression as string) ?? ""}
+            onChange={v => onChange(node.id, { ...node.data, expression: v })}
+            placeholder="payload.status === 'active'"
+            multiline
+          />
+        )}
+
+        {nodeType === "delay" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Mode</label>
+              <select
+                value={(node.data.mode as string) ?? "fixed"}
+                onChange={e => onChange(node.id, { ...node.data, mode: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                <option value="fixed">Fixed Duration</option>
+                <option value="until_condition">Until Condition</option>
+              </select>
+            </div>
+            {(node.data.mode as string) !== "until_condition" && (
+              <ConfigField
+                label="Duration (seconds)"
+                value={String(node.data.duration ?? 0)}
+                onChange={v => onChange(node.id, { ...node.data, duration: parseInt(v, 10) || 0 })}
+                type="number"
+              />
+            )}
+            {(node.data.mode as string) === "until_condition" && (
+              <>
+                <ConfigField
+                  label="Condition Expression"
+                  value={(node.data.expression as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, expression: v })}
+                  multiline
+                />
+                <ConfigField
+                  label="Poll Interval (seconds)"
+                  value={String(node.data.interval ?? 30)}
+                  onChange={v => onChange(node.id, { ...node.data, interval: parseInt(v, 10) || 30 })}
+                  type="number"
+                />
+                <ConfigField
+                  label="Timeout (seconds)"
+                  value={String(node.data.timeout ?? 300)}
+                  onChange={v => onChange(node.id, { ...node.data, timeout: parseInt(v, 10) || 300 })}
+                  type="number"
+                />
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConfigField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline,
+  type,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  type?: string;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+      {multiline ? (
+        <textarea
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          rows={3}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+        />
+      ) : (
+        <input
+          type={type ?? "text"}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Main builder ──────────────────────────────────────────────────────────────
+
+export default function WorkflowBuilderPage({ defId, versionId }: { defId: number; versionId?: number }) {
+  const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
+  const qc = useQueryClient();
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [publishLabel, setPublishLabel] = useState("");
+  const [showPublish, setShowPublish] = useState(false);
+  const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
+  const nodeIdCounter = useRef(100);
+
+  const { data: def } = useQuery({
+    queryKey: ["wf-def", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`);
+      return res.json();
+    },
+  });
+
+  const { data: versions = [] } = useQuery({
+    queryKey: ["wf-versions", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions`);
+      return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; graph: { nodes: unknown[]; edges: unknown[] } }>>;
+    },
+  });
+
+  const { data: currentVersion } = useQuery({
+    queryKey: ["wf-version", currentVersionId],
+    enabled: currentVersionId != null,
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions/${currentVersionId}`);
+      return res.json() as Promise<{ id: number; versionNumber: number; label: string | null; status: string; graph: { nodes: unknown[]; edges: unknown[] } }>;
+    },
+  });
+
+  useEffect(() => {
+    if (!currentVersion?.graph) return;
+    const g = currentVersion.graph;
+    setNodes((g.nodes as Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>).map(n => ({
+      id: n.id,
+      type: "wfNode",
+      position: n.position,
+      data: { ...n.data, nodeType: n.data.nodeType ?? n.type },
+    })));
+    setEdges((g.edges as Array<{ id: string; source: string; target: string; sourceHandle?: string }>).map(e => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      sourceHandle: e.sourceHandle,
+      style: { stroke: "#30363D", strokeWidth: 2 },
+      animated: false,
+    })));
+  }, [currentVersion, setNodes, setEdges]);
+
+  useEffect(() => {
+    if (versions.length > 0 && currentVersionId == null) {
+      const draft = versions.find(v => v.status === "draft") ?? versions[0];
+      setCurrentVersionId(draft.id);
+    }
+  }, [versions, currentVersionId]);
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      if (!currentVersionId) throw new Error("No version");
+      const graph = {
+        nodes: nodes.map(n => ({
+          id: n.id,
+          type: (n.data.nodeType as string) ?? "action",
+          position: n.position,
+          data: n.data,
+        })),
+        edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle })),
+      };
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions/${currentVersionId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ graph }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      return res.json();
+    },
+    onMutate: () => setSaveStatus("saving"),
+    onSuccess: () => { setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000); qc.invalidateQueries({ queryKey: ["wf-version", currentVersionId] }); },
+    onError: () => setSaveStatus("error"),
+  });
+
+  const publishMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions/${currentVersionId}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: publishLabel.trim() || undefined }),
+      });
+      if (!res.ok) throw new Error("Publish failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-versions", defId] });
+      qc.invalidateQueries({ queryKey: ["wf-version", currentVersionId] });
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      setShowPublish(false);
+      setPublishLabel("");
+    },
+  });
+
+  const runMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("No published version — publish first");
+      return res.json() as Promise<{ runId: number }>;
+    },
+    onSuccess: (data) => {
+      navigate(`/workflows/runs/${data.runId}`);
+    },
+  });
+
+  const onConnect = useCallback((connection: Connection) => {
+    setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
+  }, [setEdges]);
+
+  function addNode(nodeType: string) {
+    const id = `node-${++nodeIdCounter.current}`;
+    const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+    setNodes(nds => [...nds, {
+      id,
+      type: "wfNode",
+      position: { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 },
+      data: { nodeType, label: style.label },
+    }]);
+  }
+
+  const selectedNode = nodes.find(n => n.id === selectedNodeId);
+
+  function updateNodeData(id: string, data: Record<string, unknown>) {
+    setNodes(nds => nds.map(n => n.id === id ? { ...n, data } : n));
+  }
+
+  const isPublished = currentVersion?.status === "published";
+
+  return (
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-[#30363D] gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <button
+            onClick={() => navigate("/workflows/list")}
+            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[#E6EDF3] truncate">{def?.name ?? "Loading…"}</p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#484F58]">{currentVersion?.label ?? ""}</span>
+              {isPublished && (
+                <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-semibold">LIVE</span>
+              )}
+              {!isPublished && (
+                <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-semibold">DRAFT</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <button
+            onClick={() => setShowVersionHistory(v => !v)}
+            className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
+          >
+            History ({versions.length})
+          </button>
+
+          {!isPublished && (
+            <button
+              onClick={() => saveMut.mutate()}
+              disabled={saveMut.isPending}
+              className="px-3 py-1.5 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
+            >
+              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : saveStatus === "error" ? "Error" : "Save"}
+            </button>
+          )}
+
+          {!isPublished && (
+            <button
+              onClick={() => setShowPublish(true)}
+              className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Publish
+            </button>
+          )}
+
+          <button
+            onClick={() => runMut.mutate()}
+            disabled={runMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            {runMut.isPending ? "Starting…" : "Run Now"}
+          </button>
+        </div>
+      </div>
+
+      {runMut.isError && (
+        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-xs text-red-400">
+          {(runMut.error as Error).message}
+        </div>
+      )}
+
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Node library sidebar */}
+        <div className="w-44 flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] overflow-y-auto p-3">
+          <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-2 px-1">Node Library</p>
+          <div className="space-y-1.5">
+            {LIBRARY_NODES.map(n => {
+              const s = NODE_STYLES[n.type] ?? NODE_STYLES.action;
+              return (
+                <button
+                  key={n.type}
+                  onClick={() => addNode(n.type)}
+                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-[#1C2128] transition-colors text-left border border-transparent hover:border-[#30363D]"
+                >
+                  <span style={{ color: s.border, fontSize: 14, lineHeight: 1 }}>{s.icon}</span>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-[#E6EDF3] leading-tight">{n.label}</p>
+                    <p className="text-[9px] text-[#484F58] leading-tight truncate">{n.description}</p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <div className="flex-1 bg-[#0D1117] relative">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            nodeTypes={nodeTypes}
+            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
+            onPaneClick={() => setSelectedNodeId(null)}
+            fitView
+            proOptions={{ hideAttribution: true }}
+            style={{ background: "#0D1117" }}
+          >
+            <Background color="#1C2128" gap={24} size={1} />
+            <Controls style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} />
+            <MiniMap
+              style={{ background: "#161B22", border: "1px solid #30363D" }}
+              nodeColor={() => "#0078D4"}
+            />
+            <Panel position="top-right" style={{ margin: 0 }}>
+              {nodes.length === 0 && (
+                <div className="text-center text-[#484F58] text-xs p-8 pointer-events-none">
+                  <p className="font-medium text-[#7D8590]">Canvas is empty</p>
+                  <p className="mt-1">Add nodes from the library on the left.</p>
+                </div>
+              )}
+            </Panel>
+          </ReactFlow>
+        </div>
+
+        {/* Node config panel */}
+        {selectedNode && (
+          <NodeConfigPanel
+            node={{ id: selectedNode.id, data: selectedNode.data as Record<string, unknown> }}
+            onChange={updateNodeData}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        )}
+
+        {/* Version history drawer */}
+        {showVersionHistory && (
+          <div className="absolute top-0 left-44 bottom-0 w-64 bg-[#161B22] border-l border-[#30363D] z-20 overflow-y-auto p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#E6EDF3]">Version History</h3>
+              <button onClick={() => setShowVersionHistory(false)} className="text-[#7D8590] hover:text-[#E6EDF3]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {versions.map(v => (
+              <button
+                key={v.id}
+                onClick={() => { setCurrentVersionId(v.id); setShowVersionHistory(false); }}
+                className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+              >
+                <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
+                <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Publish dialog */}
+      {showPublish && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPublish(false)}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-[#E6EDF3]">Publish Version</h2>
+            <p className="text-sm text-[#7D8590]">Save first, then publish to make this the live version for all triggers.</p>
+            <input
+              value={publishLabel}
+              onChange={e => setPublishLabel(e.target.value)}
+              placeholder="Version label (e.g. v1.0 — Lead Qualification)"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowPublish(false)} className="px-4 py-2 text-sm text-[#7D8590]">Cancel</button>
+              <button
+                onClick={async () => { await saveMut.mutateAsync(); publishMut.mutate(); }}
+                disabled={publishMut.isPending || saveMut.isPending}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+              >
+                {publishMut.isPending ? "Publishing…" : "Save & Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

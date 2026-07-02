@@ -57,6 +57,7 @@ import pushRouter from "./push";
 import adminCallbackTokensRouter from "./admin-callback-tokens";
 import adminInsightsRouter from "./admin-insights";
 import portalQuickWinScoringRouter from "./portal-quick-win-scoring";
+import adminWorkflowsRouter from "./admin-workflows";
 
 const router: IRouter = Router();
 
@@ -126,5 +127,6 @@ router.use(pushRouter);
 router.use(adminCallbackTokensRouter);
 router.use(adminInsightsRouter);
 router.use(portalQuickWinScoringRouter);
+router.use(adminWorkflowsRouter);
 
 export default router;
