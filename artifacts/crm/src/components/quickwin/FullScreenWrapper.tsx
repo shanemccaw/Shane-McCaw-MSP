@@ -654,10 +654,10 @@ export default function FullScreenWrapper() {
 
       {/* ── Project Tasks View ── */}
       {isProjectView && (
-        <div className="flex-1 z-10 flex min-h-0">
+        <div className="flex-1 z-10 flex min-h-0 relative">
 
           {/* Left panel: task card */}
-          <div className="w-[400px] flex-shrink-0 flex flex-col p-6 pl-10">
+          <div className="w-[400px] flex-shrink-0 flex flex-col p-6 pl-10 relative z-10">
             <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 flex flex-col flex-1 overflow-hidden min-h-0">
               <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
                 <div>
@@ -730,8 +730,8 @@ export default function FullScreenWrapper() {
             </div>
           </div>
 
-          {/* Right panel: branding centred over the spinning knot */}
-          <div className="hidden sm:flex flex-1 flex-col items-center justify-center gap-7 px-16 text-center pointer-events-none select-none">
+          {/* Branding: absolutely centred on the full overlay */}
+          <div className="absolute inset-0 hidden sm:flex flex-col items-center justify-center gap-7 text-center pointer-events-none select-none">
             {/* Icon */}
             <div className="w-20 h-20 rounded-3xl bg-[#0078D4] flex items-center justify-center shadow-2xl shadow-[#0078D4]/40">
               <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
