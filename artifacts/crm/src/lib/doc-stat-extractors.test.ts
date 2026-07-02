@@ -463,13 +463,18 @@ describe("extractDeploymentCards", () => {
     expect(cards.find(c => c.label === "Deployment Phases")).toBeUndefined();
   });
 
-  it("detects users in scope", () => {
-    // First regex ("deploying to … N users") is greedy and misparses "1,200";
-    // use the second pattern which anchors the number before "users in scope"
-    const cards = extractDeploymentCards("1,200 users in scope for this engagement.");
+  it("detects users in scope via 'deploying to' branch with comma-formatted number", () => {
+    const cards = extractDeploymentCards("Deploying to all 1,200 users across the organization.");
     const card = cards.find(c => c.label === "Users in Scope");
     expect(card).toBeDefined();
     expect(card!.value).toBe("1,200");
+  });
+
+  it("detects users in scope via 'users in scope' branch", () => {
+    const cards = extractDeploymentCards("10,500 users in scope for this engagement.");
+    const card = cards.find(c => c.label === "Users in Scope");
+    expect(card).toBeDefined();
+    expect(card!.value).toBe("10,500");
   });
 
   it("detects estimated timeline", () => {

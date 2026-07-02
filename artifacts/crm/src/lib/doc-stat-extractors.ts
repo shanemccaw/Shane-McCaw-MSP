@@ -378,7 +378,9 @@ export function extractDeploymentCards(text: string): StatCard[] {
   }
 
   // Total user / seat count being migrated
-  const userM = text.match(/deploying to[^.]{0,30}(\d[\d,]+)\s+users?/i)
+  // Note: [^.\d]{0,30} excludes digits from the gap so the greedy quantifier
+  // cannot over-consume comma-formatted numbers like "1,200" → "00".
+  const userM = text.match(/deploying to[^.\d]{0,30}(\d[\d,]+)\s+users?/i)
     ?? text.match(/(\d[\d,]+)\s+users?\s+(?:to be migrated|migrating|across|in scope)/i);
   if (userM) {
     add({ value: userM[1], label: "Users in Scope", detail: "Being migrated or onboarded in this engagement", severity: "info" });
