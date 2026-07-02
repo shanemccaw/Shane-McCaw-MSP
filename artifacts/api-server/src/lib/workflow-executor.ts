@@ -155,10 +155,13 @@ async function executeNode(
       }
 
       case "delay": {
+        // No hard cap — trust the node-configured values.
+        // For production workflows with multi-hour delays, a resumable job
+        // queue (e.g. pg-boss) would be more appropriate than an in-process wait.
         const mode = (node.data.mode ?? "fixed") as string;
         if (mode === "fixed") {
           const durationMs = ((node.data.duration as number | undefined) ?? 0) * 1000;
-          if (durationMs > 0 && durationMs <= 300_000) {
+          if (durationMs > 0) {
             await new Promise(r => setTimeout(r, durationMs));
           }
           output = { mode, durationMs };
@@ -166,14 +169,14 @@ async function executeNode(
           const ts = node.data.timestamp as string | number | undefined;
           if (ts) {
             const targetMs = typeof ts === "number" ? ts : new Date(ts).getTime();
-            const waitMs = Math.max(0, Math.min(targetMs - Date.now(), 300_000));
+            const waitMs = Math.max(0, targetMs - Date.now());
             if (waitMs > 0) await new Promise(r => setTimeout(r, waitMs));
           }
           output = { mode, waitedUntil: ts ?? null };
         } else if (mode === "until_condition") {
           const expression = node.data.expression as string | undefined;
           const intervalMs = Math.max(1000, ((node.data.interval as number | undefined) ?? 30) * 1000);
-          const timeoutMs = Math.min(300_000, ((node.data.timeout as number | undefined) ?? 300) * 1000);
+          const timeoutMs = ((node.data.timeout as number | undefined) ?? 300) * 1000;
           const deadline = Date.now() + timeoutMs;
           let met = false;
           while (Date.now() < deadline) {
@@ -348,11 +351,25 @@ export async function executeWorkflowRun(runId: number): Promise<void> {
         continue;
       }
 
-      // Condition: route true/false branches
+      // Condition: route true/false/cancel branches
+      // cancel handle: when condition is false AND a cancel edge exists → cancel run immediately
       if (node.type === "condition" && conditionResult !== undefined) {
-        const outEdges = graph.edges.filter(e => e.source === nodeId);
-        const trueEdge  = outEdges.find(e => e.sourceHandle === "true"  || !e.sourceHandle);
+        const outEdges  = graph.edges.filter(e => e.source === nodeId);
+        const trueEdge  = outEdges.find(e => e.sourceHandle === "true" || (!e.sourceHandle && !outEdges.find(x => x.sourceHandle === "true")));
         const falseEdge = outEdges.find(e => e.sourceHandle === "false");
+        const cancelEdge = outEdges.find(e => e.sourceHandle === "cancel");
+
+        if (!conditionResult && cancelEdge) {
+          // Explicit cancel branch — cancel the run immediately, skip all successors
+          await db.update(wfRunsTable).set({
+            status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[],
+          }).where(eq(wfRunsTable.id, runId));
+          await db.insert(wfRunNodeLogsTable).values({
+            runId, nodeId, level: "info", message: "Run cancelled via explicit cancel edge",
+          }).catch(() => { });
+          return;
+        }
+
         for (const e of outEdges) {
           const isTaken = conditionResult ? (e.id === trueEdge?.id) : (e.id === falseEdge?.id);
           resolveEdge(e.target, isTaken);

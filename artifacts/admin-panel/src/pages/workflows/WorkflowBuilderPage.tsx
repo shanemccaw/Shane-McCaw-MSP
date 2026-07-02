@@ -72,17 +72,24 @@ function WfNode({ data, selected, id }: NodeProps) {
             type="source"
             position={Position.Bottom}
             id="true"
-            style={{ left: "30%", background: "#22C55E", border: "none" }}
+            style={{ left: "20%", background: "#22C55E", border: "none" }}
           />
           <Handle
             type="source"
             position={Position.Bottom}
             id="false"
-            style={{ left: "70%", background: "#EF4444", border: "none" }}
+            style={{ left: "50%", background: "#EF4444", border: "none" }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="cancel"
+            style={{ left: "80%", background: "#F97316", border: "none" }}
           />
           <div className="flex justify-between text-[9px] font-semibold mt-1 px-1">
             <span className="text-emerald-400">True</span>
             <span className="text-red-400">False</span>
+            <span className="text-orange-400">Cancel</span>
           </div>
         </>
       ) : (

@@ -294,7 +294,7 @@ router.post("/api/admin/workflows/definitions/:id/versions/:vid/publish", requir
   try {
     await db
       .update(wfVersionsTable)
-      .set({ status: "draft" })
+      .set({ status: "archived" })
       .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
 
     const [published] = await db

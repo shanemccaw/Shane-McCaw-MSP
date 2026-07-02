@@ -1653,7 +1653,7 @@ export const wfVersionsTable = pgTable("wf_versions", {
   definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
   versionNumber: integer("version_number").notNull().default(1),
   label: text("label"),
-  status: text("status", { enum: ["draft", "published"] }).notNull().default("draft"),
+  status: text("status", { enum: ["draft", "published", "archived"] }).notNull().default("draft"),
   graph: jsonb("graph").$type<WfGraph>().notNull().default({ nodes: [], edges: [] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
