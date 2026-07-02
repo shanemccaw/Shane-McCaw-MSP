@@ -71,6 +71,7 @@ const REPORT_TYPES = [
 const CONSULTING_TYPES = [
   { key: "consolidated_sow",            label: "Consolidated SOW",           icon: Layers,        desc: "Aggregates all generated docs + project pricing into one comprehensive SOW" },
   { key: "sow",                         label: "Statement of Work",          icon: FileText,      desc: "Formal SOW with scope, timeline, pricing placeholders" },
+  { key: "task_execution_guide",        label: "SOW Task Execution Guide",   icon: BookOpen,      desc: "Step-by-step execution guide derived from the SOW tasks and deliverables" },
   { key: "remediation_plan",            label: "Remediation Plan",           icon: AlertTriangle, desc: "Prioritised steps for identified security and governance gaps" },
   { key: "deployment_plan",             label: "Deployment Plan",            icon: Settings,      desc: "Phased rollout with pre-checks, milestones, rollback procedures" },
   { key: "governance_framework",        label: "Governance Framework",       icon: Globe,         desc: "Tailored governance policies, roles, and enforcement mechanisms" },
