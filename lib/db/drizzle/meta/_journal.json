@@ -862,6 +862,13 @@
       "when": 1782963600000,
       "tag": "0119_add_quick_win_presentations",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1782980000000,
+      "tag": "0120_add_sow_pricing_columns",
+      "breakpoints": true
     }
   ]
 }
