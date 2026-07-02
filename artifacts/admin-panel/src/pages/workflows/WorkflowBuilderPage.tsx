@@ -162,6 +162,12 @@ function WfNode({ data, selected, id }: NodeProps) {
       ) : (
         <>
           <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
+          {nodeType === "error" && (
+            <>
+              <Handle type="target" position={Position.Left}  style={{ background: style.border, border: "none" }} />
+              <Handle type="source" position={Position.Right} style={{ background: style.border, border: "none" }} />
+            </>
+          )}
           {!["start", "end", "error"].includes(nodeType) && (
             <>
               <Handle
