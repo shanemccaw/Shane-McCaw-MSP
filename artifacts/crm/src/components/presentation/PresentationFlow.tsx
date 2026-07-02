@@ -162,7 +162,7 @@ export default function PresentationFlow({
 
   const [stepReady, setStepReady] = useState(() => {
     const s = steps[computeInitialStep()];
-    return s?.kind !== "doc" && s?.kind !== "contract";
+    return s?.kind !== "doc" && s?.kind !== "contract" && s?.kind !== "sow";
   });
   const stepReadyRef = useRef(stepReady);
 
@@ -256,7 +256,7 @@ export default function PresentationFlow({
   };
 
   const isAsyncStep = (step: Step | undefined) =>
-    step?.kind === "doc" || step?.kind === "contract";
+    step?.kind === "doc" || step?.kind === "contract" || step?.kind === "sow";
 
   const applyStepChange = useCallback((nextIndex: number) => {
     const nextStep = steps[nextIndex];
@@ -527,6 +527,7 @@ export default function PresentationFlow({
                   totalPrice={selectedTotal}
                   saving={savingSelections}
                   readOnly={readOnly}
+                  onReady={handleStepReady}
                   onTogglePhase={(id) => void handleTogglePhase(id)}
                 />
               </div>

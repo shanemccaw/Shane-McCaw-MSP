@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 interface SowPhase {
   id: string;
   title: string;
@@ -11,6 +13,7 @@ interface SowSelectorPanelProps {
   totalPrice: number;
   saving: boolean;
   readOnly?: boolean;
+  onReady?: () => void;
   onTogglePhase: (phaseId: string) => void;
 }
 
@@ -23,8 +26,13 @@ export default function SowSelectorPanel({
   totalPrice,
   saving,
   readOnly = false,
+  onReady,
   onTogglePhase,
 }: SowSelectorPanelProps) {
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => { onReady?.(); });
+    return () => cancelAnimationFrame(raf);
+  }, [onReady]);
   const selectedPhases = phases.filter(p => p.selected);
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0);
 
