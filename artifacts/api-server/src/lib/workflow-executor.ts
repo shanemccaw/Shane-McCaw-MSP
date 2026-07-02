@@ -302,7 +302,7 @@ async function executeNode(
             const [project] = await db.insert(projectsTable).values({
               title,
               description: interpOrNull(node.data.description as string | undefined, payload),
-              projectType: (node.data.projectType as "project" | "retainer" | undefined) ?? "project",
+              projectType: (node.data.projectType as "project" | "retainer" | "quick_win" | undefined) ?? "project",
               clientUserId: clientUserId && !isNaN(clientUserId) ? clientUserId : null,
               status: "active",
             }).returning();

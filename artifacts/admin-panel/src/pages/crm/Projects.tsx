@@ -700,6 +700,7 @@ export default function ProjectsPage() {
                 className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] bg-[#161B22]">
                 <option value="project">Project-Based</option>
                 <option value="retainer">Monthly Retainer</option>
+                <option value="quick_win">Quick Win</option>
               </select>
             </div>
             {!editingId && (
@@ -895,7 +896,7 @@ export default function ProjectsPage() {
                             {p.description && <p className="text-xs text-muted-foreground truncate max-w-[200px]">{p.description}</p>}
                           </td>
                           <td className="px-4 py-3.5 hidden sm:table-cell">
-                            <span className="text-xs text-muted-foreground">{p.projectType === "retainer" ? "Retainer" : "Project"}</span>
+                            <span className="text-xs text-muted-foreground">{p.projectType === "retainer" ? "Retainer" : p.projectType === "quick_win" ? "Quick Win" : "Project"}</span>
                           </td>
                           <td className="px-4 py-3.5 text-center hidden md:table-cell">
                             <div className="flex flex-col items-center gap-1">

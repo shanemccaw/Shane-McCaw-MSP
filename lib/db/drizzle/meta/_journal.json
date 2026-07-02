@@ -925,6 +925,13 @@
       "when": 1751500800000,
       "tag": "0128_add_wf_metadata_and_defaults",
       "breakpoints": true
+    },
+    {
+      "idx": 129,
+      "version": "7",
+      "when": 1751846500000,
+      "tag": "0129_add_quick_win_project_type",
+      "breakpoints": true
     }
   ]
 }

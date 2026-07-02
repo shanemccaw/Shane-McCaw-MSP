@@ -30,7 +30,7 @@ interface Project {
   status: "active" | "on_hold" | "completed";
   phase: string | null;
   progress: number;
-  projectType: "project" | "retainer";
+  projectType: "project" | "retainer" | "quick_win";
   startDate: string | null;
   endDate: string | null;
   updatedAt: string;

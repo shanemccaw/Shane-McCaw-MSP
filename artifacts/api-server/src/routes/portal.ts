@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
+import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -1208,12 +1208,15 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
     .from(clientAppRegistrationsTable)
     .where(eq(clientAppRegistrationsTable.clientUserId, userId));
 
-  // hasActiveEngagement: any active project or active/paused client service
+  // hasActiveEngagement: any active NON-quick-win project or active/paused client service.
+  // quick_win projects do not lift the gate — clients with only a quick-win project
+  // must still complete the onboarding wizard first.
   const [activeProject] = await db.select({ id: projectsTable.id })
     .from(projectsTable)
     .where(and(
       eq(projectsTable.clientUserId, userId),
       eq(projectsTable.status, "active"),
+      ne(projectsTable.projectType, "quick_win"),
     ))
     .limit(1);
 
@@ -5446,7 +5449,7 @@ router.post("/admin/projects", requireAdmin, async (req: Request, res: Response)
     clientUserId: clientUserId ?? null,
     startDate: startDate ? new Date(startDate) : null,
     endDate: endDate ? new Date(endDate) : null,
-    projectType: (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer",
+    projectType: (["retainer", "quick_win"].includes(projectType ?? "") ? projectType : "project") as "project" | "retainer" | "quick_win",
   }).returning();
 
   // ── Provision workflow steps + kanban tasks from template (if selected) ───
@@ -5600,7 +5603,7 @@ router.patch("/admin/projects/:id", requireAdmin, async (req: Request, res: Resp
   if (clientUserId !== undefined) updates.clientUserId = clientUserId;
   if (startDate !== undefined) updates.startDate = startDate ? new Date(startDate) : null;
   if (endDate !== undefined) updates.endDate = endDate ? new Date(endDate) : null;
-  if (projectType !== undefined) updates.projectType = (projectType === "retainer" ? "retainer" : "project") as "project" | "retainer";
+  if (projectType !== undefined) updates.projectType = (["retainer", "quick_win"].includes(projectType) ? projectType : "project") as "project" | "retainer" | "quick_win";
 
   const [updated] = await db.update(projectsTable).set(updates).where(eq(projectsTable.id, id)).returning();
   if (!updated) { res.status(404).json({ error: "Project not found" }); return; }
