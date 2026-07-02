@@ -235,6 +235,30 @@ html {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── Presentation slide transitions ────────────────────────────────────── */
+@keyframes slide-out-left {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(-36px); }
+}
+@keyframes slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(36px); }
+}
+@keyframes slide-in-from-right {
+  from { opacity: 0; transform: translateX(36px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes slide-in-from-left {
+  from { opacity: 0; transform: translateX(-36px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.animate-slide-out-left    { animation: slide-out-left    220ms ease-out both; }
+.animate-slide-out-right   { animation: slide-out-right   220ms ease-out both; }
+.animate-slide-in-from-right { animation: slide-in-from-right 220ms ease-out both; }
+.animate-slide-in-from-left  { animation: slide-in-from-left  220ms ease-out both; }
+
+/* Legacy — kept for any other uses outside PresentationFlow */
 .animate-step-in {
   animation: qw-fade-in 150ms ease-out both;
 }

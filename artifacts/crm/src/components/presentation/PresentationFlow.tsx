@@ -157,11 +157,11 @@ export default function PresentationFlow({
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = 0;
-    }
-  }, [stepIndex]);
+  // Slide-transition state
+  const directionRef      = useRef<"forward" | "back">("forward");
+  const pendingStepRef    = useRef<number | null>(null);
+  const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isExiting, setIsExiting] = useState(false);
 
   const sortedDocs = useMemo(() => {
     const isSow = (d: PresentationDoc) =>
@@ -357,12 +357,27 @@ export default function PresentationFlow({
   const applyStepChange = useCallback((nextIndex: number) => {
     // Flush dwell time for the step we're leaving if it was a doc step
     flushDocDwell(stepIndex);
-    const nextStep = steps[nextIndex];
-    const ready = !isAsyncStep(nextStep);
-    stepReadyRef.current = ready;
-    setStepReady(ready);
-    setLoadingTimedOut(false);
-    setStepIndex(nextIndex);
+    // Cancel any in-progress transition before starting a new one
+    if (transitionTimerRef.current !== null) {
+      clearTimeout(transitionTimerRef.current);
+    }
+    pendingStepRef.current = nextIndex;
+    setIsExiting(true);
+    // After exit animation completes (~220ms), commit the step change and scroll reset
+    transitionTimerRef.current = setTimeout(() => {
+      transitionTimerRef.current = null;
+      const next = pendingStepRef.current;
+      if (next === null) return;
+      pendingStepRef.current = null;
+      if (scrollAreaRef.current) scrollAreaRef.current.scrollTop = 0;
+      const nextStep = steps[next];
+      const ready = !isAsyncStep(nextStep);
+      stepReadyRef.current = ready;
+      setStepReady(ready);
+      setLoadingTimedOut(false);
+      setStepIndex(next);
+      setIsExiting(false);
+    }, 220);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [steps, stepIndex, flushDocDwell]);
 
@@ -389,17 +404,22 @@ export default function PresentationFlow({
     }
     if (stepIndex < steps.length - 1) {
       const next = stepIndex + 1;
+      directionRef.current = "forward";
       setMaxVisitedStep(m => Math.max(m, next));
       applyStepChange(next);
     }
   };
 
   const goPrev = () => {
-    if (stepIndex > 0) applyStepChange(stepIndex - 1);
+    if (stepIndex > 0) {
+      directionRef.current = "back";
+      applyStepChange(stepIndex - 1);
+    }
   };
 
   const navigateToStep = (i: number) => {
     if (i <= maxVisitedStep) {
+      directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
     }
@@ -408,9 +428,10 @@ export default function PresentationFlow({
   // Jump from the Overview teaser cards — unlocks the target step and navigates immediately
   const jumpToStep = useCallback((idx: number) => {
     if (idx < 0 || idx >= steps.length) return;
+    directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange]);
+  }, [steps.length, applyStepChange, stepIndex]);
 
   const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
@@ -418,8 +439,12 @@ export default function PresentationFlow({
   const paymentStepIndex  = steps.findIndex(s => s.kind === "payment");
 
   // Flush on unmount (e.g. user closes via browser back / ESC) for the current doc step
+  // Also cancel any pending slide transition timer
   useEffect(() => {
     return () => {
+      if (transitionTimerRef.current !== null) {
+        clearTimeout(transitionTimerRef.current);
+      }
       const entry = docStepStartRef.current;
       if (!entry) return;
       const dwellSeconds = Math.max(0, Math.round((Date.now() - entry.startMs) / 1000));
@@ -631,7 +656,13 @@ export default function PresentationFlow({
               </div>
             </div>
           )}
-          <div key={stepIndex} className={`max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col ${stepReady ? "animate-step-in" : "invisible"}`}>
+          <div key={stepIndex} className={`max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col ${
+            isExiting
+              ? (directionRef.current === "forward" ? "animate-slide-out-left" : "animate-slide-out-right")
+              : stepReady
+              ? (directionRef.current === "forward" ? "animate-slide-in-from-right" : "animate-slide-in-from-left")
+              : "invisible"
+          }`}>
 
             {/* Welcome step */}
             {currentStep?.kind === "welcome" && (() => {
