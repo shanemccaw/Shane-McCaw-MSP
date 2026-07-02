@@ -451,7 +451,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
         </div>
 
         {/* Steps */}
-        <div className="px-4 flex-1">
+        <div className="px-4 flex-1 overflow-y-auto">
           {STEPS.map((step, idx) => {
             const isActive = currentStep === step.id;
             const stepPos = currentStep === "done" ? STEPS.length : STEPS.findIndex(s => s.id === currentStep);
