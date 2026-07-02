@@ -11,6 +11,7 @@ import {
   type NodeTypes,
   type Node,
   type Edge,
+  type ReactFlowInstance,
   Handle,
   Position,
   type NodeProps,
@@ -1695,6 +1696,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     });
   }
   const nodeIdCounter = useRef(100);
+  const rfInstanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
+  const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
+
+  // Snapshot current canvas state (max 10 entries)
+  function pushHistory() {
+    historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+  }
 
   const { data: def } = useQuery({
     queryKey: ["wf-def", defId],
@@ -1802,12 +1811,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
 
   const onConnect = useCallback((connection: Connection) => {
+    historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
-  }, [setEdges]);
+  }, [setEdges, nodes, edges]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
   function addNode(nodeType: string, position?: { x: number; y: number }) {
+    pushHistory();
     const id = `node-${++nodeIdCounter.current}`;
     const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
     const pos = position ?? { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 };
@@ -1820,14 +1831,26 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     trackRecent(nodeType);
   }
 
+  function duplicateNode(id: string) {
+    const node = nodes.find(n => n.id === id);
+    if (!node) return;
+    pushHistory();
+    const newId = `node-${++nodeIdCounter.current}`;
+    setNodes(nds => [...nds, {
+      ...node,
+      id: newId,
+      position: { x: node.position.x + 40, y: node.position.y + 40 },
+      selected: false,
+    }]);
+  }
+
   function handleCanvasDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     const nodeType = e.dataTransfer.getData("application/workflow-node-type");
     if (!nodeType) return;
-    const bounds = canvasRef.current?.getBoundingClientRect();
-    if (bounds) {
-      // approximate canvas-space coordinates (correct at default zoom=1, pan=0)
-      addNode(nodeType, { x: e.clientX - bounds.left - 72, y: e.clientY - bounds.top - 20 });
+    if (rfInstanceRef.current) {
+      const pos = rfInstanceRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      addNode(nodeType, pos);
     } else {
       addNode(nodeType);
     }
@@ -1840,10 +1863,39 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   }
 
   function deleteNode(id: string) {
+    pushHistory();
     setNodes(nds => nds.filter(n => n.id !== id));
     setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
     setSelectedNodeId(null);
   }
+
+  // Ctrl+Z / Cmd+Z undo
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== "z" || e.shiftKey) return;
+      const t = e.target as HTMLElement;
+      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
+      const prev = historyRef.current.pop();
+      if (prev) { setNodes(prev.nodes); setEdges(prev.edges); }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [setNodes, setEdges]);
+
+  // Dismiss context menu on outside click / Escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    function dismiss(e: MouseEvent | KeyboardEvent) {
+      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
+      setCtxMenu(null);
+    }
+    document.addEventListener("click", dismiss as EventListener);
+    document.addEventListener("keydown", dismiss as EventListener);
+    return () => {
+      document.removeEventListener("click", dismiss as EventListener);
+      document.removeEventListener("keydown", dismiss as EventListener);
+    };
+  }, [ctxMenu]);
 
   const isPublished = currentVersion?.status === "published";
   const isArchived  = currentVersion?.status === "archived";
@@ -2054,6 +2106,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           className="flex-1 bg-[#0D1117] relative"
           onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
           onDrop={handleCanvasDrop}
+          onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
         >
           <ReactFlow
             nodes={nodes}
@@ -2062,9 +2115,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
             nodeTypes={nodeTypes}
+            onInit={inst => { rfInstanceRef.current = inst; }}
             onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-            onPaneClick={() => setSelectedNodeId(null)}
-            onNodesDelete={deleted => { if (deleted.some(n => n.id === selectedNodeId)) setSelectedNodeId(null); }}
+            onPaneClick={() => { setSelectedNodeId(null); setCtxMenu(null); }}
+            onNodeContextMenu={(e, node) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, nodeId: node.id }); }}
+            onNodesDelete={deleted => {
+              pushHistory();
+              if (deleted.some(n => n.id === selectedNodeId)) setSelectedNodeId(null);
+            }}
             deleteKeyCode={["Delete", "Backspace"]}
             fitView
             proOptions={{ hideAttribution: true }}
@@ -2098,6 +2156,71 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             nodes={nodes}
             edges={edges}
           />
+        )}
+
+        {/* Canvas / node context menu */}
+        {ctxMenu && (
+          <div
+            className="fixed z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[168px] text-xs"
+            style={{ top: ctxMenu.y, left: ctxMenu.x }}
+            onClick={e => e.stopPropagation()}
+          >
+            {ctxMenu.nodeId ? (
+              <>
+                <button
+                  onClick={() => { deleteNode(ctxMenu.nodeId!); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10 transition-colors"
+                >
+                  <span>✕</span> Delete Node
+                </button>
+                <button
+                  onClick={() => { duplicateNode(ctxMenu.nodeId!); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  <span>⧉</span> Duplicate Node
+                </button>
+                <div className="border-t border-[#30363D] my-1" />
+                <button
+                  onClick={() => { void navigator.clipboard.writeText(ctxMenu.nodeId!); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
+                >
+                  <span>⎘</span> Copy Node ID
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { rfInstanceRef.current?.fitView({ padding: 0.12 }); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  <span>⊡</span> Fit View
+                </button>
+                <button
+                  onClick={() => {
+                    setNodes(nds => nds.map(n => ({ ...n, selected: true })));
+                    setEdges(eds => eds.map(e => ({ ...e, selected: true })));
+                    setCtxMenu(null);
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  <span>⬚</span> Select All
+                </button>
+                <div className="border-t border-[#30363D] my-1" />
+                <button
+                  onClick={() => { rfInstanceRef.current?.zoomIn(); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
+                >
+                  <span>+</span> Zoom In
+                </button>
+                <button
+                  onClick={() => { rfInstanceRef.current?.zoomOut(); setCtxMenu(null); }}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
+                >
+                  <span>−</span> Zoom Out
+                </button>
+              </>
+            )}
+          </div>
         )}
 
         {/* Version history drawer */}
