@@ -31,6 +31,7 @@ import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import PortalPresentation from "@/pages/portal/PortalPresentation";
+import PortalDiagnostic from "@/pages/portal/PortalDiagnostic";
 import SharedResultsPage from "@/pages/SharedResultsPage";
 import ResetPasswordPage from "@/pages/ResetPassword";
 import { useState, useEffect, useRef, type ReactNode } from "react";
@@ -239,6 +240,12 @@ function Router() {
       </Route>
       <Route path="/portal/quick-wins">
         <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>
+      </Route>
+      <Route path="/portal/diagnostic/:projectId">
+        <RequireAuth role="client"><RequireEngagement><PortalDiagnostic /></RequireEngagement></RequireAuth>
+      </Route>
+      <Route path="/portal/diagnostic">
+        <RequireAuth role="client"><RequireEngagement><PortalDiagnostic /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/presentation/:id">
         <PortalPresentation />
