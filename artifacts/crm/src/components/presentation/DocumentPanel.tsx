@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface DocumentPanelProps {
@@ -27,162 +27,183 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   identity_modernization_plan: "Identity Modernization Plan",
 };
 
-const TYPOGRAPHY_CSS = `
-<style>
+const DOC_CSS = `
   *, *::before, *::after { box-sizing: border-box; }
-  body, div, p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote, span {
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  html, body { margin: 0; padding: 0; }
+
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #1e293b;
+    background: #fff;
+    padding: 2.5rem 3rem;
+    max-width: 860px;
+    margin: 0 auto;
   }
-  body { margin: 0; padding: 0; background: #fff; color: #1e293b; }
 
   h1 {
-    font-size: 1.75rem !important;
-    font-weight: 800 !important;
-    color: #0A2540 !important;
-    line-height: 1.25 !important;
-    margin: 0 0 1.25rem !important;
-    padding-bottom: 0.625rem !important;
-    border-bottom: 2px solid #0078D4 !important;
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #0A2540;
+    margin: 0 0 0.25rem;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
   }
+  h1 + p, h1 + div { margin-top: 0.75rem; }
+
   h2 {
-    font-size: 1.2rem !important;
-    font-weight: 700 !important;
-    color: #0078D4 !important;
-    line-height: 1.35 !important;
-    margin: 2rem 0 0.75rem !important;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #0078D4;
+    margin: 2.25rem 0 0.6rem;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid #e2e8f0;
   }
   h3 {
-    font-size: 1rem !important;
-    font-weight: 600 !important;
-    color: #0A2540 !important;
-    line-height: 1.4 !important;
-    margin: 1.5rem 0 0.5rem !important;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0A2540;
+    margin: 1.5rem 0 0.4rem;
   }
   h4 {
-    font-size: 0.9rem !important;
-    font-weight: 600 !important;
-    color: #374151 !important;
-    margin: 1.25rem 0 0.4rem !important;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #334155;
+    margin: 1.25rem 0 0.35rem;
   }
 
   p {
-    font-size: 0.9rem !important;
-    line-height: 1.75 !important;
-    color: #374151 !important;
-    margin: 0 0 0.875rem !important;
+    margin: 0 0 0.875rem;
+    color: #334155;
+    line-height: 1.8;
   }
-  p:last-child { margin-bottom: 0 !important; }
 
   ul, ol {
-    font-size: 0.9rem !important;
-    line-height: 1.75 !important;
-    color: #374151 !important;
-    margin: 0 0 1rem 1.25rem !important;
-    padding: 0 !important;
+    margin: 0.25rem 0 1rem 1.5rem;
+    padding: 0;
+    color: #334155;
   }
-  li { margin-bottom: 0.3rem !important; }
+  li {
+    margin-bottom: 0.3rem;
+    line-height: 1.7;
+  }
 
   table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    font-size: 0.85rem !important;
-    margin: 1rem 0 1.25rem !important;
-    border-radius: 6px !important;
-    overflow: hidden !important;
-    border: 1px solid #e2e8f0 !important;
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.85rem;
   }
-  thead { background: #f1f5f9 !important; }
+  thead tr {
+    background: #f1f5f9;
+    border-bottom: 2px solid #cbd5e1;
+  }
   th {
-    text-align: left !important;
-    padding: 0.6rem 0.85rem !important;
-    font-weight: 600 !important;
-    color: #0A2540 !important;
-    font-size: 0.78rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.04em !important;
-    border-bottom: 1px solid #e2e8f0 !important;
+    text-align: left;
+    padding: 0.55rem 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
   td {
-    padding: 0.6rem 0.85rem !important;
-    color: #374151 !important;
-    border-bottom: 1px solid #f1f5f9 !important;
-    vertical-align: top !important;
+    padding: 0.55rem 0.75rem;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
   }
-  tr:last-child td { border-bottom: none !important; }
-  tr:nth-child(even) td { background: #fafbfc !important; }
+  tr:last-child td { border-bottom: none; }
 
-  blockquote {
-    border-left: 3px solid #0078D4 !important;
-    margin: 1rem 0 !important;
-    padding: 0.75rem 1rem !important;
-    background: #f8fafc !important;
-    border-radius: 0 6px 6px 0 !important;
-    color: #475569 !important;
-    font-size: 0.875rem !important;
-    line-height: 1.65 !important;
+  blockquote, div.callout, div.note, div.highlight, div.info {
+    border-left: 3px solid #0078D4;
+    background: #f8fafc;
+    padding: 0.875rem 1.125rem;
+    margin: 0.75rem 0 1.25rem;
+    border-radius: 0 6px 6px 0;
+    color: #475569;
   }
-  blockquote p { color: #475569 !important; margin: 0 !important; }
+  blockquote p, div.callout p, div.note p, div.highlight p, div.info p {
+    margin: 0;
+    color: #475569;
+  }
 
   hr {
-    border: none !important;
-    border-top: 1px solid #e2e8f0 !important;
-    margin: 1.5rem 0 !important;
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    margin: 1.75rem 0;
   }
 
-  strong, b { font-weight: 600 !important; color: #0A2540 !important; }
-  em, i { font-style: italic !important; }
+  strong, b { font-weight: 600; color: #0A2540; }
 
   code {
-    font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace !important;
-    font-size: 0.8rem !important;
-    background: #f1f5f9 !important;
-    color: #0078D4 !important;
-    padding: 0.15em 0.4em !important;
-    border-radius: 4px !important;
+    font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.8em;
+    background: #f1f5f9;
+    color: #0078D4;
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
   }
   pre {
-    background: #0f172a !important;
-    color: #e2e8f0 !important;
-    padding: 1rem !important;
-    border-radius: 8px !important;
-    overflow-x: auto !important;
-    margin: 1rem 0 !important;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 1rem 1.25rem;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 1rem 0;
+    font-size: 0.82rem;
+    font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   }
-  pre code {
-    background: transparent !important;
-    color: inherit !important;
-    padding: 0 !important;
-    font-size: 0.82rem !important;
-  }
+  pre code { background: transparent; color: inherit; padding: 0; }
 
-  a { color: #0078D4 !important; text-decoration: underline !important; }
+  a { color: #0078D4; text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
-  /* AI-generated callout divs — clean them up */
-  div[style*="background"] p,
-  div[style*="background-color"] p {
-    margin: 0 !important;
-  }
+  section { margin-bottom: 1.5rem; }
 
-  /* Section wrapper often generated by AI */
-  section { margin-bottom: 1.5rem !important; }
-</style>
+  /* Score / stat callouts the AI sometimes wraps in divs */
+  div > strong:only-child { display: block; }
 `;
 
 function stripFence(html: string): string {
-  return html.replace(/^```[a-zA-Z]*\n?/, "").replace(/\n?```\s*$/, "").trim();
+  return html
+    .replace(/^```[a-zA-Z]*\r?\n?/, "")
+    .replace(/\r?\n?```\s*$/, "")
+    .trim();
 }
 
-function injectTypography(html: string): string {
-  const clean = stripFence(html);
-  if (clean.includes("<html") || clean.includes("<head")) {
-    return clean.replace(/<head[^>]*>/, `$&${TYPOGRAPHY_CSS}`);
-  }
-  return TYPOGRAPHY_CSS + clean;
+/** Strip inline style attrs so our stylesheet has full control. */
+function cleanInlineStyles(html: string): string {
+  return html
+    .replace(/\s+style="[^"]*"/gi, "")
+    .replace(/\s+style='[^']*'/gi, "");
+}
+
+function buildSrcdoc(rawHtml: string): string {
+  const body = cleanInlineStyles(stripFence(rawHtml));
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>${DOC_CSS}</style>
+</head>
+<body>${body}</body>
+</html>`;
 }
 
 export default function DocumentPanel({ doc }: DocumentPanelProps) {
   const { fetchWithAuth } = useAuth();
   const [downloading, setDownloading] = useState(false);
+
+  const srcdoc = useMemo(() => buildSrcdoc(doc.htmlContent), [doc.htmlContent]);
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -247,11 +268,13 @@ export default function DocumentPanel({ doc }: DocumentPanelProps) {
         </button>
       </div>
 
-      {/* Document content */}
-      <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-border shadow-sm">
-        <div
-          className="p-8"
-          dangerouslySetInnerHTML={{ __html: injectTypography(doc.htmlContent) }}
+      {/* Document content rendered in an isolated iframe */}
+      <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm bg-white">
+        <iframe
+          srcDoc={srcdoc}
+          title={doc.title}
+          className="w-full h-full border-0"
+          sandbox="allow-same-origin"
         />
       </div>
     </div>
