@@ -58,6 +58,7 @@ import {
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { stripMarkdownFence, parseSowPricing, type SowPricingLine } from "../lib/sow-pricing";
+import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
   StandardFonts,
@@ -838,6 +839,13 @@ router.put("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
       .set(updates).where(eq(insightsGeneratedDocumentsTable.id, id)).returning();
 
     if (!updated) return res.status(404).json({ error: "Document not found" });
+
+    // When a SOW is manually marked delivered, promote to Opportunities pipeline
+    if (body.data.status === "delivered" && updated.customerId &&
+        (updated.docType === "sow" || updated.docType === "consolidated_sow")) {
+      void ensureOpportunityForSow(updated.customerId, updated.id);
+    }
+
     return res.json({ document: updated });
   } catch (err) {
     logger.error({ err }, "insights document update error");
@@ -965,6 +973,11 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
       })
       .where(eq(insightsGeneratedDocumentsTable.id, id))
       .returning();
+
+    // When a SOW is sent to a client, promote them to the Opportunities pipeline
+    if (doc.customerId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
+      void ensureOpportunityForSow(doc.customerId, doc.id);
+    }
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl, pdfAttached: !!pdfBuffer });
   } catch (err) {

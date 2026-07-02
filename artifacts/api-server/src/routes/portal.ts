@@ -16,6 +16,7 @@ import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
+import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
@@ -3740,6 +3741,9 @@ async function provisionOnboardingProject(
     req.log.error({ sids, uid }, "provisionOnboardingProject: services or buyer not found");
     return;
   }
+
+  // Add buyer to CRM Leads pipeline (non-fatal — never blocks purchase flow)
+  void ensureLeadForClient(uid, buyer.email, buyer.name ?? undefined, buyer.company ?? undefined);
 
   // Ordered service list matching sids order
   const orderedServices = sids.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;

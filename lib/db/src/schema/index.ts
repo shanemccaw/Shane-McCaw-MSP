@@ -29,6 +29,7 @@ export const usersTable = pgTable("users", {
   sharepointSiteUrl: text("sharepoint_site_url"),
   sharepointSiteId: text("sharepoint_site_id"),
   onboardingWizardCompletedAt: timestamp("onboarding_wizard_completed_at"),
+  linkedLeadId: integer("linked_lead_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -44,7 +45,7 @@ export const leadsTable = pgTable("leads", {
   companySize: text("company_size"),
   serviceArea: text("service_area"),
   message: text("message"),
-  source: text("source", { enum: ["contact_form", "lead_magnet", "ai_recommended", "ai_suggested"] }).notNull().default("contact_form"),
+  source: text("source", { enum: ["contact_form", "lead_magnet", "ai_recommended", "ai_suggested", "purchase"] }).notNull().default("contact_form"),
   status: text("status", { enum: ["new", "contacted", "qualified", "converted", "archived"] }).notNull().default("new"),
   howFound: text("how_found"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

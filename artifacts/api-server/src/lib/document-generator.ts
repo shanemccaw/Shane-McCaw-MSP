@@ -27,6 +27,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
 import { stripMarkdownFence, parseSowPricing } from "./sow-pricing";
+import { ensureOpportunityForSow } from "./crm-pipeline";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -482,6 +483,9 @@ export async function generateAndDeliverDocument(
   }).returning();
 
   if (!newDoc) throw new Error("document-generator: insert returned no row");
+
+  // When a SOW is auto-generated and delivered, promote client to Opportunities pipeline
+  if (isSowDoc) void ensureOpportunityForSow(clientUserId, newDoc.id);
 
   const pdfUrl = `/api/admin/insights/documents/${newDoc.id}/download`;
   await db.update(insightsGeneratedDocumentsTable)

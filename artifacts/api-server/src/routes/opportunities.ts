@@ -7,6 +7,8 @@ import {
   leadQualificationsTable,
   projectsTable,
   kanbanTasksTable,
+  usersTable,
+  insightsGeneratedDocumentsTable,
 } from "@workspace/db";
 import { eq, desc, and, lte, or, isNull, count, ne, inArray, lt } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -271,7 +273,36 @@ router.get("/opportunities/:id", requireAdmin, async (req: Request, res: Respons
     .where(eq(opportunityTasksTable.opportunityId, id))
     .orderBy(opportunityTasksTable.createdAt);
 
-  res.json({ ...op, lead: lead ?? null, tasks });
+  // Fetch SOW proposals linked via the lead → user chain
+  const [linkedUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.linkedLeadId, op.leadId))
+    .limit(1);
+
+  const proposals = linkedUser
+    ? await db
+        .select({
+          id: insightsGeneratedDocumentsTable.id,
+          title: insightsGeneratedDocumentsTable.title,
+          docType: insightsGeneratedDocumentsTable.docType,
+          status: insightsGeneratedDocumentsTable.status,
+          sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+          deliveredAt: insightsGeneratedDocumentsTable.deliveredAt,
+          pdfUrl: insightsGeneratedDocumentsTable.pdfUrl,
+          createdAt: insightsGeneratedDocumentsTable.createdAt,
+        })
+        .from(insightsGeneratedDocumentsTable)
+        .where(
+          and(
+            eq(insightsGeneratedDocumentsTable.customerId, linkedUser.id),
+            inArray(insightsGeneratedDocumentsTable.docType, ["sow", "consolidated_sow"]),
+          ),
+        )
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+    : [];
+
+  res.json({ ...op, lead: lead ?? null, tasks, proposals });
 });
 
 // ── DELETE /api/opportunities/:id ─────────────────────────────────────────────

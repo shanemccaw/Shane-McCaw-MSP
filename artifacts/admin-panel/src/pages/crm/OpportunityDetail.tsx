@@ -24,6 +24,17 @@ const STATE_OPTIONS: { value: OpportunityState; label: string; color: string }[]
   { value: "archived",  label: "Archived",  color: "bg-[#30363D] text-[#7D8590] border-[#30363D]" },
 ];
 
+interface SowProposal {
+  id: number;
+  title: string;
+  docType: string;
+  status: string;
+  sowTotalPrice: string | null;
+  deliveredAt: string | null;
+  pdfUrl: string | null;
+  createdAt: string;
+}
+
 interface OpportunityDetail {
   id: number;
   leadId: number;
@@ -46,6 +57,7 @@ interface OpportunityDetail {
     stage: string;
   } | null;
   tasks: OpportunityTask[];
+  proposals: SowProposal[];
 }
 
 const STATUS_CONFIG = {
@@ -298,8 +310,72 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
           </div>
         </div>
 
-        {/* Right column: tasks */}
-        <div className="lg:col-span-2">
+        {/* Right column: proposals + tasks */}
+        <div className="lg:col-span-2 space-y-6">
+
+          {/* Delivered Proposals */}
+          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#E6EDF3]">Delivered Proposals</h2>
+              {opportunity.proposals.length > 0 && (
+                <span className="text-xs text-muted-foreground">{opportunity.proposals.length} SOW{opportunity.proposals.length !== 1 ? "s" : ""}</span>
+              )}
+            </div>
+            {opportunity.proposals.length === 0 ? (
+              <div className="px-5 py-8 text-center text-muted-foreground">
+                <p className="text-sm">No SOW proposals delivered yet.</p>
+                <p className="text-xs mt-1 opacity-70">A proposal will appear here automatically when a SOW is sent to this client.</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-border">
+                {opportunity.proposals.map(p => (
+                  <div key={p.id} className="px-5 py-4 flex items-start gap-4">
+                    <div className="mt-0.5 shrink-0">
+                      <div className="w-8 h-8 rounded-lg bg-[#0078D4]/15 flex items-center justify-center">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#0078D4" strokeWidth={1.5} className="w-4 h-4">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-[#E6EDF3] truncate">{p.title}</p>
+                      <div className="flex items-center gap-3 mt-1 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                          p.status === "delivered" ? "bg-green-500/15 text-green-400" :
+                          p.status === "approved"  ? "bg-blue-500/15 text-blue-400" :
+                          "bg-[#30363D] text-[#7D8590]"
+                        }`}>{p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
+                        {p.sowTotalPrice && (
+                          <span className="text-xs font-bold text-[#0078D4]">
+                            ${parseFloat(p.sowTotalPrice).toLocaleString()}
+                          </span>
+                        )}
+                        {p.deliveredAt && (
+                          <span className="text-xs text-muted-foreground">
+                            Delivered {new Date(p.deliveredAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {p.pdfUrl && (
+                      <a
+                        href={p.pdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-xs text-[#0078D4] hover:underline flex items-center gap-1"
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        PDF
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
             <div className="px-5 py-3.5 border-b border-border bg-[#1C2128] flex items-center justify-between">
               <h2 className="text-sm font-bold text-[#E6EDF3]">Workflow Tasks</h2>
