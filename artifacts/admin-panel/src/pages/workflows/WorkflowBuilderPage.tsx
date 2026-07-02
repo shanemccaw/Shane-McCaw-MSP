@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
   ReactFlow,
   Background,
@@ -1054,6 +1054,216 @@ function ConfigField({
   );
 }
 
+// ── Test Run modal ────────────────────────────────────────────────────────────
+
+function generateMockValue(key: string): unknown {
+  const k = key.toLowerCase();
+  if (k === "failed") return false;
+  if (k.endsWith("id") || k === "id") return Math.floor(Math.random() * 900) + 100;
+  if (k.includes("email")) return "client@example.com";
+  if (k.includes("name")) return "Contoso Ltd";
+  if (k.endsWith("at") || k.endsWith("time") || k.endsWith("date")) return new Date().toISOString();
+  if (k.includes("amount") || k.includes("price")) return 4999;
+  if (k.includes("currency")) return "gbp";
+  if (k.includes("score")) return 72;
+  if (k.includes("status")) return "active";
+  if (k.includes("type") || k.includes("phase")) return "discovery";
+  if (k.includes("url")) return "https://example.com";
+  return `test-${key}`;
+}
+
+function TestRunModal({ defId, onClose }: { defId: number; onClose: () => void }) {
+  const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
+
+  const { data: triggers = [], isLoading: loadingTriggers } = useQuery<WfTrigger[]>({
+    queryKey: ["wf-triggers-testrun", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`);
+      return res.json();
+    },
+  });
+
+  const eventTriggers = triggers.filter(t => t.type === "event");
+  const [selectedTriggerId, setSelectedTriggerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (eventTriggers.length > 0 && selectedTriggerId === null) {
+      setSelectedTriggerId(eventTriggers[0].id);
+    }
+  }, [eventTriggers.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const activeTrigger = eventTriggers.find(t => t.id === selectedTriggerId) ?? eventTriggers[0] ?? null;
+  const activeEventName = activeTrigger ? String((activeTrigger.config as Record<string, unknown>).eventName ?? "") : "";
+  const knownEvent = KNOWN_EVENTS.find(e => e.name === activeEventName) ?? null;
+
+  const defaultPayload = useMemo(() => {
+    if (!knownEvent) return {};
+    return Object.fromEntries(knownEvent.payloadFields.map(f => [f.key, generateMockValue(f.key)]));
+  }, [knownEvent?.name]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [payloadText, setPayloadText] = useState(() => JSON.stringify({}, null, 2));
+  const [jsonErr, setJsonErr] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<{ runId: number } | null>(null);
+
+  useEffect(() => {
+    setPayloadText(JSON.stringify(defaultPayload, null, 2));
+    setJsonErr(null);
+  }, [JSON.stringify(defaultPayload)]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handlePayloadChange(val: string) {
+    setPayloadText(val);
+    try { JSON.parse(val); setJsonErr(null); } catch (e) { setJsonErr((e as Error).message); }
+  }
+
+  const runMut = useMutation({
+    mutationFn: async () => {
+      const payload = JSON.parse(payloadText) as Record<string, unknown>;
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(String(body.error ?? "Failed to start — publish the workflow first"));
+      }
+      return res.json() as Promise<{ runId: number }>;
+    },
+    onSuccess: (data) => setRunResult(data),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-4">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🧪</span>
+            <h3 className="text-sm font-semibold text-[#E6EDF3]">Test Run</h3>
+          </div>
+          <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none">×</button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-4">
+
+          {/* ── Success state ── */}
+          {runResult ? (
+            <div className="space-y-3">
+              <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-4 text-center space-y-1.5">
+                <p className="text-emerald-400 font-semibold text-sm">✓ Run started</p>
+                <p className="text-xs text-[#7D8590]">Run #{runResult.runId} is now executing.</p>
+              </div>
+              <button
+                onClick={() => navigate(`/workflows/runs/${runResult.runId}`)}
+                className="w-full px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                View Run #{runResult.runId} →
+              </button>
+              <button onClick={onClose} className="w-full text-xs text-[#7D8590] hover:text-[#E6EDF3] py-1">
+                Close
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* ── Trigger context ── */}
+              {loadingTriggers ? (
+                <div className="text-xs text-[#484F58] py-1 animate-pulse">Loading triggers…</div>
+              ) : eventTriggers.length > 1 ? (
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Simulate event trigger</label>
+                  <select
+                    value={selectedTriggerId ?? ""}
+                    onChange={e => setSelectedTriggerId(Number(e.target.value))}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    {eventTriggers.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {String((t.config as Record<string, unknown>).eventName ?? `trigger #${t.id}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : activeTrigger ? (
+                <div className="rounded-lg bg-[#0D1117] border border-[#0078D4]/30 p-3 space-y-0.5">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#0078D4]">Simulating event trigger</p>
+                  <p className="text-xs font-mono text-[#E6EDF3]">{activeEventName || "—"}</p>
+                  {knownEvent && <p className="text-[10px] text-[#7D8590] mt-0.5">{knownEvent.description}</p>}
+                </div>
+              ) : (
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
+                  <p className="text-[10px] text-[#7D8590]">No event trigger — running with manual payload.</p>
+                </div>
+              )}
+
+              {/* ── Payload editor ── */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test payload (JSON)</label>
+                  {knownEvent && (
+                    <button
+                      onClick={() => { setPayloadText(JSON.stringify(defaultPayload, null, 2)); setJsonErr(null); }}
+                      className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+                    >
+                      ↺ Reset to mock
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={payloadText}
+                  onChange={e => handlePayloadChange(e.target.value)}
+                  rows={knownEvent ? 9 : 6}
+                  spellCheck={false}
+                  className="w-full font-mono text-xs bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none"
+                />
+                {jsonErr && (
+                  <p className="text-[10px] text-red-400 font-mono break-all">{jsonErr}</p>
+                )}
+              </div>
+
+              {/* ── Field reference ── */}
+              {knownEvent && knownEvent.payloadFields.length > 0 && (
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Payload fields</p>
+                  <div className="space-y-1">
+                    {knownEvent.payloadFields.map(f => (
+                      <div key={f.key} className="flex items-baseline gap-2">
+                        <span className="font-mono text-[11px] text-[#2E9EFF] flex-shrink-0">{`{{${f.key}}}`}</span>
+                        <span className="text-[10px] text-[#484F58]">{f.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {runMut.isError && (
+                <p className="text-[10px] text-red-400">{(runMut.error as Error).message}</p>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        {!runResult && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
+            <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button
+              onClick={() => runMut.mutate()}
+              disabled={!!jsonErr || runMut.isPending}
+              className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              {runMut.isPending
+                ? <><span className="animate-spin inline-block">⟳</span> Starting…</>
+                : <>🧪 Run Test</>}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main builder ──────────────────────────────────────────────────────────────
 
 export default function WorkflowBuilderPage({ defId, versionId }: { defId: number; versionId?: number }) {
@@ -1066,6 +1276,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showTestRun, setShowTestRun] = useState(false);
   const [publishLabel, setPublishLabel] = useState("");
   const [showPublish, setShowPublish] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
@@ -1204,20 +1415,6 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     },
   });
 
-  const runMut = useMutation({
-    mutationFn: async () => {
-      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/run`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      if (!res.ok) throw new Error("No published version — publish first");
-      return res.json() as Promise<{ runId: number }>;
-    },
-    onSuccess: (data) => {
-      navigate(`/workflows/runs/${data.runId}`);
-    },
-  });
 
   const onConnect = useCallback((connection: Connection) => {
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
@@ -1330,14 +1527,10 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           )}
 
           <button
-            onClick={() => runMut.mutate()}
-            disabled={runMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+            onClick={() => setShowTestRun(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
-            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            {runMut.isPending ? "Starting…" : "Run Now"}
+            🧪 Test Run
           </button>
         </div>
       </div>
@@ -1356,11 +1549,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         </div>
       )}
 
-      {runMut.isError && (
-        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 px-4 py-2 text-xs text-red-400">
-          {(runMut.error as Error).message}
-        </div>
-      )}
+
 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Node library sidebar */}
@@ -1550,6 +1739,11 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           </div>
         )}
       </div>
+
+      {/* Test Run modal */}
+      {showTestRun && (
+        <TestRunModal defId={defId} onClose={() => setShowTestRun(false)} />
+      )}
 
       {/* Publish dialog */}
       {showPublish && (
