@@ -1222,11 +1222,21 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
 
   let hasActiveEngagement = !!activeProject;
   if (!hasActiveEngagement) {
-    const [activeService] = await db.select({ id: clientServicesTable.id })
+    // A client service counts as "active engagement" only when it is not
+    // linked to a quick_win project.  Services with no linked project
+    // (projectId IS NULL — e.g. admin-assigned standalone services) always
+    // count so retainer-only clients are never re-gated.
+    const [activeService] = await db
+      .select({ id: clientServicesTable.id })
       .from(clientServicesTable)
+      .leftJoin(projectsTable, eq(clientServicesTable.projectId, projectsTable.id))
       .where(and(
         eq(clientServicesTable.clientUserId, userId),
         inArray(clientServicesTable.status, ["active", "paused"]),
+        or(
+          isNull(clientServicesTable.projectId),
+          ne(projectsTable.projectType, "quick_win"),
+        ),
       ))
       .limit(1);
     hasActiveEngagement = !!activeService;
