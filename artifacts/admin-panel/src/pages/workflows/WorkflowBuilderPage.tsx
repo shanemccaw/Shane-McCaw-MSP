@@ -431,7 +431,6 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Core",
     nodes: [
-      { type: "start",         label: "Start",         description: "Workflow entry point",                                tags: ["core", "flow"] },
       { type: "end",           label: "End",           description: "Workflow exit point",                                 tags: ["core", "flow"] },
       { type: "condition",     label: "Condition",     description: "Branch on expression",                               tags: ["logic", "branch", "if"] },
       { type: "delay",         label: "Delay",         description: "Wait / poll condition",                              tags: ["control", "wait", "pause"] },
@@ -1223,15 +1222,17 @@ function NodeConfigPanel({
           <span className="text-sm font-semibold text-[#E6EDF3]">{nodeType.charAt(0).toUpperCase() + nodeType.slice(1)} Node</span>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => { onDelete(node.id); }}
-            title="Delete node (Del)"
-            className="text-[#484F58] hover:text-[#EF4444] transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-            </svg>
-          </button>
+          {nodeType !== "start" && (
+            <button
+              onClick={() => { onDelete(node.id); }}
+              title="Delete node (Del)"
+              className="text-[#484F58] hover:text-[#EF4444] transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          )}
           <button onClick={onClose} className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -5746,6 +5747,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   }
 
   function deleteNode(id: string) {
+    const node = nodes.find(n => n.id === id);
+    if (node && ((node.data.nodeType as string) === "start" || node.type === "start")) return;
     pushHistory();
     const updated = graphRemoveStep(nodes, edges, id);
     setNodes(updated.nodes);

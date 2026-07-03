@@ -142,7 +142,15 @@ router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, r
       versionNumber: 1,
       label: "v1 — Initial draft",
       status: "draft",
-      graph: { nodes: [], edges: [] },
+      graph: {
+        nodes: [{
+          id: "node-1",
+          type: "start",
+          position: { x: 300, y: 100 },
+          data: { nodeType: "start", label: "Start" },
+        }],
+        edges: [],
+      },
     }).returning();
 
     res.status(201).json({ ...def, draftVersionId: version.id });

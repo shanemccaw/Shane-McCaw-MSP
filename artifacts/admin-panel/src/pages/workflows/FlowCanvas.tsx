@@ -320,6 +320,7 @@ function StepCard({
 
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
+    if (step.nodeType === "start") return;
     setMenuOpen(false);
     const updated = graphRemoveStep(nodes, edges, step.id);
     onGraphChange(updated.nodes, updated.edges);
@@ -492,13 +493,17 @@ function StepCard({
                 >
                   ⧉ Duplicate
                 </button>
-                <div className="border-t border-[#30363D] my-1" />
-                <button
-                  onClick={handleDelete}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  ✕ Delete
-                </button>
+                {step.nodeType !== "start" && (
+                  <>
+                    <div className="border-t border-[#30363D] my-1" />
+                    <button
+                      onClick={handleDelete}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10 transition-colors"
+                    >
+                      ✕ Delete
+                    </button>
+                  </>
+                )}
           </div>,
           document.body
         )}
