@@ -22,7 +22,7 @@ import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
-import { generateManualScriptPackage } from "../lib/manual-script-package.ts";
+import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
 import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange } from "../lib/sse-broadcast.ts";
@@ -2868,22 +2868,13 @@ router.get("/portal/tasks/:taskId/download-script", requireAuth, async (req: Req
 
     const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
 
-    const pkg = generateManualScriptPackage({
-      scriptId: runResultId!,
-      scriptName: script.title,
-      description: script.description ?? null,
-      manualRequirements: [],
-      psScriptBody: script.scriptBody ?? null,
-      runResultId: runResultId!,
-      customerDisplayName: user?.name ?? undefined,
-      uploadBaseUrl,
-      callbackToken,
-      callbackUrl,
-    });
+    const safeScriptName = script.title.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `${safeScriptName}.ps1`;
+    const scriptBody = injectCallbackVars(script.scriptBody ?? "", callbackToken, callbackUrl);
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${pkg.filename}"`);
-    res.send(pkg.psContent);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(scriptBody);
   } catch (err) {
     req.log.error({ err, taskId }, "portal: failed to generate task script download");
     res.status(500).json({ error: "Failed to generate script download" });
@@ -9166,22 +9157,18 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
       logger.warn({ tokenErr, runResultId }, "portal: failed to create callback token (non-fatal)");
     }
 
-    const pkg = generateManualScriptPackage({
-      scriptId: runResult.scriptId ?? 0,
-      scriptName: script?.title ?? "Script",
-      description: script?.description ?? null,
-      manualRequirements: [],
-      psScriptBody: script?.scriptBody ?? null,
-      runResultId,
-      customerDisplayName: user?.name ?? undefined,
-      uploadBaseUrl,
-      callbackToken,
-      callbackUrl,
-    });
+    const scriptTitle = script?.title ?? "Script";
+    const safeScriptName = scriptTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `${safeScriptName}.ps1`;
+    const scriptBody = injectCallbackVars(
+      script?.scriptBody ?? "",
+      callbackToken ?? "",
+      callbackUrl ?? "",
+    );
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${pkg.filename}"`);
-    res.send(pkg.psContent);
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(scriptBody);
   } catch (err) {
     logger.error({ err, runResultId }, "portal: failed to download manual script");
     res.status(500).json({ error: "Failed to generate script download" });

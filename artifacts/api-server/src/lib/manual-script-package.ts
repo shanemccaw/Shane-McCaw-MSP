@@ -6,6 +6,51 @@
  * unattended in Azure Automation.
  */
 
+/**
+ * Takes the library script body as-is and injects (or replaces) the
+ * $CallbackToken and $CallbackUrl variable assignments.
+ *
+ * - If the script already declares `$CallbackToken = "..."` it is replaced.
+ * - If the variable is not found, both lines are prepended at the top so the
+ *   existing callback submission block can reference them.
+ */
+export function injectCallbackVars(
+  scriptBody: string,
+  callbackToken: string,
+  callbackUrl: string,
+): string {
+  let result = scriptBody;
+
+  const tokenPattern = /\$CallbackToken\s*=\s*["'][^"']*["']/g;
+  const urlPattern   = /\$CallbackUrl\s*=\s*["'][^"']*["']/g;
+
+  const hasToken = tokenPattern.test(result);
+  const hasUrl   = urlPattern.test(result);
+
+  // Reset lastIndex after test()
+  tokenPattern.lastIndex = 0;
+  urlPattern.lastIndex   = 0;
+
+  if (hasToken) {
+    result = result.replace(tokenPattern, `$CallbackToken = "${callbackToken}"`);
+  }
+  if (hasUrl) {
+    result = result.replace(urlPattern, `$CallbackUrl   = "${callbackUrl}"`);
+  }
+
+  // Prepend both if neither was found (handles scripts that declare them elsewhere
+  // or use a placeholder comment block expecting these at the top)
+  if (!hasToken && !hasUrl) {
+    result = `$CallbackToken = "${callbackToken}"\n$CallbackUrl   = "${callbackUrl}"\n\n${result}`;
+  } else if (!hasToken) {
+    result = `$CallbackToken = "${callbackToken}"\n\n${result}`;
+  } else if (!hasUrl) {
+    result = `$CallbackUrl   = "${callbackUrl}"\n\n${result}`;
+  }
+
+  return result;
+}
+
 export interface ManualScriptPackageInput {
   scriptId: number;
   scriptName: string;
