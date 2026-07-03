@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { formatAuditEntry, type AuditLogEntry } from "@/lib/auditFormatter";
+import { useToast } from "@/hooks/use-toast";
 
 interface Project {
   id: number;
@@ -85,6 +86,7 @@ export default function PortalProjectCloseOut({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [exportingAudit, setExportingAudit] = useState(false);
+  const { toast } = useToast();
   const { project, steps, tasks } = data;
 
   const handleExportAudit = async () => {
@@ -92,7 +94,10 @@ export default function PortalProjectCloseOut({
     setExportingAudit(true);
     try {
       const res = await fetchWithAuth(`/api/portal/projects/${projectId}/audit-pdf`);
-      if (!res.ok) { alert("Failed to generate report. Please try again."); return; }
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Export failed", description: "Failed to generate report. Please try again." });
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 interface Project {
   id: number;
@@ -94,6 +95,7 @@ export default function PortalRetainerDetail({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
 }) {
   const [exportingAudit, setExportingAudit] = useState(false);
+  const { toast } = useToast();
 
   const { project, steps, documents, updates } = data;
 
@@ -111,7 +113,10 @@ export default function PortalRetainerDetail({
     setExportingAudit(true);
     try {
       const res = await fetchWithAuth(`/api/portal/projects/${projectId}/audit-pdf`);
-      if (!res.ok) { alert("Failed to generate audit PDF. Please try again."); return; }
+      if (!res.ok) {
+        toast({ variant: "destructive", title: "Export failed", description: "Failed to generate audit PDF. Please try again." });
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const year = new Date().getFullYear();

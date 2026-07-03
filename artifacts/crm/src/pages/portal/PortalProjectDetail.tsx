@@ -698,6 +698,7 @@ function SpFileViewerModal({
 export default function PortalProjectDetail() {
   const params = useParams<{ id: string }>();
   const { fetchWithAuth, accessToken } = useAuth();
+  const { toast } = useToast();
   const [data, setData] = useState<ProjectDetailData | null>(null);
   const [loading, setLoading] = useState(true);
   const [sseReconnecting, setSseReconnecting] = useState(false);
@@ -951,7 +952,10 @@ export default function PortalProjectDetail() {
   const handleSignClosure = async () => {
     if (!params.id || closureSigning) return;
     const sigEmpty = sigCanvasRef.current?.isEmpty() !== false;
-    if (sigEmpty) { alert("Please draw your signature before submitting."); return; }
+    if (sigEmpty) {
+      toast({ variant: "destructive", title: "Signature required", description: "Please draw your signature before submitting." });
+      return;
+    }
     const signatureDataUrl = sigCanvasRef.current!.toDataURL("image/png");
     setClosureSigning(true);
     try {
@@ -978,7 +982,7 @@ export default function PortalProjectDetail() {
       const res = await fetchWithAuth(`/api/portal/projects/${params.id}/audit-pdf`);
       if (!res.ok) {
         const err = await res.json() as { error?: string };
-        alert(err.error ?? "Failed to generate audit PDF. Please try again.");
+        toast({ variant: "destructive", title: "Export failed", description: err.error ?? "Failed to generate audit PDF. Please try again." });
         return;
       }
       const blob = await res.blob();
