@@ -10436,7 +10436,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
           { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
           "Set up your Shane McCaw Consulting portal",
           `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-        ).catch(() => null);
+        ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "account-setup" }, "claim-free: account-setup email failed (non-fatal)"));
       }
     } else if (hasPassword && buyer.email) {
       void sendEmailFromTemplate(
@@ -10445,7 +10445,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
         { clientName: buyer.name ?? buyer.email, serviceName: serviceNames.join(", "), amountDollars: "0", projectUrl: baseUrl },
         "Your project workspace is ready — Shane McCaw Consulting",
         `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceNames.join(", ")}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
-      ).catch(() => null);
+      ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "onboarding-confirmation" }, "claim-free: onboarding-confirmation email failed (non-fatal)"));
     }
 
     // Admin alerts (all non-fatal)
