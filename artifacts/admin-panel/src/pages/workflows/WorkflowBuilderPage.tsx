@@ -1701,26 +1701,20 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">Step <span className="text-[#484F58]">(optional)</span></label>
-                <input
-                  type="number" min={1}
-                  value={(node.data.step as number | undefined) ?? ""}
-                  onChange={e => onChange(node.id, { ...node.data, step: e.target.value === "" ? undefined : Number(e.target.value) })}
-                  placeholder="1"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#00B4D8]/60"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">Total <span className="text-[#484F58]">(optional)</span></label>
-                <input
-                  type="number" min={1}
-                  value={(node.data.total as number | undefined) ?? ""}
-                  onChange={e => onChange(node.id, { ...node.data, total: e.target.value === "" ? undefined : Number(e.target.value) })}
-                  placeholder="5"
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#00B4D8]/60"
-                />
-              </div>
+              <PayloadField
+                label="Step (optional)"
+                value={(node.data.step as string | undefined) ?? ""}
+                onChange={v => onChange(node.id, { ...node.data, step: v === "" ? undefined : v })}
+                placeholder="{{loopIndex}}"
+                ancestorOutputs={ancestorOutputs}
+              />
+              <PayloadField
+                label="Total (optional)"
+                value={(node.data.total as string | undefined) ?? ""}
+                onChange={v => onChange(node.id, { ...node.data, total: v === "" ? undefined : v })}
+                placeholder="{{items.length}}"
+                ancestorOutputs={ancestorOutputs}
+              />
             </div>
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Emits a real-time status message into the run log. Supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Payload passes through unchanged.</p>
@@ -4715,6 +4709,15 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
   const progressLogs = (progressRunData?.logs ?? []).filter(l => l.level === "progress");
   const latestProgress = progressLogs[progressLogs.length - 1] ?? null;
   const runIsTerminal = progressRunData?.status ? TERMINAL_STATUSES.has(progressRunData.status) : false;
+  const [progressDismissed, setProgressDismissed] = useState(false);
+  useEffect(() => {
+    if (runIsTerminal && progressLogs.length > 0) {
+      const timer = setTimeout(() => setProgressDismissed(true), 3000);
+      return () => clearTimeout(timer);
+    }
+    setProgressDismissed(false);
+    return undefined;
+  }, [runIsTerminal, progressLogs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
 
@@ -4783,8 +4786,8 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
             </div>
           )}
           {/* ── Live progress panel ── */}
-          {progressLogs.length > 0 && (
-            <div className={`flex-shrink-0 border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-2.5 space-y-1.5 transition-all ${runIsTerminal ? "opacity-70" : ""}`}>
+          {progressLogs.length > 0 && !progressDismissed && (
+            <div className={`flex-shrink-0 border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-2.5 space-y-1.5 transition-all duration-500 ${runIsTerminal ? "opacity-60" : ""}`}>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-cyan-400 text-[10px]">📶</span>
                 <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Progress</span>

@@ -3041,11 +3041,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "report_progress": {
         const rawMsg = (node.data.message as string | undefined) ?? "Progress update";
         const progressMsg = interp(rawMsg, payload) ?? rawMsg;
-        const step  = node.data.step  != null ? Number(node.data.step)  : undefined;
-        const total = node.data.total != null ? Number(node.data.total) : undefined;
+        // Step and Total support {{variable}} expressions — resolve them against payload first
+        const rawStep  = node.data.step  != null ? String(node.data.step)  : undefined;
+        const rawTotal = node.data.total != null ? String(node.data.total) : undefined;
+        const stepVal  = rawStep  ? Number(interp(rawStep,  payload) ?? rawStep)  : undefined;
+        const totalVal = rawTotal ? Number(interp(rawTotal, payload) ?? rawTotal) : undefined;
         const meta: Record<string, unknown> = {};
-        if (step  != null && !isNaN(step))  meta.step  = step;
-        if (total != null && !isNaN(total)) meta.total = total;
+        if (stepVal  != null && !isNaN(stepVal))  meta.step  = stepVal;
+        if (totalVal != null && !isNaN(totalVal)) meta.total = totalVal;
         const hasMeta = Object.keys(meta).length > 0;
         await db.insert(wfRunNodeLogsTable).values({
           runId,
