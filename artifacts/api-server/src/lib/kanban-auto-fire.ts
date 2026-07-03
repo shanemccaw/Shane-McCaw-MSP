@@ -146,6 +146,80 @@ async function alertAutoFireExhausted(opts: {
   }
 }
 
+async function alertDocumentAutoFireExhausted(opts: {
+  cardId: number;
+  projectId: number;
+  clientUserId: number;
+  docType: string;
+  docTitle: string;
+  failureCount: number;
+  lastError: string;
+}): Promise<void> {
+  const { cardId, projectId, clientUserId, docType, docTitle, failureCount, lastError } = opts;
+  const projectUrl = `${getAdminPanelBase()}/crm/projects/${projectId}`;
+  const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
+
+  const pushBody =
+    `Document "${docTitle}" (${docType}) failed ${failureCount}× for client #${clientUserId}. ` +
+    `Card #${cardId} needs manual review.`;
+
+  try {
+    await sendWebPushToAdmins({
+      title: "⚠️ Document auto-fire exhausted retry budget",
+      body: pushBody,
+      linkPath: `/admin-panel/crm/projects/${projectId}`,
+      playSound: true,
+    });
+  } catch (pushErr) {
+    logger.warn({ pushErr }, "kanban-auto-fire: document push notification failed (non-fatal)");
+  }
+
+  const bodyHtml = `
+    <p>Hi Shane,</p>
+    <p>The Kanban document-generation auto-fire has exhausted its retry budget (<strong>${failureCount} consecutive failures</strong>) for the following card and can no longer automatically recover.</p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
+      <tbody>
+        <tr style="background:#fef2f2;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;white-space:nowrap;">Document</td>
+          <td style="padding:10px 16px;font-size:14px;">${docTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Doc type</td>
+          <td style="padding:10px 16px;font-size:14px;font-family:monospace;">${docType}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Card ID</td>
+          <td style="padding:10px 16px;font-size:14px;">${cardId}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Last error</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">${lastError}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Failures</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">${failureCount} / ${MAX_AUTO_FIRE_FAILURES}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The card has been left in backlog with status <strong>auto_fire_exhausted</strong>. Please review the AI / document-generation configuration and then manually trigger the document from the Admin Panel.</p>
+    <p style="margin-top:24px;">
+      <a href="${projectUrl}" style="background:#0078D4;color:#ffffff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View project in Admin Panel →</a>
+    </p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `;
+
+  try {
+    await sendEmailOrThrow(
+      shaneEmail,
+      `⚠️ Document auto-fire exhausted — "${docTitle}" (${failureCount} failures)`,
+      brandedEmail(bodyHtml),
+    );
+    logger.info({ shaneEmail, cardId, docTitle }, "kanban-auto-fire: document exhaustion alert email sent");
+  } catch (emailErr) {
+    logger.warn({ emailErr, cardId }, "kanban-auto-fire: document exhaustion alert email failed (non-fatal)");
+  }
+}
+
 interface LinkedRunbook {
   scriptId: string;
   azureRunbookName: string;
@@ -678,6 +752,7 @@ async function findAllBacklogDocumentCards(clientUserId: number): Promise<Docume
         inArray(kanbanTasksTable.workflowStepId, activeStepIds),
         eq(kanbanTasksTable.column, "backlog"),
         eq(kanbanTasksTable.taskType, "document_generation"),
+        sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
       ),
     )
     .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
@@ -737,8 +812,17 @@ async function countInProgressNonSowDocCards(clientUserId: number): Promise<numb
  * triggers the next round of auto-fire (for newly-unlocked cards).
  */
 async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promise<void> {
+  // Read current metadata up front so we have the existing failure count and can
+  // preserve all other fields on both the failure and success paths.
+  const [metaRow] = await db
+    .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.id, card.id));
+  const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
+  const currentFailureCount = typeof prevMeta.autoFireFailureCount === "number" ? prevMeta.autoFireFailureCount : 0;
+
   logger.info(
-    { clientUserId, cardId: card.id, docType: card.documentGeneration.docType },
+    { clientUserId, cardId: card.id, docType: card.documentGeneration.docType, currentFailureCount },
     "kanban-auto-fire: auto-firing document generation card",
   );
 
@@ -747,29 +831,61 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
     const result = await generateAndDeliverDocument(clientUserId, card.projectId, card.documentGeneration);
     documentId = result.documentId;
   } catch (genErr) {
-    // Revert to backlog so the card can be retried
+    const { newCount, exhausted, completionStatus: failStatus } = computeNextFailureState(currentFailureCount);
+    const failureReason = genErr instanceof Error ? genErr.message : String(genErr);
+
     await db.update(kanbanTasksTable)
-      .set({ column: "backlog", updatedAt: new Date() })
+      .set({
+        column:           "backlog",
+        completionStatus: failStatus,
+        completionNotes:  `Document generation failed. Attempt ${newCount}/${MAX_AUTO_FIRE_FAILURES}. Error: ${failureReason.slice(0, 200)}`,
+        taskMetadata: {
+          ...prevMeta,
+          autoFireFailureCount: newCount,
+          lastFailureReason:    failureReason,
+          lastFailedAt:         new Date().toISOString(),
+          ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+        },
+        updatedAt: new Date(),
+      })
       .where(eq(kanbanTasksTable.id, card.id));
+
     const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
     if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
-    logger.error({ genErr, clientUserId, cardId: card.id }, "kanban-auto-fire: document generation failed — card reverted to backlog");
+
+    logger.error(
+      { genErr, clientUserId, cardId: card.id, newCount, exhausted },
+      "kanban-auto-fire: document generation failed — card reverted to backlog",
+    );
+
+    if (exhausted) {
+      logger.warn(
+        { cardId: card.id, clientUserId, failureCount: newCount },
+        "kanban-auto-fire: document retry budget exhausted — alerting Shane",
+      );
+      void alertDocumentAutoFireExhausted({
+        cardId:       card.id,
+        projectId:    card.projectId,
+        clientUserId,
+        docType:      card.documentGeneration.docType,
+        docTitle:     card.documentGeneration.title,
+        failureCount: newCount,
+        lastError:    failureReason,
+      });
+    }
     return;
   }
 
-  // Stamp documentId into metadata and move to completed
-  const [metaRow] = await db
-    .select({ taskMetadata: kanbanTasksTable.taskMetadata })
-    .from(kanbanTasksTable)
-    .where(eq(kanbanTasksTable.id, card.id));
-  const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
+  // Stamp documentId into metadata and move to completed.
+  // Reset the failure counter on success so future re-runs start fresh.
 
+  const { autoFireFailureCount: _dropped1, lastFailureReason: _dropped2, lastFailedAt: _dropped3, ...cleanMeta } = prevMeta;
   await db.update(kanbanTasksTable)
     .set({
       column:           "completed",
       completionStatus: "document_generated",
       completionNotes:  `Document "${card.documentGeneration.title}" generated and delivered to client portal (ID: ${documentId}).`,
-      taskMetadata:     { ...prevMeta, generatedDocumentId: documentId },
+      taskMetadata:     { ...cleanMeta, generatedDocumentId: documentId },
       updatedAt:        new Date(),
     })
     .where(eq(kanbanTasksTable.id, card.id));
@@ -1348,6 +1464,64 @@ export async function reconcileStalledPhases(): Promise<void> {
         }
       }
 
+      // ── Document_generation stale in_progress detection ──────────────────────
+      // AI document generation runs synchronously and completes within minutes.
+      // If a card is still in_progress longer than the stale threshold it means the
+      // server was restarted mid-generation and the card was never reverted.
+      // We treat these as auto-fire failures and apply the retry budget.
+      const STALE_DOC_THRESHOLD_MS = 15 * 60_000; // 15 min — generous for slow AI calls
+      const staleDocCards = await db
+        .select({
+          id:               kanbanTasksTable.id,
+          taskMetadata:     kanbanTasksTable.taskMetadata,
+          updatedAt:        kanbanTasksTable.updatedAt,
+        })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "in_progress"),
+            eq(kanbanTasksTable.taskType, "document_generation"),
+          ),
+        );
+
+      const nowMs = Date.now();
+      const staleDocToRevert = staleDocCards.filter(c => {
+        const updatedMs = c.updatedAt instanceof Date ? c.updatedAt.getTime() : (c.updatedAt ? new Date(c.updatedAt as string).getTime() : 0);
+        return nowMs - updatedMs > STALE_DOC_THRESHOLD_MS;
+      });
+
+      if (staleDocToRevert.length > 0) {
+        const staleDocIds = staleDocToRevert.map(c => c.id);
+        logger.warn(
+          { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId, staleDocIds },
+          "kanban-auto-fire: reconcileStalledPhases — reverting stale in_progress document cards to backlog",
+        );
+        for (const card of staleDocToRevert) {
+          const meta = ((card.taskMetadata ?? {}) as Record<string, unknown>);
+          const currentCount = typeof meta.autoFireFailureCount === "number" ? meta.autoFireFailureCount : 0;
+          const { newCount, exhausted, completionStatus: revertStatus } = computeNextFailureState(currentCount);
+          await db.update(kanbanTasksTable)
+            .set({
+              column:           "backlog",
+              completionStatus: revertStatus,
+              taskMetadata: {
+                ...meta,
+                autoFireFailureCount: newCount,
+                lastFailureReason:    "Stale document generation detected by reconcileStalledPhases (server restart suspected)",
+                lastFailedAt:         new Date().toISOString(),
+                ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(kanbanTasksTable.id, card.id));
+        }
+        const revertedDocRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, staleDocIds));
+        if (step.projectId != null) {
+          for (const t of revertedDocRows) broadcastKanbanChange(step.projectId, { action: "updated", task: t });
+        }
+      }
+
       // Check for backlog cards that have a linkedRunbook (auto-fireable).
       // Exhausted cards (auto_fire_exhausted) require manual intervention
       // and must NOT be auto-fired — exclude them here.
@@ -1368,6 +1542,29 @@ export async function reconcileStalledPhases(): Promise<void> {
         logger.info(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
           "kanban-auto-fire: detected stalled phase — no active in_progress cards but backlog script cards exist",
+        );
+        stalledClientIds.add(step.clientUserId);
+      }
+
+      // Check for backlog document_generation cards that can be re-fired.
+      // Exhausted cards are excluded — they need manual intervention.
+      const [backlogDocCard] = await db
+        .select({ id: kanbanTasksTable.id })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "backlog"),
+            eq(kanbanTasksTable.taskType, "document_generation"),
+            sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
+          ),
+        )
+        .limit(1);
+
+      if (backlogDocCard) {
+        logger.info(
+          { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
+          "kanban-auto-fire: detected stalled phase — backlog document_generation cards need auto-fire",
         );
         stalledClientIds.add(step.clientUserId);
       }

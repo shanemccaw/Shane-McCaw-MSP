@@ -45,9 +45,11 @@ function resetCounters() {
 // NOTE: specifier must match the exact string in system-action-handlers.ts:
 //   import { ... } from "./kanban-auto-fire.ts";
 //
-// scriptShouldThrow is used by the azure-outage resilience tests (further below).
-// The flag must be declared before the mock so the closure captures it.
+// scriptShouldThrow / documentShouldThrow are used by the resilience tests
+// further below. The flags must be declared before the mock so the closures
+// capture them.
 let scriptShouldThrow = false;
+let documentShouldThrow = false;
 
 mock.module("./kanban-auto-fire.ts", {
   namedExports: {
@@ -59,6 +61,9 @@ mock.module("./kanban-auto-fire.ts", {
       lastScriptClientId = clientUserId;
     },
     autoFireDocumentCard: async (clientUserId: number) => {
+      if (documentShouldThrow) {
+        throw new Error("AI generation failed (simulated error)");
+      }
       documentCallCount++;
       lastDocumentClientId = clientUserId;
     },
@@ -365,5 +370,99 @@ describe("handleSystemAction auto_fire_kanban — Azure outage with action='both
 
   it("passes the correct clientUserId to the document function", () => {
     assert.equal(lastDocumentClientId, 77);
+  });
+});
+
+// =============================================================================
+// Document AI failure — when autoFireDocumentCard throws (simulating an AI or
+// DB error during generation), the handler must NOT crash or throw.
+// The promise is fire-and-forget with .catch(), so the handler returns
+// { fired: true } immediately regardless of what happens inside the function.
+//
+// The documentShouldThrow flag is declared at the top of this file and
+// captured by the stub closure.
+// =============================================================================
+
+describe("handleSystemAction auto_fire_kanban — document AI failure (document function throws)", () => {
+  let result: Record<string, unknown>;
+  let caughtError: unknown = null;
+
+  before(async () => {
+    resetCounters();
+    documentShouldThrow = true;
+    try {
+      result = await handleSystemAction("auto_fire_kanban", {
+        clientUserId: 88,
+        action: "document",
+      });
+    } catch (err) {
+      caughtError = err;
+    } finally {
+      documentShouldThrow = false;
+    }
+    await flushMicrotasks();
+  });
+
+  it("does NOT throw — AI failure is caught by fire-and-forget .catch()", () => {
+    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+  });
+
+  it("still returns fired=true (handler is fire-and-forget — result is immediate)", () => {
+    assert.ok(result, "result should be defined");
+    assert.equal(result.fired, true);
+    assert.equal(result.clientUserId, 88);
+  });
+
+  it("does NOT surface the AI error to the caller", () => {
+    assert.ok(!("error" in result), `result should not contain 'error' key`);
+    assert.ok(!("skipped" in result), `result should not be skipped`);
+  });
+
+  it("does NOT call autoFireFirstBacklogScript when action='document'", () => {
+    assert.equal(scriptCallCount, 0, `expected 0 script calls, got ${scriptCallCount}`);
+  });
+});
+
+// =============================================================================
+// Document AI failure with action='both' — even when the document function
+// throws (AI down), the script function should still be attempted independently.
+// Each promise is attached its own .catch() independently.
+// =============================================================================
+
+describe("handleSystemAction auto_fire_kanban — document AI failure with action='both'", () => {
+  let result: Record<string, unknown>;
+  let caughtError: unknown = null;
+
+  before(async () => {
+    resetCounters();
+    documentShouldThrow = true;
+    try {
+      result = await handleSystemAction("auto_fire_kanban", {
+        clientUserId: 101,
+        action: "both",
+      });
+    } catch (err) {
+      caughtError = err;
+    } finally {
+      documentShouldThrow = false;
+    }
+    await flushMicrotasks();
+  });
+
+  it("does NOT throw even when the document function fails", () => {
+    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+  });
+
+  it("returns fired=true — handler is non-blocking", () => {
+    assert.ok(result, "result should be defined");
+    assert.equal(result.fired, true);
+  });
+
+  it("script function is still attempted independently (called once)", () => {
+    assert.equal(scriptCallCount, 1, `expected 1 script call, got ${scriptCallCount}`);
+  });
+
+  it("passes the correct clientUserId to the script function", () => {
+    assert.equal(lastScriptClientId, 101);
   });
 });
