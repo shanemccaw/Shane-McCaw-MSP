@@ -422,10 +422,13 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
 
   try {
     const versionId = req.body.versionId ? parseInt(req.body.versionId as string, 10) : undefined;
+    const inputValues = (req.body.inputValues && typeof req.body.inputValues === "object")
+      ? req.body.inputValues as Record<string, string>
+      : undefined;
     const runId = await fireWorkflowForDefinition(
       defId, "manual", `admin:manual`,
       req.body.payload ?? {},
-      versionId ? { versionId } : {},
+      { ...(versionId ? { versionId } : {}), inputValues },
     );
     if (!runId) return sendError(res, 422, "No runnable version found or concurrency limit reached");
     res.status(202).json({ runId });

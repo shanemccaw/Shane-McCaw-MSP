@@ -664,6 +664,12 @@ function getAncestorOutputs(
       ];
     } else if (type === "action" && actionType) {
       outputs = NODE_OUTPUTS[actionType] ?? [];
+    } else if (type === "ask_for_input") {
+      // Dynamic outputs — derive from the configured field definitions
+      const fields = (node.data.fields as Array<{ variableName: string; label: string }> | undefined) ?? [];
+      outputs = fields
+        .filter(f => f.variableName)
+        .map(f => ({ key: f.variableName, label: f.label || f.variableName }));
     } else if (type !== "end" && type !== "condition" && type !== "delay" && type !== "error") {
       // First-class node types (score_lead, assign_pipeline_stage, etc.)
       outputs = NODE_OUTPUTS[type] ?? [];
@@ -2672,7 +2678,23 @@ function AskForInputPanel({
       {fields.map((f, i) => (
         <div key={f.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] p-2.5 space-y-2">
           <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[9px] font-bold text-[#F97316] uppercase tracking-wider">Field {i + 1}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-bold text-[#F97316] uppercase tracking-wider">Field {i + 1}</span>
+              <div className="flex flex-col gap-0.5">
+                <button
+                  onClick={() => { if (i === 0) return; const f2 = [...fields]; [f2[i - 1], f2[i]] = [f2[i], f2[i - 1]]; updateFields(f2); }}
+                  disabled={i === 0}
+                  className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors leading-none text-[8px]"
+                  title="Move up"
+                >▲</button>
+                <button
+                  onClick={() => { if (i === fields.length - 1) return; const f2 = [...fields]; [f2[i], f2[i + 1]] = [f2[i + 1], f2[i]]; updateFields(f2); }}
+                  disabled={i === fields.length - 1}
+                  className="text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-20 transition-colors leading-none text-[8px]"
+                  title="Move down"
+                >▼</button>
+              </div>
+            </div>
             <button
               onClick={() => removeField(f.id)}
               className="text-[#484F58] hover:text-red-400 transition-colors text-xs"

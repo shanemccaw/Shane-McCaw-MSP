@@ -2334,7 +2334,7 @@ export async function fireWorkflowForDefinition(
   triggerType: "manual" | "schedule" | "webhook" | "event",
   triggerRef: string,
   payload: Record<string, unknown> = {},
-  opts: { versionId?: number } = {},
+  opts: { versionId?: number; inputValues?: Record<string, string> } = {},
 ): Promise<number | null> {
   try {
     // Resolve version: explicit versionId (e.g. test-run from draft) or latest published
@@ -2370,7 +2370,7 @@ export async function fireWorkflowForDefinition(
     if (!runId) return null;
 
     setImmediate(() => {
-      executeWorkflowRun(runId).catch(err => {
+      executeWorkflowRun(runId, { inputValues: opts.inputValues }).catch(err => {
         logger.warn({ err, runId }, "wf-executor: detached run failed (non-fatal)");
       });
     });
