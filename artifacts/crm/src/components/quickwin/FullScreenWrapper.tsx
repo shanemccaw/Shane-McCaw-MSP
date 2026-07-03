@@ -201,9 +201,18 @@ export default function FullScreenWrapper() {
   // Show the panel whenever a waiting_on_customer kanban task of type manualScript
   // exists — regardless of whether the script_run_result is awaiting_upload or
   // completed (customer still needs to mark the task done in that case).
-  const waitingManualScriptCount = kanbanTasks.filter(
+  const manualScriptTasks = kanbanTasks.filter(
     t => t.column === "waiting_on_customer" && t.taskType === "manualScript"
-  ).length;
+  );
+  const waitingManualScriptCount = manualScriptTasks.length;
+  // Tasks that already have a script ready for download (scriptId present in metadata)
+  const downloadableTasks = manualScriptTasks
+    .map(t => {
+      const cd = t.taskMetadata?.customerDownload as { scriptId?: string; scriptTitle?: string } | undefined;
+      if (!cd?.scriptId) return null;
+      return { taskId: t.id, scriptTitle: cd.scriptTitle ?? t.title };
+    })
+    .filter((x): x is { taskId: number; scriptTitle: string } => x !== null);
   const showScriptPanel = (waitingManualScriptCount > 0 || pendingManualScripts.length > 0) && !allScriptsDismissed;
 
   // ── Completed-task exit animation ───────────────────────────────────────────
@@ -785,6 +794,7 @@ export default function FullScreenWrapper() {
             <DiagnosticScriptPanel
               scripts={overlayManualScripts}
               waitingManualScriptCount={waitingManualScriptCount}
+              downloadableTasks={downloadableTasks}
               onCompleted={() => void refetchManualScripts()}
               onAllDismissed={() => setAllScriptsDismissed(true)}
             />

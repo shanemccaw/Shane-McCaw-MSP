@@ -5,9 +5,15 @@ interface ScriptEntry extends ManualScriptRecord {
   projectId: number;
 }
 
+interface DownloadableTask {
+  taskId: number;
+  scriptTitle: string;
+}
+
 interface Props {
   scripts: ScriptEntry[];
   waitingManualScriptCount: number;
+  downloadableTasks: DownloadableTask[];
   onCompleted: () => void;
   onAllDismissed: () => void;
 }
@@ -17,10 +23,35 @@ interface ScriptState {
   confirmingDismiss: boolean;
 }
 
-export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCount, onCompleted, onAllDismissed }: Props) {
+export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCount, downloadableTasks, onCompleted, onAllDismissed }: Props) {
   const [scriptStates, setScriptStates] = useState<Record<number, ScriptState>>(
     () => Object.fromEntries(scripts.map(s => [s.runResultId, { dismissed: false, confirmingDismiss: false }]))
   );
+  const [downloadingTaskIds, setDownloadingTaskIds] = useState<Set<number>>(new Set());
+
+  async function downloadTask(taskId: number, scriptTitle: string) {
+    if (downloadingTaskIds.has(taskId)) return;
+    setDownloadingTaskIds(prev => new Set(prev).add(taskId));
+    try {
+      const res = await fetch(`/api/portal/tasks/${taskId}/download-script`);
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${scriptTitle.replace(/[^a-zA-Z0-9_-]/g, "_")}.ps1`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      // Trigger a refetch so the new run result appears as a ManualScriptUploadCard
+      onCompleted();
+    } catch {
+      // keep button enabled so customer can retry
+    } finally {
+      setDownloadingTaskIds(prev => { const s = new Set(prev); s.delete(taskId); return s; });
+    }
+  }
 
   const visible = scripts.filter(s => !scriptStates[s.runResultId]?.dismissed);
   const pending = visible.filter(s => s.status === "awaiting_upload");
@@ -92,21 +123,68 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
         {/* ── Card body ── */}
         <div className="px-6 py-5 space-y-5">
 
-          {/* No run records yet */}
+          {/* No run records yet — show download buttons if tasks are ready, else waiting state */}
           {visible.length === 0 && waitingManualScriptCount > 0 && (
-            <div className="flex flex-col items-center gap-3 py-4 text-center">
-              <div className="w-11 h-11 rounded-2xl bg-[#0078D4]/8 flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
+            downloadableTasks.length > 0 ? (
+              <div className="space-y-3">
+                {downloadableTasks.map(task => {
+                  const isDownloading = downloadingTaskIds.has(task.taskId);
+                  return (
+                    <div key={task.taskId} className="rounded-xl ring-1 ring-[#0078D4]/20 bg-[#0078D4]/4 px-4 py-4">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-bold text-[#0A2540] truncate">{task.scriptTitle}</p>
+                          <p className="text-xs text-[#0A2540]/50 mt-0.5 leading-snug">
+                            Run this script locally, then upload the results.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => void downloadTask(task.taskId, task.scriptTitle)}
+                        disabled={isDownloading}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#0078D4] text-white text-xs font-bold hover:bg-[#006CBE] disabled:opacity-60 transition-colors"
+                      >
+                        {isDownloading ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                            </svg>
+                            Downloading…
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download Script (.ps1)
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-              <div>
-                <p className="text-sm font-bold text-[#0A2540]">Script being prepared</p>
-                <p className="text-xs text-[#0A2540]/50 mt-1 leading-relaxed max-w-[260px]">
-                  Shane is configuring your diagnostic script. A download link will appear here shortly.
-                </p>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-4 text-center">
+                <div className="w-11 h-11 rounded-2xl bg-[#0078D4]/8 flex items-center justify-center">
+                  <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-[#0A2540]">Script being prepared</p>
+                  <p className="text-xs text-[#0A2540]/50 mt-1 leading-relaxed max-w-[260px]">
+                    Shane is configuring your diagnostic script. A download link will appear here shortly.
+                  </p>
+                </div>
               </div>
-            </div>
+            )
           )}
 
           {/* Completed scripts */}
