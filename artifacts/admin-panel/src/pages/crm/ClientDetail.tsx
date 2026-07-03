@@ -326,8 +326,8 @@ export default function ClientDetailPage() {
   const [clientInvoices, setClientInvoices] = useState<Array<{id:number;invoiceNumber:string;invoiceType:string;status:string;amount:string;currency:string;dueDate:string|null;paidAt:string|null;discountAmount:string|null;couponCode:string|null;createdAt:string}>>([]);
   const [invoicesLoading, setInvoicesLoading] = useState(false);
 
-  // Script Callback Tokens
-  const [showCallbackTokens, setShowCallbackTokens] = useState(false);
+  // Script Callback Tokens — open and loaded by default
+  const [showCallbackTokens, setShowCallbackTokens] = useState(true);
   interface CallbackToken { id: number; label: string; projectId: number | null; projectTitle: string | null; scriptRunResultId: number | null; status: "active" | "revoked"; createdAt: string; lastUsedAt: string | null; }
   const [callbackTokens, setCallbackTokens] = useState<CallbackToken[]>([]);
   const [tokensLoading, setTokensLoading] = useState(false);
@@ -341,6 +341,8 @@ export default function ClientDetailPage() {
       if (res.ok) setCallbackTokens(await res.json() as CallbackToken[]);
     } finally { setTokensLoading(false); }
   }, [clientId, fetchWithAuth]);
+
+  useEffect(() => { void loadCallbackTokens(); }, [loadCallbackTokens]);
 
   const handleRevokeToken = useCallback(async (tokenId: number) => {
     setRevokingTokenId(tokenId);
