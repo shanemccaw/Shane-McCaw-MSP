@@ -517,6 +517,7 @@ router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Resp
       .select({
         run: wfRunsTable,
         defName: wfDefinitionsTable.name,
+        defMetadata: wfDefinitionsTable.metadata,
         versionLabel: wfVersionsTable.label,
       })
       .from(wfRunsTable)
@@ -536,6 +537,7 @@ router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Resp
       runs: runs.map(r => ({
         ...r.run,
         definitionName: r.defName,
+        isSystem: r.defMetadata?.system === true,
         versionLabel: r.versionLabel,
         durationMs: r.run.startedAt && r.run.finishedAt
           ? r.run.finishedAt.getTime() - r.run.startedAt.getTime()
