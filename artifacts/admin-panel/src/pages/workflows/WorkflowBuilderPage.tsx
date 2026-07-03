@@ -3395,8 +3395,11 @@ function FetchNewsPanel({
           onChange={e => {
             const checked = e.target.checked;
             if (checked) {
-              onChange(node.id, { ...node.data, autoBuildCampaign: true });
+              // Atomically: flip autoBuildCampaign on the news node AND seed the campaign node
               const existingHotEdge = edges.find(ed => ed.source === node.id && ed.sourceHandle === "hot");
+              const updatedNodes = nodes.map(n =>
+                n.id === node.id ? { ...n, data: { ...n.data, autoBuildCampaign: true } } : n
+              );
               if (!existingHotEdge) {
                 const newNodeId = `node-campaign-${Date.now()}`;
                 const newCampaignNode: StoredNode = {
@@ -3412,7 +3415,10 @@ function FetchNewsPanel({
                   sourceHandle: "hot",
                   animated: true,
                 };
-                onGraphChange([...nodes, newCampaignNode], [...edges, newEdge]);
+                onGraphChange([...updatedNodes, newCampaignNode], [...edges, newEdge]);
+              } else {
+                // Hot edge already exists — just flip the flag
+                onGraphChange(updatedNodes, edges);
               }
             } else {
               const hotEdge = edges.find(ed => ed.source === node.id && ed.sourceHandle === "hot");
@@ -3432,14 +3438,22 @@ function FetchNewsPanel({
                 if (hasUserContent && !window.confirm("This will remove the campaign steps inside. Continue?")) {
                   return;
                 }
-                const newNodes = nodes.filter(n => !toRemove.has(n.id));
+                // Atomically: flip flag OFF on the news node AND remove hot-branch nodes/edges
+                const newNodes = nodes
+                  .filter(n => !toRemove.has(n.id))
+                  .map(n => n.id === node.id ? { ...n, data: { ...n.data, autoBuildCampaign: false } } : n);
                 const newEdges = edges.filter(ed =>
                   !(ed.source === node.id && ed.sourceHandle === "hot") &&
                   !toRemove.has(ed.source) && !toRemove.has(ed.target)
                 );
                 onGraphChange(newNodes, newEdges);
+              } else {
+                // No hot branch — just flip the flag
+                const updatedNodes = nodes.map(n =>
+                  n.id === node.id ? { ...n, data: { ...n.data, autoBuildCampaign: false } } : n
+                );
+                onGraphChange(updatedNodes, edges);
               }
-              onChange(node.id, { ...node.data, autoBuildCampaign: false });
             }
           }}
           className="mt-0.5 accent-[#06B6D4]"
