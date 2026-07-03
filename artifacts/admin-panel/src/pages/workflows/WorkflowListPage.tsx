@@ -1,9 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+
+interface AskForInputField {
+  key: string;
+  label: string;
+  type: string;
+}
 
 interface WfDefinition {
   id: number;
@@ -18,6 +24,7 @@ interface WfDefinition {
   lastRunAt: string | null;
   createdAt: string;
   metadata?: { system?: boolean };
+  askForInputFields: AskForInputField[] | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,6 +53,8 @@ function WorkflowCard({
   onPublishToProd,
   onRun,
   isRunning,
+  isActiveRun,
+  onStop,
 }: {
   def: WfDefinition;
   isSystem: boolean;
@@ -55,6 +64,8 @@ function WorkflowCard({
   onPublishToProd: (id: number) => void;
   onRun: (id: number) => void;
   isRunning: boolean;
+  isActiveRun: boolean;
+  onStop: () => void;
 }) {
   const canRun = def.triggerTypes.includes("manual") || def.triggerTypes.includes("schedule");
 
@@ -100,17 +111,25 @@ function WorkflowCard({
       <div className="flex items-center gap-3">
         <StatusChip status={def.lastRunStatus} />
 
-        {/* Play button — only for manual/schedule workflows */}
+        {/* Play / Stop button — only for manual/schedule workflows */}
         {canRun && (
           <button
-            onClick={() => onRun(def.id)}
+            onClick={() => isActiveRun ? onStop() : onRun(def.id)}
             disabled={isRunning}
-            title="Run now"
-            className="p-1.5 text-emerald-400 hover:text-emerald-300 rounded-lg hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={isActiveRun ? "Stop run" : "Run now"}
+            className={`p-1.5 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              isActiveRun
+                ? "text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                : "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+            }`}
           >
             {isRunning ? (
               <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : isActiveRun ? (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 6h12v12H6z" />
               </svg>
             ) : (
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -204,6 +223,9 @@ export default function WorkflowListPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [systemExpanded, setSystemExpanded] = useState(false);
   const [runningId, setRunningId] = useState<number | null>(null);
+  const [activeRun, setActiveRun] = useState<{ defId: number; runId: number } | null>(null);
+  const [inputDialog, setInputDialog] = useState<{ defId: number; fields: AskForInputField[] } | null>(null);
+  const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
   const { data: defs = [], isLoading } = useQuery<WfDefinition[]>({
     queryKey: ["wf-definitions"],
@@ -282,19 +304,20 @@ export default function WorkflowListPage() {
   });
 
   const runMut = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async ({ id, iv }: { id: number; iv?: Record<string, string> }) => {
       setRunningId(id);
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ inputValues: iv ?? {} }),
       });
       const body = await res.json() as { runId?: number; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Failed to start run");
-      return { ...body, defId: id };
+      return { runId: body.runId!, defId: id };
     },
     onSuccess: (data) => {
       setRunningId(null);
+      setActiveRun({ defId: data.defId, runId: data.runId });
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       toast({
         title: "Run started",
@@ -316,6 +339,60 @@ export default function WorkflowListPage() {
       toast({ title: "Run failed", description: err.message, variant: "destructive" });
     },
   });
+
+  const stopMut = useMutation({
+    mutationFn: async (runId: number) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}/cancel`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to stop run");
+    },
+    onSuccess: () => {
+      setActiveRun(null);
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      toast({ title: "Run stopped" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Stop failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const { data: activeRunStatus } = useQuery<string>({
+    queryKey: ["wf-run-status-list", activeRun?.runId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${activeRun!.runId}`);
+      if (!res.ok) return "completed";
+      const d = await res.json() as { status: string };
+      return d.status;
+    },
+    enabled: activeRun !== null,
+    refetchInterval: (q) => {
+      const s = q.state.data;
+      return s === "pending" || s === "running" ? 2000 : false;
+    },
+  });
+
+  useEffect(() => {
+    if (!activeRun) return undefined;
+    if (activeRunStatus && activeRunStatus !== "pending" && activeRunStatus !== "running") {
+      const t = setTimeout(() => {
+        setActiveRun(null);
+        void qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      }, 1500);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [activeRun, activeRunStatus, qc]);
+
+  function handlePlayClick(def: WfDefinition) {
+    const fields = def.askForInputFields;
+    if (fields && fields.length > 0) {
+      const initial: Record<string, string> = {};
+      fields.forEach(f => { initial[f.key] = ""; });
+      setInputValues(initial);
+      setInputDialog({ defId: def.id, fields });
+    } else {
+      runMut.mutate({ id: def.id });
+    }
+  }
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -427,8 +504,10 @@ export default function WorkflowListPage() {
                     navigate={navigate}
                     prodDbConnected={prodDbConnected}
                     onPublishToProd={id => publishToProdMut.mutate(id)}
-                    onRun={id => runMut.mutate(id)}
+                    onRun={id => handlePlayClick(defs.find(d => d.id === id)!)}
                     isRunning={runningId === def.id}
+                    isActiveRun={activeRun?.defId === def.id}
+                    onStop={() => activeRun && stopMut.mutate(activeRun.runId)}
                   />
                 ))}
               </div>
@@ -468,8 +547,10 @@ export default function WorkflowListPage() {
                         navigate={navigate}
                         prodDbConnected={prodDbConnected}
                         onPublishToProd={id => publishToProdMut.mutate(id)}
-                        onRun={id => runMut.mutate(id)}
+                        onRun={id => handlePlayClick(defs.find(d => d.id === id)!)}
                         isRunning={runningId === def.id}
+                        isActiveRun={activeRun?.defId === def.id}
+                        onStop={() => activeRun && stopMut.mutate(activeRun.runId)}
                       />
                     ))}
                   </div>
@@ -480,6 +561,43 @@ export default function WorkflowListPage() {
           </div>
         )}
       </div>
+
+      {/* Ask for Input dialog */}
+      {inputDialog && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setInputDialog(null)}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <h2 className="font-semibold text-[#E6EDF3]">⌨ Fill inputs before running</h2>
+            <div className="space-y-3">
+              {inputDialog.fields.map(f => (
+                <div key={f.key} className="space-y-1">
+                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">{f.label || f.key}</label>
+                  <input
+                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
+                    value={inputValues[f.key] ?? ""}
+                    onChange={e => setInputValues(v => ({ ...v, [f.key]: e.target.value }))}
+                    placeholder={f.key}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setInputDialog(null)} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button
+                onClick={() => {
+                  const id = inputDialog.defId;
+                  setInputDialog(null);
+                  runMut.mutate({ id, iv: inputValues });
+                }}
+                disabled={runMut.isPending}
+                className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {runMut.isPending ? "Starting…" : "Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

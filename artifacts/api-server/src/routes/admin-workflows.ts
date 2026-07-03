@@ -83,6 +83,18 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         .orderBy(desc(wfRunsTable.createdAt))
         .limit(1);
 
+      const [latestVersion] = await db
+        .select({ graph: wfVersionsTable.graph })
+        .from(wfVersionsTable)
+        .where(eq(wfVersionsTable.definitionId, def.id))
+        .orderBy(desc(wfVersionsTable.versionNumber))
+        .limit(1);
+
+      type GraphNode = { type: string; data?: Record<string, unknown> };
+      const graphNodes = (latestVersion?.graph as { nodes?: GraphNode[] } | undefined)?.nodes ?? [];
+      const askForInputNode = graphNodes.find(n => n.type === "ask_for_input");
+      const askForInputFields = (askForInputNode?.data?.fields as Array<{ key: string; label: string; type: string }> | undefined) ?? null;
+
       return {
         ...def,
         publishedVersionLabel: published?.label ?? null,
@@ -91,6 +103,7 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         triggerTypes,
         lastRunStatus: lastRun?.status ?? null,
         lastRunAt: lastRun?.createdAt ?? null,
+        askForInputFields,
       };
     }));
 
