@@ -382,6 +382,30 @@ function WfNode({ data, selected, id }: NodeProps) {
             </>
           );
         })()
+      ) : nodeType === "fetch_news_headlines" ? (
+        <>
+          {data.autoBuildCampaign ? (
+            <>
+              <Handle
+                type="source"
+                position={Position.Bottom}
+                id="hot"
+                style={{ left: "30%", background: "#06B6D4", border: "none" }}
+              />
+              <Handle
+                type="source"
+                position={Position.Bottom}
+                style={{ left: "70%", background: style.border, border: "none" }}
+              />
+              <div className="flex justify-between text-[9px] font-semibold mt-1 px-6">
+                <span style={{ color: "#06B6D4" }}>🔥 Campaign</span>
+                <span style={{ color: style.border }}>After</span>
+              </div>
+            </>
+          ) : (
+            <div className="text-[9px] text-center text-[#484F58] mt-1 italic">Terminal — no campaign</div>
+          )}
+        </>
       ) : (
         <>
           <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
@@ -1188,6 +1212,7 @@ function NodeConfigPanel({
   defId,
   nodes,
   edges,
+  onGraphChange,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
@@ -1196,6 +1221,7 @@ function NodeConfigPanel({
   defId: number;
   nodes: Node[];
   edges: Edge[];
+  onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const nodeType = (node.data.nodeType as string) ?? "action";
@@ -1988,6 +2014,9 @@ function NodeConfigPanel({
             node={node}
             onChange={onChange}
             ancestorOutputs={ancestorOutputs}
+            nodes={nodes as unknown as StoredNode[]}
+            edges={edges as unknown as StoredEdge[]}
+            onGraphChange={onGraphChange}
           />
         )}
 
@@ -3300,10 +3329,16 @@ function FetchNewsPanel({
   node,
   onChange,
   ancestorOutputs,
+  nodes,
+  edges,
+  onGraphChange,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
+  nodes: StoredNode[];
+  edges: StoredEdge[];
+  onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
 }) {
   const accentColor = "#06B6D4";
   return (
@@ -3357,7 +3392,56 @@ function FetchNewsPanel({
           type="checkbox"
           id={`fnh-auto-${node.id}`}
           checked={Boolean(node.data.autoBuildCampaign)}
-          onChange={e => onChange(node.id, { ...node.data, autoBuildCampaign: e.target.checked })}
+          onChange={e => {
+            const checked = e.target.checked;
+            if (checked) {
+              onChange(node.id, { ...node.data, autoBuildCampaign: true });
+              const existingHotEdge = edges.find(ed => ed.source === node.id && ed.sourceHandle === "hot");
+              if (!existingHotEdge) {
+                const newNodeId = `node-campaign-${Date.now()}`;
+                const newCampaignNode: StoredNode = {
+                  id: newNodeId,
+                  type: "create_marketing_campaign",
+                  position: { x: 0, y: 0 },
+                  data: { nodeType: "create_marketing_campaign", label: "Create Campaign", _autoSeeded: true },
+                };
+                const newEdge: StoredEdge = {
+                  id: `e-hot-${Date.now()}`,
+                  source: node.id,
+                  target: newNodeId,
+                  sourceHandle: "hot",
+                  animated: true,
+                };
+                onGraphChange([...nodes, newCampaignNode], [...edges, newEdge]);
+              }
+            } else {
+              const hotEdge = edges.find(ed => ed.source === node.id && ed.sourceHandle === "hot");
+              if (hotEdge) {
+                const toRemove = new Set<string>();
+                const queue = [hotEdge.target];
+                while (queue.length > 0) {
+                  const id = queue.shift()!;
+                  if (toRemove.has(id)) continue;
+                  toRemove.add(id);
+                  for (const ed of edges) {
+                    if (ed.source === id) queue.push(ed.target);
+                  }
+                }
+                const hotBranchNodes = nodes.filter(n => toRemove.has(n.id));
+                const hasUserContent = hotBranchNodes.length > 1 || hotBranchNodes.some(n => !n.data._autoSeeded);
+                if (hasUserContent && !window.confirm("This will remove the campaign steps inside. Continue?")) {
+                  return;
+                }
+                const newNodes = nodes.filter(n => !toRemove.has(n.id));
+                const newEdges = edges.filter(ed =>
+                  !(ed.source === node.id && ed.sourceHandle === "hot") &&
+                  !toRemove.has(ed.source) && !toRemove.has(ed.target)
+                );
+                onGraphChange(newNodes, newEdges);
+              }
+              onChange(node.id, { ...node.data, autoBuildCampaign: false });
+            }
+          }}
           className="mt-0.5 accent-[#06B6D4]"
         />
         <div>
@@ -6270,6 +6354,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             defId={defId}
             nodes={nodes}
             edges={edges}
+            onGraphChange={handleGraphChange}
           />
         )}
 

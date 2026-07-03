@@ -135,6 +135,20 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       return result;
     }
 
+    // ── Fetch News Headlines (campaign container when autoBuildCampaign) ──────
+    if (type === "fetch_news_headlines" && node.data.autoBuildCampaign === true) {
+      const hotEdge  = out.find(e => e.sourceHandle === "hot");
+      const nextEdge = out.find(e => !e.sourceHandle);
+
+      step.branches = { hot: hotEdge ? buildSequence(hotEdge.target, stopSet) : [] };
+
+      const result: FlowStep[] = [step];
+      if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
+        result.push(...buildSequence(nextEdge.target, stopSet));
+      }
+      return result;
+    }
+
     // ── Condition (If/Else) ───────────────────────────────────────────────────
     if (type === "condition") {
       const yesEdge = out.find(e => e.sourceHandle === "yes");
@@ -280,6 +294,15 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         y = afterBody + 40;
         // Continuation from foreach uses "done" handle
         feeders_ = [{ id: step.id, handle: "done" }];
+      }
+
+      // ── Fetch News Headlines (campaign body) ───────────────────────────────
+      else if (step.nodeType === "fetch_news_headlines" && step.branches["hot"] !== undefined) {
+        const hotSteps = step.branches["hot"] ?? [];
+        const { nextY: afterHot } = doLayout(hotSteps, x + BRANCH_W, y, [{ id: step.id, handle: "hot" }]);
+        y = afterHot + 40;
+        // Continuation via plain edge from the news node
+        feeders_ = [{ id: step.id }];
       }
 
       // ── Condition ──────────────────────────────────────────────────────────

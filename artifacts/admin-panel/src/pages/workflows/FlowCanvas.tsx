@@ -346,7 +346,8 @@ function StepCard({
     onDuplicateNode(step.id);
   }
 
-  const isContainer = step.nodeType === "foreach" || step.nodeType === "condition" || step.nodeType === "switch_case";
+  const isContainer = step.nodeType === "foreach" || step.nodeType === "condition" || step.nodeType === "switch_case"
+    || (step.nodeType === "fetch_news_headlines" && step.data.autoBuildCampaign === true);
 
   const ctx = React.useContext(FlowCanvasContext);
   const isDragging = ctx.draggedId === step.id;
@@ -566,6 +567,7 @@ function ContainerBody({
     if (nodeType === "foreach") return "body";
     if (nodeType === "condition") return branchKey;
     if (nodeType === "switch_case") return branchKey === "__default__" ? "default" : `case-${branchKey}`;
+    if (nodeType === "fetch_news_headlines") return "hot";
     return undefined;
   }
 
@@ -737,6 +739,36 @@ function ContainerBody({
               </div>
             );
           })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Fetch News Headlines (Campaign body) ────────────────────────────────────
+  if (nodeType === "fetch_news_headlines") {
+    const hotSteps = branches["hot"] ?? [];
+    return (
+      <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-hidden bg-[#06B6D4]/5">
+        <div className="px-3 py-1.5 flex items-center gap-1.5">
+          <span className="text-[9px] uppercase tracking-widest font-bold text-[#06B6D4]">🔥 Campaign</span>
+        </div>
+        <div className="px-4 pb-3">
+          <BranchStepList
+            steps={hotSteps}
+            containerId={step.id}
+            containerHandle="hot"
+            lastNodeIdFn={lastNodeId}
+            branchKey="hot"
+            isArchived={isArchived}
+            nodeStyles={nodeStyles}
+            nodeIdCounter={nodeIdCounter}
+            libraryCategories={libraryCategories}
+            allLibraryNodes={allLibraryNodes}
+            nodes={nodes}
+            edges={edges}
+            onGraphChange={onGraphChange}
+            onDuplicateNode={onDuplicateNode}
+          />
         </div>
       </div>
     );
@@ -1083,20 +1115,22 @@ export default function FlowCanvas({
                       onDuplicateNode={onDuplicateNode}
                     />
 
-                    {/* "+" after each top-level step */}
-                    <AddButton
-                      afterNodeId={step.id}
-                      sourceHandle={step.nodeType === "foreach" ? "done" : undefined}
-                      isArchived={isArchived}
-                      nodeIdCounter={nodeIdCounter}
-                      nodeStyles={nodeStyles}
-                      libraryCategories={libraryCategories}
-                      allLibraryNodes={allLibraryNodes}
-                      nodes={nodes}
-                      edges={edges}
-                      onGraphChange={onGraphChange}
-                      onInsert={handleTreeInsert}
-                    />
+                    {/* "+" after each top-level step — hidden for terminal news node */}
+                    {!(step.nodeType === "fetch_news_headlines" && !step.data.autoBuildCampaign) && (
+                      <AddButton
+                        afterNodeId={step.id}
+                        sourceHandle={step.nodeType === "foreach" ? "done" : undefined}
+                        isArchived={isArchived}
+                        nodeIdCounter={nodeIdCounter}
+                        nodeStyles={nodeStyles}
+                        libraryCategories={libraryCategories}
+                        allLibraryNodes={allLibraryNodes}
+                        nodes={nodes}
+                        edges={edges}
+                        onGraphChange={onGraphChange}
+                        onInsert={handleTreeInsert}
+                      />
+                    )}
                   </React.Fragment>
                 );
               })}
