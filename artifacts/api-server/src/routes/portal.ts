@@ -4927,6 +4927,41 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         req.log.warn({ err: notifyErr, sessionId: session.id, eventType: event.type }, "processStripeEvent: post-provision notification failed (non-fatal)");
       }
     }
+
+    // Presentation checkout — mark as paid, but never overwrite a signed presentation.
+    // A replayed or duplicated webhook must not revert a signed presentation back to paid,
+    // which would break the signing flow and could trigger duplicate notifications.
+    if (session.metadata?.type === "presentation_checkout" && session.payment_status === "paid") {
+      const presentationId = parseInt(session.metadata.presentationId ?? "", 10);
+      if (!isNaN(presentationId)) {
+        const [currentPresentation] = await db
+          .select({ status: quickWinPresentationsTable.status })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.id, presentationId))
+          .limit(1);
+
+        if (!currentPresentation) {
+          req.log.warn(
+            { presentationId, sessionId: session.id },
+            "processStripeEvent: presentation not found for completed session, skipping paid update",
+          );
+        } else if (currentPresentation.status === "signed") {
+          // Already signed — a replayed completed event must never overwrite this.
+          req.log.warn(
+            { presentationId, sessionId: session.id, status: currentPresentation.status },
+            "processStripeEvent: presentation is already signed — skipping paid status update to protect signing flow",
+          );
+        } else if (currentPresentation.status !== "paid") {
+          await db.update(quickWinPresentationsTable)
+            .set({ status: "paid", updatedAt: new Date() })
+            .where(eq(quickWinPresentationsTable.id, presentationId));
+          req.log.info(
+            { presentationId, sessionId: session.id },
+            "processStripeEvent: presentation marked as paid",
+          );
+        }
+      }
+    }
   } else if (event.type === "checkout.session.expired") {
     const session = event.data.object as import("stripe").Stripe.Checkout.Session;
     if (session.metadata?.type === "presentation_checkout") {
@@ -9686,9 +9721,11 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       }
     }
 
-    // Auto-sync payment status from Stripe if session exists and not yet paid
+    // Auto-sync payment status from Stripe if session exists and not yet paid/signed.
+    // Guard: never overwrite a signed presentation — signing is the terminal state
+    // and must not be regressed to paid by a replayed or late webhook auto-sync.
     let currentStatus = pres.status;
-    if (pres.stripeSessionId && currentStatus !== "paid") {
+    if (pres.stripeSessionId && currentStatus !== "paid" && currentStatus !== "signed") {
       try {
         let stripeKey: string | null = null;
         try { stripeKey = getStripeKey(); } catch { /* stripe not configured */ }

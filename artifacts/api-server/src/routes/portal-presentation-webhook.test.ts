@@ -150,6 +150,7 @@ mock.module("@workspace/db", {
     quickWinPresentationsTable: {},
     presentationDocViewsTable: {},
     quickWinResultSharesTable: {},
+    clientDocumentsTable: {},
   },
 });
 
@@ -373,6 +374,33 @@ after(
 
 const PRESENTATION_ID = 99;
 const SESSION_ID = "cs_test_expired_session_abc123";
+const COMPLETED_SESSION_ID = "cs_test_completed_session_xyz789";
+
+function makeCompletedSessionEvent(
+  presentationId: number,
+  sessionId: string,
+): Record<string, unknown> {
+  return {
+    id: "evt_test_completed",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: sessionId,
+        object: "checkout.session",
+        payment_status: "paid",
+        amount_total: 40000,
+        customer_details: { name: "Test Client", email: "test@example.com" },
+        metadata: {
+          type: "presentation_checkout",
+          presentationId: String(presentationId),
+          userId: "77",
+          paymentPlan: "full",
+          totalPrice: "400",
+        },
+      },
+    },
+  };
+}
 
 function makeExpiredSessionEvent(
   presentationId: number,
@@ -587,6 +615,108 @@ describe("webhook: checkout.session.expired is ignored when presentation is alre
       capturedUpdateSet,
       null,
       `expected no DB update for a paid presentation, but capturedUpdateSet was: ${JSON.stringify(capturedUpdateSet)}`,
+    );
+  });
+});
+
+// =============================================================================
+// Scenario 5: checkout.session.completed marks a pending presentation as paid
+// Happy-path — the normal flow where a fresh payment completes.
+// =============================================================================
+
+describe("webhook: checkout.session.completed marks a pending presentation as paid", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+
+  before(async () => {
+    capturedUpdateSet = null;
+    // Seed the DB queue so the read-before-write select in the completed handler
+    // returns a presentation that is still in pending/draft state.
+    dbQueue = [[{ status: "pending" }]];
+    webhookEventToReturn = makeCompletedSessionEvent(PRESENTATION_ID, COMPLETED_SESSION_ID);
+
+    ({ status, body } = await postWebhook(webhookEventToReturn));
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("webhook response contains { received: true }", () => {
+    assert.equal(body.received, true);
+  });
+
+  it("db.update was called to persist the paid status", () => {
+    assert.notEqual(
+      capturedUpdateSet,
+      null,
+      "expected db.update().set() to be called but it was not",
+    );
+  });
+
+  it("status is set to 'paid' in the update", () => {
+    assert.equal(
+      (capturedUpdateSet as Record<string, unknown> | null)?.status,
+      "paid",
+      `expected status to be 'paid', got ${JSON.stringify(capturedUpdateSet?.status)}`,
+    );
+  });
+});
+
+// =============================================================================
+// Scenario 6: checkout.session.completed replayed after presentation is signed
+// The presentation must remain in 'signed' status — the webhook MUST NOT
+// overwrite it back to 'paid', which would break the signed state invariant.
+// =============================================================================
+
+describe("webhook: checkout.session.completed replay does not overwrite a signed presentation", () => {
+  before(async () => {
+    capturedUpdateSet = null;
+    // Seed the DB queue so the read-before-write select returns a SIGNED presentation.
+    // The handler must detect this and skip the write entirely.
+    dbQueue = [[{ status: "signed" }]];
+    webhookEventToReturn = makeCompletedSessionEvent(PRESENTATION_ID, COMPLETED_SESSION_ID);
+
+    await postWebhook(webhookEventToReturn);
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200 even for signed presentations", async () => {
+    const { status } = await postWebhook(makeCompletedSessionEvent(PRESENTATION_ID, COMPLETED_SESSION_ID));
+    assert.equal(status, 200);
+  });
+
+  it("db.update was NOT called — signed presentation must stay signed", () => {
+    assert.equal(
+      capturedUpdateSet,
+      null,
+      `expected no DB update for a signed presentation, but capturedUpdateSet was: ${JSON.stringify(capturedUpdateSet)}`,
+    );
+  });
+});
+
+// =============================================================================
+// Scenario 7: checkout.session.completed replayed after presentation is already paid
+// Idempotency check — a duplicate completed webhook must not cause a second write.
+// =============================================================================
+
+describe("webhook: checkout.session.completed is idempotent for already-paid presentations", () => {
+  before(async () => {
+    capturedUpdateSet = null;
+    // Seed the DB queue so the read-before-write select returns an already-PAID presentation.
+    dbQueue = [[{ status: "paid" }]];
+    webhookEventToReturn = makeCompletedSessionEvent(PRESENTATION_ID, COMPLETED_SESSION_ID);
+
+    await postWebhook(webhookEventToReturn);
+    await waitForAsync();
+  });
+
+  it("db.update was NOT called — already-paid presentation must not be written again", () => {
+    assert.equal(
+      capturedUpdateSet,
+      null,
+      `expected no DB update for an already-paid presentation, but capturedUpdateSet was: ${JSON.stringify(capturedUpdateSet)}`,
     );
   });
 });
