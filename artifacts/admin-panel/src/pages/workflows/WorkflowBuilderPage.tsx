@@ -624,6 +624,7 @@ function PayloadField({
   ancestorOutputs: AncestorGroup[];
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
   const [suggest, setSuggest] = useState<{ openAt: number; filter: string } | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
@@ -705,7 +706,7 @@ function PayloadField({
         <label className="text-xs font-medium text-[#7D8590]">{label}</label>
         {hasVars && (
           <div className="relative">
-            <button type="button" onClick={() => setPickerOpen(v => !v)}
+            <button type="button" onClick={() => { setPickerOpen(v => !v); setPickerSearch(""); }}
               className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -714,24 +715,48 @@ function PayloadField({
             </button>
             {pickerOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setPickerOpen(false)} />
+                <div className="fixed inset-0 z-40" onClick={() => { setPickerOpen(false); setPickerSearch(""); }} />
                 <div className="absolute right-0 top-5 z-50 w-64 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden">
-                  <div className="max-h-56 overflow-y-auto py-1">
-                    {ancestorOutputs.map(group => (
-                      <div key={group.nodeId}>
-                        <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
-                        {group.outputs.map(o => {
-                          const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
-                          return (
-                            <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
-                              className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
-                              <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
-                              <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
+                  <div className="px-2 pt-2 pb-1">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={pickerSearch}
+                      onChange={e => setPickerSearch(e.target.value)}
+                      placeholder="Search variables…"
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                    />
+                  </div>
+                  <div className="max-h-52 overflow-y-auto py-1">
+                    {(() => {
+                      const q = pickerSearch.trim().toLowerCase();
+                      const filteredGroups = ancestorOutputs.map(group => ({
+                        ...group,
+                        outputs: q
+                          ? group.outputs.filter(o =>
+                              o.key.toLowerCase().includes(q) || o.label.toLowerCase().includes(q),
+                            )
+                          : group.outputs,
+                      })).filter(g => g.outputs.length > 0);
+                      if (filteredGroups.length === 0) {
+                        return <p className="px-3 py-2 text-[10px] text-[#484F58]">No variables match.</p>;
+                      }
+                      return filteredGroups.map(group => (
+                        <div key={group.nodeId}>
+                          <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
+                          {group.outputs.map(o => {
+                            const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
+                            return (
+                              <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
+                                className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
+                                <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ));
+                    })()}
                   </div>
                 </div>
               </>
