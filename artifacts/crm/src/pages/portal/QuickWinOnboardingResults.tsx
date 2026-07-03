@@ -130,6 +130,7 @@ const RISK_THRESHOLDS: Array<{ key: string; label: string; risk: string; detail:
 
 interface EngagementStatus {
   hasActiveEngagement: boolean;
+  wizardResultsReady: boolean;
 }
 
 interface PresentationInfo {
@@ -161,12 +162,18 @@ export default function QuickWinOnboardingResults() {
   const [regenerating, setRegenerating] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
-  // On mount, if the client has no App Registration credentials redirect them
-  // back to the wizard start so they can enter credentials before reviewing results.
+  // On mount, gate the results page:
+  // • if scan not finished yet (wizardResultsReady=false) → back to /portal/diagnostic
+  // • if no credentials → back to wizard to enter them
   useEffect(() => {
     fetchWithAuth("/api/portal/onboarding/wizard-status")
-      .then(r => r.ok ? (r.json() as Promise<{ hasCredentials?: boolean }>) : { hasCredentials: true })
+      .then(r => r.ok ? (r.json() as Promise<{ hasCredentials?: boolean; wizardResultsReady?: boolean }>) : { hasCredentials: true, wizardResultsReady: true })
       .then(data => {
+        // Scan not finished yet — send them back to the diagnostic progress page
+        if (data.wizardResultsReady === false) {
+          navigate("/portal/diagnostic");
+          return;
+        }
         if (!data.hasCredentials) {
           sessionStorage.removeItem("onboarding-wizard-step");
           navigate("/portal/onboarding/wizard");
@@ -196,8 +203,9 @@ export default function QuickWinOnboardingResults() {
     }).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
-  // Poll wizard-status every 30 s so the gate lifts automatically the moment
-  // Shane activates the client's service — no manual navigation needed.
+  // Poll wizard-status every 30 s:
+  // • lifts the gate automatically when Shane activates the client's service
+  // • bounces back to /portal/diagnostic if results somehow become not-ready
   useEffect(() => {
     let active = true;
 
@@ -210,6 +218,11 @@ export default function QuickWinOnboardingResults() {
           if (data.hasActiveEngagement) {
             active = false;
             navigate("/portal");
+            return;
+          }
+          if (!data.wizardResultsReady) {
+            active = false;
+            navigate("/portal/diagnostic");
           }
         }
       } catch {
