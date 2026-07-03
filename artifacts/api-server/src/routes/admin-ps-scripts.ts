@@ -14,10 +14,11 @@ import {
   kanbanTasksTable,
   clientServicesTable,
   scriptRunResultsTable,
+  projectsTable,
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
-import { eq, desc, asc, inArray, and, sql, isNotNull } from "drizzle-orm";
+import { eq, desc, asc, inArray, and, sql, isNotNull, isNull } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
@@ -1459,9 +1460,33 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
 
                 if (!libScript) continue;
 
-                // Resolve the customerId from the project's linked service row.
+                // Resolve the customerId from the linked service row, with a
+                // fallback to the project's own client_user_id so that clients
+                // whose client_services.project_id was NULL still get a run result.
                 const projSvc = linkedServices.find((s) => s.projectId === kanbanTask.projectId);
-                const customerId = projSvc?.clientUserId ?? null;
+                let customerId = projSvc?.clientUserId ?? null;
+                if (customerId === null && kanbanTask.projectId !== null) {
+                  const [projRow] = await db
+                    .select({ clientUserId: projectsTable.clientUserId })
+                    .from(projectsTable)
+                    .where(eq(projectsTable.id, kanbanTask.projectId))
+                    .limit(1);
+                  customerId = projRow?.clientUserId ?? null;
+                  // Also backfill client_services.project_id if it was unset,
+                  // so future portal queries can find this service.
+                  if (customerId !== null) {
+                    await db
+                      .update(clientServicesTable)
+                      .set({ projectId: kanbanTask.projectId })
+                      .where(
+                        and(
+                          eq(clientServicesTable.serviceId, serviceId),
+                          eq(clientServicesTable.clientUserId, customerId),
+                          isNull(clientServicesTable.projectId),
+                        ),
+                      );
+                  }
+                }
 
                 const [runResult] = await db
                   .insert(scriptRunResultsTable)
@@ -1469,6 +1494,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
                     customerId,
                     libraryScriptId: libScript.id,
                     packageId: serviceId,   // links run result to the service for portal queries
+                    kanbanTaskId: kanbanTask.id, // also index by task for direct lookup
                     status: "awaiting_upload",
                     executionSource: "manual",
                     scriptName: libScript.title ?? null,

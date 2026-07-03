@@ -8952,39 +8952,91 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
 
     if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
-    // Find the service linked to this project
-    const [clientService] = await db
+    // Find the service linked to this project — prefer project_id match,
+    // fall back to clientUserId-only match (handles cases where project_id
+    // was not yet backfilled on client_services).
+    let clientService: { serviceId: number } | undefined;
+    const [cs] = await db
       .select({ serviceId: clientServicesTable.serviceId })
       .from(clientServicesTable)
       .where(and(eq(clientServicesTable.projectId, projectId), eq(clientServicesTable.clientUserId, userId)))
       .limit(1);
+    if (cs) {
+      clientService = cs;
+    } else {
+      const [csFallback] = await db
+        .select({ serviceId: clientServicesTable.serviceId })
+        .from(clientServicesTable)
+        .where(eq(clientServicesTable.clientUserId, userId))
+        .limit(1);
+      clientService = csFallback;
+    }
 
-    if (!clientService) { res.json([]); return; }
-
-    // Fetch manual script run results for this package + customer
-    const rows = await db
-      .select({
-        runResultId: scriptRunResultsTable.id,
-        scriptId: scriptRunResultsTable.scriptId,
-        status: scriptRunResultsTable.status,
-        createdAt: scriptRunResultsTable.createdAt,
-        uploadedAt: scriptRunResultsTable.uploadedAt,
-        parsedFindings: scriptRunResultsTable.parsedFindings,
-        recommendations: scriptRunResultsTable.recommendations,
-        scriptName: powershellScriptsTable.title,
-        description: powershellScriptsTable.description,
-        psScriptBody: powershellScriptsTable.scriptBody,
-      })
-      .from(scriptRunResultsTable)
-      .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+    // Also collect kanban task IDs for this project so we can find run results
+    // that were linked via kanban_task_id (e.g. created by the download endpoint)
+    // but may not carry a packageId yet.
+    const projectKanbanTasks = await db
+      .select({ id: kanbanTasksTable.id })
+      .from(kanbanTasksTable)
       .where(
         and(
-          eq(scriptRunResultsTable.customerId, userId),
-          eq(scriptRunResultsTable.packageId, clientService.serviceId),
-          eq(scriptRunResultsTable.executionSource, "manual"),
+          eq(kanbanTasksTable.projectId, projectId),
+          eq(kanbanTasksTable.taskType, "manualScript"),
         ),
-      )
-      .orderBy(desc(scriptRunResultsTable.createdAt));
+      );
+    const projectKanbanTaskIds = projectKanbanTasks.map(t => t.id);
+
+    // Fetch manual script run results: primary query by packageId (when service
+    // is known), plus fallback query by kanban_task_id for this project.
+    const selectFields = {
+      runResultId: scriptRunResultsTable.id,
+      scriptId: scriptRunResultsTable.scriptId,
+      status: scriptRunResultsTable.status,
+      createdAt: scriptRunResultsTable.createdAt,
+      uploadedAt: scriptRunResultsTable.uploadedAt,
+      parsedFindings: scriptRunResultsTable.parsedFindings,
+      recommendations: scriptRunResultsTable.recommendations,
+      scriptName: powershellScriptsTable.title,
+      description: powershellScriptsTable.description,
+      psScriptBody: powershellScriptsTable.scriptBody,
+    };
+
+    const primaryRows = clientService
+      ? await db
+          .select(selectFields)
+          .from(scriptRunResultsTable)
+          .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+          .where(
+            and(
+              eq(scriptRunResultsTable.customerId, userId),
+              eq(scriptRunResultsTable.packageId, clientService.serviceId),
+              eq(scriptRunResultsTable.executionSource, "manual"),
+            ),
+          )
+          .orderBy(desc(scriptRunResultsTable.createdAt))
+      : [];
+
+    // Secondary: run results linked via kanban_task_id but not captured above
+    const primaryIds = new Set(primaryRows.map(r => r.runResultId));
+    const taskRows = projectKanbanTaskIds.length > 0
+      ? await db
+          .select(selectFields)
+          .from(scriptRunResultsTable)
+          .leftJoin(powershellScriptsTable, eq(scriptRunResultsTable.libraryScriptId, powershellScriptsTable.id))
+          .where(
+            and(
+              eq(scriptRunResultsTable.customerId, userId),
+              eq(scriptRunResultsTable.executionSource, "manual"),
+              inArray(scriptRunResultsTable.kanbanTaskId, projectKanbanTaskIds),
+            ),
+          )
+          .orderBy(desc(scriptRunResultsTable.createdAt))
+      : [];
+
+    const rows = [
+      ...primaryRows,
+      ...taskRows.filter(r => !primaryIds.has(r.runResultId)),
+    ];
 
     // Filter to only awaiting_upload or completed
     const filtered = rows.filter(r => r.status === "awaiting_upload" || r.status === "completed");
