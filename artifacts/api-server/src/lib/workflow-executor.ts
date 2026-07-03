@@ -39,6 +39,9 @@ import {
   campaignAssetsTable,
   landingPagesTable,
   clientPresentationsTable,
+  scriptRunResultsTable,
+  insightsGeneratedDocumentsTable,
+  clientM365ProfilesTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -48,12 +51,127 @@ import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "
 import { sendWebPushToAdmins } from "./web-push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
-import { eq, and, count } from "drizzle-orm";
+import { eq, and, count, desc } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
+import { getPrompt } from "./prompt-loader";
+
+// ── Insights document generation helpers ─────────────────────────────────────
+// Mirrors the same helpers in routes/admin-insights.ts so the generate_document
+// workflow node produces identical output to clicking Generate in the UI.
+
+const REPORT_DOC_TYPE_LABELS: Record<string, string> = {
+  executive_summary:           "Executive Summary",
+  full_readiness_report:       "Full Readiness Report",
+  security_posture_report:     "Security Posture Report",
+  governance_maturity_report:  "Governance Maturity Report",
+  data_exposure_risk_report:   "Data Exposure Risk Report",
+  license_optimization_report: "License Optimization Report",
+};
+
+const INSIGHTS_REPORT_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.
+
+Client: {{clientName}}{{projectLine}}
+Document title: {{title}}
+Report date: {{date}}
+
+M365 Environment Health Scores:
+{{scores}}
+
+Key Findings ({{findingsCount}} total):
+{{findings}}
+
+Key Recommendations ({{recommendationsCount}} total):
+{{recommendations}}
+
+Configuration Telemetry Sample (from profileUpdates):
+{{profileSample}}
+
+Script analysis runs: {{runCount}} completed assessments
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography
+- Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
+- Write in first person as Shane McCaw with professional consulting tone
+- Be specific and actionable — reference actual findings, not generic advice
+- Total length: 800-1500 words of body content`;
+
+function igSubstituteTokens(template: string, vars: Record<string, string>): string {
+  return Object.entries(vars).reduce(
+    (t, [k, v]) => t.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), v),
+    template,
+  );
+}
+
+function igComputeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]) {
+  const sums: Record<string, number> = {};
+  const cnts: Record<string, number> = {};
+  for (const run of runs) {
+    for (const [k, v] of Object.entries(run.scoreImpact ?? {})) {
+      sums[k] = (sums[k] ?? 0) + v;
+      cnts[k] = (cnts[k] ?? 0) + 1;
+    }
+  }
+  const avg = (key: string, fallback = 0): number =>
+    cnts[key] ? Math.min(100, Math.max(0, Math.round(sums[key]! / cnts[key]!))) : fallback;
+  const security    = avg("security",    avg("Security",    60));
+  const compliance  = avg("compliance",  avg("Compliance",  60));
+  const copilot     = avg("copilotReadiness", avg("copilot_readiness", avg("CopilotReadiness", avg("copilot", 50))));
+  const governance  = avg("governance",  avg("Governance",  55));
+  const productivity = avg("productivity", avg("Productivity", 55));
+  return { security, compliance, copilot, governance, productivity, composite: Math.round((security + compliance + copilot + governance + productivity) / 5) };
+}
+
+async function igFetchClientHealthScores(customerId: number) {
+  const rows = await db.select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score })
+    .from(clientHealthHistoryTable)
+    .where(eq(clientHealthHistoryTable.clientId, customerId))
+    .orderBy(desc(clientHealthHistoryTable.recordedAt));
+  if (rows.length === 0) return null;
+  const latest: Record<string, number> = {};
+  for (const row of rows) { if (!(row.category in latest)) latest[row.category] = row.score; }
+  const sec = latest["security"] ?? 0, com = latest["compliance"] ?? 0, cop = latest["copilot"] ?? 0;
+  const gov = latest["governance"] ?? 0, pro = latest["productivity"] ?? 0;
+  if (!sec && !com && !cop && !gov && !pro) return null;
+  const total = [sec, com, cop, gov, pro].filter(v => v > 0);
+  return { security: sec, compliance: com, copilot: cop, governance: gov, productivity: pro,
+    composite: total.length ? Math.round(total.reduce((a, b) => a + b, 0) / total.length) : 0 };
+}
+
+async function igFetchRuns(customerId: number, limit = 50) {
+  return db.select({
+    scoreImpact: scriptRunResultsTable.scoreImpact,
+    parsedFindings: scriptRunResultsTable.parsedFindings,
+    recommendations: scriptRunResultsTable.recommendations,
+    profileUpdates: scriptRunResultsTable.profileUpdates,
+  }).from(scriptRunResultsTable)
+    .where(and(eq(scriptRunResultsTable.status, "completed"), eq(scriptRunResultsTable.customerId, customerId)))
+    .orderBy(desc(scriptRunResultsTable.createdAt))
+    .limit(limit);
+}
+
+function igCollectFindings(runs: { parsedFindings: string[] | null; recommendations: string[] | null }[]) {
+  const findings = new Set<string>();
+  const recs = new Set<string>();
+  for (const run of runs) {
+    for (const f of run.parsedFindings ?? []) findings.add(f);
+    for (const r of run.recommendations ?? []) recs.add(r);
+  }
+  return { findings: [...findings].slice(0, 50), recommendations: [...recs].slice(0, 50) };
+}
+
+function igExtractHtml(aiText: string): string {
+  // Strip markdown code fences if the model wrapped the HTML
+  const fenceMatch = aiText.match(/```(?:html)?\s*([\s\S]*?)```/i);
+  if (fenceMatch?.[1]) return fenceMatch[1].trim();
+  const start = aiText.indexOf("<");
+  if (start !== -1) return aiText.slice(start).trim();
+  return aiText.trim();
+}
 
 // ── Generated images directory ────────────────────────────────────────────────
 const UPLOADS_BASE = process.env.UPLOADS_DIR
@@ -738,20 +856,112 @@ async function executeNode(
             output = { jobId: job.jobId, jobStatus: job.status, runbookName };
           }
         } else if (actionType === "generate_document") {
-          const clientIdRaw = interp(node.data.clientId as string | undefined, payload);
+          // Mirrors POST /api/admin/insights/documents/generate exactly.
+          // clientId and projectId are resolved from payload first, then from
+          // node.data.customerId / node.data.projectId as fallbacks so the node
+          // config panel can hard-code IDs when needed.
+          const clientIdRaw  = interp(node.data.clientId as string | undefined, payload)
+                            ?? interp(node.data.customerId as string | undefined, payload);
+          const projectIdRaw = interp(node.data.projectId as string | undefined, payload);
           const clientUserId = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
+          const projectId    = projectIdRaw ? parseInt(projectIdRaw, 10) : NaN;
+
           if (isNaN(clientUserId)) {
             nodeError = true;
             output = { error: "generate_document requires a valid clientId" };
           } else {
-            const docType = (node.data.docType as string | undefined) ?? "security";
-            const docName = interp(node.data.docTitle as string | undefined, payload) ?? `${docType} report`;
-            const [doc] = await db.insert(clientDocumentsTable).values({
-              clientUserId,
-              name: docName,
-              category: "reports",
-            }).returning();
-            output = { documentId: doc.id, docType, name: doc.name };
+            const docType  = (interp(node.data.docType as string | undefined, payload) ?? "executive_summary") as string;
+            const docLabel = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
+            const docTitle = interp(node.data.docTitle as string | undefined, payload) ?? `${docLabel}`;
+
+            // Fetch supporting data in parallel
+            const [runs, customerRow, projectRow] = await Promise.all([
+              igFetchRuns(clientUserId, 50),
+              db.select({ name: usersTable.name, company: usersTable.company })
+                .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1),
+              !isNaN(projectId)
+                ? db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1)
+                : Promise.resolve([] as { title: string }[]),
+            ]);
+
+            const healthScores = await igFetchClientHealthScores(clientUserId);
+            const scores = healthScores ?? igComputeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+            const { findings, recommendations } = igCollectFindings(runs as { parsedFindings: string[] | null; recommendations: string[] | null }[]);
+
+            const clientName  = customerRow[0]?.company ?? customerRow[0]?.name ?? "Client";
+            const projectName = projectRow[0]?.title ?? "";
+
+            const profileSample = (runs as { profileUpdates: Record<string, unknown> | null }[])
+              .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
+              .slice(0, 30)
+              .map(([k, v]) => `  ${k}: ${String(v)}`)
+              .join("\n");
+
+            const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
+            const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet.";
+            const recsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
+
+            const rawTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+            const prompt = igSubstituteTokens(rawTemplate, {
+              docLabel,
+              clientName,
+              projectLine: projectName ? ` · Project: ${projectName}` : "",
+              title: docTitle,
+              date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+              scores: scoresBlock,
+              findingsCount: String(findings.length),
+              findings: findingsBlock,
+              recommendationsCount: String(recommendations.length),
+              recommendations: recsBlock,
+              profileSample: profileSample || "  No telemetry captured yet.",
+              runCount: String(runs.length),
+            });
+
+            const aiResp = await anthropic.messages.create({
+              model: "claude-haiku-4-5",
+              max_tokens: 8192,
+              messages: [{ role: "user", content: prompt }],
+            });
+            const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
+            const htmlContent = igExtractHtml(rawText);
+
+            // Upsert: replace existing doc for same customer+project+docType
+            let reportDocId: number;
+            const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
+              .from(insightsGeneratedDocumentsTable)
+              .where(and(
+                eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+                ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
+                eq(insightsGeneratedDocumentsTable.docType, docType),
+              ))
+              .limit(1);
+
+            if (existing[0]) {
+              await db.update(insightsGeneratedDocumentsTable)
+                .set({ title: docTitle, htmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date() })
+                .where(eq(insightsGeneratedDocumentsTable.id, existing[0].id));
+              reportDocId = existing[0].id;
+            } else {
+              const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
+                customerId: clientUserId,
+                projectId: !isNaN(projectId) ? projectId : null,
+                category: "report",
+                docType,
+                title: docTitle,
+                htmlContent,
+                status: "approved",
+                approvedAt: new Date(),
+              }).returning({ id: insightsGeneratedDocumentsTable.id });
+              reportDocId = ins!.id;
+            }
+
+            // Set the canonical PDF download URL
+            await db.update(insightsGeneratedDocumentsTable)
+              .set({ pdfUrl: `/api/admin/insights/documents/${reportDocId}/download` })
+              .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+
+            logger.info({ runId, reportDocId, docType, clientUserId }, "wf-executor: generate_document completed");
+            output = { documentId: reportDocId, docType, title: docTitle, clientId: clientUserId };
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
