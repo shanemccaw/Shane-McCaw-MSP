@@ -1515,6 +1515,7 @@ Return ONLY a JSON object with these exact keys:
           // Optionally upload an image and attach it to the post
           let shareMediaCategory: string = "NONE";
           let mediaItems: unknown[] = [];
+          let imageUploadWarning: string | undefined;
 
           if (imageUrl) {
             try {
@@ -1561,7 +1562,7 @@ Return ONLY a JSON object with these exact keys:
                     const contentType = imgResp.headers.get("content-type") ?? "image/jpeg";
 
                     // Step 3: Upload binary to LinkedIn
-                    await fetch(uploadUrl, {
+                    const putResp = await fetch(uploadUrl, {
                       method: "PUT",
                       headers: {
                         "Authorization": `Bearer ${accessToken}`,
@@ -1570,16 +1571,27 @@ Return ONLY a JSON object with these exact keys:
                       body: imgBuf,
                     });
 
-                    shareMediaCategory = "IMAGE";
-                    mediaItems = [
-                      { status: "READY", description: { text: "" }, media: assetUrn, title: { text: "" } },
-                    ];
+                    if (putResp.ok || putResp.status === 201) {
+                      shareMediaCategory = "IMAGE";
+                      mediaItems = [
+                        { status: "READY", description: { text: "" }, media: assetUrn, title: { text: "" } },
+                      ];
+                    } else {
+                      imageUploadWarning = `Image not attached — LinkedIn rejected the image upload (HTTP ${putResp.status})`;
+                    }
+                  } else {
+                    imageUploadWarning = "Image not attached — could not download image from source URL";
                   }
+                } else {
+                  imageUploadWarning = "Image not attached — LinkedIn did not return an upload URL or asset URN";
                 }
+              } else {
+                imageUploadWarning = `Image not attached — LinkedIn asset registration failed (HTTP ${regResp.status})`;
               }
             } catch (imgErr) {
               // Image upload is best-effort — log and fall back to text-only post
               logger.warn({ err: imgErr, imageUrl }, "post_linkedin: image upload failed, falling back to text-only");
+              imageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
             }
           }
 
@@ -1610,7 +1622,7 @@ Return ONLY a JSON object with these exact keys:
           } else {
             const postId = resp.headers.get("x-restli-id") ?? "unknown";
             const linkedinPostUrl = `https://www.linkedin.com/feed/update/${postId}`;
-            output = { linkedinPostId: postId, linkedinPostUrl };
+            output = { linkedinPostId: postId, linkedinPostUrl, ...(imageUploadWarning ? { imageUploadWarning } : {}) };
           }
         }
         break;
@@ -1634,6 +1646,7 @@ Return ONLY a JSON object with these exact keys:
         } else {
           // Optionally upload an image and get a media_id to attach to the tweet
           let mediaId: string | undefined;
+          let imageUploadWarning: string | undefined;
 
           if (imageUrl) {
             try {
@@ -1668,11 +1681,19 @@ Return ONLY a JSON object with these exact keys:
                 if (uploadResp.ok) {
                   const uploadJson = (await uploadResp.json()) as { media_id_string?: string };
                   mediaId = uploadJson.media_id_string;
+                  if (!mediaId) {
+                    imageUploadWarning = "Image not attached — Twitter media upload succeeded but returned no media ID";
+                  }
+                } else {
+                  imageUploadWarning = `Image not attached — Twitter media upload failed (HTTP ${uploadResp.status})`;
                 }
+              } else {
+                imageUploadWarning = "Image not attached — could not download image from source URL";
               }
             } catch (imgErr) {
               // Image upload is best-effort — log and fall back to text-only tweet
               logger.warn({ err: imgErr, imageUrl }, "post_twitter: image upload failed, falling back to text-only");
+              imageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
             }
           }
 
@@ -1706,7 +1727,7 @@ Return ONLY a JSON object with these exact keys:
             const json = (await resp.json()) as { data?: { id?: string } };
             const tweetId = json?.data?.id ?? "unknown";
             const twitterTweetUrl = `https://twitter.com/i/web/status/${tweetId}`;
-            output = { twitterTweetId: tweetId, twitterTweetUrl };
+            output = { twitterTweetId: tweetId, twitterTweetUrl, ...(imageUploadWarning ? { imageUploadWarning } : {}) };
           }
         }
         void bearerToken; // may be used for read-only calls; required secret for completeness
