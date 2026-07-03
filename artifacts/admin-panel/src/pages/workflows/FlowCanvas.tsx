@@ -372,7 +372,7 @@ function StepCard({
           : `hover:border-[#484F58]`
       }`}
       style={{ borderColor: isSelected ? "#0078D4" : style.border }}
-      onClick={onSelect}
+      onClick={e => { e.stopPropagation(); onSelect(); }}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onDragLeave={e => { e.stopPropagation(); }}
