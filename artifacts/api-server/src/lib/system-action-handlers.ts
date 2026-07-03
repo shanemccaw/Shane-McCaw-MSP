@@ -9,10 +9,10 @@
 import { pool, db } from "@workspace/db";
 import { insightsAutomationsTable } from "@workspace/db";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
-import { logger } from "./logger";
-import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard } from "./kanban-auto-fire";
-import { executeAutomation, nextRunFromCron } from "../routes/admin-insights";
-import { checkManualScriptEscalations } from "./manual-script-escalation";
+import { logger } from "./logger.ts";
+import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard } from "./kanban-auto-fire.ts";
+import { executeAutomation, nextRunFromCron } from "../routes/admin-insights.ts";
+import { checkManualScriptEscalations } from "./manual-script-escalation.ts";
 
 export async function handleSystemAction(
   task: string,
