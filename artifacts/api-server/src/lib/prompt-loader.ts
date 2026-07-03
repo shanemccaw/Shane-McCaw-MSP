@@ -857,7 +857,9 @@ INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
 - Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
-- The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Estimated Price Range, Notes — populated from the engagement projects catalogue above; do NOT use [TBD] for pricing if catalogue data is available
+- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends"); shared adjustments must NOT be added to individual workstream rows
+- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments are listed ONCE in the "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
@@ -1197,6 +1199,42 @@ Rules:
 - Every task title must be a concrete action (start with a verb: Provision, Configure, Audit, Deploy, Generate, Validate, Train, Document)`,
   },
 ];
+
+/**
+ * Prompt patches — explicit UPDATE statements for prompts whose prompt_body
+ * was intentionally changed after initial seeding. Because seedAiPrompts()
+ * uses ON CONFLICT DO NOTHING, an UPDATE is the only reliable way to push a
+ * wording change to existing environments without a manual SQL command.
+ *
+ * Add one entry per intentional prompt change. Each entry updates both
+ * prompt_body (the live value) and default_body (the baseline reference).
+ */
+const PROMPT_PATCHES: Array<{ key: string; body: string }> = [
+  {
+    // Fix: shared pricing adjustments must appear once in a summary section,
+    // not repeated on every workstream row. Updated 2026-07-03.
+    key: "insights-consulting-consolidated_sow",
+    body: (() => {
+      const seed = SEEDS.find((s) => s.key === "insights-consulting-consolidated_sow");
+      return seed?.body ?? "";
+    })(),
+  },
+];
+
+export async function patchAiPrompts(): Promise<void> {
+  try {
+    for (const patch of PROMPT_PATCHES) {
+      if (!patch.body) continue;
+      await db
+        .update(aiPromptsTable)
+        .set({ promptBody: patch.body, defaultBody: patch.body, updatedAt: new Date() })
+        .where(eq(aiPromptsTable.key, patch.key));
+    }
+    logger.info({ count: PROMPT_PATCHES.length }, "prompt-loader: AI prompt patches applied");
+  } catch (err) {
+    logger.warn({ err }, "prompt-loader: patch failed (non-fatal)");
+  }
+}
 
 export async function seedAiPrompts(): Promise<void> {
   try {
