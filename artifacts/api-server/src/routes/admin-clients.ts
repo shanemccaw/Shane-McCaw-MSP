@@ -530,4 +530,25 @@ router.get("/admin/clients/:id/health/summary", requireAdmin, async (req: Reques
   }
 });
 
+// DELETE /api/admin/clients/:id/health-history — wipe all health history for a client
+// (resets their /portal/onboarding/results page to the empty state)
+router.delete("/admin/clients/:id/health-history", requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid client ID" });
+    return;
+  }
+  try {
+    const deleted = await db
+      .delete(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, id))
+      .returning({ id: clientHealthHistoryTable.id });
+    req.log.info({ clientId: id, deletedCount: deleted.length }, "admin: cleared client health history");
+    res.json({ deleted: deleted.length });
+  } catch (err) {
+    req.log.error({ err }, "admin/clients/:id/health-history DELETE failed");
+    res.status(500).json({ error: "Failed to clear health history" });
+  }
+});
+
 export default router;

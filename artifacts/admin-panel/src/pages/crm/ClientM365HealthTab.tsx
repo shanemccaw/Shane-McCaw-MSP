@@ -125,6 +125,10 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   const [recordResult, setRecordResult] = useState<RecordResult | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
   const refreshSummary = useCallback(async () => {
     try {
       const r = await fetchWithAuth(`/api/admin/clients/${clientId}/health/summary`);
@@ -136,6 +140,25 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
       /* non-fatal — chart keeps showing last known data */
     }
   }, [clientId, fetchWithAuth]);
+
+  const handleClearHistory = async () => {
+    setClearingHistory(true);
+    setClearError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/clients/${clientId}/health-history`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        setClearError(body.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setData({ hasData: false });
+      setConfirmClear(false);
+    } catch (err) {
+      setClearError(err instanceof Error ? err.message : "Failed to clear history");
+    } finally {
+      setClearingHistory(false);
+    }
+  };
 
   const handleRecordHealth = async () => {
     setRecording(true);
@@ -299,6 +322,39 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
     return null;
   };
 
+  const ClearHistoryButton = () => (
+    confirmClear ? (
+      <div className="flex items-center gap-2">
+        {clearError && <span className="text-[10px] text-red-400">{clearError}</span>}
+        <span className="text-xs text-[#7D8590]">Delete all history?</span>
+        <button
+          onClick={() => void handleClearHistory()}
+          disabled={clearingHistory}
+          className="inline-flex items-center gap-1 text-xs font-semibold bg-red-500/15 border border-red-500/30 text-red-400 px-2.5 py-1 rounded-lg hover:bg-red-500/25 disabled:opacity-50 transition-colors"
+        >
+          {clearingHistory ? "Deleting…" : "Yes, clear"}
+        </button>
+        <button
+          onClick={() => { setConfirmClear(false); setClearError(null); }}
+          disabled={clearingHistory}
+          className="text-xs text-[#484F58] hover:text-[#7D8590] transition-colors"
+        >
+          Cancel
+        </button>
+      </div>
+    ) : (
+      <button
+        onClick={() => setConfirmClear(true)}
+        className="inline-flex items-center gap-1.5 text-xs font-semibold bg-[#161B22] border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:border-red-500/40 hover:text-red-400 transition-colors"
+      >
+        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+        </svg>
+        Clear History
+      </button>
+    )
+  );
+
   if (!data || !data.hasData) {
     return (
       <div>
@@ -339,9 +395,12 @@ export default function ClientM365HealthTab({ clientId, fetchWithAuth, onOpenWiz
   return (
     <div className="p-5 space-y-5">
       {/* Record Health action row */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-[10px] text-[#484F58]">Manual snapshot · updates charts immediately</p>
-        <RecordHealthButton />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <ClearHistoryButton />
+          <RecordHealthButton />
+        </div>
       </div>
       <RecordFeedback />
       {/* Overall headline */}
