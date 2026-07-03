@@ -10256,6 +10256,265 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
   }
 });
 
+// POST /portal/onboarding/claim-free — finalise a zero-price onboarding without Stripe
+//
+// Idempotency is keyed by FREE-ONB-<userId>-<sortedServiceIds>. All provisioning
+// (project, clientServices, workflow steps, invoices, setup email) happens here so
+// the success page only needs to poll for the project — no separate provision call.
+router.post("/portal/onboarding/claim-free", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as { contractIds?: unknown; serviceIds?: unknown; guestEmail?: string };
+    const contractIds = (Array.isArray(body.contractIds) ? body.contractIds : []).map(Number).filter(n => !isNaN(n));
+    const serviceIds = (Array.isArray(body.serviceIds) ? body.serviceIds : []).map(Number).filter(n => !isNaN(n));
+    if (serviceIds.length === 0) { res.status(400).json({ error: "No service IDs provided" }); return; }
+
+    // Resolve user: authenticated session or guest email
+    let resolvedUserId: number;
+    if (req.user?.id) {
+      resolvedUserId = req.user.id;
+    } else {
+      const guestEmail = body.guestEmail?.trim();
+      if (!guestEmail) { res.status(401).json({ error: "Authentication required" }); return; }
+      const acct = await ensureClientAccount(guestEmail);
+      resolvedUserId = acct.id;
+      // Link any pre-signed guest contracts to the newly resolved account
+      if (contractIds.length > 0) {
+        await db.update(contractsTable)
+          .set({ userId: resolvedUserId })
+          .where(and(inArray(contractsTable.id, contractIds), isNull(contractsTable.userId)));
+      }
+    }
+
+    // Fetch and validate services — server-side price guard
+    const fetchedServices = await db.select().from(servicesTable)
+      .where(inArray(servicesTable.id, serviceIds));
+    if (fetchedServices.length === 0) { res.status(400).json({ error: "Services not found" }); return; }
+    const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
+    const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
+    const totalPrice = orderedServices.reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0);
+    if (totalPrice > 0) {
+      res.status(400).json({ error: "This order has a non-zero price — use the standard checkout" }); return;
+    }
+
+    const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, resolvedUserId)).limit(1);
+    if (!buyer) { res.status(404).json({ error: "Account not found" }); return; }
+
+    // Idempotency: deterministic invoice number — retry-safe
+    const freeInvoiceNumber = `FREE-ONB-${resolvedUserId}-${[...serviceIds].sort().join("-")}`;
+    const [existingInvoice] = await db.select({ id: invoicesTable.id }).from(invoicesTable)
+      .where(eq(invoicesTable.invoiceNumber, freeInvoiceNumber)).limit(1);
+    if (existingInvoice) { res.json({ ok: true }); return; }
+
+    void ensureLeadForClient(resolvedUserId, buyer.email, buyer.name ?? undefined, buyer.company ?? undefined);
+
+    const serviceNames = orderedServices.map(s => s.name);
+    const projectTitle = serviceNames.join(" + ");
+
+    // Create project
+    const [project] = await db.insert(projectsTable).values({
+      title: projectTitle,
+      description: orderedServices.length === 1
+        ? (orderedServices[0].description ?? null)
+        : `Engagement covering: ${serviceNames.join(", ")}`,
+      status: "active",
+      phase: "Kickoff",
+      progress: 0,
+      clientUserId: resolvedUserId,
+      startDate: new Date(),
+    }).returning();
+
+    // Resolve workflow template for the primary service
+    const primaryService = orderedServices[0];
+    const resolvedWorkflowTemplateId = primaryService?.workflowTemplateId ?? null;
+    let workflowTemplateSteps: Array<{ id: number; title: string; description: string | null; order: number }> = [];
+    if (resolvedWorkflowTemplateId) {
+      workflowTemplateSteps = await db.select().from(workflowTemplateStepsTable)
+        .where(eq(workflowTemplateStepsTable.workflowTemplateId, resolvedWorkflowTemplateId))
+        .orderBy(asc(workflowTemplateStepsTable.order));
+    }
+
+    for (let i = 0; i < orderedServices.length; i++) {
+      const svc = orderedServices[i];
+      const cid = contractIds[i] ?? NaN;
+
+      const [newCs] = await db.insert(clientServicesTable).values({
+        clientUserId: resolvedUserId,
+        serviceId: svc.id,
+        projectId: project.id,
+        status: "active",
+        progress: 0,
+        startDate: new Date(),
+      }).returning();
+
+      // Seed workflow steps
+      if (i === 0 && workflowTemplateSteps.length > 0) {
+        const createdSteps = await db.insert(workflowStepsTable).values(
+          workflowTemplateSteps.map((s, idx) => ({
+            clientServiceId: newCs.id,
+            projectId: project.id,
+            title: s.title,
+            description: s.description ?? "",
+            status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
+            order: idx + 1,
+            workflowTemplateStepId: s.id,
+          }))
+        ).returning();
+        const firstStep = createdSteps[0];
+        if (firstStep?.workflowTemplateStepId) {
+          const step1Tasks = await db.select().from(workflowTemplateStepTasksTable)
+            .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, firstStep.workflowTemplateStepId))
+            .orderBy(asc(workflowTemplateStepTasksTable.order));
+          if (step1Tasks.length > 0) {
+            const resolvedMetadata = await resolveTemplateTaskMetadata(step1Tasks);
+            await db.insert(kanbanTasksTable).values(
+              step1Tasks.map((t, idx) => ({
+                projectId: project.id,
+                workflowStepId: firstStep.id,
+                groupName: t.groupName ?? null,
+                title: t.title,
+                description: t.description ?? null,
+                column: (t.isCustomerTask ? "waiting_on_customer" : "backlog") as "backlog" | "waiting_on_customer",
+                order: idx,
+                taskType: t.taskType ?? null,
+                taskMetadata: resolvedMetadata[idx],
+              }))
+            );
+          }
+        }
+      } else {
+        await seedDefaultWorkflowSteps(newCs.id, project.id, svc.slug ?? "");
+      }
+
+      // Link contract → project and attach PDF document
+      if (!isNaN(cid)) {
+        const contractRecord = await db.select().from(contractsTable)
+          .where(eq(contractsTable.id, cid)).then(r => r[0]);
+        await db.update(contractsTable)
+          .set({ projectId: project.id })
+          .where(eq(contractsTable.id, cid));
+        const pdfFilename = contractRecord?.pdfFilename;
+        if (pdfFilename) {
+          await db.insert(documentsTable).values({
+            projectId: project.id,
+            name: `Signed Service Agreement — ${svc.name}`,
+            filename: pdfFilename,
+            mimeType: "application/pdf",
+            uploadedBy: resolvedUserId,
+          });
+        }
+      }
+
+      // Create $0 invoice (first one gets the deterministic idempotency key)
+      const [onbInvoice] = await db.insert(invoicesTable).values({
+        clientUserId: resolvedUserId,
+        projectId: project.id,
+        invoiceNumber: i === 0 ? freeInvoiceNumber : `FREE-ONB-${resolvedUserId}-${svc.id}-${Date.now()}`,
+        description: `${svc.name} — complimentary engagement`,
+        amount: "0.00",
+        currency: "usd",
+        status: "paid",
+        paidAt: new Date(),
+      }).returning({ id: invoicesTable.id });
+      void uploadInvoiceToSharePoint(onbInvoice.id);
+    }
+
+    // Setup email for new accounts / confirmation for returning clients
+    const baseUrl = getPortalBaseUrl();
+    let sentSetupEmail = false;
+    const hasPassword = !!(buyer.passwordHash);
+    if (!hasPassword && buyer.email) {
+      const { token: activeToken, isNew: tokenIsNew } = await ensureClientSetupToken(resolvedUserId);
+      sentSetupEmail = tokenIsNew;
+      if (tokenIsNew) {
+        const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${activeToken}`;
+        void sendEmailFromTemplate(
+          "account-setup",
+          buyer.email,
+          { setupLink: setupUrl, clientName: buyer.name ?? buyer.email },
+          "Set up your Shane McCaw Consulting portal",
+          `<p>Hi ${buyer.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
+        ).catch(() => null);
+      }
+    } else if (hasPassword && buyer.email) {
+      void sendEmailFromTemplate(
+        "onboarding-confirmation",
+        buyer.email,
+        { clientName: buyer.name ?? buyer.email, serviceName: serviceNames.join(", "), amountDollars: "0", projectUrl: baseUrl },
+        "Your project workspace is ready — Shane McCaw Consulting",
+        `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceNames.join(", ")}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
+      ).catch(() => null);
+    }
+
+    // Admin alerts (all non-fatal)
+    try {
+      sendAdminSms(
+        `New zero-price onboarding: ${buyer.name ?? buyer.email} — ${projectTitle} — $0`,
+      ).catch(() => null);
+
+      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+      if (admins.length > 0) {
+        await db.insert(notificationsTable).values(
+          admins.map(a => ({
+            userId: a.id,
+            title: `New zero-price onboarding: ${buyer.name ?? buyer.email}`,
+            body: `${projectTitle} — $0.00. Project #${project.id} auto-created.`,
+            type: "general" as const,
+            linkPath: `/dashboard`,
+          }))
+        );
+      }
+      void sendWebPushToAdmins({
+        title: `New zero-price onboarding: ${buyer.name ?? buyer.email}`,
+        body: `${projectTitle} — $0.00`,
+        linkPath: `/dashboard`,
+        playSound: true,
+      });
+      const deviceRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
+      const tokens = deviceRows.map(r => r.token);
+      const badge = await getAdminUnreadMessageCount() + 1;
+      sendPushNotifications(
+        tokens,
+        "New Zero-Price Onboarding",
+        `${buyer.name ?? buyer.email} — ${projectTitle}`,
+        { screen: "orders" },
+        undefined,
+        badge,
+      ).catch(() => null);
+      const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+      if (adminEmailAddr) {
+        sendEmailFromTemplate(
+          "admin-purchase-alert",
+          adminEmailAddr,
+          {
+            clientName: buyer.name ?? "",
+            clientEmail: buyer.email,
+            serviceName: projectTitle,
+            amountDollars: "0.00",
+            purchaseType: "Zero-price onboarding",
+            portalLink: `${PORTAL_URL}/projects/${project.id}`,
+          },
+          `New zero-price onboarding: ${projectTitle}`,
+          adminPurchaseAlertEmail({
+            clientName: buyer.name ?? "",
+            clientEmail: buyer.email,
+            serviceName: projectTitle,
+            amountDollars: "0.00",
+            type: "onboarding_purchase",
+            projectId: project.id,
+          }),
+        ).catch(() => null);
+      }
+    } catch (notifyErr) {
+      req.log.warn({ err: notifyErr }, "onboarding claim-free: post-provision notification failed (non-fatal)");
+    }
+
+    res.json({ ok: true, sentSetupEmail });
+  } catch (err) {
+    req.log.error({ err }, "portal: failed to process free onboarding claim");
+    res.status(500).json({ error: "Failed to claim free onboarding" });
+  }
+});
+
 // POST /portal/presentations/:id/claim-free — finalise a zero-price offer without Stripe
 //
 // Idempotency is keyed by a deterministic invoice number (FREE-PRES-<id>) rather than

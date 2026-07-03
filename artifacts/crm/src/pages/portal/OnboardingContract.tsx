@@ -624,6 +624,38 @@ export default function OnboardingContract() {
       const contractData = await contractRes.json() as { contractIds: number[] };
       const contractIds = contractData.contractIds;
 
+      // ── Zero-price fast path: skip Stripe entirely ──────────────────────────
+      if (isFree) {
+        const claimAuthHeader: Record<string, string> = {};
+        if (accessToken) claimAuthHeader["Authorization"] = `Bearer ${accessToken}`;
+        const claimRes = await fetch("/api/portal/onboarding/claim-free", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...claimAuthHeader },
+          body: JSON.stringify({
+            contractIds,
+            serviceIds: services.map(s => s.id),
+            ...(!user ? { guestEmail: guestInfo.email } : {}),
+          }),
+        });
+        if (!claimRes.ok) {
+          const err = await claimRes.json() as { error: string };
+          throw new Error(err.error ?? "Failed to claim free offer");
+        }
+        sessionStorage.setItem("onboardingCartSummary", JSON.stringify(
+          services.map(s => ({ name: s.name, billingType: s.billingType }))
+        ));
+        try {
+          const latestExpRaw = localStorage.getItem("onboardingLpLatestExp");
+          if (latestExpRaw) localStorage.removeItem(`onboardingLp_${latestExpRaw}`);
+          localStorage.removeItem("onboardingLpLatestExp");
+          clearSavedForm();
+        } catch { /* ignore */ }
+        const base = (import.meta.env.BASE_URL as string).replace(/\/$/, "");
+        window.location.href = `${window.location.origin}${base}/portal/onboarding/success?free=1`;
+        return;
+      }
+
       // Checkout is now public; logged-in users pass JWT, guests pass guestEmail in body
       const checkoutAuthHeader: Record<string, string> = {};
       if (accessToken) checkoutAuthHeader["Authorization"] = `Bearer ${accessToken}`;

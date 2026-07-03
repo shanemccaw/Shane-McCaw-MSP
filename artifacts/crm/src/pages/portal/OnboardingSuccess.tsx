@@ -16,6 +16,8 @@ export default function OnboardingSuccess() {
   const sessionId = params.get("session_id") ?? "";
   // setup_token is present when the user arrives via an emailed setup link
   const urlSetupToken = params.get("setup_token") ?? "";
+  // free=1 is set by the onboarding claim-free path (no Stripe session)
+  const isFreeOnboarding = params.get("free") === "1";
 
   const [status, setStatus] = useState<"loading" | "paid" | "pending" | "needs_subscription" | "error" | "setup_link">("loading");
   const [purchasedItems, setPurchasedItems] = useState<PurchasedItem[]>([]);
@@ -51,6 +53,48 @@ export default function OnboardingSuccess() {
     // check entirely and go directly to the password setup form.
     if (urlSetupToken && !sessionId) {
       setStatus("setup_link");
+      return;
+    }
+
+    // ── Free onboarding path (claim-free — no Stripe session) ────────────────
+    if (isFreeOnboarding) {
+      const storedCart = sessionStorage.getItem("onboardingCartSummary");
+      if (storedCart) {
+        try {
+          const parsed = JSON.parse(storedCart) as Array<{ name: string; billingType: string }>;
+          const items = parsed.map(i => ({ name: i.name, isRecurring: i.billingType === "recurring_monthly" }));
+          setPurchasedItems(items.length > 0 ? items : [{ name: "your service", isRecurring: false }]);
+        } catch { setPurchasedItems([{ name: "your service", isRecurring: false }]); }
+      } else {
+        setPurchasedItems([{ name: "your service", isRecurring: false }]);
+      }
+
+      if (user?.email) {
+        setClientEmail(user.email);
+      } else {
+        try {
+          const g = JSON.parse(sessionStorage.getItem("onboardingGuest") ?? "{}") as { email?: string };
+          if (g.email) setClientEmail(g.email);
+        } catch { /* ignore */ }
+      }
+
+      sessionStorage.removeItem("onboardingCartSummary");
+      setStatus("paid");
+
+      if (user) {
+        (async () => {
+          for (let i = 0; i < 8; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            try {
+              const projRes = await fetchWithAuth("/api/portal/dashboard");
+              if (projRes.ok) {
+                const dash = await projRes.json() as { projects: Array<{ id: number; title: string }> };
+                if (dash.projects?.length > 0) { setProjectId(dash.projects[0].id); break; }
+              }
+            } catch { break; }
+          }
+        })();
+      }
       return;
     }
 
