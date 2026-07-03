@@ -1653,6 +1653,7 @@ export interface WfNode {
     | "create_kanban_task"
     // Content
     | "generate_article" | "publish_article" | "topic_picker" | "generate_image"
+    | "fetch_news_headlines"
     // Data
     | "find_object"
     // System

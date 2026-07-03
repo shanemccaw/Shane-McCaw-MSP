@@ -62,6 +62,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
+  // ── News ──
+  fetch_news_headlines: { bg: "#041A14", border: "#06B6D4", icon: "📰", label: "Fetch News Headlines" },
   // ── Social Media ──
   post_linkedin: { bg: "#051424", border: "#0A66C2", icon: "🔗", label: "Post to LinkedIn" },
   post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
@@ -134,6 +136,18 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
+  // News
+  fetch_news_headlines: [
+    { key: "newsHeadlines",       label: "Array of fetched stories (title, source, url, publishedAt, description)" },
+    { key: "newsTopic",           label: "Short phrase for the hottest story" },
+    { key: "newsContext",         label: "2–3 sentence explanation of why it matters to M365 clients" },
+    { key: "newsArticleSuggestion", label: "One-paragraph blog lead-in" },
+    { key: "hotScore",            label: "Relevance score 0–100" },
+    { key: "isHot",               label: "true when hotScore exceeds the threshold" },
+    { key: "targetSector",        label: "Market sector (Government, Healthcare, etc.)" },
+    { key: "campaignBrief",       label: "Marketing brief (audience, hook, 3 angles) — only when isHot is true" },
+    { key: "campaignId",          label: "DB ID of auto-created campaign draft — only when Auto-build campaign is on and isHot" },
+  ],
   // Social Media
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
@@ -301,7 +315,8 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "topic_picker",    label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",           tags: ["content", "article", "ai", "topic", "generate"] },
       { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)",  tags: ["content", "article", "ai", "blog", "generate"] },
       { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",    tags: ["content", "article", "publish", "blog", "site"] },
-      { type: "generate_image",   label: "Generate Image",   description: "AI-generates an image (social card, OG image, banner) via gpt-image-1 and saves it permanently", tags: ["image", "social", "ai", "og", "generate", "content"] },
+      { type: "generate_image",        label: "Generate Image",        description: "AI-generates an image (social card, OG image, banner) via gpt-image-1 and saves it permanently", tags: ["image", "social", "ai", "og", "generate", "content"] },
+      { type: "fetch_news_headlines",  label: "Fetch News Headlines",  description: "Pull today's M365 headlines, AI hot-scores them, and optionally triggers a campaign draft", tags: ["news", "headlines", "ai", "hot-score", "campaign", "content", "microsoft 365"] },
     ],
   },
   {
@@ -1430,6 +1445,14 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "fetch_news_headlines" && (
+          <FetchNewsPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {/* ── Marketing Actions (extended) ────────────────────── */}
 
         {nodeType === "create_marketing_campaign" && (
@@ -2170,6 +2193,108 @@ function GenerateImagePanel({
           Calls <span className="font-mono text-[#F59E0B]">gpt-image-1</span> via Replit AI Integrations — no extra API key required. The generated image is downloaded and saved permanently at <span className="font-mono text-[#7D8590]">shanemccaw.com/api/uploads/generated-images/&lt;uuid&gt;.png</span>. Wire <span className="font-mono text-[#7D8590]">{"{{imageUrl}}"}</span> directly into the Image URL field of any <span className="font-mono text-[#F59E0B]">post_linkedin</span>, <span className="font-mono text-[#F59E0B]">post_twitter</span>, or <span className="font-mono text-[#F59E0B]">post_facebook</span> node. Dry-run returns a placeholder — no API call is made.
         </p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{imageUrl}}"} · {"{{revisedPrompt}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Fetch News Headlines panel ────────────────────────────────────────────────
+
+const DEFAULT_TOPICS = "Microsoft 365, Copilot AI, SharePoint, Power Platform, Azure, Microsoft Viva, Project Online";
+
+function FetchNewsPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const accentColor = "#06B6D4";
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Search topics</label>
+        <textarea
+          rows={2}
+          value={(node.data.topics as string) ?? DEFAULT_TOPICS}
+          onChange={e => onChange(node.id, { ...node.data, topics: e.target.value })}
+          placeholder={DEFAULT_TOPICS}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60 resize-none"
+        />
+        <p className="text-[10px] text-[#484F58]">Comma-separated keywords. Used with NewsAPI (if key is set) or Microsoft RSS feeds as fallback.</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Custom AI prompt (optional)</label>
+        <textarea
+          rows={4}
+          value={(node.data.customPrompt as string) ?? ""}
+          onChange={e => onChange(node.id, { ...node.data, customPrompt: e.target.value })}
+          placeholder="Leave blank to use the built-in Shane McCaw analyst prompt. The prompt receives the headlines array and must return JSON with: topic, context, articleSuggestion, hotScore, targetSector."
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60 resize-none font-mono"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Max results</label>
+          <input
+            type="number" min={1} max={50}
+            value={(node.data.maxResults as number) ?? 10}
+            onChange={e => onChange(node.id, { ...node.data, maxResults: Number(e.target.value) })}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Hot-score threshold</label>
+          <input
+            type="number" min={0} max={100}
+            value={(node.data.hotScoreThreshold as number) ?? 60}
+            onChange={e => onChange(node.id, { ...node.data, hotScoreThreshold: Number(e.target.value) })}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#06B6D4]/60"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-lg border border-[#30363D] p-3">
+        <input
+          type="checkbox"
+          id={`fnh-auto-${node.id}`}
+          checked={Boolean(node.data.autoBuildCampaign)}
+          onChange={e => onChange(node.id, { ...node.data, autoBuildCampaign: e.target.checked })}
+          className="mt-0.5 accent-[#06B6D4]"
+        />
+        <div>
+          <label htmlFor={`fnh-auto-${node.id}`} className="text-xs font-medium text-[#E6EDF3] cursor-pointer">Auto-build campaign</label>
+          <p className="text-[10px] text-[#7D8590] mt-0.5 leading-relaxed">When on and the score exceeds the threshold, a campaign draft is created automatically and its ID is available as <span className="font-mono text-[#06B6D4]">{"{{campaignId}}"}</span>.</p>
+        </div>
+      </div>
+
+      <div className="rounded-lg bg-[#041A14] border border-[#06B6D4]/30 p-3 space-y-2">
+        <p className="text-[10px] font-semibold text-[#06B6D4] uppercase tracking-wide">Output variables</p>
+        <div className="grid grid-cols-1 gap-1">
+          {[
+            ["newsHeadlines",        "Array of fetched stories"],
+            ["newsTopic",            "Short phrase for the hottest story"],
+            ["newsContext",          "2–3 sentences on why it matters"],
+            ["newsArticleSuggestion","Blog lead-in paragraph"],
+            ["hotScore",             "Relevance integer 0–100"],
+            ["isHot",                "true when score exceeds threshold"],
+            ["targetSector",         "Market sector label"],
+            ["campaignBrief",        "AI brief: audience, hook, angles (isHot only)"],
+            ["campaignId",           "Created campaign DB ID (auto-build + isHot only)"],
+          ].map(([key, desc]) => (
+            <div key={key} className="flex gap-2">
+              <span className="font-mono text-[10px] text-[#06B6D4] shrink-0">{`{{${key}}}`}</span>
+              <span className="text-[10px] text-[#7D8590]">{desc}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-[#484F58] pt-1 border-t border-[#30363D]">
+          Requires <span className="font-mono" style={{ color: accentColor }}>NEWS_API_KEY</span> in Replit Secrets for live headlines. Falls back to Microsoft public RSS feeds automatically when absent. Dry-run returns realistic stub values — no API calls are made.
+        </p>
       </div>
     </>
   );

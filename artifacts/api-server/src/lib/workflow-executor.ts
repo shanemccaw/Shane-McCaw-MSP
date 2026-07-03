@@ -41,6 +41,7 @@ import {
 } from "@workspace/db";
 
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
+import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -332,6 +333,31 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         revisedPrompt: "[dry-run — no AI call made]",
       };
     }
+
+    case "fetch_news_headlines":
+      return {
+        dryRun: true,
+        newsHeadlines: [
+          { title: "Microsoft releases Copilot AI updates for Government clients", source: "Microsoft Blog", url: "https://blogs.microsoft.com", publishedAt: new Date().toISOString(), description: "New Copilot features targeting federal agencies and public sector compliance." },
+          { title: "SharePoint Embedded GA: what it means for Power Platform developers", source: "Tech Community", url: "https://techcommunity.microsoft.com", publishedAt: new Date().toISOString(), description: "SharePoint Embedded reaches general availability, unlocking new embedding scenarios." },
+        ],
+        newsTopic: "Copilot AI for Government M365 rollout",
+        newsContext: "Microsoft's latest Copilot update introduces FedRAMP-compliant AI features tailored for government agencies. For M365 architects supporting public sector clients, this creates an immediate opportunity to lead Copilot readiness assessments. Agencies that delay risk falling behind peers who move first on the AI adoption curve.",
+        newsArticleSuggestion: "The federal government just got its own version of Microsoft Copilot — and if you're an IT leader in a public sector agency, the clock is ticking. In this post, Shane McCaw breaks down what the new FedRAMP-authorized Copilot features mean for your M365 environment, which compliance controls you need to review before rollout, and why the agencies that act in the next 90 days will have a significant productivity edge over those who wait.",
+        hotScore: 74,
+        isHot: true,
+        targetSector: "Government",
+        campaignBrief: {
+          audience: "IT directors and M365 admins at federal and state government agencies (500+ employees)",
+          hook: "Your agency's Copilot window is open — don't let compliance concerns keep you on the sideline",
+          angles: [
+            "LinkedIn post: '3 things every federal IT director needs to check before enabling Copilot AI'",
+            "Email subject: 'Is your agency ready for FedRAMP Copilot? Free readiness checklist inside'",
+            "Webinar title: 'Copilot for Government: Compliance-First Rollout Strategies with Shane McCaw'",
+          ],
+        },
+        campaignId: null,
+      };
 
     case "post_linkedin":
       return {
@@ -1375,6 +1401,95 @@ Return ONLY a JSON object with these exact keys:
         } else {
           output = await handleSystemAction(task, payload);
         }
+        break;
+      }
+
+      // ── Fetch News Headlines ───────────────────────────────────────────────
+
+      case "fetch_news_headlines": {
+        const fnhTopicsRaw  = (interp(node.data.topics as string | undefined, payload) ?? "Microsoft 365, Copilot AI, SharePoint, Power Platform, Azure, Microsoft Viva, Project Online").trim();
+        const fnhTopics     = fnhTopicsRaw.split(",").map(t => t.trim()).filter(Boolean);
+        const fnhMaxResults = parseInt(interp(node.data.maxResults as string | undefined, payload) ?? "10", 10) || 10;
+        const fnhThreshold  = parseInt(interp(node.data.hotScoreThreshold as string | undefined, payload) ?? "60", 10);
+        const fnhCustomPrompt = (interp(node.data.customPrompt as string | undefined, payload) ?? "").trim();
+        const fnhAutoBuild  = Boolean(node.data.autoBuildCampaign);
+
+        const fnhHeadlines = await fetchNewsHeadlines(fnhTopics, fnhMaxResults);
+
+        if (fnhHeadlines.length === 0) {
+          output = {
+            newsHeadlines: [],
+            newsTopic: "",
+            newsContext: "",
+            newsArticleSuggestion: "",
+            hotScore: 0,
+            isHot: false,
+            targetSector: "Enterprise",
+            campaignBrief: null,
+            campaignId: null,
+          };
+          break;
+        }
+
+        const fnhPrompt = fnhCustomPrompt || DEFAULT_NEWS_PROMPT;
+        const fnhAiInput = `${fnhPrompt}\n\nHEADLINES (${fnhHeadlines.length} stories):\n${JSON.stringify(fnhHeadlines, null, 2)}`;
+
+        const fnhAiResponse = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: fnhAiInput }],
+        });
+
+        const fnhAiText = fnhAiResponse.content.find(b => b.type === "text")?.text ?? "";
+        const fnhParsed = extractJsonFromAiText(fnhAiText) ?? {};
+
+        const fnhTopic      = String(fnhParsed.topic      ?? "").trim();
+        const fnhContext    = String(fnhParsed.context    ?? "").trim();
+        const fnhArticle    = String(fnhParsed.articleSuggestion ?? "").trim();
+        const fnhScore      = Math.min(100, Math.max(0, Number(fnhParsed.hotScore) || 0));
+        const fnhSector     = String(fnhParsed.targetSector ?? "Enterprise").trim();
+        const fnhIsHot      = fnhScore > fnhThreshold;
+
+        let fnhBrief: Record<string, unknown> | null = null;
+        let fnhCampaignId: number | null = null;
+
+        if (fnhIsHot) {
+          const fnhBriefInput = `${CAMPAIGN_BRIEF_PROMPT}\n\nTopic: ${fnhTopic}\nContext: ${fnhContext}\nTarget sector: ${fnhSector}`;
+          const fnhBriefResponse = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 512,
+            messages: [{ role: "user", content: fnhBriefInput }],
+          });
+          const fnhBriefText = fnhBriefResponse.content.find(b => b.type === "text")?.text ?? "";
+          fnhBrief = extractJsonFromAiText(fnhBriefText);
+
+          if (fnhAutoBuild && fnhBrief) {
+            const fnhCampaignName = `News: ${fnhTopic}`.slice(0, 200);
+            const fnhAudience = String(fnhBrief.audience ?? "M365 decision-makers");
+            const fnhHook     = String(fnhBrief.hook ?? fnhContext.slice(0, 200));
+            const [fnhNewCampaign] = await db.insert(campaignsTable).values({
+              name:     fnhCampaignName,
+              goal:     "Content-driven lead generation from news hot-score",
+              audience: fnhAudience,
+              offer:    fnhHook,
+              status:   "draft",
+            }).returning();
+            fnhCampaignId = fnhNewCampaign.id;
+            logger.info({ campaignId: fnhCampaignId, topic: fnhTopic }, "fetch_news_headlines: auto-created campaign draft");
+          }
+        }
+
+        output = {
+          newsHeadlines:        fnhHeadlines,
+          newsTopic:            fnhTopic,
+          newsContext:          fnhContext,
+          newsArticleSuggestion: fnhArticle,
+          hotScore:             fnhScore,
+          isHot:                fnhIsHot,
+          targetSector:         fnhSector,
+          campaignBrief:        fnhBrief,
+          campaignId:           fnhCampaignId,
+        };
         break;
       }
 
