@@ -355,6 +355,18 @@ function DocumentsTab({
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
 
+  const [dialogCustomerId, setDialogCustomerId] = useState<number | null>(null);
+  const [dialogProjectId,  setDialogProjectId]  = useState<number | null>(null);
+  const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
+
+  useEffect(() => {
+    if (!dialogCustomerId) { setDialogProjects([]); return; }
+    fetchWithAuth(`${API}/admin/insights/projects?customerId=${dialogCustomerId}`)
+      .then(r => r.json())
+      .then((d: unknown) => setDialogProjects((d as { projects: Project[] }).projects ?? []))
+      .catch(() => setDialogProjects([]));
+  }, [dialogCustomerId, fetchWithAuth]);
+
   const buildQs = useCallback(() => {
     const p = new URLSearchParams({ category: "report" });
     if (customerId) p.set("customerId", String(customerId));
@@ -377,18 +389,22 @@ function DocumentsTab({
     const t = REPORT_TYPES.find(r => r.key === type);
     setWizardType(type);
     setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
-    setWizardStep("confirm"); setError(null); setWizardOpen(true);
+    setWizardStep("confirm"); setError(null);
+    setDialogCustomerId(customerId);
+    setDialogProjectId(projectId);
+    setWizardOpen(true);
   };
 
   const generate = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/insights/documents/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: customerId ?? undefined,
-          projectId:  projectId  ?? undefined,
+          customerId: dialogCustomerId,
+          projectId:  dialogProjectId,
           docType: wizardType, title: wizardTitle,
         }),
       });
@@ -541,6 +557,37 @@ function DocumentsTab({
         {wizardStep === "confirm" && (
           <div className="flex flex-col gap-4">
             <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Customer <span className="text-red-400">*</span></label>
+              <select
+                value={dialogCustomerId ?? ""}
+                onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
+                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select a customer…</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` — ${c.company}` : ""}</option>
+                ))}
+              </select>
+            </div>
+            {dialogCustomerId && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">Project <span className="text-red-400">*</span></label>
+                <select
+                  value={dialogProjectId ?? ""}
+                  onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  <option value="">Select a project…</option>
+                  {dialogProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}{p.phase ? ` (${p.phase})` : ""}</option>
+                  ))}
+                </select>
+                {dialogProjects.length === 0 && (
+                  <p className="text-yellow-400 text-xs mt-1">No projects found for this customer.</p>
+                )}
+              </div>
+            )}
+            <div>
               <label className="text-gray-400 text-xs mb-1.5 block">Report Title</label>
               <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
                 className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" />
@@ -549,15 +596,15 @@ function DocumentsTab({
             <div className="bg-[#0D1117] rounded-lg p-3 text-xs text-gray-400">
               <div className="text-gray-300 font-medium mb-1">This will:</div>
               <ul className="list-disc list-inside flex flex-col gap-1">
-                <li>Fetch real telemetry from script_run_results{customerId ? " for the selected customer" : ""}{projectId ? " and project" : ""}</li>
-                <li>Generate AI narrative using Claude Haiku with structured profileUpdates context</li>
+                <li>Fetch telemetry from script_run_results scoped to the selected customer and project</li>
+                <li>Generate AI narrative using Claude with structured profileUpdates context</li>
                 <li>Auto-approve the document — Send button is available immediately</li>
                 <li>Provide a downloadable <strong className="text-blue-400">PDF</strong> via pdf-lib</li>
               </ul>
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">Cancel</button>
-              <button onClick={() => void generate()} disabled={!wizardTitle.trim()} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 transition-colors">Generate Report</button>
+              <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 transition-colors">Generate Report</button>
             </div>
           </div>
         )}
@@ -621,10 +668,11 @@ function DocumentsTab({
 // ── Consulting Tab ─────────────────────────────────────────────────────────────
 
 function ConsultingTab({
-  customerId, projectId, fetchWithAuth,
+  customerId, projectId, fetchWithAuth, customers,
 }: {
   customerId: number | null; projectId: number | null;
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
+  customers: Customer[];
 }) {
   const [docs, setDocs] = useState<InsightsDoc[]>([]);
   const [loading, setLoading] = useState(false);
@@ -640,6 +688,18 @@ function ConsultingTab({
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [dialogCustomerId, setDialogCustomerId] = useState<number | null>(null);
+  const [dialogProjectId,  setDialogProjectId]  = useState<number | null>(null);
+  const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
+
+  useEffect(() => {
+    if (!dialogCustomerId) { setDialogProjects([]); return; }
+    fetchWithAuth(`${API}/admin/insights/projects?customerId=${dialogCustomerId}`)
+      .then(r => r.json())
+      .then((d: unknown) => setDialogProjects((d as { projects: Project[] }).projects ?? []))
+      .catch(() => setDialogProjects([]));
+  }, [dialogCustomerId, fetchWithAuth]);
 
   const buildQs = useCallback(() => {
     const p = new URLSearchParams({ category: "consulting" });
@@ -662,16 +722,20 @@ function ConsultingTab({
     const t = CONSULTING_TYPES.find(c => c.key === type);
     setWizardType(type);
     setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
-    setWizardStep("confirm"); setError(null); setWizardOpen(true);
+    setWizardStep("confirm"); setError(null);
+    setDialogCustomerId(customerId);
+    setDialogProjectId(projectId);
+    setWizardOpen(true);
   };
 
   const generate = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
     try {
       const r = await fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: customerId ?? undefined, projectId: projectId ?? undefined,
+          customerId: dialogCustomerId, projectId: dialogProjectId,
           deliverableType: wizardType, title: wizardTitle,
         }),
       });
@@ -809,17 +873,48 @@ function ConsultingTab({
         {wizardStep === "confirm" && (
           <div className="flex flex-col gap-4">
             <div>
+              <label className="text-gray-400 text-xs mb-1.5 block">Customer <span className="text-red-400">*</span></label>
+              <select
+                value={dialogCustomerId ?? ""}
+                onChange={e => { setDialogCustomerId(e.target.value ? parseInt(e.target.value, 10) : null); setDialogProjectId(null); }}
+                className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+              >
+                <option value="">Select a customer…</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.name ?? c.email}{c.company ? ` — ${c.company}` : ""}</option>
+                ))}
+              </select>
+            </div>
+            {dialogCustomerId && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">Project <span className="text-red-400">*</span></label>
+                <select
+                  value={dialogProjectId ?? ""}
+                  onChange={e => setDialogProjectId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                >
+                  <option value="">Select a project…</option>
+                  {dialogProjects.map(p => (
+                    <option key={p.id} value={p.id}>{p.title}{p.phase ? ` (${p.phase})` : ""}</option>
+                  ))}
+                </select>
+                {dialogProjects.length === 0 && (
+                  <p className="text-yellow-400 text-xs mt-1">No projects found for this customer.</p>
+                )}
+              </div>
+            )}
+            <div>
               <label className="text-gray-400 text-xs mb-1.5 block">Deliverable Title</label>
               <input value={wizardTitle} onChange={e => setWizardTitle(e.target.value)}
                 className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-purple-500" />
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
             <div className="bg-[#0D1117] rounded-lg p-3 text-xs text-gray-400">
-              Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry and Claude AI. Auto-approved on generation — Send is available immediately. SharePoint upload occurs automatically on delivery if the client site is configured.
+              Generates a professional {CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType} using real script telemetry scoped to the selected customer and project. Auto-approved on generation — Send is available immediately. SharePoint upload occurs automatically on delivery if the client site is configured.
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
-              <button onClick={() => void generate()} disabled={!wizardTitle.trim()} className="px-4 py-2 rounded-lg text-sm bg-purple-700 hover:bg-purple-600 text-white font-medium disabled:opacity-40">Generate</button>
+              <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-purple-700 hover:bg-purple-600 text-white font-medium disabled:opacity-40">Generate</button>
             </div>
           </div>
         )}

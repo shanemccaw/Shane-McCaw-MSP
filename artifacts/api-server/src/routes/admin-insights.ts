@@ -832,8 +832,8 @@ Output requirements for the Pricing section:
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
 const generateDocSchema = z.object({
-  customerId: z.number().int().positive().optional(),
-  projectId:  z.number().int().positive().optional(),
+  customerId: z.number().int().positive({ message: "A customer must be selected" }),
+  projectId:  z.number().int().positive({ message: "A project must be selected" }),
   docType:    z.string().min(1),
   title:      z.string().min(1).max(200),
 });
@@ -1156,8 +1156,8 @@ const CONSULTING_TYPE_LABELS: Record<string, string> = {
 };
 
 const generateConsultingSchema = z.object({
-  customerId:      z.number().int().positive().optional(),
-  projectId:       z.number().int().positive().optional(),
+  customerId:      z.number().int().positive({ message: "A customer must be selected" }),
+  projectId:       z.number().int().positive({ message: "A project must be selected" }),
   deliverableType: z.string().min(1),
   title:           z.string().min(1).max(200),
 });
