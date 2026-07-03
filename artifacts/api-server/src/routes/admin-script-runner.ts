@@ -863,6 +863,34 @@ router.get("/admin/script-runs/:id", requireAdmin, async (req: Request, res: Res
   }
 });
 
+// ─── DELETE /api/admin/script-runs/:id ────────────────────────────────────────
+
+router.delete("/admin/script-runs/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  try {
+    const [deleted] = await db
+      .delete(scriptRunResultsTable)
+      .where(eq(scriptRunResultsTable.id, id))
+      .returning({ id: scriptRunResultsTable.id });
+
+    if (!deleted) {
+      res.status(404).json({ error: "Script run not found" });
+      return;
+    }
+
+    req.log.info({ id }, "admin-script-runner: script run result deleted");
+    res.status(200).json({ ok: true });
+  } catch (err) {
+    logger.error({ err, id }, "admin-script-runner: failed to delete script run result");
+    res.status(500).json({ error: "Failed to delete script run result" });
+  }
+});
+
 // ─── POST /api/admin/test-sms ─────────────────────────────────────────────────
 router.post("/admin/test-sms", requireAdmin, async (_req: Request, res: Response) => {
   const missing: string[] = [];

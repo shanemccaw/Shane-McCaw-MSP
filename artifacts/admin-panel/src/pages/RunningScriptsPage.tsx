@@ -3,6 +3,7 @@ import { useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Trash2 } from "lucide-react";
 import DevSeedPanel from "@/components/DevSeedPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -397,7 +398,27 @@ export default function RunningScriptsPage() {
   // Detail panel
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
 
+  // Delete tracking
+  const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleDelete = useCallback(async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (deletingIds.has(id)) return;
+    setDeletingIds(prev => new Set(prev).add(id));
+    try {
+      const res = await fetchWithAuth(`/api/admin/script-runs/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRows(prev => prev.filter(r => r.id !== id));
+      if (selectedRunId === id) setSelectedRunId(null);
+      toast({ title: "Script result deleted" });
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Delete failed", variant: "destructive" });
+    } finally {
+      setDeletingIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+    }
+  }, [deletingIds, fetchWithAuth, selectedRunId, toast]);
 
   const fetchRuns = useCallback(async () => {
     try {
@@ -613,6 +634,7 @@ export default function RunningScriptsPage() {
                 <th className="text-left px-4 py-2.5 text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">
                   Duration
                 </th>
+                <th className="px-4 py-2.5 w-10" />
               </tr>
             </thead>
             <tbody className="divide-y divide-[#21262D]">
@@ -653,6 +675,16 @@ export default function RunningScriptsPage() {
                   </td>
                   <td className="px-4 py-3 text-[#8B949E]">
                     {formatDuration(run.createdAt, run.completedAt)}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={e => void handleDelete(e, run.id)}
+                      disabled={deletingIds.has(run.id)}
+                      title="Delete this result"
+                      className="p-1.5 rounded text-[#484F58] hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </td>
                 </tr>
               ))}
