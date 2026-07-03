@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 interface M365Profile {
@@ -115,10 +115,24 @@ function SortIcon({ field, sortField, sortDir }: { field: SortField; sortField: 
 
 export default function M365IntelligencePage() {
   const { fetchWithAuth } = useAuth();
+  const queryClient = useQueryClient();
   const [sortField, setSortField] = useState<SortField>("score");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [scoreFilter, setScoreFilter] = useState<ScoreFilter>("all");
   const [search, setSearch] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  async function handleDelete(clientId: number) {
+    setDeletingId(clientId);
+    try {
+      await fetchWithAuth(`/api/admin/m365-profiles/${clientId}`, { method: "DELETE" });
+      await queryClient.invalidateQueries({ queryKey: ["m365-profiles"] });
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
 
   const { data, isLoading, isError } = useQuery<{ profiles: ProfileRow[] }>({
     queryKey: ["m365-profiles"],
@@ -385,15 +399,52 @@ export default function M365IntelligencePage() {
                           {updatedLabel}
                         </td>
                         <td className="px-4 py-3">
-                          <Link
-                            to={`/crm/clients?m365=${row.clientId}`}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-[#0078D4] hover:text-[#006CBE] whitespace-nowrap"
-                          >
-                            Open M365 profile
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </Link>
+                          <div className="flex items-center gap-2">
+                            <Link
+                              to={`/crm/clients?m365=${row.clientId}`}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-[#0078D4] hover:text-[#006CBE] whitespace-nowrap"
+                            >
+                              Open M365 profile
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </Link>
+
+                            {confirmDeleteId === row.clientId ? (
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  onClick={() => void handleDelete(row.clientId)}
+                                  disabled={deletingId === row.clientId}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-red-400 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-2 py-1 rounded-lg transition-colors disabled:opacity-60"
+                                >
+                                  {deletingId === row.clientId ? (
+                                    <div className="w-3 h-3 border-2 border-red-400 border-t-transparent rounded-full animate-spin" />
+                                  ) : (
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  )}
+                                  Confirm
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteId(null)}
+                                  className="text-xs text-[#7D8590] hover:text-[#E6EDF3] px-1.5 py-1 rounded transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteId(row.clientId)}
+                                title="Delete M365 profile"
+                                className="p-1.5 rounded-lg text-[#484F58] hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

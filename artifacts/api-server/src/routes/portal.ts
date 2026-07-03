@@ -5539,6 +5539,24 @@ router.get("/admin/m365-profiles", requireAdmin, async (req: Request, res: Respo
   }
 });
 
+// DELETE /admin/m365-profiles/:clientId — remove a client's M365 intelligence profile
+router.delete("/admin/m365-profiles/:clientId", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.clientId ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+  try {
+    const result = await db
+      .delete(clientM365ProfilesTable)
+      .where(eq(clientM365ProfilesTable.clientId, clientId))
+      .returning({ clientId: clientM365ProfilesTable.clientId });
+    if (result.length === 0) { res.status(404).json({ error: "Profile not found" }); return; }
+    req.log.info({ clientId }, "admin: deleted M365 profile");
+    res.json({ deleted: true, clientId });
+  } catch (err) {
+    req.log.error(err, "admin: failed to delete M365 profile");
+    res.status(500).json({ error: "Failed to delete profile" });
+  }
+});
+
 // ─── ADMIN: Impersonation ────────────────────────────────────────────────────
 router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res: Response) => {
   const userId = parseInt(String(req.params.userId ?? ""), 10);
