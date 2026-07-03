@@ -24,12 +24,33 @@ interface ScriptState {
   confirmingDismiss: boolean;
 }
 
+interface TaskSkipState {
+  skipped: boolean;
+  confirming: boolean;
+}
+
 export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCount, downloadableTasks, onCompleted, onAllDismissed }: Props) {
   const { fetchWithAuth } = useAuth();
   const [scriptStates, setScriptStates] = useState<Record<number, ScriptState>>(
     () => Object.fromEntries(scripts.map(s => [s.runResultId, { dismissed: false, confirmingDismiss: false }]))
   );
+  const [taskSkipStates, setTaskSkipStates] = useState<Record<number, TaskSkipState>>({});
   const [downloadingTaskIds, setDownloadingTaskIds] = useState<Set<number>>(new Set());
+
+  function startSkipTask(taskId: number) {
+    setTaskSkipStates(prev => ({ ...prev, [taskId]: { skipped: false, confirming: true } }));
+  }
+  function cancelSkipTask(taskId: number) {
+    setTaskSkipStates(prev => ({ ...prev, [taskId]: { skipped: false, confirming: false } }));
+  }
+  function confirmSkipTask(taskId: number) {
+    setTaskSkipStates(prev => {
+      const next = { ...prev, [taskId]: { skipped: true, confirming: false } };
+      const allSkipped = downloadableTasks.every(t => next[t.taskId]?.skipped);
+      if (allSkipped) setTimeout(onAllDismissed, 120);
+      return next;
+    });
+  }
 
   async function downloadTask(taskId: number, scriptTitle: string) {
     if (downloadingTaskIds.has(taskId)) return;
@@ -129,45 +150,84 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
           {visible.length === 0 && waitingManualScriptCount > 0 && (
             downloadableTasks.length > 0 ? (
               <div className="space-y-3">
-                {downloadableTasks.map(task => {
+                {downloadableTasks.filter(t => !taskSkipStates[t.taskId]?.skipped).map(task => {
                   const isDownloading = downloadingTaskIds.has(task.taskId);
+                  const skipState = taskSkipStates[task.taskId];
                   return (
-                    <div key={task.taskId} className="rounded-xl ring-1 ring-[#0078D4]/20 bg-[#0078D4]/4 px-4 py-4">
-                      <div className="flex items-start gap-3 mb-3">
-                        <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
+                    <div key={task.taskId} className="space-y-2">
+                      <div className="rounded-xl ring-1 ring-[#0078D4]/20 bg-[#0078D4]/4 px-4 py-4">
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-8 h-8 rounded-xl bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <svg className="w-4 h-4 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-[#0A2540] truncate">{task.scriptTitle}</p>
+                            <p className="text-xs text-[#0A2540]/50 mt-0.5 leading-snug">
+                              Run this script locally, then upload the results.
+                            </p>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-bold text-[#0A2540] truncate">{task.scriptTitle}</p>
-                          <p className="text-xs text-[#0A2540]/50 mt-0.5 leading-snug">
-                            Run this script locally, then upload the results.
-                          </p>
-                        </div>
+                        <button
+                          onClick={() => void downloadTask(task.taskId, task.scriptTitle)}
+                          disabled={isDownloading}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#0078D4] text-white text-xs font-bold hover:bg-[#006CBE] disabled:opacity-60 transition-colors"
+                        >
+                          {isDownloading ? (
+                            <>
+                              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                              </svg>
+                              Downloading…
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Download Script (.ps1)
+                            </>
+                          )}
+                        </button>
                       </div>
-                      <button
-                        onClick={() => void downloadTask(task.taskId, task.scriptTitle)}
-                        disabled={isDownloading}
-                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[#0078D4] text-white text-xs font-bold hover:bg-[#006CBE] disabled:opacity-60 transition-colors"
-                      >
-                        {isDownloading ? (
-                          <>
-                            <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+
+                      {/* Skip option */}
+                      {!skipState?.confirming ? (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => startSkipTask(task.taskId)}
+                            className="text-xs text-[#0A2540]/35 hover:text-[#0A2540]/60 font-medium transition-colors flex items-center gap-1"
+                          >
+                            Skip this check
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
-                            Downloading…
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                            </svg>
-                            Download Script (.ps1)
-                          </>
-                        )}
-                      </button>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="rounded-xl ring-1 ring-amber-200 bg-amber-50 px-4 py-3 space-y-2.5">
+                          <p className="text-xs font-semibold text-amber-900">Skip &ldquo;{task.scriptTitle}&rdquo;?</p>
+                          <p className="text-xs text-amber-800/70 leading-relaxed">
+                            I understand that <span className="font-semibold">some results won&rsquo;t appear</span> in my health report without running this script. Shane may follow up to collect it separately.
+                          </p>
+                          <div className="flex items-center gap-2 justify-end pt-0.5">
+                            <button
+                              onClick={() => cancelSkipTask(task.taskId)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0A2540]/70 ring-1 ring-black/10 hover:bg-white transition-colors"
+                            >
+                              I&rsquo;ll run it
+                            </button>
+                            <button
+                              onClick={() => confirmSkipTask(task.taskId)}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+                            >
+                              Yes, skip
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
