@@ -2222,7 +2222,13 @@ async function executeItemSubgraph(
   runId: number,
   dryRun: boolean,
   inputValues: Record<string, string>,
-): Promise<Record<string, unknown>> {
+): Promise<{
+  payload: Record<string, unknown>;
+  cancelRun: boolean;
+  nodeError: boolean;
+  errorOutput?: Record<string, unknown>;
+  failedNodeId?: string;
+}> {
   const subNodes = graph.nodes.filter(n => subgraphNodeIdSet.has(n.id));
   const subNodeMap = new Map(subNodes.map(n => [n.id, n]));
   // Only edges whose source AND target are both inside the subgraph
@@ -2268,19 +2274,23 @@ async function executeItemSubgraph(
       continue;
     }
 
-    const { nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
+    const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
       await executeNode(node, currentPayload, runId, dryRun, inputValues);
     currentPayload = nextPayload;
 
-    if (cancelRun) break;
+    // cancel_workflow inside the loop body must bubble up to cancel the whole run
+    if (cancelRun) return { payload: currentPayload, cancelRun: true, nodeError: false };
 
     if (nodeError) {
       const outEdges = subEdges.filter(e => e.source === nodeId);
       const errorEdge = outEdges.find(e => e.sourceHandle === "error" || e.sourceHandle === "onError");
       if (errorEdge) {
+        // Route to the in-subgraph error handler and continue
         for (const e of outEdges) subResolveEdge(e.target, e.target === errorEdge.target);
+        continue;
       }
-      continue;
+      // No error handler in subgraph — surface as a run failure (mirrors main BFS behaviour)
+      return { payload: currentPayload, cancelRun: false, nodeError: true, errorOutput: output, failedNodeId: nodeId };
     }
 
     if (node.type === "condition" && conditionResult !== undefined) {
@@ -2303,7 +2313,7 @@ async function executeItemSubgraph(
     for (const e of subEdges.filter(e => e.source === nodeId)) subResolveEdge(e.target, true);
   }
 
-  return currentPayload;
+  return { payload: currentPayload, cancelRun: false, nodeError: false };
 }
 
 // ── Concurrency check (read-only) ─────────────────────────────────────────────
@@ -2506,12 +2516,39 @@ export async function executeWorkflowRun(
             itemsTotal,
           };
 
-          const finalPayload = await executeItemSubgraph(
+          const iterResult = await executeItemSubgraph(
             graph, itemSubgraphIds, startIds, iterPayload,
             runId, opts.dryRun ?? false, opts.inputValues ?? {},
           );
-          collectedResults.push(finalPayload);
           branchPath.push(...startIds.map(id => `${id}[${i}]`));
+
+          // cancel_workflow inside a loop body cancels the whole run immediately
+          if (iterResult.cancelRun) {
+            await db.update(wfRunsTable).set({
+              status: "cancelled", finishedAt: new Date(),
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            await db.insert(wfRunNodeLogsTable).values({
+              runId, nodeId, level: "info",
+              message: `Run cancelled by cancel_workflow inside foreach iteration ${i}`,
+            }).catch(() => { });
+            return;
+          }
+
+          // Unhandled node error in loop body fails the whole run (mirrors main BFS)
+          if (iterResult.nodeError) {
+            const errMsg = (iterResult.errorOutput?.error as string | undefined)
+              ?? `foreach: node ${iterResult.failedNodeId ?? "unknown"} failed at iteration ${i}`;
+            await db.update(wfRunsTable).set({
+              status: "failed", finishedAt: new Date(), errorMessage: errMsg,
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            logger.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
+              "wf-executor: foreach — node error in loop body, no handler — run failed");
+            return;
+          }
+
+          collectedResults.push(iterResult.payload);
 
           logger.info({ runId, nodeId, iteration: i, itemsTotal },
             "wf-executor: foreach iteration complete");
