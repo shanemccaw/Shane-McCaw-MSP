@@ -24,6 +24,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
 import { AssetPickerModal } from "@/components/AssetPickerModal";
+import RunDetailContent from "./RunDetailContent";
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -3690,59 +3691,25 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
     onSuccess: (data) => setRunId(data.runId),
   });
 
-  const { data: runStatus } = useQuery<{
-    id: number;
-    status: string;
-    startedAt: string | null;
-    finishedAt: string | null;
-    errorMessage: string | null;
-    durationMs: number | null;
-    branchPath: string[];
-    nodeOutputs: Array<{
-      id: number;
-      nodeId: string;
-      status: string;
-      durationMs: number | null;
-      errorMessage: string | null;
-    }>;
-  }>({
-    queryKey: ["wf-test-run-status", runId],
-    queryFn: async () => {
-      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}`);
-      if (!res.ok) throw new Error("Failed to load");
-      return res.json();
-    },
-    enabled: runId !== null,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === "running" || status === "pending" ? 3000 : false;
-    },
-  });
-
-  const isLive = runStatus?.status === "running" || runStatus?.status === "pending";
-
-  function fmtMs(ms: number | null | undefined): string {
-    if (!ms) return "";
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
-  }
-
   const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
 
   return (
     <div
       className={`fixed right-0 top-0 h-full z-40 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transform transition-all duration-250 ease-in-out ${slideClass} ${wide ? "w-[760px]" : "w-[480px]"}`}
     >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm flex-shrink-0">🧪</span>
-            <h3 className="text-sm font-semibold text-[#E6EDF3] flex-shrink-0">Test Run</h3>
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider flex-shrink-0">Draft</span>
-            <span className="text-[10px] text-[#484F58] truncate">· {nodes.length} nodes</span>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
-            {/* Dry-run / Live toggle */}
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm flex-shrink-0">🧪</span>
+          <h3 className="text-sm font-semibold text-[#E6EDF3] flex-shrink-0">Test Run</h3>
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider flex-shrink-0">Draft</span>
+          {runId !== null && (
+            <span className="text-[10px] text-[#484F58] font-mono flex-shrink-0">#{runId}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          {/* Dry-run / Live toggle — only relevant before run starts */}
+          {runId === null && (
             <div className="flex items-center rounded-lg border border-[#30363D] overflow-hidden text-[10px] font-semibold">
               <button
                 type="button"
@@ -3761,206 +3728,145 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
                 Live
               </button>
             </div>
-            <button
-              onClick={() => setWide(w => !w)}
-              title={wide ? "Narrow panel" : "Wide panel"}
-              className="text-[#484F58] hover:text-[#E6EDF3] transition-colors p-1 rounded"
-            >
-              {wide ? (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4m0 0H4m5 0L3 10m12-1V4m0 0h5m-5 0l6 6M9 20v-5m0 5H4m5 0l-6-6m12 6v-5m0 5h5m-5 0l6-6" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                </svg>
-              )}
-            </button>
-            <button onClick={handleClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
-          </div>
+          )}
+          <button
+            onClick={() => setWide(w => !w)}
+            title={wide ? "Narrow panel" : "Wide panel"}
+            className="text-[#484F58] hover:text-[#E6EDF3] transition-colors p-1 rounded"
+          >
+            {wide ? (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4m0 0H4m5 0L3 10m12-1V4m0 0h5m-5 0l6 6M9 20v-5m0 5H4m5 0l-6-6m12 6v-5m0 5h5m-5 0l6-6" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
+          </button>
+          <button onClick={handleClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
         </div>
+      </div>
 
-        <div className="overflow-y-auto flex-1 p-4 space-y-4">
-
-          {/* ── Live-mode warning ── */}
+      {/* ── Run active: full Execution Replay / Timeline / Payload tabs ── */}
+      {runId !== null ? (
+        <>
           {!dryRun && (
-            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 flex items-start gap-2">
-              <span className="text-red-400 text-sm flex-shrink-0 mt-0.5">⚠</span>
-              <div>
-                <p className="text-xs font-semibold text-red-400">Live execution — real actions will fire</p>
-                <p className="text-[11px] text-[#7D8590] mt-0.5">Emails will send, records will be created, and APIs will be called for real. Switch to <strong className="text-[#E6EDF3]">Fake data</strong> to test safely.</p>
-              </div>
+            <div className="flex-shrink-0 rounded-none border-b border-red-500/40 bg-red-500/10 px-3 py-2 flex items-center gap-2">
+              <span className="text-red-400 text-xs flex-shrink-0">⚠</span>
+              <p className="text-[11px] font-semibold text-red-400">Live run — real actions fired</p>
             </div>
           )}
+          <div className="flex-1 overflow-hidden">
+            <RunDetailContent runId={runId} />
+          </div>
+          <div className="flex-shrink-0 flex gap-2 px-4 py-3 border-t border-[#30363D]">
+            <button
+              onClick={() => navigate(`/workflows/runs/${runId}`)}
+              className="flex-1 px-4 py-2 bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] text-xs font-medium rounded-lg transition-colors"
+            >
+              Open full run page →
+            </button>
+            <button
+              onClick={() => { setRunId(null); runMut.reset(); }}
+              className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Run again
+            </button>
+          </div>
+        </>
+      ) : (
+        /* ── Setup phase: trigger selector + payload editor + run button ── */
+        <>
+          <div className="overflow-y-auto flex-1 p-4 space-y-4">
 
-          {/* ── Inline run status (after run starts) ── */}
-          {runId !== null ? (
-            <div className="space-y-4">
-              <div className={`rounded-xl border p-4 space-y-2.5 ${
-                runStatus?.status === "completed" ? "bg-emerald-500/10 border-emerald-500/30" :
-                runStatus?.status === "failed"    ? "bg-red-500/10 border-red-500/30" :
-                                                    "bg-blue-500/10 border-blue-500/30"
-              }`}>
-                <div className="flex items-center gap-2">
-                  {isLive && (
-                    <span className="inline-block w-2 h-2 rounded-full bg-blue-400 animate-ping flex-shrink-0" />
-                  )}
-                  <p className={`font-semibold text-sm ${
-                    runStatus?.status === "completed" ? "text-emerald-400" :
-                    runStatus?.status === "failed"    ? "text-red-400" :
-                                                        "text-blue-300"
-                  }`}>
-                    {!runStatus             ? "Starting…" :
-                     runStatus.status === "completed" ? "✓ Completed" :
-                     runStatus.status === "failed"    ? "✗ Failed" :
-                     runStatus.status === "running"   ? "⟳ Running…" :
-                     runStatus.status === "cancelled" ? "Cancelled" : "⧖ Pending…"}
-                  </p>
-                  {runStatus?.durationMs != null && (
-                    <span className="text-[10px] text-[#7D8590] font-mono">{fmtMs(runStatus.durationMs)}</span>
-                  )}
-                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 uppercase tracking-wider" title="No real database reads or writes were performed">Dry Run</span>
+            {/* ── Live-mode warning ── */}
+            {!dryRun && (
+              <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 flex items-start gap-2">
+                <span className="text-red-400 text-sm flex-shrink-0 mt-0.5">⚠</span>
+                <div>
+                  <p className="text-xs font-semibold text-red-400">Live execution — real actions will fire</p>
+                  <p className="text-[11px] text-[#7D8590] mt-0.5">Emails will send, records will be created, and APIs will be called for real. Switch to <strong className="text-[#E6EDF3]">Fake data</strong> to test safely.</p>
                 </div>
-
-                <p className="text-[10px] text-[#7D8590]">
-                  Run <span className="font-mono text-[#484F58]">#{runId}</span> · Draft canvas
-                </p>
-
-                {/* ── Per-node status badges ── */}
-                {runStatus?.nodeOutputs && runStatus.nodeOutputs.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Node results</p>
-                    <div className="space-y-1">
-                      {runStatus.nodeOutputs.map(no => (
-                        <div key={no.id} className="flex items-center justify-between gap-2">
-                          <span className="font-mono text-[10px] text-[#7D8590] truncate">{no.nodeId}</span>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {no.durationMs != null && (
-                              <span className="text-[9px] text-[#484F58] font-mono">{fmtMs(no.durationMs)}</span>
-                            )}
-                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
-                              no.status === "ok"      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
-                              no.status === "error"   ? "bg-red-500/10 text-red-400 border-red-500/20" :
-                              no.status === "skipped" ? "bg-[#0D1117] text-[#484F58] border-[#30363D]" :
-                                                        "bg-blue-500/10 text-blue-300 border-blue-500/20"
-                            }`}>
-                              {no.status === "ok" ? "✓" : no.status === "error" ? "✗" : no.status === "skipped" ? "skip" : no.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {runStatus.nodeOutputs.some(no => no.errorMessage) && (
-                      <div className="mt-1 space-y-0.5">
-                        {runStatus.nodeOutputs.filter(no => no.errorMessage).map(no => (
-                          <p key={no.id} className="text-[9px] text-red-400 font-mono break-all">{no.nodeId}: {no.errorMessage}</p>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {runStatus?.errorMessage && (
-                  <p className="text-[10px] text-red-400 font-mono break-all">Error: {runStatus.errorMessage}</p>
-                )}
               </div>
+            )}
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => navigate(`/workflows/runs/${runId}`)}
-                  className="flex-1 px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
-                >
-                  View Full Run #{runId} →
-                </button>
-                <button
-                  onClick={() => { setRunId(null); runMut.reset(); }}
-                  className="px-4 py-2 bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] text-xs font-medium rounded-lg transition-colors"
-                >
-                  Run Again
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* ── Trigger context ── */}
-              {loadingTriggers ? (
-                <div className="text-xs text-[#484F58] py-1 animate-pulse">Loading triggers…</div>
-              ) : eventTriggers.length > 1 ? (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Simulate event trigger</label>
-                  <select
-                    value={selectedTriggerId ?? ""}
-                    onChange={e => setSelectedTriggerId(Number(e.target.value))}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-                  >
-                    {eventTriggers.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {String((t.config as Record<string, unknown>).eventName ?? `trigger #${t.id}`)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : activeTrigger ? (
-                <div className="rounded-lg bg-[#0D1117] border border-[#0078D4]/30 p-3 space-y-0.5">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#0078D4]">Simulating event trigger</p>
-                  <p className="text-xs font-mono text-[#E6EDF3]">{activeEventName || "—"}</p>
-                  {knownEvent && <p className="text-[10px] text-[#7D8590] mt-0.5">{knownEvent.description}</p>}
-                </div>
-              ) : (
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
-                  <p className="text-[10px] text-[#7D8590]">No event trigger — running with manual payload.</p>
-                </div>
-              )}
-
-              {/* ── Payload editor ── */}
+            {/* ── Trigger context ── */}
+            {loadingTriggers ? (
+              <div className="text-xs text-[#484F58] py-1 animate-pulse">Loading triggers…</div>
+            ) : eventTriggers.length > 1 ? (
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test payload (JSON)</label>
-                  {knownEvent && (
-                    <button
-                      onClick={() => { setPayloadText(JSON.stringify(defaultPayload, null, 2)); setJsonErr(null); }}
-                      className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
-                    >
-                      ↺ Reset to mock
-                    </button>
-                  )}
-                </div>
-                <textarea
-                  value={payloadText}
-                  onChange={e => handlePayloadChange(e.target.value)}
-                  rows={knownEvent ? 9 : 6}
-                  spellCheck={false}
-                  className="w-full font-mono text-xs bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none"
-                />
-                {jsonErr && (
-                  <p className="text-[10px] text-red-400 font-mono break-all">{jsonErr}</p>
+                <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Simulate event trigger</label>
+                <select
+                  value={selectedTriggerId ?? ""}
+                  onChange={e => setSelectedTriggerId(Number(e.target.value))}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                >
+                  {eventTriggers.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {String((t.config as Record<string, unknown>).eventName ?? `trigger #${t.id}`)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : activeTrigger ? (
+              <div className="rounded-lg bg-[#0D1117] border border-[#0078D4]/30 p-3 space-y-0.5">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-[#0078D4]">Simulating event trigger</p>
+                <p className="text-xs font-mono text-[#E6EDF3]">{activeEventName || "—"}</p>
+                {knownEvent && <p className="text-[10px] text-[#7D8590] mt-0.5">{knownEvent.description}</p>}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
+                <p className="text-[10px] text-[#7D8590]">No event trigger — running with manual payload.</p>
+              </div>
+            )}
+
+            {/* ── Payload editor ── */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test payload (JSON)</label>
+                {knownEvent && (
+                  <button
+                    onClick={() => { setPayloadText(JSON.stringify(defaultPayload, null, 2)); setJsonErr(null); }}
+                    className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+                  >
+                    ↺ Reset to mock
+                  </button>
                 )}
               </div>
+              <textarea
+                value={payloadText}
+                onChange={e => handlePayloadChange(e.target.value)}
+                rows={knownEvent ? 9 : 6}
+                spellCheck={false}
+                className="w-full font-mono text-xs bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 resize-none"
+              />
+              {jsonErr && (
+                <p className="text-[10px] text-red-400 font-mono break-all">{jsonErr}</p>
+              )}
+            </div>
 
-              {/* ── Field reference ── */}
-              {knownEvent && knownEvent.payloadFields.length > 0 && (
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Payload fields</p>
-                  <div className="space-y-1">
-                    {knownEvent.payloadFields.map(f => (
-                      <div key={f.key} className="flex items-baseline gap-2">
-                        <span className="font-mono text-[11px] text-[#2E9EFF] flex-shrink-0">{`{{${f.key}}}`}</span>
-                        <span className="text-[10px] text-[#484F58]">{f.label}</span>
-                      </div>
-                    ))}
-                  </div>
+            {/* ── Field reference ── */}
+            {knownEvent && knownEvent.payloadFields.length > 0 && (
+              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3">
+                <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Payload fields</p>
+                <div className="space-y-1">
+                  {knownEvent.payloadFields.map(f => (
+                    <div key={f.key} className="flex items-baseline gap-2">
+                      <span className="font-mono text-[11px] text-[#2E9EFF] flex-shrink-0">{`{{${f.key}}}`}</span>
+                      <span className="text-[10px] text-[#484F58]">{f.label}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
+              </div>
+            )}
 
-              {runMut.isError && (
-                <p className="text-[10px] text-red-400">{(runMut.error as Error).message}</p>
-              )}
-            </>
-          )}
-        </div>
+            {runMut.isError && (
+              <p className="text-[10px] text-red-400">{(runMut.error as Error).message}</p>
+            )}
+          </div>
 
-        {/* Footer */}
-        {runId === null && (
+          {/* Footer */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
             <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
@@ -3975,7 +3881,9 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
                   : <>🧪 Run Draft Canvas</>}
             </button>
           </div>
-        )}
+        </>
+      )}
+
       {showInputModal && (
         <PreRunInputModal
           fields={askForInputFields}
