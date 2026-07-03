@@ -112,7 +112,7 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-8 sm:p-14 relative z-10 overflow-y-auto">
+    <div className="w-full flex items-center justify-center p-4 sm:p-8 relative z-10">
       <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md overflow-hidden">
 
         {/* ── Header — matches left panel's Deep Navy top bar ── */}
