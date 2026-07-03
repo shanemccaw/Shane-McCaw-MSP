@@ -99,9 +99,12 @@ function slugify(s: string): string {
     .slice(0, 80);
 }
 
-/** Absolute path to the consulting site articles directory. */
+/** Absolute path to the consulting site articles directory.
+ *  Uses import.meta.dirname (the dist/ folder at runtime) and navigates
+ *  two levels up to reach artifacts/, then into the consulting site's
+ *  content directory. This is deterministic regardless of CWD. */
 const ARTICLES_DIR = path.resolve(
-  process.cwd(),
+  path.dirname(new URL(import.meta.url).pathname),
   "../../shane-mccaw-consulting/src/content/articles",
 );
 
@@ -906,19 +909,15 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           content:  paContent,
         }).returning();
 
-        // Write .md file — non-fatal on failure (DB is the source of truth)
+        // Write .md file — required for the public site to reflect the article
         const mdContent =
           `---\nslug: ${newArticle.slug}\ncategory: ${newArticle.category}\n` +
           `title: "${newArticle.title.replace(/"/g, '\\"')}"\n` +
           `summary: "${newArticle.summary.replace(/"/g, '\\"')}"\n` +
           `date: ${newArticle.date}\n---\n\n${newArticle.content}`;
 
-        try {
-          await fs.mkdir(ARTICLES_DIR, { recursive: true });
-          await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
-        } catch (fsErr) {
-          logger.warn({ fsErr, slug: newArticle.slug }, "publish_article: .md file write failed (DB record was saved successfully)");
-        }
+        await fs.mkdir(ARTICLES_DIR, { recursive: true });
+        await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
 
         output = { published: true, slug: newArticle.slug, articleId: newArticle.id, title: newArticle.title };
         break;
