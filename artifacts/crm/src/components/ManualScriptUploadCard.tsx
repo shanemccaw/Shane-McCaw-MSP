@@ -67,6 +67,9 @@ interface Props {
   script: ManualScriptRecord;
   projectId: number;
   onCompleted: () => void;
+  /** When true, suppresses the outer border/banner so the card can be
+   *  embedded inside an already-styled container without double borders. */
+  embedded?: boolean;
 }
 
 function StatusChip({ status }: { status: "awaiting_upload" | "completed" | "processing" }) {
@@ -98,7 +101,7 @@ function StatusChip({ status }: { status: "awaiting_upload" | "completed" | "pro
   );
 }
 
-export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props) {
+export function ManualScriptUploadCard({ script, projectId, onCompleted, embedded = false }: Props) {
   const { fetchWithAuth } = useAuth();
   const [status, setStatus] = useState<"awaiting_upload" | "completed" | "processing">(script.status);
   const [findings, setFindings] = useState<string[]>(script.findings ?? []);
@@ -276,25 +279,8 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
     setErrorKind("generic");
   };
 
-  return (
-    <div className={`rounded-xl border-2 overflow-hidden shadow-sm transition-all ${
-      status === "completed"
-        ? "border-green-200 bg-green-50/30"
-        : "border-amber-300 bg-white"
-    }`}>
-      {/* Action Required Banner */}
-      {status !== "completed" && (
-        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border-b border-amber-200">
-          <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-          </svg>
-          <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
-            Action Required — Manual Script
-          </span>
-        </div>
-      )}
-
-      <div className="p-5 space-y-4">
+  const inner = (
+    <div className={embedded ? "space-y-4" : "p-5 space-y-4"}>
         {/* Header row */}
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
@@ -573,6 +559,25 @@ export function ManualScriptUploadCard({ script, projectId, onCompleted }: Props
           </>
         )}
       </div>
+  );
+
+  if (embedded) return inner;
+
+  return (
+    <div className={`rounded-xl border-2 overflow-hidden shadow-sm transition-all ${
+      status === "completed" ? "border-green-200 bg-green-50/30" : "border-amber-300 bg-white"
+    }`}>
+      {status !== "completed" && (
+        <div className="flex items-center gap-2.5 px-4 py-2.5 bg-amber-50 border-b border-amber-200">
+          <svg className="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+          </svg>
+          <span className="text-xs font-bold uppercase tracking-wide text-amber-700">
+            Action Required — Manual Script
+          </span>
+        </div>
+      )}
+      {inner}
     </div>
   );
 }
