@@ -113,6 +113,7 @@ export default function AnimatedBackground() {
       try { renderer?.dispose(); } catch { /* ignore */ }
       try { geometry?.dispose(); } catch { /* ignore */ }
       try { material?.dispose(); } catch { /* ignore */ }
+      return;
     }
   }, []);
 
