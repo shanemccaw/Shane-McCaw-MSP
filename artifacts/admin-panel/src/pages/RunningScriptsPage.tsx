@@ -194,8 +194,9 @@ function DetailSheet({
   const renderRawOutput = () => {
     if (liveLines.length > 0) return liveLines;
     if (!detail) return [];
-    const raw = detail.rawOutput as { text?: string };
-    if (raw?.text) return raw.text.split("\n");
+    const raw = detail.rawOutput as { text?: string; output?: string };
+    const body = raw?.text ?? raw?.output;
+    if (body) return body.split("\n");
     return [];
   };
 
