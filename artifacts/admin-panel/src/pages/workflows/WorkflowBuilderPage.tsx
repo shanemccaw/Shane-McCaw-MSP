@@ -3853,16 +3853,21 @@ function BuildCasesPopover({
   groups,
   onAdd,
   onCancel,
+  initialChecked,
+  onCheckedChange,
 }: {
   groups: { group: string; items: { id: string; label: string }[] }[];
   onAdd: (selected: { id: string; label: string }[]) => void;
   onCancel: () => void;
+  initialChecked?: Record<string, boolean>;
+  onCheckedChange?: (checked: Record<string, boolean>) => void;
 }) {
   const [checked, setChecked] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
     for (const g of groups) {
       for (const item of g.items) {
-        init[item.id] = true;
+        // Use persisted value if available, otherwise default to true
+        init[item.id] = initialChecked ? (initialChecked[item.id] ?? true) : true;
       }
     }
     return init;
@@ -3871,7 +3876,11 @@ function BuildCasesPopover({
   const showGroupHeaders = groups.length > 1;
 
   function toggleItem(id: string) {
-    setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+    setChecked(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      onCheckedChange?.(next);
+      return next;
+    });
   }
 
   function toggleGroup(group: string, value: boolean) {
@@ -3879,7 +3888,11 @@ function BuildCasesPopover({
     if (!g) return;
     const patch: Record<string, boolean> = {};
     for (const item of g.items) patch[item.id] = value;
-    setChecked(prev => ({ ...prev, ...patch }));
+    setChecked(prev => {
+      const next = { ...prev, ...patch };
+      onCheckedChange?.(next);
+      return next;
+    });
   }
 
   function handleAdd() {
@@ -4076,6 +4089,8 @@ function SwitchCasePanel({
               groups={detectedList.groups}
               onAdd={handleBuildAdd}
               onCancel={() => setBuildOpen(false)}
+              initialChecked={(node.data.buildCasesSelection as Record<string, boolean> | undefined)}
+              onCheckedChange={(checked) => onChange(node.id, { ...node.data, buildCasesSelection: checked })}
             />
           )}
           {pendingCases && (
