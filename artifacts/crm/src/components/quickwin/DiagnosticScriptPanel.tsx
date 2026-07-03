@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { ManualScriptUploadCard, type ManualScriptRecord } from "@/components/ManualScriptUploadCard";
 
 interface ScriptEntry extends ManualScriptRecord {
@@ -24,6 +25,7 @@ interface ScriptState {
 }
 
 export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCount, downloadableTasks, onCompleted, onAllDismissed }: Props) {
+  const { fetchWithAuth } = useAuth();
   const [scriptStates, setScriptStates] = useState<Record<number, ScriptState>>(
     () => Object.fromEntries(scripts.map(s => [s.runResultId, { dismissed: false, confirmingDismiss: false }]))
   );
@@ -33,7 +35,7 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
     if (downloadingTaskIds.has(taskId)) return;
     setDownloadingTaskIds(prev => new Set(prev).add(taskId));
     try {
-      const res = await fetch(`/api/portal/tasks/${taskId}/download-script`);
+      const res = await fetchWithAuth(`/api/portal/tasks/${taskId}/download-script`);
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
