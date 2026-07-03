@@ -387,8 +387,12 @@ export function extractDeploymentCards(text: string): StatCard[] {
   }
 
   // Timeline
+  // Note: [^.\d]{0,20} excludes digits from the gap so a comma-formatted number
+  // like "1,200" in "estimated over 1,200 months" cannot be partially consumed
+  // by the quantifier before the (\d+) capture group, matching the same fix
+  // applied to the "deploying to" gap in the Users-in-Scope pattern above.
   const weekM = text.match(/(\d+)[- ](?:week|month)\s+(?:rollout|deployment|migration|timeline|plan)/i)
-    ?? text.match(/estimated[^.]{0,20}(\d+)\s+(weeks?|months?)/i);
+    ?? text.match(/estimated[^.\d]{0,20}(\d+)\s+(weeks?|months?)/i);
   if (weekM) {
     add({ value: `${weekM[1]} ${weekM[2] ?? "wk"}`, label: "Estimated Timeline", detail: "From kickoff to completion", severity: "info" });
   }

@@ -484,6 +484,36 @@ describe("extractDeploymentCards", () => {
     expect(card!.value).toContain("8");
     expect(card!.severity).toBe("info");
   });
+
+  it("detects estimated timeline via 'estimated … N weeks' branch", () => {
+    const cards = extractDeploymentCards("Estimated timeline: 12 weeks from kickoff.");
+    const card = cards.find(c => c.label === "Estimated Timeline");
+    expect(card).toBeDefined();
+    expect(card!.value).toContain("12");
+    expect(card!.severity).toBe("info");
+  });
+
+  it("detects estimated timeline with short filler words before the number", () => {
+    // Gap [^.\\d]{0,20} allows up to 20 non-digit, non-period chars between
+    // "estimated" and the number — filler like " at " or " over " works fine.
+    const cards = extractDeploymentCards("Estimated at 6 months end-to-end.");
+    const card = cards.find(c => c.label === "Estimated Timeline");
+    expect(card).toBeDefined();
+    expect(card!.value).toContain("6");
+  });
+
+  it("estimated timeline gap never silently truncates a number (old [^.]{0,20} returned '00' for comma-formatted input)", () => {
+    // With the old regex [^.]{0,20}, the gap could consume "1,2" from "1,200",
+    // leaving only "00" for the (\\d+) capture — silently returning a wrong value.
+    // With the fixed [^.\\d]{0,20}, digits are excluded from the gap, so the gap
+    // stops before the number and (\\d+) cannot capture a truncated fragment.
+    // For comma-formatted input, the net result is no match (undefined card),
+    // which is correct: failing loudly beats returning "00".
+    const cards = extractDeploymentCards("Estimated at 1,200 months for full adoption.");
+    const card = cards.find(c => c.label === "Estimated Timeline");
+    // Must NOT silently produce the truncated fragment "00".
+    expect(card?.value).not.toBe("00");
+  });
 });
 
 // ─── extractStatCards (dispatcher) ────────────────────────────────────────────
