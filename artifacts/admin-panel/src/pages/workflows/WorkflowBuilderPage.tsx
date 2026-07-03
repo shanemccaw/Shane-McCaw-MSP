@@ -1514,36 +1514,21 @@ function NodeConfigPanel({
                     ))}
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
-                  <select
-                    value={(node.data.docType as string) ?? "executive_summary"}
-                    onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-                  >
-                    {(((node.data.docCategory as string) ?? "report") === "consulting" ? [
-                      ["consolidated_sow","Consolidated Statement of Work"],
-                      ["sow","Statement of Work"],
-                      ["remediation_plan","Remediation Plan"],
-                      ["deployment_plan","Deployment Plan"],
-                      ["governance_framework","Governance Framework"],
-                      ["security_hardening_plan","Security Hardening Plan"],
-                      ["copilot_enablement_plan","Copilot Enablement Plan"],
-                      ["identity_modernization_plan","Identity Modernization Plan"],
-                      ["copilot_readiness","Copilot Readiness Assessment"],
-                    ] : [
-                      ["executive_summary","Executive Summary"],
-                      ["full_readiness_report","Full Readiness Report"],
-                      ["security_posture_report","Security Posture Report"],
-                      ["governance_maturity_report","Governance Maturity Report"],
-                      ["data_exposure_risk_report","Data Exposure Risk Report"],
-                      ["license_optimization_report","License Optimization Report"],
-                    ]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                <PayloadField label="Document Type" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder={((node.data.docCategory as string) ?? "report") === "consulting" ? "sow" : "executive_summary"} ancestorOutputs={ancestorOutputs} />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+                  <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
+                  <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
+                    {(((node.data.docCategory as string) ?? "report") === "consulting"
+                      ? "consolidated_sow · sow · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
+                      : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
+                    )}
+                  </p>
+                  <p className="text-[10px] text-[#484F58]">Accepts a <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> — e.g. <span className="font-mono text-[#7D8590]">{"{{item.docType}}"}</span> from a ForEach loop.</p>
                 </div>
+                <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. Document Name supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation — e.g. <span className="font-mono text-[#7D8590]">{"{{item.name}}"}</span> inside a ForEach loop. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -1754,36 +1739,21 @@ function NodeConfigPanel({
                 ))}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
-              <select
-                value={(node.data.docType as string) ?? "executive_summary"}
-                onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-              >
-                {(((node.data.docCategory as string) ?? "report") === "consulting" ? [
-                  ["consolidated_sow","Consolidated Statement of Work"],
-                  ["sow","Statement of Work"],
-                  ["remediation_plan","Remediation Plan"],
-                  ["deployment_plan","Deployment Plan"],
-                  ["governance_framework","Governance Framework"],
-                  ["security_hardening_plan","Security Hardening Plan"],
-                  ["copilot_enablement_plan","Copilot Enablement Plan"],
-                  ["identity_modernization_plan","Identity Modernization Plan"],
-                  ["copilot_readiness","Copilot Readiness Assessment"],
-                ] : [
-                  ["executive_summary","Executive Summary"],
-                  ["full_readiness_report","Full Readiness Report"],
-                  ["security_posture_report","Security Posture Report"],
-                  ["governance_maturity_report","Governance Maturity Report"],
-                  ["data_exposure_risk_report","Data Exposure Risk Report"],
-                  ["license_optimization_report","License Optimization Report"],
-                ]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
+            <PayloadField label="Document Type" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder={((node.data.docCategory as string) ?? "report") === "consulting" ? "sow" : "executive_summary"} ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
+              <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
+                {(((node.data.docCategory as string) ?? "report") === "consulting"
+                  ? "consolidated_sow · sow · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
+                  : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
+                )}
+              </p>
+              <p className="text-[10px] text-[#484F58]">Accepts a <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> — e.g. <span className="font-mono text-[#7D8590]">{"{{item.docType}}"}</span> from a ForEach loop.</p>
             </div>
+            <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a document for the client. Document Name supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation — e.g. <span className="font-mono text-[#7D8590]">{"{{item.name}}"}</span> inside a ForEach loop. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+              <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
             </div>
           </>
         )}
