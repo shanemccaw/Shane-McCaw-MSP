@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   type Node,
   type Edge,
@@ -954,8 +955,41 @@ function getAncestorOutputs(
   return result;
 }
 
+// ── Field hint tooltip ────────────────────────────────────────────────────────
+
+function FieldHint({ text }: { text: string }) {
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  return (
+    <span
+      ref={ref}
+      className="inline-flex items-center flex-shrink-0 cursor-help"
+      onMouseEnter={() => { if (ref.current) setRect(ref.current.getBoundingClientRect()); }}
+      onMouseLeave={() => setRect(null)}
+    >
+      <svg className="w-3 h-3 text-[#484F58] hover:text-[#7D8590] transition-colors" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+      </svg>
+      {rect && createPortal(
+        <div
+          className="fixed z-[9999] pointer-events-none"
+          style={{ left: rect.left + rect.width / 2, top: rect.top - 8, transform: "translate(-50%, -100%)" }}
+        >
+          <div className="relative w-52 bg-[#1C2128] border border-[#444C56] rounded-lg px-2.5 py-2 shadow-xl">
+            <p className="text-[11px] text-[#CDD9E5] leading-snug">{text}</p>
+            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-[5px] border-x-transparent border-t-[5px] border-t-[#444C56]" />
+          </div>
+        </div>,
+        document.body
+      )}
+    </span>
+  );
+}
+
+// ── Payload field (label + variable picker + input/textarea) ──────────────────
+
 function PayloadField({
-  label, value, onChange, placeholder, multiline, ancestorOutputs,
+  label, value, onChange, placeholder, multiline, ancestorOutputs, hint,
 }: {
   label: string;
   value: string;
@@ -963,6 +997,7 @@ function PayloadField({
   placeholder?: string;
   multiline?: boolean;
   ancestorOutputs: AncestorGroup[];
+  hint?: string;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
@@ -1046,7 +1081,10 @@ function PayloadField({
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between min-h-[18px]">
-        <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+          {hint && <FieldHint text={hint} />}
+        </div>
         {hasVars && (
           <div className="relative">
             <button
@@ -1288,7 +1326,10 @@ function NodeConfigPanel({
 
       <div className="p-4 space-y-4">
         <div className="space-y-1">
-          <label className="text-xs font-medium text-[#7D8590]">Node Name</label>
+          <div className="flex items-center gap-1">
+            <label className="text-xs font-medium text-[#7D8590]">Node Name</label>
+            <FieldHint text="Display label for this node in the canvas. Has no effect on execution." />
+          </div>
           <input
             type="text"
             value={(node.data.label as string) ?? ""}
@@ -1299,6 +1340,7 @@ function NodeConfigPanel({
         </div>
         <ConfigField
           label="Description"
+          hint="Optional notes about what this node does — for documentation only, not used during execution."
           value={(node.data.description as string) ?? ""}
           onChange={v => onChange(node.id, { ...node.data, description: v })}
           multiline
@@ -1311,7 +1353,10 @@ function NodeConfigPanel({
         {nodeType === "action" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Action Type</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Action Type</label>
+                <FieldHint text="The operation this node performs. Changing the type reveals the relevant configuration fields below." />
+              </div>
               <select
                 value={(node.data.actionType as string) ?? "http_request"}
                 onChange={e => onChange(node.id, { ...node.data, actionType: e.target.value })}
@@ -1810,7 +1855,10 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Qualification Threshold</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Qualification Threshold</label>
+                <FieldHint text="Lead score (0–100). Leads scoring at or above this are flagged as qualified; those below are unqualified." />
+              </div>
               <input
                 type="number" min={0} max={100}
                 value={(node.data.threshold as number) ?? 50}
@@ -1834,7 +1882,10 @@ function NodeConfigPanel({
           return (
             <>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">Target type</label>
+                <div className="flex items-center gap-1">
+                  <label className="text-xs font-medium text-[#7D8590]">Target type</label>
+                  <FieldHint text="Whether to move a Lead or an Opportunity to the new stage." />
+                </div>
                 <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
                   {(["opportunity","lead"] as const).map(t => (
                     <button
@@ -1852,7 +1903,10 @@ function NodeConfigPanel({
                 : <PayloadField label="Opportunity ID" value={(node.data.opportunityId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, opportunityId: v })} placeholder="{{opportunityId}}" ancestorOutputs={ancestorOutputs} />
               }
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-[#7D8590]">New stage</label>
+                <div className="flex items-center gap-1">
+                  <label className="text-xs font-medium text-[#7D8590]">New stage</label>
+                  <FieldHint text="The pipeline stage to move the record into. Available stages change based on the target type above." />
+                </div>
                 <select
                   value={stageList.includes(currentStage) ? currentStage : stageList[0]}
                   onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
@@ -2111,6 +2165,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Inputs"
+              hint="Any value, expression, or JSON. Reference upstream data with {{steps.nodeId.key}}. The result is exposed downstream as {{steps.<thisNodeId>.value}}."
               value={(node.data.inputs as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, inputs: v })}
               placeholder="{{steps.nodeId.value}} or any static text / JSON"
@@ -2161,6 +2216,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Post Body"
+              hint="Text of the LinkedIn post. Supports {{variables}} from upstream nodes. Max ~3,000 characters. Mention people with their full name or LinkedIn profile handle."
               value={(node.data.postBody as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, postBody: v })}
               placeholder="Excited to share our latest article on Microsoft 365 — {{articleTitle}}"
@@ -2175,6 +2231,7 @@ function NodeConfigPanel({
             />
             <PayloadField
               label="LinkedIn Org ID (optional)"
+              hint="Numeric company page ID. Leave blank to use the LINKEDIN_ORG_ID secret. Find it in the URL of your company admin page on LinkedIn."
               value={(node.data.orgId as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, orgId: v })}
               placeholder="Leave blank to use the LINKEDIN_ORG_ID secret"
@@ -2193,6 +2250,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Tweet Text (max 280 chars)"
+              hint="Text of the tweet. Hard limit is 280 characters — URLs count as 23 chars. Supports {{variables}} from upstream nodes."
               value={(node.data.postBody as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, postBody: v })}
               placeholder="New article: {{articleTitle}} — read it here: https://shanemccawconsulting.com/resources/{{articleSlug}}"
@@ -2218,6 +2276,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Post Body"
+              hint="Text of the Facebook page post. Supports {{variables}} from upstream nodes. Attach an image via the Image URL field below."
               value={(node.data.postBody as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, postBody: v })}
               placeholder="New article on Microsoft 365: {{articleTitle}}"
@@ -2232,6 +2291,7 @@ function NodeConfigPanel({
             />
             <PayloadField
               label="Facebook Page ID (optional)"
+              hint="Numeric Facebook Page ID. Leave blank to use the FACEBOOK_PAGE_ID secret. Find it in Page Settings → Page Transparency → Page ID."
               value={(node.data.pageId as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, pageId: v })}
               placeholder="Leave blank to use the FACEBOOK_PAGE_ID secret"
@@ -2259,7 +2319,10 @@ function NodeConfigPanel({
         {nodeType === "approval_gate" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Gate Label</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Gate Label</label>
+                <FieldHint text="Name shown on the approval card — helps approvers understand what they are reviewing." />
+              </div>
               <input
                 value={(node.data.label as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, label: e.target.value })}
@@ -2268,7 +2331,10 @@ function NodeConfigPanel({
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Approver Role <span className="text-[#484F58] font-normal">(locked)</span></label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Approver Role <span className="text-[#484F58] font-normal">(locked)</span></label>
+                <FieldHint text="Who can approve this gate. Currently locked to admin — only admins can approve or reject." />
+              </div>
               <input
                 value="admin"
                 disabled
@@ -2300,13 +2366,17 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Array path"
+              hint="The variable containing the array to iterate over — e.g. {{newsHeadlines}}. Each element is injected as {{item}} into the loop body nodes."
               value={(node.data.arrayPath as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, arrayPath: v })}
               placeholder="{{newsHeadlines}}"
               ancestorOutputs={ancestorOutputs}
             />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Item alias <span className="text-[#484F58] font-normal">(optional)</span></label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Item alias <span className="text-[#484F58] font-normal">(optional)</span></label>
+                <FieldHint text="Short name for each loop item — accessible as {{alias.fieldName}} inside the loop body alongside the default {{item}}." />
+              </div>
               <input
                 value={(node.data.itemAlias as string) ?? ""}
                 onChange={e => onChange(node.id, { ...node.data, itemAlias: e.target.value })}
@@ -2636,6 +2706,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Customer Email"
+              hint="The client's email address. Used to look up or create the Stripe customer. Supports {{variables}} — e.g. {{clientEmail}}."
               value={(node.data.customerEmail as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, customerEmail: v })}
               placeholder="{{clientEmail}}"
@@ -2643,13 +2714,17 @@ function NodeConfigPanel({
             />
             <PayloadField
               label="Customer Name (optional)"
+              hint="Optional display name on the Stripe invoice. Supports {{variables}} — e.g. {{clientName}}."
               value={(node.data.customerName as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, customerName: v })}
               placeholder="{{clientName}}"
               ancestorOutputs={ancestorOutputs}
             />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Days Until Due</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Days Until Due</label>
+                <FieldHint text="How many calendar days from the run date the Stripe invoice is due. 0 means due immediately." />
+              </div>
               <input
                 type="number"
                 min={0}
@@ -2660,6 +2735,7 @@ function NodeConfigPanel({
             </div>
             <PayloadField
               label="Line Items (JSON array)"
+              hint='JSON array of line items. Each item needs: description, amount (in smallest currency unit — e.g. 250000 = $2,500.00), and currency. Supports {{variables}}.'
               value={(node.data.lineItems as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, lineItems: v })}
               placeholder='[{"description":"M365 Assessment","amount":250000,"currency":"usd"}]'
@@ -2679,6 +2755,7 @@ function NodeConfigPanel({
           <>
             <PayloadField
               label="Product Name"
+              hint="Name of the product or service shown on the Stripe payment page. Supports {{variables}}."
               value={(node.data.productName as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, productName: v })}
               placeholder="M365 Governance Review or {{projectTitle}}"
@@ -2686,6 +2763,7 @@ function NodeConfigPanel({
             />
             <PayloadField
               label="Amount (smallest currency unit)"
+              hint="Price in the smallest unit of the currency — e.g. 95000 = $950.00 USD. Supports {{variables}}."
               value={(node.data.amount as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, amount: v })}
               placeholder="95000 (= $950.00 USD) or {{totalAmount}}"
@@ -2693,13 +2771,17 @@ function NodeConfigPanel({
             />
             <PayloadField
               label="Currency"
+              hint="Three-letter ISO currency code — e.g. usd, gbp, eur. Must match the Stripe account's supported currencies."
               value={(node.data.currency as string) ?? "usd"}
               onChange={v => onChange(node.id, { ...node.data, currency: v })}
               placeholder="usd"
               ancestorOutputs={ancestorOutputs}
             />
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Quantity</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Quantity</label>
+                <FieldHint text="Number of units for this line item on the Stripe payment link." />
+              </div>
               <input
                 type="number"
                 min={1}
@@ -2758,7 +2840,10 @@ function NodeConfigPanel({
         {nodeType === "delay" && (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Mode</label>
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Mode</label>
+                <FieldHint text="Fixed pauses for a set number of seconds. Until Timestamp waits until a specific ISO date. Until Condition polls until an expression becomes true." />
+              </div>
               <select
                 value={(node.data.mode as string) ?? "fixed"}
                 onChange={e => onChange(node.id, { ...node.data, mode: e.target.value })}
@@ -2878,7 +2963,10 @@ function SendCampaignEmailPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Campaign Email Copy</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Campaign Email Copy</label>
+          <FieldHint text="The email copy asset to send. Create assets in Marketing → Campaigns → Assets, then select one here." />
+        </div>
         {isLoading ? (
           <div className="text-xs text-[#484F58] animate-pulse">Loading email assets…</div>
         ) : (
@@ -3067,7 +3155,10 @@ function CreateKanbanTaskPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Board</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Board</label>
+          <FieldHint text="Which kanban board the new task card is placed on." />
+        </div>
         {loadingBoards ? (
           <div className="text-xs text-[#484F58] animate-pulse">Loading boards…</div>
         ) : (
@@ -3088,7 +3179,10 @@ function CreateKanbanTaskPanel({
       </div>
       {boardId && (
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
+          <div className="flex items-center gap-1">
+            <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
+            <FieldHint text="The column (status) the card starts in. Columns come from the board selected above." />
+          </div>
           {loadingColumns ? (
             <div className="text-xs text-[#484F58] animate-pulse">Loading columns…</div>
           ) : (
@@ -3106,6 +3200,7 @@ function CreateKanbanTaskPanel({
       )}
       <PayloadField
         label="Task Title"
+        hint="The card's title on the kanban board. Supports {{variables}} from upstream nodes."
         value={(node.data.titleExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, titleExpr: v })}
         placeholder="Follow up with {{company}} re: {{serviceName}}"
@@ -3113,6 +3208,7 @@ function CreateKanbanTaskPanel({
       />
       <PayloadField
         label="Description (optional)"
+        hint="Optional card body text. Supports {{variables}} — e.g. include a score or other dynamic detail."
         value={(node.data.descriptionExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, descriptionExpr: v })}
         placeholder="Client scored {{score}} — review readiness report"
@@ -3120,7 +3216,10 @@ function CreateKanbanTaskPanel({
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Priority</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Priority</label>
+          <FieldHint text="Priority level assigned to the kanban card — urgent, high, medium, or low." />
+        </div>
         <select
           value={(node.data.priority as string) ?? "medium"}
           onChange={e => onChange(node.id, { ...node.data, priority: e.target.value })}
@@ -3173,13 +3272,17 @@ function GenerateArticlePanel({
     <>
       <PayloadField
         label="Topic"
+        hint="The article subject. Wire {{articleTopic}} from a Topic Picker node upstream, or type a custom topic directly."
         value={(node.data.topic as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, topic: v })}
         placeholder="5 Ways to Improve M365 Security Posture"
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Category</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Category</label>
+          <FieldHint text="The blog category this article is filed under on the consulting site resource page." />
+        </div>
         <select
           value={(node.data.category as string) ?? "M365 Best Practices"}
           onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
@@ -3190,13 +3293,17 @@ function GenerateArticlePanel({
       </div>
       <PayloadField
         label="Keywords (comma-separated, optional)"
+        hint="Optional focus keywords guiding the AI — useful for SEO. Separate with commas. Supports {{variables}}."
         value={(node.data.keywords as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, keywords: v })}
         placeholder="MFA, Conditional Access, Zero Trust"
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Tone</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Tone</label>
+          <FieldHint text="Writing style for the AI. Professional suits most content; technical is better for in-depth guides; executive is best for leadership audiences." />
+        </div>
         <select
           value={(node.data.tone as string) ?? ARTICLE_TONES[0]}
           onChange={e => onChange(node.id, { ...node.data, tone: e.target.value })}
@@ -3231,6 +3338,7 @@ function PublishArticlePanel({
       </div>
       <PayloadField
         label="Title override (leave blank to use {{articleTitle}})"
+        hint="Override the article title. Leave blank to use {{articleTitle}} from the upstream Generate Article node."
         value={(node.data.titleExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, titleExpr: v })}
         placeholder="{{articleTitle}}"
@@ -3238,6 +3346,7 @@ function PublishArticlePanel({
       />
       <PayloadField
         label="Slug override (leave blank to auto-derive)"
+        hint="Override the URL slug. Leave blank to auto-derive from the title. Slug conflicts are resolved by appending a timestamp."
         value={(node.data.slugExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, slugExpr: v })}
         placeholder="{{articleSlug}}"
@@ -3245,6 +3354,7 @@ function PublishArticlePanel({
       />
       <PayloadField
         label="Category override (leave blank to use {{articleCategory}})"
+        hint="Override the blog category. Leave blank to use {{articleCategory}} from the upstream Generate Article node."
         value={(node.data.categoryExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, categoryExpr: v })}
         placeholder="{{articleCategory}}"
@@ -3252,6 +3362,7 @@ function PublishArticlePanel({
       />
       <PayloadField
         label="Content override (leave blank to use {{articleContent}})"
+        hint="Override the full article body (Markdown). Leave blank to use {{articleContent}} from the upstream Generate Article node."
         value={(node.data.contentExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, contentExpr: v })}
         placeholder="{{articleContent}}"
@@ -3260,6 +3371,7 @@ function PublishArticlePanel({
       />
       <PayloadField
         label="Date override (leave blank to use {{articleDate}})"
+        hint="Override the publish date (ISO format). Leave blank to use {{articleDate}} from the upstream Generate Article node."
         value={(node.data.dateExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, dateExpr: v })}
         placeholder="{{articleDate}}"
@@ -3287,7 +3399,10 @@ function TopicPickerPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Category</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Category</label>
+          <FieldHint text="Limits the AI to topics within this Microsoft 365 category — helps keep content focused and on-brand." />
+        </div>
         <select
           value={(node.data.category as string) ?? "M365 Best Practices"}
           onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
@@ -3298,13 +3413,17 @@ function TopicPickerPanel({
       </div>
       <PayloadField
         label="Focus area (optional)"
+        hint="Comma-separated keywords that narrow the topic further within the selected category — e.g. 'governance, security'. Supports {{variables}}."
         value={(node.data.focusArea as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, focusArea: v })}
         placeholder="governance, security, Copilot adoption"
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Articles to check for duplicates</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Articles to check for duplicates</label>
+          <FieldHint text="How many of the most recent published articles to scan. The AI avoids topics already covered in this window." />
+        </div>
         <input
           type="number" min={5} max={100}
           value={(node.data.excludeRecent as number) ?? 20}
@@ -3349,6 +3468,7 @@ function GenerateImagePanel({
     <>
       <PayloadField
         label="Prompt"
+        hint="Describe the image in detail. Wire {{articleTitle}} or other tokens to make it dynamic. The style hint (below) is appended automatically."
         value={(node.data.prompt as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, prompt: v })}
         placeholder="A professional Microsoft 365 hero image for {{articleTitle}}, clean and corporate"
@@ -3356,7 +3476,10 @@ function GenerateImagePanel({
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Aspect Ratio / Format</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Aspect Ratio / Format</label>
+          <FieldHint text="Dimensions of the generated image. Landscape suits article headers and social cards; square suits Instagram; portrait suits Pinterest." />
+        </div>
         <select
           value={(node.data.aspectRatio as string) ?? "landscape"}
           onChange={e => onChange(node.id, { ...node.data, aspectRatio: e.target.value })}
@@ -3368,7 +3491,10 @@ function GenerateImagePanel({
         </select>
       </div>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Style hint (optional)</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Style hint (optional)</label>
+          <FieldHint text="Visual style appended to the image prompt. 'None' lets the prompt alone drive the style. Choose a preset to get a consistent look across generated images." />
+        </div>
         <select
           value={(node.data.style as string) ?? ""}
           onChange={e => onChange(node.id, { ...node.data, style: e.target.value })}
@@ -3412,7 +3538,10 @@ function FetchNewsPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Search topics</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Search topics</label>
+          <FieldHint text="Comma-separated keywords used to search for relevant news via NewsAPI (if key is configured) or Microsoft RSS feeds as a fallback." />
+        </div>
         <textarea
           rows={2}
           value={(node.data.topics as string) ?? DEFAULT_TOPICS}
@@ -3424,7 +3553,10 @@ function FetchNewsPanel({
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Custom AI prompt (optional)</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Custom AI prompt (optional)</label>
+          <FieldHint text="Overrides the built-in analyst prompt. Must instruct the AI to return JSON with: topic, context, articleSuggestion, hotScore (0–100), targetSector." />
+        </div>
         <textarea
           rows={4}
           value={(node.data.customPrompt as string) ?? ""}
@@ -3436,7 +3568,10 @@ function FetchNewsPanel({
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Max results</label>
+          <div className="flex items-center gap-1">
+            <label className="text-xs font-medium text-[#7D8590]">Max results</label>
+            <FieldHint text="Maximum number of headlines to fetch and score. Higher values give better coverage but are slower to process." />
+          </div>
           <input
             type="number" min={1} max={50}
             value={(node.data.maxResults as number) ?? 10}
@@ -3445,7 +3580,10 @@ function FetchNewsPanel({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#7D8590]">Hot-score threshold</label>
+          <div className="flex items-center gap-1">
+            <label className="text-xs font-medium text-[#7D8590]">Hot-score threshold</label>
+            <FieldHint text="Articles scoring above this (0–100) are flagged as 'hot'. Lower values trigger campaigns more often; higher values are more selective." />
+          </div>
           <input
             type="number" min={0} max={100}
             value={(node.data.hotScoreThreshold as number) ?? 60}
@@ -3590,6 +3728,7 @@ function DefineCampaignGoalPanel({
     <>
       <PayloadField
         label="Goal"
+        hint="Describe what the campaign aims to achieve — e.g. 'Generate 20 qualified leads'. Passed downstream as {{campaignGoal}}."
         value={(node.data.goalExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
         placeholder="Generate 20 qualified leads for Copilot readiness assessments"
@@ -3617,6 +3756,7 @@ function DefineTargetAudiencePanel({
     <>
       <PayloadField
         label="Target audience"
+        hint="Describe who the campaign targets — e.g. 'IT directors at mid-market companies'. Passed downstream as {{targetAudience}}."
         value={(node.data.audienceExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
         placeholder="IT directors at mid-market companies (100–500 employees)"
@@ -3644,6 +3784,7 @@ function CreateCampaignOfferPanel({
     <>
       <PayloadField
         label="Offer name"
+        hint="Required. The offer's display name — creates a record in the Offers database. Supports {{variables}}."
         value={(node.data.nameExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, nameExpr: v })}
         placeholder="Free Copilot Readiness Assessment"
@@ -3651,6 +3792,7 @@ function CreateCampaignOfferPanel({
       />
       <PayloadField
         label="Goal (optional — uses {{campaignGoal}} if blank)"
+        hint="What this offer aims to achieve. Leave blank to inherit {{campaignGoal}} from an upstream Define Goal node."
         value={(node.data.goalExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
         placeholder="{{campaignGoal}}"
@@ -3658,6 +3800,7 @@ function CreateCampaignOfferPanel({
       />
       <PayloadField
         label="Target audience (optional — uses {{targetAudience}} if blank)"
+        hint="Who this offer targets. Leave blank to inherit {{targetAudience}} from an upstream Define Target Audience node."
         value={(node.data.audienceExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
         placeholder="{{targetAudience}}"
@@ -3665,6 +3808,7 @@ function CreateCampaignOfferPanel({
       />
       <PayloadField
         label="Pricing"
+        hint="How this offer is priced — e.g. 'Free', '$2,500 flat fee', 'from £500/month'. Shown in marketing materials."
         value={(node.data.pricingExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, pricingExpr: v })}
         placeholder="Free / $2,500 flat fee"
@@ -3672,6 +3816,7 @@ function CreateCampaignOfferPanel({
       />
       <PayloadField
         label="CTA"
+        hint="Call to action text shown on marketing materials — e.g. 'Book a free 30-min call'. Supports {{variables}}."
         value={(node.data.ctaExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, ctaExpr: v })}
         placeholder="Book a free 30-min call"
@@ -3699,6 +3844,7 @@ function CreateMarketingCampaignPanel({
     <>
       <PayloadField
         label="Campaign name"
+        hint="Display name for the campaign record in the Marketing database. Supports {{variables}} from upstream nodes."
         value={(node.data.nameExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, nameExpr: v })}
         placeholder="Q3 Copilot Rollout Push"
@@ -3706,6 +3852,7 @@ function CreateMarketingCampaignPanel({
       />
       <PayloadField
         label="Goal"
+        hint="What the campaign aims to achieve — wire {{campaignGoal}} from an upstream Define Goal node. Supports {{variables}}."
         value={(node.data.goalExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
         placeholder="Generate 20 qualified leads for Copilot readiness assessments"
@@ -3713,6 +3860,7 @@ function CreateMarketingCampaignPanel({
       />
       <PayloadField
         label="Target audience"
+        hint="Who the campaign targets — wire {{targetAudience}} from an upstream Define Audience node. Supports {{variables}}."
         value={(node.data.audienceExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
         placeholder="IT directors at mid-market companies (100-500 employees)"
@@ -3720,13 +3868,17 @@ function CreateMarketingCampaignPanel({
       />
       <PayloadField
         label="Offer"
+        hint="The value proposition being promoted — wire {{offerName}} from an upstream Create Offer node. Supports {{variables}}."
         value={(node.data.offerExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, offerExpr: v })}
         placeholder="Free Copilot Readiness Assessment"
         ancestorOutputs={ancestorOutputs}
       />
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Initial status</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Initial status</label>
+          <FieldHint text="Whether the campaign record is created as a draft (hidden from reporting) or immediately active." />
+        </div>
         <select
           value={(node.data.status as string) ?? "draft"}
           onChange={e => onChange(node.id, { ...node.data, status: e.target.value })}
@@ -3758,6 +3910,7 @@ function PublishLandingPagePanel({
     <>
       <PayloadField
         label="Landing page slug"
+        hint="The URL slug of the landing page to publish — must match exactly as shown in Marketing → Landing Pages. Supports {{variables}}."
         value={(node.data.slugExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, slugExpr: v })}
         placeholder="copilot-readiness-offer"
@@ -3793,7 +3946,10 @@ function AskAiPanel({
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Model</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Model</label>
+          <FieldHint text="Haiku is fast and cheap — ideal for simple extraction or formatting. Sonnet produces higher-quality reasoning and is better for complex analysis." />
+        </div>
         <select
           value={(node.data.model as string) ?? "claude-haiku-4-5"}
           onChange={e => onChange(node.id, { ...node.data, model: e.target.value })}
@@ -3806,6 +3962,7 @@ function AskAiPanel({
 
       <PayloadField
         label="System prompt (optional)"
+        hint="Sets the AI's persona before the user prompt — e.g. 'You are a Microsoft 365 marketing strategist'. Leave blank to use Claude's default behaviour."
         value={(node.data.systemExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, systemExpr: v })}
         placeholder="You are a marketing strategist specialising in Microsoft 365..."
@@ -3814,6 +3971,7 @@ function AskAiPanel({
 
       <PayloadField
         label="Prompt"
+        hint="The message sent to Claude. Use {{variable}} syntax to inject data from upstream nodes — e.g. {{newsTopic}} or {{aiResponse}}."
         value={(node.data.promptExpr as string) ?? ""}
         onChange={v => onChange(node.id, { ...node.data, promptExpr: v })}
         placeholder="Based on this news story: {{newsTopic}}, suggest a target audience..."
@@ -3822,7 +3980,10 @@ function AskAiPanel({
       />
 
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Max tokens</label>
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Max tokens</label>
+          <FieldHint text="Maximum response length (~¾ of a word per token). 1024 suits most tasks. Increase for long structured outputs; decrease to cut costs." />
+        </div>
         <input
           type="number"
           min={64}
@@ -3903,6 +4064,7 @@ function ConfigField({
   placeholder,
   multiline,
   type,
+  hint,
 }: {
   label: string;
   value: string;
@@ -3910,10 +4072,14 @@ function ConfigField({
   placeholder?: string;
   multiline?: boolean;
   type?: string;
+  hint?: string;
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+      <div className="flex items-center gap-1">
+        <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+        {hint && <FieldHint text={hint} />}
+      </div>
       {multiline ? (
         <textarea
           value={value}
