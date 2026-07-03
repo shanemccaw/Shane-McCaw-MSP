@@ -693,7 +693,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
 
     default:
-      return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
+      return { dryRun: true, error: true, reason: `unknown node type: ${node.type}` };
   }
 }
 
@@ -3183,7 +3183,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       default:
-        output = { note: "unknown node type", nodeType: node.type };
+        logger.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");
+        nodeError = true;
+        output = { error: true, reason: `unknown node type: ${node.type}` };
     }
   } catch (err) {
     nodeError = true;
