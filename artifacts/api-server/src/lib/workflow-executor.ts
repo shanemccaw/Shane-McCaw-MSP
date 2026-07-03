@@ -587,7 +587,7 @@ async function executeNode(
   payload: Record<string, unknown>,
   runId: number,
   dryRun = false,
-  inputValues: Record<string, string> = {},
+  inputValues: Record<string, string | string[]> = {},
 ): Promise<{
   output: Record<string, unknown>;
   nextPayload: Record<string, unknown>;
@@ -2888,7 +2888,7 @@ async function executeItemSubgraph(
   itemPayload: Record<string, unknown>,
   runId: number,
   dryRun: boolean,
-  inputValues: Record<string, string>,
+  inputValues: Record<string, string | string[]>,
 ): Promise<{
   payload: Record<string, unknown>;
   lastOutput: Record<string, unknown>;
@@ -3006,7 +3006,7 @@ async function countRunningRuns(definitionId: number): Promise<number> {
 
 export async function executeWorkflowRun(
   runId: number,
-  opts: { inlineGraph?: WfGraph; dryRun?: boolean; inputValues?: Record<string, string> } = {},
+  opts: { inlineGraph?: WfGraph; dryRun?: boolean; inputValues?: Record<string, string | string[]> } = {},
 ): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
@@ -3640,7 +3640,7 @@ export async function fireWorkflowForDefinition(
   triggerType: "manual" | "schedule" | "webhook" | "event",
   triggerRef: string,
   payload: Record<string, unknown> = {},
-  opts: { versionId?: number; inputValues?: Record<string, string> } = {},
+  opts: { versionId?: number; inputValues?: Record<string, string | string[]> } = {},
 ): Promise<number | null> {
   try {
     // Resolve version: explicit versionId (e.g. test-run from draft) or latest published

@@ -4208,18 +4208,21 @@ function useEntityOptions(
   type: AskForInputFieldType,
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>,
   /** Values of sibling fields — used so the project picker can scope to the selected customer */
-  siblingValues: Record<string, string> = {},
+  siblingValues: Record<string, string | string[]> = {},
   /** All sibling field definitions — lets us find which sibling is a "customer" type */
   siblingFields: AskForInputField[] = [],
 ): { options: EntityOption[]; loading: boolean } {
   const [options, setOptions] = useState<EntityOption[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // When type is "project", resolve the selected customer ID from any sibling customer field
+  // When type is "project", resolve the selected customer ID from any sibling customer field.
+  // Customer fields are always single-select so the value will be a string in practice.
   const selectedCustomerId = type === "project"
     ? (() => {
         const customerField = siblingFields.find(f => f.type === "customer");
-        return customerField ? siblingValues[customerField.variableName] || "" : "";
+        if (!customerField) return "";
+        const raw = siblingValues[customerField.variableName];
+        return Array.isArray(raw) ? (raw[0] ?? "") : (raw || "");
       })()
     : "";
 
@@ -4298,16 +4301,17 @@ function EntityPickerControl({
   siblingFields,
 }: {
   field: AskForInputField;
-  value: string;
-  onChange: (v: string) => void;
+  value: string | string[];
+  onChange: (v: string | string[]) => void;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
   hasError: boolean;
-  siblingValues?: Record<string, string>;
+  siblingValues?: Record<string, string | string[]>;
   siblingFields?: AskForInputField[];
 }) {
   const { options, loading } = useEntityOptions(field.type, fetchWithAuth, siblingValues, siblingFields);
   const [search, setSearch] = useState("");
-  const selected = value ? value.split(",").filter(Boolean) : [];
+  // Support both a real string[] (new) and a legacy comma-separated string (old)
+  const selected = Array.isArray(value) ? value : (value ? value.split(",").filter(Boolean) : []);
 
   const filtered = options.filter(o =>
     !search || o.label.toLowerCase().includes(search.toLowerCase()) || o.id.includes(search),
@@ -4336,7 +4340,7 @@ function EntityPickerControl({
   if (field.multi) {
     const toggle = (id: string) => {
       const next = selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id];
-      onChange(next.join(","));
+      onChange(next);  // emit a real string[] — no CSV join
     };
     return (
       <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
@@ -4412,16 +4416,16 @@ function PreRunInputModal({
   fetchWithAuth,
 }: {
   fields: AskForInputField[];
-  onSubmit: (values: Record<string, string>) => void;
+  onSubmit: (values: Record<string, string | string[]>) => void;
   onCancel: () => void;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(fields.map(f => [f.variableName, ""])),
+  const [values, setValues] = useState<Record<string, string | string[]>>(() =>
+    Object.fromEntries(fields.map(f => [f.variableName, f.multi ? [] : ""])),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function setValue(name: string, val: string) {
+  function setValue(name: string, val: string | string[]) {
     setValues(v => ({ ...v, [name]: val }));
     setErrors(err => { const n = { ...err }; delete n[name]; return n; });
   }
@@ -4429,8 +4433,10 @@ function PreRunInputModal({
   function handleSubmit() {
     const errs: Record<string, string> = {};
     for (const f of fields) {
-      if (f.required && !values[f.variableName]?.trim()) {
-        errs[f.variableName] = "Required";
+      if (f.required) {
+        const v = values[f.variableName];
+        const empty = Array.isArray(v) ? v.length === 0 : !v?.toString().trim();
+        if (empty) errs[f.variableName] = "Required";
       }
     }
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
@@ -4621,7 +4627,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
   }, [trigger, loadingTriggers]);
 
   const runMut = useMutation({
-    mutationFn: async ({ inputValues, payloadOverride }: { inputValues: Record<string, string>; payloadOverride?: Record<string, unknown> }) => {
+    mutationFn: async ({ inputValues, payloadOverride }: { inputValues: Record<string, string | string[]>; payloadOverride?: Record<string, unknown> }) => {
       const triggerPayload = payloadOverride ?? JSON.parse(payloadText) as Record<string, unknown>;
       // Serialize the same way as the save path: replace RF's type:"wfNode" with
       // the real workflow node type stored in data.nodeType, and strip extra edge fields.

@@ -440,7 +440,7 @@ router.post("/admin/workflows/definitions/:id/run", requireAdmin, async (req: Re
   try {
     const versionId = req.body.versionId ? parseInt(req.body.versionId as string, 10) : undefined;
     const inputValues = (req.body.inputValues && typeof req.body.inputValues === "object")
-      ? req.body.inputValues as Record<string, string>
+      ? req.body.inputValues as Record<string, string | string[]>
       : undefined;
     const runId = await fireWorkflowForDefinition(
       defId, "manual", `admin:manual`,
@@ -467,7 +467,7 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
     nodes: z.array(z.any()),
     edges: z.array(z.any()),
     triggerPayload: z.record(z.unknown()).optional(),
-    inputValues: z.record(z.string()).optional(),
+    inputValues: z.record(z.union([z.string(), z.array(z.string())])).optional(),
     dryRun: z.boolean().optional().default(true),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
