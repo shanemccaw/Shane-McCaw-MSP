@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface Activity { title: string; description: string; completionStatus?: string | null; completionNotes?: string | null; }
 interface NextStep { label: string; title: string; description: string; kanbanTaskId?: number | null; }
@@ -100,6 +101,7 @@ export default function StatusReportForm({
   autoFill = false,
 }: StatusReportFormProps) {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
 
   const [projects, setProjects] = useState<Project[]>([]);
 
@@ -165,7 +167,7 @@ export default function StatusReportForm({
         setSavedReport(data.report);
       } else {
         const err = await res.json() as { error?: string };
-        alert(err.error ?? "Failed to push to Kanban");
+        toast({ title: "Failed to push to Kanban", description: err.error, variant: "destructive" });
       }
     } finally {
       setPushLoading(p => ({ ...p, [index]: false }));
@@ -187,7 +189,7 @@ export default function StatusReportForm({
         setSaveMsg(`${data.pushed} step${data.pushed !== 1 ? "s" : ""} added to Kanban.`);
       } else {
         const err = await res.json() as { error?: string };
-        alert(err.error ?? "Failed to push to Kanban");
+        toast({ title: "Failed to push to Kanban", description: err.error, variant: "destructive" });
       }
     } finally {
       setPushAllLoading(false);

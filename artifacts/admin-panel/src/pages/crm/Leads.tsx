@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import QualificationModal from "@/components/QualificationModal";
 
 type LeadStatus = "new" | "contacted" | "qualified" | "converted" | "archived";
@@ -63,6 +64,7 @@ function StatCard({ label, value, icon }: { label: string; value: number; icon: 
 }
 
 export default function LeadsPage() {
+  const { toast } = useToast();
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [stats, setStats] = useState<LeadStats | null>(null);
@@ -124,7 +126,7 @@ export default function LeadsPage() {
       setLeads(prev => prev.filter(l => l.id !== lead.id));
       setTotal(prev => prev - 1);
     } catch {
-      alert("Failed to delete lead. Please try again.");
+      toast({ title: "Failed to delete lead", description: "Please try again.", variant: "destructive" });
     } finally {
       setDeletingId(null);
     }

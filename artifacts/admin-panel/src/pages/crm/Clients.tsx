@@ -580,7 +580,7 @@ export default function ClientsPage() {
     setViewAsLoading(c.id);
     try {
       const res = await fetchWithAuth(`/api/admin/impersonate/${c.id}`, { method: "POST" });
-      if (!res.ok) { alert("Could not start impersonation session"); return; }
+      if (!res.ok) { toast({ title: "Impersonation failed", description: "Could not start impersonation session.", variant: "destructive" }); return; }
       const data = await res.json() as { token: string };
       window.open(`${CRM_PORTAL_BASE}/portal?impersonation_token=${encodeURIComponent(data.token)}`, "_blank", "noopener");
     } finally {

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAssignEmail } from "@/hooks/useAssignEmail";
+import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -319,6 +320,7 @@ interface EmailDetailPanelProps {
 function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigned }: EmailDetailPanelProps) {
   const { fetchWithAuth } = useAuth();
   const { assignEmail, assigningId } = useAssignEmail();
+  const { toast } = useToast();
   const [, navigate] = useLocation();
 
   const [detail, setDetail] = useState<EmailDetail | null>(null);
@@ -415,7 +417,7 @@ function EmailDetailPanel({ emailId, reloadKey, clients, leads, onEmailReassigne
       await loadDetail(detail.email.id);
       onEmailReassigned();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to assign email");
+      toast({ title: "Failed to assign email", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
 
@@ -886,6 +888,7 @@ interface EmailSettingsProps {
 
 function EmailSettings({ clients }: EmailSettingsProps) {
   const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [rules, setRules] = useState<MatchingRuleRow[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
@@ -919,7 +922,7 @@ function EmailSettings({ clients }: EmailSettingsProps) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await loadRules();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete rule");
+      toast({ title: "Failed to delete rule", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     }
   }
 
@@ -941,7 +944,7 @@ function EmailSettings({ clients }: EmailSettingsProps) {
       setNewRuleUserId("");
       await loadRules();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to add rule");
+      toast({ title: "Failed to add rule", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     } finally {
       setAddingRule(false);
     }
