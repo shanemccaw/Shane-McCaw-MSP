@@ -192,6 +192,37 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         logger.info({ defId, name: seed.name }, "seed-system-workflows: pinned default v1");
+      } else if (seed.name === "Weekly Article Generator") {
+        // One-time patch: ensure the publish_article node has draftOnly: true.
+        // This fixes already-seeded environments where v1 was created before
+        // the draft-review feature was added.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->>'type' = 'publish_article'
+                      THEN jsonb_set(
+                             jsonb_set(node, '{data,draftOnly}', 'true'::jsonb),
+                             '{data,label}', '"Save as Draft"'::jsonb
+                           )
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND (
+               graph->'nodes' @> '[{"type":"publish_article","data":{"draftOnly":false}}]'
+               OR NOT graph->'nodes' @> '[{"type":"publish_article","data":{"draftOnly":true}}]'
+             )`,
+          [defId],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
