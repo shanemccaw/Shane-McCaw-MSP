@@ -622,16 +622,24 @@ router.get("/admin/insights/customers", requireAdmin, async (_req: Request, res:
 router.get("/admin/insights/projects", requireAdmin, async (req: Request, res: Response) => {
   try {
     const customerId = req.query["customerId"] ? parseInt(String(req.query["customerId"]), 10) : undefined;
+    // By default only show active projects; pass status=all to bypass
+    const statusFilter = req.query["status"] === "all" ? undefined : "active";
+
+    const conditions = [];
+    if (customerId) conditions.push(eq(projectsTable.clientUserId, customerId));
+    if (statusFilter) conditions.push(eq(projectsTable.status, statusFilter as "active"));
+
     const projects = await db.select({
       id: projectsTable.id,
       title: projectsTable.title,
       status: projectsTable.status,
+      projectType: projectsTable.projectType,
       phase: projectsTable.phase,
       sharepointFolderUrl: projectsTable.sharepointFolderUrl,
     }).from(projectsTable)
-      .where(customerId ? eq(projectsTable.clientUserId, customerId) : sql`TRUE`)
+      .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(projectsTable.createdAt))
-      .limit(50);
+      .limit(100);
     res.json({ projects });
   } catch (err) {
     logger.error({ err }, "insights projects error");

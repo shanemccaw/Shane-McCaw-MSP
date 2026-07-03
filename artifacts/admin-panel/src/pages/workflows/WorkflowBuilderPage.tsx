@@ -2808,12 +2808,30 @@ function AskForInputPanel({
 
 interface EntityOption { id: string; label: string }
 
+const PROJECT_TYPE_LABELS: Record<string, string> = {
+  project: "Project",
+  retainer: "Retainer",
+  quick_win: "Quick Win",
+};
+
 function useEntityOptions(
   type: AskForInputFieldType,
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>,
+  /** Values of sibling fields — used so the project picker can scope to the selected customer */
+  siblingValues: Record<string, string> = {},
+  /** All sibling field definitions — lets us find which sibling is a "customer" type */
+  siblingFields: AskForInputField[] = [],
 ): { options: EntityOption[]; loading: boolean } {
   const [options, setOptions] = useState<EntityOption[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // When type is "project", resolve the selected customer ID from any sibling customer field
+  const selectedCustomerId = type === "project"
+    ? (() => {
+        const customerField = siblingFields.find(f => f.type === "customer");
+        return customerField ? siblingValues[customerField.variableName] || "" : "";
+      })()
+    : "";
 
   useEffect(() => {
     if (!ENTITY_FIELD_TYPES.includes(type)) return;
@@ -2822,30 +2840,54 @@ function useEntityOptions(
       return;
     }
     setLoading(true);
-    const urlMap: Record<string, string> = {
-      customer: "/api/admin/clients/enriched",
-      project: "/api/admin/engagement-projects",
-      lead: "/api/leads?limit=100&status=all",
-      opportunity: "/api/opportunities?limit=100",
-    };
-    fetchWithAuth(urlMap[type] ?? "")
+
+    let url: string;
+    if (type === "project") {
+      const params = new URLSearchParams({ limit: "100" });
+      if (selectedCustomerId) params.set("customerId", selectedCustomerId);
+      url = `/api/admin/insights/projects?${params.toString()}`;
+    } else {
+      const urlMap: Record<string, string> = {
+        customer: "/api/admin/clients/enriched",
+        lead: "/api/leads?limit=100",
+        opportunity: "/api/opportunities?limit=100",
+      };
+      url = urlMap[type] ?? "";
+    }
+
+    fetchWithAuth(url)
       .then(r => r.json())
       .then((data: unknown) => {
-        const rows = Array.isArray(data) ? data : ((data as { data?: unknown[] }).data ?? []);
+        // insights/projects wraps in { projects: [] }; others return arrays directly or { data: [] }
+        let rows: unknown[];
+        if (type === "project" && data && typeof data === "object" && "projects" in (data as object)) {
+          rows = ((data as { projects: unknown[] }).projects) ?? [];
+        } else {
+          rows = Array.isArray(data) ? data : ((data as { data?: unknown[] }).data ?? []);
+        }
         const mapped = (rows as Record<string, unknown>[]).map(r => {
           const id = String(r.id ?? "");
           let label = "";
-          if (type === "customer") label = String(r.name || r.email || id);
-          else if (type === "project") label = String(r.name || r.title || id);
-          else if (type === "lead") label = String(r.name || r.email || id);
-          else if (type === "opportunity") label = String(r.companyName || r.contactName || r.name || id);
+          if (type === "customer") {
+            const name = String(r.name || r.email || id);
+            const company = r.company ? ` (${String(r.company)})` : "";
+            label = name + company;
+          } else if (type === "project") {
+            const typeTag = r.projectType ? ` · ${PROJECT_TYPE_LABELS[String(r.projectType)] ?? String(r.projectType)}` : "";
+            const status = r.status && r.status !== "active" ? ` [${String(r.status)}]` : "";
+            label = String(r.title || r.name || id) + typeTag + status;
+          } else if (type === "lead") {
+            label = String(r.name || r.email || id);
+          } else if (type === "opportunity") {
+            label = String(r.companyName || r.contactName || r.name || id);
+          }
           return { id, label };
         }).filter(o => o.id);
         setOptions(mapped);
       })
       .catch(() => setOptions([]))
       .finally(() => setLoading(false));
-  }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [type, selectedCustomerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { options, loading };
 }
@@ -2856,14 +2898,18 @@ function EntityPickerControl({
   onChange,
   fetchWithAuth,
   hasError,
+  siblingValues,
+  siblingFields,
 }: {
   field: AskForInputField;
   value: string;
   onChange: (v: string) => void;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
   hasError: boolean;
+  siblingValues?: Record<string, string>;
+  siblingFields?: AskForInputField[];
 }) {
-  const { options, loading } = useEntityOptions(field.type, fetchWithAuth);
+  const { options, loading } = useEntityOptions(field.type, fetchWithAuth, siblingValues, siblingFields);
   const [search, setSearch] = useState("");
   const selected = value ? value.split(",").filter(Boolean) : [];
 
@@ -3010,6 +3056,8 @@ function PreRunInputModal({
                   onChange={v => setValue(f.variableName, v)}
                   fetchWithAuth={fetchWithAuth}
                   hasError={!!errors[f.variableName]}
+                  siblingValues={values}
+                  siblingFields={fields}
                 />
               ) : f.type === "textarea" ? (
                 <textarea
