@@ -268,10 +268,10 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       return;
     }
 
-    // Always insert a new row per run so history is preserved across repeat invocations.
-    // When the token was linked to an original "awaiting_upload" row, copy its linkage
-    // fields (kanbanTaskId, libraryScriptId, packageId, scriptId) so the new row is
-    // associated with the same kanban card and library script.
+    // Resolve linkage from the token's linked run result (if any).
+    // When the original row is still "awaiting_upload" we UPDATE it in-place so the
+    // portal and kanban card see the result immediately (they track by that row's id).
+    // If it was already completed (repeat run), we INSERT a fresh history row instead.
     let linkage: {
       customerId: number | null;
       kanbanTaskId: number | null;
@@ -286,9 +286,13 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       scriptId: null,
     };
 
+    let resultId: number | null = null;
+
     if (tokenRow.scriptRunResultId !== null) {
       const [orig] = await db
         .select({
+          id: scriptRunResultsTable.id,
+          status: scriptRunResultsTable.status,
           customerId: scriptRunResultsTable.customerId,
           kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
           libraryScriptId: scriptRunResultsTable.libraryScriptId,
@@ -298,6 +302,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
         .from(scriptRunResultsTable)
         .where(eq(scriptRunResultsTable.id, tokenRow.scriptRunResultId))
         .limit(1);
+
       if (orig) {
         linkage = {
           customerId: orig.customerId ?? tokenRow.clientUserId,
@@ -306,27 +311,46 @@ router.post("/script-callback", async (req: Request, res: Response) => {
           packageId: orig.packageId ?? null,
           scriptId: orig.scriptId ?? null,
         };
+
+        if (orig.status === "awaiting_upload") {
+          // First callback run: update the original row so the portal sees it as done.
+          await db
+            .update(scriptRunResultsTable)
+            .set({
+              status: "completed",
+              executionSource: "customer_upload",
+              rawOutput: body,
+              uploadedAt: new Date(),
+              uploadedBy: "customer_script_callback",
+            })
+            .where(eq(scriptRunResultsTable.id, orig.id));
+          resultId = orig.id;
+        }
       }
     }
 
-    const [resultRow] = await db
-      .insert(scriptRunResultsTable)
-      .values({
-        customerId: linkage.customerId,
-        kanbanTaskId: linkage.kanbanTaskId,
-        libraryScriptId: linkage.libraryScriptId,
-        packageId: linkage.packageId,
-        scriptId: linkage.scriptId,
-        jobId: null,
-        status: "completed",
-        executionSource: "customer_upload",
-        rawOutput: body,
-        uploadedAt: new Date(),
-        uploadedBy: "customer_script_callback",
-        scriptName: "Customer Upload",
-      })
-      .returning({ id: scriptRunResultsTable.id });
-    const resultId = resultRow?.id ?? null;
+    // Insert a new history row for repeat runs (original already completed) or
+    // when no linked run result was on the token.
+    if (resultId === null) {
+      const [resultRow] = await db
+        .insert(scriptRunResultsTable)
+        .values({
+          customerId: linkage.customerId,
+          kanbanTaskId: linkage.kanbanTaskId,
+          libraryScriptId: linkage.libraryScriptId,
+          packageId: linkage.packageId,
+          scriptId: linkage.scriptId,
+          jobId: null,
+          status: "completed",
+          executionSource: "customer_upload",
+          rawOutput: body,
+          uploadedAt: new Date(),
+          uploadedBy: "customer_script_callback",
+          scriptName: "Customer Upload",
+        })
+        .returning({ id: scriptRunResultsTable.id });
+      resultId = resultRow?.id ?? null;
+    }
 
     // Update last_used_at on the token
     await db
