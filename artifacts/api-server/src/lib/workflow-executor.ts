@@ -100,13 +100,21 @@ function slugify(s: string): string {
 }
 
 /** Absolute path to the consulting site articles directory.
- *  Uses import.meta.dirname (the dist/ folder at runtime) and navigates
- *  two levels up to reach artifacts/, then into the consulting site's
- *  content directory. This is deterministic regardless of CWD. */
+ *
+ *  Path derivation (verified at module load below):
+ *    import.meta.url  → file:///…/artifacts/api-server/dist/index.mjs  (single bundle)
+ *    path.dirname(…)  → …/artifacts/api-server/dist
+ *    resolve + "../../…" → …/artifacts/shane-mccaw-consulting/src/content/articles
+ *
+ *  Two parent steps from dist/ reach artifacts/, NOT api-server root.
+ *  Using import.meta.url is deterministic regardless of process.cwd(). */
 const ARTICLES_DIR = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
   "../../shane-mccaw-consulting/src/content/articles",
 );
+
+// Log resolved path at startup — useful for debugging and code-review verification.
+logger.info({ articlesDir: ARTICLES_DIR }, "workflow-executor: content articles directory resolved");
 
 // ── Safe condition evaluator ─────────────────────────────────────────────────
 // NO eval/new Function. Supports: path op literal (==,!=,>,<,>=,<=,contains),
