@@ -722,12 +722,16 @@ async function executeNode(
 
       case "foreach": {
         // Resolve the array from the payload using the configured path.
-        // Strips {{…}} wrapper if present, then walks dot-notation keys.
+        // Strips {{…}} wrapper if present, normalises payload. prefix (same
+        // as interp()), then walks dot-notation keys.
         const feArrayPath = (node.data.arrayPath as string | undefined) ?? "";
+        // Strip {{ }} wrapper
         const feCleanPath = feArrayPath.replace(/^\{\{(.+)\}\}$/, "$1").trim();
+        // Normalise payload. prefix — interp() strips it so we must too
+        const feNormPath = feCleanPath.startsWith("payload.") ? feCleanPath.slice(8) : feCleanPath;
         let feResolved: unknown = payload;
-        if (feCleanPath) {
-          for (const part of feCleanPath.split(".")) {
+        if (feNormPath) {
+          for (const part of feNormPath.split(".")) {
             if (feResolved == null || typeof feResolved !== "object") { feResolved = undefined; break; }
             feResolved = (feResolved as Record<string, unknown>)[part];
           }
@@ -2224,6 +2228,7 @@ async function executeItemSubgraph(
   inputValues: Record<string, string>,
 ): Promise<{
   payload: Record<string, unknown>;
+  lastOutput: Record<string, unknown>;
   cancelRun: boolean;
   nodeError: boolean;
   errorOutput?: Record<string, unknown>;
@@ -2263,6 +2268,9 @@ async function executeItemSubgraph(
   }
 
   let currentPayload = { ...itemPayload };
+  // Tracks the raw output of the last node that actually executed this iteration.
+  // collectedResults stores this per iteration (not the full merged payload).
+  let lastOutput: Record<string, unknown> = {};
 
   while (subQueue.length > 0) {
     const { nodeId, skip } = subQueue.shift()!;
@@ -2277,9 +2285,10 @@ async function executeItemSubgraph(
     const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
       await executeNode(node, currentPayload, runId, dryRun, inputValues);
     currentPayload = nextPayload;
+    lastOutput = output;
 
     // cancel_workflow inside the loop body must bubble up to cancel the whole run
-    if (cancelRun) return { payload: currentPayload, cancelRun: true, nodeError: false };
+    if (cancelRun) return { payload: currentPayload, lastOutput, cancelRun: true, nodeError: false };
 
     if (nodeError) {
       const outEdges = subEdges.filter(e => e.source === nodeId);
@@ -2290,7 +2299,7 @@ async function executeItemSubgraph(
         continue;
       }
       // No error handler in subgraph — surface as a run failure (mirrors main BFS behaviour)
-      return { payload: currentPayload, cancelRun: false, nodeError: true, errorOutput: output, failedNodeId: nodeId };
+      return { payload: currentPayload, lastOutput, cancelRun: false, nodeError: true, errorOutput: output, failedNodeId: nodeId };
     }
 
     if (node.type === "condition" && conditionResult !== undefined) {
@@ -2313,7 +2322,7 @@ async function executeItemSubgraph(
     for (const e of subEdges.filter(e => e.source === nodeId)) subResolveEdge(e.target, true);
   }
 
-  return { payload: currentPayload, cancelRun: false, nodeError: false };
+  return { payload: currentPayload, lastOutput, cancelRun: false, nodeError: false };
 }
 
 // ── Concurrency check (read-only) ─────────────────────────────────────────────
@@ -2548,7 +2557,9 @@ export async function executeWorkflowRun(
             return;
           }
 
-          collectedResults.push(iterResult.payload);
+          // Store the terminal node's raw output (not full merged payload) so
+          // {{collectedResults}} downstream contains per-iteration node outputs only.
+          collectedResults.push(iterResult.lastOutput);
 
           logger.info({ runId, nodeId, iteration: i, itemsTotal },
             "wf-executor: foreach iteration complete");
