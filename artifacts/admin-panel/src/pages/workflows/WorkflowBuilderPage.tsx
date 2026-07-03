@@ -161,11 +161,9 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
-  // Switch/Case — routes to one branch; outputs the resolved switch value and which branch was taken
-  switch_case: [
-    { key: "switchValue",  label: "Resolved switch expression value" },
-    { key: "chosenBranch", label: "Label of the branch that was taken (or 'default')" },
-  ],
+  // Switch/Case — no declared outputs; downstream nodes inherit the upstream payload unchanged
+  // (switchValue and chosenBranch are still injected into nextPayload by the executor)
+  switch_case: [],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────

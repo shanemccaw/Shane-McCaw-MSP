@@ -656,12 +656,20 @@ async function executeNode(
       case "switch_case": {
         const switchExpr = node.data.switchExpr as string | undefined;
         const cases = (node.data.cases as Array<{ id: string; matchValue: string; label: string }> | undefined) ?? [];
-        const switchValue = interp(switchExpr, payload) ?? "";
-        // Find first case whose matchValue exactly matches the resolved value
-        const matchedCase = cases.find(c => c.matchValue === switchValue);
-        switchChosenHandle = matchedCase ? matchedCase.id : "default";
-        const chosenBranch = matchedCase ? (matchedCase.label || matchedCase.matchValue) : "default";
-        output = { switchValue, chosenBranch, matchedCaseId: matchedCase?.id ?? null };
+        if (dryRun) {
+          // Dry-run: deterministically pick the first configured case so the visual trace works
+          const firstCase = cases[0];
+          switchChosenHandle = firstCase ? firstCase.id : "default";
+          const dryBranch = firstCase ? (firstCase.label || firstCase.matchValue || "case-1") : "default";
+          output = { dryRun: true, switchValue: interp(switchExpr, payload) ?? "", chosenBranch: dryBranch, matchedCaseId: firstCase?.id ?? null };
+        } else {
+          const switchValue = interp(switchExpr, payload) ?? "";
+          // Find first case whose matchValue exactly matches the resolved value
+          const matchedCase = cases.find(c => c.matchValue === switchValue);
+          switchChosenHandle = matchedCase ? matchedCase.id : "default";
+          const chosenBranch = matchedCase ? (matchedCase.label || matchedCase.matchValue) : "default";
+          output = { switchValue, chosenBranch, matchedCaseId: matchedCase?.id ?? null };
+        }
         break;
       }
 
