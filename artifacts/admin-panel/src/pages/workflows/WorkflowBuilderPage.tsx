@@ -611,7 +611,22 @@ function PayloadField({
   ancestorOutputs: AncestorGroup[];
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [suggest, setSuggest] = useState<{ openAt: number; filter: string } | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+
+  // Flat list of all tokens across ancestor groups
+  const allTokens = ancestorOutputs.flatMap(group =>
+    group.outputs.map(o => ({
+      tokenPath: group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`,
+      label: o.label,
+      groupName: group.nodeName,
+    }))
+  );
+
+  const filteredTokens = suggest
+    ? allTokens.filter(t => t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase()))
+    : [];
 
   function insertToken(key: string) {
     const token = `{{${key}}}`;
@@ -625,6 +640,48 @@ function PayloadField({
       onChange(value ? `${value} ${token}` : token);
     }
     setPickerOpen(false);
+  }
+
+  function pickSuggestion(tokenPath: string) {
+    if (!suggest) return;
+    const el = inputRef.current;
+    const cursorPos = el ? (el.selectionStart ?? value.length) : value.length;
+    const replacement = `{{${tokenPath}}}`;
+    const newVal = value.slice(0, suggest.openAt) + replacement + value.slice(cursorPos);
+    onChange(newVal);
+    const pos = suggest.openAt + replacement.length;
+    setTimeout(() => { if (el) { el.focus(); el.setSelectionRange(pos, pos); } }, 0);
+    setSuggest(null);
+    setActiveIdx(0);
+  }
+
+  function handleChange(newVal: string, cursorPos: number) {
+    onChange(newVal);
+    const before = newVal.slice(0, cursorPos);
+    // Match an open {{ that hasn't been closed yet
+    const match = before.match(/\{\{([^{}]*)$/);
+    if (match) {
+      setSuggest({ openAt: cursorPos - match[0].length, filter: match[1] });
+      setActiveIdx(0);
+    } else {
+      setSuggest(null);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!suggest || filteredTokens.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx(i => (i + 1) % filteredTokens.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx(i => (i - 1 + filteredTokens.length) % filteredTokens.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      pickSuggestion(filteredTokens[activeIdx].tokenPath);
+    } else if (e.key === "Escape") {
+      setSuggest(null);
+    }
   }
 
   const hasVars = ancestorOutputs.some(g => g.outputs.length > 0);
@@ -651,8 +708,6 @@ function PayloadField({
                       <div key={group.nodeId}>
                         <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
                         {group.outputs.map(o => {
-                          // Start/trigger outputs live at the top-level payload → bare key.
-                          // All other node outputs are stored under steps.<nodeId> (also aliased as nodes.<nodeId>).
                           const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
                           return (
                             <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
@@ -671,15 +726,54 @@ function PayloadField({
           </div>
         )}
       </div>
-      {multiline ? (
-        <textarea ref={inputRef as React.RefObject<HTMLTextAreaElement>} value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder} rows={3}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono" />
-      ) : (
-        <input ref={inputRef as React.RefObject<HTMLInputElement>} type="text" value={value} onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60" />
-      )}
+      {/* Input / textarea with inline autocomplete dropdown */}
+      <div className="relative">
+        {multiline ? (
+          <textarea
+            ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+            value={value}
+            onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            placeholder={placeholder}
+            rows={3}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+          />
+        ) : (
+          <input
+            ref={inputRef as React.RefObject<HTMLInputElement>}
+            type="text"
+            value={value}
+            onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            placeholder={placeholder}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+          />
+        )}
+        {suggest && filteredTokens.length > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden">
+            <div className="max-h-48 overflow-y-auto py-1">
+              {filteredTokens.map((t, i) => (
+                <button
+                  key={t.tokenPath}
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t.tokenPath); }}
+                  className={`w-full text-left px-3 py-1.5 flex items-start justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                >
+                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${t.tokenPath}}}`}</span>
+                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="px-3 py-1 border-t border-[#30363D] flex items-center gap-2">
+              <span className="text-[9px] text-[#484F58]">↑↓ navigate</span>
+              <span className="text-[9px] text-[#484F58]">↵ / Tab insert</span>
+              <span className="text-[9px] text-[#484F58]">Esc dismiss</span>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
