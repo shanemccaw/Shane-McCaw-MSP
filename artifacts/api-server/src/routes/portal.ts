@@ -4932,24 +4932,43 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
     if (session.metadata?.type === "presentation_checkout") {
       const presentationId = parseInt(session.metadata.presentationId ?? "", 10);
       if (!isNaN(presentationId)) {
-        // Only roll back if this specific session is still the live one AND the
-        // presentation has not already been paid or signed — guards against:
-        //   • late/out-of-order expiry webhooks arriving after a newer session was created
-        //   • downgrading a presentation that was already completed
-        await db.update(quickWinPresentationsTable)
-          .set({ stripeSessionId: null, status: "draft", updatedAt: new Date() })
-          .where(
-            and(
-              eq(quickWinPresentationsTable.id, presentationId),
-              eq(quickWinPresentationsTable.stripeSessionId, session.id),
-              ne(quickWinPresentationsTable.status, "paid"),
-              ne(quickWinPresentationsTable.status, "signed"),
-            ),
+        // Read the current row first so we can make an explicit decision before
+        // writing.  This guards against two races:
+        //   • Late/out-of-order expiry webhook arriving after payment succeeded
+        //   • A second checkout session created after the first one expired
+        const [currentPresentation] = await db
+          .select({ status: quickWinPresentationsTable.status, stripeSessionId: quickWinPresentationsTable.stripeSessionId })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.id, presentationId))
+          .limit(1);
+
+        if (!currentPresentation) {
+          req.log.warn(
+            { presentationId, sessionId: session.id },
+            "processStripeEvent: presentation not found for expired session, skipping rollback",
           );
-        req.log.info(
-          { presentationId, sessionId: session.id },
-          "processStripeEvent: cleared expired checkout session from presentation",
-        );
+        } else if (currentPresentation.status === "paid" || currentPresentation.status === "signed") {
+          // Stripe delivered the expiry event late — payment (or e-signature) was
+          // already recorded.  Never overwrite a completed presentation.
+          req.log.warn(
+            { presentationId, sessionId: session.id, status: currentPresentation.status },
+            "processStripeEvent: expired webhook arrived after presentation was already paid/signed — rollback skipped",
+          );
+        } else if (currentPresentation.stripeSessionId !== session.id) {
+          // A newer checkout session has since been created; the expired one is stale.
+          req.log.warn(
+            { presentationId, sessionId: session.id, currentSessionId: currentPresentation.stripeSessionId },
+            "processStripeEvent: expired session ID does not match current — rollback skipped (newer session exists)",
+          );
+        } else {
+          await db.update(quickWinPresentationsTable)
+            .set({ stripeSessionId: null, status: "draft", updatedAt: new Date() })
+            .where(eq(quickWinPresentationsTable.id, presentationId));
+          req.log.info(
+            { presentationId, sessionId: session.id },
+            "processStripeEvent: cleared expired checkout session from presentation",
+          );
+        }
       }
     }
   }

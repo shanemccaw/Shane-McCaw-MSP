@@ -426,7 +426,9 @@ describe("webhook: checkout.session.expired clears presentation stripeSessionId"
 
   before(async () => {
     capturedUpdateSet = null;
-    dbQueue = [];
+    // Seed the DB queue so the read-before-write select returns a pending presentation
+    // with the matching session ID — allowing the rollback to proceed.
+    dbQueue = [[{ status: "pending", stripeSessionId: SESSION_ID }]];
     webhookEventToReturn = makeExpiredSessionEvent(PRESENTATION_ID, SESSION_ID);
 
     ({ status, body } = await postWebhook(webhookEventToReturn));
@@ -552,6 +554,39 @@ describe("webhook: checkout.session.expired with missing presentationId is handl
       capturedUpdateSet,
       null,
       `expected no DB update when presentationId is absent, got: ${JSON.stringify(capturedUpdateSet)}`,
+    );
+  });
+});
+
+// =============================================================================
+// Scenario 4: checkout.session.expired arrives AFTER payment was already recorded
+// The presentation status is already 'paid' — rollback MUST be skipped entirely.
+// This guards against a late or out-of-order expiry webhook overwriting a paid
+// presentation and reverting it to draft.
+// =============================================================================
+
+describe("webhook: checkout.session.expired is ignored when presentation is already paid", () => {
+  before(async () => {
+    capturedUpdateSet = null;
+    // Seed the DB queue so the read-before-write select returns a PAID presentation.
+    // The handler must detect this and skip the rollback with no DB write.
+    dbQueue = [[{ status: "paid", stripeSessionId: SESSION_ID }]];
+    webhookEventToReturn = makeExpiredSessionEvent(PRESENTATION_ID, SESSION_ID);
+
+    await postWebhook(webhookEventToReturn);
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200 even for paid presentations", async () => {
+    const { status } = await postWebhook(makeExpiredSessionEvent(PRESENTATION_ID, SESSION_ID));
+    assert.equal(status, 200);
+  });
+
+  it("db.update was NOT called — paid presentation must not be rolled back to draft", () => {
+    assert.equal(
+      capturedUpdateSet,
+      null,
+      `expected no DB update for a paid presentation, but capturedUpdateSet was: ${JSON.stringify(capturedUpdateSet)}`,
     );
   });
 });
