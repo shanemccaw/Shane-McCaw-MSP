@@ -485,13 +485,30 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: client_scores table failed (non-fatal)");
   });
 
+  // Check whether the is_published column already exists BEFORE adding it.
+  // If it doesn't exist, we add it AND backfill all existing rows to true —
+  // every row at this point was published before the draft concept existed.
+  // If it already exists (Drizzle migration 0131 already ran), we skip the
+  // backfill entirely so real drafts (is_published=false set intentionally
+  // by the workflow executor) are never accidentally published on restart.
   pool
-    .query(`ALTER TABLE articles ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT false`)
-    .then(() => {
-      logger.info("Migration: articles.is_published column ensured");
+    .query(`
+      SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'articles' AND column_name = 'is_published'
+    `)
+    .then(({ rows }: { rows: unknown[] }): Promise<void> | void => {
+      if (rows.length === 0) {
+        // Column absent — add it then backfill all existing (legacy) articles to published.
+        return pool
+          .query(`ALTER TABLE articles ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT false`)
+          .then(() => pool.query(`UPDATE articles SET is_published = true WHERE is_published = false`))
+          .then(() => { logger.info("Migration: articles.is_published added and legacy rows backfilled"); });
+      }
+      // Column already present (Drizzle migration ran) — nothing to do.
+      logger.info("Migration: articles.is_published column already present — skipping backfill");
     })
     .catch((err: unknown) => {
-      logger.warn({ err }, "Migration: articles.is_published column failed (non-fatal)");
+      logger.warn({ err }, "Migration: articles.is_published failed (non-fatal)");
     });
 
   // Slug→UUID conversion for workflow_template_step_tasks.runbook_id is handled
