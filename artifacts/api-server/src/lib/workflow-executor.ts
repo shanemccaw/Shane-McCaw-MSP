@@ -806,10 +806,16 @@ async function executeNode(
             feResolved = (feResolved as Record<string, unknown>)[part];
           }
         }
-        const feItems = Array.isArray(feResolved) ? feResolved : null;
+        // Accept a real JS array OR a comma-separated string (e.g. "a,b,c")
+        let feItems: unknown[] | null = null;
+        if (Array.isArray(feResolved)) {
+          feItems = feResolved;
+        } else if (typeof feResolved === "string" && feResolved.trim().length > 0) {
+          feItems = feResolved.split(",").map(s => s.trim()).filter(s => s.length > 0);
+        }
         if (!feItems) {
           logger.warn({ runId, arrayPath: feCleanPath, resolvedType: typeof feResolved },
-            "workflow-executor: foreach array path did not resolve to an array — skipping all iterations");
+            "workflow-executor: foreach array path did not resolve to an array or CSV string — skipping all iterations");
         }
         const feAlias = (node.data.itemAlias as string | undefined)?.trim() || null;
         output = {
