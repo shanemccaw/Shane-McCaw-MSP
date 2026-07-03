@@ -23,6 +23,7 @@ import "@xyflow/react/dist/style.css";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
+import { AssetPickerModal } from "@/components/AssetPickerModal";
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -875,6 +876,55 @@ function PayloadField({
   );
 }
 
+// ── ImageUrlField — PayloadField + asset picker button ────────────────────────
+
+function ImageUrlField({
+  label = "Image URL (optional)",
+  value,
+  onChange,
+  placeholder = "https://… or {{imageUrl}}",
+  ancestorOutputs,
+}: {
+  label?: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between min-h-[18px]">
+        <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="flex items-center gap-1 text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          Pick asset
+        </button>
+      </div>
+      <PayloadField
+        label=""
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        ancestorOutputs={ancestorOutputs}
+      />
+      {pickerOpen && (
+        <AssetPickerModal
+          onSelect={url => { onChange(url); setPickerOpen(false); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Config panel ──────────────────────────────────────────────────────────────
 
 function NodeConfigPanel({
@@ -1504,8 +1554,7 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
-            <PayloadField
-              label="Image URL (optional)"
+            <ImageUrlField
               value={(node.data.imageUrl as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
               placeholder="https://… or {{ogImageUrl}}"
@@ -1537,8 +1586,7 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
-            <PayloadField
-              label="Image URL (optional)"
+            <ImageUrlField
               value={(node.data.imageUrl as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
               placeholder="https://… or {{ogImageUrl}}"
@@ -1563,8 +1611,7 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
-            <PayloadField
-              label="Image URL (optional)"
+            <ImageUrlField
               value={(node.data.imageUrl as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
               placeholder="https://… or {{ogImageUrl}}"
