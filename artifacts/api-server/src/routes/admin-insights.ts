@@ -795,7 +795,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],
     });
 
@@ -1331,7 +1331,7 @@ INSTRUCTIONS:
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
-      max_tokens: 4096,
+      max_tokens: 8192,
       messages: [{ role: "user", content: prompt }],
     });
 
