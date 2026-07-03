@@ -2836,18 +2836,38 @@ router.get("/portal/tasks/:taskId/download-script", requireAuth, async (req: Req
       : "http://localhost:8080";
 
     const { randomBytes, createHash } = await import("crypto");
-    const plaintext = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(plaintext).digest("hex");
-
-    // Atomically create the run-result placeholder and the callback token.
-    // If either insert fails the whole transaction is rolled back and we
-    // return 500 — the script must not be issued without a working token.
-    let runResultId: number;
-    const callbackToken = plaintext;
     const callbackUrl = `${uploadBaseUrl}/api/script-callback`;
 
-    await db.transaction(async (tx) => {
-      const [runResult] = await tx.insert(scriptRunResultsTable).values({
+    // Reuse an existing awaiting_upload run result for this task if one exists,
+    // so re-downloads don't create duplicate run results or tokens.
+    let runResultId: number;
+
+    const [existingRun] = await db
+      .select({ id: scriptRunResultsTable.id })
+      .from(scriptRunResultsTable)
+      .where(
+        and(
+          eq(scriptRunResultsTable.customerId, userId),
+          eq(scriptRunResultsTable.kanbanTaskId, taskId),
+          eq(scriptRunResultsTable.status, "awaiting_upload"),
+        ),
+      )
+      .limit(1);
+
+    if (existingRun) {
+      runResultId = existingRun.id;
+      // Revoke any active tokens for this run result before issuing a fresh one
+      await db
+        .update(clientCallbackTokensTable)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(clientCallbackTokensTable.scriptRunResultId, runResultId),
+            isNull(clientCallbackTokensTable.revokedAt),
+          ),
+        );
+    } else {
+      const [runResult] = await db.insert(scriptRunResultsTable).values({
         customerId: userId,
         libraryScriptId: script.id,
         status: "awaiting_upload",
@@ -2856,14 +2876,18 @@ router.get("/portal/tasks/:taskId/download-script", requireAuth, async (req: Req
         scriptName: script.title ?? null,
       }).returning({ id: scriptRunResultsTable.id });
       runResultId = runResult!.id;
+    }
 
-      await tx.insert(clientCallbackTokensTable).values({
-        tokenHash,
-        label: script.title,
-        clientUserId: userId,
-        projectId: task.projectId,
-        scriptRunResultId: runResultId,
-      });
+    const plaintext = randomBytes(32).toString("hex");
+    const tokenHash = createHash("sha256").update(plaintext).digest("hex");
+    const callbackToken = plaintext;
+
+    await db.insert(clientCallbackTokensTable).values({
+      tokenHash,
+      label: script.title,
+      clientUserId: userId,
+      projectId: task.projectId,
+      scriptRunResultId: runResultId,
     });
 
     const [user] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -9139,9 +9163,22 @@ router.get("/portal/projects/:projectId/manual-scripts/:runResultId/download", r
     let callbackUrl: string | undefined;
     try {
       const { randomBytes, createHash } = await import("crypto");
+      const scriptTitle = script?.title ?? "Script";
+
+      // Revoke any existing active tokens for this run result before issuing
+      // a fresh one — enforces one active token per run result at all times.
+      await db
+        .update(clientCallbackTokensTable)
+        .set({ revokedAt: new Date() })
+        .where(
+          and(
+            eq(clientCallbackTokensTable.scriptRunResultId, runResultId),
+            isNull(clientCallbackTokensTable.revokedAt),
+          ),
+        );
+
       const plaintext = randomBytes(32).toString("hex");
       const tokenHash = createHash("sha256").update(plaintext).digest("hex");
-      const scriptTitle = script?.title ?? "Script";
 
       await db.insert(clientCallbackTokensTable).values({
         tokenHash,
