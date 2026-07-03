@@ -939,6 +939,13 @@
       "when": 1751900000000,
       "tag": "0130_add_wf_versions_updated_at",
       "breakpoints": true
+    },
+    {
+      "idx": 131,
+      "version": "7",
+      "when": 1751985600000,
+      "tag": "0131_add_articles_is_published",
+      "breakpoints": true
     }
   ]
 }
