@@ -61,6 +61,7 @@ import adminWorkflowsRouter from "./admin-workflows";
 import adminStalledScriptsRouter from "./admin-stalled-scripts";
 import adminGeneratedImagesRouter from "./admin-generated-images";
 import adminMediaLibraryRouter from "./admin-media-library";
+import presentationsRouter from "./presentations";
 
 const router: IRouter = Router();
 
@@ -134,5 +135,6 @@ router.use(adminWorkflowsRouter);
 router.use(adminStalledScriptsRouter);
 router.use(adminGeneratedImagesRouter);
 router.use(adminMediaLibraryRouter);
+router.use(presentationsRouter);
 
 export default router;

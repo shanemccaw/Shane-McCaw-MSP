@@ -474,6 +474,9 @@ importers:
       pino-http:
         specifier: ^10.5.0
         version: 10.5.0
+      playwright-core:
+        specifier: ^1.61.1
+        version: 1.61.1
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4

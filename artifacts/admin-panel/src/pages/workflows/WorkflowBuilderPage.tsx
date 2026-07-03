@@ -96,6 +96,18 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Control Flow ──
   foreach:       { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
   approval_gate: { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  // ── Calendar (Exchange / Microsoft Graph) ──
+  check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
+  create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
+  // ── SharePoint ──
+  save_to_sharepoint: { bg: "#0A1A10", border: "#34D399", icon: "💾", label: "Save to SharePoint"  },
+  get_from_sharepoint:{ bg: "#0A1A10", border: "#6EE7B7", icon: "📥", label: "Get from SharePoint" },
+  // ── Documents / PDF ──
+  generate_pdf:       { bg: "#1A0D00", border: "#F97316", icon: "📄", label: "Generate PDF"         },
+  build_presentation: { bg: "#0A1420", border: "#818CF8", icon: "📊", label: "Build Presentation"   },
+  // ── Payments (Stripe) ──
+  generate_invoice_stripe_payment: { bg: "#041A1A", border: "#34D399", icon: "🧾", label: "Generate Invoice"       },
+  generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -188,6 +200,53 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "approved",     label: "true — always set when execution continues past the gate" },
     { key: "decisionNote", label: "Optional note left by the approving admin" },
     { key: "approvalId",   label: "ID of the pending_approvals record" },
+  ],
+  // Calendar (Exchange via Microsoft Graph)
+  check_exchange_calendar_availability: [
+    { key: "isBusy",         label: "true if any busy slots found in window" },
+    { key: "availableSlots", label: "Array of free time ranges (ISO strings)" },
+    { key: "busySlots",      label: "Array of busy time ranges (ISO strings)" },
+  ],
+  create_exchange_calendar_event: [
+    { key: "eventId",      label: "Graph event ID" },
+    { key: "eventUrl",     label: "Deep-link URL to the Outlook event" },
+    { key: "eventWebLink", label: "Outlook web link to the event" },
+  ],
+  // SharePoint (Microsoft Graph drive)
+  save_to_sharepoint: [
+    { key: "sharePointItemId",     label: "SharePoint item ID" },
+    { key: "sharePointWebUrl",     label: "URL to the file in SharePoint" },
+    { key: "sharePointDownloadUrl", label: "Temporary direct download URL" },
+  ],
+  get_from_sharepoint: [
+    { key: "fileContentBase64", label: "File contents as base64-encoded string" },
+    { key: "fileName",          label: "File name from SharePoint metadata" },
+    { key: "mimeType",          label: "MIME type of the retrieved file" },
+    { key: "sharePointWebUrl",  label: "URL to the file in SharePoint" },
+  ],
+  // PDF generation
+  generate_pdf: [
+    { key: "pdfBase64",  label: "PDF file content as base64 string" },
+    { key: "pdfDataUri", label: "data: URI suitable for embedding / emailing" },
+    { key: "fileName",   label: "Output file name" },
+  ],
+  // Client Proposal Presentation
+  build_presentation: [
+    { key: "presentationHtml", label: "Full HTML of the proposal page" },
+    { key: "presentationUrl",  label: "Public URL to view the proposal" },
+    { key: "presentationId",   label: "Database ID of the saved presentation" },
+  ],
+  // Stripe nodes
+  generate_invoice_stripe_payment: [
+    { key: "invoiceId",      label: "Stripe invoice ID" },
+    { key: "invoiceUrl",     label: "Hosted invoice URL (share with client)" },
+    { key: "invoicePdfUrl",  label: "Direct PDF download URL" },
+    { key: "amountDue",      label: "Total amount due in smallest currency unit" },
+    { key: "currency",       label: "Invoice currency code (e.g. usd)" },
+  ],
+  generate_stripe_payment_link: [
+    { key: "paymentLinkId",  label: "Stripe payment link ID" },
+    { key: "paymentLinkUrl", label: "Shareable payment link URL" },
   ],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
@@ -490,6 +549,34 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "foreach",       label: "For Each",      description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
       { type: "approval_gate", label: "Approval Gate", description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
+    ],
+  },
+  {
+    name: "Calendar",
+    nodes: [
+      { type: "check_exchange_calendar_availability", label: "Check Availability",    description: "Query Exchange Online (Graph) to find free/busy slots in a date range", tags: ["calendar", "exchange", "availability", "m365", "graph", "outlook"] },
+      { type: "create_exchange_calendar_event",       label: "Create Calendar Event", description: "Create a calendar event in an Exchange Online mailbox via Microsoft Graph", tags: ["calendar", "exchange", "event", "m365", "graph", "meeting", "outlook"] },
+    ],
+  },
+  {
+    name: "SharePoint",
+    nodes: [
+      { type: "save_to_sharepoint",  label: "Save to SharePoint",  description: "Upload a file to a SharePoint drive via Microsoft Graph", tags: ["sharepoint", "m365", "graph", "file", "upload", "document"] },
+      { type: "get_from_sharepoint", label: "Get from SharePoint", description: "Download a file from a SharePoint drive via Microsoft Graph", tags: ["sharepoint", "m365", "graph", "file", "download", "document"] },
+    ],
+  },
+  {
+    name: "Documents",
+    nodes: [
+      { type: "generate_pdf",       label: "Generate PDF",       description: "Render an HTML template to a PDF and output base64 + data URI", tags: ["pdf", "document", "report", "generate", "html"] },
+      { type: "build_presentation", label: "Build Presentation", description: "Compose a branded client proposal page and save it with a public link", tags: ["presentation", "proposal", "client", "report", "html", "deck"] },
+    ],
+  },
+  {
+    name: "Payments",
+    nodes: [
+      { type: "generate_invoice_stripe_payment", label: "Generate Invoice",      description: "Create and send a finalised Stripe invoice to a client email",         tags: ["stripe", "invoice", "payment", "billing", "finance"] },
+      { type: "generate_stripe_payment_link",    label: "Generate Payment Link", description: "Create a one-time Stripe Payment Link for a product at a fixed price", tags: ["stripe", "payment", "link", "checkout", "finance"] },
     ],
   },
 ];
@@ -2066,6 +2153,403 @@ function NodeConfigPanel({
               <p className="text-[10px] text-[#484F58] leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-[#7D8590]">{"{{collectedResults}}"}</span>.
               </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Calendar nodes ──────────────────────────────────── */}
+
+        {nodeType === "check_exchange_calendar_availability" && (
+          <>
+            <PayloadField
+              label="User UPN (mailbox to check)"
+              value={(node.data.userUpn as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, userUpn: v })}
+              placeholder="shane@contoso.com or {{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Start Date/Time (UTC ISO)"
+              value={(node.data.startDateTime as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, startDateTime: v })}
+              placeholder="2025-09-01T09:00:00 or {{meetingStart}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="End Date/Time (UTC ISO)"
+              value={(node.data.endDateTime as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, endDateTime: v })}
+              placeholder="2025-09-01T17:00:00 or {{meetingEnd}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041620] border border-[#0078D4]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Calls the Microsoft Graph <span className="font-mono text-[#0078D4]">getSchedule</span> endpoint. Requires <span className="font-mono text-[#0078D4]">GRAPH_CLIENT_ID</span>, <span className="font-mono text-[#0078D4]">GRAPH_CLIENT_SECRET</span>, and <span className="font-mono text-[#0078D4]">GRAPH_TENANT_ID</span> secrets with <span className="font-mono">Calendars.Read</span> application permission.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{isBusy}}"} · {"{{availableSlots}}"} · {"{{busySlots}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_exchange_calendar_event" && (
+          <>
+            <PayloadField
+              label="User UPN (mailbox owner)"
+              value={(node.data.userUpn as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, userUpn: v })}
+              placeholder="shane@contoso.com or {{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Event Subject"
+              value={(node.data.subject as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, subject: v })}
+              placeholder="M365 Kickoff Call — {{clientName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Body / Description"
+              value={(node.data.body as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, body: v })}
+              placeholder="Welcome! Here's the agenda..."
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Start Date/Time (UTC ISO)"
+              value={(node.data.startDateTime as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, startDateTime: v })}
+              placeholder="2025-09-01T09:00:00 or {{meetingStart}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="End Date/Time (UTC ISO)"
+              value={(node.data.endDateTime as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, endDateTime: v })}
+              placeholder="2025-09-01T10:00:00 or {{meetingEnd}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Attendee Emails (comma-separated)"
+              value={(node.data.attendees as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, attendees: v })}
+              placeholder="client@example.com, {{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041620] border border-[#00B4D8]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Creates an event in the mailbox via the Graph <span className="font-mono text-[#00B4D8]">POST /users/&#123;upn&#125;/events</span> endpoint. Requires <span className="font-mono text-[#00B4D8]">Calendars.ReadWrite</span> application permission.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{eventId}}"} · {"{{eventUrl}}"} · {"{{eventWebLink}}"}</p>
+            </div>
+          </>
+        )}
+
+        {/* ── SharePoint nodes ─────────────────────────────────── */}
+
+        {nodeType === "save_to_sharepoint" && (
+          <>
+            <PayloadField
+              label="Site ID"
+              value={(node.data.siteId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, siteId: v })}
+              placeholder="contoso.sharepoint.com,site-id,web-id or {{siteId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Drive ID"
+              value={(node.data.driveId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, driveId: v })}
+              placeholder="b!drive-id or {{driveId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Folder Path (optional)"
+              value={(node.data.folderPath as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, folderPath: v })}
+              placeholder="Clients/ACME Corp/Reports"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="File Name"
+              value={(node.data.fileName as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, fileName: v })}
+              placeholder="report.pdf or {{fileName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="File Content (base64)"
+              value={(node.data.fileContentBase64 as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, fileContentBase64: v })}
+              placeholder="{{pdfBase64}} — use generate_pdf output"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="File Content (text, if not base64)"
+              value={(node.data.fileContentText as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, fileContentText: v })}
+              placeholder="Plain text or Markdown content"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Content-Type"
+              value={(node.data.contentType as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, contentType: v })}
+              placeholder="application/pdf or text/plain"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#0A1A10] border border-[#34D399]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Uploads via Graph <span className="font-mono text-[#34D399]">PUT /sites/&#123;id&#125;/drives/&#123;driveId&#125;/items/root:/&#123;path&#125;/content</span>. Requires <span className="font-mono text-[#34D399]">Files.ReadWrite.All</span> application permission.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{sharePointItemId}}"} · {"{{sharePointWebUrl}}"} · {"{{sharePointDownloadUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "get_from_sharepoint" && (
+          <>
+            <PayloadField
+              label="Site ID"
+              value={(node.data.siteId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, siteId: v })}
+              placeholder="contoso.sharepoint.com,site-id,web-id or {{siteId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Drive ID"
+              value={(node.data.driveId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, driveId: v })}
+              placeholder="b!drive-id or {{driveId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Item ID (optional)"
+              value={(node.data.itemId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, itemId: v })}
+              placeholder="01ABC123… (use item ID or path below)"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Item Path (optional)"
+              value={(node.data.itemPath as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, itemPath: v })}
+              placeholder="Clients/ACME/report.pdf or {{fileName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#0A1A10] border border-[#6EE7B7]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Downloads the file and returns its contents as a <span className="font-mono text-[#6EE7B7]">base64</span> string. Provide either the Item ID (faster) or the full drive path. Requires <span className="font-mono text-[#6EE7B7]">Files.Read.All</span> application permission.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{fileContentBase64}}"} · {"{{fileName}}"} · {"{{mimeType}}"} · {"{{sharePointWebUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Document nodes ───────────────────────────────────── */}
+
+        {nodeType === "generate_pdf" && (
+          <>
+            <PayloadField
+              label="HTML Template"
+              value={(node.data.htmlTemplate as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, htmlTemplate: v })}
+              placeholder="<h1>{{clientName}}</h1><p>Project Report...</p>"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Output File Name"
+              value={(node.data.fileName as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, fileName: v })}
+              placeholder="{{clientName}}-report.pdf"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#1A0D00] border border-[#F97316]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Strips HTML tags and renders text content using <span className="font-mono text-[#F97316]">pdf-lib</span> with A4 page dimensions. Supports <span className="font-mono text-[#F97316]">h1</span>, <span className="font-mono text-[#F97316]">h2</span>, <span className="font-mono text-[#F97316]">strong</span>, paragraph wrapping, bullet lists, and horizontal rules. Outputs a base64 string and a <span className="font-mono text-[#F97316]">data:</span> URI — pipe into Save to SharePoint or Send Email.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{pdfBase64}}"} · {"{{pdfDataUri}}"} · {"{{fileName}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "build_presentation" && (
+          <>
+            <PayloadField
+              label="Client Name"
+              value={(node.data.clientName as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, clientName: v })}
+              placeholder="Acme Corporation or {{clientName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Client Email"
+              value={(node.data.clientEmail as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, clientEmail: v })}
+              placeholder="{{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Project Title"
+              value={(node.data.projectTitle as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, projectTitle: v })}
+              placeholder="Microsoft 365 Modernisation Proposal or {{projectTitle}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Checkout URL (optional)"
+              value={(node.data.checkoutUrl as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, checkoutUrl: v })}
+              placeholder="{{paymentLinkUrl}} — from Generate Payment Link node"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Valid Until (ISO date, optional)"
+              value={(node.data.validUntil as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, validUntil: v })}
+              placeholder="2025-09-30 — defaults to 30 days"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Total Amount (optional)"
+              value={(node.data.totalAmount as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, totalAmount: v })}
+              placeholder="9500 or {{totalAmount}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Currency (optional)"
+              value={(node.data.currency as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, currency: v })}
+              placeholder="USD"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Scores JSON (optional)"
+              value={(node.data.scores as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, scores: v })}
+              placeholder='{"Identity": 78, "Collaboration": 55} or {{scoresJson}}'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Line Items JSON (optional)"
+              value={(node.data.lineItems as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, lineItems: v })}
+              placeholder='[{"label":"M365 Audit","amount":2500},{"label":"Training","amount":1500}]'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Documents JSON (optional)"
+              value={(node.data.documents as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, documents: v })}
+              placeholder='[{"name":"M365 Health Report"},{"name":"Governance Roadmap"}]'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#0A1420] border border-[#818CF8]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Generates a branded proposal page, saves it to the database, and returns a public URL. Combine with <span className="font-mono text-[#818CF8]">generate_stripe_payment_link</span> to embed a checkout button, and <span className="font-mono text-[#818CF8]">send_email</span> to deliver the link to the client. Page expires after 30 days by default (or the date set in Valid Until).
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{presentationUrl}}"} · {"{{presentationId}}"} · {"{{presentationHtml}}"}</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Payment nodes ─────────────────────────────────────── */}
+
+        {nodeType === "generate_invoice_stripe_payment" && (
+          <>
+            <PayloadField
+              label="Customer Email"
+              value={(node.data.customerEmail as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, customerEmail: v })}
+              placeholder="{{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Customer Name (optional)"
+              value={(node.data.customerName as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, customerName: v })}
+              placeholder="{{clientName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Days Until Due</label>
+              <input
+                type="number"
+                min={0}
+                value={String(node.data.daysUntilDue ?? 7)}
+                onChange={e => onChange(node.id, { ...node.data, daysUntilDue: parseInt(e.target.value, 10) || 7 })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#34D399]/60"
+              />
+            </div>
+            <PayloadField
+              label="Line Items (JSON array)"
+              value={(node.data.lineItems as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, lineItems: v })}
+              placeholder='[{"description":"M365 Assessment","amount":250000,"currency":"usd"}]'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041A1A] border border-[#34D399]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Creates a Stripe customer (or looks up existing by email), creates a draft invoice, adds line items, finalises it, and sends it to the customer. Amount is in <span className="font-mono text-[#34D399]">smallest currency unit</span> (e.g. 250000 = $2,500.00 USD). Requires <span className="font-mono text-[#34D399]">STRIPE_SECRET_KEY</span> or <span className="font-mono text-[#34D399]">STRIPE_SECRET_KEY_PROD</span>.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceId}}"} · {"{{invoiceUrl}}"} · {"{{invoicePdfUrl}}"} · {"{{amountDue}}"} · {"{{currency}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "generate_stripe_payment_link" && (
+          <>
+            <PayloadField
+              label="Product Name"
+              value={(node.data.productName as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, productName: v })}
+              placeholder="M365 Governance Review or {{projectTitle}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Amount (smallest currency unit)"
+              value={(node.data.amount as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, amount: v })}
+              placeholder="95000 (= $950.00 USD) or {{totalAmount}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Currency"
+              value={(node.data.currency as string) ?? "usd"}
+              onChange={v => onChange(node.id, { ...node.data, currency: v })}
+              placeholder="usd"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Quantity</label>
+              <input
+                type="number"
+                min={1}
+                value={String(node.data.quantity ?? 1)}
+                onChange={e => onChange(node.id, { ...node.data, quantity: parseInt(e.target.value, 10) || 1 })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#2DD4BF]/60"
+              />
+            </div>
+            <PayloadField
+              label="Metadata JSON (optional)"
+              value={(node.data.metadata as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, metadata: v })}
+              placeholder='{"clientId":"{{clientId}}","projectId":"{{projectId}}"}'
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041A1A] border border-[#2DD4BF]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Creates a Stripe product, a price, and a Payment Link in one step. The link can be embedded in emails, proposals, or the <span className="font-mono text-[#2DD4BF]">build_presentation</span> node's checkout URL. Requires <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY</span> or <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY_PROD</span>.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{paymentLinkId}}"} · {"{{paymentLinkUrl}}"}</p>
             </div>
           </>
         )}

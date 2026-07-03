@@ -38,6 +38,7 @@ import {
   campaignsTable,
   campaignAssetsTable,
   landingPagesTable,
+  clientPresentationsTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -443,6 +444,72 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         collectedResults: [{ dryRun: true, element: 1 }, { dryRun: true, element: 2 }],
       };
     }
+
+    case "check_exchange_calendar_availability":
+      return {
+        dryRun: true,
+        isBusy: false,
+        availableSlots: ["2025-01-01T09:00:00Z / 2025-01-01T10:00:00Z"],
+        busySlots: [],
+      };
+
+    case "create_exchange_calendar_event":
+      return {
+        dryRun: true,
+        eventId: "dry-run-event-id",
+        eventUrl: "https://outlook.office.com/calendar/item/dry-run",
+        eventWebLink: "https://outlook.office.com/calendar/item/dry-run",
+      };
+
+    case "generate_pdf":
+      return {
+        dryRun: true,
+        pdfBase64: "dry-run-base64==",
+        pdfDataUri: "data:application/pdf;base64,dry-run-base64==",
+        fileName: (node.data.fileName as string | undefined) ?? "document.pdf",
+      };
+
+    case "save_to_sharepoint":
+      return {
+        dryRun: true,
+        sharePointItemId: "dry-run-item-id",
+        sharePointWebUrl: "https://contoso.sharepoint.com/dry-run",
+        sharePointDownloadUrl: "https://contoso.sharepoint.com/dry-run/download",
+      };
+
+    case "get_from_sharepoint":
+      return {
+        dryRun: true,
+        fileContentBase64: "dry-run-base64==",
+        fileName: "document.pdf",
+        mimeType: "application/pdf",
+        sharePointWebUrl: "https://contoso.sharepoint.com/dry-run",
+      };
+
+    case "generate_invoice_stripe_payment":
+      return {
+        dryRun: true,
+        invoiceId: "dry-run-inv-id",
+        invoiceUrl: "https://invoice.stripe.com/dry-run",
+        invoicePdfUrl: "https://invoice.stripe.com/dry-run/pdf",
+        amountDue: 99900,
+        currency: "usd",
+      };
+
+    case "generate_stripe_payment_link":
+      return {
+        dryRun: true,
+        paymentLinkId: "dry-run-pl-id",
+        paymentLinkUrl: "https://buy.stripe.com/dry-run",
+      };
+
+    case "build_presentation":
+      return {
+        dryRun: true,
+        presentationHtml: "<html><body><h1>Dry Run Proposal</h1><p>This is a dry-run — no data was saved.</p></body></html>",
+        presentationUrl: "https://example.com/api/presentations/dry-run-id",
+        presentationId: "dry-run-pres-id",
+      };
 
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
@@ -2243,6 +2310,514 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           const nextPayload = { ...payload, ...output, nodes: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output }, steps: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output } };
           return { output, nextPayload, cancelRun: false, nodeError: false, pauseForApproval: true };
         }
+        break;
+      }
+
+      // ── Exchange Calendar nodes ────────────────────────────────────────────
+
+      case "check_exchange_calendar_availability": {
+        const { getAccessToken, graphCredentialsPresent } = await import("./graph");
+        if (!graphCredentialsPresent()) {
+          nodeError = true;
+          output = { error: "check_exchange_calendar_availability: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
+          break;
+        }
+        const ecaUpn = interp(node.data.userUpn as string | undefined, payload);
+        const ecaStart = interp(node.data.startDateTime as string | undefined, payload);
+        const ecaEnd = interp(node.data.endDateTime as string | undefined, payload);
+        if (!ecaUpn || !ecaStart || !ecaEnd) {
+          nodeError = true;
+          output = { error: "check_exchange_calendar_availability: userUpn, startDateTime, and endDateTime are required" };
+          break;
+        }
+        const ecaToken = await getAccessToken();
+        const ecaResp = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(ecaUpn)}/calendar/getSchedule`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${ecaToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              schedules: [ecaUpn],
+              startTime: { dateTime: ecaStart, timeZone: "UTC" },
+              endTime: { dateTime: ecaEnd, timeZone: "UTC" },
+              availabilityViewInterval: 60,
+            }),
+          },
+        );
+        if (!ecaResp.ok) {
+          nodeError = true;
+          const errText = await ecaResp.text().catch(() => "");
+          output = { error: `check_exchange_calendar_availability: Graph API error ${ecaResp.status}`, detail: errText.slice(0, 400) };
+          break;
+        }
+        type ScheduleResp = { value?: Array<{ scheduleItems?: Array<{ start: { dateTime: string }; end: { dateTime: string } }>; availabilityView?: string }> };
+        const ecaJson = (await ecaResp.json()) as ScheduleResp;
+        const scheduleData = ecaJson.value?.[0];
+        const busySlots = (scheduleData?.scheduleItems ?? []).map(
+          (item) => `${item.start.dateTime} / ${item.end.dateTime}`,
+        );
+        const isBusy = busySlots.length > 0;
+        const availabilityView = scheduleData?.availabilityView ?? "";
+        const availableSlots: string[] = [];
+        let freeStart: string | null = null;
+        const slotStart = new Date(ecaStart);
+        for (let i = 0; i < availabilityView.length; i++) {
+          const slotTime = new Date(slotStart.getTime() + i * 60 * 60 * 1000).toISOString();
+          const nextSlotTime = new Date(slotStart.getTime() + (i + 1) * 60 * 60 * 1000).toISOString();
+          if (availabilityView[i] === "0") {
+            if (!freeStart) freeStart = slotTime;
+          } else {
+            if (freeStart) { availableSlots.push(`${freeStart} / ${slotTime}`); freeStart = null; }
+          }
+          if (i === availabilityView.length - 1 && freeStart) {
+            availableSlots.push(`${freeStart} / ${nextSlotTime}`);
+          }
+        }
+        output = { isBusy, availableSlots, busySlots };
+        break;
+      }
+
+      case "create_exchange_calendar_event": {
+        const { getAccessToken: getExchangeToken, graphCredentialsPresent: graphCreds2 } = await import("./graph");
+        if (!graphCreds2()) {
+          nodeError = true;
+          output = { error: "create_exchange_calendar_event: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
+          break;
+        }
+        const cceUpn = interp(node.data.userUpn as string | undefined, payload);
+        const cceSubject = interp(node.data.subject as string | undefined, payload);
+        const cceBody = interp(node.data.body as string | undefined, payload) ?? "";
+        const cceStart = interp(node.data.startDateTime as string | undefined, payload);
+        const cceEnd = interp(node.data.endDateTime as string | undefined, payload);
+        const cceAttendeesRaw = interp(node.data.attendees as string | undefined, payload) ?? "";
+        if (!cceUpn || !cceSubject || !cceStart || !cceEnd) {
+          nodeError = true;
+          output = { error: "create_exchange_calendar_event: userUpn, subject, startDateTime, and endDateTime are required" };
+          break;
+        }
+        const cceAttendees = cceAttendeesRaw
+          .split(",")
+          .map(e => e.trim())
+          .filter(Boolean)
+          .map(email => ({ emailAddress: { address: email }, type: "required" }));
+        const cceToken = await getExchangeToken();
+        const cceResp = await fetch(
+          `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(cceUpn)}/events`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${cceToken}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              subject: cceSubject,
+              body: { contentType: "text", content: cceBody },
+              start: { dateTime: cceStart, timeZone: "UTC" },
+              end: { dateTime: cceEnd, timeZone: "UTC" },
+              ...(cceAttendees.length > 0 && { attendees: cceAttendees }),
+            }),
+          },
+        );
+        if (!cceResp.ok) {
+          nodeError = true;
+          const errText = await cceResp.text().catch(() => "");
+          output = { error: `create_exchange_calendar_event: Graph API error ${cceResp.status}`, detail: errText.slice(0, 400) };
+          break;
+        }
+        type EventResp = { id?: string; webLink?: string };
+        const cceJson = (await cceResp.json()) as EventResp;
+        output = {
+          eventId: cceJson.id ?? "unknown",
+          eventUrl: cceJson.webLink ?? "",
+          eventWebLink: cceJson.webLink ?? "",
+        };
+        break;
+      }
+
+      // ── PDF generation node ────────────────────────────────────────────────
+
+      case "generate_pdf": {
+        const gpHtmlTemplate = interp(node.data.htmlTemplate as string | undefined, payload) ?? "";
+        const gpFileNameRaw = interp(node.data.fileName as string | undefined, payload) ?? "document.pdf";
+        const gpFileName = gpFileNameRaw.endsWith(".pdf") ? gpFileNameRaw : `${gpFileNameRaw}.pdf`;
+        if (!gpHtmlTemplate.trim()) {
+          nodeError = true;
+          output = { error: "generate_pdf: htmlTemplate is required" };
+          break;
+        }
+        // Use Playwright + system Chromium for faithful HTML-to-PDF rendering
+        const { chromium } = await import("playwright-core");
+        const gpChromiumExe = process.env.CHROMIUM_PATH
+          ?? "/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium";
+        const gpBrowser = await chromium.launch({
+          executablePath: gpChromiumExe,
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+        });
+        try {
+          const gpPage = await gpBrowser.newPage();
+          // Detect whether the template is a full HTML document or a fragment
+          const gpIsFullDoc = /^\s*<!DOCTYPE|^\s*<html/i.test(gpHtmlTemplate);
+          if (gpIsFullDoc) {
+            await gpPage.setContent(gpHtmlTemplate, { waitUntil: "domcontentloaded" });
+          } else {
+            // Wrap fragment in a minimal print-ready document
+            await gpPage.setContent(
+              `<!DOCTYPE html><html><head><meta charset="UTF-8">
+              <style>
+                body { font-family: system-ui, Arial, sans-serif; font-size: 12pt; color: #111; margin: 0; }
+              </style></head><body>${gpHtmlTemplate}</body></html>`,
+              { waitUntil: "domcontentloaded" },
+            );
+          }
+          const gpPdfBytes = await gpPage.pdf({
+            format: "A4",
+            printBackground: true,
+            margin: { top: "20mm", bottom: "20mm", left: "15mm", right: "15mm" },
+          });
+          const pdfBase64 = Buffer.from(gpPdfBytes).toString("base64");
+          const pdfDataUri = `data:application/pdf;base64,${pdfBase64}`;
+          output = { pdfBase64, pdfDataUri, fileName: gpFileName };
+        } finally {
+          await gpBrowser.close();
+        }
+        break;
+      }
+
+      // ── SharePoint nodes ───────────────────────────────────────────────────
+
+      case "save_to_sharepoint": {
+        const { getAccessToken: getSPToken, graphCredentialsPresent: spCreds } = await import("./graph");
+        if (!spCreds()) {
+          nodeError = true;
+          output = { error: "save_to_sharepoint: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
+          break;
+        }
+        const spSiteId = interp(node.data.siteId as string | undefined, payload);
+        const spDriveId = interp(node.data.driveId as string | undefined, payload);
+        const spFolderPath = interp(node.data.folderPath as string | undefined, payload) ?? "";
+        const spFileName = interp(node.data.fileName as string | undefined, payload);
+        const spContentBase64 = interp(node.data.fileContentBase64 as string | undefined, payload);
+        const spContentText = interp(node.data.fileContentText as string | undefined, payload);
+        const spContentType = (interp(node.data.contentType as string | undefined, payload) ?? "application/octet-stream");
+        if (!spSiteId || !spDriveId || !spFileName) {
+          nodeError = true;
+          output = { error: "save_to_sharepoint: siteId, driveId, and fileName are required" };
+          break;
+        }
+        if (!spContentBase64 && !spContentText) {
+          nodeError = true;
+          output = { error: "save_to_sharepoint: fileContentBase64 or fileContentText is required" };
+          break;
+        }
+        const spToken = await getSPToken();
+        let spBuffer: Buffer;
+        if (spContentBase64) {
+          spBuffer = Buffer.from(spContentBase64, "base64");
+        } else {
+          spBuffer = Buffer.from(spContentText!, "utf-8");
+        }
+        // Encode each path segment individually so slashes acting as separators are preserved
+        const encodeSegments = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+        const spItemPath = spFolderPath ? `${spFolderPath.replace(/\/$/, "")}/${spFileName}` : spFileName;
+        const spUploadUrl = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(spSiteId)}/drives/${encodeURIComponent(spDriveId)}/items/root:/${encodeSegments(spItemPath)}:/content`;
+        const spResp = await fetch(spUploadUrl, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${spToken}`, "Content-Type": spContentType },
+          body: spBuffer,
+        });
+        if (!spResp.ok) {
+          nodeError = true;
+          const errText = await spResp.text().catch(() => "");
+          output = { error: `save_to_sharepoint: Graph API error ${spResp.status}`, detail: errText.slice(0, 400) };
+          break;
+        }
+        type SpItem = { id?: string; webUrl?: string; "@microsoft.graph.downloadUrl"?: string };
+        const spJson = (await spResp.json()) as SpItem;
+        output = {
+          sharePointItemId: spJson.id ?? "unknown",
+          sharePointWebUrl: spJson.webUrl ?? "",
+          sharePointDownloadUrl: spJson["@microsoft.graph.downloadUrl"] ?? spJson.webUrl ?? "",
+        };
+        break;
+      }
+
+      case "get_from_sharepoint": {
+        const { getAccessToken: getGSPToken, graphCredentialsPresent: gspCreds } = await import("./graph");
+        if (!gspCreds()) {
+          nodeError = true;
+          output = { error: "get_from_sharepoint: Graph credentials missing (GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET, GRAPH_TENANT_ID)" };
+          break;
+        }
+        const gspSiteId = interp(node.data.siteId as string | undefined, payload);
+        const gspDriveId = interp(node.data.driveId as string | undefined, payload);
+        const gspItemId = interp(node.data.itemId as string | undefined, payload);
+        const gspItemPath = interp(node.data.itemPath as string | undefined, payload);
+        if (!gspSiteId || !gspDriveId || (!gspItemId && !gspItemPath)) {
+          nodeError = true;
+          output = { error: "get_from_sharepoint: siteId, driveId, and either itemId or itemPath are required" };
+          break;
+        }
+        const gspToken = await getGSPToken();
+        // Encode path segments individually so folder separators (/) are preserved in the URL
+        const gspEncodeSegments = (p: string) => p.split("/").map(encodeURIComponent).join("/");
+        const gspItemUrl = gspItemId
+          ? `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(gspSiteId)}/drives/${encodeURIComponent(gspDriveId)}/items/${encodeURIComponent(gspItemId)}`
+          : `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(gspSiteId)}/drives/${encodeURIComponent(gspDriveId)}/items/root:/${gspEncodeSegments(gspItemPath!)}`;
+        const gspMetaResp = await fetch(gspItemUrl, {
+          headers: { Authorization: `Bearer ${gspToken}`, "Content-Type": "application/json" },
+        });
+        if (!gspMetaResp.ok) {
+          nodeError = true;
+          const errText = await gspMetaResp.text().catch(() => "");
+          output = { error: `get_from_sharepoint: Graph API error ${gspMetaResp.status}`, detail: errText.slice(0, 400) };
+          break;
+        }
+        type GspMeta = { id?: string; name?: string; webUrl?: string; file?: { mimeType?: string }; "@microsoft.graph.downloadUrl"?: string };
+        const gspMeta = (await gspMetaResp.json()) as GspMeta;
+        const gspDownloadUrl = gspMeta["@microsoft.graph.downloadUrl"];
+        if (!gspDownloadUrl) {
+          nodeError = true;
+          output = { error: "get_from_sharepoint: item metadata did not include a download URL" };
+          break;
+        }
+        const gspContentResp = await fetch(gspDownloadUrl);
+        if (!gspContentResp.ok) {
+          nodeError = true;
+          output = { error: `get_from_sharepoint: download failed with HTTP ${gspContentResp.status}` };
+          break;
+        }
+        const gspBuffer = Buffer.from(await gspContentResp.arrayBuffer());
+        output = {
+          fileContentBase64: gspBuffer.toString("base64"),
+          fileName: gspMeta.name ?? "file",
+          mimeType: gspMeta.file?.mimeType ?? "application/octet-stream",
+          sharePointWebUrl: gspMeta.webUrl ?? "",
+        };
+        break;
+      }
+
+      // ── Stripe nodes ───────────────────────────────────────────────────────
+
+      case "generate_invoice_stripe_payment": {
+        const { getStripeKey } = await import("./stripe");
+        let stripeKey: string;
+        try { stripeKey = getStripeKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: Stripe } = await import("stripe");
+        const stripeInv = new Stripe(stripeKey);
+        const invEmail = interp(node.data.customerEmail as string | undefined, payload);
+        const invName = interp(node.data.customerName as string | undefined, payload) ?? "";
+        const invDaysRaw = parseInt(String(node.data.daysUntilDue ?? "7"), 10);
+        const invDays = isNaN(invDaysRaw) ? 7 : invDaysRaw;
+        if (!invEmail) { nodeError = true; output = { error: "generate_invoice_stripe_payment: customerEmail is required" }; break; }
+        let invLineItemsRaw: unknown;
+        const invLineItemsStr = interp(node.data.lineItems as string | undefined, payload);
+        try { invLineItemsRaw = invLineItemsStr ? JSON.parse(invLineItemsStr) : []; } catch { nodeError = true; output = { error: "generate_invoice_stripe_payment: lineItems must be valid JSON array" }; break; }
+        const invLineItems = Array.isArray(invLineItemsRaw) ? invLineItemsRaw as Array<{ description?: string; amount?: number; currency?: string }> : [];
+        if (invLineItems.length === 0) { nodeError = true; output = { error: "generate_invoice_stripe_payment: at least one line item is required" }; break; }
+        const invCustomers = await stripeInv.customers.list({ email: invEmail, limit: 1 });
+        let invCustomerId: string;
+        if (invCustomers.data.length > 0) {
+          invCustomerId = invCustomers.data[0].id;
+        } else {
+          const invCust = await stripeInv.customers.create({ email: invEmail, name: invName || undefined });
+          invCustomerId = invCust.id;
+        }
+        const invRecord = await stripeInv.invoices.create({ customer: invCustomerId, days_until_due: invDays, collection_method: "send_invoice" });
+        const invCurrency = (invLineItems[0]?.currency ?? "usd").toLowerCase();
+        for (const item of invLineItems) {
+          await stripeInv.invoiceItems.create({
+            customer: invCustomerId,
+            invoice: invRecord.id,
+            description: item.description ?? "Service",
+            amount: Math.round(Number(item.amount ?? 0)),
+            currency: (item.currency ?? invCurrency).toLowerCase(),
+          });
+        }
+        const finalInv = await stripeInv.invoices.finalizeInvoice(invRecord.id);
+        output = {
+          invoiceId: finalInv.id,
+          invoiceUrl: finalInv.hosted_invoice_url ?? "",
+          invoicePdfUrl: finalInv.invoice_pdf ?? "",
+          amountDue: finalInv.amount_due,
+          currency: finalInv.currency,
+        };
+        break;
+      }
+
+      case "generate_stripe_payment_link": {
+        const { getStripeKey: getPlKey } = await import("./stripe");
+        let plStripeKey: string;
+        try { plStripeKey = getPlKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: StripePl } = await import("stripe");
+        const stripePl = new StripePl(plStripeKey);
+        const plProductName = interp(node.data.productName as string | undefined, payload);
+        const plAmount = Math.round(Number(interp(node.data.amount as string | undefined, payload) ?? node.data.amount ?? 0));
+        const plCurrency = (interp(node.data.currency as string | undefined, payload) ?? "usd").toLowerCase();
+        const plQuantity = Math.max(1, parseInt(String(node.data.quantity ?? "1"), 10));
+        const plMetadataStr = interp(node.data.metadata as string | undefined, payload);
+        let plMetadata: Record<string, string> = {};
+        if (plMetadataStr) { try { plMetadata = JSON.parse(plMetadataStr) as Record<string, string>; } catch { /* ignore */ } }
+        if (!plProductName || plAmount <= 0) { nodeError = true; output = { error: "generate_stripe_payment_link: productName and a positive amount (in cents) are required" }; break; }
+        const plProduct = await stripePl.products.create({ name: plProductName });
+        const plPrice = await stripePl.prices.create({ product: plProduct.id, unit_amount: plAmount, currency: plCurrency });
+        const plLink = await stripePl.paymentLinks.create({
+          line_items: [{ price: plPrice.id, quantity: plQuantity }],
+          ...(Object.keys(plMetadata).length > 0 && { metadata: plMetadata }),
+        });
+        output = { paymentLinkId: plLink.id, paymentLinkUrl: plLink.url };
+        break;
+      }
+
+      // ── Client Proposal Presentation node ─────────────────────────────────
+
+      case "build_presentation": {
+        // Helper: escape user-controlled strings before inserting into HTML
+        const bpEsc = (s: string) =>
+          s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+
+        const bpClientName = bpEsc(interp(node.data.clientName as string | undefined, payload) ?? "Valued Client");
+        const bpClientEmail = bpEsc(interp(node.data.clientEmail as string | undefined, payload) ?? "");
+        const bpProjectTitle = bpEsc(interp(node.data.projectTitle as string | undefined, payload) ?? "Microsoft 365 Engagement Proposal");
+        // Validate checkoutUrl — only allow https: URLs to prevent javascript: injection
+        const bpCheckoutUrlRaw = interp(node.data.checkoutUrl as string | undefined, payload) ?? "";
+        const bpCheckoutUrl = /^https:\/\//i.test(bpCheckoutUrlRaw) ? bpEsc(bpCheckoutUrlRaw) : "";
+        const bpValidUntil = bpEsc(interp(node.data.validUntil as string | undefined, payload) ?? "");
+        const bpTotalAmount = bpEsc(interp(node.data.totalAmount as string | undefined, payload) ?? String(node.data.totalAmount ?? ""));
+        const bpCurrency = bpEsc((interp(node.data.currency as string | undefined, payload) ?? "usd").toUpperCase());
+
+        let bpScores: Record<string, number> = {};
+        const bpScoresStr = interp(node.data.scores as string | undefined, payload);
+        try { if (bpScoresStr) bpScores = JSON.parse(bpScoresStr) as Record<string, number>; } catch { /* ignore */ }
+
+        let bpDocuments: Array<{ name: string; description?: string }> = [];
+        const bpDocumentsStr = interp(node.data.documents as string | undefined, payload);
+        try { if (bpDocumentsStr) bpDocuments = JSON.parse(bpDocumentsStr) as Array<{ name: string; description?: string }>; } catch { /* ignore */ }
+
+        let bpLineItems: Array<{ label: string; amount: string | number }> = [];
+        const bpLineItemsStr = interp(node.data.lineItems as string | undefined, payload);
+        try { if (bpLineItemsStr) bpLineItems = JSON.parse(bpLineItemsStr) as Array<{ label: string; amount: string | number }>; } catch { /* ignore */ }
+
+        const bpGeneratedAt = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+        const bpScoreRows = Object.entries(bpScores)
+          .map(([cat, score]) => {
+            const pct = Math.min(100, Math.max(0, Number(score)));
+            const color = pct >= 70 ? "#00B4D8" : pct >= 40 ? "#F59E0B" : "#EF4444";
+            return `<tr><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:#C9D1D9">${bpEsc(cat)}</td><td style="padding:8px 12px;border-bottom:1px solid #1C2128"><div style="background:#1C2128;border-radius:4px;height:8px;overflow:hidden"><div style="background:${color};height:100%;width:${pct}%"></div></div></td><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:${color};font-weight:600;text-align:right">${pct}%</td></tr>`;
+          })
+          .join("");
+
+        const bpDocRows = bpDocuments
+          .map(doc => `<tr><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:#C9D1D9;font-weight:600">✓ ${bpEsc(doc.name)}</td><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:#7D8590">${bpEsc(doc.description ?? "")}</td></tr>`)
+          .join("");
+
+        const bpPriceRows = bpLineItems
+          .map(item => `<tr><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:#C9D1D9">${bpEsc(String(item.label))}</td><td style="padding:8px 12px;border-bottom:1px solid #1C2128;color:#E6EDF3;text-align:right;font-weight:600">${bpCurrency} ${Number(item.amount).toLocaleString()}</td></tr>`)
+          .join("");
+
+        const bpHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${bpProjectTitle} — Shane McCaw Consulting</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #0D1117; color: #E6EDF3; line-height: 1.6; }
+  .container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+  .header { background: linear-gradient(135deg, #0A2540 0%, #0D1117 100%); border: 1px solid #30363D; border-radius: 16px; padding: 48px 40px; margin-bottom: 32px; text-align: center; }
+  .logo { color: #0078D4; font-size: 14px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; }
+  h1 { font-size: 32px; font-weight: 700; color: #E6EDF3; margin-bottom: 8px; }
+  .subtitle { color: #7D8590; font-size: 16px; }
+  .prepared-for { margin-top: 24px; padding: 16px; background: rgba(0,120,212,0.1); border: 1px solid rgba(0,120,212,0.3); border-radius: 8px; }
+  .prepared-for p { color: #7D8590; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  .prepared-for strong { color: #E6EDF3; font-size: 20px; }
+  .card { background: #161B22; border: 1px solid #30363D; border-radius: 12px; padding: 32px; margin-bottom: 24px; }
+  .card h2 { font-size: 18px; font-weight: 700; color: #0078D4; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #30363D; }
+  table { width: 100%; border-collapse: collapse; }
+  .cta { text-align: center; padding: 40px; background: linear-gradient(135deg, #0A2540 0%, #0D1117 100%); border: 1px solid #0078D4; border-radius: 16px; margin-bottom: 24px; }
+  .cta h2 { font-size: 24px; margin-bottom: 8px; }
+  .cta p { color: #7D8590; margin-bottom: 24px; }
+  .cta a { display: inline-block; background: #0078D4; color: #fff; text-decoration: none; padding: 16px 40px; border-radius: 8px; font-weight: 700; font-size: 16px; letter-spacing: 0.5px; }
+  .cta a:hover { background: #006cbd; }
+  .total-row td { font-weight: 700; font-size: 16px; color: #E6EDF3; padding: 12px; background: rgba(0,120,212,0.1); }
+  .footer { text-align: center; color: #484F58; font-size: 12px; padding: 24px; }
+  .meta { color: #7D8590; font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">Shane McCaw Consulting</div>
+    <h1>${bpProjectTitle}</h1>
+    <div class="subtitle">Microsoft 365 &amp; Copilot AI Engagement Proposal</div>
+    <div class="prepared-for">
+      <p>Prepared exclusively for</p>
+      <strong>${bpClientName}</strong>
+      <div class="meta">Generated ${bpGeneratedAt}${bpValidUntil ? ` · Valid until ${bpValidUntil}` : ""}</div>
+    </div>
+  </div>
+
+  ${Object.keys(bpScores).length > 0 ? `
+  <div class="card">
+    <h2>📊 Assessment Scores</h2>
+    <table>
+      <tbody>${bpScoreRows}</tbody>
+    </table>
+  </div>` : ""}
+
+  ${bpDocuments.length > 0 ? `
+  <div class="card">
+    <h2>📄 Deliverables Included</h2>
+    <table>
+      <tbody>${bpDocRows}</tbody>
+    </table>
+  </div>` : ""}
+
+  ${bpLineItems.length > 0 ? `
+  <div class="card">
+    <h2>💰 Investment Breakdown</h2>
+    <table>
+      <tbody>
+        ${bpPriceRows}
+        ${bpTotalAmount ? `<tr class="total-row"><td>Total Investment</td><td style="text-align:right">${bpCurrency} ${Number(bpTotalAmount).toLocaleString()}</td></tr>` : ""}
+      </tbody>
+    </table>
+  </div>` : ""}
+
+  ${bpCheckoutUrl ? `
+  <div class="cta">
+    <h2>Ready to get started?</h2>
+    <p>Click below to review and complete your secure checkout</p>
+    <a href="${bpCheckoutUrl}" target="_blank" rel="noopener noreferrer">Accept Proposal &amp; Pay Securely →</a>
+  </div>` : ""}
+
+  <div class="footer">
+    <p>Shane McCaw Consulting · Lead Microsoft 365 Architect</p>
+    <p style="margin-top:4px">This proposal is confidential and prepared exclusively for ${bpClientName}.</p>
+  </div>
+</div>
+</body>
+</html>`;
+
+        const bpExpiresAt = bpValidUntil ? new Date(bpValidUntil) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const [bpRecord] = await db.insert(clientPresentationsTable).values({
+          clientEmail: bpClientEmail || "unknown@example.com",
+          projectTitle: bpProjectTitle,
+          html: bpHtml,
+          checkoutUrl: bpCheckoutUrl || null,
+          expiresAt: bpExpiresAt,
+        }).returning();
+
+        const bpDomains = process.env.REPLIT_DOMAINS ?? "";
+        const bpIsProd = bpDomains.length > 0 && bpDomains.split(",").some(d => !d.trim().endsWith(".replit.dev"));
+        const bpBaseUrl = bpIsProd
+          ? `https://${bpDomains.split(",")[0].trim()}`
+          : `https://${bpDomains.split(",")[0]?.trim() ?? "localhost"}`;
+        const bpPresentationUrl = `${bpBaseUrl}/api/presentations/${bpRecord.id}`;
+
+        output = {
+          presentationHtml: bpHtml,
+          presentationUrl: bpPresentationUrl,
+          presentationId: bpRecord.id,
+        };
         break;
       }
 
