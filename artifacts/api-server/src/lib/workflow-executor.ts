@@ -407,6 +407,18 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return out;
     }
 
+    case "switch_case": {
+      const dsCases = (node.data.cases as Array<{ id: string; matchValue: string; label: string }> | undefined) ?? [];
+      const firstCase = dsCases[0];
+      const chosenBranch = firstCase ? (firstCase.label || firstCase.matchValue || "case-1") : "default";
+      return {
+        dryRun: true,
+        switchValue: interp(node.data.switchExpr as string | undefined, payload) ?? "",
+        chosenBranch,
+        matchedCaseId: firstCase?.id ?? null,
+      };
+    }
+
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
   }
@@ -478,15 +490,18 @@ async function executeNode(
   cancelRun: boolean;
   nodeError: boolean;
   conditionResult?: boolean;
+  /** For switch_case nodes: the handle ID of the chosen branch (a case UUID or "default") */
+  switchChosenHandle?: string;
 }> {
   const startMs = Date.now();
   let output: Record<string, unknown> = {};
   let cancelRun = false;
   let nodeError = false;
   let conditionResult: boolean | undefined;
+  let switchChosenHandle: string | undefined;
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
-  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error"]);
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case"]);
 
   try {
     if (dryRun && !STRUCTURAL_TYPES.has(node.type)) {
@@ -635,6 +650,18 @@ async function executeNode(
           cancelRun = true;
           output.cancelledReason = "cancelOnFalse=true";
         }
+        break;
+      }
+
+      case "switch_case": {
+        const switchExpr = node.data.switchExpr as string | undefined;
+        const cases = (node.data.cases as Array<{ id: string; matchValue: string; label: string }> | undefined) ?? [];
+        const switchValue = interp(switchExpr, payload) ?? "";
+        // Find first case whose matchValue exactly matches the resolved value
+        const matchedCase = cases.find(c => c.matchValue === switchValue);
+        switchChosenHandle = matchedCase ? matchedCase.id : "default";
+        const chosenBranch = matchedCase ? (matchedCase.label || matchedCase.matchValue) : "default";
+        output = { switchValue, chosenBranch, matchedCaseId: matchedCase?.id ?? null };
         break;
       }
 
@@ -2067,7 +2094,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
     steps: updatedNodes,
   };
 
-  return { output, nextPayload, cancelRun, nodeError, conditionResult };
+  return { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle };
 }
 
 // ── Concurrency check (read-only) ─────────────────────────────────────────────
@@ -2163,7 +2190,7 @@ export async function executeWorkflowRun(
       // ── Execute ──
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
+      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
@@ -2215,6 +2242,15 @@ export async function executeWorkflowRun(
         for (const e of outEdges) {
           const isTaken = conditionResult ? (e.id === trueEdge?.id) : (e.id === falseEdge?.id);
           resolveEdge(e.target, isTaken);
+        }
+        continue;
+      }
+
+      // Switch/Case: route only the matching case branch (or default)
+      if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+        const outEdges = graph.edges.filter(e => e.source === nodeId);
+        for (const e of outEdges) {
+          resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
         }
         continue;
       }

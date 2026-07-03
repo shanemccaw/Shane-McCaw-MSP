@@ -1659,7 +1659,9 @@ export interface WfNode {
     // System
     | "system_action"
     // Input
-    | "ask_for_input";
+    | "ask_for_input"
+    // Logic
+    | "switch_case";
   position: { x: number; y: number };
   data: WfNodeData;
 }

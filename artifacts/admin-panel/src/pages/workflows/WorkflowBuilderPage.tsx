@@ -72,6 +72,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
   // ── Input ──
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
+  // ── Logic ──
+  switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -159,6 +161,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
+  // Switch/Case — routes to one branch; outputs the resolved switch value and which branch was taken
+  switch_case: [
+    { key: "switchValue",  label: "Resolved switch expression value" },
+    { key: "chosenBranch", label: "Label of the branch that was taken (or 'default')" },
+  ],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -221,6 +228,41 @@ function WfNode({ data, selected, id }: NodeProps) {
             <span className="text-orange-400">Cancel</span>
           </div>
         </>
+      ) : nodeType === "switch_case" ? (
+        (() => {
+          const cases = (data.cases as Array<{ id: string; matchValue: string; label: string }> | undefined) ?? [];
+          const total = cases.length + 1; // +1 for default
+          const pct = (i: number) => `${((i + 1) / (total + 1)) * 100}%`;
+          return (
+            <>
+              {cases.map((c, i) => (
+                <Handle
+                  key={c.id}
+                  type="source"
+                  position={Position.Bottom}
+                  id={c.id}
+                  style={{ left: pct(i), background: "#FB923C", border: "none" }}
+                />
+              ))}
+              <Handle
+                type="source"
+                position={Position.Bottom}
+                id="default"
+                style={{ left: pct(cases.length), background: "#6B7280", border: "none" }}
+              />
+              {total <= 6 && (
+                <div className="flex mt-1 px-0.5" style={{ gap: 0 }}>
+                  {cases.map(c => (
+                    <span key={c.id} className="text-[8px] font-semibold text-orange-400 flex-1 text-center truncate">
+                      {c.label || c.matchValue || "…"}
+                    </span>
+                  ))}
+                  <span className="text-[8px] font-semibold text-gray-400 flex-1 text-center">Default</span>
+                </div>
+              )}
+            </>
+          );
+        })()
       ) : (
         <>
           <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
@@ -276,6 +318,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "delay",         label: "Delay",         description: "Wait / poll condition",                              tags: ["control", "wait", "pause"] },
       { type: "error",         label: "Error",         description: "Catch-all error handler",                            tags: ["control", "error", "catch"] },
       { type: "ask_for_input", label: "Ask for Input", description: "Prompt the operator for values before the run starts", tags: ["input", "manual", "form", "prompt", "interactive"] },
+      { type: "switch_case",   label: "Switch",        description: "Route to one of many branches based on an expression value", tags: ["logic", "switch", "case", "branch", "route", "multi"] },
     ],
   },
   {
@@ -1650,6 +1693,10 @@ function NodeConfigPanel({
           <AskForInputPanel node={node} onChange={onChange} />
         )}
 
+        {nodeType === "switch_case" && (
+          <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} />
+        )}
+
         {nodeType === "condition" && (
           <>
             <PayloadField
@@ -2825,6 +2872,146 @@ function AskForInputPanel({
       <div className="rounded-lg bg-[#1A0E00] border border-[#F97316]/20 p-2.5">
         <p className="text-[10px] text-[#7D8590] leading-relaxed">
           When a manual run is triggered on a workflow containing this node, a dialog appears prompting the operator to fill in each field. The values are injected into the payload before any downstream nodes execute.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Switch/Case config panel ──────────────────────────────────────────────────
+
+interface SwitchCaseItem {
+  id: string;
+  matchValue: string;
+  label: string;
+}
+
+function SwitchCasePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const cases = ((node.data.cases as SwitchCaseItem[] | undefined) ?? []);
+
+  function updateCases(next: SwitchCaseItem[]) {
+    onChange(node.id, { ...node.data, cases: next });
+  }
+
+  function addCase() {
+    if (cases.length >= 10) return;
+    updateCases([
+      ...cases,
+      { id: crypto.randomUUID(), matchValue: "", label: "" },
+    ]);
+  }
+
+  function removeCase(id: string) {
+    updateCases(cases.filter(c => c.id !== id));
+  }
+
+  function updateCase(id: string, patch: Partial<SwitchCaseItem>) {
+    updateCases(cases.map(c => c.id === id ? { ...c, ...patch } : c));
+  }
+
+  function moveCase(id: string, dir: -1 | 1) {
+    const idx = cases.findIndex(c => c.id === id);
+    if (idx === -1) return;
+    const next = [...cases];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap]!, next[idx]!];
+    updateCases(next);
+  }
+
+  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#FB923C]";
+
+  return (
+    <div className="space-y-3">
+      {/* Switch expression */}
+      <PayloadField
+        label="Switch on (expression)"
+        value={(node.data.switchExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, switchExpr: v })}
+        placeholder="{{status}} or {{tier}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+
+      {/* Case list */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">Cases</span>
+          {cases.length >= 10 && (
+            <span className="text-[10px] text-amber-400">Max 10 cases</span>
+          )}
+        </div>
+
+        {cases.length === 0 && (
+          <p className="text-[10px] text-[#484F58] italic">No cases yet — add one below</p>
+        )}
+
+        {cases.map((c, idx) => (
+          <div key={c.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
+            <div className="flex items-center gap-1 px-2 py-1 bg-[#161B22] border-b border-[#30363D]">
+              <span className="text-[10px] font-semibold text-[#FB923C]">Case {idx + 1}</span>
+              <div className="flex-1" />
+              <button type="button" onClick={() => moveCase(c.id, -1)} disabled={idx === 0}
+                className="text-[10px] text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 px-0.5">▲</button>
+              <button type="button" onClick={() => moveCase(c.id, 1)} disabled={idx === cases.length - 1}
+                className="text-[10px] text-[#484F58] hover:text-[#E6EDF3] disabled:opacity-30 px-0.5">▼</button>
+              <button type="button" onClick={() => removeCase(c.id)}
+                className="text-[10px] text-red-400 hover:text-red-300 px-0.5 ml-1">✕</button>
+            </div>
+            <div className="p-2 space-y-1.5">
+              <div>
+                <label className="text-[10px] text-[#7D8590] block mb-0.5">Match value (exact)</label>
+                <input
+                  type="text"
+                  value={c.matchValue}
+                  onChange={e => updateCase(c.id, { matchValue: e.target.value })}
+                  placeholder="active"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-[#7D8590] block mb-0.5">Handle label (shown on canvas)</label>
+                <input
+                  type="text"
+                  value={c.label}
+                  onChange={e => updateCase(c.id, { label: e.target.value })}
+                  placeholder="Active"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {/* Default (locked) */}
+        <div className="rounded-lg border border-[#30363D]/50 bg-[#0D1117] overflow-hidden opacity-60">
+          <div className="flex items-center gap-1 px-2 py-1 bg-[#161B22] border-b border-[#30363D]/50">
+            <span className="text-[10px] font-semibold text-[#6B7280]">Default</span>
+            <span className="ml-auto text-[9px] text-[#484F58]">🔒 always present</span>
+          </div>
+          <p className="text-[10px] text-[#484F58] p-2">Fires when no case matches</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={addCase}
+          disabled={cases.length >= 10}
+          className="w-full py-1.5 rounded-lg border border-dashed border-[#FB923C]/40 text-[11px] text-[#FB923C] hover:border-[#FB923C]/70 hover:bg-[#FB923C]/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          + Add Case
+        </button>
+      </div>
+
+      <div className="rounded-lg bg-[#180D00] border border-[#FB923C]/20 p-2.5">
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+          Evaluates the expression against each case in order — the first exact match wins. Connect edges from each case handle and the Default handle to downstream nodes. <span className="text-[#FB923C] font-mono">{"{{switchValue}}"}</span> and <span className="text-[#FB923C] font-mono">{"{{chosenBranch}}"}</span> are injected into the next payload.
         </p>
       </div>
     </div>
