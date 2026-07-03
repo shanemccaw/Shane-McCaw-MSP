@@ -1263,7 +1263,19 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
     hasActiveEngagement = !!activeService;
   }
 
-  const wizardResultsReady = user.quickWinCompletedAt !== null;
+  // wizardResultsReady: scan must have completed AND no active quick_win project.
+  // While the admin's Quick Win project is still "active" the customer stays on the
+  // diagnostic progress page; once the project is completed/closed, results are shown.
+  const [activeQuickWinProject] = await db.select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(and(
+      eq(projectsTable.clientUserId, userId),
+      eq(projectsTable.projectType, "quick_win"),
+      eq(projectsTable.status, "active"),
+    ))
+    .limit(1);
+
+  const wizardResultsReady = user.quickWinCompletedAt !== null && !activeQuickWinProject;
 
   if (user.onboardingWizardCompletedAt !== null || profile) {
     res.json({

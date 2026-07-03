@@ -129,12 +129,18 @@ function RequireEngagement({ children }: { children: ReactNode }) {
   // Gate lifted — full portal accessible
   if (status?.hasActiveEngagement) return <>{children}</>;
 
-  // No active engagement (or status unknown after fail-closed): redirect based on wizard state
+  // Results ready (scan done + no active quick_win project) → show results
   if (status?.wizardResultsReady) {
     return <Redirect to="/portal/onboarding/results" />;
   }
 
-  return <Redirect to="/portal/onboarding/wizard" />;
+  // Wizard not yet completed → send to wizard
+  if (status?.needsOnboarding) {
+    return <Redirect to="/portal/onboarding/wizard" />;
+  }
+
+  // Wizard done but Quick Win project still in progress → stay on diagnostic page
+  return <Redirect to="/portal/diagnostic" />;
 }
 
 function Router() {
