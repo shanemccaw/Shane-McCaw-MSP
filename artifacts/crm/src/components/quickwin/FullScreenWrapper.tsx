@@ -930,6 +930,7 @@ export default function FullScreenWrapper() {
           <HealthPanel
             overallScore={animatedOverallScore}
             categoryScores={displayScores}
+            scanning={Object.keys(displayScores).length === 0}
           />
 
           {/* Three-column task grid */}
@@ -1330,6 +1331,7 @@ export default function FullScreenWrapper() {
               <HealthPanel
                 overallScore={realOverallScore}
                 categoryScores={realCategoryScores}
+                scanning={Object.keys(realCategoryScores).length === 0}
               />
 
               {/* Kanban 12-col grid */}
