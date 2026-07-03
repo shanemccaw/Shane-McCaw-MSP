@@ -217,11 +217,16 @@ function AddButton({
 
   function handlePick(nodeType: string) {
     const style = nodeStyles[nodeType] ?? nodeStyles["action"] ?? { label: nodeType };
+    const extraData: Record<string, unknown> = {};
+    if (nodeType === "switch_case") {
+      // Seed one Case so the canvas immediately shows Case 1 + Default columns
+      extraData.cases = [{ id: `c${Date.now()}`, matchValue: "", label: "Case 1" }];
+    }
     const newNode: StoredNode = {
       id: `node-${++nodeIdCounter.current}`,
       type: nodeType,
       position: { x: 0, y: 0 },
-      data: { nodeType, label: style.label },
+      data: { nodeType, label: style.label, ...extraData },
     };
     if (onInsert) {
       onInsert(newNode);
@@ -637,8 +642,39 @@ function ContainerBody({
   // ── Switch / Case — scrolls horizontally on small screens ──
   if (nodeType === "switch_case") {
     const cases = (step.data.cases as Array<{ id: string; matchValue: string; label?: string }> | undefined) ?? [];
-    const branchKeys = [...cases.map(c => c.id), "__default__"];
     const branchColors = ["#0078D4", "#A855F7", "#F59E0B", "#10B981", "#EF4444"];
+
+    // If no cases configured yet, show a nudge instead of just a bare Default column
+    if (cases.length === 0) {
+      return (
+        <div className="border-t border-[#FB923C]/30 rounded-b-xl bg-[#FB923C]/5 px-4 py-3">
+          <p className="text-[11px] text-[#7D8590] italic">
+            No cases defined — open the config panel to add cases.
+          </p>
+          <div className="mt-2">
+            <div className="text-[9px] uppercase tracking-widest font-bold text-[#6B7280] mb-1">Default</div>
+            <BranchStepList
+              steps={branches["__default__"] ?? []}
+              containerId={step.id}
+              containerHandle="default"
+              lastNodeIdFn={lastNodeId}
+              branchKey="__default__"
+              isArchived={isArchived}
+              nodeStyles={nodeStyles}
+              nodeIdCounter={nodeIdCounter}
+              libraryCategories={libraryCategories}
+              allLibraryNodes={allLibraryNodes}
+              nodes={nodes}
+              edges={edges}
+              onGraphChange={onGraphChange}
+              onDuplicateNode={onDuplicateNode}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    const branchKeys = [...cases.map(c => c.id), "__default__"];
 
     return (
       <div className="border-t border-[#FB923C]/30 rounded-b-xl overflow-x-auto">
