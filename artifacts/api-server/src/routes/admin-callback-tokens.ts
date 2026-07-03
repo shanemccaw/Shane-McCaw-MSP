@@ -31,6 +31,7 @@ import { createHash } from "crypto";
 import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
+import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
 
 const router: IRouter = Router();
 
@@ -357,6 +358,33 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       .update(clientCallbackTokensTable)
       .set({ lastUsedAt: new Date() })
       .where(eq(clientCallbackTokensTable.id, tokenRow.id));
+
+    // Move the linked kanban task to completed and trigger phase-advance
+    if (linkage.kanbanTaskId !== null) {
+      const [task] = await db
+        .select({ id: kanbanTasksTable.id, column: kanbanTasksTable.column, workflowStepId: kanbanTasksTable.workflowStepId, projectId: kanbanTasksTable.projectId })
+        .from(kanbanTasksTable)
+        .where(eq(kanbanTasksTable.id, linkage.kanbanTaskId))
+        .limit(1);
+
+      if (task && task.column !== "completed") {
+        await db
+          .update(kanbanTasksTable)
+          .set({ column: "completed" })
+          .where(eq(kanbanTasksTable.id, task.id));
+
+        logger.info({ taskId: task.id, projectId: task.projectId }, "admin-callback-tokens: moved kanban task to completed");
+
+        if (task.workflowStepId && task.projectId) {
+          advancePhaseIfComplete(task.workflowStepId, task.projectId).catch((err) => {
+            logger.error({ err, taskId: task.id }, "admin-callback-tokens: advancePhaseIfComplete failed");
+          });
+          syncProjectProgress(task.projectId).catch((err) => {
+            logger.error({ err, projectId: task.projectId }, "admin-callback-tokens: syncProjectProgress failed");
+          });
+        }
+      }
+    }
 
     logger.info(
       { tokenId: tokenRow.id, clientUserId: tokenRow.clientUserId, resultId },
