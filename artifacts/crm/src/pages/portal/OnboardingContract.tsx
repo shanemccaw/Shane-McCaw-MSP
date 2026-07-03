@@ -253,6 +253,37 @@ function readGuestInfo(): { name: string; email: string; company: string } {
   } catch { return { name: "", email: "", company: "" }; }
 }
 
+const FORM_KEY = "onboardingContractForm";
+
+interface SavedForm {
+  signerName?: string;
+  company?: string;
+  phone?: string;
+  street?: string;
+  city?: string;
+  addrState?: string;
+  zip?: string;
+  appliedCoupon?: {
+    code: string;
+    discountType: string;
+    discountValue: string;
+    discountAmount: number;
+    discountedTotal: number;
+  } | null;
+}
+
+function readSavedForm(): SavedForm {
+  try {
+    const raw = localStorage.getItem(FORM_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as SavedForm;
+  } catch { return {}; }
+}
+
+function clearSavedForm() {
+  try { localStorage.removeItem(FORM_KEY); } catch { /* ignore */ }
+}
+
 export default function OnboardingContract() {
   const { user, fetchWithAuth, accessToken } = useAuth();
   const [, setLocation] = useLocation();
@@ -273,18 +304,20 @@ export default function OnboardingContract() {
 
   // Guest info (used when user is not logged in)
   const guestInfo = readGuestInfo();
+  // Saved form state — persisted in localStorage so a refresh doesn't lose progress
+  const savedForm = readSavedForm();
 
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [signerName, setSignerName] = useState(user?.name ?? guestInfo.name ?? user?.email?.split("@")[0] ?? "");
-  const [company, setCompany] = useState(user?.company ?? guestInfo.company ?? "");
-  const [phone, setPhone] = useState(user?.phone ?? "");
-  const [street, setStreet] = useState(user?.address ?? "");
-  const [city, setCity] = useState(user?.addressCity ?? "");
-  const [addrState, setAddrState] = useState(user?.addressState ?? "");
-  const [zip, setZip] = useState(user?.addressZip ?? "");
+  const [signerName, setSignerName] = useState(savedForm.signerName || user?.name || guestInfo.name || user?.email?.split("@")[0] || "");
+  const [company, setCompany] = useState(savedForm.company || user?.company || guestInfo.company || "");
+  const [phone, setPhone] = useState(savedForm.phone || user?.phone || "");
+  const [street, setStreet] = useState(savedForm.street || user?.address || "");
+  const [city, setCity] = useState(savedForm.city || user?.addressCity || "");
+  const [addrState, setAddrState] = useState(savedForm.addrState || user?.addressState || "");
+  const [zip, setZip] = useState(savedForm.zip || user?.addressZip || "");
   const [agreed, setAgreed] = useState(false);
   const [appRegAgreed, setAppRegAgreed] = useState(false);
   const [requiredPermissions, setRequiredPermissions] = useState<{ scope: string; reason: string }[]>([]);
@@ -331,7 +364,7 @@ export default function OnboardingContract() {
     discountValue: string;
     discountAmount: number;
     discountedTotal: number;
-  } | null>(null);
+  } | null>(savedForm.appliedCoupon ?? null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const contractScrollRef = useRef<HTMLDivElement>(null);
@@ -398,13 +431,14 @@ export default function OnboardingContract() {
         }> : null)
         .then(profile => {
           if (!profile) return;
-          if (profile.name) setSignerName(profile.name);
-          if (profile.company) setCompany(profile.company);
-          if (profile.phone) setPhone(profile.phone);
-          if (profile.address) setStreet(profile.address);
-          if (profile.addressCity) setCity(profile.addressCity);
-          if (profile.addressState) setAddrState(profile.addressState);
-          if (profile.addressZip) setZip(profile.addressZip);
+          // Only apply profile values for fields not already restored from localStorage
+          if (!savedForm.signerName && profile.name) setSignerName(profile.name);
+          if (!savedForm.company && profile.company) setCompany(profile.company);
+          if (!savedForm.phone && profile.phone) setPhone(profile.phone);
+          if (!savedForm.street && profile.address) setStreet(profile.address);
+          if (!savedForm.city && profile.addressCity) setCity(profile.addressCity);
+          if (!savedForm.addrState && profile.addressState) setAddrState(profile.addressState);
+          if (!savedForm.zip && profile.addressZip) setZip(profile.addressZip);
         })
         .catch(() => { /* silently ignore */ });
     }
@@ -412,6 +446,15 @@ export default function OnboardingContract() {
     void servicesReq;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Persist form fields to localStorage so a refresh doesn't lose progress
+  useEffect(() => {
+    try {
+      localStorage.setItem(FORM_KEY, JSON.stringify({
+        signerName, company, phone, street, city, addrState, zip, appliedCoupon,
+      } satisfies SavedForm));
+    } catch { /* quota exceeded or private mode — silently ignore */ }
+  }, [signerName, company, phone, street, city, addrState, zip, appliedCoupon]);
 
   // Countdown timer for LP token expiry warning
   useEffect(() => {
@@ -620,14 +663,14 @@ export default function OnboardingContract() {
       }
 
       if (url) {
-        // Clean up localStorage back-link entries so stale data doesn't
-        // surface on a future visit from a different landing page.
+        // Clean up localStorage — LP back-link entries and saved form state
         try {
           const latestExpRaw = localStorage.getItem("onboardingLpLatestExp");
           if (latestExpRaw) {
             localStorage.removeItem(`onboardingLp_${latestExpRaw}`);
           }
           localStorage.removeItem("onboardingLpLatestExp");
+          clearSavedForm();
         } catch { /* localStorage unavailable — ignore */ }
         window.location.href = url;
       } else {
