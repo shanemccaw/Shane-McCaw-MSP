@@ -58,6 +58,7 @@ import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
+import Ajv from "ajv";
 import { getPrompt } from "./prompt-loader";
 
 // ── Insights document generation helpers ─────────────────────────────────────
@@ -521,7 +522,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const dryRawValue = dryResolved || "<compose output>";
       if (node.data.parseAsJson && dryResolved) {
         try {
-          return { dryRun: true, value: JSON.parse(dryResolved) };
+          const dryParsed = JSON.parse(dryResolved);
+          const hasSchema = Boolean(node.data.jsonSchema && String(node.data.jsonSchema).trim());
+          return { dryRun: true, value: dryParsed, ...(hasSchema ? { schemaValidation: "skipped in dry-run — will be applied on live runs" } : {}) };
         } catch {
           return { dryRun: true, value: dryRawValue };
         }
@@ -2123,12 +2126,40 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "compose": {
         const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
         if (node.data.parseAsJson) {
+          let parsed: unknown;
           try {
-            output = { value: JSON.parse(resolvedValue) };
+            parsed = JSON.parse(resolvedValue);
           } catch {
             logger.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
             output = { value: resolvedValue, parseError: true };
+            break;
           }
+
+          // JSON Schema validation (optional)
+          const rawSchema = (node.data.jsonSchema as string | undefined)?.trim();
+          if (rawSchema) {
+            let schema: unknown;
+            try {
+              schema = JSON.parse(rawSchema);
+            } catch {
+              nodeError = true;
+              output = { error: "Compose: jsonSchema is not valid JSON — fix the schema definition" };
+              break;
+            }
+            const ajv = new Ajv({ allErrors: true });
+            const validate = ajv.compile(schema as Parameters<typeof ajv.compile>[0]);
+            const valid = validate(parsed);
+            if (!valid) {
+              const messages = (validate.errors ?? [])
+                .map(e => `${e.instancePath || "(root)"} ${e.message}`)
+                .join("; ");
+              nodeError = true;
+              output = { error: `Compose: JSON Schema validation failed — ${messages}` };
+              break;
+            }
+          }
+
+          output = { value: parsed };
         } else {
           output = { value: resolvedValue };
         }

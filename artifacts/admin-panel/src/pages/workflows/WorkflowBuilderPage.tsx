@@ -2108,6 +2108,23 @@ function NodeConfigPanel({
               />
               <span className="text-[11px] text-[#C9D1D9]">Parse output as JSON</span>
             </label>
+            {Boolean(node.data.parseAsJson) && (
+              <div className="space-y-1">
+                <label className="text-[11px] text-[#C9D1D9] font-medium">Validate JSON Schema <span className="text-[#7D8590] font-normal">(optional)</span></label>
+                <textarea
+                  rows={6}
+                  value={(node.data.jsonSchema as string) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, jsonSchema: e.target.value })}
+                  placeholder={'{\n  "type": "object",\n  "required": ["name"],\n  "properties": {\n    "name": { "type": "string" }\n  }\n}'}
+                  spellCheck={false}
+                  className="w-full rounded-md border border-[#2DD4BF]/30 bg-[#051424] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#2DD4BF]/70 resize-y"
+                />
+                <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                  Paste a JSON Schema draft-07 object. If the parsed output doesn't match, the node will fail with a descriptive error before any downstream node runs.{" "}
+                  <span className="text-[#7D8590]/70">Schema validation is skipped during dry-runs.</span>
+                </p>
+              </div>
+            )}
             <p className="text-[10px] text-[#7D8590] leading-relaxed">
               Enter any value or expression. Reference upstream data with{" "}
               <span className="font-mono text-[#2DD4BF]">{"{{steps.nodeId.key}}"}</span>.

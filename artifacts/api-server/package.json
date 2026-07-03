@@ -23,6 +23,7 @@
     "@workspace/db": "workspace:*",
     "@workspace/integrations-anthropic-ai": "workspace:*",
     "@workspace/integrations-openai-ai-server": "workspace:*",
+    "ajv": "^8.20.0",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
