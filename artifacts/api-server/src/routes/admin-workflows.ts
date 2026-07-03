@@ -94,7 +94,14 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
       type GraphNode = { type: string; data?: Record<string, unknown> };
       const graphNodes = (latestVersion?.graph as { nodes?: GraphNode[] } | undefined)?.nodes ?? [];
       const askForInputNode = graphNodes.find(n => n.type === "ask_for_input");
-      const askForInputFields = (askForInputNode?.data?.fields as Array<{ key: string; label: string; type: string }> | undefined) ?? null;
+      const askForInputFields = (askForInputNode?.data?.fields as Array<{
+        variableName: string;
+        label: string;
+        type: string;
+        required?: boolean;
+        options?: string;
+        multi?: boolean;
+      }> | undefined) ?? null;
 
       return {
         ...def,

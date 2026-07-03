@@ -5,10 +5,338 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 
+// ── Ask-for-Input types & constants ──────────────────────────────────────────
+
+type AskForInputFieldType =
+  | "text" | "number" | "select" | "textarea"
+  | "customer" | "project" | "lead" | "opportunity" | "document_type";
+
+const ENTITY_FIELD_TYPES: AskForInputFieldType[] = ["customer", "project", "lead", "opportunity", "document_type"];
+
+const DOCUMENT_TYPE_GROUPS: { group: string; items: { id: string; label: string }[] }[] = [
+  {
+    group: "Reports",
+    items: [
+      { id: "executive_summary",           label: "Executive Summary" },
+      { id: "full_readiness_report",       label: "Full Readiness Report" },
+      { id: "security_posture_report",     label: "Security Posture Report" },
+      { id: "governance_maturity_report",  label: "Governance Maturity Report" },
+      { id: "data_exposure_risk_report",   label: "Data Exposure Risk Report" },
+      { id: "license_optimization_report", label: "License Optimization Report" },
+    ],
+  },
+  {
+    group: "Consulting Documents",
+    items: [
+      { id: "consolidated_sow",            label: "Consolidated SOW" },
+      { id: "sow",                         label: "Statement of Work" },
+      { id: "task_execution_guide",        label: "SOW Task Execution Guide" },
+      { id: "remediation_plan",            label: "Remediation Plan" },
+      { id: "deployment_plan",             label: "Deployment Plan" },
+      { id: "governance_framework",        label: "Governance Framework" },
+      { id: "security_hardening_plan",     label: "Security Hardening Plan" },
+      { id: "copilot_enablement_plan",     label: "Copilot Enablement Plan" },
+      { id: "identity_modernization_plan", label: "Identity Modernization Plan" },
+      { id: "copilot_readiness",           label: "Copilot Readiness Assessment" },
+    ],
+  },
+];
+
+const PROJECT_TYPE_LABELS: Record<string, string> = {
+  project:   "Project",
+  retainer:  "Retainer",
+  quick_win: "Quick Win",
+};
+
+interface EntityOption { id: string; label: string; group?: string }
+
 interface AskForInputField {
-  key: string;
+  variableName: string;
   label: string;
-  type: string;
+  type: AskForInputFieldType;
+  required?: boolean;
+  options?: string;
+  multi?: boolean;
+}
+
+// ── Entity options hook ───────────────────────────────────────────────────────
+
+function useEntityOptions(
+  type: AskForInputFieldType,
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>,
+  siblingValues: Record<string, string | string[]> = {},
+  siblingFields: AskForInputField[] = [],
+): { options: EntityOption[]; loading: boolean } {
+  const [options, setOptions] = useState<EntityOption[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const selectedCustomerId = type === "project"
+    ? (() => {
+        const cf = siblingFields.find(f => f.type === "customer");
+        if (!cf) return "";
+        const raw = siblingValues[cf.variableName];
+        return Array.isArray(raw) ? (raw[0] ?? "") : (raw || "");
+      })()
+    : "";
+
+  useEffect(() => {
+    if (!ENTITY_FIELD_TYPES.includes(type)) return;
+    if (type === "document_type") {
+      const flat: EntityOption[] = [];
+      for (const g of DOCUMENT_TYPE_GROUPS) {
+        for (const item of g.items) flat.push({ id: item.id, label: item.label, group: g.group });
+      }
+      setOptions(flat);
+      return;
+    }
+    setLoading(true);
+    let url: string;
+    if (type === "project") {
+      const params = new URLSearchParams({ limit: "100" });
+      if (selectedCustomerId) params.set("customerId", selectedCustomerId);
+      url = `/api/admin/insights/projects?${params.toString()}`;
+    } else {
+      const urlMap: Record<string, string> = {
+        customer:    "/api/admin/clients/enriched",
+        lead:        "/api/leads?limit=100",
+        opportunity: "/api/opportunities?limit=100",
+      };
+      url = urlMap[type] ?? "";
+    }
+    fetchWithAuth(url)
+      .then(r => r.json())
+      .then((data: unknown) => {
+        let rows: unknown[];
+        if (type === "project" && data && typeof data === "object" && "projects" in (data as object)) {
+          rows = ((data as { projects: unknown[] }).projects) ?? [];
+        } else {
+          rows = Array.isArray(data) ? data : ((data as { data?: unknown[] }).data ?? []);
+        }
+        const mapped = (rows as Record<string, unknown>[]).map(r => {
+          const id = String(r.id ?? "");
+          let label = "";
+          if (type === "customer") {
+            label = String(r.name || r.email || id) + (r.company ? ` (${String(r.company)})` : "");
+          } else if (type === "project") {
+            const typeTag = r.projectType ? ` · ${PROJECT_TYPE_LABELS[String(r.projectType)] ?? String(r.projectType)}` : "";
+            const status = r.status && r.status !== "active" ? ` [${String(r.status)}]` : "";
+            label = String(r.title || r.name || id) + typeTag + status;
+          } else if (type === "lead") {
+            label = String(r.name || r.email || id);
+          } else if (type === "opportunity") {
+            label = String(r.companyName || r.contactName || r.name || id);
+          }
+          return { id, label };
+        }).filter(o => o.id);
+        setOptions(mapped);
+      })
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false));
+  }, [type, selectedCustomerId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { options, loading };
+}
+
+// ── EntityPickerControl ───────────────────────────────────────────────────────
+
+function EntityPickerControl({
+  field, value, onChange, fetchWithAuth, hasError, siblingValues, siblingFields,
+}: {
+  field: AskForInputField;
+  value: string | string[];
+  onChange: (v: string | string[]) => void;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+  hasError: boolean;
+  siblingValues?: Record<string, string | string[]>;
+  siblingFields?: AskForInputField[];
+}) {
+  const { options, loading } = useEntityOptions(field.type, fetchWithAuth, siblingValues, siblingFields);
+  const [search, setSearch] = useState("");
+  const selected = Array.isArray(value) ? value : (value ? value.split(",").filter(Boolean) : []);
+  const filtered = options.filter(o => !search || o.label.toLowerCase().includes(search.toLowerCase()) || o.id.includes(search));
+  const borderCls = hasError ? "border-red-500" : "border-[#30363D]";
+
+  function renderWithGroups(renderItem: (o: EntityOption) => React.ReactNode) {
+    const nodes: React.ReactNode[] = [];
+    let lastGroup: string | undefined = undefined;
+    for (const o of filtered) {
+      if (o.group && o.group !== lastGroup) {
+        nodes.push(
+          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#484F58] bg-[#161B22] border-b border-[#30363D] sticky top-0">
+            {o.group}
+          </div>,
+        );
+        lastGroup = o.group;
+      }
+      nodes.push(renderItem(o));
+    }
+    return nodes;
+  }
+
+  if (field.multi) {
+    const toggle = (id: string) => {
+      const next = selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id];
+      onChange(next);
+    };
+    return (
+      <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
+          <span className="text-[#484F58] text-xs">🔍</span>
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none" />
+          {selected.length > 0 && <span className="text-[10px] text-[#F97316] font-medium">{selected.length} selected</span>}
+        </div>
+        <div className="max-h-44 overflow-y-auto">
+          {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
+          {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+          {!loading && renderWithGroups(o => (
+            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#1C2128] cursor-pointer transition-colors">
+              <input type="checkbox" checked={selected.includes(o.id)} onChange={() => toggle(o.id)} className="w-3.5 h-3.5 rounded accent-orange-500 flex-shrink-0" />
+              <span className="text-sm text-[#E6EDF3] truncate">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
+        <span className="text-[#484F58] text-xs">🔍</span>
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…" className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none" />
+        {value && <span className="text-[10px] text-[#F97316] truncate max-w-[100px]">{options.find(o => o.id === value)?.label ?? String(value)}</span>}
+      </div>
+      <div className="max-h-44 overflow-y-auto">
+        {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
+        {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+        {!loading && renderWithGroups(o => (
+          <button key={o.id} type="button" onClick={() => { onChange(o.id); setSearch(""); }}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#1C2128] ${String(value) === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-[#E6EDF3]"}`}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── SmartRunInputModal ────────────────────────────────────────────────────────
+
+function SmartRunInputModal({
+  fields, onSubmit, onCancel, fetchWithAuth,
+}: {
+  fields: AskForInputField[];
+  onSubmit: (values: Record<string, string | string[]>) => void;
+  onCancel: () => void;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+}) {
+  const [values, setValues] = useState<Record<string, string | string[]>>(() =>
+    Object.fromEntries(fields.map(f => [f.variableName, f.multi ? [] : ""])),
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function setValue(name: string, val: string | string[]) {
+    setValues(v => ({ ...v, [name]: val }));
+    setErrors(err => { const n = { ...err }; delete n[name]; return n; });
+  }
+
+  function handleSubmit() {
+    const errs: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.required) {
+        const v = values[f.variableName];
+        const empty = Array.isArray(v) ? v.length === 0 : !v?.toString().trim();
+        if (empty) errs[f.variableName] = "Required";
+      }
+    }
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    onSubmit(values);
+  }
+
+  const inputCls = (name: string) =>
+    `w-full bg-[#0D1117] border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-[#30363D] focus:border-[#0078D4]/60"}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onCancel}>
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-[#30363D]">
+          <span className="text-[#0078D4]">▶</span>
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Run inputs required</h3>
+        </div>
+
+        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+          <p className="text-xs text-[#7D8590]">This workflow needs a few values before it can start.</p>
+
+          {fields.map(f => (
+            <div key={f.variableName} className="space-y-1.5">
+              <label className="text-xs font-medium text-[#E6EDF3]">
+                {f.label || f.variableName}
+                {f.required && <span className="text-red-400 ml-0.5">*</span>}
+                {ENTITY_FIELD_TYPES.includes(f.type) && (
+                  <span className="ml-1.5 text-[10px] text-[#484F58] font-normal capitalize">
+                    ({f.type.replace("_", " ")}{f.multi ? " · multi" : ""})
+                  </span>
+                )}
+              </label>
+
+              {ENTITY_FIELD_TYPES.includes(f.type) ? (
+                <EntityPickerControl
+                  field={f}
+                  value={values[f.variableName] ?? ""}
+                  onChange={v => setValue(f.variableName, v)}
+                  fetchWithAuth={fetchWithAuth}
+                  hasError={!!errors[f.variableName]}
+                  siblingValues={values}
+                  siblingFields={fields}
+                />
+              ) : f.type === "textarea" ? (
+                <textarea
+                  rows={3}
+                  value={String(values[f.variableName] ?? "")}
+                  onChange={e => setValue(f.variableName, e.target.value)}
+                  className={inputCls(f.variableName) + " resize-none"}
+                  placeholder={f.label || f.variableName}
+                />
+              ) : f.type === "select" ? (
+                <select
+                  value={String(values[f.variableName] ?? "")}
+                  onChange={e => setValue(f.variableName, e.target.value)}
+                  className={inputCls(f.variableName)}
+                >
+                  <option value="">— select —</option>
+                  {(f.options ?? "").split(",").map(o => o.trim()).filter(Boolean).map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={f.type === "number" ? "number" : "text"}
+                  value={String(values[f.variableName] ?? "")}
+                  onChange={e => setValue(f.variableName, e.target.value)}
+                  placeholder={f.label || f.variableName}
+                  className={inputCls(f.variableName)}
+                />
+              )}
+
+              {errors[f.variableName] && (
+                <p className="text-[10px] text-red-400">{errors[f.variableName]}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
+          <button onClick={onCancel} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+          <button
+            onClick={handleSubmit}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            ▶ Run workflow
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 interface WfDefinition {
@@ -225,7 +553,6 @@ export default function WorkflowListPage() {
   const [runningId, setRunningId] = useState<number | null>(null);
   const [activeRun, setActiveRun] = useState<{ defId: number; runId: number } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ defId: number; fields: AskForInputField[] } | null>(null);
-  const [inputValues, setInputValues] = useState<Record<string, string>>({});
 
   const { data: defs = [], isLoading } = useQuery<WfDefinition[]>({
     queryKey: ["wf-definitions"],
@@ -304,7 +631,7 @@ export default function WorkflowListPage() {
   });
 
   const runMut = useMutation({
-    mutationFn: async ({ id, iv }: { id: number; iv?: Record<string, string> }) => {
+    mutationFn: async ({ id, iv }: { id: number; iv?: Record<string, string | string[]> }) => {
       setRunningId(id);
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}/run`, {
         method: "POST",
@@ -385,9 +712,6 @@ export default function WorkflowListPage() {
   function handlePlayClick(def: WfDefinition) {
     const fields = def.askForInputFields;
     if (fields && fields.length > 0) {
-      const initial: Record<string, string> = {};
-      fields.forEach(f => { initial[f.key] = ""; });
-      setInputValues(initial);
       setInputDialog({ defId: def.id, fields });
     } else {
       runMut.mutate({ id: def.id });
@@ -562,41 +886,18 @@ export default function WorkflowListPage() {
         )}
       </div>
 
-      {/* Ask for Input dialog */}
+      {/* Smart Ask-for-Input dialog */}
       {inputDialog && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setInputDialog(null)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
-            <h2 className="font-semibold text-[#E6EDF3]">⌨ Fill inputs before running</h2>
-            <div className="space-y-3">
-              {inputDialog.fields.map(f => (
-                <div key={f.key} className="space-y-1">
-                  <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">{f.label || f.key}</label>
-                  <input
-                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
-                    value={inputValues[f.key] ?? ""}
-                    onChange={e => setInputValues(v => ({ ...v, [f.key]: e.target.value }))}
-                    placeholder={f.key}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setInputDialog(null)} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
-              <button
-                onClick={() => {
-                  const id = inputDialog.defId;
-                  setInputDialog(null);
-                  runMut.mutate({ id, iv: inputValues });
-                }}
-                disabled={runMut.isPending}
-                className="px-4 py-2 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-              >
-                {runMut.isPending ? "Starting…" : "Run"}
-              </button>
-            </div>
-          </div>
-        </div>
+        <SmartRunInputModal
+          fields={inputDialog.fields}
+          fetchWithAuth={fetchWithAuth}
+          onCancel={() => setInputDialog(null)}
+          onSubmit={values => {
+            const id = inputDialog.defId;
+            setInputDialog(null);
+            runMut.mutate({ id, iv: values });
+          }}
+        />
       )}
     </div>
   );
