@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useInbox } from "@/contexts/InboxContext";
 import { ChevronDown, ChevronUp } from "lucide-react";
@@ -2168,6 +2168,214 @@ function EmailStatsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?:
           </LineChart>
         </ResponsiveContainer>
       )}
+    </div>
+  );
+}
+
+// ─── Social Connections Card ──────────────────────────────────────────────────
+
+interface SocialTokenInfo {
+  tokenSet: boolean;
+  valid: boolean | null;
+  expiresAt: string | null;
+  daysUntilExpiry: number | null;
+  error: string | null;
+}
+
+interface SocialTokenHealth {
+  linkedin: SocialTokenInfo;
+  facebook: SocialTokenInfo;
+}
+
+function SocialConnectionsCard({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [health, setHealth] = useState<SocialTokenHealth | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [settingExpiry, setSettingExpiry] = useState<"linkedin" | "facebook" | null>(null);
+  const [expiryInput, setExpiryInput] = useState("");
+  const [savingExpiry, setSavingExpiry] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    setCheckError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/marketing/social-token-health`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setHealth(await r.json() as SocialTokenHealth);
+    } catch (e) {
+      setCheckError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void load(); }, [fetchWithAuth]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveExpiry = async (platform: "linkedin" | "facebook") => {
+    if (!expiryInput) return;
+    setSavingExpiry(true);
+    try {
+      await fetchWithAuth(`${API}/admin/marketing/social-token-health/set-expiry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, expiresAt: expiryInput }),
+      });
+      setSettingExpiry(null);
+      setExpiryInput("");
+      await load();
+    } finally {
+      setSavingExpiry(false);
+    }
+  };
+
+  function statusBadge(info: SocialTokenInfo) {
+    if (!info.tokenSet) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#30363D] text-[#7D8590] font-medium">Not configured</span>;
+    if (info.valid === null) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium">Unknown</span>;
+    if (!info.valid) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-medium">Invalid / Expired</span>;
+    if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 0) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/15 text-red-400 font-medium">Expired</span>;
+    if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 14) return <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium">Expiring soon</span>;
+    return <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-medium">Active</span>;
+  }
+
+  function expiryLine(info: SocialTokenInfo) {
+    if (!info.expiresAt) return <span className="text-[11px] text-[#7D8590]">No expiry date recorded</span>;
+    const d = info.daysUntilExpiry;
+    if (d === null) return null;
+    if (d <= 0) return <span className="text-[11px] text-red-400">Expired {Math.abs(d)} day{Math.abs(d) !== 1 ? "s" : ""} ago</span>;
+    const color = d <= 14 ? "text-amber-400" : "text-[#7D8590]";
+    return <span className={`text-[11px] ${color}`}>Expires {new Date(info.expiresAt).toLocaleDateString()} · {d} day{d !== 1 ? "s" : ""} remaining</span>;
+  }
+
+  const PlatformRow = ({ platform, info, icon, label, refreshInstructions }: {
+    platform: "linkedin" | "facebook";
+    info: SocialTokenInfo;
+    icon: string;
+    label: string;
+    refreshInstructions: ReactNode;
+  }) => {
+    const needsAttention = !info.tokenSet || info.valid === false || (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 14);
+    return (
+      <div className={`rounded-lg border p-3 space-y-2 ${needsAttention ? "border-amber-500/30 bg-amber-500/5" : "border-[#30363D] bg-[#1C2128]"}`}>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <span className="text-base">{icon}</span>
+            <span className="text-sm font-medium text-[#E6EDF3]">{label}</span>
+            {statusBadge(info)}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {info.tokenSet && (
+              <button
+                onClick={() => { setSettingExpiry(p => p === platform ? null : platform); setExpiryInput(""); }}
+                className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 transition-colors"
+              >
+                {settingExpiry === platform ? "Cancel" : "Set expiry"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {expiryLine(info) && <div>{expiryLine(info)}</div>}
+
+        {info.error && (
+          <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1 break-words">
+            {info.error}
+          </p>
+        )}
+
+        {settingExpiry === platform && (
+          <div className="flex items-center gap-2 pt-1">
+            <input
+              type="date"
+              value={expiryInput}
+              onChange={e => setExpiryInput(e.target.value)}
+              className="text-[11px] bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
+            />
+            <button
+              onClick={() => void saveExpiry(platform)}
+              disabled={savingExpiry || !expiryInput}
+              className="text-[10px] px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-40 transition-colors"
+            >
+              {savingExpiry ? "Saving…" : "Save"}
+            </button>
+            <span className="text-[10px] text-[#7D8590]">
+              LinkedIn tokens last 60 days from issue date
+            </span>
+          </div>
+        )}
+
+        {!info.tokenSet && (
+          <div className="text-[11px] text-[#7D8590] space-y-1">
+            <p className="font-medium text-[#E6EDF3]">How to connect:</p>
+            {refreshInstructions}
+          </div>
+        )}
+
+        {info.tokenSet && (info.valid === false || (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 14)) && (
+          <div className="text-[11px] text-[#7D8590] space-y-1">
+            <p className="font-medium text-amber-400">Re-authorise required:</p>
+            {refreshInstructions}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-[#E6EDF3]">🔗 Social Connections</h3>
+        <button
+          onClick={() => void load()}
+          disabled={loading}
+          title="Re-check token validity"
+          className="text-[10px] px-2 py-1 rounded bg-[#0078D4]/20 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-40 transition-colors flex items-center gap-1"
+        >
+          {loading ? (
+            <><span className="w-2.5 h-2.5 border border-[#58A6FF] border-t-transparent rounded-full animate-spin inline-block" /> Checking…</>
+          ) : "↻ Re-check"}
+        </button>
+      </div>
+
+      {checkError && (
+        <p className="text-[11px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1">{checkError}</p>
+      )}
+
+      {health && (
+        <div className="space-y-2">
+          <PlatformRow
+            platform="linkedin"
+            info={health.linkedin}
+            icon="💼"
+            label="LinkedIn"
+            refreshInstructions={(
+              <ol className="list-decimal list-inside space-y-0.5 text-[#7D8590]">
+                <li>Go to <a href="https://developer.linkedin.com/" target="_blank" rel="noreferrer" className="text-[#58A6FF] underline">LinkedIn Developer Portal</a> and open your app.</li>
+                <li>Under <strong className="text-[#E6EDF3]">Auth</strong>, generate a new access token with <code className="bg-[#0D1117] px-1 rounded">w_organization_social</code> scope.</li>
+                <li>Copy the token and update <strong className="text-[#E6EDF3]">LINKEDIN_ACCESS_TOKEN</strong> in Replit Secrets.</li>
+                <li>Restart the API server, then click <strong className="text-[#E6EDF3]">Set expiry</strong> above to record today + 60 days.</li>
+              </ol>
+            )}
+          />
+          <PlatformRow
+            platform="facebook"
+            info={health.facebook}
+            icon="📘"
+            label="Facebook"
+            refreshInstructions={(
+              <ol className="list-decimal list-inside space-y-0.5 text-[#7D8590]">
+                <li>Go to <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noreferrer" className="text-[#58A6FF] underline">Meta Graph API Explorer</a>.</li>
+                <li>Select your Page and generate a long-lived Page access token with <code className="bg-[#0D1117] px-1 rounded">pages_manage_posts</code> + <code className="bg-[#0D1117] px-1 rounded">publish_pages</code> permissions.</li>
+                <li>Exchange for a long-lived token via the token exchange endpoint.</li>
+                <li>Update <strong className="text-[#E6EDF3]">FACEBOOK_PAGE_ACCESS_TOKEN</strong> in Replit Secrets and restart the API server.</li>
+              </ol>
+            )}
+          />
+        </div>
+      )}
+
+      <p className="text-[10px] text-[#484F58]">
+        Token validity is checked live against the LinkedIn and Facebook APIs. LinkedIn tokens expire after ~60 days. Long-lived Facebook Page tokens can last months but may be invalidated by password changes or permission revocation.
+      </p>
     </div>
   );
 }
@@ -8249,6 +8457,7 @@ const NAV_ITEMS = [
   { id: "campaigns",       label: "Campaigns",    icon: "📣" },
   { id: "tasks",           label: "Tasks",        icon: "✅" },
   { id: "analytics",       label: "Analytics",    icon: "📊" },
+  { id: "connections",     label: "Connections",  icon: "🔗" },
   { id: "settings",        label: "Settings",     icon: "⚙️" },
 ];
 
@@ -8379,6 +8588,17 @@ export default function MarketingCommandCenter() {
           )}
           {activeSection === "analytics" && (
             <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
+          )}
+          {activeSection === "connections" && (
+            <div className="max-w-2xl space-y-4">
+              <div className="mb-2">
+                <h2 className="text-sm font-semibold text-[#E6EDF3]">Social Media Connections</h2>
+                <p className="text-[11px] text-[#7D8590] mt-0.5">
+                  Monitor the health of your social media tokens. LinkedIn tokens expire every 60 days — this panel alerts you before posts start failing silently.
+                </p>
+              </div>
+              <SocialConnectionsCard fetchWithAuth={fetchWithAuth} />
+            </div>
           )}
           {activeSection === "settings" && (
             <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">

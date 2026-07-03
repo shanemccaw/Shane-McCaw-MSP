@@ -3714,6 +3714,106 @@ router.get("/admin/marketing/campaign-badges-stream", requireAdmin, (req: Reques
   });
 });
 
+// ─── Social token health ─────────────────────────────────────────────────────
+
+router.get("/admin/marketing/social-token-health", requireAdmin, async (_req: Request, res: Response) => {
+  const linkedinToken   = process.env.LINKEDIN_ACCESS_TOKEN;
+  const facebookToken   = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+  const facebookPageId  = process.env.FACEBOOK_PAGE_ID;
+
+  const expiryRows = await db
+    .select({ key: settingsTable.key, value: settingsTable.value })
+    .from(settingsTable)
+    .where(inArray(settingsTable.key, ["linkedin_token_expires_at", "facebook_token_expires_at"]))
+    .catch(() => [] as { key: string; value: string | null }[]);
+
+  const stored: Record<string, string | null> = Object.fromEntries(expiryRows.map(r => [r.key, r.value]));
+
+  function daysUntil(iso: string | null | undefined): number | null {
+    if (!iso) return null;
+    const diff = new Date(iso).getTime() - Date.now();
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  }
+
+  // ── LinkedIn ──
+  const linkedinExpiresAt = stored["linkedin_token_expires_at"] ?? null;
+  let linkedinValid: boolean | null = null;
+  let linkedinError: string | null = null;
+
+  if (linkedinToken) {
+    try {
+      const r = await fetch("https://api.linkedin.com/v2/me", {
+        headers: { Authorization: `Bearer ${linkedinToken}` },
+        signal: AbortSignal.timeout(8_000),
+      });
+      linkedinValid = r.ok;
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as { message?: string };
+        linkedinError = body?.message ?? `LinkedIn API returned ${r.status}`;
+      }
+    } catch (e) {
+      linkedinError = String(e);
+    }
+  }
+
+  // ── Facebook ──
+  const facebookExpiresAt = stored["facebook_token_expires_at"] ?? null;
+  let facebookValid: boolean | null = null;
+  let facebookError: string | null = null;
+
+  if (facebookToken) {
+    const target = facebookPageId ? encodeURIComponent(facebookPageId) : "me";
+    try {
+      const r = await fetch(
+        `https://graph.facebook.com/v19.0/${target}?fields=id,name&access_token=${encodeURIComponent(facebookToken)}`,
+        { signal: AbortSignal.timeout(8_000) },
+      );
+      facebookValid = r.ok;
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({})) as { error?: { message?: string } };
+        facebookError = body?.error?.message ?? `Facebook Graph API returned ${r.status}`;
+      }
+    } catch (e) {
+      facebookError = String(e);
+    }
+  }
+
+  res.json({
+    linkedin: {
+      tokenSet: !!linkedinToken,
+      valid: linkedinValid,
+      expiresAt: linkedinExpiresAt,
+      daysUntilExpiry: daysUntil(linkedinExpiresAt),
+      error: linkedinError,
+    },
+    facebook: {
+      tokenSet: !!facebookToken,
+      valid: facebookValid,
+      expiresAt: facebookExpiresAt,
+      daysUntilExpiry: daysUntil(facebookExpiresAt),
+      error: facebookError,
+    },
+  });
+});
+
+router.post("/admin/marketing/social-token-health/set-expiry", requireAdmin, async (req: Request, res: Response) => {
+  const { platform, expiresAt } = req.body as { platform?: string; expiresAt?: string };
+  if (!platform || !["linkedin", "facebook"].includes(platform)) {
+    res.status(400).json({ error: "platform must be 'linkedin' or 'facebook'" });
+    return;
+  }
+  if (!expiresAt || isNaN(Date.parse(expiresAt))) {
+    res.status(400).json({ error: "expiresAt must be a valid ISO date string" });
+    return;
+  }
+  const key = `${platform}_token_expires_at`;
+  await db
+    .insert(settingsTable)
+    .values({ key, value: expiresAt })
+    .onConflictDoUpdate({ target: settingsTable.key, set: { value: expiresAt, updatedAt: new Date() } });
+  res.json({ ok: true });
+});
+
 // ─── Site config (public site URL for linking) ───────────────────────────────
 
 router.get("/admin/site-config", requireAdmin, (_req: Request, res: Response) => {
