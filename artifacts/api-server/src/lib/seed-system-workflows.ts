@@ -29,6 +29,54 @@ interface SystemWorkflowSeed {
 
 const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   {
+    name: "Weekly Article Generator",
+    description: "Generates a new Microsoft 365 article every Monday at 09:00 UTC and publishes it to the consulting site. Edit the topic in the generate_article node to customise what gets written.",
+    triggerType: "schedule",
+    cron: "0 9 * * 1",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 80 },
+          data: { nodeType: "start", label: "Every Monday 09:00 UTC" },
+        },
+        {
+          id: "gen",
+          type: "generate_article",
+          position: { x: 300, y: 220 },
+          data: {
+            nodeType: "generate_article",
+            label: "Generate Article",
+            topic: "Microsoft 365 productivity tips for modern teams",
+            category: "M365 Best Practices",
+          },
+        },
+        {
+          id: "pub",
+          type: "publish_article",
+          position: { x: 300, y: 360 },
+          data: {
+            nodeType: "publish_article",
+            label: "Publish Article",
+            titleExpr: "{{articleTitle}}",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 500 },
+          data: { nodeType: "end", label: "Published" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "gen" },
+        { id: "e2", source: "gen",   target: "pub" },
+        { id: "e3", source: "pub",   target: "end" },
+      ],
+    },
+  },
+  {
     name: "__system__: Orphan Reconciliation",
     description: "Runs once on server startup to recover kanban cards orphaned by a mid-run restart and detect stalled phases.",
     triggerType: "startup",
