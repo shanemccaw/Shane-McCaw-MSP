@@ -683,9 +683,14 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       .then(data => {
         const creds = !!data.hasCredentials;
         setHasCredentials(creds);
-        // Only auto-skip if currently on app-reg step (not if already advanced)
         setCurrentStep(prev => {
+          // Auto-advance past app-reg if credentials already exist
           if (prev === "app-reg" && creds) return "quick-win";
+          // Guard: if sessionStorage put us at quick-win/review-results but the
+          // server says there are no credentials, reset to app-reg. This prevents
+          // a stale sessionStorage value from skipping the App Registration step
+          // on a subsequent login in the same browser tab.
+          if ((prev === "quick-win" || prev === "review-results") && !creds) return "app-reg";
           return prev;
         });
       })
