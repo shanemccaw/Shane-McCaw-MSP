@@ -2528,7 +2528,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     },
   });
 
-  const { data: versions = [] } = useQuery({
+  const { data: versions = [], isFetched: versionsFetched } = useQuery({
     queryKey: ["wf-versions", defId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions`);
@@ -3058,7 +3058,22 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         </div>
       )}
 
-
+      {/* No-published-version hint banner */}
+      {versionsFetched && !hasPublishedVersion && (
+        <div className="flex-shrink-0 flex items-center gap-2 bg-amber-500/5 border-b border-amber-500/20 px-4 py-2">
+          <svg className="w-3 h-3 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="text-[10px] text-amber-300/90">
+            No published version yet —{" "}
+            {isDraft ? (
+              <>click <strong className="font-semibold">Publish</strong> above to make this version available for production.</>
+            ) : (
+              <>select or save a draft version, then click <strong className="font-semibold">Publish</strong> to make one available for production.</>
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Unsaved-draft restore banner */}
       {showDraftBanner && localDraft && (
