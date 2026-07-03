@@ -563,6 +563,127 @@ router.get("/admin/analytics/card-clicks", adminLimiter, requireAdmin, async (re
   }
 });
 
+// ─── Admin: card-click first-click trend (weekly / monthly buckets) ───────────
+// Returns per-period counts broken down by card name so the frontend can render
+// a stacked bar chart. Auto-selects weekly buckets for ≤90-day ranges and
+// monthly buckets otherwise (override with ?bucket=week or ?bucket=month).
+// Optional query params: clientId (integer), projectId (integer)
+router.get("/admin/analytics/card-clicks/trend", adminLimiter, requireAdmin, async (req, res) => {
+  const { since, until } = resolveRange(req.query as Record<string, unknown>);
+  const rawClientId = req.query["clientId"];
+  const rawProjectId = req.query["projectId"];
+  const clientId = rawClientId && !isNaN(Number(rawClientId)) ? Number(rawClientId) : null;
+  const projectId = rawProjectId && !isNaN(Number(rawProjectId)) ? Number(rawProjectId) : null;
+
+  // Auto-pick granularity: weekly for ≤90d, monthly for longer spans
+  const spanDays = Math.round((until.getTime() - since.getTime()) / 86_400_000);
+  const rawBucket = req.query["bucket"];
+  const granularity = (rawBucket === "week" || rawBucket === "month")
+    ? rawBucket
+    : spanDays <= 90 ? "week" : "month";
+
+  // Date format for period label depends on granularity
+  const pgTrunc = granularity === "week" ? "week" : "month";
+  const pgFmt = granularity === "week" ? "YYYY-MM-DD" : "YYYY-MM";
+
+  try {
+    type TrendRow = { period: string; card_name: string; cnt: string };
+    let rows: TrendRow[];
+
+    if (clientId !== null) {
+      rows = await execRows<TrendRow>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (pdv.presentation_id)
+            pdv.presentation_id,
+            pdv.card_name,
+            date_trunc(${pgTrunc}, pdv.viewed_at) AS bucket
+          FROM presentation_doc_views pdv
+          JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+          WHERE pdv.event_type = 'card_click'
+            AND pdv.card_name IS NOT NULL
+            AND pdv.viewed_at >= ${since}
+            AND pdv.viewed_at <= ${until}
+            AND qwp.client_user_id = ${clientId}
+          ORDER BY pdv.presentation_id, pdv.viewed_at ASC
+        )
+        SELECT
+          to_char(bucket, ${pgFmt}) AS period,
+          card_name,
+          count(*)::text AS cnt
+        FROM first_clicks
+        GROUP BY bucket, card_name
+        ORDER BY bucket, card_name
+      `);
+    } else if (projectId !== null) {
+      rows = await execRows<TrendRow>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (pdv.presentation_id)
+            pdv.presentation_id,
+            pdv.card_name,
+            date_trunc(${pgTrunc}, pdv.viewed_at) AS bucket
+          FROM presentation_doc_views pdv
+          JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+          WHERE pdv.event_type = 'card_click'
+            AND pdv.card_name IS NOT NULL
+            AND pdv.viewed_at >= ${since}
+            AND pdv.viewed_at <= ${until}
+            AND qwp.project_id = ${projectId}
+          ORDER BY pdv.presentation_id, pdv.viewed_at ASC
+        )
+        SELECT
+          to_char(bucket, ${pgFmt}) AS period,
+          card_name,
+          count(*)::text AS cnt
+        FROM first_clicks
+        GROUP BY bucket, card_name
+        ORDER BY bucket, card_name
+      `);
+    } else {
+      rows = await execRows<TrendRow>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (presentation_id)
+            presentation_id,
+            card_name,
+            date_trunc(${pgTrunc}, viewed_at) AS bucket
+          FROM presentation_doc_views
+          WHERE event_type = 'card_click'
+            AND card_name IS NOT NULL
+            AND viewed_at >= ${since}
+            AND viewed_at <= ${until}
+          ORDER BY presentation_id, viewed_at ASC
+        )
+        SELECT
+          to_char(bucket, ${pgFmt}) AS period,
+          card_name,
+          count(*)::text AS cnt
+        FROM first_clicks
+        GROUP BY bucket, card_name
+        ORDER BY bucket, card_name
+      `);
+    }
+
+    // Pivot into { period, [cardName]: count } objects for Recharts
+    const periodMap = new Map<string, Record<string, string | number>>();
+    const cardNames = new Set<string>();
+    for (const row of rows) {
+      cardNames.add(row.card_name);
+      const existing = periodMap.get(row.period);
+      const entry: Record<string, string | number> = existing ?? { period: row.period };
+      entry[row.card_name] = parseInt(row.cnt);
+      periodMap.set(row.period, entry);
+    }
+
+    return res.json({
+      granularity,
+      cardNames: Array.from(cardNames).sort(),
+      periods: Array.from(periodMap.values()),
+    });
+  } catch (err) {
+    req.log.warn({ err }, "analytics card-clicks/trend failed");
+    return res.status(500).json({ error: "Failed" });
+  }
+});
+
 // ─── Admin: card-click filter options (clients + projects with data) ──────────
 // Returns the distinct set of clients and projects that have at least one
 // card_click event — used to populate the filter dropdown on the engagement tab.

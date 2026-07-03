@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   ComposedChart, Area, ReferenceLine,
-  BarChart, Bar, Cell,
+  BarChart, Bar, Cell, Legend,
 } from "recharts";
 
 type Preset = "today" | "7d" | "30d" | "90d";
@@ -28,6 +28,12 @@ interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; gener
 interface CardClickRow { cardName: string; firstClicks: number; pct: number }
 interface CardClickFilterOption { id: number; label: string }
 interface CardClickFilters { clients: CardClickFilterOption[]; projects: CardClickFilterOption[] }
+
+interface CardClickTrend {
+  granularity: "week" | "month";
+  cardNames: string[];
+  periods: Record<string, number | string>[];
+}
 
 type CardClickFilterType = "all" | "client" | "project";
 
@@ -140,6 +146,9 @@ export default function AnalyticsPage() {
   const [cardClicksLoading, setCardClicksLoading] = useState(true);
   const [cardClicksError, setCardClicksError] = useState<string | null>(null);
 
+  const [cardClickTrend, setCardClickTrend] = useState<CardClickTrend | null>(null);
+  const [cardClickTrendLoading, setCardClickTrendLoading] = useState(true);
+
   const [cardClickFilters, setCardClickFilters] = useState<CardClickFilters | null>(null);
   const [cardClickFilterType, setCardClickFilterType] = useState<CardClickFilterType>("all");
   const [cardClickFilterId, setCardClickFilterId] = useState<number | null>(null);
@@ -166,18 +175,30 @@ export default function AnalyticsPage() {
     filterType: CardClickFilterType, filterId: number | null,
   ) => {
     setCardClicksLoading(true); setCardClicksError(null);
+    setCardClickTrendLoading(true);
     const params = new URLSearchParams();
     if (custom && cStart && cEnd) { params.set("start", cStart); params.set("end", cEnd); }
     else { params.set("range", p); }
     if (filterType === "client" && filterId !== null) params.set("clientId", String(filterId));
     if (filterType === "project" && filterId !== null) params.set("projectId", String(filterId));
-    try {
-      const res = await fetchWithAuth(`/api/admin/analytics/card-clicks?${params.toString()}`);
-      const d = await res.json();
-      if (Array.isArray(d)) { setCardClicks(d as CardClickRow[]); }
-      else { setCardClicksError("Could not load card click data"); }
-    } catch { setCardClicksError("Could not load card click data"); }
-    finally { setCardClicksLoading(false); }
+    const qs = params.toString();
+    await Promise.allSettled([
+      fetchWithAuth(`/api/admin/analytics/card-clicks?${qs}`)
+        .then(async res => {
+          const d = await res.json();
+          if (Array.isArray(d)) { setCardClicks(d as CardClickRow[]); }
+          else { setCardClicksError("Could not load card click data"); }
+        })
+        .catch(() => { setCardClicksError("Could not load card click data"); })
+        .finally(() => { setCardClicksLoading(false); }),
+      fetchWithAuth(`/api/admin/analytics/card-clicks/trend?${qs}`)
+        .then(async res => {
+          if (res.ok) { setCardClickTrend(await res.json() as CardClickTrend); }
+          else { setCardClickTrend(null); }
+        })
+        .catch(() => { setCardClickTrend(null); })
+        .finally(() => { setCardClickTrendLoading(false); }),
+    ]);
   }, [fetchWithAuth]);
 
   const load = useCallback(async (p: Preset, custom: boolean, cStart: string, cEnd: string) => {
@@ -864,6 +885,75 @@ export default function AnalyticsPage() {
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Trend chart — stacked bar by week/month */}
+              <div className="mb-6 mt-2">
+                <h3 className="text-[10px] font-bold text-[#7D8590] uppercase tracking-widest mb-3">
+                  First-Click Trend — by {cardClickTrend?.granularity === "month" ? "Month" : "Week"}
+                </h3>
+                {cardClickTrendLoading ? (
+                  <div className="h-48 bg-[#1C2128] rounded-xl animate-pulse" />
+                ) : !cardClickTrend || cardClickTrend.periods.length === 0 ? (
+                  <p className="text-xs text-[#7D8590] text-center py-10">Not enough data to show a trend yet — data will appear here once multiple {cardClickTrend?.granularity === "month" ? "months" : "weeks"} have card-click events.</p>
+                ) : (
+                  (() => {
+                    const COLORS = ["#0078D4", "#00B4D8", "#7C3AED", "#10B981", "#F59E0B", "#EF4444"];
+                    const { cardNames, periods, granularity } = cardClickTrend;
+                    const fmtPeriod = (p: string) => {
+                      if (granularity === "month") {
+                        const [y, m] = p.split("-");
+                        return `${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(m)-1]} '${String(y).slice(2)}`;
+                      }
+                      // week: YYYY-MM-DD → "Jun 30"
+                      const d = new Date(p + "T00:00:00");
+                      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                    };
+                    return (
+                      <ResponsiveContainer width="100%" height={220}>
+                        <BarChart
+                          data={periods}
+                          margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+                          barCategoryGap="30%"
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#30363D" vertical={false} />
+                          <XAxis
+                            dataKey="period"
+                            tick={{ fontSize: 10, fill: "#7D8590" }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={fmtPeriod}
+                          />
+                          <YAxis
+                            tick={{ fontSize: 10, fill: "#7D8590" }}
+                            axisLine={false}
+                            tickLine={false}
+                            allowDecimals={false}
+                          />
+                          <RechartsTooltip
+                            contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }}
+                            labelFormatter={fmtPeriod}
+                            formatter={(v: number, name: string) => [v, name]}
+                          />
+                          <Legend
+                            wrapperStyle={{ fontSize: 11, color: "#7D8590", paddingTop: 8 }}
+                            iconType="circle"
+                            iconSize={8}
+                          />
+                          {cardNames.map((name, i) => (
+                            <Bar
+                              key={name}
+                              dataKey={name}
+                              stackId="cards"
+                              fill={COLORS[i % COLORS.length]}
+                              radius={i === cardNames.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
+                            />
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    );
+                  })()
+                )}
               </div>
 
               {/* Horizontal bar chart */}
