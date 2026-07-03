@@ -2623,7 +2623,34 @@ type AskForInputFieldType =
 
 const ENTITY_FIELD_TYPES: AskForInputFieldType[] = ["customer", "project", "lead", "opportunity", "document_type"];
 
-const DOCUMENT_TYPE_OPTIONS = ["contracts", "reports", "proposals", "deliverables", "assessments", "misc"];
+const DOCUMENT_TYPE_GROUPS: { group: string; items: { id: string; label: string }[] }[] = [
+  {
+    group: "Reports",
+    items: [
+      { id: "executive_summary",           label: "Executive Summary" },
+      { id: "full_readiness_report",       label: "Full Readiness Report" },
+      { id: "security_posture_report",     label: "Security Posture Report" },
+      { id: "governance_maturity_report",  label: "Governance Maturity Report" },
+      { id: "data_exposure_risk_report",   label: "Data Exposure Risk Report" },
+      { id: "license_optimization_report", label: "License Optimization Report" },
+    ],
+  },
+  {
+    group: "Consulting Documents",
+    items: [
+      { id: "consolidated_sow",            label: "Consolidated SOW" },
+      { id: "sow",                         label: "Statement of Work" },
+      { id: "task_execution_guide",        label: "SOW Task Execution Guide" },
+      { id: "remediation_plan",            label: "Remediation Plan" },
+      { id: "deployment_plan",             label: "Deployment Plan" },
+      { id: "governance_framework",        label: "Governance Framework" },
+      { id: "security_hardening_plan",     label: "Security Hardening Plan" },
+      { id: "copilot_enablement_plan",     label: "Copilot Enablement Plan" },
+      { id: "identity_modernization_plan", label: "Identity Modernization Plan" },
+      { id: "copilot_readiness",           label: "Copilot Readiness Assessment" },
+    ],
+  },
+];
 
 interface AskForInputField {
   id: string;
@@ -2806,7 +2833,7 @@ function AskForInputPanel({
 
 // ── Entity picker (used inside PreRunInputModal) ──────────────────────────────
 
-interface EntityOption { id: string; label: string }
+interface EntityOption { id: string; label: string; group?: string }
 
 const PROJECT_TYPE_LABELS: Record<string, string> = {
   project: "Project",
@@ -2836,7 +2863,13 @@ function useEntityOptions(
   useEffect(() => {
     if (!ENTITY_FIELD_TYPES.includes(type)) return;
     if (type === "document_type") {
-      setOptions(DOCUMENT_TYPE_OPTIONS.map(d => ({ id: d, label: d.charAt(0).toUpperCase() + d.slice(1) })));
+      const flat: EntityOption[] = [];
+      for (const g of DOCUMENT_TYPE_GROUPS) {
+        for (const item of g.items) {
+          flat.push({ id: item.id, label: item.label, group: g.group });
+        }
+      }
+      setOptions(flat);
       return;
     }
     setLoading(true);
@@ -2919,6 +2952,24 @@ function EntityPickerControl({
 
   const borderCls = hasError ? "border-red-500" : "border-[#30363D]";
 
+  /** Renders a flat list with sticky group header rows inserted before each new group */
+  function renderWithGroups(renderItem: (o: EntityOption) => React.ReactNode) {
+    const nodes: React.ReactNode[] = [];
+    let lastGroup: string | undefined = undefined;
+    for (const o of filtered) {
+      if (o.group && o.group !== lastGroup) {
+        nodes.push(
+          <div key={`grp-${o.group}`} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#484F58] bg-[#161B22] border-b border-[#30363D] sticky top-0">
+            {o.group}
+          </div>,
+        );
+        lastGroup = o.group;
+      }
+      nodes.push(renderItem(o));
+    }
+    return nodes;
+  }
+
   if (field.multi) {
     const toggle = (id: string) => {
       const next = selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id];
@@ -2942,7 +2993,7 @@ function EntityPickerControl({
         <div className="max-h-44 overflow-y-auto">
           {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
           {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
-          {filtered.map(o => (
+          {!loading && renderWithGroups(o => (
             <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#1C2128] cursor-pointer transition-colors">
               <input
                 type="checkbox"
@@ -2974,7 +3025,7 @@ function EntityPickerControl({
       <div className="max-h-44 overflow-y-auto">
         {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
         {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
-        {filtered.map(o => (
+        {!loading && renderWithGroups(o => (
           <button
             key={o.id}
             type="button"
