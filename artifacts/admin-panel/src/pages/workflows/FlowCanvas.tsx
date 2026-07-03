@@ -455,7 +455,7 @@ function StepCard({
                 e.stopPropagation();
                 if (!menuOpen && menuBtnRef.current) {
                   const r = menuBtnRef.current.getBoundingClientRect();
-                  setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                  setMenuPos({ top: r.bottom + 4, right: Math.max(0, window.innerWidth - r.right) });
                 }
                 setMenuOpen(v => !v);
               }}
