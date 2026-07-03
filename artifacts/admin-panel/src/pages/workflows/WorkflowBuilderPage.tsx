@@ -2964,16 +2964,13 @@ function SwitchCasePanel({
                 className="text-[10px] text-red-400 hover:text-red-300 px-0.5 ml-1">✕</button>
             </div>
             <div className="p-2 space-y-1.5">
-              <div>
-                <label className="text-[10px] text-[#7D8590] block mb-0.5">Match value (exact)</label>
-                <input
-                  type="text"
-                  value={c.matchValue}
-                  onChange={e => updateCase(c.id, { matchValue: e.target.value })}
-                  placeholder="active"
-                  className={inputCls}
-                />
-              </div>
+              <PayloadField
+                label="Match value (exact)"
+                value={c.matchValue}
+                onChange={v => updateCase(c.id, { matchValue: v })}
+                placeholder="active or {{steps.node-101.reports_to_run}}"
+                ancestorOutputs={ancestorOutputs}
+              />
               <div>
                 <label className="text-[10px] text-[#7D8590] block mb-0.5">Handle label (shown on canvas)</label>
                 <input
