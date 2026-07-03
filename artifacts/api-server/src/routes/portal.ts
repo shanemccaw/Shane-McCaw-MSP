@@ -5316,7 +5316,7 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
       { setupLink: setupUrl, clientName: client.name ?? client.email },
       "You've been invited to Shane McCaw Consulting — set up your portal",
       `<p>Hi ${client.name ?? ""},</p><p>Shane McCaw has set up a client portal for you. Click the link below to create your password and access your workspace:</p><p style="margin:24px 0;"><a href="${setupUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Set up my portal →</a></p><p style="color:#888;font-size:13px;">This link expires in 72 hours. If it expires, you can request a new one from the login page.</p><p>— Shane McCaw</p>`,
-    ).catch(() => null);
+    ).catch((e) => req.log.warn({ err: e, clientId: client.id, template: "account-setup" }, "client-create: invite email failed (non-fatal)"));
   } catch (err) {
     req.log.warn({ err, clientId: client.id }, "Failed to send invite email after client creation");
   }
@@ -8196,7 +8196,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
           { setupLink: setupUrl, clientName: provUser.name ?? provUser.email },
           "Set up your Shane McCaw Consulting portal",
           `<p>Hi ${provUser.name ?? ""},</p><p>Your project workspace is ready. Click the link below to set your portal password:</p><p><a href="${setupUrl}" style="color:#0078D4;">Set my password →</a></p><p>This link expires in 72 hours.</p><p>— Shane McCaw</p>`,
-        ).catch(() => null);
+        ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "account-setup" }, "provision: account-setup email failed (non-fatal)"));
       }
     } else if (hasPassword && provUser?.email && !webhookAlreadyRan) {
       // Returning client — send a "project is ready" email with portal login link.
