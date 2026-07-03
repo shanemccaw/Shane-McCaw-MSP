@@ -70,6 +70,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   post_linkedin: { bg: "#051424", border: "#0A66C2", icon: "🔗", label: "Post to LinkedIn" },
   post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
   post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
+  // ── Input ──
+  ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -155,6 +157,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
+  // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
+  ask_for_input: [],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -266,11 +270,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Core",
     nodes: [
-      { type: "start",     label: "Start",     description: "Workflow entry point",    tags: ["core", "flow"] },
-      { type: "end",       label: "End",       description: "Workflow exit point",     tags: ["core", "flow"] },
-      { type: "condition", label: "Condition", description: "Branch on expression",    tags: ["logic", "branch", "if"] },
-      { type: "delay",     label: "Delay",     description: "Wait / poll condition",   tags: ["control", "wait", "pause"] },
-      { type: "error",     label: "Error",     description: "Catch-all error handler", tags: ["control", "error", "catch"] },
+      { type: "start",         label: "Start",         description: "Workflow entry point",                                tags: ["core", "flow"] },
+      { type: "end",           label: "End",           description: "Workflow exit point",                                 tags: ["core", "flow"] },
+      { type: "condition",     label: "Condition",     description: "Branch on expression",                               tags: ["logic", "branch", "if"] },
+      { type: "delay",         label: "Delay",         description: "Wait / poll condition",                              tags: ["control", "wait", "pause"] },
+      { type: "error",         label: "Error",         description: "Catch-all error handler",                            tags: ["control", "error", "catch"] },
+      { type: "ask_for_input", label: "Ask for Input", description: "Prompt the operator for values before the run starts", tags: ["input", "manual", "form", "prompt", "interactive"] },
     ],
   },
   {
@@ -1633,6 +1638,12 @@ function NodeConfigPanel({
           </>
         )}
 
+        {/* ── Ask for Input ───────────────────────────────────── */}
+
+        {nodeType === "ask_for_input" && (
+          <AskForInputPanel node={node} onChange={onChange} />
+        )}
+
         {nodeType === "condition" && (
           <>
             <PayloadField
@@ -2598,6 +2609,254 @@ function generateMockValue(key: string): unknown {
   return `test-${key}`;
 }
 
+// ── Ask for Input panel ───────────────────────────────────────────────────────
+
+interface AskForInputField {
+  id: string;
+  variableName: string;
+  label: string;
+  type: "text" | "number" | "select" | "textarea";
+  options: string;
+  required: boolean;
+}
+
+function AskForInputPanel({
+  node,
+  onChange,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+}) {
+  const fields = ((node.data.fields as AskForInputField[] | undefined) ?? []);
+
+  function updateFields(next: AskForInputField[]) {
+    onChange(node.id, { ...node.data, fields: next });
+  }
+
+  function addField() {
+    updateFields([
+      ...fields,
+      { id: crypto.randomUUID(), variableName: "", label: "", type: "text", options: "", required: false },
+    ]);
+  }
+
+  function removeField(id: string) {
+    updateFields(fields.filter(f => f.id !== id));
+  }
+
+  function updateField(id: string, patch: Partial<AskForInputField>) {
+    updateFields(fields.map(f => f.id === id ? { ...f, ...patch } : f));
+  }
+
+  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#F97316]/60";
+  const selectCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none focus:border-[#F97316]/60";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-medium text-[#7D8590]">Input Fields</label>
+        <button
+          onClick={addField}
+          className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#F97316]/10 text-[#F97316] border border-[#F97316]/30 hover:bg-[#F97316]/20 transition-colors"
+        >
+          + Add field
+        </button>
+      </div>
+
+      {fields.length === 0 && (
+        <p className="text-[10px] text-[#484F58] text-center py-3 border border-dashed border-[#30363D] rounded-lg">
+          No fields yet — add one above
+        </p>
+      )}
+
+      {fields.map((f, i) => (
+        <div key={f.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] p-2.5 space-y-2">
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[9px] font-bold text-[#F97316] uppercase tracking-wider">Field {i + 1}</span>
+            <button
+              onClick={() => removeField(f.id)}
+              className="text-[#484F58] hover:text-red-400 transition-colors text-xs"
+              title="Remove field"
+            >✕</button>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-[#7D8590]">Variable name</label>
+            <input
+              type="text"
+              value={f.variableName}
+              onChange={e => updateField(f.id, { variableName: e.target.value.replace(/\W/g, "_").replace(/^_+/, "") })}
+              placeholder="client_name"
+              className={inputCls}
+            />
+            <p className="text-[9px] text-[#484F58]">Used as <span className="font-mono text-[#F97316]">{`{{${f.variableName || "variableName"}}}`}</span> in downstream nodes</p>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] text-[#7D8590]">Label (shown to operator)</label>
+            <input
+              type="text"
+              value={f.label}
+              onChange={e => updateField(f.id, { label: e.target.value })}
+              placeholder="Which client?"
+              className={inputCls}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-[10px] text-[#7D8590]">Type</label>
+              <select
+                value={f.type}
+                onChange={e => updateField(f.id, { type: e.target.value as AskForInputField["type"] })}
+                className={selectCls}
+              >
+                <option value="text">Text</option>
+                <option value="number">Number</option>
+                <option value="textarea">Textarea</option>
+                <option value="select">Select</option>
+              </select>
+            </div>
+            <div className="space-y-1 flex flex-col justify-end">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={f.required}
+                  onChange={e => updateField(f.id, { required: e.target.checked })}
+                  className="w-3 h-3 rounded accent-orange-500"
+                />
+                <span className="text-[10px] text-[#7D8590]">Required</span>
+              </label>
+            </div>
+          </div>
+
+          {f.type === "select" && (
+            <div className="space-y-1">
+              <label className="text-[10px] text-[#7D8590]">Options (comma-separated)</label>
+              <input
+                type="text"
+                value={f.options}
+                onChange={e => updateField(f.id, { options: e.target.value })}
+                placeholder="Option A, Option B, Option C"
+                className={inputCls}
+              />
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="rounded-lg bg-[#1A0E00] border border-[#F97316]/20 p-2.5">
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+          When a manual run is triggered on a workflow containing this node, a dialog appears prompting the operator to fill in each field. The values are injected into the payload before any downstream nodes execute.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Pre-run Input Modal ───────────────────────────────────────────────────────
+
+function PreRunInputModal({
+  fields,
+  onSubmit,
+  onCancel,
+}: {
+  fields: AskForInputField[];
+  onSubmit: (values: Record<string, string>) => void;
+  onCancel: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map(f => [f.variableName, ""])),
+  );
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function handleSubmit() {
+    const errs: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.required && !values[f.variableName]?.trim()) {
+        errs[f.variableName] = "Required";
+      }
+    }
+    if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    onSubmit(values);
+  }
+
+  const inputCls = (name: string) =>
+    `w-full bg-[#0D1117] border rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors ${errors[name] ? "border-red-500 focus:border-red-400" : "border-[#30363D] focus:border-[#F97316]/60"}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md mx-4">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-[#30363D]">
+          <span className="text-[#F97316]">⌨</span>
+          <h3 className="text-sm font-semibold text-[#E6EDF3]">Run inputs required</h3>
+        </div>
+
+        <div className="p-5 space-y-4 max-h-[60vh] overflow-y-auto">
+          <p className="text-xs text-[#7D8590]">This workflow prompts for values before starting. Fill in the fields below.</p>
+
+          {fields.map(f => (
+            <div key={f.variableName} className="space-y-1.5">
+              <label className="text-xs font-medium text-[#E6EDF3]">
+                {f.label || f.variableName}
+                {f.required && <span className="text-red-400 ml-0.5">*</span>}
+              </label>
+
+              {f.type === "textarea" ? (
+                <textarea
+                  rows={3}
+                  value={values[f.variableName] ?? ""}
+                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  className={inputCls(f.variableName) + " resize-none"}
+                  placeholder={f.label || f.variableName}
+                />
+              ) : f.type === "select" ? (
+                <select
+                  value={values[f.variableName] ?? ""}
+                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  className={inputCls(f.variableName)}
+                >
+                  <option value="">— select —</option>
+                  {f.options.split(",").map(o => o.trim()).filter(Boolean).map(o => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={f.type}
+                  value={values[f.variableName] ?? ""}
+                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  placeholder={f.label || f.variableName}
+                  className={inputCls(f.variableName)}
+                />
+              )}
+
+              {errors[f.variableName] && (
+                <p className="text-[10px] text-red-400">{errors[f.variableName]}</p>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between px-5 py-4 border-t border-[#30363D]">
+          <button
+            onClick={onCancel}
+            className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            className="flex items-center gap-1.5 px-4 py-1.5 bg-[#F97316] hover:bg-[#EA6C0C] text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            🧪 Run with these values
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TestRunPanel({ defId, nodes, edges, onClose }: {
   defId: number;
   nodes: Node[];
@@ -2654,6 +2913,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const [payloadText, setPayloadText] = useState(() => JSON.stringify({}, null, 2));
   const [jsonErr, setJsonErr] = useState<string | null>(null);
   const [runId, setRunId] = useState<number | null>(null);
+  const [showInputModal, setShowInputModal] = useState(false);
 
   useEffect(() => {
     setPayloadText(JSON.stringify(defaultPayload, null, 2));
@@ -2665,8 +2925,19 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
     try { JSON.parse(val); setJsonErr(null); } catch (e) { setJsonErr((e as Error).message); }
   }
 
+  const askForInputNode = nodes.find(n => (n.data.nodeType as string) === "ask_for_input");
+  const askForInputFields = (askForInputNode?.data?.fields as AskForInputField[] | undefined) ?? [];
+
+  function handleRunClick() {
+    if (askForInputFields.length > 0) {
+      setShowInputModal(true);
+    } else {
+      runMut.mutate({});
+    }
+  }
+
   const runMut = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (inputValues: Record<string, string>) => {
       const triggerPayload = JSON.parse(payloadText) as Record<string, unknown>;
       // Serialize the same way as the save path: replace RF's type:"wfNode" with
       // the real workflow node type stored in data.nodeType, and strip extra edge fields.
@@ -2685,7 +2956,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/test-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes: graphNodes, edges: graphEdges, triggerPayload }),
+        body: JSON.stringify({ nodes: graphNodes, edges: graphEdges, triggerPayload, inputValues }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -2940,16 +3211,28 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
             <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
-              onClick={() => runMut.mutate()}
+              onClick={handleRunClick}
               disabled={!!jsonErr || runMut.isPending}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
             >
               {runMut.isPending
                 ? <><span className="animate-spin inline-block">⟳</span> Starting…</>
-                : <>🧪 Run Draft Canvas</>}
+                : askForInputFields.length > 0
+                  ? <>⌨ Fill inputs & Run</>
+                  : <>🧪 Run Draft Canvas</>}
             </button>
           </div>
         )}
+      {showInputModal && (
+        <PreRunInputModal
+          fields={askForInputFields}
+          onSubmit={(inputValues) => {
+            setShowInputModal(false);
+            runMut.mutate(inputValues);
+          }}
+          onCancel={() => setShowInputModal(false)}
+        />
+      )}
     </div>
   );
 }

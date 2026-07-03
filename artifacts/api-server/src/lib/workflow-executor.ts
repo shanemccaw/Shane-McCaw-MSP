@@ -398,6 +398,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         ...(node.data.imageUrl ? { imageUrl: interp(node.data.imageUrl as string | undefined, p) ?? "" } : {}),
       };
 
+    case "ask_for_input": {
+      const fields = (node.data.fields as Array<{ variableName: string; label: string; type: string }> | undefined) ?? [];
+      const out: Record<string, unknown> = { dryRun: true };
+      for (const f of fields) {
+        out[f.variableName] = f.type === "number" ? 0 : `sample-${f.variableName}`;
+      }
+      return out;
+    }
+
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
   }
@@ -462,6 +471,7 @@ async function executeNode(
   payload: Record<string, unknown>,
   runId: number,
   dryRun = false,
+  inputValues: Record<string, string> = {},
 ): Promise<{
   output: Record<string, unknown>;
   nextPayload: Record<string, unknown>;
@@ -1541,6 +1551,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      case "ask_for_input": {
+        const fields = (node.data.fields as Array<{ variableName: string; label: string; type: string; required?: boolean }> | undefined) ?? [];
+        for (const f of fields) {
+          const val = inputValues[f.variableName];
+          output[f.variableName] = f.type === "number" ? (val !== undefined ? Number(val) : null) : (val ?? null);
+        }
+        break;
+      }
+
       // ── Fetch News Headlines ───────────────────────────────────────────────
 
       case "fetch_news_headlines": {
@@ -1998,7 +2017,7 @@ async function countRunningRuns(definitionId: number): Promise<number> {
 
 export async function executeWorkflowRun(
   runId: number,
-  opts: { inlineGraph?: WfGraph; dryRun?: boolean } = {},
+  opts: { inlineGraph?: WfGraph; dryRun?: boolean; inputValues?: Record<string, string> } = {},
 ): Promise<void> {
   const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
   const run = runRows[0];
@@ -2073,7 +2092,7 @@ export async function executeWorkflowRun(
       // ── Execute ──
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId, opts.dryRun ?? false);
+      const { output, nextPayload, cancelRun, nodeError, conditionResult } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));

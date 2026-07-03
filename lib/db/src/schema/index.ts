@@ -1657,7 +1657,9 @@ export interface WfNode {
     // Data
     | "find_object"
     // System
-    | "system_action";
+    | "system_action"
+    // Input
+    | "ask_for_input";
   position: { x: number; y: number };
   data: WfNodeData;
 }

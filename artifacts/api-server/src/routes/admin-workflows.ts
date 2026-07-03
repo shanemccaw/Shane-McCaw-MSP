@@ -447,6 +447,7 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
     nodes: z.array(z.any()),
     edges: z.array(z.any()),
     triggerPayload: z.record(z.unknown()).optional(),
+    inputValues: z.record(z.string()).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
 
@@ -475,9 +476,10 @@ router.post("/admin/workflows/definitions/:id/test-run", requireAdmin, async (re
       nodes: body.data.nodes as WfGraph["nodes"],
       edges: body.data.edges as WfGraph["edges"],
     };
+    const inputValues = body.data.inputValues ?? {};
 
     setImmediate(() => {
-      executeWorkflowRun(runId, { inlineGraph, dryRun: true }).catch(err => {
+      executeWorkflowRun(runId, { inlineGraph, dryRun: true, inputValues }).catch(err => {
         logger.warn({ err, runId }, "workflows: draft test-run execution failed (non-fatal)");
       });
     });
