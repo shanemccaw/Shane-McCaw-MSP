@@ -1995,7 +1995,7 @@ function NodeConfigPanel({
         )}
 
         {nodeType === "switch_case" && (
-          <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} />
+          <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} nodes={nodes} />
         )}
 
         {nodeType === "approval_gate" && (
@@ -3072,6 +3072,110 @@ const DOCUMENT_TYPE_GROUPS: { group: string; items: { id: string; label: string 
   },
 ];
 
+/**
+ * Static registry of output keys known to carry a finite, named set of values —
+ * i.e. good candidates for switch-case branches.
+ * Groups follow the same shape as DOCUMENT_TYPE_GROUPS so BuildCasesPopover can
+ * render them with per-group Select-all toggles.
+ */
+const LIST_VALUE_REGISTRY: Record<
+  string,
+  { label: string; groups: { group: string; items: { id: string; label: string }[] }[] }
+> = {
+  reports_to_run: {
+    label: "Document Types",
+    groups: DOCUMENT_TYPE_GROUPS,
+  },
+  tier: {
+    label: "Score Tier",
+    groups: [{ group: "Tiers", items: [{ id: "Low", label: "Low" }, { id: "Medium", label: "Medium" }, { id: "High", label: "High" }] }],
+  },
+  scoreLabel: {
+    label: "Lead Score Label",
+    groups: [{ group: "Labels", items: [{ id: "Low", label: "Low" }, { id: "Medium", label: "Medium" }, { id: "High", label: "High" }] }],
+  },
+  readinessLabel: {
+    label: "Readiness Level",
+    groups: [{ group: "Levels", items: [{ id: "Low", label: "Low" }, { id: "Medium", label: "Medium" }, { id: "High", label: "High" }] }],
+  },
+  objectType: {
+    label: "Object Type",
+    groups: [{ group: "Types", items: [{ id: "lead", label: "Lead" }, { id: "client", label: "Client" }, { id: "project", label: "Project" }, { id: "article", label: "Article" }] }],
+  },
+  campaignStatus: {
+    label: "Campaign Status",
+    groups: [{ group: "Statuses", items: [{ id: "draft", label: "Draft" }, { id: "active", label: "Active" }] }],
+  },
+  targetSector: {
+    label: "Target Sector",
+    groups: [{ group: "Sectors", items: [
+      { id: "Government", label: "Government" },
+      { id: "Healthcare", label: "Healthcare" },
+      { id: "Finance", label: "Finance" },
+      { id: "Education", label: "Education" },
+      { id: "Technology", label: "Technology" },
+      { id: "Legal", label: "Legal" },
+      { id: "Non-Profit", label: "Non-Profit" },
+    ] }],
+  },
+  stage: {
+    label: "Pipeline Stage",
+    groups: [{ group: "Stages", items: [
+      { id: "new", label: "New" },
+      { id: "qualified", label: "Qualified" },
+      { id: "proposal", label: "Proposal" },
+      { id: "negotiation", label: "Negotiation" },
+      { id: "won", label: "Won" },
+      { id: "lost", label: "Lost" },
+    ] }],
+  },
+};
+
+/**
+ * Parse all `{{...}}` references from an expression and return the bare key names.
+ * Handles: `{{key}}`, `{{steps.nodeId.key}}`, `{{payload.key}}`.
+ */
+function extractReferencedKeys(expr: string): string[] {
+  const tokens: string[] = [];
+  for (const m of expr.matchAll(/\{\{(?:steps\.[^.}]+\.)?(?:payload\.)?(\w+)\}\}/g)) {
+    if (m[1] && !tokens.includes(m[1])) tokens.push(m[1]);
+  }
+  return tokens;
+}
+
+/**
+ * For an `ask_for_input` node whose `select` or `multi-select` field's `variableName`
+ * matches `key`, parse its comma-separated options into case-ready items.
+ */
+function findAskForInputSelectOptions(
+  key: string,
+  nodes: Node[],
+): { label: string; groups: { group: string; items: { id: string; label: string }[] }[] } | null {
+  for (const n of nodes) {
+    if ((n.data.nodeType as string) !== "ask_for_input") continue;
+    const fields = (n.data.fields as Array<{
+      variableName: string;
+      label: string;
+      type: string;
+      options: string;
+    }> | undefined) ?? [];
+    for (const f of fields) {
+      if (f.variableName !== key) continue;
+      if (f.type !== "select" && f.type !== "multiselect") continue;
+      const rawOptions = (f.options ?? "").split(",").map(o => o.trim()).filter(Boolean);
+      if (rawOptions.length === 0) return null;
+      return {
+        label: f.label || f.variableName,
+        groups: [{
+          group: "Options",
+          items: rawOptions.map(o => ({ id: o, label: o })),
+        }],
+      };
+    }
+  }
+  return null;
+}
+
 interface AskForInputField {
   id: string;
   variableName: string;
@@ -3262,15 +3366,17 @@ interface SwitchCaseItem {
 const SWITCH_CASE_MAX = 20;
 
 function BuildCasesPopover({
+  groups,
   onAdd,
   onCancel,
 }: {
+  groups: { group: string; items: { id: string; label: string }[] }[];
   onAdd: (selected: { id: string; label: string }[]) => void;
   onCancel: () => void;
 }) {
   const [checked, setChecked] = useState<Record<string, boolean>>(() => {
     const init: Record<string, boolean> = {};
-    for (const g of DOCUMENT_TYPE_GROUPS) {
+    for (const g of groups) {
       for (const item of g.items) {
         init[item.id] = true;
       }
@@ -3278,12 +3384,14 @@ function BuildCasesPopover({
     return init;
   });
 
+  const showGroupHeaders = groups.length > 1;
+
   function toggleItem(id: string) {
     setChecked(prev => ({ ...prev, [id]: !prev[id] }));
   }
 
   function toggleGroup(group: string, value: boolean) {
-    const g = DOCUMENT_TYPE_GROUPS.find(g => g.group === group);
+    const g = groups.find(g => g.group === group);
     if (!g) return;
     const patch: Record<string, boolean> = {};
     for (const item of g.items) patch[item.id] = value;
@@ -3292,7 +3400,7 @@ function BuildCasesPopover({
 
   function handleAdd() {
     const selected: { id: string; label: string }[] = [];
-    for (const g of DOCUMENT_TYPE_GROUPS) {
+    for (const g of groups) {
       for (const item of g.items) {
         if (checked[item.id]) selected.push({ id: item.id, label: item.label });
       }
@@ -3302,21 +3410,34 @@ function BuildCasesPopover({
 
   return (
     <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-3 space-y-3">
-      {DOCUMENT_TYPE_GROUPS.map(g => {
+      {groups.map(g => {
         const allChecked = g.items.every(item => checked[item.id]);
         const noneChecked = g.items.every(item => !checked[item.id]);
         return (
           <div key={g.group} className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-[#FB923C] uppercase tracking-wider">{g.group}</span>
-              <button
-                type="button"
-                onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
-                className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
-              >
-                {allChecked ? "Deselect all" : "Select all"}
-              </button>
-            </div>
+            {showGroupHeaders && (
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-[#FB923C] uppercase tracking-wider">{g.group}</span>
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
+                  className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                >
+                  {allChecked ? "Deselect all" : "Select all"}
+                </button>
+              </div>
+            )}
+            {!showGroupHeaders && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
+                  className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                >
+                  {allChecked ? "Deselect all" : "Select all"}
+                </button>
+              </div>
+            )}
             <div className="space-y-1">
               {g.items.map(item => (
                 <label key={item.id} className="flex items-center gap-2 cursor-pointer group">
@@ -3358,14 +3479,28 @@ function SwitchCasePanel({
   node,
   onChange,
   ancestorOutputs,
+  nodes,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
+  nodes: Node[];
 }) {
   const cases = ((node.data.cases as SwitchCaseItem[] | undefined) ?? []);
   const switchExpr = (node.data.switchExpr as string) ?? "";
-  const showBuildButton = switchExpr.includes("reports_to_run");
+
+  // Detect if any referenced key has known list values (static registry or ask_for_input options)
+  const referencedKeys = extractReferencedKeys(switchExpr);
+  const detectedList = (() => {
+    for (const key of referencedKeys) {
+      const reg = LIST_VALUE_REGISTRY[key];
+      if (reg) return reg;
+      const dynamic = findAskForInputSelectOptions(key, nodes);
+      if (dynamic) return dynamic;
+    }
+    return null;
+  })();
+  const showBuildButton = detectedList !== null;
 
   const [buildOpen, setBuildOpen] = useState(false);
   const [pendingCases, setPendingCases] = useState<{ id: string; label: string }[] | null>(null);
@@ -3428,18 +3563,19 @@ function SwitchCasePanel({
         ancestorOutputs={ancestorOutputs}
       />
 
-      {/* Build Cases from Document Types button */}
-      {showBuildButton && (
+      {/* Build Cases button — shown when the switch expression references a known list-valued key */}
+      {showBuildButton && detectedList && (
         <div className="space-y-2">
           <button
             type="button"
             onClick={() => { setBuildOpen(v => !v); setPendingCases(null); }}
             className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-[#FB923C]/40 bg-[#FB923C]/8 text-[11px] font-semibold text-[#FB923C] hover:bg-[#FB923C]/15 hover:border-[#FB923C]/70 transition-colors"
           >
-            <span>✦</span> Build Cases from Document Types
+            <span>✦</span> Build Cases from {detectedList.label}
           </button>
           {buildOpen && (
             <BuildCasesPopover
+              groups={detectedList.groups}
               onAdd={handleBuildAdd}
               onCancel={() => setBuildOpen(false)}
             />
