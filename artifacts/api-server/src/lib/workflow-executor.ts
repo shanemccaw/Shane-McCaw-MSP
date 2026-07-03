@@ -3186,12 +3186,27 @@ export async function executeWorkflowRun(
 
         for (let i = 0; i < foreachItems.length; i++) {
           const element = foreachItems[i];
+          // Patch steps[nodeId] and nodes[nodeId] so that
+          // {{steps.<foreachNodeId>.item}} resolves to the current element.
+          // Without this, switch_case / condition nodes inside the loop body
+          // that reference {{steps.node-106.item}} get undefined.
+          const prevSteps = (payload.steps as Record<string, unknown>) ?? {};
+          const prevNodes = (payload.nodes as Record<string, unknown>) ?? {};
+          const foreachIterStep = {
+            ...(prevSteps[nodeId] as Record<string, unknown> ?? {}),
+            item: element,
+            itemIndex: i,
+            itemsTotal,
+            ...(itemAlias ? { [itemAlias]: element } : {}),
+          };
           const iterPayload: Record<string, unknown> = {
             ...payload,
             item: element,
             ...(itemAlias ? { [itemAlias]: element } : {}),
             itemIndex: i,
             itemsTotal,
+            steps: { ...prevSteps, [nodeId]: foreachIterStep },
+            nodes: { ...prevNodes, [nodeId]: foreachIterStep },
           };
 
           const iterResult = await executeItemSubgraph(
