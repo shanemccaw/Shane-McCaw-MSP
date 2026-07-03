@@ -266,7 +266,10 @@ mock.module("../lib/m365-profile-pdf.ts", {
 });
 
 mock.module("../lib/manual-script-package.ts", {
-  namedExports: { generateManualScriptPackage: async () => Buffer.from("") },
+  namedExports: {
+    generateManualScriptPackage: async () => Buffer.from(""),
+    injectCallbackVars: (script: string) => script,
+  },
 });
 
 // multer stub: must expose diskStorage() (called at module load) and return
