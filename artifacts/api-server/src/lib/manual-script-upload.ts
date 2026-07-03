@@ -186,7 +186,7 @@ export async function processManualScriptUpload(
   await db
     .update(scriptRunResultsTable)
     .set({
-      rawOutput: jsonData,
+      rawOutput: { text: JSON.stringify(jsonData, null, 2) },
       parsedFindings: aiResult.findings,
       recommendations: aiResult.recommendations,
       scoreImpact: aiResult.scoreImpact,

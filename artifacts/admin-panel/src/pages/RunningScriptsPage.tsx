@@ -216,7 +216,7 @@ function DetailSheet({
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <StatusBadge status={detail.status} />
               <span className="text-xs text-[#7D8590]">
-                {detail.executionSource === "manual" ? "Manual run" : "Automated run"}
+                {detail.executionSource === "manual" ? "Manual run" : detail.executionSource === "customer_upload" ? "Customer upload" : "Automated run"}
               </span>
               {detail.jobId && (
                 <span className="text-xs text-[#484F58] font-mono">

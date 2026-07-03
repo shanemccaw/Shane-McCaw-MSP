@@ -319,7 +319,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
             .set({
               status: "completed",
               executionSource: "customer_upload",
-              rawOutput: body,
+              rawOutput: { text: JSON.stringify(body, null, 2) },
               uploadedAt: new Date(),
               uploadedBy: "customer_script_callback",
             })
@@ -343,7 +343,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
           jobId: null,
           status: "completed",
           executionSource: "customer_upload",
-          rawOutput: body,
+          rawOutput: { text: JSON.stringify(body, null, 2) },
           uploadedAt: new Date(),
           uploadedBy: "customer_script_callback",
           scriptName: "Customer Upload",
