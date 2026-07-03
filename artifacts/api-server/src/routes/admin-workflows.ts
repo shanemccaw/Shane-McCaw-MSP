@@ -36,12 +36,13 @@ import {
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
   wfTriggersTable,
+  pendingApprovalsTable,
   type WfGraph,
 } from "@workspace/db";
 import { eq, and, desc, asc, count, sql, gte, lte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun } from "../lib/workflow-executor";
+import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
 import crypto from "crypto";
 
 const router = Router();
@@ -676,6 +677,79 @@ router.post("/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Reques
     res.json(updated);
   } catch (err) {
     sendError(res, 500, "Failed to cancel run");
+  }
+});
+
+// ── Pending Approvals ─────────────────────────────────────────────────────────
+
+router.get("/admin/workflows/pending-approvals", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        approval: pendingApprovalsTable,
+        defName: wfDefinitionsTable.name,
+      })
+      .from(pendingApprovalsTable)
+      .leftJoin(wfRunsTable, eq(pendingApprovalsTable.runId, wfRunsTable.id))
+      .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+      .where(eq(pendingApprovalsTable.status, "pending"))
+      .orderBy(desc(pendingApprovalsTable.createdAt));
+
+    res.json(rows.map(r => ({ ...r.approval, definitionName: r.defName })));
+  } catch (err) {
+    req.log.error({ err }, "pending-approvals: list failed");
+    sendError(res, 500, "Failed to list pending approvals");
+  }
+});
+
+router.post("/admin/workflows/pending-approvals/:id/decide", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  const body = z.object({
+    decision: z.enum(["approved", "rejected"]),
+    note: z.string().optional(),
+  }).safeParse(req.body);
+  if (!body.success) return sendError(res, 400, body.error.message);
+
+  try {
+    const [approval] = await db
+      .select()
+      .from(pendingApprovalsTable)
+      .where(and(eq(pendingApprovalsTable.id, id), eq(pendingApprovalsTable.status, "pending")))
+      .limit(1);
+
+    if (!approval) return sendError(res, 404, "Pending approval not found or already decided");
+
+    await db.update(pendingApprovalsTable).set({
+      status: body.data.decision,
+      decidedAt: new Date(),
+      decisionNote: body.data.note ?? null,
+      decidedBy: "admin",
+    }).where(eq(pendingApprovalsTable.id, id));
+
+    if (body.data.decision === "approved") {
+      const resumePayload = (approval.context as Record<string, unknown>) ?? {};
+      const decisionNote = body.data.note;
+      setImmediate(() => {
+        resumeWorkflowRun(approval.runId, approval.nodeId, resumePayload, decisionNote).catch(err => {
+          logger.warn({ err, runId: approval.runId }, "pending-approvals: resume failed (non-fatal)");
+        });
+      });
+      req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals: approved, resuming run");
+    } else {
+      await db.update(wfRunsTable).set({
+        status: "failed",
+        finishedAt: new Date(),
+        errorMessage: `Rejected by admin at approval gate: ${body.data.note ?? "(no reason given)"}`,
+      }).where(eq(wfRunsTable.id, approval.runId));
+      req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals: rejected, run marked failed");
+    }
+
+    res.json({ ok: true, decision: body.data.decision, runId: approval.runId });
+  } catch (err) {
+    req.log.error({ err }, "pending-approvals: decide failed");
+    sendError(res, 500, "Failed to process decision");
   }
 });
 

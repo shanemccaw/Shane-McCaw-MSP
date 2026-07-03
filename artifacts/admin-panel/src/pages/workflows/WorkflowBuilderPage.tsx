@@ -95,6 +95,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   // ── Control Flow ──
   foreach:       { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  approval_gate: { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -182,6 +183,12 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
   // Send Browser Notification
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
+  // Approval Gate — outputs injected into payload after the gate is approved and execution resumes
+  approval_gate: [
+    { key: "approved",     label: "true — always set when execution continues past the gate" },
+    { key: "decisionNote", label: "Optional note left by the approving admin" },
+    { key: "approvalId",   label: "ID of the pending_approvals record" },
+  ],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
   // Switch/Case — no declared outputs; downstream nodes inherit the upstream payload unchanged
@@ -273,6 +280,17 @@ function WfNode({ data, selected, id }: NodeProps) {
           <div className="flex justify-between text-[9px] font-semibold mt-1 px-4">
             <span style={{ color: "#A855F7" }}>Loop</span>
             <span className="text-emerald-400">Done</span>
+          </div>
+        </>
+      ) : nodeType === "approval_gate" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            style={{ background: "#22C55E", border: "none" }}
+          />
+          <div className="flex justify-center text-[9px] font-semibold mt-1">
+            <span className="text-emerald-400">Continue on Approve</span>
           </div>
         </>
       ) : nodeType === "switch_case" ? (
@@ -465,6 +483,13 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "execute_runbook",     label: "Execute Runbook",      description: "Trigger an Azure Automation runbook",                tags: ["azure", "runbook", "automation", "m365"] },
       { type: "update_m365_profile", label: "Update M365 Profile",  description: "Update a client's M365 profile via Azure Automation", tags: ["azure", "m365", "profile", "runbook"] },
       { type: "generate_document",   label: "Generate Document",    description: "Create a document record for a client",              tags: ["document", "client", "report", "generate"] },
+    ],
+  },
+  {
+    name: "Control Flow",
+    nodes: [
+      { type: "foreach",       label: "For Each",      description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
+      { type: "approval_gate", label: "Approval Gate", description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
     ],
   },
 ];
@@ -1971,6 +1996,46 @@ function NodeConfigPanel({
 
         {nodeType === "switch_case" && (
           <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} />
+        )}
+
+        {nodeType === "approval_gate" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Gate Label</label>
+              <input
+                value={(node.data.label as string) ?? ""}
+                onChange={e => onChange(node.id, { ...node.data, label: e.target.value })}
+                placeholder="Approval Gate"
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60 placeholder-[#484F58]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Approver Role <span className="text-[#484F58] font-normal">(locked)</span></label>
+              <input
+                value="admin"
+                disabled
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#484F58] outline-none cursor-not-allowed"
+              />
+              <p className="text-[9px] text-[#484F58] leading-snug">Only admins can approve or reject approval gates.</p>
+            </div>
+            <ConfigField
+              label="Timeout (seconds)"
+              type="number"
+              value={String(node.data.timeoutSeconds ?? 3600)}
+              onChange={v => onChange(node.id, { ...node.data, timeoutSeconds: parseInt(v, 10) || 3600 })}
+            />
+            <p className="text-[9px] text-[#484F58] leading-snug">
+              Auto-rejects the run after this many seconds with no decision. Default: 3600 (1 hour).
+            </p>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the output handle to nodes that run <span className="text-emerald-400 font-semibold">when approved</span>. Downstream nodes receive <span className="font-mono text-[#7D8590]">{"{{approved}}"}</span> (always true) and <span className="font-mono text-[#7D8590]">{"{{decisionNote}}"}</span>.
+              </p>
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Rejection and timeout both <span className="text-red-400 font-semibold">fail the run</span> — no downstream nodes execute on rejection.
+              </p>
+            </div>
+          </>
         )}
 
         {nodeType === "foreach" && (

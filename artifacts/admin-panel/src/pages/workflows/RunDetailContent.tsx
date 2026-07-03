@@ -36,11 +36,12 @@ export interface WfRunDetail {
 }
 
 export const STATUS_STYLES: Record<string, string> = {
-  completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  running:   "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  failed:    "bg-red-500/20 text-red-400 border-red-500/30",
-  pending:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  cancelled: "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  completed:          "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  running:            "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  failed:             "bg-red-500/20 text-red-400 border-red-500/30",
+  pending:            "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  cancelled:          "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  awaiting_approval:  "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
 };
 
 const NODE_BORDER: Record<string, string> = {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
 import { format, formatDistanceToNow } from "date-fns";
@@ -12,18 +12,26 @@ interface WfRun {
   versionLabel: string | null;
   triggerType: string;
   triggerRef: string | null;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  status: string;
   durationMs: number | null;
   startedAt: string | null;
   createdAt: string;
 }
 
+interface PendingApproval {
+  id: number;
+  runId: number;
+  nodeId: string;
+  expiresAt: string | null;
+}
+
 const STATUS_STYLES: Record<string, string> = {
-  completed: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  running:   "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  failed:    "bg-red-500/20 text-red-400 border-red-500/30",
-  pending:   "bg-amber-500/20 text-amber-400 border-amber-500/30",
-  cancelled: "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  completed:          "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  running:            "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  failed:             "bg-red-500/20 text-red-400 border-red-500/30",
+  pending:            "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  cancelled:          "bg-[#30363D] text-[#7D8590] border-[#30363D]",
+  awaiting_approval:  "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
 };
 
 const TRIGGER_ICONS: Record<string, string> = {
@@ -36,7 +44,7 @@ const TRIGGER_ICONS: Record<string, string> = {
 function StatusChip({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[status] ?? "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
-      {status}
+      {status === "awaiting_approval" ? "⏸ approval" : status}
     </span>
   );
 }
@@ -50,42 +58,87 @@ function fmtDuration(ms: number | null): string {
 
 const GRID = "grid grid-cols-[2rem_1fr_8rem_7rem_6rem_6rem_5rem] gap-4";
 
-function RunRow({ run, onClick }: { run: WfRun; onClick: () => void }) {
+function RunRow({
+  run,
+  approval,
+  onClick,
+  onApprove,
+  onReject,
+  isDeciding,
+}: {
+  run: WfRun;
+  approval?: PendingApproval;
+  onClick: () => void;
+  onApprove?: (approvalId: number) => void;
+  onReject?: (approvalId: number) => void;
+  isDeciding?: boolean;
+}) {
+  const isAwaitingApproval = run.status === "awaiting_approval" && approval;
+
   return (
-    <div
-      className={`${GRID} px-4 py-3 border-b border-[#30363D]/50 hover:bg-[#1C2128] transition-colors cursor-pointer items-center`}
-      onClick={onClick}
-    >
-      <span className="text-xs text-[#484F58] font-mono">{run.id}</span>
+    <div className="border-b border-[#30363D]/50">
+      <div
+        className={`${GRID} px-4 py-3 hover:bg-[#1C2128] transition-colors cursor-pointer items-center`}
+        onClick={onClick}
+      >
+        <span className="text-xs text-[#484F58] font-mono">{run.id}</span>
 
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-[#E6EDF3] truncate">{run.definitionName ?? "—"}</p>
-        {run.versionLabel && (
-          <p className="text-[10px] text-[#484F58] truncate">{run.versionLabel}</p>
-        )}
-      </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-[#E6EDF3] truncate">{run.definitionName ?? "—"}</p>
+          {run.versionLabel && (
+            <p className="text-[10px] text-[#484F58] truncate">{run.versionLabel}</p>
+          )}
+        </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-sm">
-          <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
-          <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm">
+            <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
+            <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
+          </span>
+          {run.triggerRef === "draft_test" && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">Draft</span>
+          )}
+        </div>
+
+        <StatusChip status={run.status} />
+
+        <span className="text-xs text-[#7D8590]">
+          {run.startedAt ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true }) : format(new Date(run.createdAt), "MMM d HH:mm")}
         </span>
-        {run.triggerRef === "draft_test" && (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">Draft</span>
-        )}
+
+        <span className="text-xs text-[#7D8590] font-mono">{fmtDuration(run.durationMs)}</span>
+
+        <svg className="w-4 h-4 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
       </div>
 
-      <StatusChip status={run.status} />
-
-      <span className="text-xs text-[#7D8590]">
-        {run.startedAt ? formatDistanceToNow(new Date(run.startedAt), { addSuffix: true }) : format(new Date(run.createdAt), "MMM d HH:mm")}
-      </span>
-
-      <span className="text-xs text-[#7D8590] font-mono">{fmtDuration(run.durationMs)}</span>
-
-      <svg className="w-4 h-4 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-      </svg>
+      {/* Inline approval actions */}
+      {isAwaitingApproval && (
+        <div
+          className="flex items-center gap-3 px-4 pb-3 -mt-1"
+          onClick={e => e.stopPropagation()}
+        >
+          <span className="text-[10px] text-yellow-400/70 flex-1">
+            ⏸ Awaiting admin approval
+            {approval.expiresAt && ` · expires ${format(new Date(approval.expiresAt), "MMM d, HH:mm")}`}
+          </span>
+          <button
+            onClick={() => onApprove?.(approval.id)}
+            disabled={isDeciding}
+            className="px-2.5 py-1 bg-emerald-600/80 hover:bg-emerald-600 disabled:opacity-50 text-white text-[10px] font-semibold rounded-lg transition-colors"
+          >
+            ✓ Approve
+          </button>
+          <button
+            onClick={() => onReject?.(approval.id)}
+            disabled={isDeciding}
+            className="px-2.5 py-1 bg-red-600/70 hover:bg-red-600 disabled:opacity-50 text-white text-[10px] font-semibold rounded-lg transition-colors"
+          >
+            ✕ Reject
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -93,12 +146,18 @@ function RunRow({ run, onClick }: { run: WfRun; onClick: () => void }) {
 export default function RunHistoryPage({ initialDefinitionId }: { initialDefinitionId?: number }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
   const [defIdFilter, setDefIdFilter] = useState(initialDefinitionId ?? 0);
   const [statusFilter, setStatusFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [offset, setOffset] = useState(0);
   const [systemExpanded, setSystemExpanded] = useState(false);
+
+  // Reject modal state
+  const [rejectApprovalId, setRejectApprovalId] = useState<number | null>(null);
+  const [rejectNote, setRejectNote] = useState("");
+
   const limit = 30;
 
   const params = new URLSearchParams();
@@ -126,9 +185,46 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
     },
   });
 
+  // Fetch pending approvals when any visible run is awaiting_approval
   const allRuns = data?.runs ?? [];
-  const total = data?.total ?? 0;
+  const hasAwaitingApproval = allRuns.some(r => r.status === "awaiting_approval");
 
+  const { data: pendingApprovals = [] } = useQuery<PendingApproval[]>({
+    queryKey: ["wf-pending-approvals-list"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/workflows/pending-approvals");
+      if (!res.ok) return [];
+      const all = await res.json() as Array<PendingApproval & { run_id?: number }>;
+      return all.map(a => ({
+        ...a,
+        runId: (a as unknown as { runId?: number }).runId ?? a.run_id ?? 0,
+      }));
+    },
+    enabled: hasAwaitingApproval,
+    refetchInterval: hasAwaitingApproval ? 10_000 : false,
+  });
+
+  const approvalByRunId = new Map(pendingApprovals.map(a => [a.runId, a]));
+
+  const decideMut = useMutation({
+    mutationFn: async ({ approvalId, decision, note }: { approvalId: number; decision: "approved" | "rejected"; note?: string }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/pending-approvals/${approvalId}/decide`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision, note }),
+      });
+      if (!res.ok) throw new Error("Failed to decide");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-runs"] });
+      qc.invalidateQueries({ queryKey: ["wf-pending-approvals-list"] });
+      setRejectApprovalId(null);
+      setRejectNote("");
+    },
+  });
+
+  const total = data?.total ?? 0;
   const userRuns = allRuns.filter(r => !r.isSystem);
   const systemRuns = allRuns.filter(r => r.isSystem);
 
@@ -173,6 +269,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             <option value="failed">Failed</option>
             <option value="pending">Pending</option>
             <option value="cancelled">Cancelled</option>
+            <option value="awaiting_approval">Awaiting Approval</option>
           </select>
           <div className="flex items-center gap-1.5">
             <span className="text-xs text-[#484F58]">From</span>
@@ -229,7 +326,15 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             <>
               {/* User workflow runs */}
               {userRuns.map(run => (
-                <RunRow key={run.id} run={run} onClick={() => navigate(`/workflows/runs/${run.id}`)} />
+                <RunRow
+                  key={run.id}
+                  run={run}
+                  approval={approvalByRunId.get(run.id)}
+                  onClick={() => navigate(`/workflows/runs/${run.id}`)}
+                  onApprove={approvalId => decideMut.mutate({ approvalId, decision: "approved" })}
+                  onReject={approvalId => { setRejectApprovalId(approvalId); }}
+                  isDeciding={decideMut.isPending}
+                />
               ))}
 
               {/* System runs — collapsed by default */}
@@ -256,7 +361,15 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
                   </button>
 
                   {systemExpanded && systemRuns.map(run => (
-                    <RunRow key={run.id} run={run} onClick={() => navigate(`/workflows/runs/${run.id}`)} />
+                    <RunRow
+                      key={run.id}
+                      run={run}
+                      approval={approvalByRunId.get(run.id)}
+                      onClick={() => navigate(`/workflows/runs/${run.id}`)}
+                      onApprove={approvalId => decideMut.mutate({ approvalId, decision: "approved" })}
+                      onReject={approvalId => { setRejectApprovalId(approvalId); }}
+                      isDeciding={decideMut.isPending}
+                    />
                   ))}
                 </>
               )}
@@ -289,6 +402,40 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
           </div>
         )}
       </div>
+
+      {/* Reject Modal */}
+      {rejectApprovalId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 w-full max-w-md space-y-4">
+            <h2 className="text-base font-bold text-[#E6EDF3]">Reject Approval</h2>
+            <p className="text-sm text-[#7D8590]">
+              This will fail the workflow run. Optionally provide a reason.
+            </p>
+            <textarea
+              value={rejectNote}
+              onChange={e => setRejectNote(e.target.value)}
+              placeholder="Reason for rejection (optional)"
+              rows={3}
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-red-500/60 placeholder-[#484F58] resize-none"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setRejectApprovalId(null); setRejectNote(""); }}
+                className="px-4 py-2 bg-[#1C2128] hover:bg-[#30363D] text-[#E6EDF3] text-sm rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => decideMut.mutate({ approvalId: rejectApprovalId, decision: "rejected", note: rejectNote || undefined })}
+                disabled={decideMut.isPending}
+                className="px-4 py-2 bg-red-600/80 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold rounded-lg transition-colors"
+              >
+                {decideMut.isPending ? "Rejecting…" : "Reject Run"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,7 @@ import {
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
   wfTriggersTable,
+  pendingApprovalsTable,
   leadsTable,
   usersTable,
   projectsTable,
@@ -528,6 +529,8 @@ async function executeNode(
   conditionResult?: boolean;
   /** For switch_case nodes: the handle ID of the chosen branch (a case UUID or "default") */
   switchChosenHandle?: string;
+  /** Set to true when an approval_gate pauses the run — BFS should exit cleanly */
+  pauseForApproval?: boolean;
 }> {
   const startMs = Date.now();
   let output: Record<string, unknown> = {};
@@ -2164,6 +2167,85 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      case "approval_gate": {
+        if (dryRun) {
+          output = {
+            dryRun: true,
+            approved: true,
+            decisionNote: "dry-run — approval auto-approved",
+            approverRole: (node.data.approverRole as string | undefined) ?? "admin",
+          };
+        } else {
+          const approverRole = (node.data.approverRole as string | undefined) ?? "admin";
+          const timeoutSeconds = Number(node.data.timeoutSeconds ?? 3600);
+          const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
+          const label = (node.data.label as string | undefined) ?? "Approval Gate";
+
+          const [approval] = await db.insert(pendingApprovalsTable).values({
+            runId,
+            nodeId: node.id,
+            approverRole,
+            timeoutSeconds,
+            status: "pending",
+            context: payload,
+            expiresAt,
+          }).returning();
+
+          await db.update(wfRunsTable)
+            .set({ status: "awaiting_approval" })
+            .where(eq(wfRunsTable.id, runId));
+
+          const notifTitle = `Workflow approval required`;
+          const notifBody = `Run #${runId} paused at "${label}" — admin action required.`;
+          const notifLink = `/admin-panel/workflows/runs/${runId}`;
+
+          try {
+            const admins = await db
+              .select({ id: usersTable.id })
+              .from(usersTable)
+              .where(eq(usersTable.role, "admin"));
+
+            if (admins.length > 0) {
+              await db.insert(notificationsTable).values(
+                admins.map(a => ({
+                  userId: a.id,
+                  title: notifTitle,
+                  body: notifBody,
+                  type: "general" as const,
+                  linkPath: notifLink,
+                })),
+              );
+            }
+          } catch (notifErr) {
+            logger.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
+          }
+
+          void sendWebPushToAdmins({ title: notifTitle, body: notifBody, linkPath: notifLink });
+
+          output = { approvalId: approval.id, approverRole, expiresAt: expiresAt.toISOString(), label };
+          // Record the node output before returning the sentinel
+          const durationMs = Date.now() - startMs;
+          await db.insert(wfRunNodeOutputsTable).values({
+            runId,
+            nodeId: node.id,
+            input: payload,
+            output,
+            durationMs,
+            status: "ok",
+          }).catch(() => { });
+          await db.insert(wfRunNodeLogsTable).values({
+            runId,
+            nodeId: node.id,
+            level: "info",
+            message: `approval_gate (${node.id}): run paused for approval #${approval.id}`,
+          }).catch(() => { });
+          // Return sentinel immediately — skip the normal log/output insert below
+          const nextPayload = { ...payload, ...output, nodes: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output }, steps: { ...((payload.nodes as Record<string, unknown>) ?? {}), [node.id]: output } };
+          return { output, nextPayload, cancelRun: false, nodeError: false, pauseForApproval: true };
+        }
+        break;
+      }
+
       default:
         output = { note: "unknown node type", nodeType: node.type };
     }
@@ -2418,10 +2500,16 @@ export async function executeWorkflowRun(
       // ── Execute ──
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
+      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+
+      // Approval gate paused — exit BFS cleanly; run status already set to awaiting_approval
+      if (pauseForApproval) {
+        logger.info({ runId, nodeId }, "wf-executor: run paused at approval_gate");
+        return;
+      }
 
       // Cancel
       if (cancelRun) {
@@ -2598,6 +2686,206 @@ export async function executeWorkflowRun(
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
     logger.warn({ runId, err }, "wf-executor: run failed");
+  }
+}
+
+// ── Approval timeout checker ──────────────────────────────────────────────────
+// Called periodically to auto-reject expired pending approvals.
+
+export async function checkApprovalTimeouts(): Promise<void> {
+  try {
+    const expired = await pool.query<{ id: number; run_id: number; node_id: string }>(`
+      SELECT id, run_id, node_id
+      FROM pending_approvals
+      WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < NOW()
+    `);
+
+    for (const row of expired.rows) {
+      try {
+        await pool.query(
+          `UPDATE pending_approvals SET status = 'timed_out', decided_at = NOW(), decision_note = 'Auto-rejected: approval timeout elapsed' WHERE id = $1`,
+          [row.id],
+        );
+        await db.update(wfRunsTable).set({
+          status: "failed",
+          finishedAt: new Date(),
+          errorMessage: `Approval gate timed out for node ${row.node_id}`,
+        }).where(eq(wfRunsTable.id, row.run_id));
+
+        await db.insert(wfRunNodeLogsTable).values({
+          runId: row.run_id,
+          nodeId: row.node_id,
+          level: "error",
+          message: `approval_gate: approval timed out — run auto-rejected`,
+        }).catch(() => { });
+
+        logger.info({ approvalId: row.id, runId: row.run_id }, "approval-gate: timed out, run marked failed");
+      } catch (innerErr) {
+        logger.warn({ err: innerErr, approvalId: row.id }, "approval-gate: timeout processing failed (non-fatal)");
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, "approval-gate: timeout check failed (non-fatal)");
+  }
+}
+
+// ── Resume workflow from approval_gate ────────────────────────────────────────
+// Re-enters the BFS from the successors of the approval_gate node.
+
+export async function resumeWorkflowRun(
+  runId: number,
+  approvalGateNodeId: string,
+  resumePayload: Record<string, unknown>,
+  decisionNote?: string,
+): Promise<void> {
+  const runRows = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+  const run = runRows[0];
+  if (!run) { logger.warn({ runId }, "resumeWorkflowRun: run not found"); return; }
+
+  const versionRows = await db.select().from(wfVersionsTable).where(eq(wfVersionsTable.id, run.versionId)).limit(1);
+  const version = versionRows[0];
+  if (!version) {
+    await db.update(wfRunsTable).set({ status: "failed", errorMessage: "Version not found", finishedAt: new Date() }).where(eq(wfRunsTable.id, runId));
+    return;
+  }
+
+  await db.update(wfRunsTable).set({ status: "running" }).where(eq(wfRunsTable.id, runId));
+
+  const graph: WfGraph = (version.graph as WfGraph) ?? { nodes: [], edges: [] };
+  const nodeMap = new Map(graph.nodes.map(n => [n.id, n]));
+
+  const inDegree = new Map<string, number>();
+  for (const n of graph.nodes) inDegree.set(n.id, 0);
+  for (const e of graph.edges) inDegree.set(e.target, (inDegree.get(e.target) ?? 0) + 1);
+
+  const resolvedCount = new Map<string, number>();
+  const activeCount   = new Map<string, number>();
+  for (const n of graph.nodes) { resolvedCount.set(n.id, 0); activeCount.set(n.id, 0); }
+
+  // Mark all nodes that were in the existing branchPath as already resolved
+  const existingBranchPath = (run.branchPath as string[]) ?? [];
+  const processedNodeIds = new Set(existingBranchPath.map(id => id.split("[")[0]));
+  for (const nId of processedNodeIds) {
+    resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+  }
+
+  const branchPath: string[] = [...existingBranchPath];
+  // Inject gate-decision context so downstream nodes can read {{approved}} and {{decisionNote}}
+  let payload: Record<string, unknown> = {
+    ...resumePayload,
+    approved: true,
+    decisionNote: decisionNote ?? null,
+  };
+
+  const readyQueue: Array<{ nodeId: string; skip: boolean }> = [];
+
+  function resolveEdge(targetId: string, active: boolean) {
+    if (active) activeCount.set(targetId, (activeCount.get(targetId) ?? 0) + 1);
+    const r = (resolvedCount.get(targetId) ?? 0) + 1;
+    resolvedCount.set(targetId, r);
+    const total = inDegree.get(targetId) ?? 0;
+    if (r === total) {
+      readyQueue.push({ nodeId: targetId, skip: (activeCount.get(targetId) ?? 0) === 0 });
+    }
+  }
+
+  // Seed BFS with successors of the approval_gate node via the "approved" handle only
+  const outEdges = graph.edges.filter(e => e.source === approvalGateNodeId);
+  const approvedEdges = outEdges.filter(e => !e.sourceHandle || e.sourceHandle === "approved");
+  const edgesToFollow = approvedEdges.length > 0 ? approvedEdges : outEdges;
+  for (const e of edgesToFollow) {
+    resolveEdge(e.target, true);
+  }
+
+  try {
+    while (readyQueue.length > 0) {
+      const item = readyQueue.shift()!;
+      const { nodeId } = item;
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+
+      const freshStatus = await db.select({ status: wfRunsTable.status }).from(wfRunsTable).where(eq(wfRunsTable.id, runId)).limit(1);
+      if (freshStatus[0]?.status === "cancelled") { logger.info({ runId, nodeId }, "wf-executor: cancelled mid-resume"); return; }
+
+      if (item.skip) {
+        await db.insert(wfRunNodeOutputsTable).values({
+          runId, nodeId, input: payload, output: { skipped: true }, status: "skipped",
+        }).catch(() => { });
+        for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
+          resolveEdge(e.target, false);
+        }
+        continue;
+      }
+
+      branchPath.push(nodeId);
+
+      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, false, {});
+      payload = nextPayload;
+
+      await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+
+      if (pauseForApproval) {
+        logger.info({ runId, nodeId }, "wf-executor: resumed run paused at another approval_gate");
+        return;
+      }
+
+      if (cancelRun) {
+        await db.update(wfRunsTable).set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+        return;
+      }
+
+      if (nodeError) {
+        const outEdgesNode = graph.edges.filter(e => e.source === nodeId);
+        const errorEdge = outEdgesNode.find(e => e.sourceHandle === "error" || e.sourceHandle === "onError");
+        if (errorEdge) {
+          for (const e of outEdgesNode) resolveEdge(e.target, e.target === errorEdge.target);
+        } else {
+          await db.update(wfRunsTable).set({
+            status: "failed", finishedAt: new Date(),
+            errorMessage: (output.error as string) ?? `Node ${nodeId} failed`,
+            branchPath: branchPath as unknown as string[],
+          }).where(eq(wfRunsTable.id, runId));
+          return;
+        }
+        continue;
+      }
+
+      if (node.type === "condition" && conditionResult !== undefined) {
+        const outEdgesNode  = graph.edges.filter(e => e.source === nodeId);
+        const trueEdge  = outEdgesNode.find(e => e.sourceHandle === "true" || (!e.sourceHandle && !outEdgesNode.find(x => x.sourceHandle === "true")));
+        const falseEdge = outEdgesNode.find(e => e.sourceHandle === "false");
+        const cancelEdge = outEdgesNode.find(e => e.sourceHandle === "cancel");
+        if (!conditionResult && cancelEdge) {
+          await db.update(wfRunsTable).set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+          return;
+        }
+        for (const e of outEdgesNode) {
+          const isTaken = conditionResult ? (e.id === trueEdge?.id) : (e.id === falseEdge?.id);
+          resolveEdge(e.target, isTaken);
+        }
+        continue;
+      }
+
+      if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+        const outEdgesNode = graph.edges.filter(e => e.source === nodeId);
+        for (const e of outEdgesNode) {
+          resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
+        }
+        continue;
+      }
+
+      for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
+        resolveEdge(e.target, true);
+      }
+    }
+
+    await db.update(wfRunsTable).set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+    logger.info({ runId, steps: branchPath.length }, "wf-executor: resumed run completed");
+  } catch (err) {
+    const errMsg = String(err);
+    await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
+    await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__resume__", level: "error", message: `Resume executor error: ${errMsg}` }).catch(() => { });
+    logger.warn({ runId, err }, "wf-executor: resumed run failed");
   }
 }
 

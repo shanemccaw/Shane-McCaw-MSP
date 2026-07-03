@@ -6,7 +6,7 @@ import { graphCredentialsPresent } from "./lib/graph";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
-import { triggerScheduledWorkflows, fireStartupTriggers } from "./lib/workflow-executor";
+import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 
 const rawPort = process.env["PORT"];
@@ -98,6 +98,37 @@ app.listen(port, (err) => {
       logger.warn({ err }, "wf-engine: scheduled trigger scan failed (non-fatal)");
     });
   }, 60_000);
+
+  // ── Workflow Engine: 60-second approval timeout checker ───────────────────
+  setInterval(() => {
+    checkApprovalTimeouts().catch((err: unknown) => {
+      logger.warn({ err }, "wf-engine: approval timeout check failed (non-fatal)");
+    });
+  }, 60_000);
+
+  // ── Pending approvals table ───────────────────────────────────────────────
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS pending_approvals (
+      id                SERIAL PRIMARY KEY,
+      run_id            INTEGER NOT NULL REFERENCES wf_runs(id) ON DELETE CASCADE,
+      node_id           TEXT NOT NULL,
+      approver_role     TEXT NOT NULL DEFAULT 'admin',
+      timeout_seconds   INTEGER NOT NULL DEFAULT 3600,
+      status            TEXT NOT NULL DEFAULT 'pending',
+      decided_by        TEXT,
+      decision_note     TEXT,
+      context           JSONB NOT NULL DEFAULT '{}',
+      created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
+      decided_at        TIMESTAMP,
+      expires_at        TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS pending_approvals_status_idx ON pending_approvals (status);
+    CREATE INDEX IF NOT EXISTS pending_approvals_run_id_idx ON pending_approvals (run_id);
+  `).then(() => {
+    logger.info("Migration: pending_approvals table ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: pending_approvals table failed (non-fatal)");
+  });
 
   // ── Workflow Engine: schema additions ────────────────────────────────────
   pool.query(`

@@ -1665,7 +1665,8 @@ export interface WfNode {
     // Logic
     | "switch_case"
     // Control Flow
-    | "foreach";
+    | "foreach"
+    | "approval_gate";
   position: { x: number; y: number };
   data: WfNodeData;
 }
@@ -1717,7 +1718,7 @@ export const wfRunsTable = pgTable("wf_runs", {
   definitionId: integer("definition_id").notNull().references(() => wfDefinitionsTable.id, { onDelete: "cascade" }),
   triggerType: text("trigger_type", { enum: ["manual", "schedule", "webhook", "event"] }).notNull().default("manual"),
   triggerRef: text("trigger_ref"),
-  status: text("status", { enum: ["pending", "running", "completed", "failed", "cancelled"] }).notNull().default("pending"),
+  status: text("status", { enum: ["pending", "running", "completed", "failed", "cancelled", "awaiting_approval"] }).notNull().default("pending"),
   payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
   branchPath: jsonb("branch_path").$type<string[]>().notNull().default([]),
   startedAt: timestamp("started_at"),
@@ -1769,3 +1770,21 @@ export const wfTriggersTable = pgTable("wf_triggers", {
 
 export type InsertWfTrigger = typeof wfTriggersTable.$inferInsert;
 export type WfTrigger = typeof wfTriggersTable.$inferSelect;
+
+export const pendingApprovalsTable = pgTable("pending_approvals", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  approverRole: text("approver_role").notNull().default("admin"),
+  timeoutSeconds: integer("timeout_seconds").notNull().default(3600),
+  status: text("status", { enum: ["pending", "approved", "rejected", "timed_out"] }).notNull().default("pending"),
+  decidedBy: text("decided_by"),
+  decisionNote: text("decision_note"),
+  context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  decidedAt: timestamp("decided_at"),
+  expiresAt: timestamp("expires_at"),
+});
+
+export type InsertPendingApproval = typeof pendingApprovalsTable.$inferInsert;
+export type PendingApproval = typeof pendingApprovalsTable.$inferSelect;
