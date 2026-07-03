@@ -13,6 +13,7 @@ interface WfDefinition {
   publishedVersionLabel: string | null;
   publishedVersionNumber: number | null;
   triggerCount: number;
+  triggerTypes: string[];
   lastRunStatus: string | null;
   lastRunAt: string | null;
   createdAt: string;
@@ -43,6 +44,8 @@ function WorkflowCard({
   navigate,
   prodDbConnected,
   onPublishToProd,
+  onRun,
+  isRunning,
 }: {
   def: WfDefinition;
   isSystem: boolean;
@@ -50,7 +53,11 @@ function WorkflowCard({
   navigate: (path: string) => void;
   prodDbConnected: boolean;
   onPublishToProd: (id: number) => void;
+  onRun: (id: number) => void;
+  isRunning: boolean;
 }) {
+  const canRun = def.triggerTypes.includes("manual") || def.triggerTypes.includes("schedule");
+
   return (
     <div className="bg-[#161B22] border border-[#30363D] hover:border-[#0078D4]/40 rounded-xl p-4 flex items-center gap-4 group transition-colors">
       <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${isSystem ? "bg-violet-500/5 border-violet-500/20" : "bg-[#0078D4]/10 border-[#0078D4]/20"}`}>
@@ -92,6 +99,26 @@ function WorkflowCard({
 
       <div className="flex items-center gap-3">
         <StatusChip status={def.lastRunStatus} />
+
+        {/* Play button — only for manual/schedule workflows */}
+        {canRun && (
+          <button
+            onClick={() => onRun(def.id)}
+            disabled={isRunning}
+            title="Run now"
+            className="p-1.5 text-emerald-400 hover:text-emerald-300 rounded-lg hover:bg-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {isRunning ? (
+              <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            )}
+          </button>
+        )}
 
         <button
           onClick={() => navigate(`/workflows/runs?definitionId=${def.id}`)}
@@ -176,6 +203,7 @@ export default function WorkflowListPage() {
   const [newDesc, setNewDesc] = useState("");
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [systemExpanded, setSystemExpanded] = useState(false);
+  const [runningId, setRunningId] = useState<number | null>(null);
 
   const { data: defs = [], isLoading } = useQuery<WfDefinition[]>({
     queryKey: ["wf-definitions"],
@@ -250,6 +278,42 @@ export default function WorkflowListPage() {
     },
     onError: (err: Error) => {
       toast({ title: "Publish failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const runMut = useMutation({
+    mutationFn: async (id: number) => {
+      setRunningId(id);
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json() as { runId?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to start run");
+      return { ...body, defId: id };
+    },
+    onSuccess: (data) => {
+      setRunningId(null);
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      toast({
+        title: "Run started",
+        description: (
+          <span>
+            Workflow is running.{" "}
+            <button
+              className="underline font-medium"
+              onClick={() => navigate(`/workflows/runs?definitionId=${data.defId}`)}
+            >
+              View run
+            </button>
+          </span>
+        ) as unknown as string,
+      });
+    },
+    onError: (err: Error) => {
+      setRunningId(null);
+      toast({ title: "Run failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -363,6 +427,8 @@ export default function WorkflowListPage() {
                     navigate={navigate}
                     prodDbConnected={prodDbConnected}
                     onPublishToProd={id => publishToProdMut.mutate(id)}
+                    onRun={id => runMut.mutate(id)}
+                    isRunning={runningId === def.id}
                   />
                 ))}
               </div>
@@ -402,6 +468,8 @@ export default function WorkflowListPage() {
                         navigate={navigate}
                         prodDbConnected={prodDbConnected}
                         onPublishToProd={id => publishToProdMut.mutate(id)}
+                        onRun={id => runMut.mutate(id)}
+                        isRunning={runningId === def.id}
                       />
                     ))}
                   </div>

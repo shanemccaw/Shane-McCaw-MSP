@@ -69,10 +69,12 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         .orderBy(desc(wfVersionsTable.versionNumber))
         .limit(1);
 
-      const [trigCount] = await db
-        .select({ cnt: count() })
+      const triggerRows = await db
+        .select({ type: wfTriggersTable.type })
         .from(wfTriggersTable)
         .where(eq(wfTriggersTable.definitionId, def.id));
+
+      const triggerTypes = [...new Set(triggerRows.map(t => t.type))];
 
       const [lastRun] = await db
         .select({ status: wfRunsTable.status, createdAt: wfRunsTable.createdAt })
@@ -85,7 +87,8 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         ...def,
         publishedVersionLabel: published?.label ?? null,
         publishedVersionNumber: published?.versionNumber ?? null,
-        triggerCount: Number(trigCount?.cnt ?? 0),
+        triggerCount: triggerRows.length,
+        triggerTypes,
         lastRunStatus: lastRun?.status ?? null,
         lastRunAt: lastRun?.createdAt ?? null,
       };
