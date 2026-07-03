@@ -34,7 +34,7 @@ interface InsightsDoc {
   id: number; customerId: number | null; projectId: number | null;
   category: "report" | "consulting"; docType: string; title: string;
   pdfUrl: string | null;
-  status: "draft" | "approved" | "delivered" | "archived";
+  status: "draft" | "approved" | "delivered" | "archived" | "generating";
   approvedAt: string | null; deliveredAt: string | null; createdAt: string;
 }
 
@@ -90,10 +90,11 @@ const AUTOMATION_TYPES = [
 ] as const;
 
 const STATUS_COLORS: Record<string, string> = {
-  draft:    "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  approved: "bg-green-500/20 text-green-300 border-green-500/30",
-  delivered:"bg-blue-500/20 text-blue-300 border-blue-500/30",
-  archived: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  draft:      "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
+  approved:   "bg-green-500/20 text-green-300 border-green-500/30",
+  delivered:  "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  archived:   "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  generating: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
 };
 
 // ── Shared UI helpers ──────────────────────────────────────────────────────────
@@ -130,6 +131,14 @@ function ProgressBar({ label, value, color = "#0078D4" }: { label: string; value
 }
 
 function StatusPill({ status }: { status: string }) {
+  if (status === "generating") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+        Generating…
+      </span>
+    );
+  }
   return (
     <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full border ${STATUS_COLORS[status] ?? "bg-gray-700 text-gray-300 border-gray-600"}`}>
       {status}
@@ -385,6 +394,14 @@ function DocumentsTab({
   useEffect(() => { void loadDocs(); }, [loadDocs]);
   useEffect(() => { if (refreshKey) void loadDocs(); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-poll while any doc is in generating state
+  useEffect(() => {
+    const hasGenerating = docs.some(d => d.status === "generating");
+    if (!hasGenerating) return;
+    const t = setTimeout(() => { void loadDocs(); }, 3000);
+    return () => clearTimeout(t);
+  }, [docs, loadDocs]);
+
   const openWizard = (type: string) => {
     const t = REPORT_TYPES.find(r => r.key === type);
     setWizardType(type);
@@ -398,16 +415,21 @@ function DocumentsTab({
   const generate = async () => {
     if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
+    // Start the request without awaiting so we can immediately refresh the list —
+    // the server inserts a 'generating' row before the AI call, so loadDocs will
+    // find it right away and the auto-poll will take over.
+    const promise = fetchWithAuth(`${API}/admin/insights/documents/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customerId: dialogCustomerId,
+        projectId:  dialogProjectId,
+        docType: wizardType, title: wizardTitle,
+      }),
+    });
+    void loadDocs();
     try {
-      const r = await fetchWithAuth(`${API}/admin/insights/documents/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: dialogCustomerId,
-          projectId:  dialogProjectId,
-          docType: wizardType, title: wizardTitle,
-        }),
-      });
+      const r = await promise;
       const d = await r.json() as { document?: InsightsDocFull; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
       setSelectedDoc(d.document!);
@@ -507,21 +529,23 @@ function DocumentsTab({
             <div className="divide-y divide-gray-700/30">
               {docs.map(doc => (
                 <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
-                  <FileText className="w-4 h-4 text-gray-500 shrink-0" />
+                  <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
                     <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
                   </div>
                   <StatusPill status={doc.status} />
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {(doc.status === "approved" || doc.status === "draft") && (
-                      <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
-                    )}
-                    <button onClick={() => void updateStatus(doc.id, "archived")} title="Archive" className="p-1 rounded text-gray-400 hover:text-gray-300 hover:bg-gray-700"><Archive className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
+                  {doc.status !== "generating" && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
+                      {(doc.status === "approved" || doc.status === "draft") && (
+                        <button onClick={() => openSend(doc)} title="Send to Client" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
+                      )}
+                      <button onClick={() => void updateStatus(doc.id, "archived")} title="Archive" className="p-1 rounded text-gray-400 hover:text-gray-300 hover:bg-gray-700"><Archive className="w-3.5 h-3.5" /></button>
+                      <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -718,6 +742,14 @@ function ConsultingTab({
 
   useEffect(() => { void loadDocs(); }, [loadDocs]);
 
+  // Auto-poll while any doc is in generating state
+  useEffect(() => {
+    const hasGenerating = docs.some(d => d.status === "generating");
+    if (!hasGenerating) return;
+    const t = setTimeout(() => { void loadDocs(); }, 3000);
+    return () => clearTimeout(t);
+  }, [docs, loadDocs]);
+
   const openWizard = (type: string) => {
     const t = CONSULTING_TYPES.find(c => c.key === type);
     setWizardType(type);
@@ -731,14 +763,19 @@ function ConsultingTab({
   const generate = async () => {
     if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
+    // Start the request without awaiting so we can immediately refresh the list —
+    // the server inserts a 'generating' row before the AI call, so loadDocs will
+    // find it right away and the auto-poll will take over.
+    const promise = fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        customerId: dialogCustomerId, projectId: dialogProjectId,
+        deliverableType: wizardType, title: wizardTitle,
+      }),
+    });
+    void loadDocs();
     try {
-      const r = await fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: dialogCustomerId, projectId: dialogProjectId,
-          deliverableType: wizardType, title: wizardTitle,
-        }),
-      });
+      const r = await promise;
       const d = await r.json() as { document?: InsightsDocFull; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
       setSelectedDoc(d.document!); setWizardStep("done"); void loadDocs();
@@ -819,21 +856,23 @@ function ConsultingTab({
             <div className="divide-y divide-gray-700/30">
               {docs.map(doc => (
                 <div key={doc.id}
-                  onClick={() => void openPreview(doc)}
-                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 cursor-pointer transition-colors group ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
-                  <BookOpen className="w-4 h-4 text-gray-500 shrink-0" />
+                  onClick={() => doc.status !== "generating" && void openPreview(doc)}
+                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group ${doc.status !== "generating" ? "cursor-pointer" : ""} ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
+                  <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
                     <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
                   </div>
                   <StatusPill status={doc.status} />
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
-                    {(doc.status === "approved" || doc.status === "draft") && (
-                      <button onClick={() => openSend(doc)} title="Send to Customer" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
-                    )}
-                    <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
+                  {doc.status !== "generating" && (
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
+                      {(doc.status === "approved" || doc.status === "draft") && (
+                        <button onClick={() => openSend(doc)} title="Send to Customer" className="p-1 rounded text-gray-400 hover:text-blue-400 hover:bg-gray-700"><Send className="w-3.5 h-3.5" /></button>
+                      )}
+                      <button onClick={() => void deleteDoc(doc.id)} title="Delete" className="p-1 rounded text-gray-400 hover:text-red-400 hover:bg-gray-700"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

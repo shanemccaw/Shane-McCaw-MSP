@@ -51,7 +51,7 @@ import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "
 import { sendWebPushToAdmins } from "./web-push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
-import { eq, and, count, desc } from "drizzle-orm";
+import { eq, and, count, desc, inArray } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
@@ -922,42 +922,58 @@ async function executeNode(
               runCount: String(runs.length),
             });
 
-            const aiResp = await anthropic.messages.create({
-              model: "claude-haiku-4-5",
-              max_tokens: 8192,
-              messages: [{ role: "user", content: prompt }],
-            });
-            const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
-            const htmlContent = igExtractHtml(rawText);
+            // Find any prior completed doc for same customer+project+docType (to replace on success)
+            let priorWfDocId: number | null = null;
+            {
+              const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
+                .from(insightsGeneratedDocumentsTable)
+                .where(and(
+                  eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+                  ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
+                  eq(insightsGeneratedDocumentsTable.docType, docType),
+                  inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
+                ))
+                .limit(1);
+              priorWfDocId = prior[0]?.id ?? null;
+            }
 
-            // Upsert: replace existing doc for same customer+project+docType
-            let reportDocId: number;
-            const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
-              .from(insightsGeneratedDocumentsTable)
-              .where(and(
-                eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
-                ...(!isNaN(projectId) ? [eq(insightsGeneratedDocumentsTable.projectId, projectId)] : []),
-                eq(insightsGeneratedDocumentsTable.docType, docType),
-              ))
-              .limit(1);
+            // Always INSERT a new generating row — fresh createdAt sorts to top; prior doc untouched until success
+            const [genWfRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+              customerId: clientUserId,
+              projectId: !isNaN(projectId) ? projectId : null,
+              category: "report",
+              docType,
+              title: docTitle,
+              htmlContent: "",
+              status: "generating",
+            }).returning({ id: insightsGeneratedDocumentsTable.id });
+            const reportDocId = genWfRow!.id;
 
-            if (existing[0]) {
-              await db.update(insightsGeneratedDocumentsTable)
-                .set({ title: docTitle, htmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date() })
-                .where(eq(insightsGeneratedDocumentsTable.id, existing[0].id));
-              reportDocId = existing[0].id;
-            } else {
-              const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
-                customerId: clientUserId,
-                projectId: !isNaN(projectId) ? projectId : null,
-                category: "report",
-                docType,
-                title: docTitle,
-                htmlContent,
-                status: "approved",
-                approvedAt: new Date(),
-              }).returning({ id: insightsGeneratedDocumentsTable.id });
-              reportDocId = ins!.id;
+            let htmlContent: string;
+            try {
+              const aiResp = await anthropic.messages.create({
+                model: "claude-haiku-4-5",
+                max_tokens: 8192,
+                messages: [{ role: "user", content: prompt }],
+              });
+              const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
+              htmlContent = igExtractHtml(rawText);
+            } catch (aiErr) {
+              // Delete only the generating placeholder; prior approved doc (if any) is preserved
+              await db.delete(insightsGeneratedDocumentsTable)
+                .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+              throw aiErr;
+            }
+
+            // Update generating row with finished content
+            await db.update(insightsGeneratedDocumentsTable)
+              .set({ title: docTitle, htmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date() })
+              .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+
+            // Remove superseded prior doc now that the new one is live
+            if (priorWfDocId !== null) {
+              await db.delete(insightsGeneratedDocumentsTable)
+                .where(eq(insightsGeneratedDocumentsTable.id, priorWfDocId));
             }
 
             // Set the canonical PDF download URL

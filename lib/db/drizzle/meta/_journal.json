@@ -953,6 +953,13 @@
       "when": 1751536800000,
       "tag": "0132_add_client_presentations",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1751580000000,
+      "tag": "0133_add_generating_status",
+      "breakpoints": true
     }
   ]
 }

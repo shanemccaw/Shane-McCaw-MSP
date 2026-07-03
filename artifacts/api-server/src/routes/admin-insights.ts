@@ -660,7 +660,7 @@ router.get("/admin/insights/documents", requireAdmin, async (req: Request, res: 
     if (customerId) conditions.push(eq(insightsGeneratedDocumentsTable.customerId, customerId));
     if (projectId)  conditions.push(eq(insightsGeneratedDocumentsTable.projectId,  projectId));
     if (category)   conditions.push(eq(insightsGeneratedDocumentsTable.category,   category));
-    if (status)     conditions.push(eq(insightsGeneratedDocumentsTable.status, status as "draft" | "approved" | "delivered" | "archived"));
+    if (status)     conditions.push(eq(insightsGeneratedDocumentsTable.status, status as "draft" | "approved" | "delivered" | "archived" | "generating"));
 
     const docs = await db.select({
       id: insightsGeneratedDocumentsTable.id,
@@ -945,45 +945,54 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       runCount: String(runs.length),
     });
 
-    const aiResponse = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const htmlContent = extractAiHtml(aiResponse);
-
-    // Upsert: replace if a report of this docType for this customer+project already exists
-    let reportDocId: number;
+    // Find any prior completed doc for same customer+project+docType so we can replace it on success.
+    // We do NOT modify it now — prior doc must survive if AI fails.
+    let priorReportId: number | null = null;
     if (customerId && projectId) {
-      const existingReport = await db.select({ id: insightsGeneratedDocumentsTable.id })
+      const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
         .from(insightsGeneratedDocumentsTable)
         .where(and(
           eq(insightsGeneratedDocumentsTable.customerId, customerId),
           eq(insightsGeneratedDocumentsTable.projectId, projectId),
           eq(insightsGeneratedDocumentsTable.docType, docType),
+          inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
         ))
         .limit(1);
-      if (existingReport[0]) {
-        await db.update(insightsGeneratedDocumentsTable)
-          .set({ title, htmlContent, status: "approved", approvedAt: new Date(), pdfUrl: null, updatedAt: new Date() })
-          .where(eq(insightsGeneratedDocumentsTable.id, existingReport[0].id));
-        reportDocId = existingReport[0].id;
-      } else {
-        const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
-          customerId: customerId ?? null, projectId: projectId ?? null,
-          category: "report", docType, title, htmlContent,
-          status: "approved", approvedAt: new Date(), pdfUrl: null,
-        }).returning({ id: insightsGeneratedDocumentsTable.id });
-        reportDocId = ins!.id;
-      }
-    } else {
-      const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
-        customerId: customerId ?? null, projectId: projectId ?? null,
-        category: "report", docType, title, htmlContent,
-        status: "approved", approvedAt: new Date(), pdfUrl: null,
-      }).returning({ id: insightsGeneratedDocumentsTable.id });
-      reportDocId = ins!.id;
+      priorReportId = prior[0]?.id ?? null;
+    }
+
+    // Always INSERT a new generating row — fresh createdAt sorts it to the top of the list
+    const [genRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+      customerId: customerId ?? null, projectId: projectId ?? null,
+      category: "report", docType, title, htmlContent: "",
+      status: "generating", pdfUrl: null,
+    }).returning({ id: insightsGeneratedDocumentsTable.id });
+    const reportDocId = genRow!.id;
+
+    let htmlContent: string;
+    try {
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 8192,
+        messages: [{ role: "user", content: prompt }],
+      });
+      htmlContent = extractAiHtml(aiResponse);
+    } catch (aiErr) {
+      // Delete only the generating placeholder; prior approved doc (if any) is preserved
+      await db.delete(insightsGeneratedDocumentsTable)
+        .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+      throw aiErr;
+    }
+
+    // Update generating row with finished content
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({ htmlContent, status: "approved", approvedAt: new Date(), pdfUrl: null, updatedAt: new Date() })
+      .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+
+    // Now that the new doc is live, remove the superseded prior doc (if any)
+    if (priorReportId !== null) {
+      await db.delete(insightsGeneratedDocumentsTable)
+        .where(eq(insightsGeneratedDocumentsTable.id, priorReportId));
     }
 
     // Set pdfUrl to the canonical download endpoint for this document
@@ -1431,82 +1440,71 @@ INSTRUCTIONS:
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
         + `\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
-      const aiResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
-        max_tokens: 8000,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const rawHtmlContent = extractAiHtml(aiResponse);
-
-      // Server-side correction: parse all pricing tables to compute the
-      // authoritative Grand Total, then overwrite whatever the AI wrote in the
-      // Grand Total row.  This eliminates silent LLM arithmetic errors.
-      const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
-      const htmlContent = computedTotal > 0
-        ? patchSowGrandTotal(rawHtmlContent, computedTotal)
-        : rawHtmlContent;
-
-      // Build the line items list for the DB: workstream rows + adjustment rows
-      const sowLines = [...workstreamLines, ...adjustmentLines];
-      const sowTotal = computedTotal;
-
-      // Upsert: replace if a consolidated_sow for this customer+project already exists
-      let docId: number;
+      // Find any prior completed consolidated_sow for this customer+project (to replace on success)
+      let priorSowId: number | null = null;
       if (customerId && projectId) {
-        const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
+        const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
           .from(insightsGeneratedDocumentsTable)
           .where(and(
             eq(insightsGeneratedDocumentsTable.customerId, customerId),
             eq(insightsGeneratedDocumentsTable.projectId, projectId),
             eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+            inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
           ))
           .limit(1);
-        if (existing[0]) {
-          await db.update(insightsGeneratedDocumentsTable)
-            .set({
-              title,
-              htmlContent,
-              status: "approved",
-              approvedAt: new Date(),
-              pdfUrl: null,
-              sowPricingLines: sowLines.length > 0 ? sowLines : null,
-              sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-              updatedAt: new Date(),
-            })
-            .where(eq(insightsGeneratedDocumentsTable.id, existing[0].id));
-          docId = existing[0].id;
-        } else {
-          const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
-            customerId: customerId ?? null,
-            projectId:  projectId ?? null,
-            category:   "consulting",
-            docType:    "consolidated_sow",
-            title,
-            htmlContent,
-            status: "approved",
-            approvedAt: new Date(),
-            pdfUrl: null,
-            sowPricingLines: sowLines.length > 0 ? sowLines : null,
-            sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-          }).returning({ id: insightsGeneratedDocumentsTable.id });
-          docId = inserted!.id;
-        }
-      } else {
-        const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
-          customerId: customerId ?? null,
-          projectId:  projectId ?? null,
-          category:   "consulting",
-          docType:    "consolidated_sow",
-          title,
+        priorSowId = prior[0]?.id ?? null;
+      }
+
+      // Always INSERT a new generating row — fresh createdAt sorts to top; prior doc untouched until success
+      const [genSowRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+        customerId: customerId ?? null, projectId: projectId ?? null,
+        category: "consulting", docType: "consolidated_sow",
+        title, htmlContent: "", status: "generating", pdfUrl: null,
+      }).returning({ id: insightsGeneratedDocumentsTable.id });
+      const docId = genSowRow!.id;
+
+      let htmlContent: string;
+      let sowLines: SowPricingLine[];
+      let sowTotal: number;
+      try {
+        const aiResponse = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 8000,
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        const rawHtmlContent = extractAiHtml(aiResponse);
+
+        // Server-side correction: parse all pricing tables to compute the
+        // authoritative Grand Total, then overwrite whatever the AI wrote.
+        const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
+        htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
+        sowLines = [...workstreamLines, ...adjustmentLines];
+        sowTotal = computedTotal;
+      } catch (aiErr) {
+        // Delete only the generating placeholder; prior approved doc (if any) is preserved
+        await db.delete(insightsGeneratedDocumentsTable)
+          .where(eq(insightsGeneratedDocumentsTable.id, docId));
+        throw aiErr;
+      }
+
+      // Update generating row with finished content
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({
           htmlContent,
           status: "approved",
           approvedAt: new Date(),
           pdfUrl: null,
           sowPricingLines: sowLines.length > 0 ? sowLines : null,
           sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-        }).returning({ id: insightsGeneratedDocumentsTable.id });
-        docId = inserted!.id;
+          updatedAt: new Date(),
+        })
+        .where(eq(insightsGeneratedDocumentsTable.id, docId));
+
+      // Remove superseded prior doc now that the new one is live
+      if (priorSowId !== null) {
+        await db.delete(insightsGeneratedDocumentsTable)
+          .where(eq(insightsGeneratedDocumentsTable.id, priorSowId));
       }
 
       const pdfUrl = `/api/admin/insights/documents/${docId}/download`;
@@ -1631,85 +1629,76 @@ INSTRUCTIONS:
     });
     if (pricingAppendix) prompt += pricingAppendix;
 
-    const aiResponse = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const rawHtmlContent2 = extractAiHtml(aiResponse);
-
-    // Apply the same server-side Grand Total correction to regular SOW types
-    let htmlContent: string;
-    let sowLines2: SowPricingLine[];
-    let sowTotal2: number;
-    if (isSowType) {
-      const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
-      htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
-      sowLines2 = [...ws2, ...adj2];
-      sowTotal2 = ct2;
-    } else {
-      htmlContent = rawHtmlContent2;
-      sowLines2 = [];
-      sowTotal2 = 0;
-    }
-
-    // Upsert: replace if a document of this type for this customer+project already exists
-    let consultingDocId: number;
+    // Find any prior completed doc for same customer+project+deliverableType (to replace on success)
+    let priorConsultingId: number | null = null;
     if (customerId && projectId) {
-      const existingDoc = await db.select({ id: insightsGeneratedDocumentsTable.id })
+      const prior = await db.select({ id: insightsGeneratedDocumentsTable.id })
         .from(insightsGeneratedDocumentsTable)
         .where(and(
           eq(insightsGeneratedDocumentsTable.customerId, customerId),
           eq(insightsGeneratedDocumentsTable.projectId, projectId),
           eq(insightsGeneratedDocumentsTable.docType, deliverableType),
+          inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered", "archived"]),
         ))
         .limit(1);
-      if (existingDoc[0]) {
-        await db.update(insightsGeneratedDocumentsTable)
-          .set({
-            title,
-            htmlContent,
-            status: "approved",
-            approvedAt: new Date(),
-            pdfUrl: null,
-            sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
-            sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
-            updatedAt: new Date(),
-          })
-          .where(eq(insightsGeneratedDocumentsTable.id, existingDoc[0].id));
-        consultingDocId = existingDoc[0].id;
+      priorConsultingId = prior[0]?.id ?? null;
+    }
+
+    // Always INSERT a new generating row — fresh createdAt sorts to top; prior doc untouched until success
+    const [genConsultingRow] = await db.insert(insightsGeneratedDocumentsTable).values({
+      customerId: customerId ?? null, projectId: projectId ?? null,
+      category: "consulting", docType: deliverableType,
+      title, htmlContent: "", status: "generating", pdfUrl: null,
+    }).returning({ id: insightsGeneratedDocumentsTable.id });
+    const consultingDocId = genConsultingRow!.id;
+
+    let htmlContent: string;
+    let sowLines2: SowPricingLine[];
+    let sowTotal2: number;
+    try {
+      const aiResponse = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 8192,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const rawHtmlContent2 = extractAiHtml(aiResponse);
+
+      // Apply the same server-side Grand Total correction to regular SOW types
+      if (isSowType) {
+        const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
+        htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
+        sowLines2 = [...ws2, ...adj2];
+        sowTotal2 = ct2;
       } else {
-        const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
-          customerId: customerId ?? null,
-          projectId:  projectId  ?? null,
-          category:   "consulting",
-          docType:    deliverableType,
-          title,
-          htmlContent,
-          status: "approved",
-          approvedAt: new Date(),
-          pdfUrl: null,
-          sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
-          sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
-        }).returning({ id: insightsGeneratedDocumentsTable.id });
-        consultingDocId = ins!.id;
+        htmlContent = rawHtmlContent2;
+        sowLines2 = [];
+        sowTotal2 = 0;
       }
-    } else {
-      const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
-        customerId: customerId ?? null,
-        projectId:  projectId  ?? null,
-        category:   "consulting",
-        docType:    deliverableType,
-        title,
+    } catch (aiErr) {
+      // Delete only the generating placeholder; prior approved doc (if any) is preserved
+      await db.delete(insightsGeneratedDocumentsTable)
+        .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
+      throw aiErr;
+    }
+
+    // Update generating row with finished content
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({
         htmlContent,
         status: "approved",
         approvedAt: new Date(),
         pdfUrl: null,
         sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
         sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
-      }).returning({ id: insightsGeneratedDocumentsTable.id });
-      consultingDocId = ins!.id;
+        updatedAt: new Date(),
+      })
+      .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
+
+    // Remove superseded prior doc now that the new one is live
+    if (priorConsultingId !== null) {
+      await db.delete(insightsGeneratedDocumentsTable)
+        .where(eq(insightsGeneratedDocumentsTable.id, priorConsultingId));
     }
 
     const pdfUrl = `/api/admin/insights/documents/${consultingDocId}/download`;
