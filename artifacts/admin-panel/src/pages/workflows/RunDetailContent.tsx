@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -12,6 +12,55 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+
+// ── ExpandableJson ─────────────────────────────────────────────────────────────
+
+/** Try to parse `s` as JSON. Returns the parsed value or null if it's not JSON. */
+function tryParseJson(s: string): unknown {
+  const trimmed = s.trim();
+  if (trimmed[0] !== "{" && trimmed[0] !== "[") return null;
+  try { return JSON.parse(trimmed); } catch { return null; }
+}
+
+/**
+ * Renders a string value that may contain JSON.
+ * - If it IS valid JSON (object or array), shows a short type-hint and a toggle button.
+ * - Expanded view shows a pretty-printed <pre> block.
+ * - Plain strings render as-is.
+ */
+export function ExpandableJson({ value, className = "" }: { value: string; className?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const parsed = tryParseJson(value);
+  const isJson = parsed !== null && typeof parsed === "object";
+
+  const toggle = useCallback((e: React.MouseEvent) => { e.stopPropagation(); setExpanded(x => !x); }, []);
+
+  if (!isJson) {
+    return <span className={className}>{value}</span>;
+  }
+
+  const preview = Array.isArray(parsed)
+    ? `Array(${(parsed as unknown[]).length})`
+    : `{${Object.keys(parsed as object).slice(0, 3).join(", ")}${Object.keys(parsed as object).length > 3 ? ", …" : ""}}`;
+
+  return (
+    <span className={className}>
+      <button
+        onClick={toggle}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#0078D4]/15 border border-[#0078D4]/30 text-[#2E9EFF] hover:bg-[#0078D4]/25 transition-colors font-mono text-[10px]"
+        title={expanded ? "Collapse" : "Expand object"}
+      >
+        <span>{expanded ? "▾" : "▸"}</span>
+        <span>{preview}</span>
+      </button>
+      {expanded && (
+        <pre className="mt-1 block bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-64 whitespace-pre-wrap">
+          {JSON.stringify(parsed, null, 2)}
+        </pre>
+      )}
+    </span>
+  );
+}
 
 // ── Shared types ───────────────────────────────────────────────────────────────
 
@@ -109,13 +158,23 @@ export const replayNodeTypes: NodeTypes = { replayNode: ReplayNode };
 
 // ── JSON diff viewer ───────────────────────────────────────────────────────────
 
+/** Format a diff value: plain scalars inline, objects/arrays as ExpandableJson. */
+function DiffValue({ raw }: { raw: string | undefined }) {
+  if (raw === undefined) return null;
+  const parsed = tryParseJson(raw);
+  if (parsed !== null && typeof parsed === "object") {
+    return <ExpandableJson value={raw} />;
+  }
+  return <span>{raw}</span>;
+}
+
 export function DiffViewer({ before, after }: { before: Record<string, unknown>; after: Record<string, unknown> }) {
   const allKeys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)]));
   if (allKeys.length === 0) {
     return <p className="text-[10px] text-[#484F58] font-mono italic">empty</p>;
   }
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-52 space-y-0.5">
+    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-72 space-y-0.5">
       {allKeys.map(key => {
         const bVal = JSON.stringify(before[key] ?? undefined);
         const aVal = JSON.stringify(after[key] ?? undefined);
@@ -127,16 +186,16 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
         const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-[#E6EDF3]" : "text-[#E6EDF3]";
         const prefix  = added ? "+ " : removed ? "- " : changed ? "~ " : "  ";
         return (
-          <div key={key} className={`flex gap-1 px-1 py-0.5 rounded ${rowCls}`}>
+          <div key={key} className={`flex flex-wrap gap-1 px-1 py-0.5 rounded ${rowCls}`}>
             <span className="text-[#484F58] w-4 shrink-0">{prefix}</span>
             <span className={`${keyCls} shrink-0`}>{key}:</span>
             {changed ? (
-              <span className={valCls}>
-                <span className="line-through text-red-400 mr-1">{bVal}</span>
-                {aVal}
+              <span className={`${valCls} flex flex-wrap items-start gap-1`}>
+                <span className="line-through text-red-400"><DiffValue raw={bVal} /></span>
+                <DiffValue raw={aVal} />
               </span>
             ) : (
-              <span className={valCls}>{removed ? bVal : aVal}</span>
+              <span className={valCls}><DiffValue raw={removed ? bVal : aVal} /></span>
             )}
           </div>
         );
@@ -414,7 +473,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           : isProgress ? "text-cyan-300"
                           : "text-[#E6EDF3]"
                         }`}>
-                          {log.message}
+                          <ExpandableJson value={log.message} />
                           {isProgress && step != null && total != null && (
                             <span className="ml-2 text-[10px] text-cyan-400/60 font-mono">({step}/{total})</span>
                           )}

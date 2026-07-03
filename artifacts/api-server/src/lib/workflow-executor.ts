@@ -260,7 +260,13 @@ function interp(template: string | undefined, payload: Record<string, unknown>):
       if (cur == null || typeof cur !== "object") return "";
       cur = (cur as Record<string, unknown>)[part];
     }
-    return cur != null ? String(cur) : "";
+    if (cur == null) return "";
+    if (typeof cur === "object") {
+      // Arrays and objects: emit compact JSON so downstream templates see
+      // valid data instead of the useless "[object Object]" coercion
+      try { return JSON.stringify(cur); } catch { return String(cur); }
+    }
+    return String(cur);
   });
 }
 
