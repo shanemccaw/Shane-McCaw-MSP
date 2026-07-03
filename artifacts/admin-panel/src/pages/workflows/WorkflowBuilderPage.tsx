@@ -107,7 +107,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   send_sms:               [{ key: "sent", label: "true if SMS was sent" }],
   // CRM nodes
   score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High" }, { key: "qualified", label: "true if score ≥ threshold" }],
-  assign_pipeline_stage: [{ key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage name" }],
+  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage" }],
   create_opportunity:    [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   // Diagnostics nodes
   parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier" }, { key: "recommendedService", label: "Top recommended service" }],
@@ -1223,26 +1223,50 @@ function NodeConfigPanel({
           </>
         )}
 
-        {nodeType === "assign_pipeline_stage" && (
-          <>
-            <PayloadField label="Opportunity ID" value={(node.data.opportunityId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, opportunityId: v })} placeholder="{{opportunityId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Stage</label>
-              <select
-                value={(node.data.stage as string) ?? "DiscoveryCall"}
-                onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
-                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-              >
-                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding","Closed Won","Closed Lost"].map(s => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Updates the opportunity's pipeline stage. Output: <span className="font-mono text-[#7D8590]">{"{{stage}}"}</span>.</p>
-            </div>
-          </>
-        )}
+        {nodeType === "assign_pipeline_stage" && (() => {
+          const tgt = (node.data.targetType as string | undefined) ?? "opportunity";
+          const oppStages = ["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding","Closed Won","Closed Lost"];
+          const leadStages = ["Lead","AQL","SQL"];
+          const stageList = tgt === "lead" ? leadStages : oppStages;
+          const currentStage = (node.data.stage as string | undefined) ?? stageList[0];
+          return (
+            <>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#7D8590]">Target type</label>
+                <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                  {(["opportunity","lead"] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => onChange(node.id, { ...node.data, targetType: t, stage: t === "lead" ? "AQL" : "DiscoveryCall" })}
+                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${tgt === t ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    >
+                      {t === "opportunity" ? "Opportunity" : "Lead"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {tgt === "lead"
+                ? <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
+                : <PayloadField label="Opportunity ID" value={(node.data.opportunityId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, opportunityId: v })} placeholder="{{opportunityId}}" ancestorOutputs={ancestorOutputs} />
+              }
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#7D8590]">New stage</label>
+                <select
+                  value={stageList.includes(currentStage) ? currentStage : stageList[0]}
+                  onChange={e => onChange(node.id, { ...node.data, stage: e.target.value })}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                >
+                  {stageList.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                <p className="text-[10px] text-[#484F58]">
+                  Moves a {tgt} to the chosen stage. Outputs: <span className="font-mono text-[#7D8590]">{"{{stage}}"} · {"{{targetType}}"} · {"{{" + (tgt === "lead" ? "leadId" : "opportunityId") + "}}"}</span>.
+                </p>
+              </div>
+            </>
+          );
+        })()}
 
         {nodeType === "create_opportunity" && (
           <>

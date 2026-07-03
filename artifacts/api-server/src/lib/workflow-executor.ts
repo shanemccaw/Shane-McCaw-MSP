@@ -214,8 +214,12 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "score_lead":
       return { dryRun: true, leadId: num("leadId"), score: 80, scoreLabel: "High", qualified: true };
 
-    case "assign_pipeline_stage":
-      return { dryRun: true, opportunityId: num("opportunityId"), stage: str("stage", "discovery") };
+    case "assign_pipeline_stage": {
+      const dryTarget = (node.data.targetType as string | undefined) ?? "opportunity";
+      return dryTarget === "lead"
+        ? { dryRun: true, targetType: "lead",        leadId: num("leadId"),             stage: str("stage", "AQL") }
+        : { dryRun: true, targetType: "opportunity",  opportunityId: num("opportunityId"), stage: str("stage", "Proposal") };
+    }
 
     case "create_opportunity":
       return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
@@ -587,17 +591,37 @@ async function executeNode(
       }
 
       case "assign_pipeline_stage": {
-        const oppIdRaw = interp(node.data.opportunityId as string | undefined, payload);
-        const opportunityId = oppIdRaw ? parseInt(oppIdRaw, 10) : NaN;
+        const targetType = (node.data.targetType as string | undefined) ?? "opportunity";
         const stage = interp(node.data.stage as string | undefined, payload);
-        if (isNaN(opportunityId) || !stage) {
+        if (!stage) {
           nodeError = true;
-          output = { error: "assign_pipeline_stage requires opportunityId and stage" };
+          output = { error: "assign_pipeline_stage requires a stage" };
+          break;
+        }
+        if (targetType === "lead") {
+          const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
+          const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
+          if (isNaN(leadId)) {
+            nodeError = true;
+            output = { error: "assign_pipeline_stage (lead) requires a valid leadId" };
+          } else {
+            await db.update(leadsTable)
+              .set({ stage: stage as "Lead" | "AQL" | "SQL" })
+              .where(eq(leadsTable.id, leadId));
+            output = { targetType: "lead", leadId, stage };
+          }
         } else {
-          await db.update(opportunitiesTable)
-            .set({ workflowType: stage })
-            .where(eq(opportunitiesTable.id, opportunityId));
-          output = { opportunityId, stage };
+          const oppIdRaw = interp(node.data.opportunityId as string | undefined, payload);
+          const opportunityId = oppIdRaw ? parseInt(oppIdRaw, 10) : NaN;
+          if (isNaN(opportunityId)) {
+            nodeError = true;
+            output = { error: "assign_pipeline_stage (opportunity) requires a valid opportunityId" };
+          } else {
+            await db.update(opportunitiesTable)
+              .set({ workflowType: stage })
+              .where(eq(opportunitiesTable.id, opportunityId));
+            output = { targetType: "opportunity", opportunityId, stage };
+          }
         }
         break;
       }
