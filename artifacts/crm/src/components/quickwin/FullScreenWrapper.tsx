@@ -11,9 +11,7 @@ import PhaseStepperBar from "./PhaseStepperBar";
 import HealthPanel from "./HealthPanel";
 import QueueColumn from "./QueueColumn";
 import ProcessingHeroCard from "./ProcessingHeroCard";
-import ActionRequiredCard from "./ActionRequiredCard";
 import QuickWinFooter from "./QuickWinFooter";
-import ProjectTasksLayer from "./ProjectTasksLayer";
 import ScoreRing from "@/components/ScoreRing";
 import type { ManualScriptRecord } from "@/components/ManualScriptUploadCard";
 import DiagnosticScriptPanel from "./DiagnosticScriptPanel";
@@ -90,6 +88,18 @@ export default function FullScreenWrapper() {
   // Last score emitted by onScoreUpdate — used as fallback if scorecard cache
   // isn't ready when reconciliation runs after a step completes.
   const lastStepScoreRef = useRef<number>(0);
+
+  // ── Health score animation (ProjectTasksView only) ────────────────────────
+  // Target scores are locked in when the scorecard API first returns real data.
+  // Display scores increment gradually from 0 toward target, driven by the
+  // smaller of task-completion fraction and elapsed-time fraction, so the bars
+  // never run ahead of actual progress.  On final step completion they snap.
+  const targetScoresRef = useRef<Record<string, number>>({});
+  const scoreAnimStartRef = useRef<number | null>(null);
+  const [displayScores, setDisplayScores] = useState<Record<string, number>>({});
+  // Mutable mirrors so intervals can read fresh data without restarting
+  const kanbanTasksRef = useRef<KanbanTask[]>([]);
+  const workflowStepsRef = useRef<WorkflowStep[]>([]);
 
   const addTelemetry = useCallback((_line: string) => {
     // Telemetry is no longer shown in the full-screen view — no-op kept
@@ -447,6 +457,59 @@ export default function FullScreenWrapper() {
     }
   }, [mode, state.projectId, projectsLoading, portalProjects, findMatchingProject, dispatch, quickWin]);
 
+  // ── Mirror kanban/step data into refs so animation intervals stay stable ──
+  useEffect(() => { kanbanTasksRef.current = kanbanTasks; }, [kanbanTasks]);
+  useEffect(() => { workflowStepsRef.current = workflowSteps; }, [workflowSteps]);
+
+  // ── Lock in target scores when scorecard first arrives in ProjectTasksView ─
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") {
+      targetScoresRef.current = {};
+      scoreAnimStartRef.current = null;
+      setDisplayScores({});
+      return;
+    }
+    if (!scorecardHistory?.hasData || !scorecardHistory.latest) return;
+    if (Object.keys(targetScoresRef.current).length > 0) return; // already locked
+    const targets: Record<string, number> = {};
+    for (const [k, v] of Object.entries(scorecardHistory.latest)) {
+      if (v !== undefined) targets[k] = v;
+    }
+    if (Object.keys(targets).length > 0) {
+      targetScoresRef.current = targets;
+      scoreAnimStartRef.current = Date.now();
+    }
+  }, [mode, scorecardHistory]);
+
+  // ── Animate display scores every 2 s toward target ────────────────────────
+  // Expected session duration — Copilot Quick Win ~30 min; used only as a
+  // secondary smoothing signal alongside task-completion fraction.
+  const EXPECTED_SESSION_MS = 30 * 60 * 1000;
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") return;
+    const interval = setInterval(() => {
+      const targets = targetScoresRef.current;
+      if (Object.keys(targets).length === 0) return;
+      const tasks = kanbanTasksRef.current;
+      const steps = workflowStepsRef.current;
+      const totalTasks = tasks.length;
+      const completedCount = tasks.filter(t => t.column === "completed").length;
+      const taskFrac = totalTasks > 0 ? completedCount / totalTasks : 0;
+      const elapsed = scoreAnimStartRef.current ? Date.now() - scoreAnimStartRef.current : 0;
+      const timeFrac = Math.min(1, elapsed / EXPECTED_SESSION_MS);
+      // Use the smaller fraction so scores never outpace actual work
+      const allStepsDone = steps.length > 0 && steps.every(s => s.status === "completed");
+      const fraction = allStepsDone ? 1 : Math.min(taskFrac, timeFrac);
+      const next: Record<string, number> = {};
+      for (const [k, target] of Object.entries(targets)) {
+        next[k] = Math.round(target * fraction);
+      }
+      setDisplayScores(next);
+    }, 2000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]); // intentionally omit kanbanTasks/workflowSteps — reads from refs
+
   // ── Ready: dispatch auto or manual step ───────────────────────────────────
 
   useEffect(() => {
@@ -714,6 +777,24 @@ export default function FullScreenWrapper() {
     return overallScore;
   })();
 
+  // Animated overall score from the gradually-incrementing displayScores
+  const animatedOverallScore = (() => {
+    const vals = Object.values(displayScores);
+    if (vals.length > 0) return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    return 0;
+  })();
+
+  // Right column "next up" tasks: tasks belonging to the first not_started workflow step.
+  // If workflow steps don't have matching groupNames on tasks, fall back to raw backlog slice.
+  const nextStepTasks = (() => {
+    const nextStep = workflowSteps.find(s => s.status === "not_started");
+    if (nextStep) {
+      const matched = backlogTasks.filter(t => t.groupName === nextStep.title);
+      if (matched.length > 0) return matched;
+    }
+    return backlogTasks.slice(0, 8);
+  })();
+
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -732,161 +813,309 @@ export default function FullScreenWrapper() {
       {/* Screen-edge Copilot Aura — brand colour glow around the perimeter */}
       <CopilotAura />
 
-      {/* Close button — hidden while viewing active project tasks */}
-      {!isProjectView && (
-        <button
-          onClick={() => dispatch({ type: "EXIT" })}
-          className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
-          style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
-          aria-label="Close"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      )}
+      {/* Close button — always visible */}
+      <button
+        onClick={() => dispatch({ type: "EXIT" })}
+        className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
+        style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
+        aria-label="Close"
+      >
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
 
-      {/* ── Project Tasks View ── */}
+      {/* ── Project Tasks View — full-screen three-column diagnostic layout ── */}
       {isProjectView && (
-        <div className="flex-1 z-10 flex min-h-0 relative">
+        <main className="flex-1 relative z-10 flex flex-col items-center justify-start px-6 sm:px-10 pt-4 pb-2 overflow-y-auto min-h-0">
 
-          {/* Left panel: task card */}
-          <div className="w-[400px] flex-shrink-0 flex flex-col p-6 pl-10 relative z-10">
-            <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 flex flex-col flex-1 overflow-hidden min-h-0">
-              <div className="bg-[#0A2540] px-6 py-4 flex items-center justify-between flex-shrink-0">
-                <div>
-                  <p className="text-[9px] font-bold tracking-[0.25em] uppercase text-white/40">Project Created</p>
-                  <h2 className="text-sm font-black text-white leading-tight">{quickWin?.title ?? "Your Project"}</h2>
-                  <p className="text-[10px] font-mono text-white/35 mt-0.5">
-                    ⏱ {String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}
-                  </p>
+          {/* Header: badge + title + phase stepper + progress bar */}
+          <div className="w-full max-w-6xl mb-5">
+            <div className="flex flex-col items-center gap-5">
+              {/* Badge + elapsed */}
+              <div className="flex items-center gap-3">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] text-[11px] font-bold backdrop-blur-md">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
+                  ACTIVE DIAGNOSTIC SESSION
                 </div>
-                {backlogTasks.length === 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && completedKanbanTasks.length > 0 ? (
-                  <span className="text-[10px] font-bold text-green-400 flex items-center gap-1">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    Ready
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-bold text-[#0078D4] flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-                    In Progress…
-                  </span>
-                )}
-              </div>
-              <div className="px-6 py-5 flex-1 overflow-y-auto min-h-0">
-                <ProjectTasksLayer />
+                <span className="text-[11px] font-mono text-black/30">
+                  ⏱ {String(Math.floor(elapsedSeconds / 60)).padStart(2, "0")}:{String(elapsedSeconds % 60).padStart(2, "0")}
+                </span>
               </div>
 
-              {/* CTAs — appear once every task is complete */}
-              {allTasksDone && (
-                <div className="px-6 pb-5 flex flex-col gap-2.5 flex-shrink-0 border-t border-black/5 pt-4">
-                  <button
-                    onClick={() => void handleViewPresentation()}
-                    disabled={openingPresentation}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 disabled:opacity-60"
-                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-                  >
-                    {openingPresentation ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        Opening…
-                      </>
-                    ) : (
-                      <>
-                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        View Deliverables &amp; SOW
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/services"); }}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0A2540] text-white font-bold text-sm hover:bg-[#0A2540]/90 active:scale-[0.98]"
-                    style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-                  >
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    Purchase Full Plan
-                  </button>
-                  <button
-                    onClick={() => dispatch({ type: "EXIT" })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-black/10 text-[#0A2540]/60 font-semibold text-sm hover:bg-black/5 active:scale-[0.98]"
-                    style={{ transition: "all 200ms" }}
-                  >
-                    Close
-                  </button>
+              {/* Title */}
+              <h1 className="text-[26px] font-bold text-[#191c1e] tracking-tight leading-tight text-center">
+                {quickWin?.title ?? "Your Project"}
+              </h1>
+
+              {/* Phase stepper — real WorkflowStep records */}
+              <div className="w-full">
+                <PhaseStepperBar
+                  steps={kanbanPhases.length > 0 ? kanbanPhases : ["Provisioning", "Configuration", "Validation"]}
+                  activeIndex={activePhaseIndex}
+                  completedCount={activePhaseCompletedCount}
+                />
+              </div>
+
+              {/* Velocity progress bar */}
+              <div className="w-full space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[11px] font-bold text-[#0078D4] uppercase tracking-widest">Project Completion</span>
+                  <span className="text-lg font-semibold text-[#0078D4]">
+                    {completedKanbanTasks.length}
+                    <span className="text-sm font-medium text-black/40 ml-1">/ {kanbanTasks.length} tasks</span>
+                  </span>
                 </div>
-              )}
-            </div>
-          </div>
-
-          {/* ── Center panel: manual script hero — shown between task list and branding ── */}
-          {showScriptPanel && (
-            <DiagnosticScriptPanel
-              scripts={overlayManualScripts}
-              waitingManualScriptCount={waitingManualScriptCount}
-              downloadableTasks={downloadableTasks}
-              onCompleted={() => void refetchManualScripts()}
-              onAllDismissed={() => setAllScriptsDismissed(true)}
-            />
-          )}
-
-          {/* Branding: absolutely centred on the full overlay — hidden when script panel is active */}
-          <div className={`absolute inset-0 ${showScriptPanel ? "hidden" : "hidden sm:flex"} flex-col items-center justify-center gap-7 text-center pointer-events-none select-none`}>
-            {/* Icon */}
-            <div className="w-20 h-20 rounded-3xl bg-[#0078D4] flex items-center justify-center shadow-2xl shadow-[#0078D4]/40">
-              <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-            </div>
-            {/* Name + subtitle */}
-            <div className="flex flex-col gap-2">
-              <p className="text-4xl font-black text-[#0A2540] leading-tight">
-                Shane McCaw<br />Consulting
-              </p>
-              <p className="text-base font-semibold text-[#0078D4] tracking-wide">
-                Microsoft 365 Architect &amp; AI Transformation Partner
-              </p>
-            </div>
-            {/* Value prop */}
-            <p className="text-sm text-[#0A2540]/60 max-w-sm leading-relaxed">
-              Turning your Microsoft 365 investment into a measurable competitive advantage — from security hardening to Copilot AI adoption.
-            </p>
-            {/* Proof points */}
-            <div className="flex flex-col gap-2.5 text-left">
-              {[
-                "30 years Microsoft ecosystem expertise",
-                "NASA Lead M365 Architect",
-                "Fixed-price, no-surprise engagements",
-              ].map(item => (
-                <div key={item} className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                    <svg className="w-3 h-3 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
+                <div className="h-3 w-full bg-[#0078D4]/10 rounded-full overflow-hidden relative border border-[#0078D4]/5">
+                  <div
+                    className="absolute inset-y-0 left-0 bg-[#0078D4] shadow-[0_0_12px_rgba(0,95,170,0.4)] rounded-full"
+                    style={{ width: `${kanbanProgress}%`, transition: "width 800ms cubic-bezier(0.42,0,0.58,1)" }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
                   </div>
-                  <span className="text-sm font-medium text-[#0A2540]/70">{item}</span>
                 </div>
-              ))}
-            </div>
-            {/* Live cycling status ticker */}
-            <div className="px-5 py-3 rounded-xl bg-white/60 ring-1 ring-black/5 w-full max-w-sm" style={{ backdropFilter: "blur(8px)" }}>
-              <div className="flex items-center gap-2.5">
-                <span className="w-2 h-2 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
-                <p
-                  className="text-xs font-medium text-[#0A2540]/70 text-left"
-                  style={{ opacity: tickerVisible ? 1 : 0, transition: "opacity 400ms ease-in-out" }}
-                >
-                  {tickerMessages[tickerIdx % tickerMessages.length]}
+                <p className="text-[13px] text-black/40">
+                  {activeKanbanTask ? (
+                    <>Currently running{" "}<span className="text-[#0078D4] font-semibold">{activeKanbanTask.title}</span>.</>
+                  ) : allTasksDone ? (
+                    "All tasks complete."
+                  ) : (
+                    "Scripts queued — starting soon."
+                  )}
                 </p>
               </div>
             </div>
           </div>
-        </div>
+
+          {/* Health Panel — scores animate gradually from 0 toward real targets */}
+          <HealthPanel
+            overallScore={animatedOverallScore}
+            categoryScores={displayScores}
+          />
+
+          {/* Three-column task grid */}
+          <div className="w-full max-w-6xl grid grid-cols-12 gap-5 flex-1 min-h-0 mb-2">
+
+            {/* ── LEFT: Completed tasks (small, muted) ── */}
+            <div className="col-span-3 flex flex-col gap-2 min-h-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 shrink-0 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
+                Done · {completedKanbanTasks.length}
+              </p>
+              <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-0.5">
+                {completedKanbanTasks.length === 0 && (
+                  <p className="text-[11px] text-black/20 italic mt-2">Tasks complete here as scripts run.</p>
+                )}
+                {completedKanbanTasks.map(task => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/50 ring-1 ring-black/5 border-l-2 border-l-emerald-400"
+                  >
+                    <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-2 h-2 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <p className="text-[11px] font-medium text-[#0A2540]/45 line-through truncate leading-snug">{task.title}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── CENTER: Active tasks — in_progress + waiting_on_customer ── */}
+            <div className="col-span-6 flex flex-col gap-3 min-h-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4] shrink-0 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse inline-block" />
+                Active · {inProgressTasks.length + waitingTasks.length}
+              </p>
+
+              {/* Manual script panel when applicable */}
+              {showScriptPanel && (
+                <div className="flex-1 overflow-y-auto">
+                  <DiagnosticScriptPanel
+                    scripts={overlayManualScripts}
+                    waitingManualScriptCount={waitingManualScriptCount}
+                    downloadableTasks={downloadableTasks}
+                    onCompleted={() => void refetchManualScripts()}
+                    onAllDismissed={() => setAllScriptsDismissed(true)}
+                  />
+                </div>
+              )}
+
+              {!showScriptPanel && (
+                <div className="flex flex-col gap-4 overflow-y-auto flex-1 pr-0.5">
+                  {/* Loading state */}
+                  {kanbanTasks.length === 0 && (
+                    <div className="flex items-center gap-3 py-10 justify-center">
+                      <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-black/40">Loading tasks…</p>
+                    </div>
+                  )}
+
+                  {/* Exit-animation ghost cards */}
+                  {exitingKanbanTasks.map(task => (
+                    <ProcessingHeroCard
+                      key={`exit-${task.id}`}
+                      title={task.title}
+                      description={task.description ?? undefined}
+                      category={currentCategory}
+                      subState="done"
+                      isExiting={true}
+                    />
+                  ))}
+
+                  {/* In-progress cards */}
+                  {inProgressTasks.map(task => (
+                    <ProcessingHeroCard
+                      key={task.id}
+                      title={task.title}
+                      description={task.description ?? undefined}
+                      category={currentCategory}
+                      subState="running"
+                      isExiting={false}
+                    />
+                  ))}
+
+                  {/* Waiting-on-customer cards — bold "Action Required" treatment */}
+                  {waitingTasks.map(task => {
+                    const dl = (task.taskMetadata?.customerDownload ?? null) as
+                      | { scriptId?: string; scriptTitle?: string }
+                      | null;
+                    return (
+                      <div
+                        key={task.id}
+                        className="rounded-xl p-6 flex flex-col border border-amber-300/60 bg-amber-50/80 shadow-lg gap-3"
+                        style={{ backdropFilter: "blur(12px)" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <svg className="w-5 h-5 text-amber-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-[11px] font-bold text-amber-700 uppercase tracking-widest">Action Required</span>
+                        </div>
+                        <p className="text-base font-bold text-[#0A2540]">{task.title}</p>
+                        {task.description && (
+                          <p className="text-xs text-black/50 leading-snug">{task.description}</p>
+                        )}
+                        <div className="pt-1">
+                          {dl?.scriptId ? (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await fetchWithAuth(`/api/portal/tasks/${task.id}/download-script`);
+                                  if (!res.ok) throw new Error("Download failed");
+                                  const blob = await res.blob();
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement("a");
+                                  a.href = url;
+                                  const cd = res.headers.get("content-disposition") ?? "";
+                                  const match = /filename="?([^"]+)"?/.exec(cd);
+                                  a.download = match?.[1] ?? `script-${task.id}.ps1`;
+                                  a.click();
+                                  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+                                } catch { /* non-fatal */ }
+                              }}
+                              className="inline-flex items-center gap-2 text-xs font-bold text-[#0078D4] hover:underline"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              {dl.scriptTitle ?? "Download Script"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { setMarkingDoneId(task.id); markDoneMutation.mutate(task.id); }}
+                              disabled={markingDoneId === task.id}
+                              className="text-xs font-bold px-4 py-1.5 rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                            >
+                              {markingDoneId === task.id ? "Saving…" : "Mark as Done"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Queued — nothing active yet */}
+                  {kanbanTasks.length > 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && !allTasksDone && (
+                    <div className="flex flex-col items-center gap-3 py-10">
+                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm text-black/40">Scripts queued — waiting to start…</p>
+                    </div>
+                  )}
+
+                  {/* All done */}
+                  {allTasksDone && (
+                    <div className="flex flex-col items-center gap-5 py-8">
+                      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
+                        <p className="text-sm text-black/40 mt-1">Your M365 environment has been configured.</p>
+                      </div>
+                      <div className="flex flex-col gap-2.5 w-full max-w-xs">
+                        <button
+                          onClick={() => void handleViewPresentation()}
+                          disabled={openingPresentation}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 disabled:opacity-60"
+                          style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                        >
+                          {openingPresentation ? (
+                            <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Opening…</>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                              View Deliverables &amp; SOW
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/services"); }}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0A2540] text-white font-bold text-sm hover:bg-[#0A2540]/90 active:scale-[0.98]"
+                          style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
+                        >
+                          Purchase Full Plan
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* ── RIGHT: Next-up tasks (small, muted, from the first not_started step) ── */}
+            <div className="col-span-3 flex flex-col gap-2 min-h-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 shrink-0 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full border border-black/20 inline-block" />
+                Up Next · {nextStepTasks.length}
+              </p>
+              <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-0.5">
+                {nextStepTasks.map(task => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/30 ring-1 ring-black/5 border border-dashed border-[#0078D4]/20"
+                  >
+                    <div className="w-3.5 h-3.5 rounded-full border border-[#0078D4]/25 flex items-center justify-center flex-shrink-0">
+                      <div className="w-1 h-1 rounded-full bg-[#0078D4]/30" />
+                    </div>
+                    <p className="text-[11px] font-medium text-[#0A2540]/35 truncate leading-snug">{task.title}</p>
+                  </div>
+                ))}
+                {nextStepTasks.length === 0 && !allTasksDone && (
+                  <p className="text-[11px] text-black/20 italic mt-2">Next workflow step tasks appear here.</p>
+                )}
+                {allTasksDone && (
+                  <p className="text-[11px] text-black/20 italic mt-2">All workflow steps complete.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
       )}
 
       {/* ── Main Full-Screen Layout ── */}
@@ -1224,13 +1453,15 @@ export default function FullScreenWrapper() {
         </main>
       )}
 
-      {/* Pinned footer */}
-      {!isProjectView && mode !== "EnteringQuickWin" && (
+      {/* Pinned footer — shown in both simulation and ProjectTasksView */}
+      {mode !== "EnteringQuickWin" && (
         <QuickWinFooter
           progressPct={kanbanProgress}
           completedCount={completedKanbanTasks.length}
+          totalCount={isProjectView && kanbanTasks.length > 0 ? kanbanTasks.length : undefined}
           clientName={clientName}
           clientAvatarUrl={undefined}
+          label={isProjectView ? "PROJECT PROGRESS" : "QUICK WIN PROGRESS"}
         />
       )}
     </div>

@@ -1,15 +1,19 @@
 interface QuickWinFooterProps {
   progressPct: number;
   completedCount: number;
+  totalCount?: number;
   clientName: string;
   clientAvatarUrl?: string;
+  label?: string;
 }
 
 export default function QuickWinFooter({
   progressPct,
   completedCount,
+  totalCount,
   clientName,
   clientAvatarUrl,
+  label = "QUICK WIN PROGRESS",
 }: QuickWinFooterProps) {
   const initials = clientName
     .split(" ")
@@ -25,7 +29,7 @@ export default function QuickWinFooter({
     >
       <div className="flex items-center gap-6 flex-1 w-full max-w-2xl">
         <span className="text-[11px] font-bold text-black/50 shrink-0 uppercase tracking-widest">
-          QUICK WIN PROGRESS
+          {label}
         </span>
         <div className="h-2 flex-1 bg-black/5 rounded-full overflow-hidden">
           <div
@@ -42,7 +46,9 @@ export default function QuickWinFooter({
       <div className="flex items-center gap-8 text-black/50">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-[11px] font-bold">{completedCount} Complete</span>
+          <span className="text-[11px] font-bold">
+            {totalCount !== undefined ? `${completedCount} / ${totalCount} tasks` : `${completedCount} Complete`}
+          </span>
         </div>
 
         <div className="pl-8 border-l border-black/10 hidden sm:flex items-center gap-3">
