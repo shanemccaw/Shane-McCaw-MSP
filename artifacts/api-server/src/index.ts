@@ -164,6 +164,28 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: insights_generated_documents table failed (non-fatal)");
   });
 
+  // ── Stale 'generating' document cleanup (one-shot on startup) ────────────
+  // If the server restarted while an AI generation was in progress the DB row
+  // is left permanently in 'generating'. Clean them up immediately so the
+  // frontend poll loop doesn't spin forever on phantom rows.
+  pool.query(`
+    DELETE FROM insights_generated_documents
+    WHERE status = 'generating'
+      AND created_at < NOW() - INTERVAL '5 minutes'
+  `).then((result) => {
+    const count = result.rowCount ?? 0;
+    if (count > 0) {
+      logger.warn(
+        { deleted: count },
+        "Startup cleanup: removed stale 'generating' document rows left by a previous server crash/restart",
+      );
+    } else {
+      logger.info("Startup cleanup: no stale 'generating' document rows found");
+    }
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Startup cleanup: stale 'generating' document cleanup failed (non-fatal)");
+  });
+
   pool.query(`
     CREATE TABLE IF NOT EXISTS insights_automations (
       id SERIAL PRIMARY KEY,
