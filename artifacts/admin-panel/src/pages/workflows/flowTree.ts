@@ -142,7 +142,14 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
 
       const yesSet = localCollect(yesEdge?.target);
       const noSet  = localCollect(noEdge?.target);
-      const continuationId = findContinuation([yesSet, noSet]);
+      let continuationId = findContinuation([yesSet, noSet]);
+      // Fallback: when both branches are empty (e.g. freshly inserted node with a
+      // plain outgoing edge), treat the plain edge as the continuation so the node
+      // that follows is still rendered in the parent sequence.
+      if (!continuationId) {
+        const plainEdge = out.find(e => !e.sourceHandle);
+        if (plainEdge) continuationId = plainEdge.target;
+      }
       const branchStop = new Set<string>([...(stopSet ?? []), ...(continuationId ? [continuationId] : [])]);
 
       step.branches = {
@@ -172,7 +179,13 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       ];
 
       const branchSets = branchDefs.map(b => localCollect(b.targetId));
-      const continuationId = findContinuation(branchSets);
+      let continuationId = findContinuation(branchSets);
+      // Fallback: when all branches are empty (e.g. freshly inserted node with a
+      // plain outgoing edge), treat the plain edge as the continuation.
+      if (!continuationId) {
+        const plainEdge = out.find(e => !e.sourceHandle);
+        if (plainEdge) continuationId = plainEdge.target;
+      }
       const branchStop = new Set<string>([...(stopSet ?? []), ...(continuationId ? [continuationId] : [])]);
 
       branchDefs.forEach((b, i) => {
