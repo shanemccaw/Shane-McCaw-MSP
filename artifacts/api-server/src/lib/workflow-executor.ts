@@ -511,7 +511,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "compose": {
       const dryResolved = interp(node.data.inputs as string | undefined, payload) ?? "";
-      return { dryRun: true, value: dryResolved || "<compose output>" };
+      const dryRawValue = dryResolved || "<compose output>";
+      if (node.data.parseAsJson && dryResolved) {
+        try {
+          return { dryRun: true, value: JSON.parse(dryResolved) };
+        } catch {
+          return { dryRun: true, value: dryRawValue };
+        }
+      }
+      return { dryRun: true, value: dryRawValue };
     }
 
     case "system_action":
@@ -2061,7 +2069,16 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       // ── Compose ───────────────────────────────────────────────────────────
       case "compose": {
         const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
-        output = { value: resolvedValue };
+        if (node.data.parseAsJson) {
+          try {
+            output = { value: JSON.parse(resolvedValue) };
+          } catch {
+            logger.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
+            output = { value: resolvedValue };
+          }
+        } else {
+          output = { value: resolvedValue };
+        }
         break;
       }
 

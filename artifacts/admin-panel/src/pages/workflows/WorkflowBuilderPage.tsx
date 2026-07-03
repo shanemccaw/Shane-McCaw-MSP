@@ -167,7 +167,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)", enumValues: ["lead", "client", "project", "article"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
-  compose: [{ key: "value", label: "Composed value (result of the Inputs expression)" }],
+  compose: [{ key: "value", label: "Composed value — string, or parsed JSON object/array when 'Parse as JSON' is enabled" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
   // News
@@ -2066,11 +2066,23 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={Boolean(node.data.parseAsJson)}
+                onChange={e => onChange(node.id, { ...node.data, parseAsJson: e.target.checked })}
+                className="w-3.5 h-3.5 accent-[#2DD4BF] cursor-pointer"
+              />
+              <span className="text-[11px] text-[#C9D1D9]">Parse output as JSON</span>
+            </label>
             <p className="text-[10px] text-[#7D8590] leading-relaxed">
               Enter any value or expression. Reference upstream data with{" "}
               <span className="font-mono text-[#2DD4BF]">{"{{steps.nodeId.key}}"}</span>.
               The evaluated result is available downstream as{" "}
               <span className="font-mono text-[#2DD4BF]">{"{{steps.<thisNodeId>.value}}"}</span>.
+              {Boolean(node.data.parseAsJson) && (
+                <>{" "}When <span className="font-mono text-[#2DD4BF]">Parse as JSON</span> is on, the result is stored as a structured object; if parsing fails, the raw string is used instead.</>
+              )}
             </p>
           </>
         )}
