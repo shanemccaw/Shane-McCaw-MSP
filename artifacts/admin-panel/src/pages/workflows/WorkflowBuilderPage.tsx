@@ -87,6 +87,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   post_linkedin: { bg: "#051424", border: "#0A66C2", icon: "🔗", label: "Post to LinkedIn" },
   post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
   post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
+  // ── Notifications ──
+  send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
   // ── Input ──
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   // ── Logic ──
@@ -176,6 +178,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
+  // Send Browser Notification
+  send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
   // Switch/Case — no declared outputs; downstream nodes inherit the upstream payload unchanged
@@ -412,8 +416,9 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Communication",
     nodes: [
-      { type: "send_email", label: "Send Email", description: "Send a plain email to any address",                  tags: ["email", "send", "notify", "communication"] },
-      { type: "send_sms",   label: "Send SMS",   description: "Send an SMS to an E.164 phone number via Twilio",   tags: ["sms", "text", "notify", "communication"] },
+      { type: "send_email",               label: "Send Email",               description: "Send a plain email to any address",                              tags: ["email", "send", "notify", "communication"] },
+      { type: "send_sms",                 label: "Send SMS",                 description: "Send an SMS to an E.164 phone number via Twilio",               tags: ["sms", "text", "notify", "communication"] },
+      { type: "send_browser_notification", label: "Browser Notification",    description: "Push an OS-level browser alert to all subscribed admins",       tags: ["notification", "push", "browser", "alert", "admin"] },
     ],
   },
   {
@@ -1441,6 +1446,17 @@ function NodeConfigPanel({
           <>
             <PayloadField label="To (E.164 phone)" value={(node.data.to as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, to: v })} placeholder="+12025550100" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="Hi {{payload.name}}, your project is ready." multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {nodeType === "send_browser_notification" && (
+          <>
+            <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="New lead: {{leadName}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{company}} submitted a contact form." multiline ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Link path (optional)" value={(node.data.linkPath as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, linkPath: v })} placeholder="/admin-panel/crm/leads" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">All three fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Sends to all subscribed admins. Requires <span className="font-mono text-[#7D8590]">VAPID_PUBLIC_KEY</span> and <span className="font-mono text-[#7D8590]">VAPID_PRIVATE_KEY</span> secrets — gracefully skipped if absent. Output: <span className="font-mono text-[#7D8590]">{"{{notificationSent}}"}</span>.</p>
+            </div>
           </>
         )}
 

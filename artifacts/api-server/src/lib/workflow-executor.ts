@@ -272,6 +272,14 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "notify_major_changes":
       return { dryRun: true, notified: false, skipped: true };
 
+    case "send_browser_notification": {
+      const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
+      const dryBody    = interp(node.data.body      as string | undefined, payload) ?? "";
+      const dryLink    = interp(node.data.linkPath  as string | undefined, payload) ?? null;
+      logger.info({ dryTitle, dryBody, dryLink }, "workflow-executor [dry-run]: send_browser_notification would send");
+      return { dryRun: true, notificationSent: true, preview: { title: dryTitle, body: dryBody, linkPath: dryLink } };
+    }
+
     case "send_campaign_email":
       return {
         dryRun: true,
@@ -991,6 +999,25 @@ async function executeNode(
             );
           }
           output = { notified: true, skipped: false };
+        }
+        break;
+      }
+
+      case "send_browser_notification": {
+        const sbnTitle    = interp(node.data.title    as string | undefined, payload)?.trim() ?? "";
+        const sbnBody     = interp(node.data.body     as string | undefined, payload) ?? "";
+        const sbnLinkPath = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
+        if (!sbnTitle) {
+          logger.warn({ runId }, "send_browser_notification: title is empty — skipping push");
+          output = { notificationSent: false, skipped: true, reason: "title is empty" };
+        } else {
+          try {
+            await sendWebPushToAdmins({ title: sbnTitle, body: sbnBody, linkPath: sbnLinkPath });
+            output = { notificationSent: true };
+          } catch (sbnErr) {
+            logger.warn({ sbnErr, runId }, "send_browser_notification: push dispatch failed — continuing run");
+            output = { notificationSent: false, error: String(sbnErr) };
+          }
         }
         break;
       }

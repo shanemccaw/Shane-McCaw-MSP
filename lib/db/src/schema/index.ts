@@ -1658,6 +1658,8 @@ export interface WfNode {
     | "find_object"
     // System
     | "system_action"
+    // Notifications
+    | "send_browser_notification"
     // Input
     | "ask_for_input"
     // Logic
