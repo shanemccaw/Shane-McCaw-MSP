@@ -969,13 +969,27 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
     }).returning({ id: insightsGeneratedDocumentsTable.id });
     const reportDocId = genRow!.id;
 
+    // Abort the AI call and mark the row failed if the client disconnects mid-generation
+    const reportAbort = new AbortController();
+    let reportDisconnected = false;
+    const onReportClose = () => {
+      if (reportDisconnected) return;
+      reportDisconnected = true;
+      reportAbort.abort();
+      db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
+        .catch((err) => logger.warn({ err, docId: reportDocId }, "insights: cleanup on client disconnect failed"));
+    };
+    req.on("close", onReportClose);
+
     let htmlContent: string;
     try {
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
-      });
+      }, { signal: reportAbort.signal });
       htmlContent = extractAiHtml(aiResponse);
     } catch (aiErr) {
       // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
@@ -983,6 +997,8 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
         .set({ status: "failed", updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
       throw aiErr;
+    } finally {
+      req.off("close", onReportClose);
     }
 
     // Update generating row with finished content
@@ -1464,6 +1480,20 @@ INSTRUCTIONS:
       }).returning({ id: insightsGeneratedDocumentsTable.id });
       const docId = genSowRow!.id;
 
+      // Abort the AI call and mark the row failed if the client disconnects mid-generation
+      const sowAbort = new AbortController();
+      let sowDisconnected = false;
+      const onSowClose = () => {
+        if (sowDisconnected) return;
+        sowDisconnected = true;
+        sowAbort.abort();
+        db.update(insightsGeneratedDocumentsTable)
+          .set({ status: "failed", updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, docId))
+          .catch((err) => logger.warn({ err, docId }, "insights: sow cleanup on client disconnect failed"));
+      };
+      req.on("close", onSowClose);
+
       let htmlContent: string;
       let sowLines: SowPricingLine[];
       let sowTotal: number;
@@ -1472,7 +1502,7 @@ INSTRUCTIONS:
           model: "claude-haiku-4-5",
           max_tokens: 8000,
           messages: [{ role: "user", content: prompt }],
-        });
+        }, { signal: sowAbort.signal });
 
         const rawHtmlContent = extractAiHtml(aiResponse);
 
@@ -1488,6 +1518,8 @@ INSTRUCTIONS:
           .set({ status: "failed", updatedAt: new Date() })
           .where(eq(insightsGeneratedDocumentsTable.id, docId));
         throw aiErr;
+      } finally {
+        req.off("close", onSowClose);
       }
 
       // Update generating row with finished content
@@ -1654,6 +1686,20 @@ INSTRUCTIONS:
     }).returning({ id: insightsGeneratedDocumentsTable.id });
     const consultingDocId = genConsultingRow!.id;
 
+    // Abort the AI call and mark the row failed if the client disconnects mid-generation
+    const consultingAbort = new AbortController();
+    let consultingDisconnected = false;
+    const onConsultingClose = () => {
+      if (consultingDisconnected) return;
+      consultingDisconnected = true;
+      consultingAbort.abort();
+      db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
+        .catch((err) => logger.warn({ err, docId: consultingDocId }, "insights: consulting cleanup on client disconnect failed"));
+    };
+    req.on("close", onConsultingClose);
+
     let htmlContent: string;
     let sowLines2: SowPricingLine[];
     let sowTotal2: number;
@@ -1662,7 +1708,7 @@ INSTRUCTIONS:
         model: "claude-haiku-4-5",
         max_tokens: 8192,
         messages: [{ role: "user", content: prompt }],
-      });
+      }, { signal: consultingAbort.signal });
 
       const rawHtmlContent2 = extractAiHtml(aiResponse);
 
@@ -1683,6 +1729,8 @@ INSTRUCTIONS:
         .set({ status: "failed", updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
       throw aiErr;
+    } finally {
+      req.off("close", onConsultingClose);
     }
 
     // Update generating row with finished content

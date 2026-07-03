@@ -186,6 +186,30 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Startup cleanup: stale 'generating' document cleanup failed (non-fatal)");
   });
 
+  // ── Stale 'generating' document cleanup (periodic, every 10 minutes) ──────
+  // Catches rows left in 'generating' when the HTTP connection was dropped
+  // mid-request while the server was still running (e.g. the user closed the
+  // tab). The AbortController in the route handler tries to clean up
+  // immediately on disconnect, but this interval is the last-resort safety net.
+  const runGeneratingCleanup = () => {
+    pool.query(`
+      DELETE FROM insights_generated_documents
+      WHERE status = 'generating'
+        AND created_at < NOW() - INTERVAL '15 minutes'
+    `).then((result) => {
+      const count = result.rowCount ?? 0;
+      if (count > 0) {
+        logger.warn(
+          { deleted: count },
+          "Periodic cleanup: removed stale 'generating' document rows (client disconnected mid-generation)",
+        );
+      }
+    }).catch((err: unknown) => {
+      logger.warn({ err }, "Periodic cleanup: stale 'generating' document cleanup failed (non-fatal)");
+    });
+  };
+  setInterval(runGeneratingCleanup, 10 * 60 * 1000); // every 10 minutes
+
   pool.query(`
     CREATE TABLE IF NOT EXISTS insights_automations (
       id SERIAL PRIMARY KEY,
