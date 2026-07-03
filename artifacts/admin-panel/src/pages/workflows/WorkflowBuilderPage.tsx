@@ -1,25 +1,15 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import {
-  ReactFlow,
-  Background,
-  Controls,
-  MiniMap,
-  addEdge,
-  useNodesState,
-  useEdgesState,
-  type Connection,
-  type NodeTypes,
   type Node,
   type Edge,
-  type NodeChange,
-  type EdgeChange,
-  type ReactFlowInstance,
   Handle,
   Position,
   type NodeProps,
-  Panel,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import FlowCanvas from "./FlowCanvas";
+import type { StoredNode, StoredEdge } from "./flowTree";
+import { graphRemoveStep } from "./flowTree";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
@@ -431,7 +421,7 @@ function WfNode({ data, selected, id }: NodeProps) {
   );
 }
 
-const nodeTypes: NodeTypes = { wfNode: WfNode };
+// nodeTypes only needed by RunDetailContent (ReactFlow replay tab); canvas now uses FlowCanvas
 
 // ── Node library ──────────────────────────────────────────────────────────────
 
@@ -5402,8 +5392,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [, navigate] = useLocation();
   const qc = useQueryClient();
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [nodes, setNodes] = useState<StoredNode[]>([]);
+  const [edges, setEdges] = useState<StoredEdge[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isDirty, setIsDirty] = useState(false);
@@ -5453,13 +5443,10 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     });
   }
   const nodeIdCounter = useRef(100);
-  const rfInstanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
-  const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
-  const redoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const historyRef = useRef<Array<{ nodes: StoredNode[]; edges: StoredEdge[] }>>([]);
+  const redoRef = useRef<Array<{ nodes: StoredNode[]; edges: StoredEdge[] }>>([]);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
-
   // Snapshot current canvas state (max 10 entries); clears redo stack on any new mutation
   function pushHistory() {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
@@ -5651,56 +5638,31 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   });
 
 
-  const onConnect = useCallback((connection: Connection) => {
-    historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
-    redoRef.current = [];
-    setCanUndo(true);
-    setCanRedo(false);
-    setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
-    setIsDirty(true);
-  }, [setEdges, nodes, edges]);
-
-  // Wrap onNodesChange: snapshot once when a drag ends (dragging === false) or a node is removed
-  const handleNodesChange = useCallback((changes: NodeChange[]) => {
-    const needsSnapshot = changes.some(c =>
-      (c.type === "position" && c.dragging === false) || c.type === "remove",
-    );
-    if (needsSnapshot) {
-      historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
-      redoRef.current = [];
-      setCanUndo(true);
-      setCanRedo(false);
-      setIsDirty(true);
-    }
-    onNodesChange(changes);
-  }, [onNodesChange, nodes, edges]);
-
-  // Wrap onEdgesChange: snapshot when an edge is removed
-  const handleEdgesChange = useCallback((changes: EdgeChange[]) => {
-    const needsSnapshot = changes.some(c => c.type === "remove");
-    if (needsSnapshot) {
-      historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
-      redoRef.current = [];
-      setCanUndo(true);
-      setCanRedo(false);
-      setIsDirty(true);
-    }
-    onEdgesChange(changes);
-  }, [onEdgesChange, nodes, edges]);
-
-  const canvasRef = useRef<HTMLDivElement>(null);
-
-  function addNode(nodeType: string, position?: { x: number; y: number }) {
+  // Add a node from the library sidebar — appends to the end of the flat sequence.
+  // Users can also insert at a specific position via the "+" buttons in FlowCanvas.
+  function addNode(nodeType: string) {
     pushHistory();
     const id = `node-${++nodeIdCounter.current}`;
     const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
-    const pos = position ?? { x: 200 + Math.random() * 200, y: 100 + Math.random() * 200 };
-    setNodes(nds => [...nds, {
+    const newNode: StoredNode = {
       id,
-      type: "wfNode",
-      position: pos,
+      type: nodeType,
+      position: { x: 300, y: 100 },
       data: { nodeType, label: style.label },
-    }]);
+    };
+
+    // Find a leaf node to connect after (node with no outgoing plain edge)
+    const sourcesOfMainEdge = new Set(
+      edges.filter(e => !e.sourceHandle).map(e => e.source),
+    );
+    const leafNode = [...nodes].reverse().find(n => !sourcesOfMainEdge.has(n.id));
+
+    if (leafNode) {
+      setNodes(nds => [...nds, newNode]);
+      setEdges(eds => [...eds, { id: `e-lib-${id}`, source: leafNode.id, target: id }]);
+    } else {
+      setNodes(nds => [...nds, newNode]);
+    }
     trackRecent(nodeType);
     setIsDirty(true);
   }
@@ -5710,25 +5672,16 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (!node) return;
     pushHistory();
     const newId = `node-${++nodeIdCounter.current}`;
-    setNodes(nds => [...nds, {
-      ...node,
-      id: newId,
-      position: { x: node.position.x + 40, y: node.position.y + 40 },
-      selected: false,
-    }]);
+    setNodes(nds => [...nds, { ...node, id: newId, position: { x: node.position.x + 40, y: node.position.y + 40 } }]);
     setIsDirty(true);
   }
 
-  function handleCanvasDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    const nodeType = e.dataTransfer.getData("application/workflow-node-type");
-    if (!nodeType) return;
-    if (rfInstanceRef.current) {
-      const pos = rfInstanceRef.current.screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      addNode(nodeType, pos);
-    } else {
-      addNode(nodeType);
-    }
+  // Handle graph changes emitted by FlowCanvas (add/remove/reorder steps)
+  function handleGraphChange(newNodes: StoredNode[], newEdges: StoredEdge[]) {
+    pushHistory();
+    setNodes(newNodes);
+    setEdges(newEdges);
+    setIsDirty(true);
   }
 
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
@@ -5742,9 +5695,10 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
   function deleteNode(id: string) {
     pushHistory();
-    setNodes(nds => nds.filter(n => n.id !== id));
-    setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
-    setSelectedNodeId(null);
+    const updated = graphRemoveStep(nodes, edges, id);
+    setNodes(updated.nodes);
+    setEdges(updated.edges);
+    setSelectedNodeId(prev => (prev === id ? null : prev));
     setIsDirty(true);
   }
 
@@ -5776,7 +5730,6 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setIsDirty(true);
     setAiToast(toastMsg);
     setTimeout(() => setAiToast(null), 5000);
-    setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.15, duration: 400 }), 80);
   }
 
   // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions.
@@ -5871,21 +5824,6 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     const id = setInterval(() => setTickNow(n => n + 1), 30_000);
     return () => clearInterval(id);
   }, [lastDraftSavedAt]);
-
-  // Dismiss context menu on outside click / Escape
-  useEffect(() => {
-    if (!ctxMenu) return;
-    function dismiss(e: MouseEvent | KeyboardEvent) {
-      if (e instanceof KeyboardEvent && e.key !== "Escape") return;
-      setCtxMenu(null);
-    }
-    document.addEventListener("click", dismiss as EventListener);
-    document.addEventListener("keydown", dismiss as EventListener);
-    return () => {
-      document.removeEventListener("click", dismiss as EventListener);
-      document.removeEventListener("keydown", dismiss as EventListener);
-    };
-  }, [ctxMenu]);
 
   const isPublished = currentVersion?.status === "published";
   const isArchived  = currentVersion?.status === "archived";
@@ -6252,50 +6190,20 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           </div>
         </div>
 
-        {/* Canvas */}
-        <div
-          ref={canvasRef}
-          className="flex-1 bg-[#0D1117] relative"
-          onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
-          onDrop={handleCanvasDrop}
-          onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-        >
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={handleNodesChange}
-            onEdgesChange={handleEdgesChange}
-            onConnect={onConnect}
-            nodeTypes={nodeTypes}
-            onInit={inst => { rfInstanceRef.current = inst; }}
-            onNodeClick={(_, node) => setSelectedNodeId(node.id)}
-            onPaneClick={() => { setSelectedNodeId(null); setCtxMenu(null); }}
-            onNodeContextMenu={(e, node) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, nodeId: node.id }); }}
-            onNodesDelete={deleted => {
-              pushHistory();
-              if (deleted.some(n => n.id === selectedNodeId)) setSelectedNodeId(null);
-            }}
-            deleteKeyCode={["Delete", "Backspace"]}
-            fitView
-            proOptions={{ hideAttribution: true }}
-            style={{ background: "#0D1117" }}
-          >
-            <Background color="#1C2128" gap={24} size={1} />
-            <Controls style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} />
-            <MiniMap
-              style={{ background: "#161B22", border: "1px solid #30363D" }}
-              nodeColor={() => "#0078D4"}
-            />
-            <Panel position="top-right" style={{ margin: 0 }}>
-              {nodes.length === 0 && (
-                <div className="text-center text-[#484F58] text-xs p-8 pointer-events-none">
-                  <p className="font-medium text-[#7D8590]">Canvas is empty</p>
-                  <p className="mt-1">Add nodes from the library on the left.</p>
-                </div>
-              )}
-            </Panel>
-          </ReactFlow>
-        </div>
+        {/* Flow Canvas */}
+        <FlowCanvas
+          nodes={nodes}
+          edges={edges}
+          selectedNodeId={selectedNodeId}
+          isArchived={isArchived}
+          nodeStyles={NODE_STYLES}
+          libraryCategories={LIBRARY_CATEGORIES}
+          allLibraryNodes={ALL_LIBRARY_NODES}
+          nodeIdCounter={nodeIdCounter}
+          onSelectNode={id => { setSelectedNodeId(id); }}
+          onGraphChange={handleGraphChange}
+          onDuplicateNode={duplicateNode}
+        />
 
         {/* Node config panel */}
         {selectedNode && (
@@ -6308,78 +6216,6 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
             nodes={nodes}
             edges={edges}
           />
-        )}
-
-        {/* Canvas / node context menu */}
-        {ctxMenu && (
-          <div
-            className="fixed z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[168px] text-xs"
-            style={{ top: ctxMenu.y, left: ctxMenu.x }}
-            onClick={e => e.stopPropagation()}
-          >
-            {ctxMenu.nodeId ? (
-              <>
-                <button
-                  onClick={() => { deleteNode(ctxMenu.nodeId!); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <span>✕</span> Delete Node
-                </button>
-                <button
-                  onClick={() => { duplicateNode(ctxMenu.nodeId!); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-                >
-                  <span>⧉</span> Duplicate Node
-                </button>
-                <div className="border-t border-[#30363D] my-1" />
-                <button
-                  onClick={() => { void navigator.clipboard.writeText(ctxMenu.nodeId!); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
-                >
-                  <span>⎘</span> Copy Node ID
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  disabled
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#484F58] cursor-default"
-                  title="Nothing copied"
-                >
-                  <span>⎘</span> Paste
-                </button>
-                <button
-                  onClick={() => {
-                    setNodes(nds => nds.map(n => ({ ...n, selected: true })));
-                    setEdges(eds => eds.map(e => ({ ...e, selected: true })));
-                    setCtxMenu(null);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-                >
-                  <span>⬚</span> Select All
-                </button>
-                <button
-                  onClick={() => { rfInstanceRef.current?.fitView({ padding: 0.12 }); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-                >
-                  <span>⊡</span> Fit View
-                </button>
-                <div className="border-t border-[#30363D] my-1" />
-                <button
-                  onClick={() => { rfInstanceRef.current?.zoomIn(); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
-                >
-                  <span>+</span> Zoom In
-                </button>
-                <button
-                  onClick={() => { rfInstanceRef.current?.zoomOut(); setCtxMenu(null); }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#7D8590] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors"
-                >
-                  <span>−</span> Zoom Out
-                </button>
-              </>
-            )}
-          </div>
         )}
 
         {/* Version history drawer */}
