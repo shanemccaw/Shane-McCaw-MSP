@@ -746,6 +746,8 @@ const AI_GRAPH_EDGE_SCHEMA = z.object({
 const AI_GRAPH_SCHEMA = z.object({
   nodes: z.array(AI_GRAPH_NODE_SCHEMA).min(1),
   edges: z.array(AI_GRAPH_EDGE_SCHEMA),
+  unsupportedFeatures: z.array(z.string()).nullable().optional(),
+  replitPrompt: z.string().nullable().optional(),
 });
 
 const WORKFLOW_CANVAS_SYSTEM_PROMPT = `You are a Microsoft 365 consulting workflow architect. Generate a React Flow workflow canvas graph.
@@ -753,8 +755,19 @@ const WORKFLOW_CANVAS_SYSTEM_PROMPT = `You are a Microsoft 365 consulting workfl
 Respond with a JSON object ONLY — no preamble, no explanation, no markdown prose outside the JSON. Format:
 {
   "nodes": [...],
-  "edges": [...]
+  "edges": [...],
+  "unsupportedFeatures": ["...", "..."],
+  "replitPrompt": "..."
 }
+
+After building the graph, check whether every step the user requested is covered by the supported node types. If any steps or behaviours are NOT implementable with the current engine:
+- List each gap as a plain-English string in "unsupportedFeatures"
+- Write a concise, actionable Replit AI prompt in "replitPrompt" that a developer can paste directly into Replit to add those missing node types. The prompt must:
+  - State the project context (pnpm monorepo, Express/Node API, React admin panel, PostgreSQL, existing workflow engine)
+  - Name each missing node type and what it should do
+  - Reference where the existing node types live in the codebase (artifacts/api-server/src/routes/admin-workflows.ts for execution, WorkflowBuilderPage.tsx for the canvas config panel, and lib/db/src/schema/index.ts for the WfNode.type union)
+  - Ask for end-to-end implementation: schema update, executor case, config panel, and system-prompt addition
+If everything the user asked for is fully covered, set both "unsupportedFeatures" and "replitPrompt" to null.
 
 ## Node schema
 Each node must have:
@@ -884,7 +897,12 @@ router.post("/admin/workflows/ai-generate", requireAdmin, async (req: Request, r
     }
 
     req.log.info({ nodeCount: nodes.length, edgeCount: edges.length }, "workflows/ai-generate: success");
-    res.json({ nodes, edges });
+    res.json({
+      nodes,
+      edges,
+      unsupportedFeatures: validated.data.unsupportedFeatures ?? null,
+      replitPrompt: validated.data.replitPrompt ?? null,
+    });
   } catch (err) {
     req.log.error({ err }, "workflows/ai-generate: failed");
     sendError(res, 500, "AI generation failed — please try again");

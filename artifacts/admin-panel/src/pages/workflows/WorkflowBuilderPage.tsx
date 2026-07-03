@@ -1990,6 +1990,8 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
 interface AiWorkflowResult {
   nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
   edges: Array<{ id: string; source: string; target: string; sourceHandle?: string | null }>;
+  unsupportedFeatures?: string[] | null;
+  replitPrompt?: string | null;
 }
 
 const AI_TRIGGER_OPTIONS: Array<{ value: string; label: string }> = [
@@ -2021,6 +2023,8 @@ function AiWorkflowModal({
   const [triggerType, setTriggerType] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestion, setSuggestion] = useState<{ features: string[]; prompt: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const MIN_DESC_LEN = 20;
   const descTrimmed = description.trim();
@@ -2030,6 +2034,7 @@ function AiWorkflowModal({
     if (descTrimmed.length < MIN_DESC_LEN) return;
     setLoading(true);
     setError(null);
+    setSuggestion(null);
     try {
       const body: Record<string, string> = { description: description.trim() };
       if (triggerType) body.triggerContext = triggerType;
@@ -2038,12 +2043,22 @@ function AiWorkflowModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json() as { nodes?: unknown; edges?: unknown; error?: string };
+      const data = await res.json() as AiWorkflowResult & { error?: string };
       if (!res.ok) {
-        setError((data as { error?: string }).error ?? "AI generation failed");
+        setError(data.error ?? "AI generation failed");
         return;
       }
-      onGenerate(data as AiWorkflowResult);
+      // Hydrate the canvas immediately
+      onGenerate(data);
+      // If the engine couldn't cover everything, stay open and show the suggestion
+      if (data.replitPrompt) {
+        setSuggestion({
+          features: data.unsupportedFeatures ?? [],
+          prompt: data.replitPrompt,
+        });
+      } else {
+        onClose();
+      }
     } catch {
       setError("Network error — please try again");
     } finally {
@@ -2051,6 +2066,112 @@ function AiWorkflowModal({
     }
   }
 
+  function handleCopy() {
+    if (!suggestion) return;
+    void navigator.clipboard.writeText(suggestion.prompt).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  // ── Suggestion view (shown after canvas is built but gaps were found) ─────────
+  if (suggestion) {
+    return (
+      <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
+        <div
+          className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4 max-h-[90vh] overflow-y-auto"
+          onClick={e => e.stopPropagation()}
+        >
+          {/* Success header */}
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="font-semibold text-[#E6EDF3]">Workflow generated</h2>
+              <p className="text-xs text-[#7D8590]">Canvas updated — some steps need new node types first.</p>
+            </div>
+            <button onClick={onClose} className="ml-auto text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Unsupported features list */}
+          {suggestion.features.length > 0 && (
+            <div className="bg-amber-500/8 border border-amber-500/20 rounded-lg px-4 py-3 space-y-2">
+              <p className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                Not yet supported by the workflow engine
+              </p>
+              <ul className="space-y-1">
+                {suggestion.features.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2 text-xs text-amber-300/80">
+                    <span className="text-amber-500/60 mt-0.5 flex-shrink-0">•</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Replit prompt box */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-[#E6EDF3] flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-violet-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+                Replit prompt to build this
+              </p>
+              <button
+                onClick={handleCopy}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${copied ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "bg-[#21262D] hover:bg-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D]"}`}
+              >
+                {copied ? (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                    </svg>
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
+            <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[11px] text-[#7D8590] font-mono whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto">
+              {suggestion.prompt}
+            </pre>
+            <p className="text-[10px] text-[#484F58]">
+              Copy this prompt and paste it into Replit AI to add the missing node types end-to-end.
+            </p>
+          </div>
+
+          <div className="flex justify-end pt-1 border-t border-[#30363D]">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-[#21262D] hover:bg-[#30363D] border border-[#30363D] text-sm text-[#E6EDF3] font-medium rounded-lg transition-colors"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default generation form ────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div
@@ -2678,9 +2799,10 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.15, duration: 400 }), 80);
   }
 
-  // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions
+  // Hydrate canvas from AI-generated graph — normalise all IDs to avoid collisions.
+  // Note: the modal closes itself via onClose() — either immediately (no suggestion)
+  // or after the user copies the Replit prompt and clicks Done.
   function handleAiGenerate(result: AiWorkflowResult) {
-    setShowAiModal(false);
     hydrateAiResult(result, "Workflow generated — review and save when ready");
   }
 
