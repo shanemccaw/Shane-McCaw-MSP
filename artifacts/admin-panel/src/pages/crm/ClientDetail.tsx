@@ -1466,6 +1466,98 @@ export default function ClientDetailPage() {
               </div>
             )}
           </div>
+
+          {/* ── Script Callback Tokens ─────────────────────────────────────────── */}
+          <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
+            <button
+              onClick={() => { setShowCallbackTokens(s => { if (!s) void loadCallbackTokens(); return !s; }); }}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#1C2128] transition-colors text-left"
+            >
+              <div className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Script Callback Tokens</p>
+                {callbackTokens.length > 0 && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/20">
+                    {callbackTokens.filter(t => t.status === "active").length} active
+                  </span>
+                )}
+              </div>
+              <svg className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${showCallbackTokens ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+
+            {showCallbackTokens && (
+              <div className="border-t border-border px-4 py-3 space-y-2.5">
+                <p className="text-[10px] text-muted-foreground">
+                  Embedded in downloaded <code className="font-mono bg-[#1C2128] px-1 py-0.5 rounded">.ps1</code> scripts so results auto-POST back to the portal. One active token per task — re-downloading rotates it.
+                </p>
+
+                {tokensLoading ? (
+                  <div className="flex items-center gap-2 py-3">
+                    <div className="w-3.5 h-3.5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-[10px] text-muted-foreground">Loading tokens…</span>
+                  </div>
+                ) : callbackTokens.length === 0 ? (
+                  <p className="text-[10px] text-muted-foreground text-center py-3">
+                    No tokens yet — created when the client downloads a script.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {callbackTokens.map(token => (
+                      <div key={token.id} className={`flex items-start justify-between gap-2 rounded-lg px-3 py-2 border ${
+                        token.status === "active" ? "bg-[#1C2128] border-teal-500/20" : "bg-[#161B22] border-[#21262D] opacity-60"
+                      }`}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-semibold text-[#E6EDF3] truncate">{token.label || "Script"}</span>
+                            <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${
+                              token.status === "active"
+                                ? "bg-teal-500/10 text-teal-400 border-teal-500/20"
+                                : "bg-[#30363D] text-[#484F58] border-[#30363D]"
+                            }`}>
+                              {token.status === "active" ? "Active" : "Revoked"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {token.projectTitle && (
+                              <span className="text-[9px] text-[#0078D4]">📁 {token.projectTitle}</span>
+                            )}
+                            <span className="text-[9px] text-muted-foreground">
+                              {new Date(token.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                            {token.lastUsedAt ? (
+                              <span className="text-[9px] text-green-400">✓ Used {new Date(token.lastUsedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                            ) : (
+                              <span className="text-[9px] text-[#484F58]">Never used</span>
+                            )}
+                          </div>
+                        </div>
+                        {token.status === "active" && (
+                          <button
+                            onClick={() => void handleRevokeToken(token.id)}
+                            disabled={revokingTokenId === token.id}
+                            className="text-[9px] font-semibold text-red-400 border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 px-2 py-1 rounded transition-colors disabled:opacity-50 flex-shrink-0"
+                          >
+                            {revokingTokenId === token.id ? "…" : "Revoke"}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {callbackTokens.length > 0 && (
+                  <button
+                    onClick={() => void loadCallbackTokens()}
+                    className="text-[9px] text-muted-foreground hover:text-[#E6EDF3] transition-colors"
+                  >
+                    ↻ Refresh
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1902,103 +1994,6 @@ export default function ClientDetailPage() {
                   );
                 })}
               </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* ── Script Callback Tokens ──────────────────────────────────────────── */}
-      <div className="bg-[#161B22] border border-border rounded-xl overflow-hidden">
-        <button
-          onClick={() => { setShowCallbackTokens(s => { if (!s) void loadCallbackTokens(); return !s; }); }}
-          className="w-full flex items-center justify-between px-5 py-4 hover:bg-[#1C2128] transition-colors text-left"
-        >
-          <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-            </svg>
-            <span className="text-sm font-semibold text-[#E6EDF3]">Script Callback Tokens</span>
-            {callbackTokens.length > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/20">
-                {callbackTokens.filter(t => t.status === "active").length} active
-              </span>
-            )}
-          </div>
-          <svg className={`w-4 h-4 text-muted-foreground transition-transform ${showCallbackTokens ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" /></svg>
-        </button>
-
-        {showCallbackTokens && (
-          <div className="border-t border-border px-5 py-4 space-y-3">
-            <p className="text-xs text-muted-foreground">
-              These tokens are embedded in downloaded <code className="font-mono text-[10px] bg-[#1C2128] px-1 py-0.5 rounded">.ps1</code> scripts so the client's results auto-POST back to the portal.
-              Each token stays active until the project completes or you manually revoke it.
-            </p>
-
-            {tokensLoading ? (
-              <div className="flex items-center gap-2 py-4">
-                <div className="w-4 h-4 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs text-muted-foreground">Loading tokens…</span>
-              </div>
-            ) : callbackTokens.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-4">
-                No callback tokens yet. Tokens are created automatically when the client downloads a manual script from their portal.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {callbackTokens.map(token => (
-                  <div key={token.id} className={`flex items-start justify-between gap-3 rounded-lg px-3 py-2.5 border ${
-                    token.status === "active" ? "bg-[#1C2128] border-teal-500/20" : "bg-[#161B22] border-[#21262D] opacity-60"
-                  }`}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-semibold text-[#E6EDF3] truncate">{token.label || "Script"}</span>
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${
-                          token.status === "active"
-                            ? "bg-teal-500/10 text-teal-400 border-teal-500/20"
-                            : "bg-[#30363D] text-[#484F58] border-[#30363D]"
-                        }`}>
-                          {token.status === "active" ? "Active" : "Revoked"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        {token.projectTitle && (
-                          <span className="text-[10px] text-[#0078D4]">
-                            📁 {token.projectTitle}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-muted-foreground">
-                          Created {new Date(token.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                        </span>
-                        {token.lastUsedAt ? (
-                          <span className="text-[10px] text-green-400">
-                            ✓ Last used {new Date(token.lastUsedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-[#484F58]">Never used</span>
-                        )}
-                      </div>
-                    </div>
-                    {token.status === "active" && (
-                      <button
-                        onClick={() => void handleRevokeToken(token.id)}
-                        disabled={revokingTokenId === token.id}
-                        className="text-[10px] font-semibold text-red-400 border border-red-500/20 bg-red-500/10 hover:bg-red-500/20 px-2 py-1 rounded transition-colors disabled:opacity-50 flex-shrink-0"
-                      >
-                        {revokingTokenId === token.id ? "…" : "Revoke"}
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {callbackTokens.length > 0 && (
-              <button
-                onClick={() => void loadCallbackTokens()}
-                className="text-[10px] text-muted-foreground hover:text-[#E6EDF3] transition-colors"
-              >
-                ↻ Refresh
-              </button>
             )}
           </div>
         )}
