@@ -4625,6 +4625,18 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       const uid = parseInt(userId, 10);
       const amountDollars = (parseInt(servicePriceInCents, 10) / 100).toFixed(2);
 
+      // Idempotency: skip if this checkout session was already processed.
+      // A replayed or duplicated webhook must not create a second invoice,
+      // send duplicate emails, or fire duplicate SMS/push notifications.
+      const [existingSvcInvoice] = await db
+        .select({ id: invoicesTable.id })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.stripeSessionId, session.id))
+        .limit(1);
+      if (existingSvcInvoice) {
+        req.log.info({ sessionId: session.id }, "service_purchase: already processed, skipping");
+      } else {
+
       // Create a paid invoice so it shows in billing history
       const svcCouponCode = session.metadata?.couponCode ?? null;
       const svcFinalAmount = session.amount_total != null ? session.amount_total / 100 : parseFloat(amountDollars);
@@ -4757,6 +4769,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           );
         })
         .catch((e) => req.log.warn({ err: e, sessionId: session.id }, "processStripeEvent: push notification failed (non-fatal)"));
+      } // end else — service_purchase idempotency guard
     }
 
     // Increment coupon uses atomically and idempotently.
@@ -4803,6 +4816,18 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
     // Onboarding purchase — auto-provision project + workflow steps
     if (session.metadata?.type === "onboarding_purchase" && session.payment_status === "paid") {
+      // Idempotency: skip if this checkout session was already processed.
+      // provisionOnboardingProject has its own inner guard, but checking here first
+      // is cheaper and also prevents duplicate SMS/push/email notifications on replay.
+      const [existingOnbInvoice] = await db
+        .select({ id: invoicesTable.id })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.stripeSessionId, session.id))
+        .limit(1);
+      if (existingOnbInvoice) {
+        req.log.info({ sessionId: session.id }, "onboarding_purchase: already processed, skipping");
+      } else {
+
       const subId = typeof session.subscription === "string"
         ? session.subscription
         : (session.subscription as { id?: string } | null)?.id ?? null;
@@ -4938,6 +4963,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         // SMS/push/email failure must never break provisioning, but log it
         req.log.warn({ err: notifyErr, sessionId: session.id, eventType: event.type }, "processStripeEvent: post-provision notification failed (non-fatal)");
       }
+      } // end else — onboarding_purchase idempotency guard
     }
 
     // Presentation checkout — mark as paid, but never overwrite a signed presentation.
