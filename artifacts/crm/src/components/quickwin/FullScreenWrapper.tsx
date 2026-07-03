@@ -413,6 +413,8 @@ export default function FullScreenWrapper() {
 
   useEffect(() => {
     if (mode !== "EnteringQuickWin") return;
+    // Simulation preview mode — skip project detection entirely.
+    if (quickWin?.id === "__sim") { dispatch({ type: "ENTRY_COMPLETE" }); return; }
     // Still fetching — hold off until the response lands.
     if (projectsLoading) return;
 
@@ -422,7 +424,7 @@ export default function FullScreenWrapper() {
     } else {
       dispatch({ type: "ENTRY_COMPLETE" });
     }
-  }, [mode, dispatch, projectsLoading, portalProjects, findMatchingProject]);
+  }, [mode, dispatch, projectsLoading, portalProjects, findMatchingProject, quickWin]);
 
   // ── Mid-simulation recovery: bind project if one appears after simulation starts ──
   // If EnteringQuickWin already transitioned to Ready/RunningAutoStep/etc. before
@@ -436,13 +438,14 @@ export default function FullScreenWrapper() {
     ]);
     if (!BINDABLE.has(mode)) return;
     if (state.projectId) return; // already bound — nothing to do
+    if (quickWin?.id === "__sim") return; // simulation preview — never bind
     if (projectsLoading || portalProjects.length === 0) return;
 
     const matching = findMatchingProject(portalProjects);
     if (matching) {
       dispatch({ type: "BIND_PROJECT", payload: { projectId: String(matching.id) } });
     }
-  }, [mode, state.projectId, projectsLoading, portalProjects, findMatchingProject, dispatch]);
+  }, [mode, state.projectId, projectsLoading, portalProjects, findMatchingProject, dispatch, quickWin]);
 
   // ── Ready: dispatch auto or manual step ───────────────────────────────────
 

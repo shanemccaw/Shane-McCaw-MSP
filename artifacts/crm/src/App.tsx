@@ -34,6 +34,7 @@ import PortalPresentation from "@/pages/portal/PortalPresentation";
 import PortalDiagnostic from "@/pages/portal/PortalDiagnostic";
 import SharedResultsPage from "@/pages/SharedResultsPage";
 import ResetPasswordPage from "@/pages/ResetPassword";
+import DiagnosticSimPreview from "@/pages/DiagnosticSimPreview";
 import { useState, useEffect, useRef, type ReactNode } from "react";
 
 // Bridge: sits inside AuthProvider so it can read the auth context and inject
@@ -260,6 +261,11 @@ function Router() {
       {/* Public reset-password route — token validated server-side */}
       <Route path="/reset-password">
         <ResetPasswordPage />
+      </Route>
+
+      {/* Diagnostic simulation preview — forces the animated overlay without needing a real project */}
+      <Route path="/portal/diagnostic-sim">
+        <DiagnosticSimPreview />
       </Route>
 
       {/* Onboarding routes — accessible to anyone (redirect to login inside if not authed) */}
