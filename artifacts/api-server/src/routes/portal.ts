@@ -10747,4 +10747,63 @@ router.get("/portal/quick-win/shared/:token", async (req: Request, res: Response
   }
 });
 
+// GET /api/admin/presentations — paginated list of all Quick Win presentations with project/client info
+router.get("/admin/presentations", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10));
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "50"), 10)));
+    const offset = (page - 1) * limit;
+
+    const rows = await db
+      .select({
+        id: quickWinPresentationsTable.id,
+        shareToken: quickWinPresentationsTable.shareToken,
+        status: quickWinPresentationsTable.status,
+        totalPrice: quickWinPresentationsTable.totalPrice,
+        paymentPlan: quickWinPresentationsTable.paymentPlan,
+        paymentSchedule: quickWinPresentationsTable.paymentSchedule,
+        sowPhases: quickWinPresentationsTable.sowPhases,
+        selectedPhaseIds: quickWinPresentationsTable.selectedPhaseIds,
+        documentsIncluded: quickWinPresentationsTable.documentsIncluded,
+        signedAt: quickWinPresentationsTable.signedAt,
+        signerName: quickWinPresentationsTable.signerName,
+        stripeSessionId: quickWinPresentationsTable.stripeSessionId,
+        createdAt: quickWinPresentationsTable.createdAt,
+        updatedAt: quickWinPresentationsTable.updatedAt,
+        projectId: quickWinPresentationsTable.projectId,
+        projectName: projectsTable.title,
+        clientUserId: quickWinPresentationsTable.clientUserId,
+        clientName: usersTable.name,
+        clientEmail: usersTable.email,
+        clientCompany: usersTable.company,
+      })
+      .from(quickWinPresentationsTable)
+      .leftJoin(projectsTable, eq(quickWinPresentationsTable.projectId, projectsTable.id))
+      .leftJoin(usersTable, eq(quickWinPresentationsTable.clientUserId, usersTable.id))
+      .orderBy(desc(quickWinPresentationsTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(quickWinPresentationsTable);
+
+    res.json({
+      presentations: rows.map(r => ({
+        ...r,
+        totalPrice: r.totalPrice ? Number(r.totalPrice) : null,
+        signedAt: r.signedAt?.toISOString() ?? null,
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      })),
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to fetch admin presentations list");
+    res.status(500).json({ error: "Failed to load presentations" });
+  }
+});
+
 export default router;

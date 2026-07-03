@@ -8,6 +8,7 @@ import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
 import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import InsightsOutputsPage from "@/pages/InsightsOutputs";
+import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
 
 const NAV_ITEMS: WorkspaceNavItem[] = [
   {
@@ -82,6 +83,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Presentations",
+    path: "/command/presentations",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+      </svg>
+    ),
+  },
 ];
 
 function getContent(section: string): ReactNode {
@@ -93,6 +103,7 @@ function getContent(section: string): ReactNode {
     case "prompts":          return <PromptCenterPage />;
     case "marketing":        return <MarketingCommandCenterPage />;
     case "insights":         return <InsightsOutputsPage />;
+    case "presentations":    return <PresentationsPage />;
     default:                 return <OverviewPage />;
   }
 }
