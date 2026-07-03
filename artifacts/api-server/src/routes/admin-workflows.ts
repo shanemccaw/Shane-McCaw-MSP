@@ -811,8 +811,26 @@ Each node must have:
 - "generate_diff_report" — data: {nodeType:"generate_diff_report", label:"Generate Diff Report", clientId:"{{clientId}}"}
 - "notify_major_changes" — data: {nodeType:"notify_major_changes", label:"Notify Changes", clientId:"{{clientId}}", changeThreshold:"15"}
 
-### Action (actionType controls behaviour)
-- "action" — data: {nodeType:"action", label:"...", actionType:"send_email"|"send_sms"|"http_request"|"create_lead"|"convert_to_opportunity"|"create_client"|"create_project"|"execute_runbook"|"update_m365_profile"|"generate_document"|"emit_event"}
+### Platform
+- "http_request" — data: {nodeType:"http_request", label:"HTTP Request", params:{method:"GET", url:"https://…", bodyRaw:""}}
+- "sql_query" — data: {nodeType:"sql_query", label:"SQL Query", query:"SELECT …"}
+- "emit_event" — data: {nodeType:"emit_event", label:"Emit Event", eventName:"my.event.name", eventPayload:"{}"}
+- "cancel_workflow" — data: {nodeType:"cancel_workflow", label:"Cancel Workflow"}
+
+### Communication
+- "send_email" — data: {nodeType:"send_email", label:"Send Email", to:"{{email}}", subject:"…", body:"Hi {{name}}, …"}
+- "send_sms" — data: {nodeType:"send_sms", label:"Send SMS", to:"{{phone}}", message:"Hi {{name}}, …"}
+
+### CRM Actions
+- "create_lead" — data: {nodeType:"create_lead", label:"Create Lead", name:"{{payload.name}}", email:"{{payload.email}}"}
+- "convert_to_opportunity" — data: {nodeType:"convert_to_opportunity", label:"Convert to Opportunity", leadId:"{{leadId}}", workflowType:"DiscoveryCall"}
+- "create_client" — data: {nodeType:"create_client", label:"Create Client", name:"{{payload.name}}", email:"{{payload.email}}"}
+- "create_project" — data: {nodeType:"create_project", label:"Create Project", title:"{{payload.leadName}} Onboarding", projectType:"project", clientUserId:"{{clientId}}"}
+
+### Azure / Microsoft 365
+- "execute_runbook" — data: {nodeType:"execute_runbook", label:"Execute Runbook", runbookName:"My-Runbook-Name", runbookParams:"{}"}
+- "update_m365_profile" — data: {nodeType:"update_m365_profile", label:"Update M365 Profile", clientId:"{{clientId}}", runbookName:"M365-Health-Check", runbookParams:"{}"}
+- "generate_document" — data: {nodeType:"generate_document", label:"Generate Document", clientId:"{{clientId}}", docType:"security", docTitle:"{{payload.company}} Report"}
 
 ## Edge schema
 Each edge:
@@ -932,7 +950,7 @@ Return the COMPLETE updated graph as a JSON object — no preamble, no explanati
 ## Node schema (same as generation)
 Each node must have:
 - "id": keep existing IDs for unchanged nodes; use new unique IDs like "node-new-1" for added nodes
-- "type": one of start | end | condition | delay | error | score_lead | assign_pipeline_stage | create_opportunity | parse_quiz_results | generate_readiness_score | attach_quiz_insights | validate_m365_permissions | update_intelligence_tables | generate_diff_report | notify_major_changes | action
+- "type": one of start | end | condition | delay | error | score_lead | assign_pipeline_stage | create_opportunity | parse_quiz_results | generate_readiness_score | attach_quiz_insights | validate_m365_permissions | update_intelligence_tables | generate_diff_report | notify_major_changes | http_request | sql_query | send_email | send_sms | emit_event | cancel_workflow | create_lead | convert_to_opportunity | create_client | create_project | execute_runbook | update_m365_profile | generate_document
 - "position": {"x": number, "y": number} — keep existing positions for unchanged nodes; place new nodes appropriately nearby
 - "data": keep existing data fields for unchanged nodes; add required fields for new nodes
 

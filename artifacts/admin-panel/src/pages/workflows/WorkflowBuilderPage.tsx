@@ -34,8 +34,24 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"           },
   delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"               },
   error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"               },
-  // ── Platform (generic) ──
+  // ── Platform (generic — kept for backward compat with saved workflows) ──
   action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"              },
+  // ── Promoted Platform / Communication nodes ──
+  http_request:           { bg: "#0A1220", border: "#3B82F6",  icon: "🌐", label: "HTTP Request"           },
+  sql_query:              { bg: "#0A1A12", border: "#10B981",  icon: "🗄️", label: "SQL Query"              },
+  send_email:             { bg: "#0D1A2A", border: "#60A5FA",  icon: "📧", label: "Send Email"             },
+  send_sms:               { bg: "#120D22", border: "#A78BFA",  icon: "💬", label: "Send SMS"               },
+  emit_event:             { bg: "#1A0D18", border: "#F472B6",  icon: "📡", label: "Emit Event"             },
+  cancel_workflow:        { bg: "#1A0D0D", border: "#EF4444",  icon: "🛑", label: "Cancel Workflow"        },
+  // ── Promoted CRM Action nodes ──
+  create_lead:            { bg: "#041A14", border: "#34D399",  icon: "➕", label: "Create Lead"            },
+  convert_to_opportunity: { bg: "#041A14", border: "#2DD4BF",  icon: "🚀", label: "Convert to Opportunity" },
+  create_client:          { bg: "#041A14", border: "#6EE7B7",  icon: "👤", label: "Create Client"          },
+  create_project:         { bg: "#041A14", border: "#4ADE80",  icon: "📁", label: "Create Project"         },
+  // ── Promoted Azure nodes ──
+  execute_runbook:        { bg: "#110D22", border: "#A78BFA",  icon: "⚙️", label: "Execute Runbook"        },
+  update_m365_profile:    { bg: "#110D22", border: "#8B5CF6",  icon: "☁️", label: "Update M365 Profile"    },
+  generate_document:      { bg: "#111620", border: "#64748B",  icon: "📄", label: "Generate Document"      },
   // ── CRM ──
   score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
   assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
@@ -386,7 +402,34 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Platform",
     nodes: [
-      { type: "action", label: "Action", description: "HTTP request, SQL query, email, SMS, emit event", tags: ["action", "http", "sql", "email", "sms", "platform"] },
+      { type: "http_request",   label: "HTTP Request",   description: "Make an external HTTP/REST API call",                tags: ["http", "api", "request", "platform", "integration"] },
+      { type: "sql_query",      label: "SQL Query",       description: "Run a SELECT query and expose results downstream",  tags: ["sql", "database", "query", "data"] },
+      { type: "emit_event",     label: "Emit Event",      description: "Fire a named event that can trigger other workflows", tags: ["event", "trigger", "emit", "platform"] },
+      { type: "cancel_workflow", label: "Cancel Workflow", description: "Immediately stop the current run",                  tags: ["cancel", "stop", "halt", "control"] },
+    ],
+  },
+  {
+    name: "Communication",
+    nodes: [
+      { type: "send_email", label: "Send Email", description: "Send a plain email to any address",                  tags: ["email", "send", "notify", "communication"] },
+      { type: "send_sms",   label: "Send SMS",   description: "Send an SMS to an E.164 phone number via Twilio",   tags: ["sms", "text", "notify", "communication"] },
+    ],
+  },
+  {
+    name: "CRM Actions",
+    nodes: [
+      { type: "create_lead",            label: "Create Lead",            description: "Create a new lead record in the CRM",             tags: ["crm", "lead", "create", "contact"] },
+      { type: "convert_to_opportunity", label: "Convert to Opportunity", description: "Convert a lead into a CRM opportunity",            tags: ["crm", "opportunity", "lead", "convert"] },
+      { type: "create_client",          label: "Create Client",          description: "Provision a new client user account",              tags: ["crm", "client", "create", "account"] },
+      { type: "create_project",         label: "Create Project",         description: "Create a new engagement project",                  tags: ["crm", "project", "create", "engagement"] },
+    ],
+  },
+  {
+    name: "Azure",
+    nodes: [
+      { type: "execute_runbook",     label: "Execute Runbook",      description: "Trigger an Azure Automation runbook",                tags: ["azure", "runbook", "automation", "m365"] },
+      { type: "update_m365_profile", label: "Update M365 Profile",  description: "Update a client's M365 profile via Azure Automation", tags: ["azure", "m365", "profile", "runbook"] },
+      { type: "generate_document",   label: "Generate Document",    description: "Create a document record for a client",              tags: ["document", "client", "report", "generate"] },
     ],
   },
 ];
@@ -1338,6 +1381,180 @@ function NodeConfigPanel({
                 </div>
               </>
             )}
+          </>
+        )}
+
+        {/* ── Promoted Platform nodes ───────────────────────── */}
+
+        {nodeType === "http_request" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Method</label>
+              <select
+                value={(p.method as string) ?? "GET"}
+                onChange={e => onChange(node.id, { ...node.data, params: { ...p, method: e.target.value } })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {["GET","POST","PUT","PATCH","DELETE"].map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <PayloadField label="URL" value={(p.url as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, params: { ...p, url: v } })} placeholder="https://…" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Body (JSON)" value={(p.bodyRaw as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, params: { ...p, bodyRaw: v } })} placeholder='{"key": "value"}' multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {nodeType === "sql_query" && (
+          <>
+            <PayloadField label="SQL Query" value={(node.data.query as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, query: v })} placeholder="SELECT * FROM clients WHERE status = 'active'" multiline ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Results are injected into the payload as <span className="font-mono text-[#7D8590]">{"{{queryRows}}"}</span>. Must be a SELECT statement.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "emit_event" && (
+          <>
+            <PayloadField label="Event Name" value={(node.data.eventName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, eventName: v })} placeholder="onboarding.completed" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Payload (JSON)" value={(node.data.eventPayload as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, eventPayload: v })} placeholder='{"clientId": "{{payload.clientId}}"}' multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {nodeType === "cancel_workflow" && (
+          <div className="rounded-lg bg-[#1A0D0D] border border-[#EF4444]/30 p-3">
+            <p className="text-xs text-[#EF4444]">Cancel Workflow</p>
+            <p className="text-[11px] text-[#7D8590] mt-1 leading-relaxed">When the executor reaches this node the run is immediately marked <span className="font-mono text-[#EF4444]">cancelled</span>. No further nodes are executed.</p>
+          </div>
+        )}
+
+        {/* ── Promoted Communication nodes ───────────────────── */}
+
+        {nodeType === "send_email" && (
+          <>
+            <PayloadField label="To (email)" value={(node.data.to as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, to: v })} placeholder="client@example.com" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Subject" value={(node.data.subject as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, subject: v })} placeholder="Your onboarding is ready" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="Hi {{payload.name}}, …" multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {nodeType === "send_sms" && (
+          <>
+            <PayloadField label="To (E.164 phone)" value={(node.data.to as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, to: v })} placeholder="+12025550100" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="Hi {{payload.name}}, your project is ready." multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {/* ── Promoted CRM Action nodes ─────────────────────── */}
+
+        {nodeType === "create_lead" && (
+          <>
+            <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.leadName}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.leadEmail}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Company" value={(node.data.company as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, company: v })} placeholder="{{payload.company}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Service Area" value={(node.data.serviceArea as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, serviceArea: v })} placeholder="Microsoft 365" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="{{payload.message}}" multiline ancestorOutputs={ancestorOutputs} />
+          </>
+        )}
+
+        {nodeType === "convert_to_opportunity" && (
+          <>
+            <PayloadField label="Lead ID" value={(node.data.leadId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, leadId: v })} placeholder="{{leadId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Workflow Type</label>
+              <select
+                value={(node.data.workflowType as string) ?? "DiscoveryCall"}
+                onChange={e => onChange(node.id, { ...node.data, workflowType: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Creates an opportunity linked to the lead. Output: <span className="font-mono text-[#7D8590]">{"{{opportunityId}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_client" && (
+          <>
+            <PayloadField label="Name" value={(node.data.name as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, name: v })} placeholder="{{payload.name}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Email" value={(node.data.email as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, email: v })} placeholder="{{payload.clientEmail}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Creates a CRM user account with role <span className="font-mono text-[#7D8590]">client</span>. Output: <span className="font-mono text-[#7D8590]">{"{{clientId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{clientEmail}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_project" && (
+          <>
+            <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="{{payload.leadName}} Onboarding" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Description" value={(node.data.description as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, description: v })} placeholder="Auto-created by workflow" multiline ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Project Type</label>
+              <select
+                value={(node.data.projectType as string) ?? "project"}
+                onChange={e => onChange(node.id, { ...node.data, projectType: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                <option value="project">Project</option>
+                <option value="retainer">Retainer</option>
+              </select>
+            </div>
+            <PayloadField label="Client User ID (optional)" value={(node.data.clientUserId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientUserId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Output: <span className="font-mono text-[#7D8590]">{"{{projectId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{projectTitle}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Promoted Azure nodes ──────────────────────────── */}
+
+        {nodeType === "execute_runbook" && (
+          <>
+            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets to be configured. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "update_m365_profile" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="M365-Health-Check" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "generate_document" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
+              <select
+                value={(node.data.docType as string) ?? "security"}
+                onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                {[
+                  ["security","Security Assessment"],
+                  ["license","License Review"],
+                  ["governance","Governance Report"],
+                  ["copilot","Copilot Readiness"],
+                  ["remediation","Remediation Plan"],
+                  ["exposure","Exposure Report"],
+                  ["executive","Executive Summary"],
+                  ["deployment","Deployment Plan"],
+                ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+            <PayloadField label="Title (optional)" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="Q1 Security Review — {{payload.company}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Creates a document record for the client. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+            </div>
           </>
         )}
 

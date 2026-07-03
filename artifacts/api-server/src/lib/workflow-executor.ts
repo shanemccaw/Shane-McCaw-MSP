@@ -476,6 +476,18 @@ async function buildOAuth1Header(
   );
 }
 
+// ── Promoted action sub-type aliases ─────────────────────────────────────────
+// These are the 13 first-class node types that were promoted from the generic
+// "action + actionType" pattern. They map 1-to-1 to the corresponding actionType
+// handler in the action case. Normalizing here keeps all execution logic in one
+// place and ensures backward compat: old workflows with type:"action" still work,
+// and new workflows with type:"http_request" etc. are handled transparently.
+const PROMOTED_ACTION_TYPES = new Set([
+  "http_request", "sql_query", "send_email", "send_sms", "emit_event",
+  "cancel_workflow", "create_lead", "convert_to_opportunity", "create_client",
+  "create_project", "update_m365_profile", "execute_runbook", "generate_document",
+]);
+
 // ── Node execution ────────────────────────────────────────────────────────────
 
 async function executeNode(
@@ -502,6 +514,17 @@ async function executeNode(
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
   const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case"]);
+
+  // Promoted type bridge: first-class node types alias to the action handler.
+  // Inject data.actionType from node.type so the action case works unchanged.
+  // Old workflows (type:"action" + data.actionType) are unaffected.
+  if (PROMOTED_ACTION_TYPES.has(node.type)) {
+    node = {
+      ...node,
+      type: "action",
+      data: { ...node.data, actionType: node.data.actionType ?? node.type },
+    } as WfNode;
+  }
 
   try {
     if (dryRun && !STRUCTURAL_TYPES.has(node.type)) {
