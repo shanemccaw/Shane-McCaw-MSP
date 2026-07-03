@@ -2045,10 +2045,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setPublishingToProd(true);
     try {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/publish-to-prod`, { method: "POST" });
-      const body = await res.json() as { ok?: boolean; name?: string; error?: string };
+      const body = await res.json() as { ok?: boolean; name?: string; publishedVersionId?: number | null; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Failed to publish to production");
-      setAiToast(`"${body.name ?? "Workflow"}" published to the production database.`);
-      setTimeout(() => setAiToast(null), 4000);
+      if (body.publishedVersionId == null) {
+        setAiToast(`⚠️ "${body.name ?? "Workflow"}" has no published version — publish a version first, then push to prod.`);
+      } else {
+        setAiToast(`"${body.name ?? "Workflow"}" published to the production database.`);
+      }
+      setTimeout(() => setAiToast(null), 5000);
     } catch (err) {
       setAiToast(`Publish failed: ${err instanceof Error ? err.message : "Unknown error"}`);
       setTimeout(() => setAiToast(null), 5000);
@@ -2072,6 +2076,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; isDefault: boolean; graph: { nodes: unknown[]; edges: unknown[] } }>>;
     },
   });
+
+  const hasPublishedVersion = versions.some(v => v.status === "published");
 
   const { data: currentVersion } = useQuery({
     queryKey: ["wf-version", currentVersionId],
@@ -2462,8 +2468,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
           <button
             onClick={() => void publishToProd()}
-            disabled={publishingToProd || !prodDbConnected}
-            title={!prodDbConnected ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this workflow to the production database"}
+            disabled={publishingToProd || !prodDbConnected || !hasPublishedVersion}
+            title={
+              !prodDbConnected
+                ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets"
+                : !hasPublishedVersion
+                ? "Publish a version first — no published version exists for this workflow"
+                : "Publish this workflow to the production database"
+            }
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {publishingToProd ? (

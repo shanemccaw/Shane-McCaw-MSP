@@ -125,8 +125,14 @@ function WorkflowCard({
 
         <button
           onClick={() => onPublishToProd(def.id)}
-          disabled={!prodDbConnected}
-          title={!prodDbConnected ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets" : "Publish this workflow to the production database"}
+          disabled={!prodDbConnected || def.publishedVersionNumber === null}
+          title={
+            !prodDbConnected
+              ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets"
+              : def.publishedVersionNumber === null
+              ? "Publish a version first — no published version exists for this workflow"
+              : "Publish this workflow to the production database"
+          }
           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg border border-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -227,12 +233,20 @@ export default function WorkflowListPage() {
   const publishToProdMut = useMutation({
     mutationFn: async (id: number) => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}/publish-to-prod`, { method: "POST" });
-      const body = await res.json() as { ok?: boolean; name?: string; error?: string };
+      const body = await res.json() as { ok?: boolean; name?: string; publishedVersionId?: number | null; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Failed to publish to production");
       return body;
     },
     onSuccess: (data) => {
-      toast({ title: "Published to production", description: `"${data.name ?? "Workflow"}" is now in the production database.` });
+      if (data.publishedVersionId == null) {
+        toast({
+          title: "No version published",
+          description: `"${data.name ?? "Workflow"}" was synced but has no published version — open the builder and publish a version first.`,
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Published to production", description: `"${data.name ?? "Workflow"}" is now in the production database.` });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Publish failed", description: err.message, variant: "destructive" });
