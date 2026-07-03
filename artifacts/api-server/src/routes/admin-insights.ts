@@ -985,6 +985,12 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
       .returning();
 
+    // Sync new doc into any draft presentations for the same project so it
+    // appears immediately without requiring a separate status change.
+    if (projectId) {
+      void syncPresentationDocIds(projectId, reportDocId, docType);
+    }
+
     return res.json({ document: withPdf });
   } catch (err) {
     logger.error({ err }, "insights document generate error");

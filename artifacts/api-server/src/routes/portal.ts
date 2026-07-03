@@ -9865,7 +9865,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       ? await db.select({ id: insightsGeneratedDocumentsTable.id })
           .from(insightsGeneratedDocumentsTable)
           .where(and(
-            eq(insightsGeneratedDocumentsTable.status, "delivered"),
+            inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered"]),
             liveCondition,
           ))
       : [];
