@@ -75,6 +75,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
   compose:                   { bg: "#0A1A18", border: "#2DD4BF", icon: "⧉",  label: "Compose"                  },
+  // ── AI ──
+  ask_ai: { bg: "#110D1F", border: "#A78BFA", icon: "🤖", label: "Ask AI" },
   // ── News ──
   fetch_news_headlines: { bg: "#041A14", border: "#06B6D4", icon: "📰", label: "Fetch News Headlines" },
   // ── Social Media ──
@@ -176,6 +178,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   compose: [{ key: "value", label: "Composed value — string, or parsed JSON object/array when 'Parse as JSON' is enabled" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
+  // AI
+  ask_ai: [{ key: "aiResponse", label: "AI-generated text response" }, { key: "model", label: "Model used (e.g. claude-haiku-4-5)" }],
   // News
   fetch_news_headlines: [
     { key: "newsHeadlines",       label: "Array of fetched stories (title, source, url, publishedAt, description)" },
@@ -529,6 +533,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "post_linkedin", label: "Post to LinkedIn", description: "Publish a text post to a LinkedIn company/org page", tags: ["social", "linkedin", "post", "marketing"] },
       { type: "post_twitter",  label: "Post to X / Twitter", description: "Post a tweet via the Twitter API v2 with OAuth 1.0a", tags: ["social", "twitter", "x", "tweet", "marketing"] },
       { type: "post_facebook", label: "Post to Facebook", description: "Publish a post to a Facebook Page via the Graph API", tags: ["social", "facebook", "post", "marketing"] },
+    ],
+  },
+  {
+    name: "AI",
+    nodes: [
+      { type: "ask_ai", label: "Ask AI", description: "Send a prompt to Claude and expose the response as {{aiResponse}} for downstream nodes", tags: ["ai", "claude", "llm", "generate", "prompt", "ask"] },
     ],
   },
   {
@@ -2080,6 +2090,14 @@ function NodeConfigPanel({
         )}
 
         {/* ── Data ───────────────────────────────────────────── */}
+
+        {nodeType === "ask_ai" && (
+          <AskAiPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
 
         {nodeType === "find_object" && (
           <FindObjectPanel
@@ -3760,6 +3778,76 @@ const FIND_OBJECT_TYPES = [
   { value: "project", label: "Project", fields: ["id"] },
   { value: "article", label: "Article", fields: ["slug", "id"] },
 ];
+
+// ── Ask AI panel ──────────────────────────────────────────────────────────────
+
+function AskAiPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Model</label>
+        <select
+          value={(node.data.model as string) ?? "claude-haiku-4-5"}
+          onChange={e => onChange(node.id, { ...node.data, model: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+        >
+          <option value="claude-haiku-4-5">Claude Haiku (fast, cheap)</option>
+          <option value="claude-sonnet-4-5">Claude Sonnet (smarter, slower)</option>
+        </select>
+      </div>
+
+      <PayloadField
+        label="System prompt (optional)"
+        value={(node.data.systemExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, systemExpr: v })}
+        placeholder="You are a marketing strategist specialising in Microsoft 365..."
+        ancestorOutputs={ancestorOutputs}
+      />
+
+      <PayloadField
+        label="Prompt"
+        value={(node.data.promptExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, promptExpr: v })}
+        placeholder="Based on this news story: {{newsTopic}}, suggest a target audience..."
+        ancestorOutputs={ancestorOutputs}
+        multiline
+      />
+
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Max tokens</label>
+        <input
+          type="number"
+          min={64}
+          max={4096}
+          step={64}
+          value={(node.data.maxTokens as number) ?? 1024}
+          onChange={e => onChange(node.id, { ...node.data, maxTokens: Number(e.target.value) })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+        />
+      </div>
+
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">
+          Sends the prompt to Claude and exposes the response as{" "}
+          <span className="font-mono text-[#7D8590]">{"{{aiResponse}}"}</span>.
+          Use <span className="font-mono text-[#7D8590]">{"{{aiResponse}}"}</span> in
+          downstream nodes — e.g. wire it into a Define Target Audience node's audience
+          field so AI fills it in automatically.
+        </p>
+      </div>
+    </>
+  );
+}
+
+// ── Find Object panel ─────────────────────────────────────────────────────────
 
 function FindObjectPanel({
   node,

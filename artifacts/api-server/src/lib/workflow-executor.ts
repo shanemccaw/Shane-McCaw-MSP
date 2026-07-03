@@ -2122,6 +2122,35 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Ask AI ────────────────────────────────────────────────────────────
+      case "ask_ai": {
+        const aaPrompt = (interp(node.data.promptExpr as string | undefined, payload) ?? "").trim();
+        const aaSystem = (interp(node.data.systemExpr  as string | undefined, payload) ?? "").trim();
+        const aaModel  = (node.data.model as string | undefined) ?? "claude-haiku-4-5";
+
+        if (!aaPrompt) {
+          nodeError = true;
+          output = { error: "ask_ai requires a prompt" };
+          break;
+        }
+
+        const aaResp = await anthropic.messages.create({
+          model: aaModel,
+          max_tokens: 1024,
+          ...(aaSystem ? { system: aaSystem } : {}),
+          messages: [{ role: "user", content: aaPrompt }],
+        });
+
+        const aaText = aaResp.content
+          .filter(b => b.type === "text")
+          .map(b => (b as { type: "text"; text: string }).text)
+          .join("")
+          .trim();
+
+        output = { aiResponse: aaText, model: aaModel };
+        break;
+      }
+
       // ── Compose ───────────────────────────────────────────────────────────
       case "compose": {
         const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
