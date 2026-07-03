@@ -1207,7 +1207,7 @@ function NodeConfigPanel({
   const { data: triggers = [] } = useQuery<WfTrigger[]>({
     queryKey: ["wf-triggers", defId],
     queryFn: async () => {
-      const r = await fetchWithAuth(`/api/admin/workflows/${defId}/triggers`);
+      const r = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`);
       if (!r.ok) return [];
       return r.json();
     },
