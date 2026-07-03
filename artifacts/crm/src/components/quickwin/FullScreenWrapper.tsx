@@ -160,7 +160,7 @@ export default function FullScreenWrapper() {
   // ── Live: kanban tasks + workflow steps for the project (5 s poll) ───────────
   // The API returns { tasks, steps, ... } — we parse both so that the phase
   // stepper uses real workflow step titles, not kanban task groupName values.
-  const { data: projectData } = useQuery<ProjectData>({
+  const { data: projectData, isLoading: kanbanTasksLoading } = useQuery<ProjectData>({
     queryKey: ["qw-overlay-kanban", kanbanProjectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/portal/projects/${kanbanProjectId}`);
@@ -757,6 +757,10 @@ export default function FullScreenWrapper() {
   const kanbanProgress = kanbanTasks.length > 0
     ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
     : progressPct;
+
+  // True only during the initial fetch window — before the first response
+  // lands. Once projectData arrives (even as an empty task list) this is false.
+  const isKanbanLoading = !IS_SIM && !!kanbanProjectId && isVisible && kanbanTasksLoading && kanbanTasks.length === 0;
 
   // Phases = workflow step titles (already ordered by `order`).
   // Fall back to task groupNames, then to simulation stepTitles — so the
@@ -1497,6 +1501,7 @@ export default function FullScreenWrapper() {
           clientName={clientName}
           clientAvatarUrl={undefined}
           label={isProjectView ? "PROJECT PROGRESS" : "QUICK WIN PROGRESS"}
+          isLoading={isKanbanLoading}
         />
       )}
     </div>

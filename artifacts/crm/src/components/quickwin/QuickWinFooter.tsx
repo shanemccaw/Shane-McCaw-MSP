@@ -5,6 +5,7 @@ interface QuickWinFooterProps {
   clientName: string;
   clientAvatarUrl?: string;
   label?: string;
+  isLoading?: boolean;
 }
 
 export default function QuickWinFooter({
@@ -14,6 +15,7 @@ export default function QuickWinFooter({
   clientName,
   clientAvatarUrl,
   label = "QUICK WIN PROGRESS",
+  isLoading = false,
 }: QuickWinFooterProps) {
   const initials = clientName
     .split(" ")
@@ -32,25 +34,37 @@ export default function QuickWinFooter({
           {label}
         </span>
         <div className="h-2 flex-1 bg-black/5 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#0078D4] shadow-[0_1px_4px_rgba(0,120,212,0.2)] rounded-full"
-            style={{
-              width: `${progressPct}%`,
-              transition: "width 800ms cubic-bezier(0.42,0,0.58,1)",
-            }}
-          />
+          {isLoading ? (
+            <div className="h-full w-1/3 rounded-full bg-[#0078D4]/20 animate-pulse" />
+          ) : (
+            <div
+              className="h-full bg-[#0078D4] shadow-[0_1px_4px_rgba(0,120,212,0.2)] rounded-full"
+              style={{
+                width: `${progressPct}%`,
+                transition: "width 800ms cubic-bezier(0.42,0,0.58,1)",
+              }}
+            />
+          )}
         </div>
-        <span className="text-[14px] font-semibold text-[#0078D4]">{Math.round(progressPct)}%</span>
+        {isLoading ? (
+          <div className="w-8 h-4 rounded bg-black/10 animate-pulse" />
+        ) : (
+          <span className="text-[14px] font-semibold text-[#0078D4]">{Math.round(progressPct)}%</span>
+        )}
       </div>
 
       <div className="flex items-center gap-8 text-black/50">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          <span className="text-[11px] font-bold">
-            {totalCount !== undefined
-              ? `${completedCount} of ${totalCount} tasks complete`
-              : `${completedCount} Complete`}
-          </span>
+          {isLoading ? (
+            <div className="w-28 h-3 rounded bg-black/10 animate-pulse" />
+          ) : (
+            <span className="text-[11px] font-bold">
+              {totalCount !== undefined
+                ? `${completedCount} of ${totalCount} tasks complete`
+                : `${completedCount} Complete`}
+            </span>
+          )}
         </div>
 
         <div className="pl-8 border-l border-black/10 hidden sm:flex items-center gap-3">
