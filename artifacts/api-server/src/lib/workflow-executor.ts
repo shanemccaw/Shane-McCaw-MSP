@@ -32,10 +32,17 @@ import {
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
+
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { eq, and, count } from "drizzle-orm";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
+
+// Captured once when the module is first loaded. Used by fireStartupTriggers
+// to detect runs created in the current boot session vs. orphaned runs from a
+// previous boot — so a crash-interrupted startup trigger re-fires on the next
+// restart instead of being silently skipped.
+const BOOT_TIME = new Date();
 
 // ── Payload interpolation ────────────────────────────────────────────────────
 // Replaces {{key}} and {{payload.key}} tokens with values from payload.
@@ -938,9 +945,11 @@ export async function triggerScheduledWorkflows(): Promise<void> {
 }
 
 // ── Startup trigger firing ────────────────────────────────────────────────────
-// Called once on server init. Finds all enabled startup triggers, fires each
-// definition once, then marks them as consumed (next_run_at set to far future)
-// so they don't re-fire on the next scheduler tick.
+// Called once on server init. Finds all enabled startup triggers and fires each
+// definition once per boot. The trigger is never consumed/disabled, so a crash
+// before the run is created does not permanently suppress the startup job —
+// the next restart will fire it again. Same-boot double-fire is prevented by
+// checking for an existing run created since BOOT_TIME.
 
 export async function fireStartupTriggers(): Promise<void> {
   try {
@@ -949,11 +958,30 @@ export async function fireStartupTriggers(): Promise<void> {
     );
 
     for (const trigger of rows.rows) {
-      // Consume immediately to prevent double-fire on restart
-      await pool.query(
-        `UPDATE wf_triggers SET next_run_at = NOW() + INTERVAL '100 years' WHERE id = $1`,
-        [trigger.id],
+      // Guard against same-boot double-fire: skip if a run for this definition
+      // was already created since this server process started.
+      //
+      // Crucially, we do NOT consume (disable) the trigger before firing.
+      // The old pattern — consuming before the run is created — meant a crash
+      // in that window left the trigger consumed but the work never done.
+      // With BOOT_TIME scoping, orphaned runs from a previous boot (created
+      // before BOOT_TIME) are invisible to this check, so the trigger
+      // re-fires correctly on every restart even if the previous boot crashed.
+      const existing = await pool.query<{ id: number }>(
+        `SELECT id FROM wf_runs
+         WHERE definition_id = $1
+           AND created_at >= $2
+         LIMIT 1`,
+        [trigger.definition_id, BOOT_TIME],
       );
+
+      if ((existing.rowCount ?? 0) > 0) {
+        logger.info(
+          { triggerId: trigger.id, definitionId: trigger.definition_id },
+          "wf-engine: startup trigger skipped — already fired this boot",
+        );
+        continue;
+      }
 
       const runId = await fireWorkflowForDefinition(
         trigger.definition_id,
