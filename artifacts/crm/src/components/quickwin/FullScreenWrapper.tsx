@@ -127,7 +127,7 @@ export default function FullScreenWrapper() {
   }, [state.projectId, fetchWithAuth, navigate, dispatch]);
 
   // ── Live: client projects (to get a project ID when escalation hasn't happened yet) ──
-  const { data: portalProjects = [] } = useQuery<Array<{ id: number; name: string }>>({
+  const { data: portalProjects = [], isLoading: projectsLoading } = useQuery<Array<{ id: number; name: string }>>({
     queryKey: ["portal-projects-for-overlay"],
     queryFn: async () => {
       const res = await fetchWithAuth("/api/portal/projects");
@@ -387,30 +387,62 @@ export default function FullScreenWrapper() {
     return undefined;
   }, [isVisible, mounted]);
 
+  // ── Helper: find a matching portal project for the active quick win ──────────
+  const findMatchingProject = useCallback(
+    (projects: Array<{ id: number; name: string }>) => {
+      const titleLower = quickWin?.title?.toLowerCase() ?? "";
+      return (
+        projects.find(p => p.name?.toLowerCase() === titleLower) ??
+        (titleLower
+          ? projects.find(
+              p =>
+                p.name?.toLowerCase().includes(titleLower) ||
+                titleLower.includes(p.name?.toLowerCase() ?? ""),
+            )
+          : undefined) ??
+        (projects.length === 1 ? projects[0] : undefined)
+      );
+    },
+    [quickWin],
+  );
+
   // ── EnteringQuickWin: detect existing project → skip diagnostic if found ───
-  // If the client already has a project that matches this Quick Win (by title
-  // or by being the only project), bind immediately via BIND_PROJECT and skip
-  // the diagnostic simulation entirely. This prevents the dialog from running
-  // steps from the local step array while live Kanban tasks already exist.
+  // Wait for the portalProjects query to resolve (projectsLoading → false)
+  // before deciding. This avoids the old 400ms race where the timer fired
+  // while the fetch was still in flight and the project list was empty.
 
   useEffect(() => {
-    if (mode !== "EnteringQuickWin") return undefined;
-    const t = setTimeout(() => {
-      const titleLower = quickWin?.title?.toLowerCase() ?? "";
-      // Prefer exact title match, then case-insensitive contains, then single project.
-      const matching =
-        portalProjects.find(p => p.name?.toLowerCase() === titleLower) ??
-        (titleLower ? portalProjects.find(p => p.name?.toLowerCase().includes(titleLower) || titleLower.includes(p.name?.toLowerCase() ?? "")) : undefined) ??
-        (portalProjects.length === 1 ? portalProjects[0] : undefined);
+    if (mode !== "EnteringQuickWin") return;
+    // Still fetching — hold off until the response lands.
+    if (projectsLoading) return;
 
-      if (matching) {
-        dispatch({ type: "BIND_PROJECT", payload: { projectId: String(matching.id) } });
-      } else {
-        dispatch({ type: "ENTRY_COMPLETE" });
-      }
-    }, 400);
-    return () => clearTimeout(t);
-  }, [mode, dispatch, quickWin, portalProjects]);
+    const matching = findMatchingProject(portalProjects);
+    if (matching) {
+      dispatch({ type: "BIND_PROJECT", payload: { projectId: String(matching.id) } });
+    } else {
+      dispatch({ type: "ENTRY_COMPLETE" });
+    }
+  }, [mode, dispatch, projectsLoading, portalProjects, findMatchingProject]);
+
+  // ── Mid-simulation recovery: bind project if one appears after simulation starts ──
+  // If EnteringQuickWin already transitioned to Ready/RunningAutoStep/etc. before
+  // portalProjects loaded, this reactive effect will bind the project and jump
+  // straight to ProjectTasksView as soon as the list arrives with a match.
+
+  useEffect(() => {
+    const BINDABLE = new Set([
+      "Ready", "RunningAutoStep", "WaitingForUser",
+      "StepComplete", "QuickWinComplete", "Error",
+    ]);
+    if (!BINDABLE.has(mode)) return;
+    if (state.projectId) return; // already bound — nothing to do
+    if (projectsLoading || portalProjects.length === 0) return;
+
+    const matching = findMatchingProject(portalProjects);
+    if (matching) {
+      dispatch({ type: "BIND_PROJECT", payload: { projectId: String(matching.id) } });
+    }
+  }, [mode, state.projectId, projectsLoading, portalProjects, findMatchingProject, dispatch]);
 
   // ── Ready: dispatch auto or manual step ───────────────────────────────────
 
