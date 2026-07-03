@@ -3373,6 +3373,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const [wide, setWide] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [dryRun, setDryRun] = useState(true);
 
   useEffect(() => {
     requestAnimationFrame(() => setMounted(true));
@@ -3461,7 +3462,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/test-run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes: graphNodes, edges: graphEdges, triggerPayload, inputValues }),
+        body: JSON.stringify({ nodes: graphNodes, edges: graphEdges, triggerPayload, inputValues, dryRun }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({})) as Record<string, unknown>;
@@ -3524,6 +3525,25 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
             <span className="text-[10px] text-[#484F58] truncate">· {nodes.length} nodes</span>
           </div>
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+            {/* Dry-run / Live toggle */}
+            <div className="flex items-center rounded-lg border border-[#30363D] overflow-hidden text-[10px] font-semibold">
+              <button
+                type="button"
+                onClick={() => setDryRun(true)}
+                className={`px-2.5 py-1 transition-colors ${dryRun ? "bg-[#0078D4] text-white" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                title="Use fake/stub data — no real actions are performed"
+              >
+                Fake data
+              </button>
+              <button
+                type="button"
+                onClick={() => setDryRun(false)}
+                className={`px-2.5 py-1 transition-colors ${!dryRun ? "bg-red-500/80 text-white" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                title="Execute nodes for real — emails will send, records will be created"
+              >
+                Live
+              </button>
+            </div>
             <button
               onClick={() => setWide(w => !w)}
               title={wide ? "Narrow panel" : "Wide panel"}
@@ -3544,6 +3564,17 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
         </div>
 
         <div className="overflow-y-auto flex-1 p-4 space-y-4">
+
+          {/* ── Live-mode warning ── */}
+          {!dryRun && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5 flex items-start gap-2">
+              <span className="text-red-400 text-sm flex-shrink-0 mt-0.5">⚠</span>
+              <div>
+                <p className="text-xs font-semibold text-red-400">Live execution — real actions will fire</p>
+                <p className="text-[11px] text-[#7D8590] mt-0.5">Emails will send, records will be created, and APIs will be called for real. Switch to <strong className="text-[#E6EDF3]">Fake data</strong> to test safely.</p>
+              </div>
+            </div>
+          )}
 
           {/* ── Inline run status (after run starts) ── */}
           {runId !== null ? (
