@@ -1977,6 +1977,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isDirty, setIsDirty] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showTestRun, setShowTestRun] = useState(false);
   const [publishLabel, setPublishLabel] = useState("");
@@ -2107,6 +2109,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       style: { stroke: "#30363D", strokeWidth: 2 },
       animated: false,
     })));
+    setIsDirty(false);
   }, [currentVersion, setNodes, setEdges]);
 
   useEffect(() => {
@@ -2139,6 +2142,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     onMutate: () => setSaveStatus("saving"),
     onSuccess: (data) => {
       setSaveStatus("saved");
+      setIsDirty(false);
       setTimeout(() => setSaveStatus("idle"), 2000);
       if (data.autoDraftedFrom) {
         setCurrentVersionId(data.id);
@@ -2174,6 +2178,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     redoRef.current = [];
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
+    setIsDirty(true);
   }, [setEdges, nodes, edges]);
 
   // Wrap onNodesChange: snapshot once when a drag ends (dragging === false) or a node is removed
@@ -2184,6 +2189,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
       redoRef.current = [];
+      setIsDirty(true);
     }
     onNodesChange(changes);
   }, [onNodesChange, nodes, edges]);
@@ -2194,6 +2200,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
       redoRef.current = [];
+      setIsDirty(true);
     }
     onEdgesChange(changes);
   }, [onEdgesChange, nodes, edges]);
@@ -2212,6 +2219,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       data: { nodeType, label: style.label },
     }]);
     trackRecent(nodeType);
+    setIsDirty(true);
   }
 
   function duplicateNode(id: string) {
@@ -2225,6 +2233,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       position: { x: node.position.x + 40, y: node.position.y + 40 },
       selected: false,
     }]);
+    setIsDirty(true);
   }
 
   function handleCanvasDrop(e: React.DragEvent<HTMLDivElement>) {
@@ -2244,6 +2253,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   function updateNodeData(id: string, data: Record<string, unknown>) {
     redoRef.current = [];
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data } : n));
+    setIsDirty(true);
   }
 
   function deleteNode(id: string) {
@@ -2251,6 +2261,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     setNodes(nds => nds.filter(n => n.id !== id));
     setEdges(eds => eds.filter(e => e.source !== id && e.target !== id));
     setSelectedNodeId(null);
+    setIsDirty(true);
   }
 
   // Shared canvas hydration for both AI generate and AI refine
@@ -2278,6 +2289,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     }));
     setNodes(rfNodes);
     setEdges(rfEdges);
+    setIsDirty(true);
     setAiToast(toastMsg);
     setTimeout(() => setAiToast(null), 5000);
     setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.15, duration: 400 }), 80);
@@ -2309,6 +2321,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
         setNodes(next.nodes);
         setEdges(next.edges);
+        setIsDirty(true);
       } else {
         // Undo
         const prev = historyRef.current.pop();
@@ -2316,11 +2329,22 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         redoRef.current = [...redoRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
         setNodes(prev.nodes);
         setEdges(prev.edges);
+        setIsDirty(true);
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [nodes, edges, setNodes, setEdges]);
+
+  // Warn on tab close / reload when there are unsaved changes
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!isDirty) return;
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [isDirty]);
 
   // Dismiss context menu on outside click / Escape
   useEffect(() => {
@@ -2347,8 +2371,9 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-[#30363D] gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={() => navigate("/workflows/list")}
+            onClick={() => isDirty ? setShowUnsavedDialog(true) : navigate("/workflows/list")}
             className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
+            title={isDirty ? "You have unsaved changes" : "Back to workflows"}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -2811,6 +2836,41 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           onClose={() => setShowRefineModal(false)}
           onGenerate={handleAiRefine}
         />
+      )}
+
+      {/* Unsaved changes confirmation dialog */}
+      {showUnsavedDialog && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <svg className="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+              </div>
+              <div>
+                <h2 className="font-semibold text-[#E6EDF3]">Unsaved changes</h2>
+                <p className="text-sm text-[#7D8590] mt-1">
+                  You have unsaved changes on this canvas. If you go back now they will be lost.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setShowUnsavedDialog(false)}
+                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >
+                Stay and keep editing
+              </button>
+              <button
+                onClick={() => navigate("/workflows/list")}
+                className="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                Discard &amp; go back
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
