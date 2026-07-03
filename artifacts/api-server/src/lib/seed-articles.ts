@@ -299,9 +299,22 @@ Building a SharePoint intranet the right way is one of the highest-impact things
 export async function seedArticles(): Promise<void> {
   try {
     const existing = await db.select({ slug: articlesTable.slug }).from(articlesTable);
-    if (existing.length > 0) return;
+    if (existing.length > 0) {
+      // Ensure any previously-seeded articles (inserted before is_published existed) are
+      // marked as published — they all have corresponding .md files on disk.
+      await db
+        .update(articlesTable)
+        .set({ isPublished: true })
+        .where(
+          sql`slug = ANY(ARRAY[${sql.join(SEED_ARTICLES.map(a => sql`${a.slug}`), sql`, `)}]) AND is_published = false`,
+        );
+      return;
+    }
 
-    await db.insert(articlesTable).values(SEED_ARTICLES).onConflictDoNothing();
+    await db
+      .insert(articlesTable)
+      .values(SEED_ARTICLES.map(a => ({ ...a, isPublished: true })))
+      .onConflictDoNothing();
     logger.info({ count: SEED_ARTICLES.length }, "articles: seeded default articles");
   } catch (err) {
     logger.warn({ err }, "articles: seed failed (non-fatal)");
