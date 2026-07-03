@@ -84,7 +84,8 @@ const BOOT_TIME = new Date();
 // Replaces {{key}} and {{payload.key}} tokens with values from payload.
 function interp(template: string | undefined, payload: Record<string, unknown>): string | undefined {
   if (!template) return undefined;
-  return template.replace(/\{\{([\w.]+)\}\}/g, (_match, path: string) => {
+  // [\w.\-]+ — word chars, dots, and hyphens, so node IDs like "node-106" resolve correctly
+  return template.replace(/\{\{([\w.\-]+)\}\}/g, (_match, path: string) => {
     const key = path.startsWith("payload.") ? path.slice(8) : path;
     const parts = key.split(".");
     let cur: unknown = payload;
