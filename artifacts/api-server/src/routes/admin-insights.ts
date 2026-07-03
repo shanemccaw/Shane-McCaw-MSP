@@ -822,11 +822,12 @@ Always calculate each adjustment. Always show the breakdown. Never leave pricing
 - Rapid → +$10,000
 
 Output requirements for the Pricing section:
-- Show a pricing table with columns: Project/Workstream, Base Ceiling, Adjustments (itemised), Final Price (USD), Reasoning
-- Always show Base Ceiling for each line
-- Always show each adjustment that applies and its dollar value
-- Always show Final Price
-- Always explain the reasoning for each tier chosen
+- Show a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning
+  - Each row shows ONLY the workstream's own Base Ceiling and Final Price — NO per-row adjustment breakdown.
+  - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).
+- After the per-workstream table, add a separate "Pricing Adjustments" section listing each applicable shared adjustment factor and its dollar value ONCE — not repeated per workstream.
+- End with a Grand Total row: sum of all workstream Final Prices + sum of all shared adjustments.
+- Always explain the reasoning for each adjustment tier chosen in the Pricing Adjustments section.
 - Never invent new pricing models. Never use TBD. Never treat the Base Ceiling as a maximum.
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
@@ -1339,7 +1340,7 @@ INSTRUCTIONS:
 - Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
 - The Pricing section MUST contain a proper table with columns: Project/Workstream, Scope, Fixed Price (USD), Notes — populated from the engagement projects catalogue and the telemetry above
 - You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends")
-- You MUST calculate pricing using the telemetry and pricing rules provided; show brief justification per line item
+- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) are listed ONCE in a "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
@@ -1353,7 +1354,7 @@ INSTRUCTIONS:
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\nTIER 02 PRICING FORMULA (apply verbatim to every pricing line item):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
