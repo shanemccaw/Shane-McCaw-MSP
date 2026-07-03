@@ -31,6 +31,7 @@ import {
   db,
   scriptRunResultsTable,
   clientScoresTable,
+  clientHealthHistoryTable,
   clientM365ProfilesTable,
   usersTable,
   projectsTable,
@@ -302,6 +303,50 @@ function computeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]):
   const readiness = avg("copilotReadiness", avg("copilot_readiness", avg("CopilotReadiness", 50)));
   const composite = Math.round((security + governance + readiness) / 3);
   return { security, governance, readiness, composite };
+}
+
+/**
+ * Fetch the latest health score per category from client_health_history and
+ * map them into the {security, governance, readiness, composite} shape used by
+ * document generation. Returns null when no health history exists for the
+ * client so callers can fall back to computeScoresFromRuns().
+ */
+async function fetchClientHealthScores(customerId: number): Promise<{
+  security: number; governance: number; readiness: number; composite: number;
+} | null> {
+  const rows = await db
+    .select({
+      category: clientHealthHistoryTable.category,
+      score:    clientHealthHistoryTable.score,
+    })
+    .from(clientHealthHistoryTable)
+    .where(eq(clientHealthHistoryTable.clientId, customerId))
+    .orderBy(desc(clientHealthHistoryTable.recordedAt));
+
+  if (rows.length === 0) return null;
+
+  // Keep only the most-recent entry per category (rows already DESC by date)
+  const latest: Record<string, number> = {};
+  for (const row of rows) {
+    if (!(row.category in latest)) latest[row.category] = row.score;
+  }
+
+  const security   = latest["security"]   ?? latest["compliance"] ?? null;
+  const governance = latest["governance"] ?? latest["compliance"] ?? null;
+  const readiness  = latest["copilot"]    ?? null;
+
+  // If we have no meaningful data at all, let the caller fall back
+  if (security === null && governance === null && readiness === null) return null;
+
+  const sec = security   ?? 0;
+  const gov = governance ?? 0;
+  const red = readiness  ?? 0;
+  return {
+    security:   sec,
+    governance: gov,
+    readiness:  red,
+    composite:  Math.round((sec + gov + red) / 3),
+  };
 }
 
 function collectFindings(runs: { parsedFindings: string[]; recommendations: string[] }[]): {
@@ -759,7 +804,8 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
         : Promise.resolve([]),
     ]);
 
-    const scores = computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+    const healthScores = customerId ? await fetchClientHealthScores(customerId) : null;
+    const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
     const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
     const clientName  = (customer as { company: string | null; name: string | null }[])[0]?.company
       ?? (customer as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
@@ -1281,7 +1327,8 @@ INSTRUCTIONS:
         : Promise.resolve([]),
     ]);
 
-    const scores = computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+    const healthScores = customerId ? await fetchClientHealthScores(customerId) : null;
+    const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
     const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
     const clientName  = (customer as { company: string | null; name: string | null }[])[0]?.company
       ?? (customer as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
@@ -1860,9 +1907,10 @@ export async function executeAutomation(
         50,
       );
       log("info", `Loaded ${runs.length} telemetry run(s)`);
-      const scores = computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+      const healthScores = automation.customerId ? await fetchClientHealthScores(automation.customerId) : null;
+      const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
       const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
-      log("info", `Scores — Security: ${scores.security}/100, Governance: ${scores.governance}/100, Readiness: ${scores.readiness}/100`);
+      log("info", `Scores — Security: ${scores.security}/100, Governance: ${scores.governance}/100, Readiness: ${scores.readiness}/100 (source: ${healthScores ? "health-history" : "run-impacts"})`);
 
       const docType   = REPORT_DOC_TYPES_FOR_AUTOMATION[automation.automationType] ?? "executive_summary";
       const docLabel  = REPORT_DOC_TYPE_LABELS_AUTO[docType] ?? docType;
