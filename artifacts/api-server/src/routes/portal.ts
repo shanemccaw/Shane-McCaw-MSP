@@ -5001,6 +5001,42 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         }
       }
     }
+  } else if (event.type === "invoice.paid") {
+    const stripeInvoice = event.data.object as import("stripe").Stripe.Invoice;
+    const stripeInvoiceId = stripeInvoice.id;
+
+    if (!stripeInvoiceId) {
+      req.log.warn({ eventId: event.id }, "processStripeEvent: invoice.paid event missing invoice id, skipping");
+    } else {
+      // Idempotency: read current status before writing to prevent duplicate
+      // paid marks when Stripe retries an invoice.paid event (subscription renewals).
+      const [existingInvoice] = await db
+        .select({ id: invoicesTable.id, status: invoicesTable.status })
+        .from(invoicesTable)
+        .where(eq(invoicesTable.stripeInvoiceId, stripeInvoiceId))
+        .limit(1);
+
+      if (!existingInvoice) {
+        req.log.info(
+          { stripeInvoiceId },
+          "processStripeEvent: invoice.paid — no matching invoice in DB, skipping",
+        );
+      } else if (existingInvoice.status === "paid") {
+        req.log.info(
+          { stripeInvoiceId, invoiceId: existingInvoice.id },
+          "processStripeEvent: invoice.paid — already marked paid, skipping (idempotency)",
+        );
+      } else {
+        await db
+          .update(invoicesTable)
+          .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
+          .where(eq(invoicesTable.id, existingInvoice.id));
+        req.log.info(
+          { stripeInvoiceId, invoiceId: existingInvoice.id },
+          "processStripeEvent: invoice.paid — marked invoice as paid",
+        );
+      }
+    }
   } else if (event.type === "checkout.session.expired") {
     const session = event.data.object as import("stripe").Stripe.Checkout.Session;
     if (session.metadata?.type === "presentation_checkout") {

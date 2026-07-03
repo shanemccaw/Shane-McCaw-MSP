@@ -31,6 +31,7 @@ process.env.STRIPE_WEBHOOK_SECRET = "whsec_test_fake_webhook_secret";
 
 let webhookEventToReturn: unknown = null;
 let insertCallCount = 0;
+let updateCallCount = 0;
 let dbQueue: unknown[][] = [];
 
 function makeChain(result: unknown[]): Record<string, unknown> {
@@ -61,9 +62,12 @@ function makeMockDb() {
         onConflictDoNothing: () => ({ returning: async () => [] }),
       };
     },
-    update: (_table: unknown) => ({
-      set: (_vals: unknown) => ({ where: async () => [] }),
-    }),
+    update: (_table: unknown) => {
+      updateCallCount++;
+      return {
+        set: (_vals: unknown) => ({ where: async () => [] }),
+      };
+    },
     delete: () => ({ where: async () => [] }),
     execute: async () => ({ rows: [], rowCount: 0 }),
   };
@@ -572,5 +576,110 @@ describe("webhook: onboarding_purchase replayed event is a no-op (idempotency)",
       insertsBefore,
       `expected zero db.insert() calls on replay, but insertCallCount went from ${insertsBefore} to ${insertCallCount}`,
     );
+  });
+});
+
+// =============================================================================
+// Scenario 5: invoice.paid — first delivery marks invoice as paid
+// The idempotency select finds the invoice in "due" status, so the update runs.
+// =============================================================================
+
+const STRIPE_INVOICE_ID = "in_test_inv_idem_001";
+
+function makeInvoicePaidEvent(stripeInvoiceId: string): Record<string, unknown> {
+  return {
+    id: "evt_test_invoice_paid",
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: stripeInvoiceId,
+        object: "invoice",
+        subscription: "sub_test_abc",
+        customer: "cus_test_xyz",
+        amount_paid: 50000,
+        currency: "usd",
+      },
+    },
+  };
+}
+
+describe("webhook: invoice.paid first delivery marks invoice as paid", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+  let updatesBefore: number;
+
+  before(async () => {
+    updateCallCount = 0;
+    insertCallCount = 0;
+    // Seed: idempotency select returns an invoice that is not yet paid
+    dbQueue = [[{ id: 77, status: "due" }]];
+    updatesBefore = updateCallCount;
+    webhookEventToReturn = makeInvoicePaidEvent(STRIPE_INVOICE_ID);
+
+    ({ status, body } = await postWebhook(webhookEventToReturn));
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("webhook response contains { received: true }", () => {
+    assert.equal(body.received, true);
+  });
+
+  it("db.update was called — invoice status should be set to paid", () => {
+    assert.ok(
+      updateCallCount > updatesBefore,
+      `expected at least one db.update() call on first invoice.paid delivery, got updateCallCount=${updateCallCount}`,
+    );
+  });
+
+  it("db.insert was NOT called — invoice.paid does not create a new invoice row", () => {
+    assert.equal(insertCallCount, 0, `expected no db.insert() calls for invoice.paid, got ${insertCallCount}`);
+  });
+});
+
+// =============================================================================
+// Scenario 6: invoice.paid — replayed event is a no-op
+// The idempotency select finds the invoice already in "paid" status, so the
+// update is skipped entirely.
+// =============================================================================
+
+describe("webhook: invoice.paid replayed event is a no-op (idempotency)", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+  let updatesBefore: number;
+
+  before(async () => {
+    updateCallCount = 0;
+    insertCallCount = 0;
+    // Seed: idempotency select returns an invoice already marked paid
+    dbQueue = [[{ id: 77, status: "paid" }]];
+    updatesBefore = updateCallCount;
+    webhookEventToReturn = makeInvoicePaidEvent(STRIPE_INVOICE_ID);
+
+    ({ status, body } = await postWebhook(webhookEventToReturn));
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200 even for a replayed invoice.paid event", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("webhook response contains { received: true }", () => {
+    assert.equal(body.received, true);
+  });
+
+  it("db.update was NOT called — replayed invoice.paid must not double-mark as paid", () => {
+    assert.equal(
+      updateCallCount,
+      updatesBefore,
+      `expected zero db.update() calls on replay, but updateCallCount went from ${updatesBefore} to ${updateCallCount}`,
+    );
+  });
+
+  it("db.insert was NOT called — replayed invoice.paid must not create a duplicate invoice", () => {
+    assert.equal(insertCallCount, 0, `expected no db.insert() calls for replayed invoice.paid, got ${insertCallCount}`);
   });
 });
