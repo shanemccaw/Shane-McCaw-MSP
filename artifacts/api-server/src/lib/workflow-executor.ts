@@ -35,6 +35,7 @@ import {
   articlesTable,
   notificationsTable,
   campaignsTable,
+  campaignAssetsTable,
   landingPagesTable,
   type WfGraph,
   type WfNode,
@@ -315,6 +316,16 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "publish_landing_page":
       return { dryRun: true, landingPageId: 1, slug: str("slugExpr", "dry-run-page"), published: false };
+
+    case "generate_landing_page":
+      return {
+        dryRun: true,
+        landingPageId: null,
+        slug: "dry-run-landing-page",
+        headline: "(AI-generated headline — preview in live run)",
+        subheadline: "(AI-generated subheadline)",
+        published: false,
+      };
 
     case "find_object":
       return { dryRun: true, found: true, objectId: 1, objectType: (node.data.objectType as string | undefined) ?? "lead" };
@@ -916,49 +927,74 @@ async function executeNode(
       }
 
       case "send_campaign_email": {
-        const templateSlug = node.data.templateSlug as string | undefined;
-        if (!templateSlug) {
+        // Escape a plain string value for safe insertion into HTML
+        function escHtml(s: string): string {
+          return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+        }
+        // Substitute {{path}} tokens from the workflow payload into a template string.
+        function renderTemplate(template: string, p: Record<string, unknown>): string {
+          return template.replace(/\{\{([\w.]+)\}\}/g, (_m, path: string) => {
+            const key = path.startsWith("payload.") ? path.slice(8) : path;
+            const parts = key.split(".");
+            let cur: unknown = p;
+            for (const part of parts) {
+              if (cur == null || typeof cur !== "object") return `{{${path}}}`;
+              cur = (cur as Record<string, unknown>)[part];
+            }
+            return cur != null ? escHtml(String(cur)) : `{{${path}}}`;
+          });
+        }
+
+        const recipient = interp(node.data.recipientExpr as string | undefined, payload);
+        if (!recipient?.trim()) {
           nodeError = true;
-          output = { error: "send_campaign_email requires a templateSlug" };
-        } else {
+          output = { error: "send_campaign_email: recipient resolved to empty — check recipientExpr" };
+          break;
+        }
+
+        const assetId = node.data.assetId as number | undefined;
+        const templateSlug = node.data.templateSlug as string | undefined;
+
+        let bodyHtml: string;
+        let subject: string;
+        let sourceRef: string;
+
+        if (assetId) {
+          // New path: resolve by campaign asset ID
+          const [asset] = await db.select().from(campaignAssetsTable).where(eq(campaignAssetsTable.id, assetId)).limit(1);
+          if (!asset) {
+            nodeError = true;
+            output = { error: `send_campaign_email: campaign asset #${assetId} not found` };
+            break;
+          }
+          // Convert plain-text content to simple HTML paragraphs for email rendering
+          const paragraphs = asset.content.split(/\n{2,}/).map(p => `<p>${escHtml(p.trim()).replace(/\n/g, "<br>")}</p>`).join("\n");
+          bodyHtml  = paragraphs;
+          subject   = asset.title;
+          sourceRef = `asset:${assetId}`;
+        } else if (templateSlug) {
+          // Legacy path: resolve by email template slug
           const [tmpl] = await db.select().from(emailTemplatesTable).where(eq(emailTemplatesTable.slug, templateSlug)).limit(1);
           if (!tmpl) {
             nodeError = true;
             output = { error: `Email template '${templateSlug}' not found` };
-          } else {
-            const recipient = interp(node.data.recipientExpr as string | undefined, payload);
-            if (!recipient?.trim()) {
-              nodeError = true;
-              output = { error: "send_campaign_email: recipient resolved to empty — check recipientExpr" };
-            } else {
-              // Escape a plain string value for safe insertion into HTML
-              function escHtml(s: string): string {
-                return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
-              }
-              // Substitute {{path}} tokens (including dotted paths like {{lead.email}})
-              // from the workflow payload into a template string.
-              // Values are HTML-escaped before insertion; unresolved tokens are left intact.
-              function renderTemplate(template: string, p: Record<string, unknown>): string {
-                return template.replace(/\{\{([\w.]+)\}\}/g, (_m, path: string) => {
-                  const key = path.startsWith("payload.") ? path.slice(8) : path;
-                  const parts = key.split(".");
-                  let cur: unknown = p;
-                  for (const part of parts) {
-                    if (cur == null || typeof cur !== "object") return `{{${path}}}`;
-                    cur = (cur as Record<string, unknown>)[part];
-                  }
-                  return cur != null ? escHtml(String(cur)) : `{{${path}}}`;
-                });
-              }
-              const renderedBody = renderTemplate(tmpl.bodyHtml, payload);
-              const renderedSubject = renderTemplate(tmpl.subject, payload);
-              const { sendEmail, brandedEmail } = await import("./mailer");
-              const fullHtml = brandedEmail(renderedBody);
-              await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
-              output = { sent: true, recipient, subject: renderedSubject, templateSlug };
-            }
+            break;
           }
+          bodyHtml  = tmpl.bodyHtml;
+          subject   = tmpl.subject;
+          sourceRef = `template:${templateSlug}`;
+        } else {
+          nodeError = true;
+          output = { error: "send_campaign_email requires an assetId (Campaign Email Copy) or a templateSlug" };
+          break;
         }
+
+        const renderedBody    = renderTemplate(bodyHtml, payload);
+        const renderedSubject = renderTemplate(subject, payload);
+        const { sendEmail, brandedEmail } = await import("./mailer");
+        const fullHtml = brandedEmail(renderedBody);
+        await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
+        output = { sent: true, recipient, subject: renderedSubject, sourceRef };
         break;
       }
 
@@ -1324,6 +1360,99 @@ Return ONLY a JSON object with these exact keys:
           slug:          plpPage.slug,
           published:     true,
           wasAlreadyPublished: plpPage.published,
+        };
+        break;
+      }
+
+      // ── Generate Landing Page ─────────────────────────────────────────────
+      case "generate_landing_page": {
+        const glpTopic    = (interp(node.data.topic    as string | undefined, payload) ?? "Microsoft 365 Consulting").trim();
+        const glpAudience = (interp(node.data.audience as string | undefined, payload) ?? "IT decision-makers").trim();
+        const glpCta      = (interp(node.data.cta      as string | undefined, payload) ?? "Book Your Paid Assessment").trim();
+
+        const glpPrompt = `You are generating a landing page for a PAID professional Microsoft 365 service.
+Topic: ${glpTopic}
+Target audience: ${glpAudience}
+CTA: ${glpCta}
+
+RULES:
+- DO NOT use generic marketing language, hype, or "free audit" language.
+- DO NOT write long paragraphs. Keep it concise and enterprise-grade.
+- Never imply the offer is free.
+- The headline must be risk-first (e.g. "Your M365 Tenant Is a Compliance Risk").
+- The subheadline must frame the core problem the prospect faces right now.
+- Produce exactly 3 valuePropBlocks.
+- Each valuePropBlock body must be 1–2 concise, authoritative sentences.
+- Each valuePropBlock icon must be a single relevant emoji.
+- socialProof must always be an empty array.
+
+Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdown fences:
+{
+  "title": "page title (service name — concise)",
+  "headline": "risk-first headline",
+  "subheadline": "one sentence framing the core problem",
+  "valuePropBlocks": [
+    { "icon": "🔍", "heading": "pillar heading", "body": "1–2 authoritative sentences" }
+  ],
+  "socialProof": [],
+  "cta": { "buttonText": "${glpCta}", "href": "/contact", "subtext": "Fixed price. Senior-level delivery." }
+}`;
+
+        const glpResp = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 2000,
+          messages: [{ role: "user", content: glpPrompt }],
+        });
+
+        const glpRaw = glpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
+        const glpParsed = extractJsonFromAiText(glpRaw);
+
+        if (!glpParsed?.title || !glpParsed?.headline) {
+          nodeError = true;
+          output = { error: "generate_landing_page: AI did not return valid landing page JSON" };
+          break;
+        }
+
+        const glpTitle    = String(glpParsed.title);
+        const glpHeadline = String(glpParsed.headline);
+        const glpSlugBase = slugify(glpTitle).slice(0, 55);
+
+        // Insert with slug-collision retry (up to 5 attempts)
+        let glpPage: { id: number; slug: string } | undefined;
+        for (let attempt = 0; attempt <= 5; attempt++) {
+          const slug = attempt === 0 ? glpSlugBase : `${glpSlugBase}-${attempt + 1}`;
+          try {
+            ([glpPage] = await db.insert(landingPagesTable).values({
+              slug,
+              title:            glpTitle,
+              headline:         glpHeadline,
+              subheadline:      glpParsed.subheadline ? String(glpParsed.subheadline) : null,
+              valuePropBlocks:  Array.isArray(glpParsed.valuePropBlocks) ? glpParsed.valuePropBlocks as Array<{ icon?: string; heading: string; body: string }> : [],
+              socialProof:      [],
+              cta:              glpParsed.cta as { buttonText: string; href: string; subtext?: string } ?? { buttonText: glpCta, href: "/contact" },
+              layoutBlocks:     [],
+              published:        false,
+            }).returning({ id: landingPagesTable.id, slug: landingPagesTable.slug }));
+            break;
+          } catch (e) {
+            const errText = String(e).toLowerCase();
+            if ((errText.includes("unique") || errText.includes("duplicate")) && attempt < 5) continue;
+            throw e;
+          }
+        }
+
+        if (!glpPage) {
+          nodeError = true;
+          output = { error: "generate_landing_page: failed to insert landing page after slug retries" };
+          break;
+        }
+
+        output = {
+          landingPageId: glpPage.id,
+          slug:          glpPage.slug,
+          headline:      glpHeadline,
+          subheadline:   glpParsed.subheadline ? String(glpParsed.subheadline) : "",
+          published:     false,
         };
         break;
       }

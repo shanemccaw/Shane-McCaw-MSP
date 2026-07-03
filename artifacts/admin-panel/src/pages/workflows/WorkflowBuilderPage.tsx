@@ -60,6 +60,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Marketing Actions (extended) ──
   create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
+  generate_landing_page:     { bg: "#0A1A18", border: "#34D399", icon: "🖥️", label: "Generate Landing Page"    },
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
   // ── News ──
@@ -122,7 +123,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
   notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
   // Marketing Actions
-  send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "templateSlug", label: "Template slug used" }],
+  send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }],
   // Project Actions
   create_kanban_task:  [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
   // Content
@@ -132,6 +133,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   // Marketing Actions (extended)
   create_marketing_campaign: [{ key: "campaignId", label: "Created campaign DB ID" }, { key: "campaignName", label: "Campaign name" }, { key: "campaignStatus", label: "Campaign status (draft / active)" }],
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
+  generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
   // Content (image)
@@ -301,6 +303,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "send_campaign_email",       label: "Send Campaign Email",    description: "Render an Email Template and send it to a recipient",        tags: ["email", "marketing", "campaign", "template"] },
       { type: "create_marketing_campaign", label: "Create Campaign",         description: "Create a new marketing campaign record in the database",     tags: ["marketing", "campaign", "create", "crm"] },
       { type: "publish_landing_page",      label: "Publish Landing Page",   description: "Set a landing page live by its slug",                        tags: ["marketing", "landing page", "publish", "site"] },
+      { type: "generate_landing_page",     label: "Generate Landing Page",  description: "AI generates a landing page from topic, audience and CTA and saves it to the DB (unpublished)", tags: ["marketing", "landing page", "ai", "generate", "content"] },
     ],
   },
   {
@@ -1471,6 +1474,14 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "generate_landing_page" && (
+          <GenerateLandingPagePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {/* ── Data ───────────────────────────────────────────── */}
 
         {nodeType === "find_object" && (
@@ -1666,15 +1677,12 @@ function NodeConfigPanel({
 
 // ── Send Campaign Email panel ─────────────────────────────────────────────────
 
-interface EmailTemplateItem {
-  slug: string;
-  name: string;
-  subject: string;
-  recipientType: string;
-}
-
-interface EmailTemplateDetail extends EmailTemplateItem {
-  bodyHtml: string;
+interface CampaignAssetItem {
+  id: number;
+  title: string;
+  campaignId: number | null;
+  assetType: string;
+  content: string;
 }
 
 function SendCampaignEmailPanel({
@@ -1690,90 +1698,74 @@ function SendCampaignEmailPanel({
   const [search, setSearch] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
 
-  const { data: templates = [], isLoading } = useQuery<EmailTemplateItem[]>({
-    queryKey: ["email-templates-list"],
+  const { data: assets = [], isLoading } = useQuery<CampaignAssetItem[]>({
+    queryKey: ["campaign-assets-email-sequence"],
     queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/email-templates");
+      const res = await fetchWithAuth("/api/admin/marketing/campaign-assets?assetType=email_sequence");
       if (!res.ok) return [];
       return res.json();
     },
     staleTime: 60_000,
   });
 
-  const templateSlug = (node.data.templateSlug as string) ?? "";
-
-  // Fetch full template detail (including bodyHtml) when a slug is selected
-  const { data: selectedDetail } = useQuery<EmailTemplateDetail>({
-    queryKey: ["email-template-detail", templateSlug],
-    queryFn: async () => {
-      const res = await fetchWithAuth(`/api/admin/email-templates/${templateSlug}`);
-      if (!res.ok) throw new Error("Not found");
-      return res.json();
-    },
-    enabled: !!templateSlug,
-    staleTime: 120_000,
-  });
-
-  const selectedMeta = templates.find(t => t.slug === templateSlug) ?? null;
+  const assetId = (node.data.assetId as number | undefined) ?? null;
+  const selectedAsset = assets.find(a => a.id === assetId) ?? null;
 
   const filtered = search.trim()
-    ? templates.filter(t =>
-        t.name.toLowerCase().includes(search.toLowerCase()) ||
-        t.slug.toLowerCase().includes(search.toLowerCase()) ||
-        t.recipientType.toLowerCase().includes(search.toLowerCase()),
-      )
-    : templates;
+    ? assets.filter(a => a.title.toLowerCase().includes(search.toLowerCase()))
+    : assets;
 
   return (
     <>
       <div className="space-y-1.5">
-        <label className="text-xs font-medium text-[#7D8590]">Email Template</label>
+        <label className="text-xs font-medium text-[#7D8590]">Campaign Email Copy</label>
         {isLoading ? (
-          <div className="text-xs text-[#484F58] animate-pulse">Loading templates…</div>
+          <div className="text-xs text-[#484F58] animate-pulse">Loading email assets…</div>
         ) : (
           <>
-            {/* Searchable picker trigger */}
             <button
               type="button"
               onClick={() => setPickerOpen(o => !o)}
               className="w-full flex items-center justify-between bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-left outline-none focus:border-[#10B981]/60 hover:border-[#484F58] transition-colors"
             >
-              <span className={selectedMeta ? "text-[#E6EDF3]" : "text-[#484F58]"}>
-                {selectedMeta ? selectedMeta.name : "— choose a template —"}
+              <span className={selectedAsset ? "text-[#E6EDF3]" : "text-[#484F58]"}>
+                {selectedAsset ? selectedAsset.title : "— choose an email copy asset —"}
               </span>
               <span className="text-[#484F58] ml-2">{pickerOpen ? "▲" : "▼"}</span>
             </button>
 
             {pickerOpen && (
               <div className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
-                {/* Search box */}
                 <div className="px-2 pt-2 pb-1">
                   <input
                     autoFocus
                     type="text"
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Search by name or type…"
+                    placeholder="Search by title…"
                     className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#10B981]/60"
                   />
                 </div>
-                {/* Template list */}
                 <div className="max-h-48 overflow-y-auto divide-y divide-[#21262D]">
-                  {filtered.length === 0 ? (
-                    <p className="text-[10px] text-[#484F58] px-3 py-2">No templates match.</p>
-                  ) : filtered.map(t => (
+                  {assets.length === 0 ? (
+                    <p className="text-[10px] text-[#484F58] px-3 py-2">No email copy assets found. Generate some in Marketing → Campaigns.</p>
+                  ) : filtered.length === 0 ? (
+                    <p className="text-[10px] text-[#484F58] px-3 py-2">No assets match.</p>
+                  ) : filtered.map(a => (
                     <button
-                      key={t.slug}
+                      key={a.id}
                       type="button"
                       onClick={() => {
-                        onChange(node.id, { ...node.data, templateSlug: t.slug });
+                        onChange(node.id, { ...node.data, assetId: a.id, templateSlug: undefined });
                         setPickerOpen(false);
                         setSearch("");
                       }}
-                      className={`w-full text-left px-3 py-2 hover:bg-[#1C2128] transition-colors ${t.slug === templateSlug ? "bg-[#10B981]/10" : ""}`}
+                      className={`w-full text-left px-3 py-2 hover:bg-[#1C2128] transition-colors ${a.id === assetId ? "bg-[#10B981]/10" : ""}`}
                     >
-                      <p className="text-xs font-medium text-[#E6EDF3]">{t.name}</p>
-                      <p className="text-[9px] text-[#484F58] font-mono mt-0.5">{t.slug} · {t.recipientType}</p>
+                      <p className="text-xs font-medium text-[#E6EDF3]">{a.title}</p>
+                      <p className="text-[9px] text-[#484F58] font-mono mt-0.5">
+                        asset #{a.id}{a.campaignId ? ` · campaign #${a.campaignId}` : ""}
+                      </p>
                     </button>
                   ))}
                 </div>
@@ -1782,23 +1774,18 @@ function SendCampaignEmailPanel({
           </>
         )}
 
-        {/* Template detail preview (subject + body snippet) */}
-        {selectedMeta && (
+        {selectedAsset && (
           <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-2">
             <div>
-              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Subject</p>
-              <p className="text-[10px] text-[#7D8590] font-mono break-all">{selectedDetail?.subject ?? selectedMeta.subject}</p>
+              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Subject (from title)</p>
+              <p className="text-[10px] text-[#7D8590] font-mono break-all">{selectedAsset.title}</p>
             </div>
-            {selectedDetail && (
-              <div>
-                <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Body preview</p>
-                <p className="text-[10px] text-[#7D8590] leading-relaxed line-clamp-4 break-words">
-                  {selectedDetail.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300)}
-                  {selectedDetail.bodyHtml.length > 300 ? "…" : ""}
-                </p>
-              </div>
-            )}
-            <p className="text-[9px] text-[#484F58]">Recipient type: <span className="font-mono">{selectedMeta.recipientType}</span></p>
+            <div>
+              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Body preview</p>
+              <p className="text-[10px] text-[#7D8590] leading-relaxed line-clamp-4 break-words">
+                {selectedAsset.content.slice(0, 300)}{selectedAsset.content.length > 300 ? "…" : ""}
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -1810,8 +1797,50 @@ function SendCampaignEmailPanel({
         ancestorOutputs={ancestorOutputs}
       />
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Fetches the selected template, substitutes <span className="font-mono text-[#7D8590]">{"{{token}}"}</span> placeholders (including <span className="font-mono text-[#7D8590]">{"{{dotted.paths}}"}</span>) from the workflow payload with HTML-safe values, and sends the email. Outputs:</p>
-        <p className="text-[10px] font-mono text-[#7D8590]">{"{{sent}}"} · {"{{recipient}}"} · {"{{subject}}"} · {"{{templateSlug}}"}</p>
+        <p className="text-[10px] text-[#484F58]">Sends the selected campaign email copy to the recipient, substituting <span className="font-mono text-[#7D8590]">{"{{token}}"}</span> placeholders from the workflow payload. The asset title is used as the email subject. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{sent}}"} · {"{{recipient}}"} · {"{{subject}}"} · {"{{sourceRef}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Generate Landing Page panel ───────────────────────────────────────────────
+
+function GenerateLandingPagePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Topic"
+        value={(node.data.topic as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, topic: v })}
+        placeholder="Microsoft 365 Compliance Assessment or {{articleTopic}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Target Audience"
+        value={(node.data.audience as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, audience: v })}
+        placeholder="IT directors at mid-size enterprises or {{audience}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="CTA Button Text"
+        value={(node.data.cta as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, cta: v })}
+        placeholder="Book Your Paid Assessment or {{cta}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">AI generates a full landing page (headline, subheadline, 3 value-prop blocks, CTA) and saves it to the database as <span className="text-[#7D8590]">unpublished</span>. Wire a <span className="font-mono text-[#7D8590]">Publish Landing Page</span> node after this one to make it live. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{landingPageId}}"} · {"{{slug}}"} · {"{{headline}}"} · {"{{subheadline}}"} · {"{{published}}"}</p>
       </div>
     </>
   );

@@ -1646,7 +1646,7 @@ export interface WfNode {
     | "validate_m365_permissions" | "update_intelligence_tables"
     | "generate_diff_report" | "notify_major_changes"
     // Marketing Actions
-    | "send_campaign_email" | "create_marketing_campaign" | "publish_landing_page"
+    | "send_campaign_email" | "create_marketing_campaign" | "publish_landing_page" | "generate_landing_page"
     // Social Media
     | "post_linkedin" | "post_twitter" | "post_facebook"
     // Project Actions
