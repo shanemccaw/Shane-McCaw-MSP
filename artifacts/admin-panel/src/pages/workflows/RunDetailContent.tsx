@@ -387,6 +387,14 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           <span className="text-[10px] text-amber-400 font-medium">{currentOutput.output.imageUploadWarning}</span>
                         </div>
                       )}
+                      {currentOutput.output.parseError === true && (
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                          <svg className="w-3 h-3 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <span className="text-[10px] text-amber-400 font-medium">JSON parse failed — output is a raw string, not a structured object. Downstream nodes expecting an object may behave unexpectedly.</span>
+                        </div>
+                      )}
                       <JsonBlock data={currentOutput.input} label="Input" />
                       <JsonBlock data={currentOutput.output} label="Output" />
                     </div>
@@ -518,6 +526,14 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                           </svg>
                           <span className="text-[10px] text-amber-400 font-medium">{output.output.imageUploadWarning}</span>
+                        </div>
+                      )}
+                      {output.output.parseError === true && (
+                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 mt-1">
+                          <svg className="w-3 h-3 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <span className="text-[10px] text-amber-400 font-medium">JSON parse failed — output is a raw string, not a structured object. Downstream nodes expecting an object may behave unexpectedly.</span>
                         </div>
                       )}
                       {output.errorMessage && (

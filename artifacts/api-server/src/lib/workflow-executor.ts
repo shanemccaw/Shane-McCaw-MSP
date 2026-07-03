@@ -2081,7 +2081,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             output = { value: JSON.parse(resolvedValue) };
           } catch {
             logger.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
-            output = { value: resolvedValue };
+            output = { value: resolvedValue, parseError: true };
           }
         } else {
           output = { value: resolvedValue };
