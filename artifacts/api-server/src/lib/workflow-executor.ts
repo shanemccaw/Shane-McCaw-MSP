@@ -43,11 +43,32 @@ import {
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { sendWebPushToAdmins } from "./web-push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
+import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
+import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
+
+// ── Generated images directory ────────────────────────────────────────────────
+const UPLOADS_BASE = process.env.UPLOADS_DIR
+  ? path.resolve(process.env.UPLOADS_DIR)
+  : path.resolve("../../data/uploads");
+
+const GENERATED_IMAGES_DIR = path.join(UPLOADS_BASE, "generated-images");
+
+// Ensure directory exists at module load (sync is fine — happens once on boot)
+import fsSync from "fs";
+fsSync.mkdirSync(GENERATED_IMAGES_DIR, { recursive: true });
+
+// Size map for gpt-image-1 (only three sizes are supported)
+const ASPECT_RATIO_SIZE: Record<string, "1024x1024" | "1536x1024" | "1024x1536"> = {
+  "square":    "1024x1024",
+  "landscape": "1536x1024",
+  "portrait":  "1024x1536",
+  "wide":      "1536x1024",
+};
 
 // Captured once when the module is first loaded. Used by fireStartupTriggers
 // to detect runs created in the current boot session vs. orphaned runs from a
@@ -299,6 +320,18 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
+
+    case "generate_image": {
+      const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
+      const giSize = ASPECT_RATIO_SIZE[giAspect] ?? "1536x1024";
+      const giPlaceholderSize = giSize === "1024x1024" ? "1024x1024" : giSize === "1024x1536" ? "1024x1536" : "1536x1024";
+      const [giW, giH] = giPlaceholderSize.split("x");
+      return {
+        dryRun: true,
+        imageUrl: `https://placehold.co/${giW}x${giH}/0A2540/FFFFFF?text=Generated+Image`,
+        revisedPrompt: "[dry-run — no AI call made]",
+      };
+    }
 
     case "post_linkedin":
       return {
@@ -1151,6 +1184,54 @@ Return ONLY a JSON object with these exact keys:
             topicRationale: String(tpParsed.rationale ?? ""),
             topicCategory:  tpCategory,
           };
+        }
+        break;
+      }
+
+      // ── Generate Image ────────────────────────────────────────────────────
+      case "generate_image": {
+        const giPromptRaw = interp(node.data.prompt as string | undefined, payload);
+        if (!giPromptRaw?.trim()) {
+          nodeError = true;
+          output = { error: "generate_image requires a prompt" };
+          break;
+        }
+
+        const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
+        const giStyle  = (node.data.style  as string | undefined) ?? "";
+        const giSize   = ASPECT_RATIO_SIZE[giAspect] ?? "1536x1024";
+
+        const giFullPrompt = giStyle
+          ? `${giPromptRaw.trim()} Style: ${giStyle}.`
+          : giPromptRaw.trim();
+
+        try {
+          const giResp = await openai.images.generate({
+            model: "gpt-image-1",
+            prompt: giFullPrompt,
+            size: giSize,
+          });
+
+          const giBase64 = giResp.data[0]?.b64_json;
+          if (!giBase64) {
+            nodeError = true;
+            output = { error: "generate_image: API returned no image data" };
+            break;
+          }
+
+          const giBuffer = Buffer.from(giBase64, "base64");
+          const giFilename = `${randomUUID()}.png`;
+          const giFilePath = path.join(GENERATED_IMAGES_DIR, giFilename);
+          await fs.writeFile(giFilePath, giBuffer);
+
+          output = {
+            imageUrl:      `/api/uploads/generated-images/${giFilename}`,
+            revisedPrompt: giFullPrompt,
+          };
+        } catch (err) {
+          logger.error({ err }, "generate_image: OpenAI image generation failed");
+          nodeError = true;
+          output = { error: `generate_image: ${err instanceof Error ? err.message : String(err)}` };
         }
         break;
       }

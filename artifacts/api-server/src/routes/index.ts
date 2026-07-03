@@ -59,6 +59,7 @@ import adminInsightsRouter from "./admin-insights";
 import portalQuickWinScoringRouter from "./portal-quick-win-scoring";
 import adminWorkflowsRouter from "./admin-workflows";
 import adminStalledScriptsRouter from "./admin-stalled-scripts";
+import adminGeneratedImagesRouter from "./admin-generated-images";
 
 const router: IRouter = Router();
 
@@ -130,5 +131,6 @@ router.use(adminInsightsRouter);
 router.use(portalQuickWinScoringRouter);
 router.use(adminWorkflowsRouter);
 router.use(adminStalledScriptsRouter);
+router.use(adminGeneratedImagesRouter);
 
 export default router;

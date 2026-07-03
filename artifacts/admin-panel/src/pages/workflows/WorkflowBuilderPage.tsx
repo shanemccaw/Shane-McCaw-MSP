@@ -56,6 +56,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
   publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
   topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },
+  generate_image:            { bg: "#1A100A", border: "#F59E0B", icon: "🖼️", label: "Generate Image"           },
   // ── Marketing Actions (extended) ──
   create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
@@ -131,6 +132,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
+  // Content (image)
+  generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
   // Social Media
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
@@ -295,9 +298,10 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Content",
     nodes: [
-      { type: "topic_picker",   label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",         tags: ["content", "article", "ai", "topic", "generate"] },
-      { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)", tags: ["content", "article", "ai", "blog", "generate"] },
-      { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",  tags: ["content", "article", "publish", "blog", "site"] },
+      { type: "topic_picker",    label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",           tags: ["content", "article", "ai", "topic", "generate"] },
+      { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)",  tags: ["content", "article", "ai", "blog", "generate"] },
+      { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",    tags: ["content", "article", "publish", "blog", "site"] },
+      { type: "generate_image",   label: "Generate Image",   description: "AI-generates an image (social card, OG image, banner) via gpt-image-1 and saves it permanently", tags: ["image", "social", "ai", "og", "generate", "content"] },
     ],
   },
   {
@@ -1418,6 +1422,14 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "generate_image" && (
+          <GenerateImagePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {/* ── Marketing Actions (extended) ────────────────────── */}
 
         {nodeType === "create_marketing_campaign" && (
@@ -2088,6 +2100,76 @@ function TopicPickerPanel({
       </div>
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">Queries existing article titles then calls Claude AI to pick a novel topic that hasn't been covered. Wire directly into a <span className="font-mono text-[#C084FC]">generate_article</span> node — the output <span className="font-mono text-[#7D8590]">{"{{articleTopic}}"}</span> maps to the Topic field automatically. Also outputs <span className="font-mono text-[#7D8590]">{"{{topicCategory}}"}</span> and <span className="font-mono text-[#7D8590]">{"{{topicRationale}}"}</span>.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Generate Image panel ──────────────────────────────────────────────────────
+
+const ASPECT_RATIO_OPTIONS = [
+  { value: "landscape", label: "Landscape 16:9 (1536 × 1024) — social cards, OG images" },
+  { value: "square",    label: "Square 1:1 (1024 × 1024) — profile photos, Instagram" },
+  { value: "portrait",  label: "Portrait 4:5 (1024 × 1536) — Pinterest, mobile" },
+  { value: "wide",      label: "Wide 3:1 (1536 × 1024) — email banners, hero images" },
+];
+
+const STYLE_OPTIONS = [
+  { value: "",                     label: "None (let the prompt speak for itself)" },
+  { value: "Professional Photo",   label: "Professional Photo — clean, corporate, high-quality" },
+  { value: "Flat Illustration",    label: "Flat Illustration — modern flat design, icon-style" },
+  { value: "Abstract/Corporate",   label: "Abstract / Corporate — geometric, brand-aligned" },
+  { value: "Dark Minimal",         label: "Dark Minimal — dark background, clean typography" },
+];
+
+function GenerateImagePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Prompt"
+        value={(node.data.prompt as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, prompt: v })}
+        placeholder="A professional Microsoft 365 hero image for {{articleTitle}}, clean and corporate"
+        multiline
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Aspect Ratio / Format</label>
+        <select
+          value={(node.data.aspectRatio as string) ?? "landscape"}
+          onChange={e => onChange(node.id, { ...node.data, aspectRatio: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60"
+        >
+          {ASPECT_RATIO_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Style hint (optional)</label>
+        <select
+          value={(node.data.style as string) ?? ""}
+          onChange={e => onChange(node.id, { ...node.data, style: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#F59E0B]/60"
+        >
+          {STYLE_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="rounded-lg bg-[#1A100A] border border-[#F59E0B]/30 p-3 space-y-1.5">
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+          Calls <span className="font-mono text-[#F59E0B]">gpt-image-1</span> via Replit AI Integrations — no extra API key required. The generated image is downloaded and saved permanently at <span className="font-mono text-[#7D8590]">shanemccaw.com/api/uploads/generated-images/&lt;uuid&gt;.png</span>. Wire <span className="font-mono text-[#7D8590]">{"{{imageUrl}}"}</span> directly into the Image URL field of any <span className="font-mono text-[#F59E0B]">post_linkedin</span>, <span className="font-mono text-[#F59E0B]">post_twitter</span>, or <span className="font-mono text-[#F59E0B]">post_facebook</span> node. Dry-run returns a placeholder — no API call is made.
+        </p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{imageUrl}}"} · {"{{revisedPrompt}}"}</p>
       </div>
     </>
   );
