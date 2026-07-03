@@ -1989,6 +1989,9 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [aiToast, setAiToast] = useState<string | null>(null);
   const [publishingToProd, setPublishingToProd] = useState(false);
+  const [showDraftBanner, setShowDraftBanner] = useState(false);
+  const [localDraft, setLocalDraft] = useState<{ nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>; savedAt: string } | null>(null);
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Node library state
   const [libSearch, setLibSearch] = useState("");
@@ -2121,7 +2124,23 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       animated: false,
     })));
     setIsDirty(false);
-  }, [currentVersion, setNodes, setEdges]);
+
+    // Check localStorage for an unsaved draft for this version
+    const key = `wf-draft-${defId}-${currentVersion.id}`;
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>; savedAt: string };
+        if (parsed.nodes && parsed.edges && parsed.savedAt) {
+          setLocalDraft(parsed);
+          setShowDraftBanner(true);
+        }
+      } catch { /* ignore corrupt draft */ }
+    } else {
+      setShowDraftBanner(false);
+      setLocalDraft(null);
+    }
+  }, [currentVersion, defId, setNodes, setEdges]);
 
   useEffect(() => {
     if (versions.length > 0 && currentVersionId == null) {
@@ -2154,6 +2173,11 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     onSuccess: (data) => {
       setSaveStatus("saved");
       setIsDirty(false);
+      // Clear the localStorage draft — it's now safely on the server
+      const savedVid = data.autoDraftedFrom ? currentVersionId : currentVersionId;
+      if (savedVid) localStorage.removeItem(`wf-draft-${defId}-${savedVid}`);
+      setShowDraftBanner(false);
+      setLocalDraft(null);
       setTimeout(() => setSaveStatus("idle"), 2000);
       if (data.autoDraftedFrom) {
         setCurrentVersionId(data.id);
@@ -2375,6 +2399,27 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [isDirty]);
 
+  // Auto-save canvas to localStorage 2 s after the last mutation so work survives a crash/close
+  useEffect(() => {
+    if (!isDirty || !currentVersionId) return;
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = setTimeout(() => {
+      const key = `wf-draft-${defId}-${currentVersionId}`;
+      const draft = {
+        nodes: nodes.map(n => ({
+          id: n.id,
+          type: (n.data.nodeType as string) ?? "action",
+          position: n.position,
+          data: n.data,
+        })),
+        edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle })),
+        savedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(key, JSON.stringify(draft));
+    }, 2000);
+    return () => { if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current); };
+  }, [nodes, edges, isDirty, currentVersionId, defId]);
+
   // Dismiss context menu on outside click / Escape
   useEffect(() => {
     if (!ctxMenu) return;
@@ -2551,6 +2596,65 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       )}
 
 
+
+      {/* Unsaved-draft restore banner */}
+      {showDraftBanner && localDraft && (
+        <div className="flex-shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-amber-500/10 border-b border-amber-500/30">
+          <div className="flex items-center gap-2 min-w-0">
+            <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <span className="text-xs text-amber-300">
+              Unsaved draft recovered from{" "}
+              {new Date(localDraft.savedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}.
+              Restore it or discard?
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => {
+                // Hydrate canvas from draft using the same logic as server-graph loading
+                const restoredNodes = localDraft.nodes.map(n => ({
+                  id: n.id,
+                  type: "wfNode" as const,
+                  position: n.position,
+                  data: { ...n.data, nodeType: n.data.nodeType ?? n.type },
+                }));
+                let maxId = nodeIdCounter.current;
+                for (const n of restoredNodes) {
+                  const m = /^node-(\d+)$/.exec(n.id);
+                  if (m) maxId = Math.max(maxId, parseInt(m[1], 10));
+                }
+                nodeIdCounter.current = maxId;
+                setNodes(restoredNodes);
+                setEdges(localDraft.edges.map(e => ({
+                  id: e.id,
+                  source: e.source,
+                  target: e.target,
+                  sourceHandle: e.sourceHandle,
+                  style: { stroke: "#30363D", strokeWidth: 2 },
+                  animated: false,
+                })));
+                setIsDirty(true);
+                setShowDraftBanner(false);
+              }}
+              className="px-2.5 py-1 text-xs font-medium text-amber-300 border border-amber-500/40 rounded-lg hover:bg-amber-500/20 transition-colors"
+            >
+              Restore draft
+            </button>
+            <button
+              onClick={() => {
+                if (currentVersionId) localStorage.removeItem(`wf-draft-${defId}-${currentVersionId}`);
+                setShowDraftBanner(false);
+                setLocalDraft(null);
+              }}
+              className="px-2.5 py-1 text-xs font-medium text-[#7D8590] border border-[#30363D] rounded-lg hover:text-[#E6EDF3] hover:border-[#484F58] transition-colors"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 flex overflow-hidden relative">
         {/* Node library sidebar */}
