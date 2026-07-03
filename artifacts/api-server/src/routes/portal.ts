@@ -9848,9 +9848,27 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       res.status(403).json({ error: "Access denied" }); return;
     }
 
-    // Fetch full document HTML (including SOW pricing for live scope sync)
-    const docIds = (pres.documentsIncluded ?? []) as number[];
-    const docsRaw = docIds.length > 0
+    // Fetch full document HTML (including SOW pricing for live scope sync).
+    // Merge snapshot IDs (documentsIncluded) with all delivered docs for this
+    // project/customer so documents added after presentation creation appear automatically.
+    const snapshotDocIds = new Set((pres.documentsIncluded ?? []) as number[]);
+
+    const liveConditions = [
+      ...(pres.projectId    ? [eq(insightsGeneratedDocumentsTable.projectId,  pres.projectId)]    : []),
+      ...(pres.clientUserId ? [eq(insightsGeneratedDocumentsTable.customerId,  pres.clientUserId)] : []),
+    ];
+    const liveDocs = liveConditions.length > 0
+      ? await db.select({ id: insightsGeneratedDocumentsTable.id })
+          .from(insightsGeneratedDocumentsTable)
+          .where(and(
+            eq(insightsGeneratedDocumentsTable.status, "delivered"),
+            or(...liveConditions),
+          ))
+      : [];
+
+    const mergedDocIds = Array.from(new Set([...snapshotDocIds, ...liveDocs.map(d => d.id)]));
+
+    const docsRaw = mergedDocIds.length > 0
       ? await db.select({
           id: insightsGeneratedDocumentsTable.id,
           title: insightsGeneratedDocumentsTable.title,
@@ -9862,7 +9880,8 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
           createdAt: insightsGeneratedDocumentsTable.createdAt,
         })
           .from(insightsGeneratedDocumentsTable)
-          .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
+          .where(inArray(insightsGeneratedDocumentsTable.id, mergedDocIds))
+          .orderBy(asc(insightsGeneratedDocumentsTable.createdAt))
       : [];
     const docs = docsRaw.map(d => ({ ...d, htmlContent: stripStagedForReviewBanner(d.htmlContent) }));
 
