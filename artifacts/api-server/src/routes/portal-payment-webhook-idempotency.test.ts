@@ -33,6 +33,9 @@ let webhookEventToReturn: unknown = null;
 let insertCallCount = 0;
 let updateCallCount = 0;
 let dbQueue: unknown[][] = [];
+// Controls what rowCount db.execute() returns; used by coupon idempotency tests
+let executeRowCountToReturn = 0;
+let executeCallCount = 0;
 
 function makeChain(result: unknown[]): Record<string, unknown> {
   const chain: Record<string, unknown> = {
@@ -69,7 +72,10 @@ function makeMockDb() {
       };
     },
     delete: () => ({ where: async () => [] }),
-    execute: async () => ({ rows: [], rowCount: 0 }),
+    execute: async () => {
+      executeCallCount++;
+      return { rows: [], rowCount: executeRowCountToReturn };
+    },
   };
 }
 
@@ -681,5 +687,137 @@ describe("webhook: invoice.paid replayed event is a no-op (idempotency)", () => 
 
   it("db.insert was NOT called — replayed invoice.paid must not create a duplicate invoice", () => {
     assert.equal(insertCallCount, 0, `expected no db.insert() calls for replayed invoice.paid, got ${insertCallCount}`);
+  });
+});
+
+// =============================================================================
+// Scenario 7: coupon redemption — first delivery increments usesCount exactly once
+//
+// The coupon block inserts a coupon_redemptions row keyed by checkout_session_id.
+// On first delivery db.execute() returns rowCount=1 (insert succeeded) and the
+// handler must call db.update() to increment coupons.usesCount.
+//
+// The session uses an unknown type so neither the service_purchase nor the
+// onboarding_purchase handler interferes — only the coupon block runs.
+// =============================================================================
+
+const COUPON_SESSION_ID = "cs_test_coupon_idem_abc";
+
+function makeCouponSessionEvent(sessionId: string): Record<string, unknown> {
+  return {
+    id: "evt_test_coupon_completed",
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: sessionId,
+        object: "checkout.session",
+        payment_status: "paid",
+        amount_total: 100000,
+        subscription: null,
+        total_details: { amount_discount: 2000 },
+        customer_details: { name: "Coupon Client", email: "coupon@example.com" },
+        metadata: {
+          type: "unknown_type",
+          couponCode: "DISCOUNT20",
+        },
+      },
+    },
+  };
+}
+
+describe("webhook: coupon redemption — first delivery increments usesCount", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+  let updatesBefore: number;
+  let executesBefore: number;
+
+  before(async () => {
+    insertCallCount = 0;
+    updateCallCount = 0;
+    executeCallCount = 0;
+    // db.execute() returns rowCount=1 — the INSERT succeeded (first time)
+    executeRowCountToReturn = 1;
+    dbQueue = [];
+    updatesBefore = updateCallCount;
+    executesBefore = executeCallCount;
+    webhookEventToReturn = makeCouponSessionEvent(COUPON_SESSION_ID);
+
+    ({ status, body } = await postWebhook(webhookEventToReturn));
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("webhook response contains { received: true }", () => {
+    assert.equal(body.received, true);
+  });
+
+  it("db.execute was called — coupon redemption INSERT was attempted", () => {
+    assert.ok(
+      executeCallCount > executesBefore,
+      `expected at least one db.execute() call for coupon INSERT, got executeCallCount=${executeCallCount}`,
+    );
+  });
+
+  it("db.update was called — usesCount was incremented on first delivery", () => {
+    assert.ok(
+      updateCallCount > updatesBefore,
+      `expected db.update() for usesCount increment on first coupon redemption, got updateCallCount=${updateCallCount}`,
+    );
+  });
+});
+
+// =============================================================================
+// Scenario 8: coupon redemption — replayed event does NOT double-increment usesCount
+//
+// When Stripe replays the same webhook, the coupon_redemptions INSERT hits the
+// UNIQUE constraint on checkout_session_id and returns rowCount=0. The handler
+// must skip the db.update() so usesCount is incremented exactly once.
+// =============================================================================
+
+describe("webhook: coupon redemption — replayed event does not double-increment usesCount", () => {
+  let status: number;
+  let body: Record<string, unknown>;
+  let updatesBefore: number;
+  let executesBefore: number;
+
+  before(async () => {
+    insertCallCount = 0;
+    updateCallCount = 0;
+    executeCallCount = 0;
+    // db.execute() returns rowCount=0 — the INSERT conflicted (already processed)
+    executeRowCountToReturn = 0;
+    dbQueue = [];
+    updatesBefore = updateCallCount;
+    executesBefore = executeCallCount;
+    webhookEventToReturn = makeCouponSessionEvent(COUPON_SESSION_ID);
+
+    ({ status, body } = await postWebhook(webhookEventToReturn));
+    await waitForAsync();
+  });
+
+  it("webhook endpoint returns HTTP 200 even for a replayed coupon event", () => {
+    assert.equal(status, 200, `expected 200, got ${status}; body: ${JSON.stringify(body)}`);
+  });
+
+  it("webhook response contains { received: true }", () => {
+    assert.equal(body.received, true);
+  });
+
+  it("db.execute was called — coupon redemption INSERT was attempted (conflict expected)", () => {
+    assert.ok(
+      executeCallCount > executesBefore,
+      `expected at least one db.execute() call for coupon INSERT on replay, got executeCallCount=${executeCallCount}`,
+    );
+  });
+
+  it("db.update was NOT called — usesCount must not be incremented again on replay", () => {
+    assert.equal(
+      updateCallCount,
+      updatesBefore,
+      `expected zero db.update() calls on coupon replay, but updateCallCount went from ${updatesBefore} to ${updateCallCount}`,
+    );
   });
 });

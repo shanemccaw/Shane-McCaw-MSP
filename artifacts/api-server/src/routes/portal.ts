@@ -4802,7 +4802,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
               ON CONFLICT (checkout_session_id) DO NOTHING`,
         );
         // Only increment if this is the first time we're processing this session
-        if ((insertResult as { rowCount?: number }).rowCount ?? 0 > 0) {
+        if (((insertResult as { rowCount?: number }).rowCount ?? 0) > 0) {
           await db.update(couponsTable)
             .set({
               usesCount: sql`${couponsTable.usesCount} + 1`,
