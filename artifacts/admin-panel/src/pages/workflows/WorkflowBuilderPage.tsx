@@ -1501,27 +1501,49 @@ function NodeConfigPanel({
               <>
                 <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Document Category</label>
+                  <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                    {(["report", "consulting"] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => onChange(node.id, { ...node.data, docCategory: cat, docType: cat === "report" ? "executive_summary" : "sow" })}
+                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                      >
+                        {cat === "report" ? "Insights Report" : "Consulting Doc"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-1.5">
                   <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
                   <select
-                    value={(node.data.docType as string) ?? "security"}
+                    value={(node.data.docType as string) ?? "executive_summary"}
                     onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
                     className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
                   >
-                    {[
-                      ["security","Security Assessment"],
-                      ["license","License Review"],
-                      ["governance","Governance Report"],
-                      ["copilot","Copilot Readiness"],
-                      ["remediation","Remediation Plan"],
-                      ["exposure","Exposure Report"],
-                      ["executive","Executive Summary"],
-                      ["deployment","Deployment Plan"],
-                    ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    {(((node.data.docCategory as string) ?? "report") === "consulting" ? [
+                      ["consolidated_sow","Consolidated Statement of Work"],
+                      ["sow","Statement of Work"],
+                      ["remediation_plan","Remediation Plan"],
+                      ["deployment_plan","Deployment Plan"],
+                      ["governance_framework","Governance Framework"],
+                      ["security_hardening_plan","Security Hardening Plan"],
+                      ["copilot_enablement_plan","Copilot Enablement Plan"],
+                      ["identity_modernization_plan","Identity Modernization Plan"],
+                      ["copilot_readiness","Copilot Readiness Assessment"],
+                    ] : [
+                      ["executive_summary","Executive Summary"],
+                      ["full_readiness_report","Full Readiness Report"],
+                      ["security_posture_report","Security Posture Report"],
+                      ["governance_maturity_report","Governance Maturity Report"],
+                      ["data_exposure_risk_report","Data Exposure Risk Report"],
+                      ["license_optimization_report","License Optimization Report"],
+                    ]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
                 </div>
-                <PayloadField label="Title (optional)" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="Q1 Security Review — {{payload.company}}" ancestorOutputs={ancestorOutputs} />
+                <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates a document record for the client. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. Document Name supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation — e.g. <span className="font-mono text-[#7D8590]">{"{{item.name}}"}</span> inside a ForEach loop. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -1719,27 +1741,49 @@ function NodeConfigPanel({
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Document Category</label>
+              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                {(["report", "consulting"] as const).map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => onChange(node.id, { ...node.data, docCategory: cat, docType: cat === "report" ? "executive_summary" : "sow" })}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${((node.data.docCategory as string) ?? "report") === cat ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                  >
+                    {cat === "report" ? "Insights Report" : "Consulting Doc"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-xs font-medium text-[#7D8590]">Document Type</label>
               <select
-                value={(node.data.docType as string) ?? "security"}
+                value={(node.data.docType as string) ?? "executive_summary"}
                 onChange={e => onChange(node.id, { ...node.data, docType: e.target.value })}
                 className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
               >
-                {[
-                  ["security","Security Assessment"],
-                  ["license","License Review"],
-                  ["governance","Governance Report"],
-                  ["copilot","Copilot Readiness"],
-                  ["remediation","Remediation Plan"],
-                  ["exposure","Exposure Report"],
-                  ["executive","Executive Summary"],
-                  ["deployment","Deployment Plan"],
-                ].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {(((node.data.docCategory as string) ?? "report") === "consulting" ? [
+                  ["consolidated_sow","Consolidated Statement of Work"],
+                  ["sow","Statement of Work"],
+                  ["remediation_plan","Remediation Plan"],
+                  ["deployment_plan","Deployment Plan"],
+                  ["governance_framework","Governance Framework"],
+                  ["security_hardening_plan","Security Hardening Plan"],
+                  ["copilot_enablement_plan","Copilot Enablement Plan"],
+                  ["identity_modernization_plan","Identity Modernization Plan"],
+                  ["copilot_readiness","Copilot Readiness Assessment"],
+                ] : [
+                  ["executive_summary","Executive Summary"],
+                  ["full_readiness_report","Full Readiness Report"],
+                  ["security_posture_report","Security Posture Report"],
+                  ["governance_maturity_report","Governance Maturity Report"],
+                  ["data_exposure_risk_report","Data Exposure Risk Report"],
+                  ["license_optimization_report","License Optimization Report"],
+                ]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
-            <PayloadField label="Title (optional)" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="Q1 Security Review — {{payload.company}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a document record for the client. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+              <p className="text-[10px] text-[#484F58]">Creates a document for the client. Document Name supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation — e.g. <span className="font-mono text-[#7D8590]">{"{{item.name}}"}</span> inside a ForEach loop. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
             </div>
           </>
         )}

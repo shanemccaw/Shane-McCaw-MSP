@@ -72,6 +72,55 @@ const REPORT_DOC_TYPE_LABELS: Record<string, string> = {
   license_optimization_report: "License Optimization Report",
 };
 
+const CONSULTING_TYPE_LABELS: Record<string, string> = {
+  consolidated_sow:            "Consolidated Statement of Work",
+  sow:                         "Statement of Work",
+  remediation_plan:            "Remediation Plan",
+  deployment_plan:             "Deployment Plan",
+  governance_framework:        "Governance Framework",
+  security_hardening_plan:     "Security Hardening Plan",
+  copilot_enablement_plan:     "Copilot Enablement Plan",
+  identity_modernization_plan: "Identity Modernization Plan",
+  copilot_readiness:           "Copilot Readiness Assessment",
+};
+
+const CONSULTING_SECTION_HINTS: Record<string, string> = {
+  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria, Terms & Conditions",
+  consolidated_sow:            "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria, Terms & Conditions",
+  remediation_plan:            "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
+  deployment_plan:             "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
+  governance_framework:        "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process",
+  security_hardening_plan:     "Include: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Defender Configuration, Security Monitoring, Incident Response",
+  copilot_enablement_plan:     "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy",
+  identity_modernization_plan: "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, Migration Roadmap, Legacy System Decommission",
+  copilot_readiness:           "Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness, Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)",
+};
+
+const INSIGHTS_CONSULTING_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
+
+Client: {{clientName}}{{projectLine}}
+Document title: {{title}}
+Date: {{date}}
+
+M365 Environment Health Scores:
+{{scores}}
+
+Key Findings: {{findings}}
+Key Recommendations: {{recommendations}}
+
+Configuration Telemetry Sample:
+{{profileSample}}
+
+{{priorDocsSummary}}Section Requirements:
+{{sectionHints}}
+
+INSTRUCTIONS:
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography
+- Professional consulting tone as Shane McCaw, first person where appropriate
+- Be specific and actionable — reference actual findings, not generic advice
+- Total length: 800-1500 words of body content`;
+
 const INSIGHTS_REPORT_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a professional, client-facing {{docLabel}} in HTML format.
 
 Client: {{clientName}}{{projectLine}}
@@ -875,11 +924,12 @@ async function executeNode(
             nodeError = true;
             output = { error: "generate_document requires a valid clientId" };
           } else {
-            const docType  = (interp(node.data.docType as string | undefined, payload) ?? "executive_summary") as string;
-            const docLabel = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
-            const docTitle = interp(node.data.docTitle as string | undefined, payload) ?? `${docLabel}`;
+            const docType     = (interp(node.data.docType as string | undefined, payload) ?? "executive_summary") as string;
+            const docCategory = ((node.data.docCategory as string | undefined) ?? "report") === "consulting" ? "consulting" : "report";
+            const docTitle    = interp(node.data.docTitle as string | undefined, payload)
+              ?? (CONSULTING_TYPE_LABELS[docType] ?? REPORT_DOC_TYPE_LABELS[docType] ?? docType);
 
-            // Fetch supporting data in parallel
+            // Fetch supporting data in parallel (common to both report and consulting paths)
             const [runs, customerRow, projectRow] = await Promise.all([
               igFetchRuns(clientUserId, 50),
               db.select({ name: usersTable.name, company: usersTable.company })
@@ -895,6 +945,8 @@ async function executeNode(
 
             const clientName  = customerRow[0]?.company ?? customerRow[0]?.name ?? "Client";
             const projectName = projectRow[0]?.title ?? "";
+            const projectLine = projectName ? ` · Project: ${projectName}` : "";
+            const dateStr     = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
             const profileSample = (runs as { profileUpdates: Record<string, unknown> | null }[])
               .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
@@ -903,24 +955,48 @@ async function executeNode(
               .join("\n");
 
             const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
-            const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet.";
-            const recsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
-            const rawTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
-            const prompt = igSubstituteTokens(rawTemplate, {
-              docLabel,
-              clientName,
-              projectLine: projectName ? ` · Project: ${projectName}` : "",
-              title: docTitle,
-              date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-              scores: scoresBlock,
-              findingsCount: String(findings.length),
-              findings: findingsBlock,
-              recommendationsCount: String(recommendations.length),
-              recommendations: recsBlock,
-              profileSample: profileSample || "  No telemetry captured yet.",
-              runCount: String(runs.length),
-            });
+            // Build the AI prompt — consulting and report use different templates and token shapes
+            let prompt: string;
+            if (docCategory === "consulting") {
+              const typeLabel    = CONSULTING_TYPE_LABELS[docType] ?? docType;
+              const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include all relevant sections for this consulting deliverable";
+              const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+              const recsInline     = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
+              const rawTemplate = await getPrompt(`insights-consulting-${docType}`, INSIGHTS_CONSULTING_PROMPT_FALLBACK);
+              prompt = igSubstituteTokens(rawTemplate, {
+                typeLabel,
+                clientName,
+                projectLine,
+                title: docTitle,
+                date: dateStr,
+                scores: scoresBlock,
+                findings: findingsInline,
+                recommendations: recsInline,
+                profileSample: profileSample || "  No telemetry captured yet.",
+                sectionHints,
+                priorDocsSummary: "",
+              });
+            } else {
+              const docLabel      = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
+              const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet.";
+              const recsBlock     = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
+              const rawTemplate   = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+              prompt = igSubstituteTokens(rawTemplate, {
+                docLabel,
+                clientName,
+                projectLine,
+                title: docTitle,
+                date: dateStr,
+                scores: scoresBlock,
+                findingsCount: String(findings.length),
+                findings: findingsBlock,
+                recommendationsCount: String(recommendations.length),
+                recommendations: recsBlock,
+                profileSample: profileSample || "  No telemetry captured yet.",
+                runCount: String(runs.length),
+              });
+            }
 
             // Find any prior completed doc for same customer+project+docType (to replace on success)
             let priorWfDocId: number | null = null;
@@ -941,7 +1017,7 @@ async function executeNode(
             const [genWfRow] = await db.insert(insightsGeneratedDocumentsTable).values({
               customerId: clientUserId,
               projectId: !isNaN(projectId) ? projectId : null,
-              category: "report",
+              category: docCategory,
               docType,
               title: docTitle,
               htmlContent: "",
@@ -981,8 +1057,8 @@ async function executeNode(
               .set({ pdfUrl: `/api/admin/insights/documents/${reportDocId}/download` })
               .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
 
-            logger.info({ runId, reportDocId, docType, clientUserId }, "wf-executor: generate_document completed");
-            output = { documentId: reportDocId, docType, title: docTitle, clientId: clientUserId };
+            logger.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
+            output = { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
