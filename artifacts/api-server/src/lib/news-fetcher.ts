@@ -67,7 +67,9 @@ const FALLBACK_FEEDS = [
 // ── XML helpers ───────────────────────────────────────────────────────────────
 
 function extractXmlText(xml: string, tag: string): string {
-  const re = new RegExp(`<${tag}[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/${tag}>`, "i");
+  // Double-escape required: in a JS string \s → s, so we write \\s so the
+  // RegExp constructor receives the correct \s character-class shorthand.
+  const re = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, "i");
   const m = xml.match(re);
   return m ? m[1].trim() : "";
 }

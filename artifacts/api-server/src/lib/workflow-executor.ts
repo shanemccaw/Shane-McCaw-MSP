@@ -1410,7 +1410,7 @@ Return ONLY a JSON object with these exact keys:
         const fnhTopicsRaw  = (interp(node.data.topics as string | undefined, payload) ?? "Microsoft 365, Copilot AI, SharePoint, Power Platform, Azure, Microsoft Viva, Project Online").trim();
         const fnhTopics     = fnhTopicsRaw.split(",").map(t => t.trim()).filter(Boolean);
         const fnhMaxResults = parseInt(interp(node.data.maxResults as string | undefined, payload) ?? "10", 10) || 10;
-        const fnhThreshold  = parseInt(interp(node.data.hotScoreThreshold as string | undefined, payload) ?? "60", 10);
+        const fnhThreshold  = parseInt(interp(node.data.hotScoreThreshold as string | undefined, payload) ?? "60", 10) || 60;
         const fnhCustomPrompt = (interp(node.data.customPrompt as string | undefined, payload) ?? "").trim();
         const fnhAutoBuild  = Boolean(node.data.autoBuildCampaign);
 
