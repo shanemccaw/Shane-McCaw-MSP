@@ -2017,26 +2017,35 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           if (fbUseImage) {
             // Photo post: use /{page-id}/photos with url + caption so the image
             // is displayed inline rather than as a link card.
-            const resp = await fetch(
-              `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/photos`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ url: imageUrl, caption: postBody, access_token: pageAccessToken }),
-              },
-            );
-            if (!resp.ok) {
-              nodeError = true;
-              const errText = await resp.text().catch(() => "");
-              output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
-            } else {
-              const json = (await resp.json()) as { id?: string; post_id?: string };
-              const rawId = json?.post_id ?? json?.id ?? "unknown";
-              const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
-              output = { facebookPostId: rawId, facebookPostUrl };
+            try {
+              const resp = await fetch(
+                `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/photos`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ url: imageUrl, caption: postBody, access_token: pageAccessToken }),
+                },
+              );
+              if (!resp.ok) {
+                const errText = await resp.text().catch(() => "");
+                logger.warn({ status: resp.status, detail: errText.slice(0, 400), imageUrl }, "post_facebook: image upload failed, falling back to text-only");
+                fbImageUploadWarning = `Image not attached — Facebook Graph API rejected the image upload (HTTP ${resp.status})`;
+                fbUseImage = false;
+              } else {
+                const json = (await resp.json()) as { id?: string; post_id?: string };
+                const rawId = json?.post_id ?? json?.id ?? "unknown";
+                const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
+                output = { facebookPostId: rawId, facebookPostUrl };
+              }
+            } catch (imgErr) {
+              logger.warn({ err: imgErr, imageUrl }, "post_facebook: image upload failed, falling back to text-only");
+              fbImageUploadWarning = `Image not attached — ${imgErr instanceof Error ? imgErr.message : "upload failed"}`;
+              fbUseImage = false;
             }
-          } else {
-            // Fall back to text-only post and surface the size warning
+          }
+
+          if (!fbUseImage && !output) {
+            // Fall back to text-only post and surface the warning
             const resp = await fetch(
               `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/feed`,
               {
@@ -2053,7 +2062,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               const json = (await resp.json()) as { id?: string };
               const rawId = json?.id ?? "unknown";
               const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
-              output = { facebookPostId: rawId, facebookPostUrl, imageUploadWarning: fbImageUploadWarning };
+              output = { facebookPostId: rawId, facebookPostUrl, ...(fbImageUploadWarning ? { imageUploadWarning: fbImageUploadWarning } : {}) };
             }
           }
         } else {
