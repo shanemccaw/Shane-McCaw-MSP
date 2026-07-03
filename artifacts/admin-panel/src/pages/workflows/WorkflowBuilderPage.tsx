@@ -2431,6 +2431,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [isDirty, setIsDirty] = useState(false);
+  const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
+  const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showTestRun, setShowTestRun] = useState(false);
@@ -2636,6 +2638,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     onSuccess: (data) => {
       setSaveStatus("saved");
       setIsDirty(false);
+      setLastDraftSavedAt(null);
       // Clear the localStorage draft — it's now safely on the server
       if (currentVersionId) localStorage.removeItem(`wf-draft-${defId}-${currentVersionId}`);
       setShowDraftBanner(false);
@@ -2868,6 +2871,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
     draftSaveTimerRef.current = setTimeout(() => {
       const key = `wf-draft-${defId}-${currentVersionId}`;
+      const now = new Date();
       const draft = {
         nodes: nodes.map(n => ({
           id: n.id,
@@ -2876,12 +2880,20 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           data: n.data,
         })),
         edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle })),
-        savedAt: new Date().toISOString(),
+        savedAt: now.toISOString(),
       };
       localStorage.setItem(key, JSON.stringify(draft));
+      setLastDraftSavedAt(now);
     }, 2000);
     return () => { if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current); };
   }, [nodes, edges, isDirty, currentVersionId, defId]);
+
+  // Tick every 30 s so the "Auto-saved X min ago" label stays current
+  useEffect(() => {
+    if (!lastDraftSavedAt) return;
+    const id = setInterval(() => setTickNow(n => n + 1), 30_000);
+    return () => clearInterval(id);
+  }, [lastDraftSavedAt]);
 
   // Dismiss context menu on outside click / Escape
   useEffect(() => {
@@ -2901,6 +2913,17 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const isPublished = currentVersion?.status === "published";
   const isArchived  = currentVersion?.status === "archived";
   const isDraft     = currentVersion?.status === "draft";
+
+  function draftAgeLabel(since: Date): string {
+    const diffMs = Date.now() - since.getTime();
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return "just now";
+    if (diffMin === 1) return "1 min ago";
+    if (diffMin < 60) return `${diffMin} min ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr === 1) return "1 hr ago";
+    return `${diffHr} hr ago`;
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -2964,6 +2987,12 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           >
             History ({versions.length})
           </button>
+
+          {lastDraftSavedAt && saveStatus !== "saved" && (
+            <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
+              Auto-saved {draftAgeLabel(lastDraftSavedAt)}
+            </span>
+          )}
 
           {!isArchived && (
             <button
