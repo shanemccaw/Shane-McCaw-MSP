@@ -6453,6 +6453,66 @@ router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res:
   res.json({ deleted: id });
 });
 
+// ─── ADMIN: Retry auto-fire for an exhausted/failed kanban card ───────────────
+router.post("/admin/kanban-tasks/:id/retry-auto-fire", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [task] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+
+  const allowedStatuses = ["auto_fire_exhausted", "auto_fire_failed"];
+  if (!task.completionStatus || !allowedStatuses.includes(task.completionStatus)) {
+    res.status(400).json({ error: `Task completionStatus must be one of: ${allowedStatuses.join(", ")} (got: ${task.completionStatus ?? "null"})` });
+    return;
+  }
+
+  if (!task.projectId) { res.status(400).json({ error: "Task has no associated project" }); return; }
+
+  const [project] = await db.select({ clientUserId: projectsTable.clientUserId })
+    .from(projectsTable).where(eq(projectsTable.id, task.projectId));
+  if (!project?.clientUserId) { res.status(400).json({ error: "Project has no associated client" }); return; }
+
+  const currentMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
+  const resetMeta: Record<string, unknown> = { ...currentMeta };
+  delete resetMeta.autoFireFailureCount;
+  delete resetMeta.lastFailureReason;
+
+  const [updated] = await db
+    .update(kanbanTasksTable)
+    .set({
+      column: "backlog",
+      completionStatus: null,
+      taskMetadata: resetMeta,
+      updatedAt: new Date(),
+    })
+    .where(eq(kanbanTasksTable.id, id))
+    .returning();
+
+  if (!updated) { res.status(404).json({ error: "Task not found after update" }); return; }
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "kanban_task_moved",
+    entityType: "kanban_task",
+    entityId: updated.id,
+    entityLabel: updated.title,
+    projectId: updated.projectId ?? undefined,
+    clientId: project.clientUserId,
+    metadata: { retryAutoFire: true, previousStatus: task.completionStatus },
+  });
+
+  broadcastKanbanChange(updated.projectId, { action: "updated", task: updated });
+
+  autoFireFirstBacklogScript(project.clientUserId).catch(err => {
+    req.log.warn({ err, taskId: id, clientUserId: project.clientUserId }, "retry-auto-fire: autoFireFirstBacklogScript error (non-fatal)");
+  });
+
+  res.json(updated);
+});
+
 // ─── ADMIN: Documents ────────────────────────────────────────────────────────
 router.get("/admin/documents", requireAdmin, async (_req: Request, res: Response) => {
   const docs = await db.select().from(documentsTable).orderBy(desc(documentsTable.createdAt));

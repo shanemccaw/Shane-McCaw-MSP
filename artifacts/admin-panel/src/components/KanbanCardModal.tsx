@@ -817,6 +817,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     nextActions: string[];
   } | null>(null);
   const [aiSuggestError, setAiSuggestError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   useEffect(() => {
     if (!task) return;
@@ -896,6 +897,31 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     const merged = { ...localTask, taskMetadata: meta };
     setLocalTask(merged);
     onUpdate?.(merged);
+  };
+
+  const handleRetryAutoFire = async () => {
+    if (!fetchWithAuth || !onUpdate) return;
+    setRetrying(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/kanban-tasks/${localTask.id}/retry-auto-fire`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const d = await res.json() as { error?: string };
+        toast({ title: "Retry failed", description: d.error ?? "Could not reset auto-fire", variant: "destructive" });
+        return;
+      }
+      const updated = await res.json() as KanbanCardModalTask;
+      const merged = { ...localTask, ...updated };
+      setLocalTask(merged);
+      onUpdate(merged);
+      if (onSiblingUpdate) onSiblingUpdate(merged);
+      toast({ title: "Auto-fire reset", description: "Retry counter cleared. The script will re-run automatically." });
+    } catch {
+      toast({ title: "Retry failed", description: "Network error — please try again", variant: "destructive" });
+    } finally {
+      setRetrying(false);
+    }
   };
 
   const handleAiSuggest = async (outputText: string) => {
@@ -1079,6 +1105,26 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   </svg>
                 )}
                 {scriptRunning ? "Running in background…" : "Run Script"}
+              </button>
+            )}
+
+            {/* Retry auto-fire button (admin only, shown when auto-fire is exhausted or failed) */}
+            {mode === "admin" && fetchWithAuth && onUpdate && !editing &&
+              (localTask.completionStatus === "auto_fire_exhausted" || localTask.completionStatus === "auto_fire_failed") && (
+              <button
+                onClick={() => void handleRetryAutoFire()}
+                disabled={retrying}
+                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300 border border-orange-500/30 hover:border-orange-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Reset retry counter and re-trigger auto-fire"
+              >
+                {retrying ? (
+                  <div className="w-3.5 h-3.5 border border-orange-400/40 border-t-orange-400 rounded-full animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+                {retrying ? "Retrying…" : "Retry auto-fire"}
               </button>
             )}
 
