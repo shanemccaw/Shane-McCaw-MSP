@@ -109,6 +109,25 @@ export default function FullScreenWrapper() {
   // ── Responsive kanban tab (small screens only) ───────────────────────────────
   const [kanbanTab, setKanbanTab] = useState<"done" | "active" | "next">("active");
 
+  // ── Credential gate — detect missing Azure App Registration ──────────────────
+  // Scripts will never start without credentials; show an actionable prompt
+  // instead of the indefinite "Scripts queued" spinner.
+  const [credentialsMissing, setCredentialsMissing] = useState(false);
+  const credCheckRef = useRef(false);
+  useEffect(() => {
+    if (!isVisible || credCheckRef.current) return;
+    credCheckRef.current = true;
+    fetchWithAuth("/api/portal/app-registration")
+      .then(r => {
+        if (r.status === 404) { setCredentialsMissing(true); return; }
+        if (!r.ok) return;
+        return r.json().then((d: { status?: string }) => {
+          if (!d.status || d.status === "pending") setCredentialsMissing(true);
+        });
+      })
+      .catch(() => { /* non-fatal — leave spinner visible */ });
+  }, [isVisible, fetchWithAuth]);
+
   // ── Presentation CTA state ───────────────────────────────────────────────────
   const [openingPresentation, setOpeningPresentation] = useState(false);
 
@@ -1098,10 +1117,33 @@ export default function FullScreenWrapper() {
 
                   {/* Queued — nothing active yet */}
                   {kanbanTasks.length > 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && !allTasksDone && (
-                    <div className="flex flex-col items-center gap-3 py-10">
-                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-                      <p className="text-sm text-black/40">Scripts queued — waiting to start…</p>
-                    </div>
+                    credentialsMissing ? (
+                      <div className="mx-2 my-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-amber-800">Azure credentials not connected</p>
+                            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Scripts can't start until you connect your Azure App Registration. It only takes a few minutes.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigate("/portal/automation-setup")}
+                          className="w-full rounded-xl bg-[#0078D4] hover:bg-[#006CBF] text-white text-sm font-semibold py-2.5 transition-colors"
+                        >
+                          Connect Azure Tenant →
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 py-10">
+                        <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                        <p className="text-sm text-black/40">Scripts queued — waiting to start…</p>
+                      </div>
+                    )
                   )}
 
                   {/* All done */}
@@ -1483,10 +1525,33 @@ export default function FullScreenWrapper() {
                     inProgressTasks.length === 0 &&
                     waitingTasks.length === 0 &&
                     completedKanbanTasks.length < kanbanTasks.length && (
-                    <div className="flex flex-col items-center gap-3 py-12 text-center">
-                      <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                      <p className="text-sm text-black/50">Scripts queued — waiting to start…</p>
-                    </div>
+                    credentialsMissing ? (
+                      <div className="mx-2 my-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 flex flex-col gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-amber-800">Azure credentials not connected</p>
+                            <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">Scripts can't start until you connect your Azure App Registration. It only takes a few minutes.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => navigate("/portal/automation-setup")}
+                          className="w-full rounded-xl bg-[#0078D4] hover:bg-[#006CBF] text-white text-sm font-semibold py-2.5 transition-colors"
+                        >
+                          Connect Azure Tenant →
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-3 py-12 text-center">
+                        <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                        <p className="text-sm text-black/50">Scripts queued — waiting to start…</p>
+                      </div>
+                    )
                   )}
 
                   {/* All tasks complete */}
