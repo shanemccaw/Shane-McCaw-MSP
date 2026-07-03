@@ -275,7 +275,7 @@ router.put("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async
 
     const [updated] = await db
       .update(wfVersionsTable)
-      .set({ graph: (body.data.graph as WfGraph) ?? existing.graph, label: body.data.label ?? existing.label })
+      .set({ graph: (body.data.graph as WfGraph) ?? existing.graph, label: body.data.label ?? existing.label, updatedAt: new Date() })
       .where(eq(wfVersionsTable.id, vid))
       .returning();
     res.json(updated);

@@ -1685,6 +1685,7 @@ export const wfVersionsTable = pgTable("wf_versions", {
   graph: jsonb("graph").$type<WfGraph>().notNull().default({ nodes: [], edges: [] }),
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type InsertWfVersion = typeof wfVersionsTable.$inferInsert;

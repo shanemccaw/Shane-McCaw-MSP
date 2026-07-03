@@ -2091,7 +2091,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     enabled: currentVersionId != null,
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions/${currentVersionId}`);
-      return res.json() as Promise<{ id: number; versionNumber: number; label: string | null; status: string; graph: { nodes: unknown[]; edges: unknown[] } }>;
+      return res.json() as Promise<{ id: number; versionNumber: number; label: string | null; status: string; graph: { nodes: unknown[]; edges: unknown[] }; updatedAt: string }>;
     },
   });
 
@@ -2125,17 +2125,28 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     })));
     setIsDirty(false);
 
-    // Check localStorage for an unsaved draft for this version
+    // Check localStorage for an unsaved draft for this version.
+    // Only offer restore if the draft was saved AFTER the server's last write (updatedAt),
+    // which prevents stale drafts from overwriting newer work saved from another session.
     const key = `wf-draft-${defId}-${currentVersion.id}`;
     const raw = localStorage.getItem(key);
     if (raw) {
       try {
         const parsed = JSON.parse(raw) as { nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>; savedAt: string };
-        if (parsed.nodes && parsed.edges && parsed.savedAt) {
+        const serverUpdatedAt = currentVersion.updatedAt ? new Date(currentVersion.updatedAt).getTime() : 0;
+        const draftSavedAt = parsed.savedAt ? new Date(parsed.savedAt).getTime() : 0;
+        if (parsed.nodes && parsed.edges && parsed.savedAt && draftSavedAt > serverUpdatedAt) {
           setLocalDraft(parsed);
           setShowDraftBanner(true);
+        } else {
+          // Draft is older than the server — discard it silently
+          localStorage.removeItem(key);
+          setShowDraftBanner(false);
+          setLocalDraft(null);
         }
-      } catch { /* ignore corrupt draft */ }
+      } catch {
+        localStorage.removeItem(key); // ignore corrupt draft
+      }
     } else {
       setShowDraftBanner(false);
       setLocalDraft(null);
@@ -2174,8 +2185,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       setSaveStatus("saved");
       setIsDirty(false);
       // Clear the localStorage draft — it's now safely on the server
-      const savedVid = data.autoDraftedFrom ? currentVersionId : currentVersionId;
-      if (savedVid) localStorage.removeItem(`wf-draft-${defId}-${savedVid}`);
+      if (currentVersionId) localStorage.removeItem(`wf-draft-${defId}-${currentVersionId}`);
       setShowDraftBanner(false);
       setLocalDraft(null);
       setTimeout(() => setSaveStatus("idle"), 2000);
