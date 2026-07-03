@@ -106,6 +106,9 @@ export default function FullScreenWrapper() {
     // for API compatibility with runAutoStep
   }, []);
 
+  // ── Responsive kanban tab (small screens only) ───────────────────────────────
+  const [kanbanTab, setKanbanTab] = useState<"done" | "active" | "next">("active");
+
   // ── Presentation CTA state ───────────────────────────────────────────────────
   const [openingPresentation, setOpeningPresentation] = useState(false);
 
@@ -934,10 +937,27 @@ export default function FullScreenWrapper() {
           />
 
           {/* Three-column task grid */}
-          <div className="w-full max-w-6xl grid grid-cols-12 gap-5 flex-1 min-h-0 mb-2">
+          {/* Tab bar — visible only on < lg; switches which column is shown */}
+          <div className="flex lg:hidden w-full max-w-6xl mb-1 rounded-xl overflow-hidden border border-black/10 bg-white/40 shrink-0">
+            {(["done", "active", "next"] as const).map((tab) => {
+              const labels: Record<typeof tab, string> = { done: `Done · ${completedKanbanTasks.length}`, active: `Active · ${inProgressTasks.length + waitingTasks.length}`, next: `Up Next · ${nextStepTasks.length}` };
+              const active = kanbanTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setKanbanTab(tab)}
+                  className={`flex-1 py-2 text-[11px] font-bold uppercase tracking-widest transition-colors ${active ? "bg-[#0078D4] text-white" : "text-black/40 hover:text-black/60"}`}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="w-full max-w-6xl flex flex-col lg:grid lg:grid-cols-12 gap-5 flex-1 min-h-0 mb-2">
 
             {/* ── LEFT: Completed tasks (small, muted) ── */}
-            <div className="col-span-3 flex flex-col gap-2 min-h-0">
+            <div className={`lg:col-span-3 flex-col gap-2 min-h-0 ${kanbanTab === "done" ? "flex" : "hidden"} lg:flex`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 shrink-0 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
                 Done · {completedKanbanTasks.length}
@@ -963,7 +983,7 @@ export default function FullScreenWrapper() {
             </div>
 
             {/* ── CENTER: Active tasks — in_progress + waiting_on_customer ── */}
-            <div className="col-span-6 flex flex-col gap-3 min-h-0">
+            <div className={`lg:col-span-6 flex-col gap-3 min-h-0 ${kanbanTab === "active" ? "flex" : "hidden"} lg:flex`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4] shrink-0 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse inline-block" />
                 Active · {inProgressTasks.length + waitingTasks.length}
@@ -1129,7 +1149,7 @@ export default function FullScreenWrapper() {
             </div>
 
             {/* ── RIGHT: Next-up tasks (small, muted, from the first not_started step) ── */}
-            <div className="col-span-3 flex flex-col gap-2 min-h-0">
+            <div className={`lg:col-span-3 flex-col gap-2 min-h-0 ${kanbanTab === "next" ? "flex" : "hidden"} lg:flex`}>
               <p className="text-[10px] font-bold uppercase tracking-widest text-black/30 shrink-0 flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full border border-black/20 inline-block" />
                 Up Next · {nextStepTasks.length}
