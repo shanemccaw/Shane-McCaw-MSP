@@ -294,6 +294,30 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
 
+    case "post_linkedin":
+      return {
+        dryRun: true,
+        linkedinPostId: "dry-run-linkedin-post-id",
+        linkedinPostUrl: "https://www.linkedin.com/feed/update/dry-run-linkedin-post-id",
+        preview: interp(node.data.postBody as string | undefined, p) ?? "(no post body configured)",
+      };
+
+    case "post_twitter":
+      return {
+        dryRun: true,
+        twitterTweetId: "dry-run-tweet-id",
+        twitterTweetUrl: "https://twitter.com/i/web/status/dry-run-tweet-id",
+        preview: interp(node.data.postBody as string | undefined, p) ?? "(no tweet text configured)",
+      };
+
+    case "post_facebook":
+      return {
+        dryRun: true,
+        facebookPostId: "dry-run-facebook-post-id",
+        facebookPostUrl: "https://www.facebook.com/dry-run/posts/facebook-post-id",
+        preview: interp(node.data.postBody as string | undefined, p) ?? "(no post body configured)",
+      };
+
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
   }
@@ -1155,6 +1179,168 @@ Return ONLY a JSON object with these exact keys:
           output = { skipped: true, reason: "no task configured" };
         } else {
           output = await handleSystemAction(task, payload);
+        }
+        break;
+      }
+
+      // ── Social Media connectors ────────────────────────────────────────────
+
+      case "post_linkedin": {
+        const accessToken = process.env.LINKEDIN_ACCESS_TOKEN;
+        const orgId = interp((node.data.orgId as string | undefined) ?? "", payload)
+          || process.env.LINKEDIN_ORG_ID;
+        const postBody = interp(node.data.postBody as string | undefined, payload);
+
+        if (!accessToken) {
+          nodeError = true;
+          output = { error: "post_linkedin: LINKEDIN_ACCESS_TOKEN secret is not set" };
+        } else if (!orgId) {
+          nodeError = true;
+          output = { error: "post_linkedin: orgId must be configured on the node or via the LINKEDIN_ORG_ID secret" };
+        } else if (!postBody?.trim()) {
+          nodeError = true;
+          output = { error: "post_linkedin: postBody is empty — configure the post body field on this node" };
+        } else {
+          const resp = await fetch("https://api.linkedin.com/v2/ugcPosts", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+              "X-Restli-Protocol-Version": "2.0.0",
+            },
+            body: JSON.stringify({
+              author: `urn:li:organization:${orgId}`,
+              lifecycleState: "PUBLISHED",
+              specificContent: {
+                "com.linkedin.ugc.ShareContent": {
+                  shareCommentary: { text: postBody },
+                  shareMediaCategory: "NONE",
+                },
+              },
+              visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
+            }),
+          });
+          if (!resp.ok) {
+            nodeError = true;
+            const errText = await resp.text().catch(() => "");
+            output = { error: `post_linkedin: LinkedIn API error ${resp.status}`, detail: errText.slice(0, 400) };
+          } else {
+            const postId = resp.headers.get("x-restli-id") ?? "unknown";
+            const linkedinPostUrl = `https://www.linkedin.com/feed/update/${postId}`;
+            output = { linkedinPostId: postId, linkedinPostUrl };
+          }
+        }
+        break;
+      }
+
+      case "post_twitter": {
+        const bearerToken   = process.env.TWITTER_BEARER_TOKEN;
+        const apiKey        = process.env.TWITTER_API_KEY;
+        const apiSecret     = process.env.TWITTER_API_SECRET;
+        const accessToken   = process.env.TWITTER_ACCESS_TOKEN;
+        const accessSecret  = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+        const tweetText     = interp(node.data.postBody as string | undefined, payload);
+
+        if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
+          nodeError = true;
+          output = { error: "post_twitter: one or more Twitter OAuth 1.0a secrets are missing (TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_TOKEN_SECRET)" };
+        } else if (!tweetText?.trim()) {
+          nodeError = true;
+          output = { error: "post_twitter: postBody is empty — configure the tweet text on this node" };
+        } else {
+          // OAuth 1.0a HMAC-SHA1 signing (user-context, no external library required)
+          const method = "POST";
+          const url = "https://api.twitter.com/2/tweets";
+          const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+          const ts = Math.floor(Date.now() / 1000).toString();
+
+          const oauthParams: Record<string, string> = {
+            oauth_consumer_key: apiKey,
+            oauth_nonce: nonce,
+            oauth_signature_method: "HMAC-SHA1",
+            oauth_timestamp: ts,
+            oauth_token: accessToken,
+            oauth_version: "1.0",
+          };
+
+          // Build the signature base string
+          const enc = (s: string) => encodeURIComponent(s);
+          const paramStr = Object.entries(oauthParams)
+            .sort(([a], [b]) => a < b ? -1 : 1)
+            .map(([k, v]) => `${enc(k)}=${enc(v)}`)
+            .join("&");
+          const sigBase = `${method}&${enc(url)}&${enc(paramStr)}`;
+          const sigKey = `${enc(apiSecret)}&${enc(accessSecret)}`;
+
+          // HMAC-SHA1 via Web Crypto (available in Node 18+)
+          const { createHmac } = await import("crypto");
+          const hmac = createHmac("sha1", sigKey);
+          hmac.update(sigBase);
+          const signature = hmac.digest("base64");
+
+          const authHeader = "OAuth " + Object.entries({ ...oauthParams, oauth_signature: signature })
+            .sort(([a], [b]) => a < b ? -1 : 1)
+            .map(([k, v]) => `${enc(k)}="${enc(v)}"`)
+            .join(", ");
+
+          const resp = await fetch(url, {
+            method,
+            headers: {
+              "Authorization": authHeader,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ text: tweetText }),
+          });
+
+          if (!resp.ok) {
+            nodeError = true;
+            const errText = await resp.text().catch(() => "");
+            output = { error: `post_twitter: Twitter API error ${resp.status}`, detail: errText.slice(0, 400) };
+          } else {
+            const json = await resp.json() as { data?: { id?: string } };
+            const tweetId = json?.data?.id ?? "unknown";
+            const twitterTweetUrl = `https://twitter.com/i/web/status/${tweetId}`;
+            output = { twitterTweetId: tweetId, twitterTweetUrl };
+          }
+        }
+        void bearerToken; // may be used for read-only calls; required secret for completeness
+        break;
+      }
+
+      case "post_facebook": {
+        const pageAccessToken = process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
+        const pageId = interp((node.data.pageId as string | undefined) ?? "", payload)
+          || process.env.FACEBOOK_PAGE_ID;
+        const postBody = interp(node.data.postBody as string | undefined, payload);
+
+        if (!pageAccessToken) {
+          nodeError = true;
+          output = { error: "post_facebook: FACEBOOK_PAGE_ACCESS_TOKEN secret is not set" };
+        } else if (!pageId) {
+          nodeError = true;
+          output = { error: "post_facebook: pageId must be configured on the node or via the FACEBOOK_PAGE_ID secret" };
+        } else if (!postBody?.trim()) {
+          nodeError = true;
+          output = { error: "post_facebook: postBody is empty — configure the post body field on this node" };
+        } else {
+          const resp = await fetch(
+            `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/feed`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ message: postBody, access_token: pageAccessToken }),
+            },
+          );
+          if (!resp.ok) {
+            nodeError = true;
+            const errText = await resp.text().catch(() => "");
+            output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
+          } else {
+            const json = await resp.json() as { id?: string };
+            const rawId = json?.id ?? "unknown";
+            const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
+            output = { facebookPostId: rawId, facebookPostUrl };
+          }
         }
         break;
       }

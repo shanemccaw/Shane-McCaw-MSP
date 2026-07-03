@@ -61,6 +61,10 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
+  // ── Social Media ──
+  post_linkedin: { bg: "#051424", border: "#0A66C2", icon: "🔗", label: "Post to LinkedIn" },
+  post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
+  post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -127,6 +131,10 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
+  // Social Media
+  post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
+  post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
+  post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -290,6 +298,14 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "topic_picker",   label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",         tags: ["content", "article", "ai", "topic", "generate"] },
       { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)", tags: ["content", "article", "ai", "blog", "generate"] },
       { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",  tags: ["content", "article", "publish", "blog", "site"] },
+    ],
+  },
+  {
+    name: "Social Media",
+    nodes: [
+      { type: "post_linkedin", label: "Post to LinkedIn", description: "Publish a text post to a LinkedIn company/org page", tags: ["social", "linkedin", "post", "marketing"] },
+      { type: "post_twitter",  label: "Post to X / Twitter", description: "Post a tweet via the Twitter API v2 with OAuth 1.0a", tags: ["social", "twitter", "x", "tweet", "marketing"] },
+      { type: "post_facebook", label: "Post to Facebook", description: "Publish a post to a Facebook Page via the Graph API", tags: ["social", "facebook", "post", "marketing"] },
     ],
   },
   {
@@ -1404,6 +1420,79 @@ function NodeConfigPanel({
             onChange={onChange}
             ancestorOutputs={ancestorOutputs}
           />
+        )}
+
+        {/* ── Social Media ────────────────────────────────────── */}
+
+        {nodeType === "post_linkedin" && (
+          <>
+            <PayloadField
+              label="Post Body"
+              value={(node.data.postBody as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, postBody: v })}
+              placeholder="Excited to share our latest article on Microsoft 365 — {{articleTitle}}"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="LinkedIn Org ID (optional)"
+              value={(node.data.orgId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, orgId: v })}
+              placeholder="Leave blank to use the LINKEDIN_ORG_ID secret"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#051424] border border-[#0A66C2]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Requires <span className="font-mono text-[#0A66C2]">LINKEDIN_ACCESS_TOKEN</span> and <span className="font-mono text-[#0A66C2]">LINKEDIN_ORG_ID</span> in Replit Secrets. Obtain a long-lived page token from the LinkedIn Developer Portal.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{linkedinPostId}}"} · {"{{linkedinPostUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "post_twitter" && (
+          <>
+            <PayloadField
+              label="Tweet Text (max 280 chars)"
+              value={(node.data.postBody as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, postBody: v })}
+              placeholder="New article: {{articleTitle}} — read it here: https://shanemccawconsulting.com/resources/{{articleSlug}}"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#0D0D0D] border border-[#E7E7E7]/20 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Requires five secrets in Replit Secrets: <span className="font-mono text-[#E7E7E7]">TWITTER_API_KEY</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_API_SECRET</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN_SECRET</span>, and (optionally) <span className="font-mono text-[#E7E7E7]">TWITTER_BEARER_TOKEN</span>. Create an app with Read &amp; Write access in the Twitter Developer Portal.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{twitterTweetId}}"} · {"{{twitterTweetUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "post_facebook" && (
+          <>
+            <PayloadField
+              label="Post Body"
+              value={(node.data.postBody as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, postBody: v })}
+              placeholder="New article on Microsoft 365: {{articleTitle}}"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Facebook Page ID (optional)"
+              value={(node.data.pageId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, pageId: v })}
+              placeholder="Leave blank to use the FACEBOOK_PAGE_ID secret"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#071533] border border-[#1877F2]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Requires <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ACCESS_TOKEN</span> and <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ID</span> in Replit Secrets. Generate a permanent Page access token via Meta for Developers → Graph API Explorer.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{facebookPostId}}"} · {"{{facebookPostUrl}}"}</p>
+            </div>
+          </>
         )}
 
         {nodeType === "condition" && (

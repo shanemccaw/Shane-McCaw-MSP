@@ -125,6 +125,40 @@ Required to enable automatic SEO ranking sync in the Admin Panel (Marketing → 
 
 If either secret is missing, clicking "Sync Search Console" shows a clear error message in the card without crashing. Manual keyword entry is always available as a fallback.
 
+## Social Media Connector Secrets
+
+Required to enable the `post_linkedin`, `post_twitter`, and `post_facebook` workflow nodes.
+
+### LinkedIn (`post_linkedin`)
+
+| Secret | Description |
+|--------|-------------|
+| `LINKEDIN_ACCESS_TOKEN` | Long-lived OAuth 2.0 access token for a LinkedIn app with `w_organization_social` scope. Create an app at [LinkedIn Developer Portal](https://developer.linkedin.com/), request the Marketing Developer Platform product, then exchange an auth code for a 60-day token (or set up token refresh). |
+| `LINKEDIN_ORG_ID` | Numeric LinkedIn organisation/company ID (found in the URL of the company admin page, e.g. `https://www.linkedin.com/company/12345678/admin/` → `12345678`). Can also be set per-node in the config panel. |
+
+Posts to the UGC Posts API (`POST /v2/ugcPosts`) as an organisation post. Text-only in this iteration. Outputs `{{linkedinPostId}}` and `{{linkedinPostUrl}}`.
+
+### Twitter / X (`post_twitter`)
+
+| Secret | Description |
+|--------|-------------|
+| `TWITTER_API_KEY` | API key (consumer key) from the Twitter Developer Portal app |
+| `TWITTER_API_SECRET` | API key secret (consumer secret) |
+| `TWITTER_ACCESS_TOKEN` | Access token for the account/page you want to post as |
+| `TWITTER_ACCESS_TOKEN_SECRET` | Access token secret |
+| `TWITTER_BEARER_TOKEN` | App-only bearer token (optional; not used for posting but useful for future read operations) |
+
+Create a project and app at [developer.twitter.com](https://developer.twitter.com/), set **Read and Write** permissions, then generate access tokens under "Keys and Tokens". Signing uses OAuth 1.0a HMAC-SHA1 — no external library required. Outputs `{{twitterTweetId}}` and `{{twitterTweetUrl}}`.
+
+### Facebook (`post_facebook`)
+
+| Secret | Description |
+|--------|-------------|
+| `FACEBOOK_PAGE_ACCESS_TOKEN` | Page access token with `pages_manage_posts` and `publish_pages` permissions. Generate via [Meta for Developers → Graph API Explorer](https://developers.facebook.com/tools/explorer/) selecting your Page, or via a long-lived token exchange. |
+| `FACEBOOK_PAGE_ID` | Numeric Facebook Page ID (visible in the Page's About section or via Graph API `me?fields=id`). Can also be set per-node in the config panel. |
+
+Posts to `/{page-id}/feed` on the Facebook Graph API v19. Text-only in this iteration. Outputs `{{facebookPostId}}` and `{{facebookPostUrl}}`.
+
 ## Browser Push Notification Secrets
 
 Required to enable OS-level browser push notifications in the Admin Panel notification drawer:
