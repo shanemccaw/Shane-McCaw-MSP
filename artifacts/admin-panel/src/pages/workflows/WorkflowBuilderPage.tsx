@@ -1808,8 +1808,23 @@ function PublishArticlePanel({
         placeholder="{{articleCategory}}"
         ancestorOutputs={ancestorOutputs}
       />
+      <PayloadField
+        label="Content override (leave blank to use {{articleContent}})"
+        value={(node.data.contentExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, contentExpr: v })}
+        placeholder="{{articleContent}}"
+        multiline
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Date override (leave blank to use {{articleDate}})"
+        value={(node.data.dateExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, dateExpr: v })}
+        placeholder="{{articleDate}}"
+        ancestorOutputs={ancestorOutputs}
+      />
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Saves the article to the database and writes a <span className="font-mono text-[#7D8590]">.md</span> file to the public site. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
+        <p className="text-[10px] text-[#484F58]">Saves the article to the database and writes a <span className="font-mono text-[#7D8590]">.md</span> file to the public site. When wired after a <span className="font-mono text-[#C084FC]">generate_article</span> node all fields auto-populate — no override expressions needed. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{published}}"} · {"{{slug}}"} · {"{{articleId}}"} · {"{{title}}"}</p>
       </div>
     </>

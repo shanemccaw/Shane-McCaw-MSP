@@ -263,7 +263,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
 
     case "publish_article":
-      return { dryRun: true, published: false, slug: "dry-run-preview", articleId: null };
+      return { dryRun: true, published: true, slug: "dry-run-preview-article", articleId: 0, title: str("titleExpr", "Dry-run Article") };
 
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
@@ -874,11 +874,19 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
       }
 
       case "publish_article": {
-        const paTitle    = (interp(node.data.titleExpr    as string | undefined, payload) || String(payload.articleTitle    ?? "")).trim();
-        const paCategory =  interp(node.data.categoryExpr as string | undefined, payload) || String(payload.articleCategory ?? "General");
-        const paSummary  =  interp(node.data.summaryExpr  as string | undefined, payload) || String(payload.articleSummary  ?? "");
-        const paDate     = String(payload.articleDate ?? new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }));
-        const paContent  = String(payload.articleContent ?? "").trim();
+        // For each field: if an override expr is set, interpolate it;
+        // otherwise fall back to the matching top-level payload key which was
+        // spread there by the preceding generate_article node (or trigger payload).
+        const paTitle    = (interp(node.data.titleExpr    as string | undefined, payload)
+                            || String(payload.articleTitle    ?? "")).trim();
+        const paCategory = (interp(node.data.categoryExpr as string | undefined, payload)
+                            || String(payload.articleCategory ?? "General")).trim();
+        const paSummary  = (interp(node.data.summaryExpr  as string | undefined, payload)
+                            || String(payload.articleSummary  ?? "")).trim();
+        const paDate     = (interp(node.data.dateExpr     as string | undefined, payload)
+                            || String(payload.articleDate ?? new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }))).trim();
+        const paContent  = (interp(node.data.contentExpr  as string | undefined, payload)
+                            || String(payload.articleContent ?? "")).trim();
 
         if (!paTitle || !paContent) {
           nodeError = true;
@@ -967,6 +975,11 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
   const updatedNodes = { ...prevNodes, [node.id]: output };
   const nextPayload = {
     ...payload,
+    // Spread output at top level so downstream nodes can read directly
+    // (e.g. {{articleTitle}} after generate_article, {{changeCount}} after
+    // generate_diff_report). Top-level keys from earlier nodes are overwritten
+    // only when a later node emits the same key name.
+    ...output,
     nodes: updatedNodes,
     // `steps` is a canonical downstream reference namespace so workflow authors
     // can chain outputs using {{steps.<nodeId>.<key>}} in subsequent nodes.
