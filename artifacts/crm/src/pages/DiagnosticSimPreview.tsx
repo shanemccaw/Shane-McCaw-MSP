@@ -13,7 +13,17 @@ export default function DiagnosticSimPreview() {
 
   useEffect(() => {
     if (state.mode === "Idle") {
+      // First set the quickWin metadata (title, category, etc.)
       dispatch({ type: "SELECT_QUICK_WIN", payload: SIM_QUICK_WIN });
+    }
+  }, [dispatch, state.mode]);
+
+  // Once SELECT_QUICK_WIN has been processed (mode leaves Idle), immediately
+  // bind the mock "__sim" project so the overlay jumps to ProjectTasksView,
+  // which shows the full three-column diagnostic layout with mock data.
+  useEffect(() => {
+    if (state.mode !== "Idle" && state.mode !== "ProjectTasksView") {
+      dispatch({ type: "BIND_PROJECT", payload: { projectId: "__sim" } });
     }
   }, [dispatch, state.mode]);
 

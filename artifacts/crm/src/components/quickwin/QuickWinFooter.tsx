@@ -47,7 +47,9 @@ export default function QuickWinFooter({
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
           <span className="text-[11px] font-bold">
-            {totalCount !== undefined ? `${completedCount} / ${totalCount} tasks` : `${completedCount} Complete`}
+            {totalCount !== undefined
+              ? `${completedCount} of ${totalCount} tasks complete`
+              : `${completedCount} Complete`}
           </span>
         </div>
 

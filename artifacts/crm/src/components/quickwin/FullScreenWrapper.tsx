@@ -172,9 +172,6 @@ export default function FullScreenWrapper() {
     refetchInterval: 5_000,
     staleTime: 0,
   });
-  const kanbanTasks = projectData?.tasks ?? [];
-  const workflowSteps = projectData?.steps ?? [];
-
   // ── Live: M365 scorecard history — same endpoint as the portal dashboard ───
   const { data: scorecardHistory } = useQuery<ScorecardHistoryData>({
     queryKey: ["portal-scorecard-history-overlay"],
@@ -187,6 +184,33 @@ export default function FullScreenWrapper() {
     refetchInterval: 30_000,
     staleTime: 0,
   });
+
+  // ── Simulation mock data — used when projectId === "__sim" ───────────────
+  // Provides the ProjectTasksView with realistic-looking task/step/scorecard
+  // data so the `/portal/diagnostic-sim` preview route demonstrates the layout.
+  const IS_SIM = state.projectId === "__sim";
+  const SIM_STEPS: WorkflowStep[] = [
+    { id: 1, title: "Security baseline scan", status: "completed", order: 0 },
+    { id: 2, title: "Policy hardening", status: "in_progress", order: 1 },
+    { id: 3, title: "Compliance validation", status: "not_started", order: 2 },
+  ];
+  const SIM_TASKS: KanbanTask[] = [
+    { id: 1, title: "Audit MFA registration coverage", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
+    { id: 2, title: "Review conditional access policies", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
+    { id: 3, title: "Identify legacy authentication blockers", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
+    { id: 4, title: "Enable MFA for all admin accounts", column: "in_progress", groupName: "Policy hardening", description: "Configuring SSPR and MFA enforcement for all privileged identities.", taskType: null, taskMetadata: null },
+    { id: 5, title: "Block legacy authentication protocols", column: "backlog", groupName: "Policy hardening", description: null, taskType: null, taskMetadata: null },
+    { id: 6, title: "Configure risky sign-in policies", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
+    { id: 7, title: "Enable Defender for Office 365", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
+    { id: 8, title: "Generate compliance posture report", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
+  ];
+  const SIM_SCORECARD: ScorecardHistoryData = {
+    hasData: true,
+    latest: { compliance: 74, copilot: 58, governance: 82, productivity: 61, security: 69 },
+  };
+  const kanbanTasks = IS_SIM ? SIM_TASKS : (projectData?.tasks ?? []);
+  const workflowSteps = IS_SIM ? SIM_STEPS : (projectData?.steps ?? []);
+  const effectiveScorecardHistory = IS_SIM ? SIM_SCORECARD : scorecardHistory;
 
   // ── Manual scripts for the current project ───────────────────────────────────
   // Fetched whenever we're in ProjectTasksView with a known project. Only
@@ -469,17 +493,17 @@ export default function FullScreenWrapper() {
       setDisplayScores({});
       return;
     }
-    if (!scorecardHistory?.hasData || !scorecardHistory.latest) return;
+    if (!effectiveScorecardHistory?.hasData || !effectiveScorecardHistory.latest) return;
     if (Object.keys(targetScoresRef.current).length > 0) return; // already locked
     const targets: Record<string, number> = {};
-    for (const [k, v] of Object.entries(scorecardHistory.latest)) {
+    for (const [k, v] of Object.entries(effectiveScorecardHistory.latest)) {
       if (v !== undefined) targets[k] = v;
     }
     if (Object.keys(targets).length > 0) {
       targetScoresRef.current = targets;
       scoreAnimStartRef.current = Date.now();
     }
-  }, [mode, scorecardHistory]);
+  }, [mode, effectiveScorecardHistory]);
 
   // ── Animate display scores every 2 s toward target ────────────────────────
   // Expected session duration — Copilot Quick Win ~30 min; used only as a
@@ -487,7 +511,8 @@ export default function FullScreenWrapper() {
   const EXPECTED_SESSION_MS = 30 * 60 * 1000;
   useEffect(() => {
     if (mode !== "ProjectTasksView") return;
-    const interval = setInterval(() => {
+
+    const tick = (clearFn?: () => void) => {
       const targets = targetScoresRef.current;
       if (Object.keys(targets).length === 0) return;
       const tasks = kanbanTasksRef.current;
@@ -497,16 +522,26 @@ export default function FullScreenWrapper() {
       const taskFrac = totalTasks > 0 ? completedCount / totalTasks : 0;
       const elapsed = scoreAnimStartRef.current ? Date.now() - scoreAnimStartRef.current : 0;
       const timeFrac = Math.min(1, elapsed / EXPECTED_SESSION_MS);
-      // Use the smaller fraction so scores never outpace actual work
+      // When all workflow steps are done, snap immediately to full targets and stop
       const allStepsDone = steps.length > 0 && steps.every(s => s.status === "completed");
-      const fraction = allStepsDone ? 1 : Math.min(taskFrac, timeFrac);
+      if (allStepsDone) {
+        setDisplayScores({ ...targets });
+        clearFn?.();
+        return;
+      }
+      const fraction = Math.min(taskFrac, timeFrac);
       const next: Record<string, number> = {};
       for (const [k, target] of Object.entries(targets)) {
         next[k] = Math.round(target * fraction);
       }
       setDisplayScores(next);
-    }, 2000);
-    return () => clearInterval(interval);
+    };
+
+    // Run once immediately on mount so there's no blank 2-second gap
+    tick();
+    let stopped = false;
+    const interval = setInterval(() => tick(() => { stopped = true; clearInterval(interval); }), 2000);
+    return () => { stopped = true; clearInterval(interval); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]); // intentionally omit kanbanTasks/workflowSteps — reads from refs
 
