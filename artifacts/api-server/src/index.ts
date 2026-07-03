@@ -489,16 +489,9 @@ app.listen(port, (err) => {
     .query(`ALTER TABLE articles ADD COLUMN IF NOT EXISTS is_published BOOLEAN NOT NULL DEFAULT false`)
     .then(() => {
       logger.info("Migration: articles.is_published column ensured");
-      // Backfill: all rows that existed before this column was introduced were published
-      // (drafts only exist once workflow-executor started writing is_published=false).
-      // Set every false row to true so legacy articles stay visible and editable.
-      return pool.query(`UPDATE articles SET is_published = true WHERE is_published = false AND created_at < NOW() - INTERVAL '10 minutes'`);
-    })
-    .then(() => {
-      logger.info("Migration: articles.is_published backfill complete");
     })
     .catch((err: unknown) => {
-      logger.warn({ err }, "Migration: articles.is_published migration failed (non-fatal)");
+      logger.warn({ err }, "Migration: articles.is_published column failed (non-fatal)");
     });
 
   // Slug→UUID conversion for workflow_template_step_tasks.runbook_id is handled
