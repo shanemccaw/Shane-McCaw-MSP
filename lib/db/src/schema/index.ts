@@ -1656,6 +1656,7 @@ export interface WfNode {
     | "fetch_news_headlines"
     // Data
     | "find_object"
+    | "compose"
     // System
     | "system_action"
     // Notifications

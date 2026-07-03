@@ -460,6 +460,11 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "find_object":
       return { dryRun: true, found: true, objectId: 1, objectType: (node.data.objectType as string | undefined) ?? "lead" };
 
+    case "compose": {
+      const dryResolved = interp(node.data.inputs as string | undefined, payload) ?? "";
+      return { dryRun: true, value: dryResolved || "<compose output>" };
+    }
+
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
 
@@ -1958,6 +1963,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           default:
             output = { found: false, objectType: foObjectType, reason: `unsupported objectType: ${foObjectType}` };
         }
+        break;
+      }
+
+      // ── Compose ───────────────────────────────────────────────────────────
+      case "compose": {
+        const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
+        output = { value: resolvedValue };
         break;
       }
 

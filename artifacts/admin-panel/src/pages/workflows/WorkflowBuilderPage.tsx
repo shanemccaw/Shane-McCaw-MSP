@@ -71,6 +71,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   generate_landing_page:     { bg: "#0A1A18", border: "#34D399", icon: "🖥️", label: "Generate Landing Page"    },
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
+  compose:                   { bg: "#0A1A18", border: "#2DD4BF", icon: "⧉",  label: "Compose"                  },
   // ── News ──
   fetch_news_headlines: { bg: "#041A14", border: "#06B6D4", icon: "📰", label: "Fetch News Headlines" },
   // ── Social Media ──
@@ -166,6 +167,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)", enumValues: ["lead", "client", "project", "article"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
+  compose: [{ key: "value", label: "Composed value (result of the Inputs expression)" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
   // News
@@ -501,6 +503,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Data",
     nodes: [
       { type: "find_object", label: "Find Object", description: "Look up a lead, client, project, or article by field value", tags: ["data", "lookup", "find", "lead", "client", "project"] },
+      { type: "compose",     label: "Compose",     description: "Evaluate any value or expression and expose it downstream as {{steps.<id>.value}}", tags: ["data", "compose", "expression", "variable", "glue", "transform"] },
     ],
   },
   {
@@ -2007,6 +2010,25 @@ function NodeConfigPanel({
             onChange={onChange}
             ancestorOutputs={ancestorOutputs}
           />
+        )}
+
+        {nodeType === "compose" && (
+          <>
+            <PayloadField
+              label="Inputs"
+              value={(node.data.inputs as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, inputs: v })}
+              placeholder="{{steps.nodeId.value}} or any static text / JSON"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              Enter any value or expression. Reference upstream data with{" "}
+              <span className="font-mono text-[#2DD4BF]">{"{{steps.nodeId.key}}"}</span>.
+              The evaluated result is available downstream as{" "}
+              <span className="font-mono text-[#2DD4BF]">{"{{steps.<thisNodeId>.value}}"}</span>.
+            </p>
+          </>
         )}
 
         {/* ── Social Media ────────────────────────────────────── */}
