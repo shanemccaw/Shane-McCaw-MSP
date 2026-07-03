@@ -32,6 +32,7 @@ import { runAiAnalyzer } from "../lib/ai-analyzer.ts";
 import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance.ts";
+import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 
 const router: IRouter = Router();
 
@@ -360,6 +361,7 @@ router.post("/script-callback", async (req: Request, res: Response) => {
       .where(eq(clientCallbackTokensTable.id, tokenRow.id));
 
     // Move the linked kanban task to completed and trigger phase-advance
+    let taskProjectId: number | null = null;
     if (linkage.kanbanTaskId !== null) {
       const [task] = await db
         .select({ id: kanbanTasksTable.id, column: kanbanTasksTable.column, workflowStepId: kanbanTasksTable.workflowStepId, projectId: kanbanTasksTable.projectId })
@@ -367,21 +369,24 @@ router.post("/script-callback", async (req: Request, res: Response) => {
         .where(eq(kanbanTasksTable.id, linkage.kanbanTaskId))
         .limit(1);
 
-      if (task && task.column !== "completed") {
-        await db
-          .update(kanbanTasksTable)
-          .set({ column: "completed" })
-          .where(eq(kanbanTasksTable.id, task.id));
+      if (task) {
+        taskProjectId = task.projectId ?? null;
+        if (task.column !== "completed") {
+          await db
+            .update(kanbanTasksTable)
+            .set({ column: "completed" })
+            .where(eq(kanbanTasksTable.id, task.id));
 
-        logger.info({ taskId: task.id, projectId: task.projectId }, "admin-callback-tokens: moved kanban task to completed");
+          logger.info({ taskId: task.id, projectId: task.projectId }, "admin-callback-tokens: moved kanban task to completed");
 
-        if (task.workflowStepId && task.projectId) {
-          advancePhaseIfComplete(task.workflowStepId, task.projectId).catch((err) => {
-            logger.error({ err, taskId: task.id }, "admin-callback-tokens: advancePhaseIfComplete failed");
-          });
-          syncProjectProgress(task.projectId).catch((err) => {
-            logger.error({ err, projectId: task.projectId }, "admin-callback-tokens: syncProjectProgress failed");
-          });
+          if (task.workflowStepId && task.projectId) {
+            advancePhaseIfComplete(task.workflowStepId, task.projectId).catch((err) => {
+              logger.error({ err, taskId: task.id }, "admin-callback-tokens: advancePhaseIfComplete failed");
+            });
+            syncProjectProgress(task.projectId).catch((err) => {
+              logger.error({ err, projectId: task.projectId }, "admin-callback-tokens: syncProjectProgress failed");
+            });
+          }
         }
       }
     }
@@ -393,10 +398,34 @@ router.post("/script-callback", async (req: Request, res: Response) => {
 
     res.json({ received: true, resultId });
 
-    // Fire-and-forget: run AI analysis and notify admins without blocking the response
+    // Fire-and-forget: run AI analysis, notify admins, and emit workflow event
     if (resultId !== null) {
       runCallbackAnalysis(resultId, body, linkage.customerId, linkage.libraryScriptId).catch((err) => {
         logger.error({ err, resultId }, "admin-callback-tokens: runCallbackAnalysis unhandled error");
+      });
+
+      // Look up the script name then fire the workflow event
+      (async () => {
+        let scriptName = "Customer Upload";
+        if (linkage.libraryScriptId) {
+          const [script] = await db
+            .select({ title: powershellScriptsTable.title })
+            .from(powershellScriptsTable)
+            .where(eq(powershellScriptsTable.id, linkage.libraryScriptId))
+            .limit(1);
+          if (script?.title) scriptName = script.title;
+        }
+        await fireWorkflowsForEvent("customer.script_result", {
+          scriptName,
+          scriptId: linkage.libraryScriptId ?? null,
+          customerId: linkage.customerId,
+          kanbanTaskId: linkage.kanbanTaskId,
+          projectId: taskProjectId,
+          resultId,
+          results: body,
+        });
+      })().catch((err) => {
+        logger.error({ err, resultId }, "admin-callback-tokens: customer.script_result event failed");
       });
     }
   } catch (err) {
