@@ -10256,6 +10256,160 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
   }
 });
 
+// POST /portal/presentations/:id/claim-free — finalise a zero-price offer without Stripe
+//
+// Idempotency is keyed by a deterministic invoice number (FREE-PRES-<id>) rather than
+// presentation status alone, so a partial failure (status updated but invoice insert
+// crashed) is fully recoverable on retry — the invoice existence check drives the
+// short-circuit, and status + invoice are written atomically in a single transaction.
+//
+// Note: presentations are already linked to an existing project created before this
+// flow runs. There is therefore no project provisioning needed here — the same is
+// true of the paid Stripe presentation_checkout webhook which also only marks status.
+router.post("/portal/presentations/:id/claim-free", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid presentation ID" }); return; }
+
+    const userId = req.user!.id;
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    // Only signed (or already-paid) presentations can proceed
+    if (pres.status !== "signed" && pres.status !== "paid") {
+      res.status(400).json({ error: "Presentation must be signed before claiming" }); return;
+    }
+
+    // Server-side price guard — never trust the client
+    const { effectiveTotalPrice } = await deriveEffectiveSowData(pres);
+    if (effectiveTotalPrice > 0) {
+      res.status(400).json({ error: "This offer has a non-zero price — use the standard checkout" }); return;
+    }
+
+    // Deterministic invoice number enables idempotency without relying on status alone.
+    // If a prior call set status=paid but then crashed before inserting the invoice,
+    // this check will be false and the invoice is created on retry.
+    const freeInvoiceNumber = `FREE-PRES-${id}`;
+    const [existingInvoice] = await db
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(eq(invoicesTable.invoiceNumber, freeInvoiceNumber))
+      .limit(1);
+
+    if (existingInvoice) {
+      // Invoice already exists — repair status if somehow left in signed state
+      if (pres.status !== "paid") {
+        await db.update(quickWinPresentationsTable)
+          .set({ status: "paid", updatedAt: new Date() })
+          .where(eq(quickWinPresentationsTable.id, id));
+      }
+      res.json({ ok: true }); return;
+    }
+
+    // Resolve buyer + project title before the transaction (reads only; safe outside tx)
+    const [buyer] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    const projectTitle = pres.projectId
+      ? (await db.select({ title: projectsTable.title }).from(projectsTable)
+          .where(eq(projectsTable.id, pres.projectId)).limit(1))[0]?.title ?? "Consulting Engagement"
+      : "Consulting Engagement";
+
+    // Atomically set status=paid and create the $0 invoice so neither can succeed without the other
+    let freeInvoiceId: number | undefined;
+    await db.transaction(async (tx) => {
+      await tx.update(quickWinPresentationsTable)
+        .set({ status: "paid", updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, id));
+
+      const [inserted] = await tx.insert(invoicesTable).values({
+        clientUserId: userId,
+        projectId: pres.projectId ?? null,
+        invoiceNumber: freeInvoiceNumber,
+        description: `${projectTitle} — zero-price agreement`,
+        amount: "0.00",
+        currency: "usd",
+        status: "paid",
+        paidAt: new Date(),
+      }).returning({ id: invoicesTable.id });
+      freeInvoiceId = inserted?.id;
+    });
+
+    if (freeInvoiceId) void uploadInvoiceToSharePoint(freeInvoiceId);
+
+    // Admin alerts — same set as a paid onboarding purchase; all non-fatal
+    try {
+      sendAdminSms(
+        `New zero-price claim: ${buyer?.name ?? buyer?.email ?? "A client"} — ${projectTitle} — $0`,
+      ).catch(() => null);
+
+      const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
+      if (admins.length > 0) {
+        await db.insert(notificationsTable).values(
+          admins.map(a => ({
+            userId: a.id,
+            title: `New zero-price claim: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+            body: `${projectTitle} — $0.00`,
+            type: "purchase_created" as const,
+            linkPath: `/crm/invoices`,
+          }))
+        );
+      }
+      void sendWebPushToAdmins({
+        title: `New zero-price claim: ${buyer?.name ?? buyer?.email ?? "A client"}`,
+        body: `${projectTitle} — $0.00`,
+        linkPath: `/crm/invoices`,
+        playSound: true,
+      });
+
+      const deviceRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
+      const tokens = deviceRows.map(r => r.token);
+      const badge = await getAdminUnreadMessageCount() + 1;
+      sendPushNotifications(
+        tokens,
+        "New Zero-Price Claim",
+        `${buyer?.name ?? buyer?.email ?? "A client"} — ${projectTitle}`,
+        { screen: "orders" },
+        undefined,
+        badge,
+      ).catch(() => null);
+
+      const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+      if (adminEmailAddr && buyer) {
+        sendEmailFromTemplate(
+          "admin-purchase-alert",
+          adminEmailAddr,
+          {
+            clientName: buyer.name ?? "",
+            clientEmail: buyer.email,
+            serviceName: projectTitle,
+            amountDollars: "0.00",
+            purchaseType: "Zero-price agreement",
+            portalLink: pres.projectId ? `${PORTAL_URL}/projects/${pres.projectId}` : PORTAL_URL,
+          },
+          `New zero-price claim: ${projectTitle}`,
+          adminPurchaseAlertEmail({
+            clientName: buyer.name ?? "",
+            clientEmail: buyer.email,
+            serviceName: projectTitle,
+            amountDollars: "0.00",
+            type: "onboarding_purchase",
+            projectId: pres.projectId ?? undefined,
+          }),
+        ).catch(() => null);
+      }
+    } catch (notifyErr) {
+      req.log.warn({ err: notifyErr, presentationId: id }, "claim-free: post-claim notification failed (non-fatal)");
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to process free-claim presentation");
+    res.status(500).json({ error: "Failed to claim free offer" });
+  }
+});
+
 // GET /admin/engagements/:id/presentation-analytics — doc dwell-time analytics for project's latest presentation
 router.get("/admin/engagements/:id/presentation-analytics", requireAdmin, async (req: Request, res: Response) => {
   try {

@@ -229,6 +229,7 @@ export default function PresentationFlow({
   const [signing, setSigning] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [showLoginGate, setShowLoginGate] = useState(false);
+  const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
 
   const currentSowPhases = data.sowPhases ?? [];
   const selectedPhaseIds = data.selectedPhaseIds ?? currentSowPhases.map(p => p.id);
@@ -366,6 +367,29 @@ export default function PresentationFlow({
         body: JSON.stringify({ signatureData, signerName: name }),
       });
       if (res.ok) {
+        // Zero-price offers skip Stripe entirely — call claim-free and jump to confirmation
+        if (selectedTotal === 0) {
+          setCheckingOut(true);
+          setFreeClaimError(null);
+          try {
+            const claimRes = await fetchFn(`/api/portal/presentations/${presentationId}/claim-free`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            if (claimRes.ok) {
+              window.location.href = `${window.location.pathname}?payment=success`;
+            } else {
+              const body = await claimRes.json().catch(() => ({})) as { error?: string };
+              setFreeClaimError(body.error ?? "Something went wrong. Please try again or contact support.");
+            }
+          } catch {
+            setFreeClaimError("Network error. Please check your connection and try again.");
+          } finally {
+            setCheckingOut(false);
+          }
+          return;
+        }
+
         setData(prev => ({
           ...prev,
           signatureData,
@@ -1102,18 +1126,35 @@ export default function PresentationFlow({
 
             {/* Contract & signature */}
             {currentStep?.kind === "contract" && (
-              <div className="flex-1">
+              <div className="flex-1 flex flex-col">
                 <ContractSignPanel
                   signerName={signerName}
                   selectedPhases={selectedPhases}
                   totalPrice={selectedTotal}
                   onChangeName={setSignerName}
                   onSign={handleSign}
-                  signing={signing}
+                  signing={signing || checkingOut}
                   alreadySigned={!!data.signedAt}
                   contractBody={data.contractBody}
                   onReady={handleStepReady}
                 />
+                {freeClaimError && (
+                  <div className="mx-4 mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <p className="text-sm text-red-700 flex-1">{freeClaimError}</p>
+                    <button
+                      onClick={() => setFreeClaimError(null)}
+                      className="text-red-400 hover:text-red-600 flex-shrink-0"
+                      aria-label="Dismiss"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
