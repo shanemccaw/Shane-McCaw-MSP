@@ -275,9 +275,10 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "send_campaign_email":
       return {
         dryRun: true,
-        templateSlug: str("templateSlug", "unknown-template"),
+        sourceRef: node.data.assetId ? `asset:${node.data.assetId}` : `template:${str("templateSlug", "unknown-template")}`,
+        templateSlug: str("templateSlug", ""),
         recipient: interp((node.data.recipientExpr as string | undefined) ?? "", p) || "recipient@example.com",
-        subject: "(template subject — preview in config panel)",
+        subject: "(email subject — preview in live run)",
         sent: false,
       };
 
@@ -994,7 +995,14 @@ async function executeNode(
         const { sendEmail, brandedEmail } = await import("./mailer");
         const fullHtml = brandedEmail(renderedBody);
         await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
-        output = { sent: true, recipient, subject: renderedSubject, sourceRef };
+        // Emit sourceRef plus backward-compat templateSlug for existing workflows
+        output = {
+          sent: true,
+          recipient,
+          subject: renderedSubject,
+          sourceRef,
+          templateSlug: assetId ? "" : (templateSlug ?? ""),
+        };
         break;
       }
 

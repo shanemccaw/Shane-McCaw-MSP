@@ -123,7 +123,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
   notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
   // Marketing Actions
-  send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }],
+  send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
   create_kanban_task:  [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
   // Content
@@ -1685,6 +1685,11 @@ interface CampaignAssetItem {
   content: string;
 }
 
+interface CampaignNameItem {
+  id: number;
+  name: string;
+}
+
 function SendCampaignEmailPanel({
   node,
   onChange,
@@ -1708,11 +1713,27 @@ function SendCampaignEmailPanel({
     staleTime: 60_000,
   });
 
+  const { data: campaigns = [] } = useQuery<CampaignNameItem[]>({
+    queryKey: ["campaigns-name-list"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/marketing/campaigns");
+      if (!res.ok) return [];
+      const rows = await res.json() as Array<{ id: number; name: string }>;
+      return rows.map(r => ({ id: r.id, name: r.name }));
+    },
+    staleTime: 120_000,
+  });
+
+  const campaignNameById = Object.fromEntries(campaigns.map(c => [c.id, c.name]));
+
   const assetId = (node.data.assetId as number | undefined) ?? null;
   const selectedAsset = assets.find(a => a.id === assetId) ?? null;
 
   const filtered = search.trim()
-    ? assets.filter(a => a.title.toLowerCase().includes(search.toLowerCase()))
+    ? assets.filter(a =>
+        a.title.toLowerCase().includes(search.toLowerCase()) ||
+        (a.campaignId && campaignNameById[a.campaignId]?.toLowerCase().includes(search.toLowerCase()))
+      )
     : assets;
 
   return (
@@ -1764,7 +1785,9 @@ function SendCampaignEmailPanel({
                     >
                       <p className="text-xs font-medium text-[#E6EDF3]">{a.title}</p>
                       <p className="text-[9px] text-[#484F58] font-mono mt-0.5">
-                        asset #{a.id}{a.campaignId ? ` · campaign #${a.campaignId}` : ""}
+                        {a.campaignId
+                          ? campaignNameById[a.campaignId] ?? `campaign #${a.campaignId}`
+                          : "no campaign"} · asset #{a.id}
                       </p>
                     </button>
                   ))}
