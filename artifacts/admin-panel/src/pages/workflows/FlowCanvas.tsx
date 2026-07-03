@@ -202,7 +202,15 @@ function AddButton({
   function handleOpen() {
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPickerPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+      const PICKER_HEIGHT = 380; // approximate max height of the picker
+      const spaceBelow = window.innerHeight - r.bottom;
+      const top = spaceBelow >= PICKER_HEIGHT
+        ? r.bottom + 6
+        : Math.max(8, r.top - PICKER_HEIGHT - 6);
+      // clamp horizontally so the picker doesn't bleed off the right/left edge
+      const rawLeft = r.left + r.width / 2;
+      const left = Math.min(Math.max(144, rawLeft), window.innerWidth - 144);
+      setPickerPos({ top, left });
     }
     setOpen(v => !v);
   }
