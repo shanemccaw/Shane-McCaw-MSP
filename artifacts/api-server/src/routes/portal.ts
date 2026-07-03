@@ -10310,7 +10310,9 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
     const serviceNames = orderedServices.map(s => s.name);
     const projectTitle = serviceNames.join(" + ");
 
-    // Create project
+    // Create project — typed as quick_win so the portal wizard gate is NOT
+    // bypassed. Clients who claim a free quick win must still complete the
+    // onboarding wizard before the main portal is unlocked.
     const [project] = await db.insert(projectsTable).values({
       title: projectTitle,
       description: orderedServices.length === 1
@@ -10319,6 +10321,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       status: "active",
       phase: "Kickoff",
       progress: 0,
+      projectType: "quick_win",
       clientUserId: resolvedUserId,
       startDate: new Date(),
     }).returning();
