@@ -9,9 +9,11 @@ import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/ma
 import { getPortalBaseUrl } from "../lib/portal-url";
 import { signMfaToken } from "./mfa";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: isDev ? 200 : 10,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many login attempts from this IP. Please try again in 15 minutes." },
@@ -19,7 +21,7 @@ const loginLimiter = rateLimit({
 
 const setupPasswordLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 5,
+  limit: isDev ? 200 : 5,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many password setup attempts from this IP. Please try again in 15 minutes." },
