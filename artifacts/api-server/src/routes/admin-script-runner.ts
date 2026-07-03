@@ -24,6 +24,7 @@ import {
   isTerminalStatus,
   pushScriptToAzure,
   isAzureConfigured,
+  testAzureConnection,
 } from "../lib/azure-automation.ts";
 import { logger } from "../lib/logger.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -59,6 +60,30 @@ router.get("/admin/runbooks", requireAdmin, async (_req: Request, res: Response)
     }
     logger.error({ err }, "admin-script-runner: failed to list runbooks");
     res.status(500).json({ configured: true, error: "Failed to list runbooks from Azure Automation" });
+  }
+});
+
+/**
+ * GET /api/admin/azure/test-connection
+ *
+ * Performs a live credential verification against Azure Automation.
+ * Unlike /admin/runbooks, which only checks env-var presence, this endpoint
+ * actually authenticates with the configured service principal and fetches the
+ * Automation Account record — so bad secrets, expired SPs, and wrong tenant IDs
+ * surface immediately with an actionable message.
+ *
+ * Response shapes:
+ *   { configured: false, verified: false, error: "missing_env_vars", missingVars: string[] }
+ *   { configured: true,  verified: true  }
+ *   { configured: true,  verified: false, error: "auth_failed", message: string }
+ */
+router.get("/admin/azure/test-connection", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const result = await testAzureConnection();
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "admin-script-runner: unexpected error during connection test");
+    res.status(500).json({ configured: true, verified: false, error: "auth_failed", message: "Unexpected server error during connection test" });
   }
 });
 

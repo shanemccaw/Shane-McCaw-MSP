@@ -818,7 +818,14 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   } | null>(null);
   const [aiSuggestError, setAiSuggestError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
-  const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
+
+  type AzureCredState =
+    | null
+    | { configured: false; verified: false; error: "missing_env_vars"; missingVars?: string[] }
+    | { configured: true; verified: true }
+    | { configured: true; verified: false; error: "auth_failed"; message?: string };
+
+  const [azureCredState, setAzureCredState] = useState<AzureCredState>(null);
 
   useEffect(() => {
     if (!task) return;
@@ -829,17 +836,17 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   }, [task?.id]);
 
   useEffect(() => {
-    if (mode !== "admin" || !fetchWithAuth || azureConfigured !== null) return;
+    if (mode !== "admin" || !fetchWithAuth || azureCredState !== null) return;
     void (async () => {
       try {
-        const res = await fetchWithAuth("/api/admin/runbooks");
-        const data = await res.json() as { configured?: boolean };
-        setAzureConfigured(res.status === 503 && data.configured === false ? false : true);
+        const res = await fetchWithAuth("/api/admin/azure/test-connection");
+        const data = await res.json() as AzureCredState;
+        setAzureCredState(data);
       } catch {
-        setAzureConfigured(null);
+        setAzureCredState(null);
       }
     })();
-  }, [mode, fetchWithAuth, azureConfigured]);
+  }, [mode, fetchWithAuth, azureCredState]);
 
   useEffect(() => {
     if (task) {
@@ -1124,27 +1131,82 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
             {/* Retry auto-fire button (admin only, shown when auto-fire is exhausted or failed) */}
             {mode === "admin" && fetchWithAuth && onUpdate && !editing &&
-              (localTask.completionStatus === "auto_fire_exhausted" || localTask.completionStatus === "auto_fire_failed") && (
-              <button
-                onClick={() => void handleRetryAutoFire()}
-                disabled={retrying || azureConfigured === false}
-                className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300 border border-orange-500/30 hover:border-orange-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={
-                  azureConfigured === false
-                    ? "Azure Automation is not configured — set the required secrets in Replit to enable auto-fire"
-                    : "Reset retry counter and re-trigger auto-fire"
+              (localTask.completionStatus === "auto_fire_exhausted" || localTask.completionStatus === "auto_fire_failed") && (() => {
+                const credsMissing = azureCredState !== null && !azureCredState.configured;
+                const credsUnverified = azureCredState !== null && azureCredState.configured && !azureCredState.verified;
+                const credsVerified = azureCredState !== null && azureCredState.configured && azureCredState.verified;
+
+                const buttonDisabled = retrying || credsMissing || credsUnverified;
+
+                let tooltipText: string;
+                if (credsMissing) {
+                  tooltipText = "Azure Automation is not configured — set the required secrets in Replit to enable auto-fire";
+                } else if (credsUnverified) {
+                  const msg = (azureCredState as { message?: string }).message;
+                  tooltipText = msg
+                    ? `Azure credentials could not be verified: ${msg}`
+                    : "Azure credentials could not be verified — check your service principal and secrets";
+                } else {
+                  tooltipText = "Reset retry counter and re-trigger auto-fire";
                 }
-              >
-                {retrying ? (
-                  <div className="w-3.5 h-3.5 border border-orange-400/40 border-t-orange-400 rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                )}
-                {retrying ? "Retrying…" : "Retry auto-fire"}
-              </button>
-            )}
+
+                return (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <button
+                      onClick={() => void handleRetryAutoFire()}
+                      disabled={buttonDisabled}
+                      className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300 border border-orange-500/30 hover:border-orange-400 rounded-lg px-2.5 py-1.5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={tooltipText}
+                    >
+                      {retrying ? (
+                        <div className="w-3.5 h-3.5 border border-orange-400/40 border-t-orange-400 rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                      )}
+                      {retrying ? "Retrying…" : "Retry auto-fire"}
+                    </button>
+
+                    {credsMissing && (
+                      <span
+                        title="Azure Automation secrets are not set in Replit — add AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_AUTOMATION_RESOURCE_GROUP, and AZURE_AUTOMATION_ACCOUNT_NAME"
+                        className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1.5 py-0.5 cursor-help"
+                      >
+                        <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        Not configured
+                      </span>
+                    )}
+
+                    {credsUnverified && (
+                      <span
+                        title={tooltipText}
+                        className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5 cursor-help"
+                      >
+                        <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                        </svg>
+                        Unverified
+                      </span>
+                    )}
+
+                    {credsVerified && (
+                      <span
+                        title="Azure credentials verified — connection test passed"
+                        className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5"
+                      >
+                        <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        Verified
+                      </span>
+                    )}
+                  </div>
+                );
+              })()
+            }
 
             {/* Edit / Cancel toggle (admin only) */}
             {mode === "admin" && fetchWithAuth && onUpdate && !editing && (

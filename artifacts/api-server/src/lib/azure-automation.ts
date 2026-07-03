@@ -281,6 +281,44 @@ export function isAzureConfigured(): boolean {
   );
 }
 
+export type AzureConnectionTestResult =
+  | { configured: false; verified: false; error: "missing_env_vars"; missingVars: string[] }
+  | { configured: true; verified: true }
+  | { configured: true; verified: false; error: "auth_failed"; message: string };
+
+/**
+ * Performs a live connection test against Azure Automation.
+ *
+ * Goes beyond env-var presence checks — actually authenticates and fetches the
+ * Automation Account record, so bad secrets / expired service principals /
+ * wrong tenant IDs surface immediately with a clear error message rather than
+ * silently queuing a job that will never run.
+ */
+export async function testAzureConnection(): Promise<AzureConnectionTestResult> {
+  const required: Array<[string, string | undefined]> = [
+    ["AZURE_TENANT_ID", process.env.AZURE_TENANT_ID],
+    ["AZURE_CLIENT_ID", process.env.AZURE_CLIENT_ID],
+    ["AZURE_CLIENT_SECRET", process.env.AZURE_CLIENT_SECRET],
+    ["AZURE_SUBSCRIPTION_ID", process.env.AZURE_SUBSCRIPTION_ID],
+    ["AZURE_AUTOMATION_RESOURCE_GROUP", process.env.AZURE_AUTOMATION_RESOURCE_GROUP],
+    ["AZURE_AUTOMATION_ACCOUNT_NAME", process.env.AZURE_AUTOMATION_ACCOUNT_NAME],
+  ];
+  const missingVars = required.filter(([, v]) => !v).map(([k]) => k);
+  if (missingVars.length > 0) {
+    return { configured: false, verified: false, error: "missing_env_vars", missingVars };
+  }
+
+  try {
+    const { client, cfg } = buildClient();
+    await client.automationAccount.get(cfg.resourceGroup, cfg.accountName);
+    return { configured: true, verified: true };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn({ err }, "azure-automation: connection test failed");
+    return { configured: true, verified: false, error: "auth_failed", message };
+  }
+}
+
 /**
  * Create or update a PowerShell runbook in Azure Automation and upload the
  * provided script content to its draft slot, ready for publishing.
