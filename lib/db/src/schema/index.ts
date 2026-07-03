@@ -1647,6 +1647,7 @@ export interface WfNode {
     | "generate_diff_report" | "notify_major_changes"
     // Marketing Actions
     | "send_campaign_email" | "create_marketing_campaign" | "publish_landing_page" | "generate_landing_page"
+    | "define_campaign_goal" | "define_target_audience" | "create_campaign_offer"
     // Social Media
     | "post_linkedin" | "post_twitter" | "post_facebook"
     // Project Actions

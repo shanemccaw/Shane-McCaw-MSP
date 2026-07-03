@@ -66,6 +66,9 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },
   generate_image:            { bg: "#1A100A", border: "#F59E0B", icon: "🖼️", label: "Generate Image"           },
   // ── Marketing Actions (extended) ──
+  define_campaign_goal:      { bg: "#0A1A12", border: "#34D399", icon: "🎯", label: "Define Goal"            },
+  define_target_audience:    { bg: "#0A1A12", border: "#6EE7B7", icon: "👥", label: "Define Target Audience" },
+  create_campaign_offer:     { bg: "#0A1A12", border: "#10B981", icon: "🎁", label: "Create Offer"           },
   create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
   publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
   generate_landing_page:     { bg: "#0A1A18", border: "#34D399", icon: "🖥️", label: "Generate Landing Page"    },
@@ -162,6 +165,9 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   publish_article:  [{ key: "published", label: "true if article was saved" }, { key: "slug", label: "Final article slug (may differ if conflict resolved)" }, { key: "articleId", label: "Database row ID" }, { key: "title", label: "Article title as saved" }],
   topic_picker:     [{ key: "articleTopic", label: "AI-selected article topic" }, { key: "topicCategory", label: "Category assigned to the topic" }, { key: "topicRationale", label: "One-sentence rationale from AI" }],
   // Marketing Actions (extended)
+  define_campaign_goal:      [{ key: "campaignGoal", label: "Campaign goal text" }],
+  define_target_audience:    [{ key: "targetAudience", label: "Target audience description" }],
+  create_campaign_offer:     [{ key: "offerId", label: "Created offer DB ID" }, { key: "offerName", label: "Offer name" }, { key: "offerGoal", label: "Goal used on the offer" }, { key: "offerAudience", label: "Audience used on the offer" }],
   create_marketing_campaign: [{ key: "campaignId", label: "Created campaign DB ID" }, { key: "campaignName", label: "Campaign name" }, { key: "campaignStatus", label: "Campaign status (draft / active)", enumValues: ["draft", "active"] }],
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
@@ -493,6 +499,9 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Marketing Actions",
     nodes: [
       { type: "send_campaign_email",       label: "Send Campaign Email",    description: "Render an Email Template and send it to a recipient",        tags: ["email", "marketing", "campaign", "template"] },
+      { type: "define_campaign_goal",      label: "Define Goal",            description: "Set the campaign goal — outputs {{campaignGoal}} for downstream nodes",                        tags: ["marketing", "campaign", "goal", "define"] },
+      { type: "define_target_audience",    label: "Define Target Audience", description: "Define who the campaign targets — outputs {{targetAudience}}",                                tags: ["marketing", "campaign", "audience", "target"] },
+      { type: "create_campaign_offer",     label: "Create Offer",           description: "Create an offer record in the database (name, pricing, deliverables) — outputs {{offerId}}", tags: ["marketing", "campaign", "offer", "create", "crm"] },
       { type: "create_marketing_campaign", label: "Create Campaign",         description: "Create a new marketing campaign record in the database",     tags: ["marketing", "campaign", "create", "crm"] },
       { type: "publish_landing_page",      label: "Publish Landing Page",   description: "Set a landing page live by its slug",                        tags: ["marketing", "landing page", "publish", "site"] },
       { type: "generate_landing_page",     label: "Generate Landing Page",  description: "AI generates a landing page from topic, audience and CTA and saves it to the DB (unpublished)", tags: ["marketing", "landing page", "ai", "generate", "content"] },
@@ -2022,6 +2031,30 @@ function NodeConfigPanel({
 
         {/* ── Marketing Actions (extended) ────────────────────── */}
 
+        {nodeType === "define_campaign_goal" && (
+          <DefineCampaignGoalPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "define_target_audience" && (
+          <DefineTargetAudiencePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "create_campaign_offer" && (
+          <CreateCampaignOfferPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "create_marketing_campaign" && (
           <CreateMarketingCampaignPanel
             node={node}
@@ -3401,21 +3434,34 @@ function FetchNewsPanel({
                 n.id === node.id ? { ...n, data: { ...n.data, autoBuildCampaign: true } } : n
               );
               if (!existingHotEdge) {
-                const newNodeId = `node-campaign-${Date.now()}`;
-                const newCampaignNode: StoredNode = {
-                  id: newNodeId,
-                  type: "create_marketing_campaign",
-                  position: { x: 0, y: 0 },
-                  data: { nodeType: "create_marketing_campaign", label: "Create Campaign", _autoSeeded: true },
+                const ts = Date.now();
+                const goalId    = `node-goal-${ts}`;
+                const audId     = `node-audience-${ts}`;
+                const offerId   = `node-offer-${ts}`;
+                const campId    = `node-campaign-${ts}`;
+                const goalNode: StoredNode = {
+                  id: goalId, position: { x: 0, y: 0 },
+                  data: { nodeType: "define_campaign_goal",   label: "Define Goal",            goalExpr: "{{campaignBrief}}", _autoSeeded: true },
                 };
-                const newEdge: StoredEdge = {
-                  id: `e-hot-${Date.now()}`,
-                  source: node.id,
-                  target: newNodeId,
-                  sourceHandle: "hot",
-                  animated: true,
+                const audNode: StoredNode = {
+                  id: audId, position: { x: 0, y: 0 },
+                  data: { nodeType: "define_target_audience", label: "Define Target Audience", audienceExpr: "", _autoSeeded: true },
                 };
-                onGraphChange([...updatedNodes, newCampaignNode], [...edges, newEdge]);
+                const offerNode: StoredNode = {
+                  id: offerId, position: { x: 0, y: 0 },
+                  data: { nodeType: "create_campaign_offer",  label: "Create Offer",           nameExpr: "", goalExpr: "{{campaignGoal}}", audienceExpr: "{{targetAudience}}", _autoSeeded: true },
+                };
+                const campNode: StoredNode = {
+                  id: campId, position: { x: 0, y: 0 },
+                  data: { nodeType: "create_marketing_campaign", label: "Create Campaign",     nameExpr: "{{campaignBrief}}", goalExpr: "{{campaignGoal}}", audienceExpr: "{{targetAudience}}", offerExpr: "{{offerName}}", _autoSeeded: true },
+                };
+                const newEdges: StoredEdge[] = [
+                  { id: `e-hot-${ts}`,    source: node.id, target: goalId,  sourceHandle: "hot", animated: true },
+                  { id: `e-goal-${ts}`,   source: goalId,  target: audId,   animated: true },
+                  { id: `e-aud-${ts}`,    source: audId,   target: offerId,  animated: true },
+                  { id: `e-offer-${ts}`,  source: offerId, target: campId,   animated: true },
+                ];
+                onGraphChange([...updatedNodes, goalNode, audNode, offerNode, campNode], [...edges, ...newEdges]);
               } else {
                 // Hot edge already exists — just flip the flag
                 onGraphChange(updatedNodes, edges);
@@ -3493,6 +3539,117 @@ function FetchNewsPanel({
 }
 
 // ── Create Marketing Campaign panel ──────────────────────────────────────────
+
+// ── Define Campaign Goal panel ─────────────────────────────────────────────────
+
+function DefineCampaignGoalPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Goal"
+        value={(node.data.goalExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
+        placeholder="Generate 20 qualified leads for Copilot readiness assessments"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Defines the campaign goal and passes it downstream as <span className="font-mono text-[#7D8590]">{"{{campaignGoal}}"}</span>. Wire it into the Target Audience and Create Campaign nodes.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Define Target Audience panel ───────────────────────────────────────────────
+
+function DefineTargetAudiencePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Target audience"
+        value={(node.data.audienceExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
+        placeholder="IT directors at mid-market companies (100–500 employees)"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Defines who the campaign targets and passes it downstream as <span className="font-mono text-[#7D8590]">{"{{targetAudience}}"}</span>. Wire it into the Create Offer and Create Campaign nodes.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Create Campaign Offer panel ────────────────────────────────────────────────
+
+function CreateCampaignOfferPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Offer name"
+        value={(node.data.nameExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, nameExpr: v })}
+        placeholder="Free Copilot Readiness Assessment"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Goal (optional — uses {{campaignGoal}} if blank)"
+        value={(node.data.goalExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
+        placeholder="{{campaignGoal}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Target audience (optional — uses {{targetAudience}} if blank)"
+        value={(node.data.audienceExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
+        placeholder="{{targetAudience}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Pricing"
+        value={(node.data.pricingExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, pricingExpr: v })}
+        placeholder="Free / $2,500 flat fee"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="CTA"
+        value={(node.data.ctaExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, ctaExpr: v })}
+        placeholder="Book a free 30-min call"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Creates an offer record in the database. Outputs <span className="font-mono text-[#7D8590]">{"{{offerId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerName}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerGoal}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{offerAudience}}"}</span>.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Create Marketing Campaign panel ───────────────────────────────────────────
 
 function CreateMarketingCampaignPanel({
   node,

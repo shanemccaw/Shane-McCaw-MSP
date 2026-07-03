@@ -37,6 +37,7 @@ import {
   notificationsTable,
   campaignsTable,
   campaignAssetsTable,
+  offersTable,
   landingPagesTable,
   clientPresentationsTable,
   scriptRunResultsTable,
@@ -1845,6 +1846,51 @@ Return ONLY a JSON object with these exact keys:
           nodeError = true;
           output = { error: `generate_image: ${err instanceof Error ? err.message : String(err)}` };
         }
+        break;
+      }
+
+      // ── Define Campaign Goal ───────────────────────────────────────────────
+      case "define_campaign_goal": {
+        const dcgGoal = (interp(node.data.goalExpr as string | undefined, payload) ?? "").trim();
+        output = { campaignGoal: dcgGoal || "Generate leads" };
+        break;
+      }
+
+      // ── Define Target Audience ─────────────────────────────────────────────
+      case "define_target_audience": {
+        const dtaAudience = (interp(node.data.audienceExpr as string | undefined, payload) ?? "").trim();
+        output = { targetAudience: dtaAudience || "Mid-market IT decision-makers" };
+        break;
+      }
+
+      // ── Create Campaign Offer ──────────────────────────────────────────────
+      case "create_campaign_offer": {
+        const ccoName     = (interp(node.data.nameExpr     as string | undefined, payload) ?? "").trim();
+        const ccoGoal     = (interp(node.data.goalExpr     as string | undefined, payload) ?? (payload.campaignGoal as string | undefined) ?? "Generate leads").trim();
+        const ccoAudience = (interp(node.data.audienceExpr as string | undefined, payload) ?? (payload.targetAudience as string | undefined) ?? "Mid-market IT decision-makers").trim();
+        const ccoPricing  = (interp(node.data.pricingExpr  as string | undefined, payload) ?? "").trim();
+        const ccoCta      = (interp(node.data.ctaExpr      as string | undefined, payload) ?? "").trim();
+
+        if (!ccoName) {
+          nodeError = true;
+          output = { error: "create_campaign_offer requires an offer name" };
+          break;
+        }
+
+        const [newOffer] = await db.insert(offersTable).values({
+          name:      ccoName,
+          goal:      ccoGoal,
+          audience:  ccoAudience,
+          pricing:   ccoPricing || null,
+          cta:       ccoCta || null,
+        }).returning();
+
+        output = {
+          offerId:       newOffer.id,
+          offerName:     newOffer.name,
+          offerGoal:     newOffer.goal,
+          offerAudience: newOffer.audience,
+        };
         break;
       }
 
