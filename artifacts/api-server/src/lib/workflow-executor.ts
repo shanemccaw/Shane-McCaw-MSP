@@ -32,12 +32,16 @@ import {
   emailTemplatesTable,
   marketingTasksTable,
   kanbanTasksTable,
+  articlesTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
 
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { eq, and, count } from "drizzle-orm";
+import path from "path";
+import fs from "fs/promises";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
 
@@ -67,6 +71,39 @@ function interpOrNull(template: string | undefined, payload: Record<string, unkn
   const result = interp(template, payload);
   return result?.trim() ? result : null;
 }
+
+// ── Content helpers ───────────────────────────────────────────────────────────
+
+/** Extract the first JSON object from an AI response that may contain prose. */
+function extractJsonFromAiText(text: string): Record<string, unknown> | null {
+  // Try code-fenced JSON first
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch?.[1]) {
+    try { return JSON.parse(fenceMatch[1].trim()) as Record<string, unknown>; } catch { /* fall through */ }
+  }
+  // Brace-delimited fallback
+  const start = text.indexOf("{");
+  const end   = text.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    try { return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>; } catch { /* fall through */ }
+  }
+  return null;
+}
+
+/** Convert a string to URL-safe kebab-case, max 80 chars. */
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80);
+}
+
+/** Absolute path to the consulting site articles directory. */
+const ARTICLES_DIR = path.resolve(
+  process.cwd(),
+  "../../shane-mccaw-consulting/src/content/articles",
+);
 
 // ── Safe condition evaluator ─────────────────────────────────────────────────
 // NO eval/new Function. Supports: path op literal (==,!=,>,<,>=,<=,contains),
@@ -210,6 +247,20 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         title: interp((node.data.titleExpr as string | undefined) ?? "New task", p) || "New task",
         taskId: null,
       };
+
+    case "generate_article":
+      return {
+        dryRun: true,
+        articleTitle:    `Dry-run: ${str("topic", "M365 Best Practices Overview")}`,
+        articleSlug:     `dry-run-preview-${Date.now().toString(36)}`,
+        articleCategory: str("category", "M365 Best Practices"),
+        articleSummary:  "Dry-run preview — no AI call made and no article written.",
+        articleDate:     new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+        articleContent:  "## Preview\n\nThis is a dry-run — content generation was skipped.",
+      };
+
+    case "publish_article":
+      return { dryRun: true, published: false, slug: "dry-run-preview", articleId: null };
 
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
@@ -757,6 +808,119 @@ async function executeNode(
             output = { taskId: task.id, boardId, columnId: column, title: task.title };
           }
         }
+        break;
+      }
+
+      // ── Content nodes ─────────────────────────────────────────────────────
+
+      case "generate_article": {
+        const gaTopic = interp(node.data.topic as string | undefined, payload);
+        if (!gaTopic?.trim()) {
+          nodeError = true;
+          output = { error: "generate_article requires a topic" };
+          break;
+        }
+        const gaCategory = interp(node.data.category as string | undefined, payload) ?? "M365 Best Practices";
+        const gaKeywords = interp(node.data.keywords as string | undefined, payload) ?? "";
+        const gaTone     = interp(node.data.tone     as string | undefined, payload) ?? "professional, authoritative, practical";
+        const gaDate     = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+        const gaPrompt = `You are Shane McCaw, a 30-year Microsoft 365 veteran and Lead Architect at NASA. Write a professional consulting blog article.
+
+Topic: ${gaTopic}
+Category: ${gaCategory}
+Keywords to include: ${gaKeywords || "Microsoft 365, tenant management, best practices"}
+Tone: ${gaTone}
+Target length: 700–1000 words
+
+Return ONLY a JSON object with these exact keys (no prose outside the JSON):
+{
+  "title": "Article title — compelling, under 80 chars",
+  "slug": "url-friendly-kebab-case-slug",
+  "summary": "2–3 sentence card summary, under 200 chars",
+  "date": "${gaDate}",
+  "content": "Full article body in Markdown — use ## subheadings, bullet points where appropriate"
+}`;
+
+        const gaResp = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 4096,
+          messages: [{ role: "user", content: gaPrompt }],
+        });
+
+        const gaRaw = gaResp.content
+          .filter(b => b.type === "text")
+          .map(b => (b as { type: "text"; text: string }).text)
+          .join("");
+
+        const gaParsed = extractJsonFromAiText(gaRaw);
+        if (!gaParsed?.title || !gaParsed?.content) {
+          nodeError = true;
+          output = { error: "generate_article: AI did not return valid article JSON", rawText: gaRaw.slice(0, 500) };
+        } else {
+          output = {
+            articleTitle:    String(gaParsed.title),
+            articleSlug:     slugify(String(gaParsed.slug || gaParsed.title)),
+            articleCategory: String(gaParsed.category ?? gaCategory),
+            articleSummary:  String(gaParsed.summary ?? ""),
+            articleDate:     String(gaParsed.date ?? gaDate),
+            articleContent:  String(gaParsed.content),
+          };
+        }
+        break;
+      }
+
+      case "publish_article": {
+        const paTitle    = (interp(node.data.titleExpr    as string | undefined, payload) || String(payload.articleTitle    ?? "")).trim();
+        const paCategory =  interp(node.data.categoryExpr as string | undefined, payload) || String(payload.articleCategory ?? "General");
+        const paSummary  =  interp(node.data.summaryExpr  as string | undefined, payload) || String(payload.articleSummary  ?? "");
+        const paDate     = String(payload.articleDate ?? new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }));
+        const paContent  = String(payload.articleContent ?? "").trim();
+
+        if (!paTitle || !paContent) {
+          nodeError = true;
+          output = { error: "publish_article requires articleTitle and articleContent in the workflow payload (wire a generate_article node first)" };
+          break;
+        }
+
+        let paSlug = slugify(
+          interp(node.data.slugExpr as string | undefined, payload) || String(payload.articleSlug ?? paTitle),
+        );
+
+        // Conflict check — append a short timestamp suffix if slug already taken
+        const [existing] = await db
+          .select({ slug: articlesTable.slug })
+          .from(articlesTable)
+          .where(eq(articlesTable.slug, paSlug))
+          .limit(1);
+        if (existing) {
+          paSlug = `${paSlug}-${Date.now().toString(36)}`;
+        }
+
+        const [newArticle] = await db.insert(articlesTable).values({
+          slug:     paSlug,
+          category: paCategory,
+          title:    paTitle,
+          summary:  paSummary,
+          date:     paDate,
+          content:  paContent,
+        }).returning();
+
+        // Write .md file — non-fatal on failure (DB is the source of truth)
+        const mdContent =
+          `---\nslug: ${newArticle.slug}\ncategory: ${newArticle.category}\n` +
+          `title: "${newArticle.title.replace(/"/g, '\\"')}"\n` +
+          `summary: "${newArticle.summary.replace(/"/g, '\\"')}"\n` +
+          `date: ${newArticle.date}\n---\n\n${newArticle.content}`;
+
+        try {
+          await fs.mkdir(ARTICLES_DIR, { recursive: true });
+          await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
+        } catch (fsErr) {
+          logger.warn({ fsErr, slug: newArticle.slug }, "publish_article: .md file write failed (DB record was saved successfully)");
+        }
+
+        output = { published: true, slug: newArticle.slug, articleId: newArticle.id, title: newArticle.title };
         break;
       }
 

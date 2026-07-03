@@ -1648,6 +1648,8 @@ export interface WfNode {
     | "send_campaign_email"
     // Project Actions
     | "create_kanban_task"
+    // Content
+    | "generate_article" | "publish_article"
     // System
     | "system_action";
   position: { x: number; y: number };

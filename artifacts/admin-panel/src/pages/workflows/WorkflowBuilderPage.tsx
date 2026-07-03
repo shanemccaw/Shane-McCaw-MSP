@@ -52,6 +52,9 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   // ── Project Actions ──
   create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
+  // ── Content ──
+  generate_article: { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article" },
+  publish_article:  { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"  },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -109,6 +112,9 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "templateSlug", label: "Template slug used" }],
   // Project Actions
   create_kanban_task:  [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
+  // Content
+  generate_article: [{ key: "articleTitle", label: "Generated article title" }, { key: "articleSlug", label: "URL slug" }, { key: "articleCategory", label: "Category" }, { key: "articleSummary", label: "Card summary" }, { key: "articleDate", label: "Publication date string" }, { key: "articleContent", label: "Full Markdown body" }],
+  publish_article:  [{ key: "published", label: "true if article was saved" }, { key: "slug", label: "Final article slug (may differ if conflict resolved)" }, { key: "articleId", label: "Database row ID" }, { key: "title", label: "Article title as saved" }],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -262,6 +268,13 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Project Actions",
     nodes: [
       { type: "create_kanban_task", label: "Create Kanban Task", description: "Create a card on the Marketing Kanban or a project board", tags: ["kanban", "task", "project", "card", "board"] },
+    ],
+  },
+  {
+    name: "Content",
+    nodes: [
+      { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)", tags: ["content", "article", "ai", "blog", "generate"] },
+      { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",  tags: ["content", "article", "publish", "blog", "site"] },
     ],
   },
   {
@@ -1293,6 +1306,24 @@ function NodeConfigPanel({
           />
         )}
 
+        {/* ── Content ────────────────────────────────────────── */}
+
+        {nodeType === "generate_article" && (
+          <GenerateArticlePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "publish_article" && (
+          <PublishArticlePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "condition" && (
           <>
             <PayloadField
@@ -1661,6 +1692,125 @@ function CreateKanbanTaskPanel({
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title and description support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Generate Article panel ────────────────────────────────────────────────────
+
+const ARTICLE_CATEGORIES = [
+  "M365 Best Practices",
+  "Copilot & AI",
+  "SharePoint",
+  "Power Platform",
+  "Governance & Compliance",
+  "Security",
+  "Cloud Migration",
+  "Microsoft Teams",
+  "General",
+];
+
+const ARTICLE_TONES = [
+  "professional, authoritative, practical",
+  "conversational, friendly, approachable",
+  "technical, detailed, in-depth",
+  "executive, strategic, high-level",
+];
+
+function GenerateArticlePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Topic"
+        value={(node.data.topic as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, topic: v })}
+        placeholder="5 Ways to Improve M365 Security Posture"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Category</label>
+        <select
+          value={(node.data.category as string) ?? "M365 Best Practices"}
+          onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#C084FC]/60"
+        >
+          {ARTICLE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <PayloadField
+        label="Keywords (comma-separated, optional)"
+        value={(node.data.keywords as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, keywords: v })}
+        placeholder="MFA, Conditional Access, Zero Trust"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Tone</label>
+        <select
+          value={(node.data.tone as string) ?? ARTICLE_TONES[0]}
+          onChange={e => onChange(node.id, { ...node.data, tone: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#C084FC]/60"
+        >
+          {ARTICLE_TONES.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+      </div>
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Calls Claude AI to write a professional consulting article in Shane's voice. Outputs a JSON payload — wire directly into a <span className="font-mono text-[#C084FC]">publish_article</span> node to publish automatically. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{articleTitle}}"} · {"{{articleSlug}}"} · {"{{articleContent}}"} · {"{{articleSummary}}"} · {"{{articleDate}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Publish Article panel ─────────────────────────────────────────────────────
+
+function PublishArticlePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <div className="rounded-lg bg-[#0D1117] border border-[#C084FC]/20 p-2.5 space-y-1">
+        <p className="text-[10px] text-[#7D8590]">By default, reads <span className="font-mono">{"{{articleTitle}}"}</span>, <span className="font-mono">{"{{articleSlug}}"}</span>, <span className="font-mono">{"{{articleContent}}"}</span>, <span className="font-mono">{"{{articleSummary}}"}</span>, <span className="font-mono">{"{{articleCategory}}"}</span>, and <span className="font-mono">{"{{articleDate}}"}</span> from the previous node's payload. Use the override fields below to hard-code or re-map values.</p>
+      </div>
+      <PayloadField
+        label="Title override (leave blank to use {{articleTitle}})"
+        value={(node.data.titleExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, titleExpr: v })}
+        placeholder="{{articleTitle}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Slug override (leave blank to auto-derive)"
+        value={(node.data.slugExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, slugExpr: v })}
+        placeholder="{{articleSlug}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Category override (leave blank to use {{articleCategory}})"
+        value={(node.data.categoryExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, categoryExpr: v })}
+        placeholder="{{articleCategory}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Saves the article to the database and writes a <span className="font-mono text-[#7D8590]">.md</span> file to the public site. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{published}}"} · {"{{slug}}"} · {"{{articleId}}"} · {"{{title}}"}</p>
       </div>
     </>
   );
