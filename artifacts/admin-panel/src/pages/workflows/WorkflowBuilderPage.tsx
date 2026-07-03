@@ -93,6 +93,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   // ── Logic ──
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
+  // ── Control Flow ──
+  foreach:       { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -185,6 +187,13 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   // Switch/Case — no declared outputs; downstream nodes inherit the upstream payload unchanged
   // (switchValue and chosenBranch are still injected into nextPayload by the executor)
   switch_case: [],
+  // ForEach — outputs available inside the loop body (via item handle)
+  foreach: [
+    { key: "item",             label: "Current array element (or configured alias)" },
+    { key: "itemIndex",        label: "0-based index of the current element" },
+    { key: "itemsTotal",       label: "Total number of elements in the array" },
+    { key: "collectedResults", label: "Array of last payload from each iteration (available on done handle)" },
+  ],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -245,6 +254,25 @@ function WfNode({ data, selected, id }: NodeProps) {
             <span className="text-emerald-400">True</span>
             <span className="text-red-400">False</span>
             <span className="text-orange-400">Cancel</span>
+          </div>
+        </>
+      ) : nodeType === "foreach" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="item"
+            style={{ left: "30%", background: "#A855F7", border: "none" }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="done"
+            style={{ left: "70%", background: "#22C55E", border: "none" }}
+          />
+          <div className="flex justify-between text-[9px] font-semibold mt-1 px-4">
+            <span style={{ color: "#A855F7" }}>Loop</span>
+            <span className="text-emerald-400">Done</span>
           </div>
         </>
       ) : nodeType === "switch_case" ? (
@@ -338,6 +366,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "error",         label: "Error",         description: "Catch-all error handler",                            tags: ["control", "error", "catch"] },
       { type: "ask_for_input", label: "Ask for Input", description: "Prompt the operator for values before the run starts", tags: ["input", "manual", "form", "prompt", "interactive"] },
       { type: "switch_case",   label: "Switch",        description: "Route to one of many branches based on an expression value", tags: ["logic", "switch", "case", "branch", "route", "multi"] },
+      { type: "foreach",       label: "For Each",      description: "Iterate over an array, running a subgraph for each element", tags: ["loop", "iterate", "array", "for-each", "foreach", "control flow"] },
     ],
   },
   {
@@ -1942,6 +1971,38 @@ function NodeConfigPanel({
 
         {nodeType === "switch_case" && (
           <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} />
+        )}
+
+        {nodeType === "foreach" && (
+          <>
+            <PayloadField
+              label="Array path"
+              value={(node.data.arrayPath as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, arrayPath: v })}
+              placeholder="{{newsHeadlines}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Item alias <span className="text-[#484F58] font-normal">(optional)</span></label>
+              <input
+                value={(node.data.itemAlias as string) ?? ""}
+                onChange={e => onChange(node.id, { ...node.data, itemAlias: e.target.value })}
+                placeholder="headline"
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+              />
+              <p className="text-[9px] text-[#484F58] leading-snug">
+                If set, each element is also injected as <span className="font-mono text-[#7D8590]">{"{{<alias>}}"}</span> alongside <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>.
+              </p>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Loop</span> handle to the first node of the loop body — downstream nodes receive <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{itemIndex}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{itemsTotal}}"}</span> per iteration.
+              </p>
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-[#7D8590]">{"{{collectedResults}}"}</span>.
+              </p>
+            </div>
+          </>
         )}
 
         {nodeType === "condition" && (

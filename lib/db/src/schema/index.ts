@@ -1663,7 +1663,9 @@ export interface WfNode {
     // Input
     | "ask_for_input"
     // Logic
-    | "switch_case";
+    | "switch_case"
+    // Control Flow
+    | "foreach";
   position: { x: number; y: number };
   data: WfNodeData;
 }

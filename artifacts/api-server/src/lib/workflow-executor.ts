@@ -427,6 +427,22 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
     }
 
+    case "foreach": {
+      const dryAlias = (node.data.itemAlias as string | undefined)?.trim() || "item";
+      const dryItem1 = { dryRunElement: 1 };
+      const dryItem2 = { dryRunElement: 2 };
+      return {
+        dryRun: true,
+        foreachItems: [dryItem1, dryItem2],
+        item: dryItem1,
+        [dryAlias]: dryItem1,
+        itemIndex: 0,
+        itemsTotal: 2,
+        arrayPath: (node.data.arrayPath as string | undefined) ?? "",
+        collectedResults: [{ dryRun: true, element: 1 }, { dryRun: true, element: 2 }],
+      };
+    }
+
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
   }
@@ -701,6 +717,34 @@ async function executeNode(
           const chosenBranch = matchedCase ? (matchedCase.label || matchedCase.matchValue) : "default";
           output = { switchValue, chosenBranch, matchedCaseId: matchedCase?.id ?? null };
         }
+        break;
+      }
+
+      case "foreach": {
+        // Resolve the array from the payload using the configured path.
+        // Strips {{…}} wrapper if present, then walks dot-notation keys.
+        const feArrayPath = (node.data.arrayPath as string | undefined) ?? "";
+        const feCleanPath = feArrayPath.replace(/^\{\{(.+)\}\}$/, "$1").trim();
+        let feResolved: unknown = payload;
+        if (feCleanPath) {
+          for (const part of feCleanPath.split(".")) {
+            if (feResolved == null || typeof feResolved !== "object") { feResolved = undefined; break; }
+            feResolved = (feResolved as Record<string, unknown>)[part];
+          }
+        }
+        const feItems = Array.isArray(feResolved) ? feResolved : null;
+        if (!feItems) {
+          logger.warn({ runId, arrayPath: feCleanPath, resolvedType: typeof feResolved },
+            "workflow-executor: foreach array path did not resolve to an array — skipping all iterations");
+        }
+        const feAlias = (node.data.itemAlias as string | undefined)?.trim() || null;
+        output = {
+          foreachItems: feItems ?? [],
+          foreachSkipped: !feItems,
+          arrayPath: feCleanPath,
+          itemAlias: feAlias,
+          collectedResults: [],
+        };
         break;
       }
 
@@ -2164,6 +2208,104 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   return { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle };
 }
 
+// ── ForEach item sub-graph executor ──────────────────────────────────────────
+// Runs a mini-BFS over a restricted set of nodes (the foreach loop body) for a
+// single array element. Handles condition/switch_case branching within the
+// subgraph, skips edges that leave the subgraph boundary, and returns the
+// merged payload produced by all executed nodes.
+
+async function executeItemSubgraph(
+  graph: WfGraph,
+  subgraphNodeIdSet: Set<string>,
+  startNodeIds: string[],
+  itemPayload: Record<string, unknown>,
+  runId: number,
+  dryRun: boolean,
+  inputValues: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const subNodes = graph.nodes.filter(n => subgraphNodeIdSet.has(n.id));
+  const subNodeMap = new Map(subNodes.map(n => [n.id, n]));
+  // Only edges whose source AND target are both inside the subgraph
+  const subEdges = graph.edges.filter(
+    e => subgraphNodeIdSet.has(e.source) && subgraphNodeIdSet.has(e.target),
+  );
+
+  // In-degree within the subgraph only
+  const subInDegree = new Map<string, number>();
+  for (const n of subNodes) subInDegree.set(n.id, 0);
+  for (const e of subEdges) subInDegree.set(e.target, (subInDegree.get(e.target) ?? 0) + 1);
+
+  const subResolved = new Map<string, number>();
+  const subActive   = new Map<string, number>();
+  for (const n of subNodes) { subResolved.set(n.id, 0); subActive.set(n.id, 0); }
+
+  const subQueue: Array<{ nodeId: string; skip: boolean }> = [];
+
+  function subResolveEdge(targetId: string, active: boolean) {
+    if (!subgraphNodeIdSet.has(targetId)) return;
+    if (active) subActive.set(targetId, (subActive.get(targetId) ?? 0) + 1);
+    const r = (subResolved.get(targetId) ?? 0) + 1;
+    subResolved.set(targetId, r);
+    if (r === (subInDegree.get(targetId) ?? 0)) {
+      subQueue.push({ nodeId: targetId, skip: (subActive.get(targetId) ?? 0) === 0 });
+    }
+  }
+
+  // Seed start nodes directly (they were entered from the foreach item handle)
+  for (const id of startNodeIds) {
+    if (subgraphNodeIdSet.has(id)) subQueue.push({ nodeId: id, skip: false });
+  }
+
+  let currentPayload = { ...itemPayload };
+
+  while (subQueue.length > 0) {
+    const { nodeId, skip } = subQueue.shift()!;
+    const node = subNodeMap.get(nodeId);
+    if (!node) continue;
+
+    if (skip) {
+      for (const e of subEdges.filter(e => e.source === nodeId)) subResolveEdge(e.target, false);
+      continue;
+    }
+
+    const { nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
+      await executeNode(node, currentPayload, runId, dryRun, inputValues);
+    currentPayload = nextPayload;
+
+    if (cancelRun) break;
+
+    if (nodeError) {
+      const outEdges = subEdges.filter(e => e.source === nodeId);
+      const errorEdge = outEdges.find(e => e.sourceHandle === "error" || e.sourceHandle === "onError");
+      if (errorEdge) {
+        for (const e of outEdges) subResolveEdge(e.target, e.target === errorEdge.target);
+      }
+      continue;
+    }
+
+    if (node.type === "condition" && conditionResult !== undefined) {
+      const outEdges  = subEdges.filter(e => e.source === nodeId);
+      const trueEdge  = outEdges.find(e => e.sourceHandle === "true");
+      const falseEdge = outEdges.find(e => e.sourceHandle === "false");
+      for (const e of outEdges) {
+        subResolveEdge(e.target, conditionResult ? e.id === trueEdge?.id : e.id === falseEdge?.id);
+      }
+      continue;
+    }
+
+    if (node.type === "switch_case" && switchChosenHandle !== undefined) {
+      for (const e of subEdges.filter(e => e.source === nodeId)) {
+        subResolveEdge(e.target, e.sourceHandle === switchChosenHandle);
+      }
+      continue;
+    }
+
+    for (const e of subEdges.filter(e => e.source === nodeId)) subResolveEdge(e.target, true);
+  }
+
+  return currentPayload;
+}
+
 // ── Concurrency check (read-only) ─────────────────────────────────────────────
 
 async function countRunningRuns(definitionId: number): Promise<number> {
@@ -2319,6 +2461,79 @@ export async function executeWorkflowRun(
         for (const e of outEdges) {
           resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
         }
+        continue;
+      }
+
+      // ForEach: run item subgraph sequentially for each element, then route done edge
+      if (node.type === "foreach") {
+        const foreachItems = (output.foreachItems as unknown[]) ?? [];
+        const itemAlias    = (output.itemAlias as string | null) ?? null;
+        const outEdges     = graph.edges.filter(e => e.source === nodeId);
+        const itemEdges    = outEdges.filter(e => e.sourceHandle === "item");
+        const doneEdges    = outEdges.filter(e => e.sourceHandle === "done");
+
+        // Collect item subgraph nodes via DFS from item-handle targets.
+        // Stop at any node that is a direct target of the done handle —
+        // those belong to the post-loop main flow, not the loop body.
+        const doneTargetIds = new Set(doneEdges.map(e => e.target));
+        const itemSubgraphIds = new Set<string>();
+        const dfsStack = itemEdges.map(e => e.target);
+        while (dfsStack.length > 0) {
+          const nId = dfsStack.pop()!;
+          if (itemSubgraphIds.has(nId) || doneTargetIds.has(nId)) continue;
+          itemSubgraphIds.add(nId);
+          for (const e of graph.edges.filter(e => e.source === nId)) {
+            if (!itemSubgraphIds.has(e.target) && !doneTargetIds.has(e.target)) {
+              dfsStack.push(e.target);
+            }
+          }
+        }
+
+        const itemsTotal = foreachItems.length;
+        const collectedResults: Record<string, unknown>[] = [];
+        const startIds = itemEdges.map(e => e.target).filter(id => itemSubgraphIds.has(id));
+
+        logger.info({ runId, nodeId, itemsTotal, subgraphSize: itemSubgraphIds.size },
+          "wf-executor: foreach starting iterations");
+
+        for (let i = 0; i < foreachItems.length; i++) {
+          const element = foreachItems[i];
+          const iterPayload: Record<string, unknown> = {
+            ...payload,
+            item: element,
+            ...(itemAlias ? { [itemAlias]: element } : {}),
+            itemIndex: i,
+            itemsTotal,
+          };
+
+          const finalPayload = await executeItemSubgraph(
+            graph, itemSubgraphIds, startIds, iterPayload,
+            runId, opts.dryRun ?? false, opts.inputValues ?? {},
+          );
+          collectedResults.push(finalPayload);
+          branchPath.push(...startIds.map(id => `${id}[${i}]`));
+
+          logger.info({ runId, nodeId, iteration: i, itemsTotal },
+            "wf-executor: foreach iteration complete");
+        }
+
+        // Update main payload with collected results
+        payload = { ...payload, collectedResults, itemsTotal };
+
+        // Prevent the main BFS from ever executing item-subgraph nodes again.
+        // Setting resolvedCount above inDegree means any future resolveEdge call
+        // on these nodes increments past inDegree and never re-queues them.
+        for (const nId of itemSubgraphIds) {
+          resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+        }
+
+        // Route done edges as active (post-loop continuation)
+        for (const e of doneEdges) resolveEdge(e.target, true);
+
+        await db.update(wfRunsTable)
+          .set({ branchPath: branchPath as unknown as string[] })
+          .where(eq(wfRunsTable.id, runId));
+
         continue;
       }
 
