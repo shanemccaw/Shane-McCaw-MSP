@@ -184,7 +184,9 @@ async function resolveTemplateTaskMetadata(
     artifactsProduced?: unknown;
     clientDeliverables?: unknown;
     runbookId?: string | null;
+    customerDownloadScriptId?: string | null;
     triggersHealthScore?: boolean | null;
+    taskMetadata?: Record<string, unknown> | null;
   }>
 ): Promise<Array<{
   instructions: string[];
@@ -194,13 +196,14 @@ async function resolveTemplateTaskMetadata(
   checklistState: Record<string, never>;
   uploadedArtifacts: never[];
   linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null;
+  customerDownload: { scriptId: string; scriptTitle: string } | null;
   triggersHealthScore: boolean;
+  documentGeneration: { category: string; docType: string; title: string } | null;
 }>> {
   const linkedInstrIds = [...new Set(templateTasks.map(t => t.instructionSetId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedClIds = [...new Set(templateTasks.map(t => t.checklistId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedArtIds = [...new Set(templateTasks.map(t => t.artifactsId).filter((id): id is number => id !== null && id !== undefined))];
   const linkedDelIds = [...new Set(templateTasks.map(t => t.deliverablesId).filter((id): id is number => id !== null && id !== undefined))];
-  // runbook_id stores a UUID pointing to either script_modules or powershell_scripts
   const PROV_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const allRunbookIds = [...new Set(templateTasks.map(t => t.runbookId).filter((id): id is string => !!id))];
   const uuidRunbookIds = allRunbookIds.filter(id => PROV_UUID_RE.test(id));
@@ -208,8 +211,9 @@ async function resolveTemplateTaskMetadata(
   if (nonUuidRunbookIds.length > 0) {
     logger.warn({ nonUuidRunbookIds }, "portal: ignoring non-UUID runbook_id values (legacy slugs — update workflow template tasks)");
   }
+  const allDlIds = [...new Set(templateTasks.map(t => t.customerDownloadScriptId).filter((id): id is string => !!id && PROV_UUID_RE.test(id)))];
 
-  const [instrRows, clRows, artRows, delRows, moduleRunbookRows, scriptRunbookRows] = await Promise.all([
+  const [instrRows, clRows, artRows, delRows, moduleRunbookRows, scriptRunbookRows, dlScriptRows] = await Promise.all([
     linkedInstrIds.length > 0 ? db.select().from(instructionSetsTable).where(inArray(instructionSetsTable.id, linkedInstrIds)) : Promise.resolve([]),
     linkedClIds.length > 0 ? db.select().from(checklistsTable).where(inArray(checklistsTable.id, linkedClIds)) : Promise.resolve([]),
     linkedArtIds.length > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
@@ -222,6 +226,10 @@ async function resolveTemplateTaskMetadata(
       ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
           .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, uuidRunbookIds))
       : Promise.resolve([]),
+    allDlIds.length > 0
+      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title })
+          .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, allDlIds))
+      : Promise.resolve([]),
   ]);
 
   const instrMap = new Map(instrRows.map(r => [r.id, r.instructions as string[]]));
@@ -230,6 +238,7 @@ async function resolveTemplateTaskMetadata(
   const delMap = new Map(delRows.map(r => [r.id, r.deliverables as string[]]));
   const moduleRunbookMap = new Map(moduleRunbookRows.map(r => [r.id, r]));
   const scriptRunbookMap = new Map(scriptRunbookRows.map(r => [r.id, r]));
+  const dlScriptMap = new Map(dlScriptRows.map(r => [r.id, r]));
 
   return templateTasks.map(t => {
     let linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null = null;
@@ -244,6 +253,16 @@ async function resolveTemplateTaskMetadata(
         }
       }
     }
+
+    let customerDownload: { scriptId: string; scriptTitle: string } | null = null;
+    if (t.customerDownloadScriptId && PROV_UUID_RE.test(t.customerDownloadScriptId)) {
+      const dlScript = dlScriptMap.get(t.customerDownloadScriptId);
+      if (dlScript) {
+        customerDownload = { scriptId: dlScript.id, scriptTitle: dlScript.title };
+      }
+    }
+
+    const rawMeta = (t.taskMetadata ?? {}) as Record<string, unknown>;
     return {
       instructions: t.instructionSetId ? (instrMap.get(t.instructionSetId) ?? (t.instructions as string[] | null) ?? []) : ((t.instructions as string[] | null) ?? []),
       checklist: t.checklistId ? (clMap.get(t.checklistId) ?? (t.checklist as Array<{ id: string; label: string }> | null) ?? []) : ((t.checklist as Array<{ id: string; label: string }> | null) ?? []),
@@ -252,7 +271,9 @@ async function resolveTemplateTaskMetadata(
       checklistState: {} as Record<string, never>,
       uploadedArtifacts: [] as never[],
       linkedRunbook,
+      customerDownload,
       triggersHealthScore: t.triggersHealthScore === true,
+      documentGeneration: (rawMeta.documentGeneration as { category: string; docType: string; title: string } | undefined) ?? null,
     };
   });
 }
