@@ -2617,13 +2617,22 @@ function generateMockValue(key: string): unknown {
 
 // ── Ask for Input panel ───────────────────────────────────────────────────────
 
+type AskForInputFieldType =
+  | "text" | "number" | "select" | "textarea"
+  | "customer" | "project" | "lead" | "opportunity" | "document_type";
+
+const ENTITY_FIELD_TYPES: AskForInputFieldType[] = ["customer", "project", "lead", "opportunity", "document_type"];
+
+const DOCUMENT_TYPE_OPTIONS = ["contracts", "reports", "proposals", "deliverables", "assessments", "misc"];
+
 interface AskForInputField {
   id: string;
   variableName: string;
   label: string;
-  type: "text" | "number" | "select" | "textarea";
+  type: AskForInputFieldType;
   options: string;
   required: boolean;
+  multi: boolean;
 }
 
 function AskForInputPanel({
@@ -2642,7 +2651,7 @@ function AskForInputPanel({
   function addField() {
     updateFields([
       ...fields,
-      { id: crypto.randomUUID(), variableName: "", label: "", type: "text", options: "", required: false },
+      { id: crypto.randomUUID(), variableName: "", label: "", type: "text", options: "", required: false, multi: false },
     ]);
   }
 
@@ -2725,31 +2734,50 @@ function AskForInputPanel({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-[10px] text-[#7D8590]">Type</label>
-              <select
-                value={f.type}
-                onChange={e => updateField(f.id, { type: e.target.value as AskForInputField["type"] })}
-                className={selectCls}
-              >
+          <div className="space-y-1">
+            <label className="text-[10px] text-[#7D8590]">Type</label>
+            <select
+              value={f.type}
+              onChange={e => updateField(f.id, { type: e.target.value as AskForInputFieldType, multi: false })}
+              className={selectCls}
+            >
+              <optgroup label="Basic">
                 <option value="text">Text</option>
                 <option value="number">Number</option>
                 <option value="textarea">Textarea</option>
-                <option value="select">Select</option>
-              </select>
-            </div>
-            <div className="space-y-1 flex flex-col justify-end">
+                <option value="select">Custom select</option>
+              </optgroup>
+              <optgroup label="Entity picker">
+                <option value="customer">Customer</option>
+                <option value="project">Project</option>
+                <option value="lead">Lead</option>
+                <option value="opportunity">Opportunity</option>
+                <option value="document_type">Document Type</option>
+              </optgroup>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={f.required}
+                onChange={e => updateField(f.id, { required: e.target.checked })}
+                className="w-3 h-3 rounded accent-orange-500"
+              />
+              <span className="text-[10px] text-[#7D8590]">Required</span>
+            </label>
+            {ENTITY_FIELD_TYPES.includes(f.type) && (
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
                   type="checkbox"
-                  checked={f.required}
-                  onChange={e => updateField(f.id, { required: e.target.checked })}
+                  checked={f.multi ?? false}
+                  onChange={e => updateField(f.id, { multi: e.target.checked })}
                   className="w-3 h-3 rounded accent-orange-500"
                 />
-                <span className="text-[10px] text-[#7D8590]">Required</span>
+                <span className="text-[10px] text-[#7D8590]">Multi-select</span>
               </label>
-            </div>
+            )}
           </div>
 
           {f.type === "select" && (
@@ -2776,21 +2804,167 @@ function AskForInputPanel({
   );
 }
 
+// ── Entity picker (used inside PreRunInputModal) ──────────────────────────────
+
+interface EntityOption { id: string; label: string }
+
+function useEntityOptions(
+  type: AskForInputFieldType,
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>,
+): { options: EntityOption[]; loading: boolean } {
+  const [options, setOptions] = useState<EntityOption[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!ENTITY_FIELD_TYPES.includes(type)) return;
+    if (type === "document_type") {
+      setOptions(DOCUMENT_TYPE_OPTIONS.map(d => ({ id: d, label: d.charAt(0).toUpperCase() + d.slice(1) })));
+      return;
+    }
+    setLoading(true);
+    const urlMap: Record<string, string> = {
+      customer: "/api/admin/clients/enriched",
+      project: "/api/admin/engagement-projects",
+      lead: "/api/leads?limit=100&status=all",
+      opportunity: "/api/opportunities?limit=100",
+    };
+    fetchWithAuth(urlMap[type] ?? "")
+      .then(r => r.json())
+      .then((data: unknown) => {
+        const rows = Array.isArray(data) ? data : ((data as { data?: unknown[] }).data ?? []);
+        const mapped = (rows as Record<string, unknown>[]).map(r => {
+          const id = String(r.id ?? "");
+          let label = "";
+          if (type === "customer") label = String(r.name || r.email || id);
+          else if (type === "project") label = String(r.name || r.title || id);
+          else if (type === "lead") label = String(r.name || r.email || id);
+          else if (type === "opportunity") label = String(r.companyName || r.contactName || r.name || id);
+          return { id, label };
+        }).filter(o => o.id);
+        setOptions(mapped);
+      })
+      .catch(() => setOptions([]))
+      .finally(() => setLoading(false));
+  }, [type]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return { options, loading };
+}
+
+function EntityPickerControl({
+  field,
+  value,
+  onChange,
+  fetchWithAuth,
+  hasError,
+}: {
+  field: AskForInputField;
+  value: string;
+  onChange: (v: string) => void;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+  hasError: boolean;
+}) {
+  const { options, loading } = useEntityOptions(field.type, fetchWithAuth);
+  const [search, setSearch] = useState("");
+  const selected = value ? value.split(",").filter(Boolean) : [];
+
+  const filtered = options.filter(o =>
+    !search || o.label.toLowerCase().includes(search.toLowerCase()) || o.id.includes(search),
+  );
+
+  const borderCls = hasError ? "border-red-500" : "border-[#30363D]";
+
+  if (field.multi) {
+    const toggle = (id: string) => {
+      const next = selected.includes(id) ? selected.filter(s => s !== id) : [...selected, id];
+      onChange(next.join(","));
+    };
+    return (
+      <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
+          <span className="text-[#484F58] text-xs">🔍</span>
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search…"
+            className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+          />
+          {selected.length > 0 && (
+            <span className="text-[10px] text-[#F97316] font-medium">{selected.length} selected</span>
+          )}
+        </div>
+        <div className="max-h-44 overflow-y-auto">
+          {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
+          {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+          {filtered.map(o => (
+            <label key={o.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-[#1C2128] cursor-pointer transition-colors">
+              <input
+                type="checkbox"
+                checked={selected.includes(o.id)}
+                onChange={() => toggle(o.id)}
+                className="w-3.5 h-3.5 rounded accent-orange-500 flex-shrink-0"
+              />
+              <span className="text-sm text-[#E6EDF3] truncate">{o.label}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`border ${borderCls} rounded-lg bg-[#0D1117] overflow-hidden`}>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#30363D]">
+        <span className="text-[#484F58] text-xs">🔍</span>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search…"
+          className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+        />
+        {value && <span className="text-[10px] text-[#F97316] truncate max-w-[100px]">{options.find(o => o.id === value)?.label ?? value}</span>}
+      </div>
+      <div className="max-h-44 overflow-y-auto">
+        {loading && <p className="text-[10px] text-[#484F58] p-3 text-center">Loading…</p>}
+        {!loading && filtered.length === 0 && <p className="text-[10px] text-[#484F58] p-3 text-center">No results</p>}
+        {filtered.map(o => (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => { onChange(o.id); setSearch(""); }}
+            className={`w-full text-left px-3 py-2 text-sm transition-colors hover:bg-[#1C2128] ${value === o.id ? "text-[#F97316] bg-[#F97316]/10" : "text-[#E6EDF3]"}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Pre-run Input Modal ───────────────────────────────────────────────────────
 
 function PreRunInputModal({
   fields,
   onSubmit,
   onCancel,
+  fetchWithAuth,
 }: {
   fields: AskForInputField[];
   onSubmit: (values: Record<string, string>) => void;
   onCancel: () => void;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map(f => [f.variableName, ""])),
   );
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function setValue(name: string, val: string) {
+    setValues(v => ({ ...v, [name]: val }));
+    setErrors(err => { const n = { ...err }; delete n[name]; return n; });
+  }
 
   function handleSubmit() {
     const errs: Record<string, string> = {};
@@ -2822,20 +2996,33 @@ function PreRunInputModal({
               <label className="text-xs font-medium text-[#E6EDF3]">
                 {f.label || f.variableName}
                 {f.required && <span className="text-red-400 ml-0.5">*</span>}
+                {ENTITY_FIELD_TYPES.includes(f.type) && (
+                  <span className="ml-1.5 text-[10px] text-[#484F58] font-normal capitalize">
+                    ({f.type.replace("_", " ")}{f.multi ? " · multi" : ""})
+                  </span>
+                )}
               </label>
 
-              {f.type === "textarea" ? (
+              {ENTITY_FIELD_TYPES.includes(f.type) ? (
+                <EntityPickerControl
+                  field={f}
+                  value={values[f.variableName] ?? ""}
+                  onChange={v => setValue(f.variableName, v)}
+                  fetchWithAuth={fetchWithAuth}
+                  hasError={!!errors[f.variableName]}
+                />
+              ) : f.type === "textarea" ? (
                 <textarea
                   rows={3}
                   value={values[f.variableName] ?? ""}
-                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  onChange={e => setValue(f.variableName, e.target.value)}
                   className={inputCls(f.variableName) + " resize-none"}
                   placeholder={f.label || f.variableName}
                 />
               ) : f.type === "select" ? (
                 <select
                   value={values[f.variableName] ?? ""}
-                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  onChange={e => setValue(f.variableName, e.target.value)}
                   className={inputCls(f.variableName)}
                 >
                   <option value="">— select —</option>
@@ -2845,9 +3032,9 @@ function PreRunInputModal({
                 </select>
               ) : (
                 <input
-                  type={f.type}
+                  type={f.type === "number" ? "number" : "text"}
                   value={values[f.variableName] ?? ""}
-                  onChange={e => { setValues(v => ({ ...v, [f.variableName]: e.target.value })); setErrors(err => { const n = { ...err }; delete n[f.variableName]; return n; }); }}
+                  onChange={e => setValue(f.variableName, e.target.value)}
                   placeholder={f.label || f.variableName}
                   className={inputCls(f.variableName)}
                 />
@@ -3248,6 +3435,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
       {showInputModal && (
         <PreRunInputModal
           fields={askForInputFields}
+          fetchWithAuth={fetchWithAuth}
           onSubmit={(inputValues) => {
             setShowInputModal(false);
             runMut.mutate(inputValues);
