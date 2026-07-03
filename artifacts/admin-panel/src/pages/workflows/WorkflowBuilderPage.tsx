@@ -53,8 +53,14 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Project Actions ──
   create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
   // ── Content ──
-  generate_article: { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article" },
-  publish_article:  { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"  },
+  generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
+  publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
+  topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },
+  // ── Marketing Actions (extended) ──
+  create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
+  publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
+  // ── Data ──
+  find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -115,6 +121,12 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   // Content
   generate_article: [{ key: "articleTitle", label: "Generated article title" }, { key: "articleSlug", label: "URL slug" }, { key: "articleCategory", label: "Category" }, { key: "articleSummary", label: "Card summary" }, { key: "articleDate", label: "Publication date string" }, { key: "articleContent", label: "Full Markdown body" }],
   publish_article:  [{ key: "published", label: "true if article was saved" }, { key: "slug", label: "Final article slug (may differ if conflict resolved)" }, { key: "articleId", label: "Database row ID" }, { key: "title", label: "Article title as saved" }],
+  topic_picker:     [{ key: "articleTopic", label: "AI-selected article topic" }, { key: "topicCategory", label: "Category assigned to the topic" }, { key: "topicRationale", label: "One-sentence rationale from AI" }],
+  // Marketing Actions (extended)
+  create_marketing_campaign: [{ key: "campaignId", label: "Created campaign DB ID" }, { key: "campaignName", label: "Campaign name" }, { key: "campaignStatus", label: "Campaign status (draft / active)" }],
+  publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
+  // Data
+  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -261,7 +273,9 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Marketing Actions",
     nodes: [
-      { type: "send_campaign_email", label: "Send Campaign Email", description: "Render an Email Template and send it to a recipient", tags: ["email", "marketing", "campaign", "template"] },
+      { type: "send_campaign_email",       label: "Send Campaign Email",    description: "Render an Email Template and send it to a recipient",        tags: ["email", "marketing", "campaign", "template"] },
+      { type: "create_marketing_campaign", label: "Create Campaign",         description: "Create a new marketing campaign record in the database",     tags: ["marketing", "campaign", "create", "crm"] },
+      { type: "publish_landing_page",      label: "Publish Landing Page",   description: "Set a landing page live by its slug",                        tags: ["marketing", "landing page", "publish", "site"] },
     ],
   },
   {
@@ -273,14 +287,21 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Content",
     nodes: [
+      { type: "topic_picker",   label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",         tags: ["content", "article", "ai", "topic", "generate"] },
       { type: "generate_article", label: "Generate Article", description: "AI-writes a consulting article (title, slug, Markdown body)", tags: ["content", "article", "ai", "blog", "generate"] },
       { type: "publish_article",  label: "Publish Article",  description: "Save article to DB and write .md file to the public site",  tags: ["content", "article", "publish", "blog", "site"] },
     ],
   },
   {
+    name: "Data",
+    nodes: [
+      { type: "find_object", label: "Find Object", description: "Look up a lead, client, project, or article by field value", tags: ["data", "lookup", "find", "lead", "client", "project"] },
+    ],
+  },
+  {
     name: "Platform",
     nodes: [
-      { type: "action",    label: "Action",    description: "HTTP request, SQL query, email, SMS, emit event", tags: ["action", "http", "sql", "email", "sms", "platform"] },
+      { type: "action", label: "Action", description: "HTTP request, SQL query, email, SMS, emit event", tags: ["action", "http", "sql", "email", "sms", "platform"] },
     ],
   },
 ];
@@ -1333,6 +1354,14 @@ function NodeConfigPanel({
 
         {/* ── Content ────────────────────────────────────────── */}
 
+        {nodeType === "topic_picker" && (
+          <TopicPickerPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "generate_article" && (
           <GenerateArticlePanel
             node={node}
@@ -1343,6 +1372,34 @@ function NodeConfigPanel({
 
         {nodeType === "publish_article" && (
           <PublishArticlePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {/* ── Marketing Actions (extended) ────────────────────── */}
+
+        {nodeType === "create_marketing_campaign" && (
+          <CreateMarketingCampaignPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "publish_landing_page" && (
+          <PublishLandingPagePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {/* ── Data ───────────────────────────────────────────── */}
+
+        {nodeType === "find_object" && (
+          <FindObjectPanel
             node={node}
             onChange={onChange}
             ancestorOutputs={ancestorOutputs}
@@ -1851,6 +1908,194 @@ function PublishArticlePanel({
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">Saves the article to the database and writes a <span className="font-mono text-[#7D8590]">.md</span> file to the public site. When wired after a <span className="font-mono text-[#C084FC]">generate_article</span> node all fields auto-populate — no override expressions needed. Slug conflicts are resolved automatically by appending a timestamp. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{published}}"} · {"{{slug}}"} · {"{{articleId}}"} · {"{{title}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Topic Picker panel ────────────────────────────────────────────────────────
+
+function TopicPickerPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Category</label>
+        <select
+          value={(node.data.category as string) ?? "M365 Best Practices"}
+          onChange={e => onChange(node.id, { ...node.data, category: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+        >
+          {ARTICLE_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <PayloadField
+        label="Focus area (optional)"
+        value={(node.data.focusArea as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, focusArea: v })}
+        placeholder="governance, security, Copilot adoption"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Articles to check for duplicates</label>
+        <input
+          type="number" min={5} max={100}
+          value={(node.data.excludeRecent as number) ?? 20}
+          onChange={e => onChange(node.id, { ...node.data, excludeRecent: Number(e.target.value) })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+        />
+      </div>
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Queries existing article titles then calls Claude AI to pick a novel topic that hasn't been covered. Wire directly into a <span className="font-mono text-[#C084FC]">generate_article</span> node — the output <span className="font-mono text-[#7D8590]">{"{{articleTopic}}"}</span> maps to the Topic field automatically. Also outputs <span className="font-mono text-[#7D8590]">{"{{topicCategory}}"}</span> and <span className="font-mono text-[#7D8590]">{"{{topicRationale}}"}</span>.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Create Marketing Campaign panel ──────────────────────────────────────────
+
+function CreateMarketingCampaignPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Campaign name"
+        value={(node.data.nameExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, nameExpr: v })}
+        placeholder="Q3 Copilot Rollout Push"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Goal"
+        value={(node.data.goalExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, goalExpr: v })}
+        placeholder="Generate 20 qualified leads for Copilot readiness assessments"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Target audience"
+        value={(node.data.audienceExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, audienceExpr: v })}
+        placeholder="IT directors at mid-market companies (100-500 employees)"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Offer"
+        value={(node.data.offerExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, offerExpr: v })}
+        placeholder="Free Copilot Readiness Assessment"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Initial status</label>
+        <select
+          value={(node.data.status as string) ?? "draft"}
+          onChange={e => onChange(node.id, { ...node.data, status: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#34D399]/60"
+        >
+          <option value="draft">Draft</option>
+          <option value="active">Active</option>
+        </select>
+      </div>
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Creates a campaign record in the Marketing database. Outputs <span className="font-mono text-[#7D8590]">{"{{campaignId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{campaignName}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{campaignStatus}}"}</span>.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Publish Landing Page panel ────────────────────────────────────────────────
+
+function PublishLandingPagePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Landing page slug"
+        value={(node.data.slugExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, slugExpr: v })}
+        placeholder="copilot-readiness-offer"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Finds the landing page by slug and sets it to published, making it live on the consulting site. Outputs <span className="font-mono text-[#7D8590]">{"{{landingPageId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{slug}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{published}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{wasAlreadyPublished}}"}</span>. The slug must match exactly as it appears in Marketing → Landing Pages.</p>
+      </div>
+    </>
+  );
+}
+
+// ── Find Object panel ─────────────────────────────────────────────────────────
+
+const FIND_OBJECT_TYPES = [
+  { value: "lead",    label: "Lead",    fields: ["email", "name", "id"] },
+  { value: "client",  label: "Client",  fields: ["email", "id"] },
+  { value: "project", label: "Project", fields: ["id"] },
+  { value: "article", label: "Article", fields: ["slug", "id"] },
+];
+
+function FindObjectPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const objectType = (node.data.objectType as string) ?? "lead";
+  const typeConfig = FIND_OBJECT_TYPES.find(t => t.value === objectType) ?? FIND_OBJECT_TYPES[0];
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Object type</label>
+        <select
+          value={objectType}
+          onChange={e => onChange(node.id, { ...node.data, objectType: e.target.value, fieldName: "" })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#818CF8]/60"
+        >
+          {FIND_OBJECT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        </select>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Look up by field</label>
+        <select
+          value={(node.data.fieldName as string) ?? typeConfig.fields[0]}
+          onChange={e => onChange(node.id, { ...node.data, fieldName: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#818CF8]/60"
+        >
+          {typeConfig.fields.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+      </div>
+      <PayloadField
+        label="Field value"
+        value={(node.data.fieldValueExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, fieldValueExpr: v })}
+        placeholder="{{leadEmail}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Looks up the first matching record and injects its fields into the payload. Always outputs <span className="font-mono text-[#7D8590]">{"{{found}}"}</span> (true/false) and <span className="font-mono text-[#7D8590]">{"{{objectId}}"}</span>. Wire a <span className="font-mono text-amber-400">condition</span> node on <span className="font-mono text-[#7D8590]">{"{{found}} == true"}</span> to branch on whether the record exists.</p>
       </div>
     </>
   );

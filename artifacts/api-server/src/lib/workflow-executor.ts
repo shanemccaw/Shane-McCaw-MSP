@@ -33,6 +33,8 @@ import {
   marketingTasksTable,
   kanbanTasksTable,
   articlesTable,
+  campaignsTable,
+  landingPagesTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -272,6 +274,22 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "publish_article":
       return { dryRun: true, published: true, slug: "dry-run-preview-article", articleId: 0, title: str("titleExpr", "Dry-run Article") };
+
+    case "topic_picker":
+      return {
+        dryRun: true,
+        articleTopic: `Dry-run topic: ${str("focusArea", "Microsoft 365 governance best practices")}`,
+        topicCategory: str("category", "M365 Best Practices"),
+      };
+
+    case "create_marketing_campaign":
+      return { dryRun: true, campaignId: 1, campaignName: str("nameExpr", "Dry-run Campaign"), campaignStatus: "draft" };
+
+    case "publish_landing_page":
+      return { dryRun: true, landingPageId: 1, slug: str("slugExpr", "dry-run-page"), published: false };
+
+    case "find_object":
+      return { dryRun: true, found: true, objectId: 1, objectType: (node.data.objectType as string | undefined) ?? "lead" };
 
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
@@ -947,6 +965,187 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           articleId: newArticle.id,
           title: newArticle.title,
         };
+        break;
+      }
+
+      // ── Topic Picker ──────────────────────────────────────────────────────
+      case "topic_picker": {
+        const tpCategory    = interp(node.data.category    as string | undefined, payload) ?? "M365 Best Practices";
+        const tpFocusArea   = interp(node.data.focusArea   as string | undefined, payload) ?? "";
+        const tpExcludeRecent = Number(node.data.excludeRecent ?? 20);
+
+        const recentRows = await db
+          .select({ title: articlesTable.title })
+          .from(articlesTable)
+          .orderBy(articlesTable.createdAt)
+          .limit(tpExcludeRecent);
+
+        const recentTitles = recentRows.map(r => `- ${r.title}`).join("\n") || "(none yet)";
+
+        const tpPrompt = `You are a content strategist for Shane McCaw Consulting, a Microsoft 365 advisory firm.
+
+Choose ONE compelling article topic in the "${tpCategory}" category that has NOT already been covered.
+
+${tpFocusArea ? `Focus area: ${tpFocusArea}\n` : ""}Already published topics (do NOT repeat these):
+${recentTitles}
+
+Return ONLY a JSON object with these exact keys:
+{
+  "topic": "Specific, actionable article topic — under 100 chars",
+  "rationale": "One sentence explaining why this topic will resonate"
+}`;
+
+        const tpResp = await anthropic.messages.create({
+          model: "claude-haiku-4-5",
+          max_tokens: 512,
+          messages: [{ role: "user", content: tpPrompt }],
+        });
+
+        const tpRaw = tpResp.content.filter(b => b.type === "text").map(b => (b as { type: "text"; text: string }).text).join("");
+        const tpParsed = extractJsonFromAiText(tpRaw);
+
+        if (!tpParsed?.topic) {
+          nodeError = true;
+          output = { error: "topic_picker: AI did not return a valid topic", rawText: tpRaw.slice(0, 300) };
+        } else {
+          output = {
+            articleTopic:   String(tpParsed.topic),
+            topicRationale: String(tpParsed.rationale ?? ""),
+            topicCategory:  tpCategory,
+          };
+        }
+        break;
+      }
+
+      // ── Create Marketing Campaign ──────────────────────────────────────────
+      case "create_marketing_campaign": {
+        const cmcName     = (interp(node.data.nameExpr     as string | undefined, payload) ?? "").trim();
+        const cmcGoal     = (interp(node.data.goalExpr     as string | undefined, payload) ?? "Generate leads").trim();
+        const cmcAudience = (interp(node.data.audienceExpr as string | undefined, payload) ?? "Mid-market IT decision-makers").trim();
+        const cmcOffer    = (interp(node.data.offerExpr    as string | undefined, payload) ?? "").trim();
+        const cmcStatus   = (node.data.status as "draft" | "active" | undefined) ?? "draft";
+
+        if (!cmcName) {
+          nodeError = true;
+          output = { error: "create_marketing_campaign requires a campaign name" };
+          break;
+        }
+
+        const [newCampaign] = await db.insert(campaignsTable).values({
+          name:     cmcName,
+          goal:     cmcGoal,
+          audience: cmcAudience,
+          offer:    cmcOffer || cmcName,
+          status:   cmcStatus,
+        }).returning();
+
+        output = {
+          campaignId:     newCampaign.id,
+          campaignName:   newCampaign.name,
+          campaignStatus: newCampaign.status,
+        };
+        break;
+      }
+
+      // ── Publish Landing Page ───────────────────────────────────────────────
+      case "publish_landing_page": {
+        const plpSlug = (interp(node.data.slugExpr as string | undefined, payload) || String(payload.slug ?? "")).trim();
+
+        if (!plpSlug) {
+          nodeError = true;
+          output = { error: "publish_landing_page requires a slug (configure slugExpr or wire a node that outputs {{slug}})" };
+          break;
+        }
+
+        const [plpPage] = await db
+          .select({ id: landingPagesTable.id, slug: landingPagesTable.slug, published: landingPagesTable.published })
+          .from(landingPagesTable)
+          .where(eq(landingPagesTable.slug, plpSlug))
+          .limit(1);
+
+        if (!plpPage) {
+          nodeError = true;
+          output = { error: `publish_landing_page: no landing page found with slug "${plpSlug}"` };
+          break;
+        }
+
+        await db
+          .update(landingPagesTable)
+          .set({ published: true, updatedAt: new Date() })
+          .where(eq(landingPagesTable.id, plpPage.id));
+
+        output = {
+          landingPageId: plpPage.id,
+          slug:          plpPage.slug,
+          published:     true,
+          wasAlreadyPublished: plpPage.published,
+        };
+        break;
+      }
+
+      // ── Find Object ───────────────────────────────────────────────────────
+      case "find_object": {
+        const foObjectType = (node.data.objectType as string | undefined) ?? "lead";
+        const foField      = (node.data.fieldName  as string | undefined) ?? "id";
+        const foValue      = (interp(node.data.fieldValueExpr as string | undefined, payload) ?? "").trim();
+
+        if (!foValue) {
+          output = { found: false, objectType: foObjectType, reason: "field value expression resolved to empty string" };
+          break;
+        }
+
+        switch (foObjectType) {
+          case "lead": {
+            const rows = await db.select().from(leadsTable).where(
+              foField === "id"    ? eq(leadsTable.id, parseInt(foValue, 10)) :
+              foField === "email" ? eq(leadsTable.email, foValue) :
+              foField === "name"  ? eq(leadsTable.name, foValue) :
+              eq(leadsTable.email, foValue)
+            ).limit(1);
+            const row = rows[0];
+            output = row
+              ? { found: true, objectType: "lead", objectId: row.id, leadId: row.id, email: row.email, name: row.name, company: row.company, status: row.status, score: row.score }
+              : { found: false, objectType: "lead", fieldName: foField, fieldValue: foValue };
+            break;
+          }
+          case "client": {
+            const rows = await db.select().from(usersTable).where(
+              foField === "id"    ? eq(usersTable.id, parseInt(foValue, 10)) :
+              foField === "email" ? eq(usersTable.email, foValue) :
+              eq(usersTable.email, foValue)
+            ).limit(1);
+            const row = rows[0];
+            output = row
+              ? { found: true, objectType: "client", objectId: row.id, clientId: row.id, email: row.email, name: row.name, company: row.company }
+              : { found: false, objectType: "client", fieldName: foField, fieldValue: foValue };
+            break;
+          }
+          case "project": {
+            const rows = await db.select().from(projectsTable).where(
+              foField === "id" ? eq(projectsTable.id, parseInt(foValue, 10)) :
+              eq(projectsTable.id, parseInt(foValue, 10))
+            ).limit(1);
+            const row = rows[0];
+            output = row
+              ? { found: true, objectType: "project", objectId: row.id, projectId: row.id, title: row.title, status: row.status, clientUserId: row.clientUserId }
+              : { found: false, objectType: "project", fieldName: foField, fieldValue: foValue };
+            break;
+          }
+          case "article": {
+            const rows = await db.select().from(articlesTable).where(
+              foField === "id"   ? eq(articlesTable.id, parseInt(foValue, 10)) :
+              foField === "slug" ? eq(articlesTable.slug, foValue) :
+              eq(articlesTable.slug, foValue)
+            ).limit(1);
+            const row = rows[0];
+            output = row
+              ? { found: true, objectType: "article", objectId: row.id, articleId: row.id, slug: row.slug, title: row.title, isPublished: row.isPublished }
+              : { found: false, objectType: "article", fieldName: foField, fieldValue: foValue };
+            break;
+          }
+          default:
+            output = { found: false, objectType: foObjectType, reason: `unsupported objectType: ${foObjectType}` };
+        }
         break;
       }
 
