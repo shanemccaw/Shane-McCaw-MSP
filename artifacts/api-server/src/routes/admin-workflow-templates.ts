@@ -12,8 +12,10 @@ import {
   scriptPackagesTable,
   scriptModulesTable,
   servicesTable,
+  kanbanTasksTable,
+  powershellScriptsTable,
 } from "@workspace/db";
-import { eq, asc, inArray, desc } from "drizzle-orm";
+import { eq, asc, inArray, desc, and, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { classifyAndUpdateTask, classifyTaskForScriptGeneration } from "../lib/classify-task-type";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -287,6 +289,7 @@ router.post("/admin/workflow-templates/:id/steps/:stepId/tasks", requireAdmin, a
 router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireAdmin, async (req: Request, res: Response) => {
   try {
     const taskId = Number(req.params.taskId);
+    const stepId = Number(req.params.stepId);
     if (isNaN(taskId)) { res.status(400).json({ error: "Invalid taskId" }); return; }
     const { title, description, groupName, taskType, order, instructions, checklist, artifactsProduced, clientDeliverables, instructionSetId, checklistId, artifactsId, deliverablesId, isCustomerTask, runbookId, customerDownloadScriptId, triggersHealthScore, taskMetadata } = req.body as TaskBody;
     if (!title) { res.status(400).json({ error: "title is required" }); return; }
@@ -314,6 +317,43 @@ router.put("/admin/workflow-templates/:id/steps/:stepId/tasks/:taskId", requireA
       .where(eq(workflowTemplateStepTasksTable.id, taskId))
       .returning();
     if (!updated) { res.status(404).json({ error: "Task not found" }); return; }
+
+    // Backfill: sync customerDownload into any already-created waiting_on_customer
+    // kanban tasks that came from this workflow step. This ensures customers
+    // immediately see the download button even if the script was linked after
+    // the kanban task was created.
+    if (!isNaN(stepId)) {
+      try {
+        let customerDownloadPatch: Record<string, unknown>;
+        if (customerDownloadScriptId) {
+          const [script] = await db
+            .select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title })
+            .from(powershellScriptsTable)
+            .where(eq(powershellScriptsTable.id, customerDownloadScriptId))
+            .limit(1);
+          customerDownloadPatch = script
+            ? { customerDownload: { scriptId: script.id, scriptTitle: script.title } }
+            : { customerDownload: null };
+        } else {
+          customerDownloadPatch = { customerDownload: null };
+        }
+
+        await db
+          .update(kanbanTasksTable)
+          .set({
+            taskMetadata: sql`COALESCE(${kanbanTasksTable.taskMetadata}, '{}'::jsonb) || ${JSON.stringify(customerDownloadPatch)}::jsonb`,
+          })
+          .where(
+            and(
+              eq(kanbanTasksTable.workflowStepId, stepId),
+              eq(kanbanTasksTable.column, "waiting_on_customer"),
+            ),
+          );
+      } catch (backfillErr) {
+        req.log.warn({ backfillErr, stepId }, "workflow-templates: customerDownload backfill failed (non-fatal)");
+      }
+    }
+
     res.json(updated);
   } catch {
     res.status(500).json({ error: "Failed to update step task" });
