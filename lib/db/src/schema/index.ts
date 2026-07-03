@@ -1519,6 +1519,7 @@ export const articlesTable = pgTable("articles", {
   summary: text("summary").notNull().default(""),
   date: text("date").notNull(),
   content: text("content").notNull().default(""),
+  isPublished: boolean("is_published").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

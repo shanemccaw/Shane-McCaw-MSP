@@ -916,26 +916,37 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
           paSlug = `${paSlug}-${Date.now().toString(36)}`;
         }
 
+        const draftOnly = Boolean(node.data.draftOnly);
+
         const [newArticle] = await db.insert(articlesTable).values({
-          slug:     paSlug,
-          category: paCategory,
-          title:    paTitle,
-          summary:  paSummary,
-          date:     paDate,
-          content:  paContent,
+          slug:        paSlug,
+          category:    paCategory,
+          title:       paTitle,
+          summary:     paSummary,
+          date:        paDate,
+          content:     paContent,
+          isPublished: !draftOnly,
         }).returning();
 
-        // Write .md file — required for the public site to reflect the article
-        const mdContent =
-          `---\nslug: ${newArticle.slug}\ncategory: ${newArticle.category}\n` +
-          `title: "${newArticle.title.replace(/"/g, '\\"')}"\n` +
-          `summary: "${newArticle.summary.replace(/"/g, '\\"')}"\n` +
-          `date: ${newArticle.date}\n---\n\n${newArticle.content}`;
+        if (!draftOnly) {
+          // Write .md file — required for the public site to reflect the article
+          const mdContent =
+            `---\nslug: ${newArticle.slug}\ncategory: ${newArticle.category}\n` +
+            `title: "${newArticle.title.replace(/"/g, '\\"')}"\n` +
+            `summary: "${newArticle.summary.replace(/"/g, '\\"')}"\n` +
+            `date: ${newArticle.date}\n---\n\n${newArticle.content}`;
 
-        await fs.mkdir(ARTICLES_DIR, { recursive: true });
-        await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
+          await fs.mkdir(ARTICLES_DIR, { recursive: true });
+          await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
+        }
 
-        output = { published: true, slug: newArticle.slug, articleId: newArticle.id, title: newArticle.title };
+        output = {
+          published: !draftOnly,
+          draft: draftOnly,
+          slug: newArticle.slug,
+          articleId: newArticle.id,
+          title: newArticle.title,
+        };
         break;
       }
 

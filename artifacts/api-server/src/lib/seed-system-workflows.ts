@@ -58,8 +58,9 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           position: { x: 300, y: 360 },
           data: {
             nodeType: "publish_article",
-            label: "Publish Article",
+            label: "Save as Draft",
             titleExpr: "{{articleTitle}}",
+            draftOnly: true,
           },
         },
         {
