@@ -285,7 +285,7 @@ async function generateInsightsPdf(
 // ── Telemetry helpers ─────────────────────────────────────────────────────────
 
 function computeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]): {
-  security: number; governance: number; readiness: number; composite: number;
+  security: number; compliance: number; copilot: number; governance: number; productivity: number; composite: number;
 } {
   const sums: Record<string, number> = {};
   const counts: Record<string, number> = {};
@@ -298,11 +298,13 @@ function computeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]):
   const avg = (key: string, fallback = 0): number =>
     counts[key] ? Math.min(100, Math.max(0, Math.round(sums[key]! / counts[key]!))) : fallback;
 
-  const security = avg("security", avg("Security", 60));
-  const governance = avg("governance", avg("Governance", 55));
-  const readiness = avg("copilotReadiness", avg("copilot_readiness", avg("CopilotReadiness", 50)));
-  const composite = Math.round((security + governance + readiness) / 3);
-  return { security, governance, readiness, composite };
+  const security    = avg("security",    avg("Security",    60));
+  const compliance  = avg("compliance",  avg("Compliance",  60));
+  const copilot     = avg("copilotReadiness", avg("copilot_readiness", avg("CopilotReadiness", avg("copilot", 50))));
+  const governance  = avg("governance",  avg("Governance",  55));
+  const productivity = avg("productivity", avg("Productivity", 55));
+  const composite   = Math.round((security + compliance + copilot + governance + productivity) / 5);
+  return { security, compliance, copilot, governance, productivity, composite };
 }
 
 /**
@@ -312,7 +314,7 @@ function computeScoresFromRuns(runs: { scoreImpact: Record<string, number> }[]):
  * client so callers can fall back to computeScoresFromRuns().
  */
 async function fetchClientHealthScores(customerId: number): Promise<{
-  security: number; governance: number; readiness: number; composite: number;
+  security: number; compliance: number; copilot: number; governance: number; productivity: number; composite: number;
 } | null> {
   const rows = await db
     .select({
@@ -331,21 +333,28 @@ async function fetchClientHealthScores(customerId: number): Promise<{
     if (!(row.category in latest)) latest[row.category] = row.score;
   }
 
-  const security   = latest["security"]   ?? latest["compliance"] ?? null;
-  const governance = latest["governance"] ?? latest["compliance"] ?? null;
-  const readiness  = latest["copilot"]    ?? null;
+  const security    = latest["security"]    ?? null;
+  const compliance  = latest["compliance"]  ?? null;
+  const copilot     = latest["copilot"]     ?? null;
+  const governance  = latest["governance"]  ?? null;
+  const productivity = latest["productivity"] ?? null;
 
   // If we have no meaningful data at all, let the caller fall back
-  if (security === null && governance === null && readiness === null) return null;
+  if (security === null && compliance === null && copilot === null && governance === null && productivity === null) return null;
 
-  const sec = security   ?? 0;
-  const gov = governance ?? 0;
-  const red = readiness  ?? 0;
+  const sec  = security    ?? 0;
+  const com  = compliance  ?? 0;
+  const cop  = copilot     ?? 0;
+  const gov  = governance  ?? 0;
+  const pro  = productivity ?? 0;
+  const total = [sec, com, cop, gov, pro].filter(v => v > 0);
   return {
-    security:   sec,
-    governance: gov,
-    readiness:  red,
-    composite:  Math.round((sec + gov + red) / 3),
+    security:    sec,
+    compliance:  com,
+    copilot:     cop,
+    governance:  gov,
+    productivity: pro,
+    composite:   total.length > 0 ? Math.round(total.reduce((a, b) => a + b, 0) / total.length) : 0,
   };
 }
 
@@ -365,26 +374,14 @@ function collectFindings(runs: { parsedFindings: string[]; recommendations: stri
  * Fetch completed script runs for a customer, optionally filtered by project
  * (via the kanban_tasks → projects FK chain).
  */
-async function fetchRunsForCustomer(customerId?: number, projectId?: number, limit = 100) {
+async function fetchRunsForCustomer(customerId?: number, _projectId?: number, limit = 100) {
   const conditions: ReturnType<typeof eq>[] = [
     eq(scriptRunResultsTable.status, "completed") as ReturnType<typeof eq>,
   ];
   if (customerId) {
     conditions.push(eq(scriptRunResultsTable.customerId, customerId) as ReturnType<typeof eq>);
   }
-
-  // Project filter: script_run_results → kanban_tasks.project_id
-  if (projectId) {
-    const taskRows = await db
-      .select({ id: kanbanTasksTable.id })
-      .from(kanbanTasksTable)
-      .where(eq(kanbanTasksTable.projectId, projectId));
-    const taskIds = taskRows.map(t => t.id);
-    if (taskIds.length === 0) return []; // no runs for this project
-    conditions.push(
-      inArray(scriptRunResultsTable.kanbanTaskId, taskIds) as unknown as ReturnType<typeof eq>,
-    );
-  }
+  // No project/kanban narrowing — all completed runs for the customer feed generation.
 
   return db.select({
     id: scriptRunResultsTable.id,
@@ -447,7 +444,7 @@ router.get("/admin/insights/scores", requireAdmin, async (req: Request, res: Res
     }
 
     // Weekly trend (last 8 weeks)
-    const weeklyTrend: { week: string; composite: number; security: number; governance: number; readiness: number }[] = [];
+    const weeklyTrend: { week: string; composite: number; security: number; compliance: number; copilot: number; governance: number; productivity: number }[] = [];
     const now = new Date();
     for (let w = 7; w >= 0; w--) {
       const weekEnd = new Date(now); weekEnd.setDate(now.getDate() - w * 7);
@@ -872,7 +869,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       .map(([k, v]) => `  ${k}: ${String(v)}`)
       .join("\n");
 
-    const scoresBlock = `- Security: ${scores.security}/100\n- Governance: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
+    const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
@@ -1355,7 +1352,8 @@ INSTRUCTIONS:
         .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
-        .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock);
+        .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
+        + `\n\nTIER 02 PRICING FORMULA (apply verbatim to every pricing line item):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
@@ -1479,7 +1477,7 @@ INSTRUCTIONS:
 
     const typeLabel = CONSULTING_TYPE_LABELS[deliverableType] ?? deliverableType;
 
-    const scoresBlock = `- Security Posture: ${scores.security}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Governance Maturity: ${scores.governance}/100\n- Composite: ${scores.composite}/100`;
+    const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
     const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
 
@@ -2122,7 +2120,7 @@ export async function executeAutomation(
       const healthScores = automation.customerId ? await fetchClientHealthScores(automation.customerId) : null;
       const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
       const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
-      log("info", `Scores — Security: ${scores.security}/100, Governance: ${scores.governance}/100, Readiness: ${scores.readiness}/100 (source: ${healthScores ? "health-history" : "run-impacts"})`);
+      log("info", `Scores — Security: ${scores.security}/100, Compliance: ${scores.compliance}/100, Copilot: ${scores.copilot}/100, Governance: ${scores.governance}/100 (source: ${healthScores ? "health-history" : "run-impacts"})`);
 
       const docType   = REPORT_DOC_TYPES_FOR_AUTOMATION[automation.automationType] ?? "executive_summary";
       const docLabel  = REPORT_DOC_TYPE_LABELS_AUTO[docType] ?? docType;
@@ -2135,7 +2133,7 @@ export async function executeAutomation(
         .join("\n");
 
       const prompt = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate an automated ${docLabel} for ${reportDate} in HTML format.
-Security: ${scores.security}/100, Governance: ${scores.governance}/100, Readiness: ${scores.readiness}/100.
+Security: ${scores.security}/100, Compliance: ${scores.compliance}/100, Copilot: ${scores.copilot}/100, Governance: ${scores.governance}/100, Productivity: ${scores.productivity}/100.
 Findings: ${findings.slice(0, 10).join("; ") || "No findings"}.
 Recommendations: ${recommendations.slice(0, 5).join("; ") || "None"}.
 Configuration telemetry:
