@@ -4694,7 +4694,11 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
       prevTriggerRef.current = trigger;
       setRunId(null);
       runMut.reset();
-      handleRunClick(defaultPayload);
+      // Only auto-start if there are no ask_for_input fields — otherwise the
+      // user needs to configure fake/live mode first, then click "Fill Inputs & Run".
+      if (askForInputFields.length === 0) {
+        handleRunClick(defaultPayload);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger, loadingTriggers]);
