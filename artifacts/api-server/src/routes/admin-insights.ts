@@ -60,7 +60,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, stripStagedForReviewBanner, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -827,6 +827,7 @@ Output requirements for the Pricing section:
   - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).
 - After the per-workstream table, add a separate "Pricing Adjustments" section listing each applicable shared adjustment factor and its dollar value ONCE — not repeated per workstream.
 - End with a Grand Total row: sum of all workstream Final Prices + sum of all shared adjustments.
+- The Grand Total MUST be arithmetically correct. Show the calculation explicitly in the Grand Total cell as: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[total]. Double-check the arithmetic before outputting.
 - Always explain the reasoning for each adjustment tier chosen in the Pricing Adjustments section.
 - Never invent new pricing models. Never use TBD. Never treat the Base Ceiling as a maximum.
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`;
@@ -1341,6 +1342,7 @@ INSTRUCTIONS:
 - The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
 - You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends"); shared adjustments must NOT be added to individual workstream rows
 - You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) are listed ONCE in a "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
+- The Grand Total MUST equal the arithmetic sum of all workstream Final Prices plus all adjustment amounts. Show the arithmetic explicitly in the Grand Total cell: "Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[total]". Verify the addition before writing the number.
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
@@ -1362,9 +1364,19 @@ INSTRUCTIONS:
         messages: [{ role: "user", content: prompt }],
       });
 
-      const htmlContent = extractAiHtml(aiResponse);
+      const rawHtmlContent = extractAiHtml(aiResponse);
 
-      const { lines: sowLines, totalPrice: sowTotal } = parseSowPricing(htmlContent);
+      // Server-side correction: parse all pricing tables to compute the
+      // authoritative Grand Total, then overwrite whatever the AI wrote in the
+      // Grand Total row.  This eliminates silent LLM arithmetic errors.
+      const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
+      const htmlContent = computedTotal > 0
+        ? patchSowGrandTotal(rawHtmlContent, computedTotal)
+        : rawHtmlContent;
+
+      // Build the line items list for the DB: workstream rows + adjustment rows
+      const sowLines = [...workstreamLines, ...adjustmentLines];
+      const sowTotal = computedTotal;
 
       // Upsert: replace if a consolidated_sow for this customer+project already exists
       let docId: number;
@@ -1550,10 +1562,22 @@ INSTRUCTIONS:
       messages: [{ role: "user", content: prompt }],
     });
 
-    const htmlContent = extractAiHtml(aiResponse);
+    const rawHtmlContent2 = extractAiHtml(aiResponse);
 
-    // Parse pricing if this is a SOW type — even regular SOWs may contain a pricing table
-    const { lines: sowLines2, totalPrice: sowTotal2 } = isSowType ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
+    // Apply the same server-side Grand Total correction to regular SOW types
+    let htmlContent: string;
+    let sowLines2: SowPricingLine[];
+    let sowTotal2: number;
+    if (isSowType) {
+      const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
+      htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
+      sowLines2 = [...ws2, ...adj2];
+      sowTotal2 = ct2;
+    } else {
+      htmlContent = rawHtmlContent2;
+      sowLines2 = [];
+      sowTotal2 = 0;
+    }
 
     // Upsert: replace if a document of this type for this customer+project already exists
     let consultingDocId: number;

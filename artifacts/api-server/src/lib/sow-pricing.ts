@@ -120,3 +120,149 @@ export function parseSowPricing(html: string): { lines: SowPricingLine[]; totalP
 
   return { lines: [], totalPrice: 0 };
 }
+
+/**
+ * Parse ALL pricing-relevant tables (workstream rows + adjustment rows) from a
+ * Consolidated SOW HTML document.
+ *
+ * The AI produces two tables:
+ *   1. A workstream table (has "scope" / "base ceiling" / "workstream" headers).
+ *   2. An adjustments table (has "amount" / "value" / "adjustment" headers).
+ *
+ * Returns:
+ *   - workstreamLines  — per-workstream Final Price rows
+ *   - adjustmentLines  — per-factor adjustment rows (positive values only)
+ *   - computedTotal    — server-authoritative sum: workstreams + adjustments
+ */
+export function parseSowAllPricing(html: string): {
+  workstreamLines: SowPricingLine[];
+  adjustmentLines: SowPricingLine[];
+  computedTotal: number;
+} {
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#[0-9]+;/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  const tableMatches = [...html.matchAll(/<table[\s\S]*?<\/table>/gi)].map(m => m[0]);
+
+  const workstreamLines: SowPricingLine[] = [];
+  const adjustmentLines: SowPricingLine[] = [];
+
+  for (const tableHtml of tableMatches) {
+    const theadMatch = tableHtml.match(/<thead[\s\S]*?<\/thead>/i);
+    const firstTrMatch = tableHtml.match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+    const headerHtml = theadMatch?.[0] ?? firstTrMatch?.[0] ?? "";
+    const headerText = headerHtml.toLowerCase();
+
+    // Classify the table by specific pricing keywords to avoid false-positive
+    // matches against non-pricing tables (e.g. Deliverables with "Business Value").
+    // Workstream table: must contain "final price" or "base ceiling" — unique to
+    //   the per-workstream pricing table the prompt generates.
+    // Adjustment table: must contain "adjustment" in headers plus a money column
+    //   keyword — unique to the Pricing Adjustments summary table.
+    const isWorkstreamTable =
+      headerText.includes("final price") ||
+      headerText.includes("base ceiling") ||
+      headerText.includes("fixed price");
+
+    const isAdjustmentTable =
+      !isWorkstreamTable &&
+      headerText.includes("adjustment") &&
+      (headerText.includes("amount") || headerText.includes("value") || headerText.includes("usd") || headerText.includes("price") || headerText.includes("cost"));
+
+    if (!isWorkstreamTable && !isAdjustmentTable) continue;
+
+    const headerCells = [...headerHtml.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+      .map(m => stripTags(m[1]).toLowerCase());
+
+    // Include "value" and "usd" so adjustment tables with a "Value" or "Amount (USD)"
+    // column are correctly indexed.  The "$" guard below ensures only real dollar
+    // cells are counted, so this cannot introduce non-currency false positives.
+    const priceIdx = headerCells.findIndex(
+      h => h.includes("final price") || h.includes("amount") || h.includes("value") || h.includes("usd") || h.includes("price") || h.includes("cost"),
+    );
+    if (priceIdx < 0) continue;
+
+    const bodyHtml = tableHtml
+      .replace(/<thead[\s\S]*?<\/thead>/i, "")
+      .replace(/<colgroup[\s\S]*?<\/colgroup>/i, "");
+
+    const rows = [...bodyHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)].map(m => m[1]);
+
+    for (const row of rows) {
+      const cells = [...row.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)].map(m => stripTags(m[1]));
+      if (cells.length < 2) continue;
+
+      const titleCell = cells[0] ?? "";
+      const priceCell = cells[priceIdx] ?? "";
+      const titleLower = titleCell.toLowerCase();
+
+      // Skip only true header rows and summary rows — use exact/anchored matching
+      // so that legitimate adjustment rows like "Tenant Size Adjustment Factor"
+      // are NOT accidentally excluded by a substring hit on "factor".
+      if (
+        titleLower === "" ||
+        titleLower === "factor" ||
+        titleLower === "adjustment factor" ||
+        titleLower === "workstream" ||
+        titleLower === "project/workstream" ||
+        titleLower === "total" ||
+        titleLower === "subtotal" ||
+        titleLower === "grand total" ||
+        /^grand\s+total/.test(titleLower) ||
+        /^sub\s*total/.test(titleLower)
+      ) continue;
+
+      // Require an explicit "$" in the price cell to guard against non-currency
+      // numerics (health scores, quantities, durations) being parsed as dollars.
+      if (!priceCell.includes("$")) continue;
+
+      const priceStr = priceCell.replace(/[^0-9.]/g, "");
+      const priceUsd = parseFloat(priceStr);
+      if (isNaN(priceUsd) || priceUsd <= 0) continue;
+
+      const line: SowPricingLine = { title: titleCell, scope: "", priceUsd, notes: "" };
+
+      if (isWorkstreamTable) {
+        workstreamLines.push(line);
+      } else {
+        adjustmentLines.push(line);
+      }
+    }
+  }
+
+  const computedTotal =
+    workstreamLines.reduce((s, l) => s + l.priceUsd, 0) +
+    adjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
+
+  return { workstreamLines, adjustmentLines, computedTotal };
+}
+
+/**
+ * Find every "Grand Total" row in a SOW HTML document and overwrite its
+ * rightmost dollar amount with `correctTotal`.
+ *
+ * This is called server-side after the AI response so that arithmetic errors
+ * introduced by the LLM are corrected before the document is persisted.
+ * If no Grand Total row is found the HTML is returned unchanged.
+ */
+export function patchSowGrandTotal(html: string, correctTotal: number): string {
+  if (correctTotal <= 0) return html;
+
+  const formatted = `$${correctTotal.toLocaleString("en-US")}`;
+
+  return html.replace(
+    /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/gi,
+    (match, openTag: string, inner: string, closeTag: string) => {
+      if (!/grand\s+total/i.test(inner)) return match;
+
+      const lastDollarIdx = inner.lastIndexOf("$");
+      if (lastDollarIdx < 0) return match;
+
+      const patched =
+        inner.slice(0, lastDollarIdx) +
+        inner.slice(lastDollarIdx).replace(/\$[\d,]+(?:\.\d{2})?/, formatted);
+
+      return openTag + patched + closeTag;
+    },
+  );
+}
