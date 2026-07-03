@@ -224,6 +224,7 @@ export default function OnboardingSelect() {
   const handleGuestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setGuestError("");
+    if (!guestName.trim()) { setGuestError("Please enter your name."); return; }
     if (!guestEmail.trim()) { setGuestError("Please enter your email address."); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim())) { setGuestError("Please enter a valid email address."); return; }
     sessionStorage.setItem("onboardingGuest", JSON.stringify({ name: guestName.trim(), email: guestEmail.trim().toLowerCase(), company: guestCompany.trim() }));
@@ -332,12 +333,13 @@ export default function OnboardingSelect() {
               </p>
 
               <div>
-                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Your name <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <label className="text-xs font-semibold text-[#0A2540] mb-1.5 block">Your name <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={guestName}
                   onChange={e => setGuestName(e.target.value)}
                   placeholder="Jane Smith"
+                  required
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
                 />
               </div>
