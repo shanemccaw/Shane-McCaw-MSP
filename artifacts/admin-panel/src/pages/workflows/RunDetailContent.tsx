@@ -31,7 +31,7 @@ export interface WfRunDetail {
   errorMessage: string | null;
   durationMs: number | null;
   graph: { nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }> } | null;
-  logs: Array<{ id: number; nodeId: string; level: string; message: string; timestamp: string }>;
+  logs: Array<{ id: number; nodeId: string; level: string; message: string; metadata?: Record<string, unknown> | null; timestamp: string }>;
   nodeOutputs: Array<{ id: number; nodeId: string; input: Record<string, unknown>; output: Record<string, unknown>; durationMs: number | null; status: string; errorMessage: string | null; timestamp: string }>;
 }
 
@@ -389,19 +389,39 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                 <p className="text-[#7D8590] text-sm">No log entries.</p>
               ) : (
                 <div className="relative border-l-2 border-[#30363D] pl-6 space-y-4">
-                  {run.logs.map(log => (
-                    <div key={log.id} className="relative">
-                      <div className="absolute -left-[25px] top-1 w-3 h-3 rounded-full border-2 border-[#0D1117]" style={{
-                        background: log.level === "error" ? "#EF4444" : log.level === "warn" ? "#F59E0B" : "#0078D4",
-                      }} />
-                      <div className="text-[10px] text-[#484F58] font-mono mb-0.5">
-                        {format(new Date(log.timestamp), "HH:mm:ss.SSS")} · {log.nodeId}
+                  {run.logs.map(log => {
+                    const isProgress = log.level === "progress";
+                    const step  = isProgress ? (log.metadata?.step  as number | undefined) : undefined;
+                    const total = isProgress ? (log.metadata?.total as number | undefined) : undefined;
+                    const dotColor = log.level === "error" ? "#EF4444"
+                                   : log.level === "warn"  ? "#F59E0B"
+                                   : isProgress            ? "#00B4D8"
+                                   :                         "#0078D4";
+                    return (
+                      <div key={log.id} className="relative">
+                        <div className="absolute -left-[25px] top-1 w-3 h-3 rounded-full border-2 border-[#0D1117]" style={{ background: dotColor }} />
+                        <div className="text-[10px] text-[#484F58] font-mono mb-0.5 flex items-center gap-2">
+                          <span>{format(new Date(log.timestamp), "HH:mm:ss.SSS")} · {log.nodeId}</span>
+                          {isProgress && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+                              PROGRESS{step != null && total != null ? ` ${step}/${total}` : ""}
+                            </span>
+                          )}
+                        </div>
+                        <p className={`text-xs ${
+                          log.level === "error" ? "text-red-400"
+                          : log.level === "warn" ? "text-amber-400"
+                          : isProgress ? "text-cyan-300"
+                          : "text-[#E6EDF3]"
+                        }`}>
+                          {log.message}
+                          {isProgress && step != null && total != null && (
+                            <span className="ml-2 text-[10px] text-cyan-400/60 font-mono">({step}/{total})</span>
+                          )}
+                        </p>
                       </div>
-                      <p className={`text-xs ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#E6EDF3]"}`}>
-                        {log.message}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

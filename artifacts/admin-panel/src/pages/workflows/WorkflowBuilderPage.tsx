@@ -24,7 +24,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
 import { AssetPickerModal } from "@/components/AssetPickerModal";
-import RunDetailContent from "./RunDetailContent";
+import RunDetailContent, { type WfRunDetail } from "./RunDetailContent";
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -94,8 +94,9 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Logic ──
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   // ── Control Flow ──
-  foreach:       { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
-  approval_gate: { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   // ── Calendar (Exchange / Microsoft Graph) ──
   check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
   create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
@@ -195,6 +196,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
   // Send Browser Notification
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
+  // Report Progress — passes payload through unchanged
+  report_progress: [],
   // Approval Gate — outputs injected into payload after the gate is approved and execution resumes
   approval_gate: [
     { key: "approved",     label: "true — always set when execution continues past the gate" },
@@ -547,8 +550,9 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Control Flow",
     nodes: [
-      { type: "foreach",       label: "For Each",      description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
-      { type: "approval_gate", label: "Approval Gate", description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
+      { type: "foreach",         label: "For Each",        description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
+      { type: "approval_gate",   label: "Approval Gate",   description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
+      { type: "report_progress", label: "Report Progress", description: "Emit a real-time status message visible in the test-run panel and run timeline", tags: ["progress", "status", "log", "notify", "control", "debug"] },
     ],
   },
   {
@@ -1683,6 +1687,43 @@ function NodeConfigPanel({
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "report_progress" && (
+          <>
+            <PayloadField
+              label="Message"
+              value={(node.data.message as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, message: v })}
+              placeholder="Processing step {{step}} — {{clientName}}…"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#7D8590]">Step <span className="text-[#484F58]">(optional)</span></label>
+                <input
+                  type="number" min={1}
+                  value={(node.data.step as number | undefined) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, step: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  placeholder="1"
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#00B4D8]/60"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#7D8590]">Total <span className="text-[#484F58]">(optional)</span></label>
+                <input
+                  type="number" min={1}
+                  value={(node.data.total as number | undefined) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, total: e.target.value === "" ? undefined : Number(e.target.value) })}
+                  placeholder="5"
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#00B4D8]/60"
+                />
+              </div>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Emits a real-time status message into the run log. Supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Payload passes through unchanged.</p>
             </div>
           </>
         )}
@@ -4657,6 +4698,24 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
     onSuccess: (data) => setRunId(data.runId),
   });
 
+  const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+  const { data: progressRunData } = useQuery<WfRunDetail>({
+    queryKey: ["wf-test-run-progress", runId],
+    enabled: runId !== null,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && TERMINAL_STATUSES.has(status) ? false : 2000;
+    },
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}`);
+      return res.json() as Promise<WfRunDetail>;
+    },
+  });
+
+  const progressLogs = (progressRunData?.logs ?? []).filter(l => l.level === "progress");
+  const latestProgress = progressLogs[progressLogs.length - 1] ?? null;
+  const runIsTerminal = progressRunData?.status ? TERMINAL_STATUSES.has(progressRunData.status) : false;
+
   const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
 
   return (
@@ -4721,6 +4780,40 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
             <div className="flex-shrink-0 rounded-none border-b border-red-500/40 bg-red-500/10 px-3 py-2 flex items-center gap-2">
               <span className="text-red-400 text-xs flex-shrink-0">⚠</span>
               <p className="text-[11px] font-semibold text-red-400">Live run — real actions fired</p>
+            </div>
+          )}
+          {/* ── Live progress panel ── */}
+          {progressLogs.length > 0 && (
+            <div className={`flex-shrink-0 border-b border-cyan-500/20 bg-cyan-500/5 px-4 py-2.5 space-y-1.5 transition-all ${runIsTerminal ? "opacity-70" : ""}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-cyan-400 text-[10px]">📶</span>
+                <span className="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider">Progress</span>
+                {runIsTerminal && (
+                  <span className="text-[9px] text-cyan-400/50">— run ended</span>
+                )}
+              </div>
+              {progressLogs.map(log => {
+                const step  = (log.metadata?.step  as number | undefined);
+                const total = (log.metadata?.total as number | undefined);
+                return (
+                  <div key={log.id} className="flex items-start gap-2">
+                    {step != null && total != null ? (
+                      <span className="text-[9px] font-mono font-bold text-cyan-500/70 flex-shrink-0 mt-0.5">{step}/{total}</span>
+                    ) : (
+                      <span className="text-[9px] text-cyan-500/40 flex-shrink-0 mt-0.5">·</span>
+                    )}
+                    <p className="text-[11px] text-cyan-300 leading-tight">{log.message}</p>
+                  </div>
+                );
+              })}
+              {latestProgress && latestProgress.metadata?.step != null && latestProgress.metadata?.total != null && (
+                <div className="mt-1.5 h-1 bg-cyan-500/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-cyan-500/60 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, (Number(latestProgress.metadata.step) / Number(latestProgress.metadata.total)) * 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
           <div className="flex-1 overflow-hidden">

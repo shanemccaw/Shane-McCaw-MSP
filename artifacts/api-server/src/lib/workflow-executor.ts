@@ -726,7 +726,7 @@ async function executeNode(
   let switchChosenHandle: string | undefined;
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
-  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case"]);
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case", "report_progress"]);
 
   // Promoted type bridge: first-class node types alias to the action handler.
   // Inject data.actionType from node.type so the action case works unchanged.
@@ -3035,6 +3035,26 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           presentationUrl: bpPresentationUrl,
           presentationId: bpRecord.id,
         };
+        break;
+      }
+
+      case "report_progress": {
+        const rawMsg = (node.data.message as string | undefined) ?? "Progress update";
+        const progressMsg = interp(rawMsg, payload) ?? rawMsg;
+        const step  = node.data.step  != null ? Number(node.data.step)  : undefined;
+        const total = node.data.total != null ? Number(node.data.total) : undefined;
+        const meta: Record<string, unknown> = {};
+        if (step  != null && !isNaN(step))  meta.step  = step;
+        if (total != null && !isNaN(total)) meta.total = total;
+        const hasMeta = Object.keys(meta).length > 0;
+        await db.insert(wfRunNodeLogsTable).values({
+          runId,
+          nodeId: node.id,
+          level: "progress",
+          message: progressMsg,
+          ...(hasMeta ? { metadata: meta } : {}),
+        }).catch(() => { /* non-fatal */ });
+        output = {};
         break;
       }
 

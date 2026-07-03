@@ -1667,6 +1667,7 @@ export interface WfNode {
     // Control Flow
     | "foreach"
     | "approval_gate"
+    | "report_progress"
     // Calendar (Exchange Online via Microsoft Graph)
     | "check_exchange_calendar_availability"
     | "create_exchange_calendar_event"
@@ -1746,8 +1747,9 @@ export const wfRunNodeLogsTable = pgTable("wf_run_node_logs", {
   id: serial("id").primaryKey(),
   runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
   nodeId: text("node_id").notNull(),
-  level: text("level", { enum: ["info", "warn", "error"] }).notNull().default("info"),
+  level: text("level", { enum: ["info", "warn", "error", "progress"] }).notNull().default("info"),
   message: text("message").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>(),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
 });
 

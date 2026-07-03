@@ -304,6 +304,15 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: workflow engine tables failed (non-fatal)");
   });
 
+  // ── Workflow Engine: add metadata column to wf_run_node_logs (idempotent) ─
+  pool.query(`
+    ALTER TABLE wf_run_node_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
+  `).then(() => {
+    logger.info("Migration: wf_run_node_logs.metadata column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: wf_run_node_logs.metadata column failed (non-fatal)");
+  });
+
   // ── Workflow Engine: nightly cleanup (runs older than 90 days) ───────────
   const WF_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
   const runWfCleanup = () => {
