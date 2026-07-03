@@ -35,6 +35,7 @@ interface InsightsDoc {
   category: "report" | "consulting"; docType: string; title: string;
   pdfUrl: string | null;
   status: "draft" | "approved" | "delivered" | "archived" | "generating" | "failed";
+  errorMessage: string | null;
   approvedAt: string | null; deliveredAt: string | null; createdAt: string;
 }
 
@@ -569,7 +570,11 @@ function DocumentsTab({
                   <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
-                    <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                    {doc.status === "failed" && doc.errorMessage ? (
+                      <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
+                    ) : (
+                      <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                    )}
                   </div>
                   <StatusPill status={doc.status} />
                   {doc.status === "failed" && (
@@ -934,7 +939,11 @@ function ConsultingTab({
                   <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
-                    <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                    {doc.status === "failed" && doc.errorMessage ? (
+                      <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
+                    ) : (
+                      <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                    )}
                   </div>
                   <StatusPill status={doc.status} />
                   {doc.status === "failed" && (

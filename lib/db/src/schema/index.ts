@@ -1479,6 +1479,7 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
     notes: string;
   }>>(),
   sowTotalPrice: numeric("sow_total_price", { precision: 12, scale: 2 }),
+  errorMessage: text("error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

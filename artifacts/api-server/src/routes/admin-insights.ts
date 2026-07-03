@@ -671,6 +671,7 @@ router.get("/admin/insights/documents", requireAdmin, async (req: Request, res: 
       title: insightsGeneratedDocumentsTable.title,
       pdfUrl: insightsGeneratedDocumentsTable.pdfUrl,
       status: insightsGeneratedDocumentsTable.status,
+      errorMessage: insightsGeneratedDocumentsTable.errorMessage,
       approvedAt: insightsGeneratedDocumentsTable.approvedAt,
       deliveredAt: insightsGeneratedDocumentsTable.deliveredAt,
       createdAt: insightsGeneratedDocumentsTable.createdAt,
@@ -977,7 +978,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       reportDisconnected = true;
       reportAbort.abort();
       db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
         .catch((err) => logger.warn({ err, docId: reportDocId }, "insights: cleanup on client disconnect failed"));
     };
@@ -993,8 +994,9 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       htmlContent = extractAiHtml(aiResponse);
     } catch (aiErr) {
       // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
+      const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
       await db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
       throw aiErr;
     } finally {
@@ -1488,7 +1490,7 @@ INSTRUCTIONS:
         sowDisconnected = true;
         sowAbort.abort();
         db.update(insightsGeneratedDocumentsTable)
-          .set({ status: "failed", updatedAt: new Date() })
+          .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
           .where(eq(insightsGeneratedDocumentsTable.id, docId))
           .catch((err) => logger.warn({ err, docId }, "insights: sow cleanup on client disconnect failed"));
       };
@@ -1514,8 +1516,9 @@ INSTRUCTIONS:
         sowTotal = computedTotal;
       } catch (aiErr) {
         // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
+        const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
         await db.update(insightsGeneratedDocumentsTable)
-          .set({ status: "failed", updatedAt: new Date() })
+          .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
           .where(eq(insightsGeneratedDocumentsTable.id, docId));
         throw aiErr;
       } finally {
@@ -1694,7 +1697,7 @@ INSTRUCTIONS:
       consultingDisconnected = true;
       consultingAbort.abort();
       db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
         .catch((err) => logger.warn({ err, docId: consultingDocId }, "insights: consulting cleanup on client disconnect failed"));
     };
@@ -1725,8 +1728,9 @@ INSTRUCTIONS:
       }
     } catch (aiErr) {
       // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
+      const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
       await db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", updatedAt: new Date() })
+        .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
         .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
       throw aiErr;
     } finally {

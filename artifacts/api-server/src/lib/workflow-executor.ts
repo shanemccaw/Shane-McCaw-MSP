@@ -1054,8 +1054,9 @@ async function executeNode(
               htmlContent = igExtractHtml(rawText);
             } catch (aiErr) {
               // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
+              const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
               await db.update(insightsGeneratedDocumentsTable)
-                .set({ status: "failed", updatedAt: new Date() })
+                .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
                 .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
               throw aiErr;
             }
