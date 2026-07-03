@@ -1212,7 +1212,7 @@ Return ONLY a JSON object with these exact keys:
             size: giSize,
           });
 
-          const giBase64 = giResp.data[0]?.b64_json;
+          const giBase64 = (giResp.data ?? [])[0]?.b64_json;
           if (!giBase64) {
             nodeError = true;
             output = { error: "generate_image: API returned no image data" };
