@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -26,6 +26,10 @@ interface ForecastRow { period: string; forecast: number; lowerBound: number; up
 interface RevenueForecast { rows: ForecastRow[]; narrative: string | null; generatedAt: string | null }
 
 interface CardClickRow { cardName: string; firstClicks: number; pct: number }
+interface CardClickFilterOption { id: number; label: string }
+interface CardClickFilters { clients: CardClickFilterOption[]; projects: CardClickFilterOption[] }
+
+type CardClickFilterType = "all" | "client" | "project";
 
 type SortDir = "asc" | "desc";
 
@@ -136,6 +140,16 @@ export default function AnalyticsPage() {
   const [cardClicksLoading, setCardClicksLoading] = useState(true);
   const [cardClicksError, setCardClicksError] = useState<string | null>(null);
 
+  const [cardClickFilters, setCardClickFilters] = useState<CardClickFilters | null>(null);
+  const [cardClickFilterType, setCardClickFilterType] = useState<CardClickFilterType>("all");
+  const [cardClickFilterId, setCardClickFilterId] = useState<number | null>(null);
+
+  // Refs so load() can always read the current filter without being recreated on filter changes
+  const cardClickFilterTypeRef = useRef<CardClickFilterType>("all");
+  const cardClickFilterIdRef = useRef<number | null>(null);
+  cardClickFilterTypeRef.current = cardClickFilterType;
+  cardClickFilterIdRef.current = cardClickFilterId;
+
   function buildQs(extra?: Record<string, string>): string {
     const params = new URLSearchParams(extra ?? {});
     if (isCustom && customStart && customEnd) {
@@ -147,12 +161,30 @@ export default function AnalyticsPage() {
     return params.toString();
   }
 
+  const loadCardClicks = useCallback(async (
+    p: Preset, custom: boolean, cStart: string, cEnd: string,
+    filterType: CardClickFilterType, filterId: number | null,
+  ) => {
+    setCardClicksLoading(true); setCardClicksError(null);
+    const params = new URLSearchParams();
+    if (custom && cStart && cEnd) { params.set("start", cStart); params.set("end", cEnd); }
+    else { params.set("range", p); }
+    if (filterType === "client" && filterId !== null) params.set("clientId", String(filterId));
+    if (filterType === "project" && filterId !== null) params.set("projectId", String(filterId));
+    try {
+      const res = await fetchWithAuth(`/api/admin/analytics/card-clicks?${params.toString()}`);
+      const d = await res.json();
+      if (Array.isArray(d)) { setCardClicks(d as CardClickRow[]); }
+      else { setCardClicksError("Could not load card click data"); }
+    } catch { setCardClicksError("Could not load card click data"); }
+    finally { setCardClicksLoading(false); }
+  }, [fetchWithAuth]);
+
   const load = useCallback(async (p: Preset, custom: boolean, cStart: string, cEnd: string) => {
     setKpisLoading(true); setKpisError(null);
     setSeriesLoading(true); setTopPagesLoading(true);
     setTopEventsLoading(true); setTopReferrersLoading(true);
     setTopLinksLoading(true); setTopCtasLoading(true);
-    setCardClicksLoading(true); setCardClicksError(null);
 
     function qs(): string {
       const params = new URLSearchParams();
@@ -189,16 +221,31 @@ export default function AnalyticsPage() {
       fetchWithAuth(`/api/admin/analytics/top-ctas?${qs()}`)
         .then(async res => { const d = await res.json(); setTopCtas(Array.isArray(d) ? d as TopCta[] : []); setTopCtasLoading(false); })
         .catch(() => { setTopCtas([]); setTopCtasLoading(false); }),
-
-      fetchWithAuth(`/api/admin/analytics/card-clicks?${qs()}`)
-        .then(async res => { const d = await res.json(); if (Array.isArray(d)) { setCardClicks(d as CardClickRow[]); } else { setCardClicksError("Could not load card click data"); } setCardClicksLoading(false); })
-        .catch(() => { setCardClicksError("Could not load card click data"); setCardClicksLoading(false); }),
     ]);
-  }, [fetchWithAuth]);
+
+    // Re-fetch card-clicks preserving the active filter (read via ref, not state,
+    // so load() is stable and doesn't re-create when the filter changes).
+    void loadCardClicks(p, custom, cStart, cEnd, cardClickFilterTypeRef.current, cardClickFilterIdRef.current);
+  }, [fetchWithAuth, loadCardClicks, cardClickFilterTypeRef, cardClickFilterIdRef]);
 
   useEffect(() => {
     if (!isCustom) void load(preset, false, "", "");
   }, [preset, isCustom, load]);
+
+  // Load filter options (clients/projects with card-click data) once
+  useEffect(() => {
+    fetchWithAuth("/api/admin/analytics/card-clicks/filters")
+      .then(async res => { if (res.ok) setCardClickFilters(await res.json() as CardClickFilters); })
+      .catch(() => { /* non-fatal */ });
+  }, [fetchWithAuth]);
+
+  // Re-fetch card-clicks whenever the filter selection changes (but not initial mount — load() handles that)
+  const isFirstFilterMount = useState(true);
+  useEffect(() => {
+    if (isFirstFilterMount[0]) { isFirstFilterMount[1](false); return; }
+    void loadCardClicks(preset, isCustom, customStart, customEnd, cardClickFilterType, cardClickFilterId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cardClickFilterType, cardClickFilterId]);
 
   const loadForecast = useCallback(async () => {
     setRevLoading(true);
@@ -710,14 +757,79 @@ export default function AnalyticsPage() {
       {activeTab === "engagement" && (
       <div className="space-y-6">
         <section className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+          <div className="flex items-start justify-between flex-wrap gap-3 mb-1">
             <div>
               <h2 className="text-sm font-bold text-[#E6EDF3] uppercase tracking-widest">Overview Card Engagement</h2>
               <p className="text-[10px] text-[#7D8590] mt-0.5">
                 Which overview card did each client click <em>first</em> — aggregated across all Quick Win presentations.
               </p>
             </div>
+            {/* Filter controls */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={cardClickFilterType}
+                onChange={e => {
+                  const t = e.target.value as CardClickFilterType;
+                  setCardClickFilterType(t);
+                  setCardClickFilterId(null);
+                }}
+                className="text-xs bg-[#0D1117] border border-[#30363D] text-[#C9D1D9] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+              >
+                <option value="all">All presentations</option>
+                {cardClickFilters && cardClickFilters.clients.length > 0 && <option value="client">Filter by client</option>}
+                {cardClickFilters && cardClickFilters.projects.length > 0 && <option value="project">Filter by project</option>}
+              </select>
+
+              {cardClickFilterType === "client" && cardClickFilters && (
+                <select
+                  value={cardClickFilterId ?? ""}
+                  onChange={e => setCardClickFilterId(e.target.value ? Number(e.target.value) : null)}
+                  className="text-xs bg-[#0D1117] border border-[#30363D] text-[#C9D1D9] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0078D4] max-w-[200px]"
+                >
+                  <option value="">— pick a client —</option>
+                  {cardClickFilters.clients.map(c => (
+                    <option key={c.id} value={c.id}>{c.label}</option>
+                  ))}
+                </select>
+              )}
+
+              {cardClickFilterType === "project" && cardClickFilters && (
+                <select
+                  value={cardClickFilterId ?? ""}
+                  onChange={e => setCardClickFilterId(e.target.value ? Number(e.target.value) : null)}
+                  className="text-xs bg-[#0D1117] border border-[#30363D] text-[#C9D1D9] rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-[#0078D4] max-w-[200px]"
+                >
+                  <option value="">— pick a project —</option>
+                  {cardClickFilters.projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.label}</option>
+                  ))}
+                </select>
+              )}
+
+              {(cardClickFilterType !== "all" || cardClickFilterId !== null) && (
+                <button
+                  onClick={() => { setCardClickFilterType("all"); setCardClickFilterId(null); }}
+                  className="text-[10px] font-semibold text-[#7D8590] hover:text-[#E6EDF3] transition-colors px-2 py-1.5 rounded-lg hover:bg-[#1C2128]"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Active filter badge */}
+          {cardClickFilterType !== "all" && cardClickFilterId !== null && (() => {
+            const list = cardClickFilterType === "client" ? cardClickFilters?.clients : cardClickFilters?.projects;
+            const found = list?.find(x => x.id === cardClickFilterId);
+            return found ? (
+              <div className="mt-2 mb-0 flex items-center gap-1.5">
+                <span className="text-[10px] text-[#7D8590]">Showing data for</span>
+                <span className="text-[10px] font-semibold bg-[#0078D4]/15 text-[#58A6FF] px-2 py-0.5 rounded-full border border-[#0078D4]/20">
+                  {cardClickFilterType === "client" ? "Client" : "Project"}: {found.label}
+                </span>
+              </div>
+            ) : null;
+          })()}
 
           {cardClicksLoading ? (
             <div className="space-y-3 mt-5">

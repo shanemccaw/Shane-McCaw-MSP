@@ -478,28 +478,78 @@ router.get("/admin/analytics/top-links", adminLimiter, requireAdmin, async (req,
 // For each presentation that has at least one card_click event in the window,
 // pick the FIRST card clicked (by viewed_at ASC), then aggregate across all
 // presentations to produce a per-card count + percentage.
+// Optional query params: clientId (integer), projectId (integer)
 router.get("/admin/analytics/card-clicks", adminLimiter, requireAdmin, async (req, res) => {
   const { since, until } = resolveRange(req.query as Record<string, unknown>);
+  const rawClientId = req.query["clientId"];
+  const rawProjectId = req.query["projectId"];
+  const clientId = rawClientId && !isNaN(Number(rawClientId)) ? Number(rawClientId) : null;
+  const projectId = rawProjectId && !isNaN(Number(rawProjectId)) ? Number(rawProjectId) : null;
+
   try {
-    const rows = await execRows<{ card_name: string; first_click_count: string }>(sql`
-      WITH first_clicks AS (
-        SELECT DISTINCT ON (presentation_id)
-          presentation_id,
-          card_name
-        FROM presentation_doc_views
-        WHERE event_type = 'card_click'
-          AND card_name IS NOT NULL
-          AND viewed_at >= ${since}
-          AND viewed_at <= ${until}
-        ORDER BY presentation_id, viewed_at ASC
-      )
-      SELECT
-        card_name,
-        count(*)::text AS first_click_count
-      FROM first_clicks
-      GROUP BY card_name
-      ORDER BY count(*) DESC
-    `);
+    let rows: { card_name: string; first_click_count: string }[];
+
+    if (clientId !== null) {
+      rows = await execRows<{ card_name: string; first_click_count: string }>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (pdv.presentation_id)
+            pdv.presentation_id,
+            pdv.card_name
+          FROM presentation_doc_views pdv
+          JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+          WHERE pdv.event_type = 'card_click'
+            AND pdv.card_name IS NOT NULL
+            AND pdv.viewed_at >= ${since}
+            AND pdv.viewed_at <= ${until}
+            AND qwp.client_user_id = ${clientId}
+          ORDER BY pdv.presentation_id, pdv.viewed_at ASC
+        )
+        SELECT card_name, count(*)::text AS first_click_count
+        FROM first_clicks
+        GROUP BY card_name
+        ORDER BY count(*) DESC
+      `);
+    } else if (projectId !== null) {
+      rows = await execRows<{ card_name: string; first_click_count: string }>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (pdv.presentation_id)
+            pdv.presentation_id,
+            pdv.card_name
+          FROM presentation_doc_views pdv
+          JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+          WHERE pdv.event_type = 'card_click'
+            AND pdv.card_name IS NOT NULL
+            AND pdv.viewed_at >= ${since}
+            AND pdv.viewed_at <= ${until}
+            AND qwp.project_id = ${projectId}
+          ORDER BY pdv.presentation_id, pdv.viewed_at ASC
+        )
+        SELECT card_name, count(*)::text AS first_click_count
+        FROM first_clicks
+        GROUP BY card_name
+        ORDER BY count(*) DESC
+      `);
+    } else {
+      rows = await execRows<{ card_name: string; first_click_count: string }>(sql`
+        WITH first_clicks AS (
+          SELECT DISTINCT ON (presentation_id)
+            presentation_id,
+            card_name
+          FROM presentation_doc_views
+          WHERE event_type = 'card_click'
+            AND card_name IS NOT NULL
+            AND viewed_at >= ${since}
+            AND viewed_at <= ${until}
+          ORDER BY presentation_id, viewed_at ASC
+        )
+        SELECT
+          card_name,
+          count(*)::text AS first_click_count
+        FROM first_clicks
+        GROUP BY card_name
+        ORDER BY count(*) DESC
+      `);
+    }
 
     const total = rows.reduce((s, r) => s + parseInt(r.first_click_count), 0);
     return res.json(rows.map(r => ({
@@ -509,6 +559,41 @@ router.get("/admin/analytics/card-clicks", adminLimiter, requireAdmin, async (re
     })));
   } catch (err) {
     req.log.warn({ err }, "analytics card-clicks failed");
+    return res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ─── Admin: card-click filter options (clients + projects with data) ──────────
+// Returns the distinct set of clients and projects that have at least one
+// card_click event — used to populate the filter dropdown on the engagement tab.
+router.get("/admin/analytics/card-clicks/filters", adminLimiter, requireAdmin, async (req, res) => {
+  try {
+    const clients = await execRows<{ id: string; name: string | null; email: string }>(sql`
+      SELECT DISTINCT u.id::text, u.name, u.email
+      FROM presentation_doc_views pdv
+      JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+      JOIN users u ON u.id = qwp.client_user_id
+      WHERE pdv.event_type = 'card_click'
+        AND qwp.client_user_id IS NOT NULL
+      ORDER BY u.name, u.email
+    `);
+
+    const projects = await execRows<{ id: string; title: string }>(sql`
+      SELECT DISTINCT p.id::text, p.title
+      FROM presentation_doc_views pdv
+      JOIN quick_win_presentations qwp ON qwp.id = pdv.presentation_id
+      JOIN projects p ON p.id = qwp.project_id
+      WHERE pdv.event_type = 'card_click'
+        AND qwp.project_id IS NOT NULL
+      ORDER BY p.title
+    `);
+
+    return res.json({
+      clients: clients.map(c => ({ id: parseInt(c.id), label: c.name ?? c.email })),
+      projects: projects.map(p => ({ id: parseInt(p.id), label: p.title })),
+    });
+  } catch (err) {
+    req.log.warn({ err }, "analytics card-clicks/filters failed");
     return res.status(500).json({ error: "Failed" });
   }
 });
