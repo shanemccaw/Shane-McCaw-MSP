@@ -38,9 +38,113 @@ import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-adva
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { runAiAnalyzer } from "./ai-analyzer";
 import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./document-generator";
+import { sendWebPushToAdmins } from "./web-push";
+import { sendEmailOrThrow, brandedEmail } from "./mailer";
+import { MAX_AUTO_FIRE_FAILURES, computeNextFailureState } from "./kanban-auto-fire-retry-utils";
+
+// Re-export so callers that previously imported these from this module continue to work.
+export { MAX_AUTO_FIRE_FAILURES, computeNextFailureState };
 
 const POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS   = 10 * 60 * 1000;
+
+/**
+ * Resolves the admin-panel base URL for alert email links.
+ * Mirrors the pattern used in manual-script-escalation.ts.
+ */
+function getAdminPanelBase(): string {
+  if (process.env.ADMIN_PANEL_URL) return process.env.ADMIN_PANEL_URL;
+  const domains = (process.env.REPLIT_DOMAINS ?? "")
+    .split(",")
+    .map((d) => d.trim())
+    .filter(Boolean);
+  const custom = domains.find((d) => !d.includes("replit."));
+  if (custom) return `https://${custom}/admin-panel`;
+  const app = domains.find((d) => d.endsWith(".replit.app"));
+  if (app) return `https://${app}/admin-panel`;
+  const dev = domains.find((d) => d.endsWith(".replit.dev")) ?? process.env.REPLIT_DEV_DOMAIN;
+  if (dev) return `https://${dev}/admin-panel`;
+  return "https://shanemccaw.com/admin-panel";
+}
+
+/**
+ * Sends Shane a push notification and email when a Kanban auto-fire job
+ * has exhausted its retry budget without succeeding.
+ * Both channels are attempted independently; failures are non-fatal.
+ */
+async function alertAutoFireExhausted(opts: {
+  cardIds: number[];
+  projectId: number;
+  clientUserId: number;
+  jobId: string;
+  lastStatus: string;
+  scriptTitle: string;
+  failureCount: number;
+}): Promise<void> {
+  const { cardIds, projectId, clientUserId, jobId, lastStatus, scriptTitle, failureCount } = opts;
+  const projectUrl = `${getAdminPanelBase()}/crm/projects/${projectId}`;
+  const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
+
+  const pushBody =
+    `Script "${scriptTitle}" failed ${failureCount}× for client #${clientUserId} ` +
+    `(last status: ${lastStatus}). Cards #${cardIds.join(", ")} need manual review.`;
+
+  try {
+    await sendWebPushToAdmins({
+      title: "⚠️ Kanban auto-fire exhausted retry budget",
+      body: pushBody,
+      linkPath: `/admin-panel/crm/projects/${projectId}`,
+      playSound: true,
+    });
+  } catch (pushErr) {
+    logger.warn({ pushErr }, "kanban-auto-fire: push notification failed (non-fatal)");
+  }
+
+  const bodyHtml = `
+    <p>Hi Shane,</p>
+    <p>The Kanban auto-fire workflow has exhausted its retry budget (<strong>${failureCount} consecutive failures</strong>) for the following script card and can no longer automatically recover.</p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
+      <tbody>
+        <tr style="background:#fef2f2;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;white-space:nowrap;">Script</td>
+          <td style="padding:10px 16px;font-size:14px;">${scriptTitle}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Card IDs</td>
+          <td style="padding:10px 16px;font-size:14px;">${cardIds.join(", ")}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Last Azure status</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">${lastStatus}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Job ID</td>
+          <td style="padding:10px 16px;font-size:14px;font-family:monospace;">${jobId}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Failures</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">${failureCount} / ${MAX_AUTO_FIRE_FAILURES}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The cards have been left in backlog with status <strong>auto_fire_exhausted</strong>. Please review the Azure Automation account and then manually trigger the script from the Admin Panel.</p>
+    <p style="margin-top:24px;">
+      <a href="${projectUrl}" style="background:#0078D4;color:#ffffff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View project in Admin Panel →</a>
+    </p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `;
+
+  try {
+    await sendEmailOrThrow(
+      shaneEmail,
+      `⚠️ Kanban auto-fire exhausted — "${scriptTitle}" (${failureCount} failures)`,
+      brandedEmail(bodyHtml),
+    );
+    logger.info({ shaneEmail, cardIds, scriptTitle }, "kanban-auto-fire: exhaustion alert email sent");
+  } catch (emailErr) {
+    logger.warn({ emailErr, cardIds }, "kanban-auto-fire: exhaustion alert email failed (non-fatal)");
+  }
+}
 
 interface LinkedRunbook {
   scriptId: string;
@@ -86,7 +190,9 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
 
   const stepToTemplateStep = new Map(activeSteps.map(s => [s.id, s.templateStepId]));
 
-  // Fetch backlog cards ordered by (stepId asc, order asc)
+  // Fetch backlog cards ordered by (stepId asc, order asc).
+  // Exclude cards that have exhausted their retry budget — they need manual
+  // intervention and must not be auto-fired again.
   const candidates = await db
     .select({
       id:             kanbanTasksTable.id,
@@ -100,6 +206,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
       and(
         inArray(kanbanTasksTable.workflowStepId, activeStepIds),
         eq(kanbanTasksTable.column, "backlog"),
+        sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
       ),
     )
     .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
@@ -372,38 +479,149 @@ async function runInBackground(
       void autoFireFirstBacklogScript(clientUserId);
       void autoFireDocumentCard(clientUserId);
     } else {
-      // On failure: stamp completionNotes but leave column as in_progress
-      await db.update(kanbanTasksTable)
-        .set({
-          completionStatus: "script_failed",
-          completionNotes:  `Script run failed — status: ${lastStatus} (job ${jobId}).${notesBody}`,
-          updatedAt:        new Date(),
-        })
-        .where(inArray(kanbanTasksTable.id, cardIds));
+      // ── Failure recovery: revert cards to backlog and track retry budget ──
+      //
+      // Read the primary card's metadata to get the current failure count.
+      // All sibling cards track the same job, so reading the primary is sufficient.
+      const primaryCardId = cardIds[0];
+      let currentFailureCount = 0;
+      if (primaryCardId != null) {
+        try {
+          const [primaryCard] = await db
+            .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+            .from(kanbanTasksTable)
+            .where(eq(kanbanTasksTable.id, primaryCardId))
+            .limit(1);
+          const meta = (primaryCard?.taskMetadata ?? {}) as Record<string, unknown>;
+          currentFailureCount = typeof meta.autoFireFailureCount === "number" ? meta.autoFireFailureCount : 0;
+        } catch (readErr) {
+          logger.warn({ readErr, primaryCardId }, "kanban-auto-fire: could not read failure count (defaulting to 0)");
+        }
+      }
+      const { newCount: newFailureCount, exhausted, completionStatus: failCompletionStatus } = computeNextFailureState(currentFailureCount);
 
-      // Also clear runningJobRef on failure for all sibling cards
+      // Update each card: revert to backlog and stamp failure metadata
       const failMetaRows = await db
         .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
         .from(kanbanTasksTable)
         .where(inArray(kanbanTasksTable.id, cardIds));
+
       for (const row of failMetaRows) {
         const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
         await db.update(kanbanTasksTable)
-          .set({ taskMetadata: { ...meta, runningJobRef: null, lastJobStatus: lastStatus } })
+          .set({
+            // Return to backlog so the reconcile loop or the next trigger can retry
+            column:           "backlog",
+            completionStatus: failCompletionStatus,
+            completionNotes:  `Script run failed — status: ${lastStatus} (job ${jobId}). Attempt ${newFailureCount}/${MAX_AUTO_FIRE_FAILURES}.${notesBody}`,
+            taskMetadata: {
+              ...meta,
+              runningJobRef:        null,
+              lastJobStatus:        lastStatus,
+              lastJobId:            jobId,
+              autoFireFailureCount: newFailureCount,
+              lastFailureReason:    `${lastStatus} (job ${jobId})`,
+              lastFailedAt:         new Date().toISOString(),
+              ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+            },
+            updatedAt: new Date(),
+          })
           .where(eq(kanbanTasksTable.id, row.id));
       }
 
       {
-        const failedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
-        for (const t of failedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+        const revertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+        for (const t of revertedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
       }
 
-      logger.warn({ cardIds, jobId, lastStatus }, "kanban-auto-fire: script failed — cards remain in_progress");
+      if (exhausted) {
+        logger.warn(
+          { cardIds, jobId, lastStatus, newFailureCount, clientUserId },
+          "kanban-auto-fire: retry budget exhausted — cards reverted to backlog with auto_fire_exhausted; alerting Shane",
+        );
+        // Non-blocking — alert failures must not stall the outer catch
+        void alertAutoFireExhausted({
+          cardIds,
+          projectId,
+          clientUserId,
+          jobId,
+          lastStatus,
+          scriptTitle,
+          failureCount: newFailureCount,
+        });
+      } else {
+        logger.warn(
+          { cardIds, jobId, lastStatus, newFailureCount, maxFailures: MAX_AUTO_FIRE_FAILURES },
+          "kanban-auto-fire: script failed — cards reverted to backlog (will be retried by reconcile loop)",
+        );
+      }
     }
 
     await syncProjectProgress(projectId);
   } catch (err) {
-    logger.warn({ err, jobId, cardIds }, "kanban-auto-fire: background run error (non-fatal)");
+    logger.warn({ err, jobId, cardIds }, "kanban-auto-fire: background run error — recovering cards to backlog");
+
+    // Recovery: when an unexpected exception escapes the polling loop (e.g., Azure
+    // network failure, auth error, or mid-poll process restart), cards are still
+    // in_progress with runningJobRef. Revert them to backlog with the retry budget
+    // so they are not stuck forever.
+    try {
+      const [primaryCard] = await db
+        .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
+        .where(eq(kanbanTasksTable.id, cardIds[0]!))
+        .limit(1);
+      const existingMeta = ((primaryCard?.taskMetadata ?? {}) as Record<string, unknown>);
+      const currentCount = typeof existingMeta.autoFireFailureCount === "number" ? existingMeta.autoFireFailureCount : 0;
+      const { newCount: catchFailCount, exhausted: catchExhausted, completionStatus: catchStatus } = computeNextFailureState(currentCount);
+
+      const catchRows = await db
+        .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
+        .where(inArray(kanbanTasksTable.id, cardIds));
+
+      for (const row of catchRows) {
+        const rowMeta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
+        await db.update(kanbanTasksTable)
+          .set({
+            column:           "backlog",
+            completionStatus: catchStatus,
+            completionNotes:  `Azure polling exception. Attempt ${catchFailCount}/${MAX_AUTO_FIRE_FAILURES}.`,
+            taskMetadata: {
+              ...rowMeta,
+              runningJobRef:        null,
+              autoFireFailureCount: catchFailCount,
+              lastFailureReason:    `Polling exception: ${String(err).slice(0, 200)}`,
+              lastFailedAt:         new Date().toISOString(),
+              ...(catchExhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(kanbanTasksTable.id, row.id));
+      }
+
+      const catchRevertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+      for (const t of catchRevertedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+
+      if (catchExhausted) {
+        void alertAutoFireExhausted({
+          cardIds,
+          projectId,
+          clientUserId,
+          jobId,
+          lastStatus: "PollingException",
+          scriptTitle,
+          failureCount: catchFailCount,
+        });
+      }
+
+      logger.info(
+        { cardIds, jobId, catchFailCount, catchExhausted },
+        "kanban-auto-fire: cards reverted to backlog after background polling error",
+      );
+    } catch (recoverErr) {
+      logger.warn({ recoverErr, cardIds, jobId }, "kanban-auto-fire: catch-block recovery also failed — cards may remain in_progress");
+    }
   }
 }
 
@@ -727,15 +945,63 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
         },
       }));
     } catch (azErr) {
-      // Revert cards to backlog if job creation fails
-      await db.update(kanbanTasksTable)
-        .set({ column: "backlog", updatedAt: new Date() })
+      // Azure job creation failed (unreachable, auth error, etc.).
+      // Apply the same retry-budget semantics as other failure paths:
+      //   - read current failure count from the primary card
+      //   - increment it and determine exhaustion
+      //   - revert all sibling cards to backlog with completionStatus + metadata
+      //   - alert Shane via push + email if the budget is exhausted
+      const [primaryCreateFail] = await db
+        .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
+        .where(eq(kanbanTasksTable.id, siblingIds[0]!))
+        .limit(1);
+      const createFailMeta = ((primaryCreateFail?.taskMetadata ?? {}) as Record<string, unknown>);
+      const createFailCurrentCount = typeof createFailMeta.autoFireFailureCount === "number" ? createFailMeta.autoFireFailureCount : 0;
+      const { newCount: createFailCount, exhausted: createFailExhausted, completionStatus: createFailStatus } = computeNextFailureState(createFailCurrentCount);
+
+      const createFailRows = await db
+        .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+        .from(kanbanTasksTable)
         .where(inArray(kanbanTasksTable.id, siblingIds));
-      {
-        const revertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
-        for (const t of revertedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
+      for (const row of createFailRows) {
+        const meta = ((row.taskMetadata ?? {}) as Record<string, unknown>);
+        await db.update(kanbanTasksTable)
+          .set({
+            column:           "backlog",
+            completionStatus: createFailStatus,
+            completionNotes:  `Azure job creation failed. Attempt ${createFailCount}/${MAX_AUTO_FIRE_FAILURES}.`,
+            taskMetadata: {
+              ...meta,
+              runningJobRef:        null,
+              autoFireFailureCount: createFailCount,
+              lastFailureReason:    `Job creation error: ${String(azErr).slice(0, 200)}`,
+              lastFailedAt:         new Date().toISOString(),
+              ...(createFailExhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+            },
+            updatedAt: new Date(),
+          })
+          .where(eq(kanbanTasksTable.id, row.id));
       }
-      logger.error({ azErr, clientUserId, runbook: card.linkedRunbook.azureRunbookName }, "kanban-auto-fire: Azure job creation failed — cards reverted to backlog");
+      const createFailRevertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, siblingIds));
+      for (const t of createFailRevertedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
+
+      logger.error(
+        { azErr, clientUserId, runbook: card.linkedRunbook.azureRunbookName, createFailCount, createFailExhausted },
+        "kanban-auto-fire: Azure job creation failed — cards reverted to backlog with retry budget",
+      );
+
+      if (createFailExhausted) {
+        void alertAutoFireExhausted({
+          cardIds:      siblingIds,
+          projectId:    card.projectId,
+          clientUserId,
+          jobId:        "N/A (job creation failed)",
+          lastStatus:   "JobCreationError",
+          scriptTitle:  card.linkedRunbook.azureRunbookName,
+          failureCount: createFailCount,
+        });
+      }
       return;
     }
 
@@ -986,21 +1252,105 @@ export async function reconcileStalledPhases(): Promise<void> {
     for (const step of activeSteps) {
       if (step.clientUserId == null) continue;
 
-      // Check for any in_progress cards in this step (means auto-fire is already running)
-      const [inProgressCard] = await db
-        .select({ id: kanbanTasksTable.id })
+      // Check for in_progress cards in this step.
+      // Cards that are in_progress but have completionStatus="script_failed" and no runningJobRef
+      // are legacy stuck cards from before the retry-budget fix — they never advanced and are now
+      // blocking the step. Detect and revert them to backlog so reconciliation can continue.
+      const inProgressCards = await db
+        .select({
+          id:               kanbanTasksTable.id,
+          completionStatus: kanbanTasksTable.completionStatus,
+          taskMetadata:     kanbanTasksTable.taskMetadata,
+          updatedAt:        kanbanTasksTable.updatedAt,
+        })
         .from(kanbanTasksTable)
         .where(
           and(
             eq(kanbanTasksTable.workflowStepId, step.stepId),
             eq(kanbanTasksTable.column, "in_progress"),
           ),
-        )
-        .limit(1);
+        );
 
-      if (inProgressCard) continue; // already running — skip
+      if (inProgressCards.length > 0) {
+        const now = Date.now();
+        // A runbook job can run for at most JOB_TIMEOUT_MS (10 min). Give a 5-minute
+        // buffer on top for polling overhead, then treat as stale.
+        const STALE_JOB_THRESHOLD_MS = JOB_TIMEOUT_MS + 5 * 60_000;
 
-      // Check for backlog cards that have a linkedRunbook (auto-fireable)
+        // Classify cards into four buckets — only auto-fire-owned cards are touched:
+        //
+        //   stuckCards     — legacy script_failed cards with no runningJobRef (pre-fix);
+        //                    these are always safe to revert
+        //   staleAutoFire  — have a runningJobRef (auto-fire owns them) but updatedAt is
+        //                    older than the stale threshold; Azure outage likely prevented
+        //                    the poller from clearing them
+        //   trulyActive    — have a runningJobRef AND are still within the polling window
+        //   otherInProgress — no runningJobRef AND NOT script_failed (manual tasks, human
+        //                    review cards, etc.); these are NEVER touched by auto-fire
+        const stuckCards = inProgressCards.filter(c => {
+          const meta = (c.taskMetadata ?? {}) as Record<string, unknown>;
+          return !meta.runningJobRef && c.completionStatus === "script_failed";
+        });
+        const cardsWithRef = inProgressCards.filter(c => {
+          const meta = (c.taskMetadata ?? {}) as Record<string, unknown>;
+          return !!meta.runningJobRef;
+        });
+        const staleAutoFire = cardsWithRef.filter(c => {
+          const updatedMs = c.updatedAt instanceof Date ? c.updatedAt.getTime() : (c.updatedAt ? new Date(c.updatedAt as string).getTime() : 0);
+          return now - updatedMs > STALE_JOB_THRESHOLD_MS;
+        });
+        const trulyActive = cardsWithRef.filter(c => !staleAutoFire.some(s => s.id === c.id));
+
+        if (trulyActive.length > 0) {
+          // A genuinely-running auto-fire job is still within its polling window — skip.
+          continue;
+        }
+
+        // Revert stuck-legacy and stale auto-fire cards to backlog with the retry budget.
+        // Cards with no runningJobRef that are NOT script_failed are left untouched.
+        const toRevert = [...stuckCards, ...staleAutoFire];
+        if (toRevert.length > 0) {
+          const toRevertIds = toRevert.map(c => c.id);
+          logger.warn(
+            {
+              stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId,
+              stuckIds: stuckCards.map(c => c.id), staleIds: staleAutoFire.map(c => c.id),
+            },
+            "kanban-auto-fire: reconcileStalledPhases — reverting stuck/stale in_progress cards to backlog",
+          );
+          for (const card of toRevert) {
+            const meta = ((card.taskMetadata ?? {}) as Record<string, unknown>);
+            const currentCount = typeof meta.autoFireFailureCount === "number" ? meta.autoFireFailureCount : 0;
+            const { newCount, exhausted, completionStatus: revertStatus } = computeNextFailureState(currentCount);
+            const isStale = staleAutoFire.some(s => s.id === card.id);
+            await db.update(kanbanTasksTable)
+              .set({
+                column:           "backlog",
+                completionStatus: revertStatus,
+                taskMetadata: {
+                  ...meta,
+                  runningJobRef:        null,
+                  autoFireFailureCount: newCount,
+                  lastFailureReason:    isStale
+                    ? "Stale runningJobRef detected by reconcileStalledPhases (Azure outage suspected)"
+                    : "Stuck in_progress detected by reconcileStalledPhases",
+                  lastFailedAt:         new Date().toISOString(),
+                  ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+                },
+                updatedAt: new Date(),
+              })
+              .where(eq(kanbanTasksTable.id, card.id));
+          }
+          const revertedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, toRevertIds));
+          if (step.projectId != null) {
+            for (const t of revertedRows) broadcastKanbanChange(step.projectId, { action: "updated", task: t });
+          }
+        }
+      }
+
+      // Check for backlog cards that have a linkedRunbook (auto-fireable).
+      // Exhausted cards (auto_fire_exhausted) require manual intervention
+      // and must NOT be auto-fired — exclude them here.
       const [backlogCard] = await db
         .select({ id: kanbanTasksTable.id })
         .from(kanbanTasksTable)
@@ -1009,6 +1359,7 @@ export async function reconcileStalledPhases(): Promise<void> {
             eq(kanbanTasksTable.workflowStepId, step.stepId),
             eq(kanbanTasksTable.column, "backlog"),
             isNotNull(sql`task_metadata->'linkedRunbook'->>'azureRunbookName'`),
+            sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
           ),
         )
         .limit(1);
@@ -1016,7 +1367,7 @@ export async function reconcileStalledPhases(): Promise<void> {
       if (backlogCard) {
         logger.info(
           { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
-          "kanban-auto-fire: detected stalled phase — no in_progress cards but backlog script cards exist",
+          "kanban-auto-fire: detected stalled phase — no active in_progress cards but backlog script cards exist",
         );
         stalledClientIds.add(step.clientUserId);
       }

@@ -44,9 +44,17 @@ function resetCounters() {
 // ── Stub kanban-auto-fire BEFORE importing system-action-handlers ─────────────
 // NOTE: specifier must match the exact string in system-action-handlers.ts:
 //   import { ... } from "./kanban-auto-fire.ts";
+//
+// scriptShouldThrow is used by the azure-outage resilience tests (further below).
+// The flag must be declared before the mock so the closure captures it.
+let scriptShouldThrow = false;
+
 mock.module("./kanban-auto-fire.ts", {
   namedExports: {
     autoFireFirstBacklogScript: async (clientUserId: number) => {
+      if (scriptShouldThrow) {
+        throw new Error("Azure Automation unreachable (simulated outage)");
+      }
       scriptCallCount++;
       lastScriptClientId = clientUserId;
     },
@@ -264,5 +272,98 @@ describe("handleSystemAction auto_fire_kanban — clientUserId=0 (falsy, treated
 
   it("does NOT call autoFireDocumentCard", () => {
     assert.equal(documentCallCount, 0);
+  });
+});
+
+// =============================================================================
+// Azure-outage resilience — when autoFireFirstBacklogScript throws (simulating
+// an Azure API being unreachable), the handler must NOT crash or throw.
+// The promise is fire-and-forget with .catch(), so the handler returns
+// { fired: true } immediately regardless of what happens inside the function.
+//
+// The scriptShouldThrow flag is declared at the top of this file (above the
+// mock.module() registration) and captured by the stub closure. Setting it to
+// true before calling the handler causes the stub to throw, simulating an
+// Azure outage without needing to re-register the module mock.
+// =============================================================================
+
+describe("handleSystemAction auto_fire_kanban — Azure outage (script function throws)", () => {
+  let result: Record<string, unknown>;
+  let caughtError: unknown = null;
+
+  before(async () => {
+    resetCounters();
+    scriptShouldThrow = true;
+    try {
+      result = await handleSystemAction("auto_fire_kanban", {
+        clientUserId: 55,
+        action: "script",
+      });
+    } catch (err) {
+      caughtError = err;
+    } finally {
+      scriptShouldThrow = false;
+    }
+    await flushMicrotasks();
+  });
+
+  it("does NOT throw — Azure outage is caught by fire-and-forget .catch()", () => {
+    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+  });
+
+  it("still returns fired=true (handler is fire-and-forget — result is immediate)", () => {
+    assert.ok(result, "result should be defined");
+    assert.equal(result.fired, true);
+    assert.equal(result.clientUserId, 55);
+  });
+
+  it("does NOT surface the Azure error to the caller", () => {
+    assert.ok(!("error" in result), `result should not contain 'error' key`);
+    assert.ok(!("skipped" in result), `result should not be skipped`);
+  });
+});
+
+// =============================================================================
+// Azure-outage resilience — action='both': even when the script function
+// throws (Azure down), the document function should still be attempted.
+// Each promise is attached its own .catch() independently.
+// =============================================================================
+
+describe("handleSystemAction auto_fire_kanban — Azure outage with action='both'", () => {
+  let result: Record<string, unknown>;
+  let caughtError: unknown = null;
+
+  before(async () => {
+    resetCounters();
+    scriptShouldThrow = true;
+    try {
+      result = await handleSystemAction("auto_fire_kanban", {
+        clientUserId: 77,
+        action: "both",
+      });
+    } catch (err) {
+      caughtError = err;
+    } finally {
+      scriptShouldThrow = false;
+    }
+    await flushMicrotasks();
+  });
+
+  it("does NOT throw even when the script function fails", () => {
+    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+  });
+
+  it("returns fired=true — handler is non-blocking", () => {
+    assert.ok(result, "result should be defined");
+    assert.equal(result.fired, true);
+  });
+
+  it("document function is still attempted independently (called once)", () => {
+    // The document stub did not throw, so it should have been called exactly once.
+    assert.equal(documentCallCount, 1, `expected 1 document call, got ${documentCallCount}`);
+  });
+
+  it("passes the correct clientUserId to the document function", () => {
+    assert.equal(lastDocumentClientId, 77);
   });
 });
