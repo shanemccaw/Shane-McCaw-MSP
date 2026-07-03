@@ -9625,6 +9625,33 @@ function computeSowVersion(phases: SowPhaseObj[]): string {
   return phases.map(p => `${p.id}:${p.price}`).join("|");
 }
 
+/**
+ * Terminal-state invariant guard for quickWinPresentations writes.
+ *
+ * A "signed" presentation is the terminal state of the client acceptance flow.
+ * No subsequent write — whether from an admin route, a client-facing PATCH, or
+ * a replayed Stripe event — may alter it.  Call this function immediately after
+ * fetching a presentation row and before any db.update().
+ *
+ * Returns `true` if the write is blocked (caller must return a 409 response).
+ * Returns `false` if the write is permitted.
+ *
+ * The warning log provides an audit trail so blocked attempts are visible in
+ * server logs without throwing an unhandled error.
+ */
+function guardAgainstSignedPresentation(
+  pres: { id: number; status: string },
+  context: string,
+  log: { warn: (obj: object, msg: string) => void },
+): boolean {
+  if (pres.status !== "signed") return false;
+  log.warn(
+    { presentationId: pres.id, context },
+    `${context}: presentation is already signed — write blocked to protect terminal state`,
+  );
+  return true;
+}
+
 async function deriveEffectiveSowData(
   pres: {
     documentsIncluded: unknown;
@@ -9873,6 +9900,11 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
+    if (guardAgainstSignedPresentation(pres, "PATCH /presentations/:id/selections", logger)) {
+      res.status(409).json({ error: "Presentation is already signed and cannot be modified" });
+      return;
+    }
+
     // Validate incoming IDs against the live SOW phase list and compute total
     // from live prices so a stale snapshot never produces a wrong total.
     const { effectiveSowPhases, effectiveSelectedPhaseIds, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
@@ -9992,6 +10024,11 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    if (guardAgainstSignedPresentation(pres, "POST /presentations/:id/checkout", logger)) {
+      res.status(409).json({ error: "Presentation is already signed — no new checkout session can be created" });
+      return;
+    }
 
     // Use live SOW pricing so the Stripe charge always matches what the client
     // saw on page 3, even if the SOW was regenerated after presentation creation.
