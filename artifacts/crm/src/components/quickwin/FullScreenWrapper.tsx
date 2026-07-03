@@ -119,10 +119,10 @@ export default function FullScreenWrapper() {
     credCheckRef.current = true;
     fetchWithAuth("/api/portal/app-registration")
       .then(r => {
-        if (r.status === 404) { setCredentialsMissing(true); return; }
         if (!r.ok) return;
-        return r.json().then((d: { status?: string }) => {
-          if (!d.status || d.status === "pending") setCredentialsMissing(true);
+        return r.json().then((d: { status?: string } | null) => {
+          // null → no record exists; "pending" → submitted but not verified
+          if (!d || d.status === "pending") setCredentialsMissing(true);
         });
       })
       .catch(() => { /* non-fatal — leave spinner visible */ });
