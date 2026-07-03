@@ -9853,16 +9853,20 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
     // project/customer so documents added after presentation creation appear automatically.
     const snapshotDocIds = new Set((pres.documentsIncluded ?? []) as number[]);
 
-    const liveConditions = [
-      ...(pres.projectId    ? [eq(insightsGeneratedDocumentsTable.projectId,  pres.projectId)]    : []),
-      ...(pres.clientUserId ? [eq(insightsGeneratedDocumentsTable.customerId,  pres.clientUserId)] : []),
-    ];
-    const liveDocs = liveConditions.length > 0
+    // Scope: prefer project-level match when projectId is known (avoids leaking
+    // documents from unrelated projects of the same customer). Fall back to
+    // customer-level match only when the presentation has no projectId.
+    const liveCondition = pres.projectId
+      ? eq(insightsGeneratedDocumentsTable.projectId,  pres.projectId)
+      : pres.clientUserId
+        ? eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId)
+        : null;
+    const liveDocs = liveCondition
       ? await db.select({ id: insightsGeneratedDocumentsTable.id })
           .from(insightsGeneratedDocumentsTable)
           .where(and(
             eq(insightsGeneratedDocumentsTable.status, "delivered"),
-            or(...liveConditions),
+            liveCondition,
           ))
       : [];
 
