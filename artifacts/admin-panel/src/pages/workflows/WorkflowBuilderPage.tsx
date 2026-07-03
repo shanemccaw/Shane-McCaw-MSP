@@ -2022,12 +2022,16 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const rfInstanceRef = useRef<ReactFlowInstance<Node, Edge> | null>(null);
   const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
   const redoRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; nodeId?: string } | null>(null);
 
   // Snapshot current canvas state (max 10 entries); clears redo stack on any new mutation
   function pushHistory() {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     redoRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
   }
 
   const { data: prodDbStatus } = useQuery<{ connected: boolean }>({
@@ -2184,6 +2188,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const onConnect = useCallback((connection: Connection) => {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     redoRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
     setEdges(eds => addEdge({ ...connection, style: { stroke: "#30363D", strokeWidth: 2 } }, eds));
     setIsDirty(true);
   }, [setEdges, nodes, edges]);
@@ -2196,6 +2202,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
       redoRef.current = [];
+      setCanUndo(true);
+      setCanRedo(false);
       setIsDirty(true);
     }
     onNodesChange(changes);
@@ -2207,6 +2215,8 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     if (needsSnapshot) {
       historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
       redoRef.current = [];
+      setCanUndo(true);
+      setCanRedo(false);
       setIsDirty(true);
     }
     onEdgesChange(changes);
@@ -2259,6 +2269,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
   function updateNodeData(id: string, data: Record<string, unknown>) {
     redoRef.current = [];
+    setCanRedo(false);
     setNodes(nds => nds.map(n => n.id === id ? { ...n, data } : n));
     setIsDirty(true);
   }
@@ -2314,6 +2325,29 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     hydrateAiResult(result, `Workflow refined — ${result.nodes.length} node${result.nodes.length !== 1 ? "s" : ""}. Ctrl+Z to undo.`);
   }
 
+  // Named undo / redo handlers — shared by keyboard shortcuts and toolbar buttons
+  const handleUndo = useCallback(() => {
+    const prev = historyRef.current.pop();
+    if (!prev) return;
+    redoRef.current = [...redoRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+    setIsDirty(true);
+    setCanUndo(historyRef.current.length > 0);
+    setCanRedo(true);
+  }, [nodes, edges, setNodes, setEdges]);
+
+  const handleRedo = useCallback(() => {
+    const next = redoRef.current.pop();
+    if (!next) return;
+    historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setIsDirty(true);
+    setCanUndo(true);
+    setCanRedo(redoRef.current.length > 0);
+  }, [nodes, edges, setNodes, setEdges]);
+
   // Ctrl+Z / Cmd+Z undo  |  Ctrl+Shift+Z / Cmd+Shift+Z redo
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -2322,26 +2356,14 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
       e.preventDefault();
       if (e.shiftKey) {
-        // Redo
-        const next = redoRef.current.pop();
-        if (!next) return;
-        historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
-        setNodes(next.nodes);
-        setEdges(next.edges);
-        setIsDirty(true);
+        handleRedo();
       } else {
-        // Undo
-        const prev = historyRef.current.pop();
-        if (!prev) return;
-        redoRef.current = [...redoRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
-        setNodes(prev.nodes);
-        setEdges(prev.edges);
-        setIsDirty(true);
+        handleUndo();
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [nodes, edges, setNodes, setEdges]);
+  }, [handleUndo, handleRedo]);
 
   // Warn on tab close / reload when there are unsaved changes
   useEffect(() => {
@@ -2404,6 +2426,30 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Undo / Redo */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (Ctrl+Z)"
+              className="p-1.5 rounded-lg border border-[#30363D] transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] disabled:hover:text-[#7D8590] disabled:hover:border-[#30363D]"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (Ctrl+Shift+Z)"
+              className="p-1.5 rounded-lg border border-[#30363D] transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] disabled:hover:text-[#7D8590] disabled:hover:border-[#30363D]"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6M21 10l-6-6" />
+              </svg>
+            </button>
+          </div>
+
           <button
             onClick={() => setShowVersionHistory(v => !v)}
             className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
