@@ -33,6 +33,7 @@ import {
   marketingTasksTable,
   kanbanTasksTable,
   articlesTable,
+  notificationsTable,
   campaignsTable,
   landingPagesTable,
   type WfGraph,
@@ -40,6 +41,7 @@ import {
 } from "@workspace/db";
 
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
+import { sendWebPushToAdmins } from "./web-push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { eq, and, count } from "drizzle-orm";
 import path from "path";
@@ -980,6 +982,39 @@ Return ONLY a JSON object with these exact keys (no prose outside the JSON):
 
           await fs.mkdir(ARTICLES_DIR, { recursive: true });
           await fs.writeFile(path.join(ARTICLES_DIR, `${newArticle.slug}.md`), mdContent, "utf8");
+        }
+
+        if (draftOnly) {
+          const notifTitle = "New article draft ready for review";
+          const notifBody  = `"${newArticle.title}" was generated and saved as a draft.`;
+          const notifLink  = "/admin-panel/content/articles?tab=drafts";
+
+          try {
+            const admins = await db
+              .select({ id: usersTable.id })
+              .from(usersTable)
+              .where(eq(usersTable.role, "admin"));
+
+            if (admins.length > 0) {
+              await db.insert(notificationsTable).values(
+                admins.map(a => ({
+                  userId:   a.id,
+                  title:    notifTitle,
+                  body:     notifBody,
+                  type:     "general" as const,
+                  linkPath: notifLink,
+                })),
+              );
+            }
+          } catch (notifErr) {
+            logger.warn({ notifErr, slug: newArticle.slug }, "publish_article: failed to insert draft notifications (non-fatal)");
+          }
+
+          void sendWebPushToAdmins({
+            title:    notifTitle,
+            body:     notifBody,
+            linkPath: notifLink,
+          });
         }
 
         output = {
