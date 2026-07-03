@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -34,7 +34,7 @@ interface InsightsDoc {
   id: number; customerId: number | null; projectId: number | null;
   category: "report" | "consulting"; docType: string; title: string;
   pdfUrl: string | null;
-  status: "draft" | "approved" | "delivered" | "archived" | "generating";
+  status: "draft" | "approved" | "delivered" | "archived" | "generating" | "failed";
   approvedAt: string | null; deliveredAt: string | null; createdAt: string;
 }
 
@@ -95,6 +95,7 @@ const STATUS_COLORS: Record<string, string> = {
   delivered:  "bg-blue-500/20 text-blue-300 border-blue-500/30",
   archived:   "bg-gray-500/20 text-gray-400 border-gray-500/30",
   generating: "bg-indigo-500/20 text-indigo-300 border-indigo-500/30",
+  failed:     "bg-red-500/20 text-red-300 border-red-500/30",
 };
 
 // ── Shared UI helpers ──────────────────────────────────────────────────────────
@@ -136,6 +137,14 @@ function StatusPill({ status }: { status: string }) {
       <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-indigo-500/20 text-indigo-300 border-indigo-500/30">
         <Loader2 className="w-2.5 h-2.5 animate-spin" />
         Generating…
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded-full border bg-red-500/20 text-red-300 border-red-500/30">
+        <AlertTriangle className="w-2.5 h-2.5" />
+        Failed
       </span>
     );
   }
@@ -402,6 +411,19 @@ function DocumentsTab({
     return () => clearTimeout(t);
   }, [docs, loadDocs]);
 
+  // Auto-dismiss failed rows after 60 seconds
+  const scheduledReportDismissals = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    docs.filter(d => d.status === "failed").forEach(doc => {
+      if (scheduledReportDismissals.current.has(doc.id)) return;
+      scheduledReportDismissals.current.add(doc.id);
+      setTimeout(() => {
+        scheduledReportDismissals.current.delete(doc.id);
+        void fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" }).then(() => void loadDocs());
+      }, 60_000);
+    });
+  }, [docs, fetchWithAuth, loadDocs]);
+
   const openWizard = (type: string) => {
     const t = REPORT_TYPES.find(r => r.key === type);
     setWizardType(type);
@@ -454,6 +476,21 @@ function DocumentsTab({
 
   const deleteDoc = async (id: number) => {
     if (!confirm("Delete this document?")) return;
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
+  const retryDoc = async (doc: InsightsDoc) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" });
+    void fetchWithAuth(`${API}/admin/insights/documents/generate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: doc.customerId, projectId: doc.projectId, docType: doc.docType, title: doc.title }),
+    });
+    void loadDocs();
+  };
+
+  const dismissDoc = async (id: number) => {
     await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
     void loadDocs();
     if (selectedDoc?.id === id) setSelectedDoc(null);
@@ -529,13 +566,21 @@ function DocumentsTab({
             <div className="divide-y divide-gray-700/30">
               {docs.map(doc => (
                 <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
-                  <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : "text-gray-500"}`} />
+                  <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
                     <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
                   </div>
                   <StatusPill status={doc.status} />
-                  {doc.status !== "generating" && (
+                  {doc.status === "failed" && (
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => void retryDoc(doc)} title="Retry generation" className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/30 transition-colors">
+                        <RefreshCw className="w-2.5 h-2.5" /> Retry
+                      </button>
+                      <button onClick={() => void dismissDoc(doc.id)} title="Dismiss" className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                  {doc.status !== "generating" && doc.status !== "failed" && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => void openPreview(doc)} title="Preview" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Eye className="w-3.5 h-3.5" /></button>
                       <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
@@ -750,6 +795,19 @@ function ConsultingTab({
     return () => clearTimeout(t);
   }, [docs, loadDocs]);
 
+  // Auto-dismiss failed rows after 60 seconds
+  const scheduledConsultingDismissals = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    docs.filter(d => d.status === "failed").forEach(doc => {
+      if (scheduledConsultingDismissals.current.has(doc.id)) return;
+      scheduledConsultingDismissals.current.add(doc.id);
+      setTimeout(() => {
+        scheduledConsultingDismissals.current.delete(doc.id);
+        void fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" }).then(() => void loadDocs());
+      }, 60_000);
+    });
+  }, [docs, fetchWithAuth, loadDocs]);
+
   const openWizard = (type: string) => {
     const t = CONSULTING_TYPES.find(c => c.key === type);
     setWizardType(type);
@@ -815,6 +873,21 @@ function ConsultingTab({
     if (selectedDoc?.id === id) setSelectedDoc(null);
   };
 
+  const retryDoc = async (doc: InsightsDoc) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}`, { method: "DELETE" });
+    void fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId: doc.customerId, projectId: doc.projectId, deliverableType: doc.docType, title: doc.title }),
+    });
+    void loadDocs();
+  };
+
+  const dismissDoc = async (id: number) => {
+    await fetchWithAuth(`${API}/admin/insights/documents/${id}`, { method: "DELETE" });
+    void loadDocs();
+    if (selectedDoc?.id === id) setSelectedDoc(null);
+  };
+
   const downloadPdf = (doc: InsightsDoc) => window.open(`${API}/admin/insights/documents/${doc.id}/download`, "_blank");
 
   return (
@@ -856,15 +929,23 @@ function ConsultingTab({
             <div className="divide-y divide-gray-700/30">
               {docs.map(doc => (
                 <div key={doc.id}
-                  onClick={() => doc.status !== "generating" && void openPreview(doc)}
-                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group ${doc.status !== "generating" ? "cursor-pointer" : ""} ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
-                  <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : "text-gray-500"}`} />
+                  onClick={() => doc.status !== "generating" && doc.status !== "failed" && void openPreview(doc)}
+                  className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group ${doc.status !== "generating" && doc.status !== "failed" ? "cursor-pointer" : ""} ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
+                  <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm truncate">{doc.title}</div>
                     <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
                   </div>
                   <StatusPill status={doc.status} />
-                  {doc.status !== "generating" && (
+                  {doc.status === "failed" && (
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => void retryDoc(doc)} title="Retry generation" className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded bg-red-500/10 text-red-300 hover:bg-red-500/20 border border-red-500/30 transition-colors">
+                        <RefreshCw className="w-2.5 h-2.5" /> Retry
+                      </button>
+                      <button onClick={() => void dismissDoc(doc.id)} title="Dismiss" className="p-1 rounded text-gray-500 hover:text-gray-300 hover:bg-gray-700"><X className="w-3 h-3" /></button>
+                    </div>
+                  )}
+                  {doc.status !== "generating" && doc.status !== "failed" && (
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                       <button onClick={() => downloadPdf(doc)} title="Download PDF" className="p-1 rounded text-gray-400 hover:text-white hover:bg-gray-700"><Download className="w-3.5 h-3.5" /></button>
                       {(doc.status === "approved" || doc.status === "draft") && (

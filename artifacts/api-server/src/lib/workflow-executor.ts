@@ -1049,8 +1049,9 @@ async function executeNode(
               const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
               htmlContent = igExtractHtml(rawText);
             } catch (aiErr) {
-              // Delete only the generating placeholder; prior approved doc (if any) is preserved
-              await db.delete(insightsGeneratedDocumentsTable)
+              // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
+              await db.update(insightsGeneratedDocumentsTable)
+                .set({ status: "failed", updatedAt: new Date() })
                 .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
               throw aiErr;
             }

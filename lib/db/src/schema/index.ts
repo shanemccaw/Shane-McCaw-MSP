@@ -1467,7 +1467,7 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   title: text("title").notNull(),
   htmlContent: text("html_content").notNull().default(""),
   pdfUrl: text("pdf_url"),
-  status: text("status", { enum: ["draft", "approved", "delivered", "archived", "generating"] }).notNull().default("draft"),
+  status: text("status", { enum: ["draft", "approved", "delivered", "archived", "generating", "failed"] }).notNull().default("draft"),
   approvedAt: timestamp("approved_at"),
   deliveredAt: timestamp("delivered_at"),
   // Parsed pricing extracted from SOW/Consolidated SOW — used to populate the
