@@ -299,7 +299,7 @@ function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenant
           className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors disabled:opacity-60"
         >
           {saving && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-          Submit &amp; Finish
+          Begin Assessment
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
         </button>
       </div>
@@ -800,7 +800,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
               <p className="text-xs font-semibold text-[#00B4D8] uppercase tracking-wider mb-1.5 [@media(max-height:700px)]:mb-1">Update credentials</p>
               <h2 className="text-lg font-bold text-white leading-tight [@media(max-height:700px)]:text-base">Re-run Automation Setup</h2>
               <p className="text-xs text-white/40 mt-2 leading-relaxed [@media(max-height:700px)]:mt-1 [@media(max-height:700px)]:text-[10px] [@media(max-height:700px)]:leading-snug">
-                Update your Azure App Registration credentials. Changes save when you click "Submit &amp; Finish".
+                Update your Azure App Registration credentials. Changes save when you click "Begin Assessment".
               </p>
             </>
           ) : (
