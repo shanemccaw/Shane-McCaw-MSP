@@ -1711,32 +1711,48 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 const assetUrn = regJson.value?.asset;
 
                 if (uploadUrl && assetUrn) {
-                  // Step 2: Download source image
-                  const imgResp = await fetch(imageUrl);
-                  if (imgResp.ok) {
-                    const imgBuf = await imgResp.arrayBuffer();
-                    const contentType = imgResp.headers.get("content-type") ?? "image/jpeg";
+                  // Guard: LinkedIn image upload has a 10 MB limit.
+                  // Check Content-Length via HEAD first so we never download an oversized file.
+                  const LINKEDIN_MAX_BYTES = 10 * 1024 * 1024;
+                  const liHeadResp = await fetch(imageUrl, { method: "HEAD" });
+                  const liClHeader = liHeadResp.headers.get("content-length");
+                  const liDeclaredBytes = liClHeader ? parseInt(liClHeader, 10) : NaN;
 
-                    // Step 3: Upload binary to LinkedIn
-                    const putResp = await fetch(uploadUrl, {
-                      method: "PUT",
-                      headers: {
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Content-Type": contentType,
-                      },
-                      body: imgBuf,
-                    });
-
-                    if (putResp.ok || putResp.status === 201) {
-                      shareMediaCategory = "IMAGE";
-                      mediaItems = [
-                        { status: "READY", description: { text: "" }, media: assetUrn, title: { text: "" } },
-                      ];
-                    } else {
-                      imageUploadWarning = `Image not attached — LinkedIn rejected the image upload (HTTP ${putResp.status})`;
-                    }
+                  if (!isNaN(liDeclaredBytes) && liDeclaredBytes > LINKEDIN_MAX_BYTES) {
+                    imageUploadWarning = `Image not attached — image is ${(liDeclaredBytes / 1024 / 1024).toFixed(1)} MB which exceeds LinkedIn's 10 MB upload limit`;
                   } else {
-                    imageUploadWarning = "Image not attached — could not download image from source URL";
+                    // Step 2: Download source image
+                    const imgResp = await fetch(imageUrl);
+                    if (!imgResp.ok) {
+                      imageUploadWarning = "Image not attached — could not download image from source URL";
+                    } else {
+                      const imgBuf = await imgResp.arrayBuffer();
+                      // Secondary size guard in case Content-Length was absent or incorrect
+                      if (imgBuf.byteLength > LINKEDIN_MAX_BYTES) {
+                        imageUploadWarning = `Image not attached — image is ${(imgBuf.byteLength / 1024 / 1024).toFixed(1)} MB which exceeds LinkedIn's 10 MB upload limit`;
+                      } else {
+                        const contentType = imgResp.headers.get("content-type") ?? "image/jpeg";
+
+                        // Step 3: Upload binary to LinkedIn
+                        const putResp = await fetch(uploadUrl, {
+                          method: "PUT",
+                          headers: {
+                            "Authorization": `Bearer ${accessToken}`,
+                            "Content-Type": contentType,
+                          },
+                          body: imgBuf,
+                        });
+
+                        if (putResp.ok || putResp.status === 201) {
+                          shareMediaCategory = "IMAGE";
+                          mediaItems = [
+                            { status: "READY", description: { text: "" }, media: assetUrn, title: { text: "" } },
+                          ];
+                        } else {
+                          imageUploadWarning = `Image not attached — LinkedIn rejected the image upload (HTTP ${putResp.status})`;
+                        }
+                      }
+                    }
                   }
                 } else {
                   imageUploadWarning = "Image not attached — LinkedIn did not return an upload URL or asset URN";
@@ -1806,45 +1822,61 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
           if (imageUrl) {
             try {
-              // Download the source image
-              const imgResp = await fetch(imageUrl);
-              if (imgResp.ok) {
-                const imgBuf = Buffer.from(await imgResp.arrayBuffer());
-                const mediaData = imgBuf.toString("base64");
+              // Guard: Twitter simple upload (media_data) has a 5 MB limit.
+              // Check Content-Length via HEAD first so we never download an oversized file.
+              const TWITTER_MAX_BYTES = 5 * 1024 * 1024;
+              const headResp = await fetch(imageUrl, { method: "HEAD" });
+              const clHeader = headResp.headers.get("content-length");
+              const declaredBytes = clHeader ? parseInt(clHeader, 10) : NaN;
 
-                // Twitter v1.1 media/upload uses URL-encoded form; include media_data in
-                // the OAuth signature base string per the spec.
-                const uploadUrl = "https://upload.twitter.com/1.1/media/upload.json";
-                const uploadAuthHeader = await buildOAuth1Header(
-                  "POST",
-                  uploadUrl,
-                  apiKey,
-                  apiSecret,
-                  accessToken,
-                  accessSecret,
-                  { media_data: mediaData },
-                );
-
-                const uploadResp = await fetch(uploadUrl, {
-                  method: "POST",
-                  headers: {
-                    "Authorization": uploadAuthHeader,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                  },
-                  body: new URLSearchParams({ media_data: mediaData }).toString(),
-                });
-
-                if (uploadResp.ok) {
-                  const uploadJson = (await uploadResp.json()) as { media_id_string?: string };
-                  mediaId = uploadJson.media_id_string;
-                  if (!mediaId) {
-                    imageUploadWarning = "Image not attached — Twitter media upload succeeded but returned no media ID";
-                  }
-                } else {
-                  imageUploadWarning = `Image not attached — Twitter media upload failed (HTTP ${uploadResp.status})`;
-                }
+              if (!isNaN(declaredBytes) && declaredBytes > TWITTER_MAX_BYTES) {
+                imageUploadWarning = `Image not attached — image is ${(declaredBytes / 1024 / 1024).toFixed(1)} MB which exceeds Twitter's 5 MB upload limit`;
               } else {
-                imageUploadWarning = "Image not attached — could not download image from source URL";
+                // Download the source image
+                const imgResp = await fetch(imageUrl);
+                if (!imgResp.ok) {
+                  imageUploadWarning = "Image not attached — could not download image from source URL";
+                } else {
+                  const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+                  // Secondary size guard in case Content-Length was absent or incorrect
+                  if (imgBuf.byteLength > TWITTER_MAX_BYTES) {
+                    imageUploadWarning = `Image not attached — image is ${(imgBuf.byteLength / 1024 / 1024).toFixed(1)} MB which exceeds Twitter's 5 MB upload limit`;
+                  } else {
+                    const mediaData = imgBuf.toString("base64");
+
+                    // Twitter v1.1 media/upload uses URL-encoded form; include media_data in
+                    // the OAuth signature base string per the spec.
+                    const uploadUrl = "https://upload.twitter.com/1.1/media/upload.json";
+                    const uploadAuthHeader = await buildOAuth1Header(
+                      "POST",
+                      uploadUrl,
+                      apiKey,
+                      apiSecret,
+                      accessToken,
+                      accessSecret,
+                      { media_data: mediaData },
+                    );
+
+                    const uploadResp = await fetch(uploadUrl, {
+                      method: "POST",
+                      headers: {
+                        "Authorization": uploadAuthHeader,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                      },
+                      body: new URLSearchParams({ media_data: mediaData }).toString(),
+                    });
+
+                    if (uploadResp.ok) {
+                      const uploadJson = (await uploadResp.json()) as { media_id_string?: string };
+                      mediaId = uploadJson.media_id_string;
+                      if (!mediaId) {
+                        imageUploadWarning = "Image not attached — Twitter media upload succeeded but returned no media ID";
+                      }
+                    } else {
+                      imageUploadWarning = `Image not attached — Twitter media upload failed (HTTP ${uploadResp.status})`;
+                    }
+                  }
+                }
               }
             } catch (imgErr) {
               // Image upload is best-effort — log and fall back to text-only tweet
@@ -1907,25 +1939,64 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           nodeError = true;
           output = { error: "post_facebook: postBody is empty — configure the post body field on this node" };
         } else if (imageUrl) {
-          // Photo post: use /{page-id}/photos with url + caption so the image
-          // is displayed inline rather than as a link card.
-          const resp = await fetch(
-            `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/photos`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ url: imageUrl, caption: postBody, access_token: pageAccessToken }),
-            },
-          );
-          if (!resp.ok) {
-            nodeError = true;
-            const errText = await resp.text().catch(() => "");
-            output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
+          // Guard: Facebook photo posts have a 10 MB limit.
+          // Check Content-Length via HEAD first so we catch oversized images early.
+          const FACEBOOK_MAX_BYTES = 10 * 1024 * 1024;
+          let fbImageUploadWarning: string | undefined;
+          let fbUseImage = true;
+          try {
+            const fbHeadResp = await fetch(imageUrl, { method: "HEAD" });
+            const fbClHeader = fbHeadResp.headers.get("content-length");
+            const fbDeclaredBytes = fbClHeader ? parseInt(fbClHeader, 10) : NaN;
+            if (!isNaN(fbDeclaredBytes) && fbDeclaredBytes > FACEBOOK_MAX_BYTES) {
+              fbImageUploadWarning = `Image not attached — image is ${(fbDeclaredBytes / 1024 / 1024).toFixed(1)} MB which exceeds Facebook's 10 MB upload limit`;
+              fbUseImage = false;
+            }
+          } catch {
+            // HEAD failed — proceed optimistically; Facebook will reject if too large
+          }
+
+          if (fbUseImage) {
+            // Photo post: use /{page-id}/photos with url + caption so the image
+            // is displayed inline rather than as a link card.
+            const resp = await fetch(
+              `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/photos`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ url: imageUrl, caption: postBody, access_token: pageAccessToken }),
+              },
+            );
+            if (!resp.ok) {
+              nodeError = true;
+              const errText = await resp.text().catch(() => "");
+              output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
+            } else {
+              const json = (await resp.json()) as { id?: string; post_id?: string };
+              const rawId = json?.post_id ?? json?.id ?? "unknown";
+              const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
+              output = { facebookPostId: rawId, facebookPostUrl };
+            }
           } else {
-            const json = (await resp.json()) as { id?: string; post_id?: string };
-            const rawId = json?.post_id ?? json?.id ?? "unknown";
-            const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
-            output = { facebookPostId: rawId, facebookPostUrl };
+            // Fall back to text-only post and surface the size warning
+            const resp = await fetch(
+              `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/feed`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: postBody, access_token: pageAccessToken }),
+              },
+            );
+            if (!resp.ok) {
+              nodeError = true;
+              const errText = await resp.text().catch(() => "");
+              output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
+            } else {
+              const json = (await resp.json()) as { id?: string };
+              const rawId = json?.id ?? "unknown";
+              const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
+              output = { facebookPostId: rawId, facebookPostUrl, imageUploadWarning: fbImageUploadWarning };
+            }
           }
         } else {
           // Text-only post
