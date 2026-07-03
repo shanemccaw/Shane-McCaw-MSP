@@ -132,6 +132,13 @@ interface EngagementStatus {
   hasActiveEngagement: boolean;
 }
 
+interface PresentationInfo {
+  id: number;
+  status: "draft" | "signed" | "paid";
+  totalPrice: string | null;
+  createdAt: string;
+}
+
 const POLL_INTERVAL_MS = 30_000;
 
 export default function QuickWinOnboardingResults() {
@@ -146,6 +153,7 @@ export default function QuickWinOnboardingResults() {
 
   const [scorecard, setScorecard] = useState<ScorecardHistory | null>(null);
   const [loading, setLoading] = useState(true);
+  const [presentation, setPresentation] = useState<PresentationInfo | null | undefined>(undefined);
   const [shareLoading, setShareLoading] = useState(false);
   const [activeShare, setActiveShare] = useState<ActiveShare | null | undefined>(undefined);
   const [shareCopied, setShareCopied] = useState(false);
@@ -177,9 +185,14 @@ export default function QuickWinOnboardingResults() {
         .then(r => r.ok ? (r.json() as Promise<{ share: ActiveShare | null }>) : Promise.resolve({ share: null }))
         .then(d => d.share)
         .catch(() => null),
-    ]).then(([sc, share]) => {
+      fetchWithAuth("/api/portal/presentations/latest")
+        .then(r => r.ok ? (r.json() as Promise<{ presentation: PresentationInfo | null }>) : Promise.resolve({ presentation: null }))
+        .then(d => d.presentation)
+        .catch(() => null),
+    ]).then(([sc, share, pres]) => {
       setScorecard(sc);
       setActiveShare(share);
+      setPresentation(pres);
     }).finally(() => setLoading(false));
   }, [fetchWithAuth]);
 
@@ -300,6 +313,122 @@ export default function QuickWinOnboardingResults() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 space-y-8">
+
+          {/* ═══════════════════════════════════════════════════════════════
+              PRESENTATION HERO — the #1 CTA on this page
+          ════════════════════════════════════════════════════════════════ */}
+          {presentation ? (
+            <div
+              className="relative overflow-hidden rounded-3xl p-8 sm:p-12 text-center"
+              style={{
+                background: "linear-gradient(135deg, #0A2540 0%, #0f3460 40%, #0078D4 100%)",
+                boxShadow: "0 0 0 1px rgba(0,180,216,0.25), 0 30px 80px -20px rgba(0,120,212,0.45)",
+              }}
+            >
+              {/* Glow orb behind CTA button */}
+              <div
+                className="absolute left-1/2 -translate-x-1/2 bottom-0 pointer-events-none"
+                style={{
+                  width: 480,
+                  height: 200,
+                  background: "radial-gradient(ellipse, rgba(0,180,216,0.22) 0%, transparent 70%)",
+                  filter: "blur(10px)",
+                }}
+              />
+
+              {/* Badge */}
+              <div className="inline-flex items-center gap-2 bg-[#00B4D8]/20 border border-[#00B4D8]/40 text-[#00B4D8] text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-6">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Your personalised report is ready
+              </div>
+
+              {/* Heading */}
+              <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight mb-4 tracking-tight">
+                See Your Full<br />
+                <span style={{ color: "#00B4D8" }}>M365 Report</span>
+              </h2>
+
+              <p className="text-base sm:text-lg text-white/70 mb-10 max-w-lg mx-auto leading-relaxed">
+                Shane has reviewed your diagnostic and built a personalised proposal — including your remediation roadmap, pricing, and everything your team needs to get started.
+              </p>
+
+              {/* Monster CTA button */}
+              <button
+                onClick={() => navigate(`/portal/presentation/${presentation.id}`)}
+                className="group relative inline-flex items-center justify-center gap-3 px-10 py-5 rounded-2xl font-black text-lg sm:text-xl transition-all duration-200 hover:scale-105 active:scale-100"
+                style={{
+                  background: "linear-gradient(135deg, #00B4D8 0%, #0078D4 100%)",
+                  boxShadow: "0 8px 32px rgba(0,120,212,0.5), 0 2px 8px rgba(0,0,0,0.4)",
+                  color: "#fff",
+                }}
+              >
+                <svg className="w-6 h-6 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                Open My Report
+                <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </button>
+
+              {presentation.status === "draft" && (
+                <p className="mt-5 text-sm text-white/40">
+                  Review your findings, select your engagement scope, and sign off — all in one place.
+                </p>
+              )}
+              {presentation.status === "signed" && (
+                <p className="mt-5 text-sm text-[#00B4D8]/80 font-semibold">
+                  ✓ You've signed — view your confirmed engagement details.
+                </p>
+              )}
+              {presentation.status === "paid" && (
+                <p className="mt-5 text-sm text-green-400 font-semibold">
+                  ✓ Payment confirmed — your project is underway.
+                </p>
+              )}
+            </div>
+          ) : presentation === null ? (
+            /* No presentation yet — show a "coming soon" placeholder that still
+               sells the idea and prompts them to book a call in the meantime. */
+            <div
+              className="relative overflow-hidden rounded-3xl p-8 sm:p-10 text-center"
+              style={{
+                background: "linear-gradient(135deg, #0A2540 0%, #0f3460 100%)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.08)",
+              }}
+            >
+              {/* Animated pulse ring */}
+              <div className="mx-auto mb-6 w-16 h-16 relative flex-shrink-0">
+                <div className="absolute inset-0 rounded-full bg-[#0078D4]/20 animate-ping" />
+                <div className="relative w-full h-full rounded-full bg-[#0078D4]/30 border border-[#0078D4]/50 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-[#00B4D8]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+              </div>
+
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-3 leading-tight">
+                Shane is building your personalised report
+              </h2>
+              <p className="text-sm text-white/60 mb-6 max-w-md mx-auto leading-relaxed">
+                Based on your diagnostic results, Shane is preparing a tailored proposal with your remediation roadmap and engagement pricing. You'll be notified when it's ready.
+              </p>
+              <a
+                href="/book"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-[#0078D4] hover:bg-[#0053a0] text-white font-bold px-7 py-3 rounded-xl transition-colors text-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Book a call in the meantime
+              </a>
+            </div>
+          ) : null /* still loading — spinner shown by outer loading gate */}
 
           {/* Hero score section */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-6 sm:p-8">

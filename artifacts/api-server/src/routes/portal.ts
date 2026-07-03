@@ -9569,6 +9569,29 @@ async function deriveEffectiveSowData(
   };
 }
 
+// GET /portal/presentations/latest — fetch the most recent presentation for the logged-in client
+router.get("/portal/presentations/latest", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const [row] = await db
+      .select({
+        id: quickWinPresentationsTable.id,
+        status: quickWinPresentationsTable.status,
+        totalPrice: quickWinPresentationsTable.totalPrice,
+        createdAt: quickWinPresentationsTable.createdAt,
+      })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.clientUserId, userId))
+      .orderBy(desc(quickWinPresentationsTable.createdAt))
+      .limit(1);
+
+    res.json({ presentation: row ?? null });
+  } catch (err) {
+    req.log.error(err, "portal: failed to fetch latest presentation");
+    res.status(500).json({ error: "Failed to fetch presentation" });
+  }
+});
+
 // GET /portal/presentations/:id — fetch presentation data
 router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
   try {
