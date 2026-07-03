@@ -18,6 +18,7 @@
     "seed-icon-names": "tsx ./src/seed-icon-names.ts",
     "migration-status": "tsx ./src/migration-status.ts",
     "migrate-runbook-ids": "tsx ./src/migrate-runbook-ids.ts",
+    "patch-consolidated-sow-prompt": "tsx ./src/patch-consolidated-sow-prompt.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:stripe": "pnpm --filter @workspace/api-server run test"
   },
