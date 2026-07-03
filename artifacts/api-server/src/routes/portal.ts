@@ -17,6 +17,7 @@ import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
+import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
@@ -6481,6 +6482,14 @@ router.delete("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res:
 
 // ─── ADMIN: Retry auto-fire for an exhausted/failed kanban card ───────────────
 router.post("/admin/kanban-tasks/:id/retry-auto-fire", requireAdmin, async (req: Request, res: Response) => {
+  if (!isAzureConfigured()) {
+    res.status(503).json({
+      error: "Azure Automation is not configured. Set AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_SUBSCRIPTION_ID, AZURE_AUTOMATION_RESOURCE_GROUP, and AZURE_AUTOMATION_ACCOUNT_NAME in Replit Secrets.",
+      configured: false,
+    });
+    return;
+  }
+
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 

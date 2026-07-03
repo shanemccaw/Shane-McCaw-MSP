@@ -818,6 +818,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   } | null>(null);
   const [aiSuggestError, setAiSuggestError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [azureConfigured, setAzureConfigured] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (!task) return;
@@ -826,6 +827,19 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     });
     return unsubscribe;
   }, [task?.id]);
+
+  useEffect(() => {
+    if (mode !== "admin" || !fetchWithAuth || azureConfigured !== null) return;
+    void (async () => {
+      try {
+        const res = await fetchWithAuth("/api/admin/runbooks");
+        const data = await res.json() as { configured?: boolean };
+        setAzureConfigured(res.status === 503 && data.configured === false ? false : true);
+      } catch {
+        setAzureConfigured(null);
+      }
+    })();
+  }, [mode, fetchWithAuth, azureConfigured]);
 
   useEffect(() => {
     if (task) {
@@ -1113,9 +1127,13 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               (localTask.completionStatus === "auto_fire_exhausted" || localTask.completionStatus === "auto_fire_failed") && (
               <button
                 onClick={() => void handleRetryAutoFire()}
-                disabled={retrying}
+                disabled={retrying || azureConfigured === false}
                 className="flex-shrink-0 flex items-center gap-1.5 text-xs font-semibold text-orange-400 hover:text-orange-300 border border-orange-500/30 hover:border-orange-400 rounded-lg px-2.5 py-1.5 transition-colors mt-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Reset retry counter and re-trigger auto-fire"
+                title={
+                  azureConfigured === false
+                    ? "Azure Automation is not configured — set the required secrets in Replit to enable auto-fire"
+                    : "Reset retry counter and re-trigger auto-fire"
+                }
               >
                 {retrying ? (
                   <div className="w-3.5 h-3.5 border border-orange-400/40 border-t-orange-400 rounded-full animate-spin" />
