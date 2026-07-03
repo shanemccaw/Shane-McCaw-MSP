@@ -4655,7 +4655,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
 
   return (
     <div
-      className={`fixed right-0 top-0 h-full z-40 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transform transition-all duration-250 ease-in-out ${slideClass} ${wide ? "w-[760px]" : "w-[480px]"}`}
+      className={`fixed right-0 top-14 bottom-0 z-50 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transform transition-all duration-250 ease-in-out ${slideClass} ${wide ? "w-[760px]" : "w-[480px]"}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
