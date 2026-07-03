@@ -9,6 +9,8 @@ export interface OutputSchema {
 export interface ManualScriptRecord {
   runResultId: number;
   scriptId: number;
+  /** Kanban task ID linked to this script run result, if any */
+  kanbanTaskId?: number | null;
   scriptName: string;
   description: string | null;
   manualRequirements: string[];

@@ -44,6 +44,12 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
     setTaskSkipStates(prev => ({ ...prev, [taskId]: { skipped: false, confirming: false } }));
   }
   function confirmSkipTask(taskId: number) {
+    // Mark the kanban task as completed so it moves off the board
+    void fetchWithAuth(`/api/portal/kanban-tasks/${taskId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ column: "completed" }),
+    });
     setTaskSkipStates(prev => {
       const next = { ...prev, [taskId]: { skipped: true, confirming: false } };
       const allSkipped = downloadableTasks.every(t => next[t.taskId]?.skipped);
@@ -89,6 +95,15 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
     setScriptStates(prev => ({ ...prev, [id]: { ...prev[id]!, confirmingDismiss: false } }));
   }
   function confirmDismiss(id: number) {
+    // Mark the linked kanban task as completed so it moves off the board
+    const kanbanTaskId = scripts.find(s => s.runResultId === id)?.kanbanTaskId;
+    if (kanbanTaskId) {
+      void fetchWithAuth(`/api/portal/kanban-tasks/${kanbanTaskId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column: "completed" }),
+      });
+    }
     setScriptStates(prev => {
       const next = { ...prev, [id]: { dismissed: true, confirmingDismiss: false } };
       if (scripts.every(s => next[s.runResultId]?.dismissed)) setTimeout(onAllDismissed, 120);

@@ -9112,6 +9112,7 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
     const selectFields = {
       runResultId: scriptRunResultsTable.id,
       scriptId: scriptRunResultsTable.scriptId,
+      kanbanTaskId: scriptRunResultsTable.kanbanTaskId,
       status: scriptRunResultsTable.status,
       createdAt: scriptRunResultsTable.createdAt,
       uploadedAt: scriptRunResultsTable.uploadedAt,
@@ -9191,6 +9192,7 @@ router.get("/portal/projects/:projectId/manual-scripts", requireAuth, async (req
       return {
         runResultId: row.runResultId,
         scriptId: row.scriptId,
+        kanbanTaskId: row.kanbanTaskId ?? null,
         status: row.status,
         createdAt: row.createdAt,
         uploadedAt: row.uploadedAt,
