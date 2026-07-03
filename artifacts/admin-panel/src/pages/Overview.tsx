@@ -111,6 +111,19 @@ interface DbStatus { journalCount: number; dev: DbStatusDev; prod: DbStatusProd 
 interface ExpiringCredItem { id: number; displayName: string; clientUserId: number | null; expiresOn: string }
 interface ExpiringCredSummary { count: number; items: ExpiringCredItem[] }
 
+interface StalledScriptCard {
+  id: number;
+  title: string;
+  completionStatus: string;
+  completionNotes: string | null;
+  column: string;
+  updatedAt: string;
+  projectId: number | null;
+  projectTitle: string | null;
+  clientName: string | null;
+}
+interface StalledScriptsSummary { count: number; cards: StalledScriptCard[] }
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 // 8 categories: 7 from DB + Identity (shown as null — requires future M365 identity profile data)
@@ -979,6 +992,7 @@ export default function OverviewPage() {
   const [healthAlertsLoading, setHealthAlertsLoading] = useState(false);
 
   const [expiringCreds, setExpiringCreds] = useState<ExpiringCredSummary | null>(null);
+  const [stalledScripts, setStalledScripts] = useState<StalledScriptsSummary | null>(null);
   const [dbStatus, setDbStatus] = useState<DbStatus | null>(null);
   const [dbStatusLoading, setDbStatusLoading] = useState(true);
   const [dbStatusError, setDbStatusError] = useState<string | null>(null);
@@ -1008,6 +1022,12 @@ export default function OverviewPage() {
   useEffect(() => {
     void fetchWithAuth("/api/admin/azure-credentials/expiring-summary")
       .then(async res => { if (res.ok) setExpiringCreds(await res.json() as ExpiringCredSummary); })
+      .catch(() => {});
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    void fetchWithAuth("/api/admin/kanban/stalled-scripts")
+      .then(async res => { if (res.ok) setStalledScripts(await res.json() as StalledScriptsSummary); })
       .catch(() => {});
   }, [fetchWithAuth]);
 
@@ -1599,6 +1619,60 @@ export default function OverviewPage() {
                     <Link href={`/crm/clients/${cred.clientUserId}`}>
                       <span className={`flex-shrink-0 text-xs font-semibold border px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer ${isUrgent ? "text-red-400 border-red-500/30 bg-red-500/10 hover:bg-red-500/20" : "text-amber-400 border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20"}`}>
                         Go to Client →
+                      </span>
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* ── Stalled Scripts ── */}
+      {stalledScripts && stalledScripts.count > 0 && (
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <h2 className="text-sm font-bold text-[#7D8590] uppercase tracking-widest">Stalled Scripts</h2>
+            <span className="text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full">
+              {stalledScripts.count} card{stalledScripts.count !== 1 ? "s" : ""} need attention
+            </span>
+          </div>
+          <div className="space-y-2">
+            {stalledScripts.cards.map(card => {
+              const isExhausted = card.completionStatus === "auto_fire_exhausted";
+              return (
+                <div
+                  key={card.id}
+                  className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3.5 flex items-start gap-3"
+                >
+                  <div className="w-9 h-9 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-red-300 truncate">{card.title}</span>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${isExhausted ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"}`}>
+                        {isExhausted ? "Retry budget exhausted" : "Auto-fire failed"}
+                      </span>
+                    </div>
+                    {card.projectTitle && (
+                      <p className="text-[11px] text-red-400 mt-0.5">
+                        {card.projectTitle}{card.clientName ? ` · ${card.clientName}` : ""}
+                      </p>
+                    )}
+                    {card.completionNotes && (
+                      <p className="text-[10px] text-[#7D8590] mt-1 line-clamp-2">{card.completionNotes}</p>
+                    )}
+                    <p className="text-[10px] text-[#484F58] mt-1">Last updated {timeAgo(card.updatedAt)}</p>
+                  </div>
+                  {card.projectId && (
+                    <Link href={`/crm/projects/${card.projectId}`}>
+                      <span className="flex-shrink-0 text-xs font-semibold border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap cursor-pointer">
+                        View Board →
                       </span>
                     </Link>
                   )}
