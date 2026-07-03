@@ -3,7 +3,7 @@ import { logger } from "./lib/logger";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
-import { seedAiPrompts, patchAiPrompts } from "./lib/prompt-loader";
+import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers } from "./lib/workflow-executor";
@@ -76,10 +76,6 @@ app.listen(port, (err) => {
 
   seedAiPrompts().catch((err) => {
     logger.warn({ err }, "AI prompt seed failed (non-fatal)");
-  });
-
-  patchAiPrompts().catch((err) => {
-    logger.warn({ err }, "AI prompt patch failed (non-fatal)");
   });
 
   seedArticles().catch((err) => {

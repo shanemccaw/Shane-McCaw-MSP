@@ -1200,41 +1200,6 @@ Rules:
   },
 ];
 
-/**
- * Prompt patches — explicit UPDATE statements for prompts whose prompt_body
- * was intentionally changed after initial seeding. Because seedAiPrompts()
- * uses ON CONFLICT DO NOTHING, an UPDATE is the only reliable way to push a
- * wording change to existing environments without a manual SQL command.
- *
- * Add one entry per intentional prompt change. Each entry updates both
- * prompt_body (the live value) and default_body (the baseline reference).
- */
-const PROMPT_PATCHES: Array<{ key: string; body: string }> = [
-  {
-    // Fix: shared pricing adjustments must appear once in a summary section,
-    // not repeated on every workstream row. Updated 2026-07-03.
-    key: "insights-consulting-consolidated_sow",
-    body: (() => {
-      const seed = SEEDS.find((s) => s.key === "insights-consulting-consolidated_sow");
-      return seed?.body ?? "";
-    })(),
-  },
-];
-
-export async function patchAiPrompts(): Promise<void> {
-  try {
-    for (const patch of PROMPT_PATCHES) {
-      if (!patch.body) continue;
-      await db
-        .update(aiPromptsTable)
-        .set({ promptBody: patch.body, defaultBody: patch.body, updatedAt: new Date() })
-        .where(eq(aiPromptsTable.key, patch.key));
-    }
-    logger.info({ count: PROMPT_PATCHES.length }, "prompt-loader: AI prompt patches applied");
-  } catch (err) {
-    logger.warn({ err }, "prompt-loader: patch failed (non-fatal)");
-  }
-}
 
 export async function seedAiPrompts(): Promise<void> {
   try {
