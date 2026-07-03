@@ -1644,6 +1644,10 @@ export interface WfNode {
     // M365 Health
     | "validate_m365_permissions" | "update_intelligence_tables"
     | "generate_diff_report" | "notify_major_changes"
+    // Marketing Actions
+    | "send_campaign_email"
+    // Project Actions
+    | "create_kanban_task"
     // System
     | "system_action";
   position: { x: number; y: number };

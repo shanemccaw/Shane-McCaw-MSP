@@ -16,6 +16,9 @@ import { checkManualScriptEscalations } from "../lib/manual-script-escalation";
 import { reconcileStalledPhases } from "../lib/kanban-auto-fire";
 import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { logger } from "../lib/logger";
+import { db } from "@workspace/db";
+import { projectsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const router: IRouter = Router();
 
@@ -94,5 +97,74 @@ router.post(
     }
   },
 );
+
+// ── Kanban board / column discovery (for Workflow Builder node config) ────────
+
+const MARKETING_BOARD = {
+  id: "marketing",
+  name: "Marketing Kanban",
+  columns: [
+    { id: "ideas",       label: "Ideas"       },
+    { id: "in_progress", label: "In Progress"  },
+    { id: "scheduled",   label: "Scheduled"   },
+    { id: "published",   label: "Published"   },
+    { id: "completed",   label: "Completed"   },
+    { id: "money_task",  label: "Money Task"  },
+  ],
+};
+
+const PROJECT_COLUMNS = [
+  { id: "backlog",               label: "Backlog"               },
+  { id: "in_progress",           label: "In Progress"           },
+  { id: "waiting_on_customer",   label: "Waiting on Customer"   },
+  { id: "completed",             label: "Completed"             },
+];
+
+/**
+ * GET /api/admin/kanban/boards
+ * Returns the Marketing Kanban board plus all active project boards.
+ */
+router.get("/admin/kanban/boards", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const projects = await db
+      .select({ id: projectsTable.id, title: projectsTable.title })
+      .from(projectsTable)
+      .where(eq(projectsTable.status, "active"))
+      .orderBy(projectsTable.title);
+
+    const projectBoards = projects.map(p => ({
+      id: String(p.id),
+      name: p.title,
+    }));
+
+    res.json([
+      { id: MARKETING_BOARD.id, name: MARKETING_BOARD.name },
+      ...projectBoards,
+    ]);
+  } catch (err) {
+    logger.error({ err }, "admin-kanban: failed to list boards");
+    res.status(500).json({ error: "Failed to list boards" });
+  }
+});
+
+/**
+ * GET /api/admin/kanban/:boardId/columns
+ * Returns the columns/statuses for a given board.
+ * boardId "marketing" → marketing status enum values
+ * numeric boardId     → project kanban column enum values
+ */
+router.get("/admin/kanban/:boardId/columns", requireAdmin, async (req: Request, res: Response) => {
+  const { boardId } = req.params as { boardId: string };
+  if (boardId === "marketing") {
+    res.json(MARKETING_BOARD.columns);
+    return;
+  }
+  const projectId = parseInt(boardId, 10);
+  if (isNaN(projectId)) {
+    res.status(400).json({ error: "Invalid boardId — must be 'marketing' or a numeric project ID" });
+    return;
+  }
+  res.json(PROJECT_COLUMNS);
+});
 
 export default router;

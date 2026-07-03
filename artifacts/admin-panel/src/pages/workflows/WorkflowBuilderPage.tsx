@@ -48,6 +48,10 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   update_intelligence_tables:{ bg: "#110D22", border: "#8B5CF6", icon: "🧠", label: "Update Intel"        },
   generate_diff_report:      { bg: "#110D22", border: "#8B5CF6", icon: "📄", label: "Diff Report"         },
   notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
+  // ── Marketing Actions ──
+  send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
+  // ── Project Actions ──
+  create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -101,6 +105,10 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   update_intelligence_tables:[{ key: "updated", label: "true on success" }, { key: "recordId", label: "Health history record ID" }, { key: "jobId", label: "Azure job ID" }],
   generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
   notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
+  // Marketing Actions
+  send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "templateSlug", label: "Template slug used" }],
+  // Project Actions
+  create_kanban_task:  [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -242,6 +250,18 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "update_intelligence_tables", label: "Update Intel Tables",     description: "Refresh client health history from a runbook",       tags: ["m365", "health", "intelligence", "runbook"] },
       { type: "generate_diff_report",       label: "Diff Report",             description: "Compare last two health snapshots and create a doc",  tags: ["m365", "health", "diff", "report"] },
       { type: "notify_major_changes",       label: "Notify Major Changes",    description: "Alert Shane if health score changed significantly",   tags: ["m365", "health", "notify", "alert"] },
+    ],
+  },
+  {
+    name: "Marketing Actions",
+    nodes: [
+      { type: "send_campaign_email", label: "Send Campaign Email", description: "Render an Email Template and send it to a recipient", tags: ["email", "marketing", "campaign", "template"] },
+    ],
+  },
+  {
+    name: "Project Actions",
+    nodes: [
+      { type: "create_kanban_task", label: "Create Kanban Task", description: "Create a card on the Marketing Kanban or a project board", tags: ["kanban", "task", "project", "card", "board"] },
     ],
   },
   {
@@ -532,6 +552,8 @@ function StartNodeTriggers({ defId }: { defId: number }) {
 interface AncestorGroup {
   nodeId: string;
   nodeName: string;
+  /** true for the start/trigger node — its outputs live at the top-level payload, not under steps.<nodeId> */
+  isStartNode: boolean;
   outputs: Array<{ key: string; label: string }>;
 }
 
@@ -571,7 +593,7 @@ function getAncestorOutputs(
     if (outputs.length > 0) {
       const name = (node.data.label as string | undefined)
         || (actionType ? actionType.replace(/_/g, " ") : type.replace(/_/g, " "));
-      result.unshift({ nodeId: id, nodeName: name, outputs });
+      result.unshift({ nodeId: id, nodeName: name, isStartNode: type === "start", outputs });
     }
     edges.filter(e => e.target === id).forEach(e => { if (!visited.has(e.source)) queue.push(e.source); });
   }
@@ -628,13 +650,18 @@ function PayloadField({
                     {ancestorOutputs.map(group => (
                       <div key={group.nodeId}>
                         <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
-                        {group.outputs.map(o => (
-                          <button key={o.key} type="button" onClick={() => insertToken(o.key)}
-                            className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
-                            <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${o.key}}}`}</span>
-                            <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
-                          </button>
-                        ))}
+                        {group.outputs.map(o => {
+                          // Start/trigger outputs live at the top-level payload → bare key.
+                          // All other node outputs are stored under steps.<nodeId> (also aliased as nodes.<nodeId>).
+                          const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
+                          return (
+                            <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
+                              className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                              <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
+                              <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -1152,6 +1179,26 @@ function NodeConfigPanel({
           </>
         )}
 
+        {/* ── Marketing Actions ──────────────────────────────── */}
+
+        {nodeType === "send_campaign_email" && (
+          <SendCampaignEmailPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {/* ── Project Actions ────────────────────────────────── */}
+
+        {nodeType === "create_kanban_task" && (
+          <CreateKanbanTaskPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "condition" && (
           <>
             <PayloadField
@@ -1238,6 +1285,290 @@ function NodeConfigPanel({
         )}
       </div>
     </div>
+  );
+}
+
+// ── Send Campaign Email panel ─────────────────────────────────────────────────
+
+interface EmailTemplateItem {
+  slug: string;
+  name: string;
+  subject: string;
+  recipientType: string;
+}
+
+interface EmailTemplateDetail extends EmailTemplateItem {
+  bodyHtml: string;
+}
+
+function SendCampaignEmailPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const { fetchWithAuth } = useAuth();
+  const [search, setSearch] = useState("");
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  const { data: templates = [], isLoading } = useQuery<EmailTemplateItem[]>({
+    queryKey: ["email-templates-list"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/email-templates");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const templateSlug = (node.data.templateSlug as string) ?? "";
+
+  // Fetch full template detail (including bodyHtml) when a slug is selected
+  const { data: selectedDetail } = useQuery<EmailTemplateDetail>({
+    queryKey: ["email-template-detail", templateSlug],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/email-templates/${templateSlug}`);
+      if (!res.ok) throw new Error("Not found");
+      return res.json();
+    },
+    enabled: !!templateSlug,
+    staleTime: 120_000,
+  });
+
+  const selectedMeta = templates.find(t => t.slug === templateSlug) ?? null;
+
+  const filtered = search.trim()
+    ? templates.filter(t =>
+        t.name.toLowerCase().includes(search.toLowerCase()) ||
+        t.slug.toLowerCase().includes(search.toLowerCase()) ||
+        t.recipientType.toLowerCase().includes(search.toLowerCase()),
+      )
+    : templates;
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Email Template</label>
+        {isLoading ? (
+          <div className="text-xs text-[#484F58] animate-pulse">Loading templates…</div>
+        ) : (
+          <>
+            {/* Searchable picker trigger */}
+            <button
+              type="button"
+              onClick={() => setPickerOpen(o => !o)}
+              className="w-full flex items-center justify-between bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-left outline-none focus:border-[#10B981]/60 hover:border-[#484F58] transition-colors"
+            >
+              <span className={selectedMeta ? "text-[#E6EDF3]" : "text-[#484F58]"}>
+                {selectedMeta ? selectedMeta.name : "— choose a template —"}
+              </span>
+              <span className="text-[#484F58] ml-2">{pickerOpen ? "▲" : "▼"}</span>
+            </button>
+
+            {pickerOpen && (
+              <div className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
+                {/* Search box */}
+                <div className="px-2 pt-2 pb-1">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search by name or type…"
+                    className="w-full bg-[#161B22] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#10B981]/60"
+                  />
+                </div>
+                {/* Template list */}
+                <div className="max-h-48 overflow-y-auto divide-y divide-[#21262D]">
+                  {filtered.length === 0 ? (
+                    <p className="text-[10px] text-[#484F58] px-3 py-2">No templates match.</p>
+                  ) : filtered.map(t => (
+                    <button
+                      key={t.slug}
+                      type="button"
+                      onClick={() => {
+                        onChange(node.id, { ...node.data, templateSlug: t.slug });
+                        setPickerOpen(false);
+                        setSearch("");
+                      }}
+                      className={`w-full text-left px-3 py-2 hover:bg-[#1C2128] transition-colors ${t.slug === templateSlug ? "bg-[#10B981]/10" : ""}`}
+                    >
+                      <p className="text-xs font-medium text-[#E6EDF3]">{t.name}</p>
+                      <p className="text-[9px] text-[#484F58] font-mono mt-0.5">{t.slug} · {t.recipientType}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Template detail preview (subject + body snippet) */}
+        {selectedMeta && (
+          <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-2">
+            <div>
+              <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Subject</p>
+              <p className="text-[10px] text-[#7D8590] font-mono break-all">{selectedDetail?.subject ?? selectedMeta.subject}</p>
+            </div>
+            {selectedDetail && (
+              <div>
+                <p className="text-[9px] uppercase tracking-widest text-[#484F58] font-bold mb-0.5">Body preview</p>
+                <p className="text-[10px] text-[#7D8590] leading-relaxed line-clamp-4 break-words">
+                  {selectedDetail.bodyHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 300)}
+                  {selectedDetail.bodyHtml.length > 300 ? "…" : ""}
+                </p>
+              </div>
+            )}
+            <p className="text-[9px] text-[#484F58]">Recipient type: <span className="font-mono">{selectedMeta.recipientType}</span></p>
+          </div>
+        )}
+      </div>
+      <PayloadField
+        label="Recipient (email address)"
+        value={(node.data.recipientExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, recipientExpr: v })}
+        placeholder="{{email}} or client@example.com"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Fetches the selected template, substitutes <span className="font-mono text-[#7D8590]">{"{{token}}"}</span> placeholders (including <span className="font-mono text-[#7D8590]">{"{{dotted.paths}}"}</span>) from the workflow payload with HTML-safe values, and sends the email. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{sent}}"} · {"{{recipient}}"} · {"{{subject}}"} · {"{{templateSlug}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Create Kanban Task panel ──────────────────────────────────────────────────
+
+interface KanbanBoard { id: string; name: string; }
+interface KanbanColumn { id: string; label: string; }
+
+const PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"];
+
+function CreateKanbanTaskPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  const { fetchWithAuth } = useAuth();
+
+  const { data: boards = [], isLoading: loadingBoards } = useQuery<KanbanBoard[]>({
+    queryKey: ["kanban-boards"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/kanban/boards");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const boardId = (node.data.boardId as string) ?? "";
+  const columnId = (node.data.columnId as string) ?? "";
+
+  // Fetch columns from the API whenever the board changes
+  const { data: columns = [], isLoading: loadingColumns } = useQuery<KanbanColumn[]>({
+    queryKey: ["kanban-columns", boardId],
+    queryFn: async () => {
+      if (!boardId) return [];
+      const res = await fetchWithAuth(`/api/admin/kanban/${encodeURIComponent(boardId)}/columns`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!boardId,
+    staleTime: 60_000,
+  });
+
+  // Keep columnId in sync when board changes and the current value is no longer valid.
+  // Persist a default so node.data.columnId is never silently empty.
+  const validColumnIds = columns.map(c => c.id);
+  const effectiveColumnId = validColumnIds.includes(columnId) ? columnId : (columns[0]?.id ?? "");
+  useEffect(() => {
+    if (!boardId || columns.length === 0) return;
+    if (!validColumnIds.includes(columnId)) {
+      onChange(node.id, { ...node.data, columnId: columns[0].id });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [boardId, columns]);
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Board</label>
+        {loadingBoards ? (
+          <div className="text-xs text-[#484F58] animate-pulse">Loading boards…</div>
+        ) : (
+          <select
+            value={boardId}
+            onChange={e => {
+              // Reset columnId when board changes; the columns query will re-fire
+              onChange(node.id, { ...node.data, boardId: e.target.value, columnId: "" });
+            }}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+          >
+            <option value="">— choose a board —</option>
+            {boards.map(b => (
+              <option key={b.id} value={b.id}>{b.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
+      {boardId && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
+          {loadingColumns ? (
+            <div className="text-xs text-[#484F58] animate-pulse">Loading columns…</div>
+          ) : (
+            <select
+              value={effectiveColumnId}
+              onChange={e => onChange(node.id, { ...node.data, columnId: e.target.value })}
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+            >
+              {columns.map(c => (
+                <option key={c.id} value={c.id}>{c.label}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+      <PayloadField
+        label="Task Title"
+        value={(node.data.titleExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, titleExpr: v })}
+        placeholder="Follow up with {{company}} re: {{serviceName}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Description (optional)"
+        value={(node.data.descriptionExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, descriptionExpr: v })}
+        placeholder="Client scored {{score}} — review readiness report"
+        multiline
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Priority</label>
+        <select
+          value={(node.data.priority as string) ?? "medium"}
+          onChange={e => onChange(node.id, { ...node.data, priority: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+        >
+          {PRIORITY_OPTIONS.map(p => (
+            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title and description support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
+      </div>
+    </>
   );
 }
 

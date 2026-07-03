@@ -29,6 +29,9 @@ import {
   leadQualificationsTable,
   quizLeadsTable,
   clientHealthHistoryTable,
+  emailTemplatesTable,
+  marketingTasksTable,
+  kanbanTasksTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -189,6 +192,24 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "notify_major_changes":
       return { dryRun: true, notified: false, skipped: true };
+
+    case "send_campaign_email":
+      return {
+        dryRun: true,
+        templateSlug: str("templateSlug", "unknown-template"),
+        recipient: interp((node.data.recipientExpr as string | undefined) ?? "", p) || "recipient@example.com",
+        subject: "(template subject — preview in config panel)",
+        sent: false,
+      };
+
+    case "create_kanban_task":
+      return {
+        dryRun: true,
+        boardId: str("boardId", "marketing"),
+        columnId: str("columnId", "backlog"),
+        title: interp((node.data.titleExpr as string | undefined) ?? "New task", p) || "New task",
+        taskId: null,
+      };
 
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
@@ -650,6 +671,95 @@ async function executeNode(
         break;
       }
 
+      case "send_campaign_email": {
+        const templateSlug = node.data.templateSlug as string | undefined;
+        if (!templateSlug) {
+          nodeError = true;
+          output = { error: "send_campaign_email requires a templateSlug" };
+        } else {
+          const [tmpl] = await db.select().from(emailTemplatesTable).where(eq(emailTemplatesTable.slug, templateSlug)).limit(1);
+          if (!tmpl) {
+            nodeError = true;
+            output = { error: `Email template '${templateSlug}' not found` };
+          } else {
+            const recipient = interp(node.data.recipientExpr as string | undefined, payload);
+            if (!recipient?.trim()) {
+              nodeError = true;
+              output = { error: "send_campaign_email: recipient resolved to empty — check recipientExpr" };
+            } else {
+              // Escape a plain string value for safe insertion into HTML
+              function escHtml(s: string): string {
+                return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;");
+              }
+              // Substitute {{path}} tokens (including dotted paths like {{lead.email}})
+              // from the workflow payload into a template string.
+              // Values are HTML-escaped before insertion; unresolved tokens are left intact.
+              function renderTemplate(template: string, p: Record<string, unknown>): string {
+                return template.replace(/\{\{([\w.]+)\}\}/g, (_m, path: string) => {
+                  const key = path.startsWith("payload.") ? path.slice(8) : path;
+                  const parts = key.split(".");
+                  let cur: unknown = p;
+                  for (const part of parts) {
+                    if (cur == null || typeof cur !== "object") return `{{${path}}}`;
+                    cur = (cur as Record<string, unknown>)[part];
+                  }
+                  return cur != null ? escHtml(String(cur)) : `{{${path}}}`;
+                });
+              }
+              const renderedBody = renderTemplate(tmpl.bodyHtml, payload);
+              const renderedSubject = renderTemplate(tmpl.subject, payload);
+              const { sendEmail, brandedEmail } = await import("./mailer");
+              const fullHtml = brandedEmail(renderedBody);
+              await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
+              output = { sent: true, recipient, subject: renderedSubject, templateSlug };
+            }
+          }
+        }
+        break;
+      }
+
+      case "create_kanban_task": {
+        const boardId = node.data.boardId as string | undefined;
+        const columnId = node.data.columnId as string | undefined;
+        const title = interp(node.data.titleExpr as string | undefined, payload);
+        const description = interp(node.data.descriptionExpr as string | undefined, payload);
+        const priority = (node.data.priority as string | undefined) ?? "medium";
+
+        if (!boardId || !columnId || !title?.trim()) {
+          nodeError = true;
+          output = { error: "create_kanban_task requires boardId, columnId, and a non-empty title" };
+        } else if (boardId === "marketing") {
+          const validStatuses = ["ideas", "in_progress", "scheduled", "published", "completed", "money_task"] as const;
+          type MarketingStatus = typeof validStatuses[number];
+          const status: MarketingStatus = (validStatuses as readonly string[]).includes(columnId) ? (columnId as MarketingStatus) : "ideas";
+          const [task] = await db.insert(marketingTasksTable).values({
+            title: title.trim(),
+            description: description ?? undefined,
+            status,
+          }).returning();
+          output = { taskId: task.id, boardId, columnId: status, title: task.title };
+        } else {
+          const projectId = parseInt(boardId, 10);
+          if (isNaN(projectId)) {
+            nodeError = true;
+            output = { error: `create_kanban_task: invalid boardId '${boardId}' — must be 'marketing' or a numeric project ID` };
+          } else {
+            const validColumns = ["backlog", "in_progress", "waiting_on_customer", "completed"] as const;
+            type KanbanColumn = typeof validColumns[number];
+            const column: KanbanColumn = (validColumns as readonly string[]).includes(columnId) ? (columnId as KanbanColumn) : "backlog";
+            const [task] = await db.insert(kanbanTasksTable).values({
+              projectId,
+              title: title.trim(),
+              description: description ?? undefined,
+              column,
+              priority,
+            }).returning();
+            output = { taskId: task.id, boardId, columnId: column, title: task.title };
+          }
+        }
+        break;
+      }
+
       case "system_action": {
         const task = node.data.task as string | undefined;
         if (!task) {
@@ -690,9 +800,14 @@ async function executeNode(
       : `Node ${node.type} (${node.id}) completed in ${durationMs}ms`,
   }).catch(() => { /* non-fatal */ });
 
+  const prevNodes = (payload.nodes as Record<string, unknown>) ?? {};
+  const updatedNodes = { ...prevNodes, [node.id]: output };
   const nextPayload = {
     ...payload,
-    nodes: { ...(payload.nodes as Record<string, unknown> ?? {}), [node.id]: output },
+    nodes: updatedNodes,
+    // `steps` is a canonical downstream reference namespace so workflow authors
+    // can chain outputs using {{steps.<nodeId>.<key>}} in subsequent nodes.
+    steps: updatedNodes,
   };
 
   return { output, nextPayload, cancelRun, nodeError, conditionResult };
