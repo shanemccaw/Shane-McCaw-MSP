@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   graphToTree,
   graphInsertStep,
@@ -64,12 +65,14 @@ function NodePicker({
   libraryCategories,
   allLibraryNodes,
   nodeStyles,
+  pos,
   onPick,
   onClose,
 }: {
   libraryCategories: LibraryCategory[];
   allLibraryNodes: LibraryNode[];
   nodeStyles: Record<string, NodeStyle>;
+  pos: { top: number; left: number };
   onPick: (type: string) => void;
   onClose: () => void;
 }) {
@@ -93,11 +96,14 @@ function NodePicker({
       )
     : null;
 
-  return (
-    <div
-      className="absolute z-50 left-1/2 -translate-x-1/2 mt-1 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-hidden"
-      onClick={e => e.stopPropagation()}
-    >
+  return createPortal(
+    <>
+      <div className="fixed inset-0 z-[99]" onClick={onClose} />
+      <div
+        className="fixed z-[100] w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-hidden"
+        style={{ top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
+        onClick={e => e.stopPropagation()}
+      >
       <div className="p-2 border-b border-[#30363D]">
         <input
           ref={inputRef}
@@ -152,6 +158,8 @@ function NodePicker({
         }
       </div>
     </div>
+  </>,
+  document.body
   );
 }
 
@@ -184,20 +192,20 @@ function AddButton({
   onInsert?: (newNode: StoredNode) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
-  React.useEffect(() => {
-    if (!open) return;
-    function onClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
-
   if (isArchived) return null;
+
+  function handleOpen() {
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPickerPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
+    }
+    setOpen(v => !v);
+  }
 
   function handlePick(nodeType: string) {
     const style = nodeStyles[nodeType] ?? nodeStyles["action"] ?? { label: nodeType };
@@ -216,11 +224,12 @@ function AddButton({
   }
 
   return (
-    <div ref={ref} className="relative flex justify-center my-1">
+    <div className="flex justify-center my-1">
       <div className="flex flex-col items-center">
         <div className="w-px h-3 bg-[#30363D]" />
         <button
-          onClick={() => setOpen(v => !v)}
+          ref={btnRef}
+          onClick={handleOpen}
           className="w-6 h-6 rounded-full bg-[#1C2128] border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 text-[#484F58] hover:text-[#0078D4] flex items-center justify-center transition-colors text-sm font-bold leading-none"
           title="Add step"
         >
@@ -229,16 +238,15 @@ function AddButton({
         <div className="w-px h-3 bg-[#30363D]" />
       </div>
 
-      {open && (
-        <div className="absolute top-8 z-50">
-          <NodePicker
-            libraryCategories={libraryCategories}
-            allLibraryNodes={allLibraryNodes}
-            nodeStyles={nodeStyles}
-            onPick={handlePick}
-            onClose={close}
-          />
-        </div>
+      {open && pickerPos && (
+        <NodePicker
+          libraryCategories={libraryCategories}
+          allLibraryNodes={allLibraryNodes}
+          nodeStyles={nodeStyles}
+          pos={pickerPos}
+          onPick={handlePick}
+          onClose={close}
+        />
       )}
     </div>
   );
