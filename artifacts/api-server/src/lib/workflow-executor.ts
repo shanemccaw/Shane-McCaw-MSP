@@ -3514,7 +3514,9 @@ export async function executeWorkflowRun(
         const foreachItems = (output.foreachItems as unknown[]) ?? [];
         const itemAlias    = (output.itemAlias as string | null) ?? null;
         const outEdges     = graph.edges.filter(e => e.source === nodeId);
-        const itemEdges    = outEdges.filter(e => e.sourceHandle === "item");
+        // Builder persists the body edge with sourceHandle "body"; older graphs may
+        // use "item". Accept both so either representation works.
+        const itemEdges    = outEdges.filter(e => e.sourceHandle === "item" || e.sourceHandle === "body");
         const doneEdges    = outEdges.filter(e => e.sourceHandle === "done");
 
         // Collect item subgraph nodes via DFS from item-handle targets.
