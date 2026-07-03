@@ -17,6 +17,7 @@ import {
   graphMoveStepDown,
   treeInsertStepAfter,
   treeReorderStep,
+  treeMoveStepIntoBranch,
   treeToGraph,
 } from "./flowTree";
 import type { FlowStep, StoredNode, StoredEdge } from "./flowTree";
@@ -295,8 +296,11 @@ function StepCard({
   onDuplicateNode: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuPortalRef = useRef<HTMLDivElement>(null);
   const style = nodeStyles[step.nodeType] ?? nodeStyles["action"] ?? {
     bg: "#1C2128", border: "#30363D", icon: "⚡", label: step.nodeType,
   };
@@ -306,7 +310,9 @@ function StepCard({
   React.useEffect(() => {
     if (!menuOpen) return;
     function onClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      const inBtn = menuRef.current?.contains(e.target as Node);
+      const inPortal = menuPortalRef.current?.contains(e.target as Node);
+      if (!inBtn && !inPortal) setMenuOpen(false);
     }
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
@@ -441,7 +447,15 @@ function StepCard({
         {!isArchived && (
           <div ref={menuRef} className="relative flex-shrink-0">
             <button
-              onClick={e => { e.stopPropagation(); setMenuOpen(v => !v); }}
+              ref={menuBtnRef}
+              onClick={e => {
+                e.stopPropagation();
+                if (!menuOpen && menuBtnRef.current) {
+                  const r = menuBtnRef.current.getBoundingClientRect();
+                  setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                }
+                setMenuOpen(v => !v);
+              }}
               className="p-1 rounded hover:bg-black/20 text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
               title="Step actions"
             >
@@ -451,12 +465,15 @@ function StepCard({
                 <circle cx="12" cy="19" r="1.5" />
               </svg>
             </button>
-
-            {menuOpen && (
-              <div
-                className="absolute right-0 top-7 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
-                onClick={e => e.stopPropagation()}
-              >
+          </div>
+        )}
+        {!isArchived && menuOpen && menuPos && createPortal(
+          <div
+            ref={menuPortalRef}
+            className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
+            style={{ top: menuPos.top, right: menuPos.right }}
+            onClick={e => e.stopPropagation()}
+          >
                 <button
                   onClick={handleMoveUp}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
@@ -482,9 +499,8 @@ function StepCard({
                 >
                   ✕ Delete
                 </button>
-              </div>
-            )}
-          </div>
+          </div>,
+          document.body
         )}
       </div>
 
@@ -731,7 +747,7 @@ function BranchStepList({
   containerId,
   containerHandle,
   lastNodeIdFn,
-  branchKey: _branchKey,
+  branchKey,
   isArchived,
   nodeStyles,
   nodeIdCounter,
@@ -757,11 +773,24 @@ function BranchStepList({
   onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
   onDuplicateNode: (id: string) => void;
 }) {
+  const ctx = React.useContext(FlowCanvasContext);
+
   if (steps.length === 0) {
+    const isDragActive = !!ctx.draggedId;
     return (
       <div className="flex flex-col items-center">
-        <div className="w-full border border-dashed border-[#30363D] rounded-lg py-3 flex items-center justify-center">
-          <span className="text-[10px] text-[#484F58]">Empty branch</span>
+        <div
+          className={`w-full border border-dashed rounded-lg py-3 flex items-center justify-center transition-colors ${
+            isDragActive
+              ? "border-[#0078D4] bg-[#0078D4]/10 cursor-copy"
+              : "border-[#30363D]"
+          }`}
+          onDragOver={isDragActive ? (e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; } : undefined}
+          onDrop={isDragActive ? (e) => { e.preventDefault(); e.stopPropagation(); ctx.onDropIntoBranch(containerId, branchKey); } : undefined}
+        >
+          <span className="text-[10px] text-[#484F58]">
+            {isDragActive ? "Drop here" : "Empty branch"}
+          </span>
         </div>
         <AddButton
           afterNodeId={containerId}
@@ -886,6 +915,8 @@ interface FlowCanvasCtx {
   onDragOver: (id: string, pos: "before" | "after") => void;
   onDrop: (targetId: string, pos: "before" | "after") => void;
   onDragEnd: () => void;
+  /** Drop a dragged node into the first position of a specific container branch. */
+  onDropIntoBranch: (containerId: string, branchKey: string) => void;
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -898,6 +929,7 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   onDragOver: () => {},
   onDrop: () => {},
   onDragEnd: () => {},
+  onDropIntoBranch: () => {},
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -952,6 +984,17 @@ export default function FlowCanvas({
     setDropTargetId(null);
   }, []);
 
+  const handleDropIntoBranch = useCallback((containerId: string, branchKey: string) => {
+    if (!draggedId) return;
+    const newTree = treeMoveStepIntoBranch(tree, draggedId, containerId, branchKey);
+    if (newTree !== tree) {
+      const { nodes: n, edges: e } = treeToGraph(newTree);
+      onGraphChange(n, e);
+    }
+    setDraggedId(null);
+    setDropTargetId(null);
+  }, [draggedId, tree, onGraphChange]);
+
   const ctx: FlowCanvasCtx = React.useMemo(() => ({
     selectedNodeId,
     onSelectNode,
@@ -962,7 +1005,8 @@ export default function FlowCanvas({
     onDragOver: handleDragOver,
     onDrop: handleDrop,
     onDragEnd: handleDragEnd,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd]);
+    onDropIntoBranch: handleDropIntoBranch,
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);

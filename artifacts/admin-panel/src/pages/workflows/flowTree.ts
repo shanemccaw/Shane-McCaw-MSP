@@ -485,6 +485,90 @@ export function treeInsertStepAfter(
   return changed ? newSteps : steps;
 }
 
+// ── Cross-level drag helpers ───────────────────────────────────────────────────
+
+/** Find a step anywhere in the tree (including nested branches). */
+export function treeFindStep(steps: FlowStep[], id: string): FlowStep | null {
+  for (const step of steps) {
+    if (step.id === id) return step;
+    if (step.branches) {
+      for (const branch of Object.values(step.branches)) {
+        const found = treeFindStep(branch, id);
+        if (found) return found;
+      }
+    }
+  }
+  return null;
+}
+
+/** Remove a step by ID anywhere in the tree. Returns same reference if not found. */
+export function treeRemoveStep(steps: FlowStep[], id: string): FlowStep[] {
+  const idx = steps.findIndex(s => s.id === id);
+  if (idx !== -1) {
+    const arr = [...steps];
+    arr.splice(idx, 1);
+    return arr;
+  }
+  let changed = false;
+  const newSteps = steps.map(step => {
+    if (!step.branches) return step;
+    let branchChanged = false;
+    const newBranches: Record<string, FlowStep[]> = {};
+    for (const [key, branchSteps] of Object.entries(step.branches)) {
+      const removed = treeRemoveStep(branchSteps, id);
+      newBranches[key] = removed;
+      if (removed !== branchSteps) branchChanged = true;
+    }
+    if (branchChanged) { changed = true; return { ...step, branches: newBranches }; }
+    return step;
+  });
+  return changed ? newSteps : steps;
+}
+
+/**
+ * Move `draggedId` to the START of the specified branch inside `containerId`.
+ * Works across any nesting level. Prevents moving a container into itself.
+ */
+export function treeMoveStepIntoBranch(
+  steps: FlowStep[],
+  draggedId: string,
+  containerId: string,
+  branchKey: string,
+): FlowStep[] {
+  if (draggedId === containerId) return steps;
+  const draggedOrNull = treeFindStep(steps, draggedId);
+  if (!draggedOrNull) return steps;
+  const dragged: FlowStep = draggedOrNull;
+
+  const withoutDragged = treeRemoveStep(steps, draggedId);
+
+  function insertInto(seq: FlowStep[]): { result: FlowStep[]; changed: boolean } {
+    let seqChanged = false;
+    const mapped = seq.map(step => {
+      if (step.id === containerId && step.branches) {
+        const branchSteps = step.branches[branchKey] ?? [];
+        seqChanged = true;
+        return { ...step, branches: { ...step.branches, [branchKey]: [dragged, ...branchSteps] } };
+      }
+      if (step.branches) {
+        let bChanged = false;
+        const newBranches: Record<string, FlowStep[]> = {};
+        for (const [k, v] of Object.entries(step.branches)) {
+          const { result, changed } = insertInto(v);
+          newBranches[k] = result;
+          if (changed) bChanged = true;
+        }
+        if (bChanged) { seqChanged = true; return { ...step, branches: newBranches }; }
+      }
+      return step;
+    });
+    return { result: seqChanged ? mapped : seq, changed: seqChanged };
+  }
+
+  const { result, changed } = insertInto(withoutDragged);
+  return changed ? result : steps;
+}
+
 // ── Tree-level reorder (for drag-and-drop) ────────────────────────────────────
 
 /**
