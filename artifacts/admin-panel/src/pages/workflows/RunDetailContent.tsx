@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
@@ -168,6 +168,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   const { fetchWithAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<"replay" | "timeline" | "payload">("replay");
   const [replayStep, setReplayStep] = useState(0);
+
+  useEffect(() => {
+    setActiveTab("replay");
+    setReplayStep(0);
+  }, [runId]);
 
   const { data: run, isLoading } = useQuery<WfRunDetail>({
     queryKey: ["wf-run", runId],

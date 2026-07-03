@@ -3580,11 +3580,12 @@ function PreRunInputModal({
   );
 }
 
-function TestRunPanel({ defId, nodes, edges, onClose }: {
+function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
   defId: number;
   nodes: Node[];
   edges: Edge[];
   onClose: () => void;
+  trigger: number;
 }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -3592,6 +3593,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const [mounted, setMounted] = useState(false);
   const [closing, setClosing] = useState(false);
   const [dryRun, setDryRun] = useState(true);
+  const prevTriggerRef = useRef(0);
 
   useEffect(() => {
     requestAnimationFrame(() => setMounted(true));
@@ -3652,17 +3654,27 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
   const askForInputNode = nodes.find(n => (n.data.nodeType as string) === "ask_for_input");
   const askForInputFields = (askForInputNode?.data?.fields as AskForInputField[] | undefined) ?? [];
 
-  function handleRunClick() {
+  function handleRunClick(payloadOverride?: Record<string, unknown>) {
     if (askForInputFields.length > 0) {
       setShowInputModal(true);
     } else {
-      runMut.mutate({});
+      runMut.mutate({ inputValues: {}, payloadOverride });
     }
   }
 
+  useEffect(() => {
+    if (trigger > 0 && trigger !== prevTriggerRef.current && !loadingTriggers) {
+      prevTriggerRef.current = trigger;
+      setRunId(null);
+      runMut.reset();
+      handleRunClick(defaultPayload);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger, loadingTriggers]);
+
   const runMut = useMutation({
-    mutationFn: async (inputValues: Record<string, string>) => {
-      const triggerPayload = JSON.parse(payloadText) as Record<string, unknown>;
+    mutationFn: async ({ inputValues, payloadOverride }: { inputValues: Record<string, string>; payloadOverride?: Record<string, unknown> }) => {
+      const triggerPayload = payloadOverride ?? JSON.parse(payloadText) as Record<string, unknown>;
       // Serialize the same way as the save path: replace RF's type:"wfNode" with
       // the real workflow node type stored in data.nodeType, and strip extra edge fields.
       const graphNodes = nodes.map(n => ({
@@ -3870,7 +3882,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
             <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
-              onClick={handleRunClick}
+              onClick={() => handleRunClick()}
               disabled={!!jsonErr || runMut.isPending}
               className="flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
             >
@@ -3890,7 +3902,7 @@ function TestRunPanel({ defId, nodes, edges, onClose }: {
           fetchWithAuth={fetchWithAuth}
           onSubmit={(inputValues) => {
             setShowInputModal(false);
-            runMut.mutate(inputValues);
+            runMut.mutate({ inputValues });
           }}
           onCancel={() => setShowInputModal(false)}
         />
@@ -4350,6 +4362,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showTestRun, setShowTestRun] = useState(false);
+  const [testRunTrigger, setTestRunTrigger] = useState(0);
   const [publishLabel, setPublishLabel] = useState("");
   const [showPublish, setShowPublish] = useState(false);
   const [currentVersionId, setCurrentVersionId] = useState<number | null>(versionId ?? null);
@@ -4957,7 +4970,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           )}
 
           <button
-            onClick={() => setShowTestRun(true)}
+            onClick={() => { setShowTestRun(true); setTestRunTrigger(t => t + 1); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
@@ -5364,7 +5377,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
 
       {/* Test Run panel (right slide-out) */}
       {showTestRun && (
-        <TestRunPanel defId={defId} nodes={nodes} edges={edges} onClose={() => setShowTestRun(false)} />
+        <TestRunPanel defId={defId} nodes={nodes} edges={edges} onClose={() => setShowTestRun(false)} trigger={testRunTrigger} />
       )}
 
       {/* Publish dialog */}
