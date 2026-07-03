@@ -19,10 +19,10 @@ import {
   insightsGeneratedDocumentsTable,
   scriptRunResultsTable,
   kanbanTasksTable,
-  clientScoresTable,
   clientHealthHistoryTable,
+  engagementProjectsTable,
 } from "@workspace/db";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, desc, ne } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt } from "./prompt-loader";
@@ -65,7 +65,7 @@ const CONSULTING_TYPE_LABELS: Record<string, string> = {
 };
 
 const CONSULTING_SECTION_HINTS: Record<string, string> = {
-  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (use [TBD] placeholders), Acceptance Criteria, Terms & Conditions",
+  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria, Terms & Conditions",
   task_execution_guide:        "Use the project task list below as your source. For EACH task produce: Task name (h3), Purpose (one sentence), Prerequisites, Step-by-step instructions (numbered, technically specific for Microsoft 365), Expected outcome, Validation check, Common pitfalls. Group tasks by their workflow phase/group. Add an intro section and a completion checklist at the end.",
   remediation_plan:            "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
   deployment_plan:             "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
@@ -74,6 +74,60 @@ const CONSULTING_SECTION_HINTS: Record<string, string> = {
   copilot_enablement_plan:     "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy",
   identity_modernization_plan: "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission",
 };
+
+// ── Tier 02 Pricing Formula (verbatim — embedded into every SOW prompt) ───────
+
+const TIER_02_PRICING_FORMULA = `You are pricing Tier 02 Microsoft 365 remediation projects. These are NOT assessments. These are project-based remediation engagements where real problems are fixed.
+
+Use the base price range from the Engagement Projects Catalogue as the starting point. The upper value in the range (e.g., $25,000, $30,000, $35,000) is the Base Ceiling. The Base Ceiling is NOT a maximum. It is only the starting point.
+
+Final Price = Base Ceiling + Tenant Size Adjustment + Complexity Adjustment + Data Sprawl Adjustment + Security/Compliance Adjustment + Copilot Readiness Adjustment (if applicable) + Timeline Adjustment
+
+Always calculate each adjustment. Always show the breakdown. Never leave pricing blank. Never say "TBD." Never treat the Base Ceiling as a maximum.
+
+**Tenant Size Adjustment** (derive user count from the tenant telemetry — activeUserPercent, license counts, or script findings):
+- Under 250 users → +$0
+- 250–750 users → +$7,500
+- 750–1,500 users → +$15,000
+- 1,500–3,000 users → +$25,000
+- 3,000+ users → +$40,000
+
+**Complexity Adjustment** (assess from findings — number of critical gaps, number of remediation domains):
+- Low complexity → +$0
+- Moderate complexity → +$10,000
+- High complexity → +$20,000
+- Extreme complexity → +$35,000
+
+**Data Sprawl Adjustment** (assess from DLP, SharePoint, sensitivity label, and retention policy findings):
+- Low sprawl → +$0
+- Moderate sprawl → +$5,000
+- High sprawl → +$12,500
+- Severe sprawl → +$25,000
+
+**Security & Compliance Adjustment** (derive from compliance flags and industry context):
+- Basic → +$0
+- HIPAA/Financial → +$7,500
+- Defense/ITAR/CMMC → +$15,000
+- High-risk identity/security issues → +$25,000
+
+**Copilot Readiness Adjustment** (only for Copilot-related projects — assess from hasCopilotLicenses, sensitivityLabelsConfigured, DLP, and Copilot score):
+- Minor blockers → +$5,000
+- Moderate blockers → +$12,500
+- Major blockers → +$25,000
+
+**Timeline Adjustment**:
+- Standard → +$0
+- Expedited → +$5,000
+- Rapid → +$10,000
+
+Output requirements for the Pricing section:
+- Show a pricing table with columns: Project/Workstream, Base Ceiling, Adjustments (itemised), Final Price (USD), Reasoning
+- Always show Base Ceiling for each line
+- Always show each adjustment that applies and its dollar value
+- Always show Final Price
+- Always explain the reasoning for each tier chosen
+- Never invent new pricing models. Never use TBD. Never treat the Base Ceiling as a maximum.
+- Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
 // ── Prompt fallbacks (no "Staged for Review" banner — docs are auto-delivered) ─
 
@@ -100,7 +154,7 @@ Script analysis runs: {{runCount}} completed assessments
 INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS for styling — white background, #0078D4 accent (Microsoft Azure Blue), professional enterprise typography
-- Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
+- Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
 - Total length: 800-1500 words of body content`;
@@ -120,7 +174,7 @@ Key Recommendations: {{recommendations}}
 Configuration Telemetry:
 {{profileSample}}
 
-Document Structure Requirements:
+{{priorDocsSummary}}Document Structure Requirements:
 {{sectionHints}}
 
 INSTRUCTIONS:
@@ -145,7 +199,7 @@ PROJECT TASK LIST (these are the SOW work items — use these as the source of t
 
 Key Findings from assessments: {{findings}}
 
-INSTRUCTIONS:
+{{priorDocsSummary}}INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS: white background, #0078D4 accent (#0A2540 for headers), professional enterprise typography; use alternating row shading on any tables
 - Structure the document as follows:
@@ -177,92 +231,65 @@ function substituteTokens(template: string, vars: Record<string, string>): strin
   );
 }
 
-// ── Real M365 score fetch — reads stored clientScoresTable + clientHealthHistoryTable ─
+// ── M365 health score fetch — reads clientHealthHistoryTable (same source as CRM portal) ─
 
 interface RealScores {
-  identity: number;
   security: number;
-  collaboration: number;
   compliance: number;
-  copilotReadiness: number;
+  copilot: number;
+  governance: number;
+  productivity: number;
   /** Average of all five dimensions */
   composite: number;
   /** Whether any scores were actually found in the database */
   hasData: boolean;
-  /** Recent per-category snapshots for trend context */
-  recentHistory: { category: string; score: number; recordedAt: Date }[];
 }
 
 async function fetchRealScores(clientUserId: number): Promise<RealScores> {
-  const [scoreRow, historyRows] = await Promise.all([
-    db
-      .select({
-        identity:         clientScoresTable.identity,
-        security:         clientScoresTable.security,
-        collaboration:    clientScoresTable.collaboration,
-        compliance:       clientScoresTable.compliance,
-        copilotReadiness: clientScoresTable.copilotReadiness,
-        updatedAt:        clientScoresTable.updatedAt,
-      })
-      .from(clientScoresTable)
-      .where(eq(clientScoresTable.clientId, clientUserId))
-      .limit(1),
-    db
-      .select({
-        category:   clientHealthHistoryTable.category,
-        score:      clientHealthHistoryTable.score,
-        recordedAt: clientHealthHistoryTable.recordedAt,
-      })
-      .from(clientHealthHistoryTable)
-      .where(eq(clientHealthHistoryTable.clientId, clientUserId))
-      .orderBy(desc(clientHealthHistoryTable.recordedAt))
-      .limit(40),
-  ]);
+  const rows = await db
+    .select({
+      category:   clientHealthHistoryTable.category,
+      score:      clientHealthHistoryTable.score,
+    })
+    .from(clientHealthHistoryTable)
+    .where(eq(clientHealthHistoryTable.clientId, clientUserId))
+    .orderBy(desc(clientHealthHistoryTable.recordedAt))
+    .limit(50);
 
-  const row = scoreRow[0];
-  if (!row) {
-    return {
-      identity: 0, security: 0, collaboration: 0, compliance: 0, copilotReadiness: 0,
-      composite: 0, hasData: false, recentHistory: [],
-    };
+  if (rows.length === 0) {
+    return { security: 0, compliance: 0, copilot: 0, governance: 0, productivity: 0, composite: 0, hasData: false };
   }
 
-  const vals = [row.identity, row.security, row.collaboration, row.compliance, row.copilotReadiness];
+  // Keep only the most-recent entry per category (rows already DESC by date)
+  const latest: Record<string, number> = {};
+  for (const row of rows) {
+    if (!(row.category in latest)) latest[row.category] = row.score;
+  }
+
+  const security    = latest["security"]    ?? 0;
+  const compliance  = latest["compliance"]  ?? 0;
+  const copilot     = latest["copilot"]     ?? 0;
+  const governance  = latest["governance"]  ?? 0;
+  const productivity = latest["productivity"] ?? 0;
+
+  const vals = [security, compliance, copilot, governance, productivity];
   const composite = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 
-  return {
-    identity:         row.identity,
-    security:         row.security,
-    collaboration:    row.collaboration,
-    compliance:       row.compliance,
-    copilotReadiness: row.copilotReadiness,
-    composite,
-    hasData: true,
-    recentHistory: historyRows,
-  };
+  return { security, compliance, copilot, governance, productivity, composite, hasData: true };
 }
 
 function formatScoresBlock(s: RealScores): string {
   if (!s.hasData) {
     return "No M365 health scores on record yet — assessment runs are pending.";
   }
-  const lines = [
-    `- Identity & Access:    ${s.identity}/100`,
-    `- Security:             ${s.security}/100`,
-    `- Collaboration:        ${s.collaboration}/100`,
-    `- Compliance:           ${s.compliance}/100`,
-    `- Copilot Readiness:    ${s.copilotReadiness}/100`,
-    `- Composite (avg):      ${s.composite}/100`,
-  ];
-  if (s.recentHistory.length > 0) {
-    // Show most recent score per category as a trend snapshot
-    const seen = new Set<string>();
-    const trend = s.recentHistory
-      .filter(h => { if (seen.has(h.category)) return false; seen.add(h.category); return true; })
-      .map(h => `  ${h.category}: ${h.score}/100 (${new Date(h.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`);
-    if (trend.length > 0) lines.push("", "Recent snapshot per category:", ...trend);
-  }
-  return lines.join("\n");
+  return [
+    `- Security Posture:      ${s.security}/100`,
+    `- Compliance Coverage:   ${s.compliance}/100`,
+    `- Copilot Readiness:     ${s.copilot}/100`,
+    `- Governance Maturity:   ${s.governance}/100`,
+    `- Adoption Score:        ${s.productivity}/100`,
+    `- Composite (avg):       ${s.composite}/100`,
+  ].join("\n");
 }
 
 function collectFindings(runs: { parsedFindings: string[]; recommendations: string[] }[]): {
@@ -316,32 +343,132 @@ function formatTaskList(tasks: Awaited<ReturnType<typeof fetchProjectTasks>>): s
   return lines.join("\n");
 }
 
-async function fetchRunsForClient(clientUserId: number, projectId: number, limit: number) {
-  const taskRows = await db
-    .select({ id: kanbanTasksTable.id })
-    .from(kanbanTasksTable)
-    .where(eq(kanbanTasksTable.projectId, projectId));
-  const taskIds = taskRows.map(t => t.id);
+// ── Fetch completed script runs — all runs for this customer, no kanban filter ─
 
-  const conditions = [
-    eq(scriptRunResultsTable.status, "completed"),
-    eq(scriptRunResultsTable.customerId, clientUserId),
-  ] as Parameters<typeof and>[0][];
-
-  if (taskIds.length > 0) {
-    conditions.push(inArray(scriptRunResultsTable.kanbanTaskId, taskIds));
-  }
-
+async function fetchRunsForClient(clientUserId: number, limit: number) {
   return db.select({
-    scoreImpact:    scriptRunResultsTable.scoreImpact,
-    parsedFindings: scriptRunResultsTable.parsedFindings,
+    scoreImpact:     scriptRunResultsTable.scoreImpact,
+    parsedFindings:  scriptRunResultsTable.parsedFindings,
     recommendations: scriptRunResultsTable.recommendations,
-    profileUpdates: scriptRunResultsTable.profileUpdates,
+    profileUpdates:  scriptRunResultsTable.profileUpdates,
   })
     .from(scriptRunResultsTable)
-    .where(and(...conditions))
+    .where(and(
+      eq(scriptRunResultsTable.status, "completed"),
+      eq(scriptRunResultsTable.customerId, clientUserId),
+    ))
     .orderBy(desc(scriptRunResultsTable.createdAt))
     .limit(limit);
+}
+
+// ── Fetch engagement projects for SOW pricing ──────────────────────────────────
+
+async function fetchEngagementProjects() {
+  return db.select({
+    title:       engagementProjectsTable.title,
+    priceRange:  engagementProjectsTable.priceRange,
+    description: engagementProjectsTable.description,
+    sowItems:    engagementProjectsTable.sowItems,
+  })
+    .from(engagementProjectsTable)
+    .where(eq(engagementProjectsTable.isVisible, true))
+    .orderBy(engagementProjectsTable.sortOrder);
+}
+
+function formatEngagementProjectsBlock(projects: Awaited<ReturnType<typeof fetchEngagementProjects>>): string {
+  if (projects.length === 0) return "No engagement project pricing configured.";
+  return projects.map(p =>
+    `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`
+  ).join("\n\n");
+}
+
+// ── Fetch prior documents for same customer+project (for context injection) ────
+
+async function fetchPriorDocuments(clientUserId: number, projectId: number, excludeDocType: string): Promise<string> {
+  const docs = await db.select({
+    title:       insightsGeneratedDocumentsTable.title,
+    docType:     insightsGeneratedDocumentsTable.docType,
+    htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+  })
+    .from(insightsGeneratedDocumentsTable)
+    .where(and(
+      eq(insightsGeneratedDocumentsTable.customerId, clientUserId),
+      eq(insightsGeneratedDocumentsTable.projectId, projectId),
+      ne(insightsGeneratedDocumentsTable.docType, excludeDocType),
+    ))
+    .orderBy(desc(insightsGeneratedDocumentsTable.createdAt));
+
+  if (docs.length === 0) return "";
+
+  const stripHtml = (html: string) =>
+    html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400);
+
+  const summaries = docs.map(d =>
+    `[${d.title} (${d.docType})]: ${stripHtml(d.htmlContent)}`
+  ).join("\n\n");
+
+  return `PRIOR DOCUMENTS FOR THIS CLIENT (your output must be consistent with these findings and must not contradict these prior conclusions):\n${summaries}\n\n`;
+}
+
+// ── Upsert helper — one document per (customerId, projectId, docType) ─────────
+
+async function upsertDocument(
+  customerId: number,
+  projectId: number,
+  values: {
+    category: "report" | "consulting";
+    docType: string;
+    title: string;
+    htmlContent: string;
+    status: "draft" | "approved" | "delivered" | "archived";
+    deliveredAt: Date | null;
+    approvedAt?: Date | null;
+    pdfUrl: string | null;
+    sowPricingLines: Array<{ title: string; scope: string; priceUsd: number; notes: string }> | null;
+    sowTotalPrice: string | null;
+  },
+): Promise<{ id: number }> {
+  const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
+    .from(insightsGeneratedDocumentsTable)
+    .where(and(
+      eq(insightsGeneratedDocumentsTable.customerId, customerId),
+      eq(insightsGeneratedDocumentsTable.projectId, projectId),
+      eq(insightsGeneratedDocumentsTable.docType, values.docType),
+    ))
+    .limit(1);
+
+  if (existing[0]) {
+    const [updated] = await db.update(insightsGeneratedDocumentsTable)
+      .set({
+        title:           values.title,
+        htmlContent:     values.htmlContent,
+        status:          values.status,
+        deliveredAt:     values.deliveredAt ?? undefined,
+        pdfUrl:          values.pdfUrl,
+        sowPricingLines: values.sowPricingLines,
+        sowTotalPrice:   values.sowTotalPrice,
+        updatedAt:       new Date(),
+      })
+      .where(eq(insightsGeneratedDocumentsTable.id, existing[0].id))
+      .returning({ id: insightsGeneratedDocumentsTable.id });
+    return updated!;
+  }
+
+  const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
+    customerId,
+    projectId,
+    category:        values.category,
+    docType:         values.docType,
+    title:           values.title,
+    htmlContent:     values.htmlContent,
+    status:          values.status,
+    deliveredAt:     values.deliveredAt ?? undefined,
+    approvedAt:      values.approvedAt ?? undefined,
+    pdfUrl:          values.pdfUrl,
+    sowPricingLines: values.sowPricingLines,
+    sowTotalPrice:   values.sowTotalPrice,
+  }).returning({ id: insightsGeneratedDocumentsTable.id });
+  return inserted!;
 }
 
 // ── Main export ────────────────────────────────────────────────────────────────
@@ -352,6 +479,7 @@ export async function generateAndDeliverDocument(
   config: DocumentGenerationConfig,
 ): Promise<GenerateAndDeliverResult> {
   const { category, docType, title } = config;
+  const isSowDoc = docType === "sow" || docType === "consolidated_sow";
 
   const [userRows, projectRows, runs, realScores, projectTasks] = await Promise.all([
     db.select({ name: usersTable.name, company: usersTable.company })
@@ -362,7 +490,7 @@ export async function generateAndDeliverDocument(
       .from(projectsTable)
       .where(eq(projectsTable.id, projectId))
       .limit(1),
-    fetchRunsForClient(clientUserId, projectId, 50),
+    fetchRunsForClient(clientUserId, 50),
     fetchRealScores(clientUserId),
     fetchProjectTasks(projectId),
   ]);
@@ -411,6 +539,7 @@ export async function generateAndDeliverDocument(
   } else if (docType === "task_execution_guide") {
     const taskList = formatTaskList(projectTasks);
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+    const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);
     const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_PROMPT);
     prompt = substituteTokens(rawTemplate, {
       clientName,
@@ -420,12 +549,23 @@ export async function generateAndDeliverDocument(
       scores: scoresBlock,
       taskList,
       findings: findingsInline,
+      priorDocsSummary,
     });
   } else {
     const typeLabel = CONSULTING_TYPE_LABELS[docType] ?? docType;
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
     const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
     const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include relevant sections for this type of consulting deliverable";
+
+    const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);
+
+    // For SOW types, fetch engagement projects and embed Tier 02 pricing formula
+    let pricingAppendix = "";
+    if (isSowDoc) {
+      const engagementProjects = await fetchEngagementProjects();
+      const engagementProjectsBlock = formatEngagementProjectsBlock(engagementProjects);
+      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${engagementProjectsBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA}`;
+    }
 
     const consultingFallback = substituteTokens(CONSULTING_PROMPT_FALLBACK, { sectionHints });
     const rawTemplate = await getPrompt(`insights-consulting-${docType}`, consultingFallback);
@@ -440,7 +580,9 @@ export async function generateAndDeliverDocument(
       recommendations: recommendationsInline,
       profileSample,
       sectionHints,
+      priorDocsSummary,
     });
+    if (pricingAppendix) prompt += pricingAppendix;
   }
 
   const aiResponse = await anthropic.messages.create({
@@ -463,37 +605,32 @@ export async function generateAndDeliverDocument(
     "",
   );
 
-  const isSowDoc = docType === "sow" || docType === "consolidated_sow";
   const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
 
-  const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
-    customerId:  clientUserId,
-    projectId,
+  const doc = await upsertDocument(clientUserId, projectId, {
     category,
     docType,
     title,
     htmlContent,
-    status:      "delivered",
-    deliveredAt: new Date(),
-    pdfUrl:      null,
+    status:          "delivered",
+    deliveredAt:     new Date(),
+    pdfUrl:          null,
     sowPricingLines: sowLines.length > 0 ? sowLines : null,
     sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-  }).returning();
-
-  if (!newDoc) throw new Error("document-generator: insert returned no row");
+  });
 
   // When a SOW is auto-generated and delivered, promote client to Opportunities pipeline
-  if (isSowDoc) void ensureOpportunityForSow(clientUserId, newDoc.id);
+  if (isSowDoc) void ensureOpportunityForSow(clientUserId, doc.id);
 
-  const pdfUrl = `/api/admin/insights/documents/${newDoc.id}/download`;
+  const pdfUrl = `/api/admin/insights/documents/${doc.id}/download`;
   await db.update(insightsGeneratedDocumentsTable)
     .set({ pdfUrl })
-    .where(eq(insightsGeneratedDocumentsTable.id, newDoc.id));
+    .where(eq(insightsGeneratedDocumentsTable.id, doc.id));
 
   logger.info(
-    { clientUserId, projectId, documentId: newDoc.id, category, docType },
+    { clientUserId, projectId, documentId: doc.id, category, docType },
     "document-generator: document generated and auto-delivered",
   );
 
-  return { documentId: newDoc.id, title };
+  return { documentId: doc.id, title };
 }

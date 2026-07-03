@@ -44,7 +44,7 @@ import {
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { broadcastPresentationScopeChange } from "../lib/sse-broadcast";
-import { eq, desc, and, sql, inArray, isNull, notInArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
@@ -768,7 +768,7 @@ Key Recommendations: {{recommendations}}
 Configuration Telemetry Sample (from profileUpdates — use in your analysis):
 {{profileSample}}
 
-Document Sections Required:
+{{priorDocsSummary}}Document Sections Required:
 {{sectionHints}}
 
 INSTRUCTIONS:
@@ -776,9 +776,62 @@ INSTRUCTIONS:
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables
 - Each major section as <h2> with a horizontal rule separator
 - Data tables where appropriate (border-collapse, alternating rows)
-- Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- Never use TBD or placeholder pricing — always calculate firm prices using the Tier 02 formula when provided
 - Total length: 1000-2000 words`;
+
+// Tier 02 pricing formula — embedded verbatim in every SOW prompt
+const TIER_02_PRICING_FORMULA_BLOCK = `You are pricing Tier 02 Microsoft 365 remediation projects. These are NOT assessments. These are project-based remediation engagements where real problems are fixed.
+
+Use the base price range from the Engagement Projects Catalogue as the starting point. The upper value in the range (e.g., $25,000, $30,000, $35,000) is the Base Ceiling. The Base Ceiling is NOT a maximum. It is only the starting point.
+
+Final Price = Base Ceiling + Tenant Size Adjustment + Complexity Adjustment + Data Sprawl Adjustment + Security/Compliance Adjustment + Copilot Readiness Adjustment (if applicable) + Timeline Adjustment
+
+Always calculate each adjustment. Always show the breakdown. Never leave pricing blank. Never say "TBD." Never treat the Base Ceiling as a maximum.
+
+**Tenant Size Adjustment** (derive user count from the tenant telemetry — activeUserPercent, license counts, or script findings):
+- Under 250 users → +$0
+- 250–750 users → +$7,500
+- 750–1,500 users → +$15,000
+- 1,500–3,000 users → +$25,000
+- 3,000+ users → +$40,000
+
+**Complexity Adjustment** (assess from findings — number of critical gaps, number of remediation domains):
+- Low complexity → +$0
+- Moderate complexity → +$10,000
+- High complexity → +$20,000
+- Extreme complexity → +$35,000
+
+**Data Sprawl Adjustment** (assess from DLP, SharePoint, sensitivity label, and retention policy findings):
+- Low sprawl → +$0
+- Moderate sprawl → +$5,000
+- High sprawl → +$12,500
+- Severe sprawl → +$25,000
+
+**Security & Compliance Adjustment** (derive from compliance flags and industry context):
+- Basic → +$0
+- HIPAA/Financial → +$7,500
+- Defense/ITAR/CMMC → +$15,000
+- High-risk identity/security issues → +$25,000
+
+**Copilot Readiness Adjustment** (only for Copilot-related projects — assess from hasCopilotLicenses, sensitivityLabelsConfigured, DLP, and Copilot score):
+- Minor blockers → +$5,000
+- Moderate blockers → +$12,500
+- Major blockers → +$25,000
+
+**Timeline Adjustment**:
+- Standard → +$0
+- Expedited → +$5,000
+- Rapid → +$10,000
+
+Output requirements for the Pricing section:
+- Show a pricing table with columns: Project/Workstream, Base Ceiling, Adjustments (itemised), Final Price (USD), Reasoning
+- Always show Base Ceiling for each line
+- Always show each adjustment that applies and its dollar value
+- Always show Final Price
+- Always explain the reasoning for each tier chosen
+- Never invent new pricing models. Never use TBD. Never treat the Base Ceiling as a maximum.
+- Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
 const generateDocSchema = z.object({
   customerId: z.number().int().positive().optional(),
@@ -847,24 +900,44 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
 
     const htmlContent = extractAiHtml(aiResponse);
 
-    // Insert with placeholder pdfUrl — updated after we have the id
-    const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
-      customerId: customerId ?? null,
-      projectId:  projectId  ?? null,
-      category:   "report",
-      docType,
-      title,
-      htmlContent,
-      status: "approved",
-      approvedAt: new Date(),
-      pdfUrl: null, // will be set below
-    }).returning();
+    // Upsert: replace if a report of this docType for this customer+project already exists
+    let reportDocId: number;
+    if (customerId && projectId) {
+      const existingReport = await db.select({ id: insightsGeneratedDocumentsTable.id })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.customerId, customerId),
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          eq(insightsGeneratedDocumentsTable.docType, docType),
+        ))
+        .limit(1);
+      if (existingReport[0]) {
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ title, htmlContent, status: "approved", approvedAt: new Date(), pdfUrl: null, updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, existingReport[0].id));
+        reportDocId = existingReport[0].id;
+      } else {
+        const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
+          customerId: customerId ?? null, projectId: projectId ?? null,
+          category: "report", docType, title, htmlContent,
+          status: "approved", approvedAt: new Date(), pdfUrl: null,
+        }).returning({ id: insightsGeneratedDocumentsTable.id });
+        reportDocId = ins!.id;
+      }
+    } else {
+      const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
+        customerId: customerId ?? null, projectId: projectId ?? null,
+        category: "report", docType, title, htmlContent,
+        status: "approved", approvedAt: new Date(), pdfUrl: null,
+      }).returning({ id: insightsGeneratedDocumentsTable.id });
+      reportDocId = ins!.id;
+    }
 
     // Set pdfUrl to the canonical download endpoint for this document
-    const pdfUrl = `/api/admin/insights/documents/${newDoc!.id}/download`;
+    const pdfUrl = `/api/admin/insights/documents/${reportDocId}/download`;
     const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
       .set({ pdfUrl })
-      .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
+      .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
       .returning();
 
     return res.json({ document: withPdf });
@@ -1156,19 +1229,17 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
             .orderBy(desc(scriptRunResultsTable.createdAt))
             .limit(50)
           : Promise.resolve([] as { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null; scoreImpact: Record<string, unknown> | null; createdAt: Date }[]),
-        // Aggregated health scores
+        // Aggregated health scores — from clientHealthHistoryTable (same source as CRM portal)
         customerId
           ? db.select({
-              identity:        clientScoresTable.identity,
-              security:        clientScoresTable.security,
-              collaboration:   clientScoresTable.collaboration,
-              compliance:      clientScoresTable.compliance,
-              copilotReadiness: clientScoresTable.copilotReadiness,
+              category:   clientHealthHistoryTable.category,
+              score:      clientHealthHistoryTable.score,
             })
-            .from(clientScoresTable)
-            .where(eq(clientScoresTable.clientId, customerId))
-            .limit(1)
-          : Promise.resolve([] as { identity: number | null; security: number | null; collaboration: number | null; compliance: number | null; copilotReadiness: number | null }[]),
+            .from(clientHealthHistoryTable)
+            .where(eq(clientHealthHistoryTable.clientId, customerId))
+            .orderBy(desc(clientHealthHistoryTable.recordedAt))
+            .limit(50)
+          : Promise.resolve([] as { category: string; score: number }[]),
       ]);
 
       const clientName = (customerRow as { company: string | null; name: string | null }[])[0]?.company
@@ -1198,15 +1269,25 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
         }
       }
 
-      // 2. Health scores
-      const scores = (scoresRow as { identity: number | null; security: number | null; collaboration: number | null; compliance: number | null; copilotReadiness: number | null }[])[0];
-      if (scores) {
+      // 2. Health scores — derived from clientHealthHistoryTable (same source as CRM portal)
+      const healthHistoryRows = scoresRow as { category: string; score: number }[];
+      const latestByCategory: Record<string, number> = {};
+      for (const row of healthHistoryRows) {
+        if (!(row.category in latestByCategory)) latestByCategory[row.category] = row.score;
+      }
+      if (Object.keys(latestByCategory).length > 0) {
         telemetryLines.push("\nHEALTH SCORES:");
-        if (scores.identity        != null) telemetryLines.push(`  Identity Score:          ${scores.identity}/100`);
-        if (scores.security        != null) telemetryLines.push(`  Security Score:          ${scores.security}/100`);
-        if (scores.collaboration   != null) telemetryLines.push(`  Collaboration Score:     ${scores.collaboration}/100`);
-        if (scores.compliance      != null) telemetryLines.push(`  Compliance Score:        ${scores.compliance}/100`);
-        if (scores.copilotReadiness != null) telemetryLines.push(`  Copilot Readiness Score: ${scores.copilotReadiness}/100`);
+        const CATEGORY_LABELS: Record<string, string> = {
+          security:     "Security Posture",
+          compliance:   "Compliance Coverage",
+          copilot:      "Copilot Readiness",
+          governance:   "Governance Maturity",
+          productivity: "Adoption Score",
+        };
+        for (const [cat, score] of Object.entries(latestByCategory)) {
+          const label = CATEGORY_LABELS[cat] ?? cat;
+          telemetryLines.push(`  ${label}: ${score}/100`);
+        }
       }
 
       // 3. Script run findings & recommendations
@@ -1286,24 +1367,68 @@ INSTRUCTIONS:
 
       const { lines: sowLines, totalPrice: sowTotal } = parseSowPricing(htmlContent);
 
-      const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
-        customerId: customerId ?? null,
-        projectId:  projectId ?? null,
-        category:   "consulting",
-        docType:    "consolidated_sow",
-        title,
-        htmlContent,
-        status: "approved",
-        approvedAt: new Date(),
-        pdfUrl: null,
-        sowPricingLines: sowLines.length > 0 ? sowLines : null,
-        sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-      }).returning();
+      // Upsert: replace if a consolidated_sow for this customer+project already exists
+      let docId: number;
+      if (customerId && projectId) {
+        const existing = await db.select({ id: insightsGeneratedDocumentsTable.id })
+          .from(insightsGeneratedDocumentsTable)
+          .where(and(
+            eq(insightsGeneratedDocumentsTable.customerId, customerId),
+            eq(insightsGeneratedDocumentsTable.projectId, projectId),
+            eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+          ))
+          .limit(1);
+        if (existing[0]) {
+          await db.update(insightsGeneratedDocumentsTable)
+            .set({
+              title,
+              htmlContent,
+              status: "approved",
+              approvedAt: new Date(),
+              pdfUrl: null,
+              sowPricingLines: sowLines.length > 0 ? sowLines : null,
+              sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+              updatedAt: new Date(),
+            })
+            .where(eq(insightsGeneratedDocumentsTable.id, existing[0].id));
+          docId = existing[0].id;
+        } else {
+          const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
+            customerId: customerId ?? null,
+            projectId:  projectId ?? null,
+            category:   "consulting",
+            docType:    "consolidated_sow",
+            title,
+            htmlContent,
+            status: "approved",
+            approvedAt: new Date(),
+            pdfUrl: null,
+            sowPricingLines: sowLines.length > 0 ? sowLines : null,
+            sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+          }).returning({ id: insightsGeneratedDocumentsTable.id });
+          docId = inserted!.id;
+        }
+      } else {
+        const [inserted] = await db.insert(insightsGeneratedDocumentsTable).values({
+          customerId: customerId ?? null,
+          projectId:  projectId ?? null,
+          category:   "consulting",
+          docType:    "consolidated_sow",
+          title,
+          htmlContent,
+          status: "approved",
+          approvedAt: new Date(),
+          pdfUrl: null,
+          sowPricingLines: sowLines.length > 0 ? sowLines : null,
+          sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+        }).returning({ id: insightsGeneratedDocumentsTable.id });
+        docId = inserted!.id;
+      }
 
-      const pdfUrl = `/api/admin/insights/documents/${newDoc!.id}/download`;
+      const pdfUrl = `/api/admin/insights/documents/${docId}/download`;
       const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
         .set({ pdfUrl })
-        .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
+        .where(eq(insightsGeneratedDocumentsTable.id, docId))
         .returning();
 
       // Notify any open client tabs for this project that the scope has changed
@@ -1342,7 +1467,7 @@ INSTRUCTIONS:
       .join("\n");
 
     const sectionHints: Record<string, string> = {
-      sow:                        "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (use [TBD] placeholders), Acceptance Criteria, Terms & Conditions",
+      sow:                        "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria, Terms & Conditions",
       remediation_plan:           "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
       deployment_plan:            "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
       governance_framework:       "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process",
@@ -1354,16 +1479,58 @@ INSTRUCTIONS:
 
     const typeLabel = CONSULTING_TYPE_LABELS[deliverableType] ?? deliverableType;
 
-    const scoresBlock = `- Security Score: ${scores.security}/100\n- Governance Score: ${scores.governance}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Composite: ${scores.composite}/100`;
+    const scoresBlock = `- Security Posture: ${scores.security}/100\n- Copilot Readiness: ${scores.readiness}/100\n- Governance Maturity: ${scores.governance}/100\n- Composite: ${scores.composite}/100`;
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
     const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
+
+    // Fetch prior documents for consistency injection
+    const isSowType = deliverableType === "sow" || deliverableType === "consolidated_sow";
+    const priorDocs = (customerId && projectId)
+      ? await db.select({
+          title:       insightsGeneratedDocumentsTable.title,
+          docType:     insightsGeneratedDocumentsTable.docType,
+          htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+        })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.customerId, customerId),
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          ne(insightsGeneratedDocumentsTable.docType, deliverableType),
+        ))
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+      : [];
+
+    const stripHtmlText = (html: string) =>
+      html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400);
+
+    const priorDocsSummary = priorDocs.length > 0
+      ? `PRIOR DOCUMENTS FOR THIS CLIENT (your output must be consistent with these findings and must not contradict these prior conclusions):\n${priorDocs.map(d => `[${d.title} (${d.docType})]: ${stripHtmlText(d.htmlContent)}`).join("\n\n")}\n\n`
+      : "";
+
+    // For SOW types embed Tier 02 pricing formula + catalogue
+    let pricingAppendix = "";
+    if (isSowType) {
+      const engProjects = await db.select({
+        title:       engagementProjectsTable.title,
+        priceRange:  engagementProjectsTable.priceRange,
+        description: engagementProjectsTable.description,
+        sowItems:    engagementProjectsTable.sowItems,
+      })
+        .from(engagementProjectsTable)
+        .where(eq(engagementProjectsTable.isVisible, true))
+        .orderBy(engagementProjectsTable.sortOrder);
+      const catalogueBlock = engProjects.length > 0
+        ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
+        : "No engagement project pricing configured.";
+      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+    }
 
     // Fallback injects per-type section hints for the case where the DB row is absent
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
       sectionHints: sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
     });
     const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback);
-    const prompt = substituteTokens(rawConsultingTemplate, {
+    let prompt = substituteTokens(rawConsultingTemplate, {
       typeLabel,
       clientName,
       projectDesc: projectDesc ? projectDesc + "\n" : "",
@@ -1374,7 +1541,9 @@ INSTRUCTIONS:
       recommendations: recommendationsInline,
       profileSample: profileSample || "  No telemetry captured yet.",
       sectionHints: sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
+      priorDocsSummary,
     });
+    if (pricingAppendix) prompt += pricingAppendix;
 
     const aiResponse = await anthropic.messages.create({
       model: "claude-haiku-4-5",
@@ -1385,27 +1554,70 @@ INSTRUCTIONS:
     const htmlContent = extractAiHtml(aiResponse);
 
     // Parse pricing if this is a SOW type — even regular SOWs may contain a pricing table
-    const isSowType = deliverableType === "sow" || deliverableType === "consolidated_sow";
     const { lines: sowLines2, totalPrice: sowTotal2 } = isSowType ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
 
-    const [newDoc] = await db.insert(insightsGeneratedDocumentsTable).values({
-      customerId: customerId ?? null,
-      projectId:  projectId  ?? null,
-      category:   "consulting",
-      docType:    deliverableType,
-      title,
-      htmlContent,
-      status: "approved",
-      approvedAt: new Date(),
-      pdfUrl: null,
-      sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
-      sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
-    }).returning();
+    // Upsert: replace if a document of this type for this customer+project already exists
+    let consultingDocId: number;
+    if (customerId && projectId) {
+      const existingDoc = await db.select({ id: insightsGeneratedDocumentsTable.id })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.customerId, customerId),
+          eq(insightsGeneratedDocumentsTable.projectId, projectId),
+          eq(insightsGeneratedDocumentsTable.docType, deliverableType),
+        ))
+        .limit(1);
+      if (existingDoc[0]) {
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({
+            title,
+            htmlContent,
+            status: "approved",
+            approvedAt: new Date(),
+            pdfUrl: null,
+            sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
+            sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(insightsGeneratedDocumentsTable.id, existingDoc[0].id));
+        consultingDocId = existingDoc[0].id;
+      } else {
+        const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
+          customerId: customerId ?? null,
+          projectId:  projectId  ?? null,
+          category:   "consulting",
+          docType:    deliverableType,
+          title,
+          htmlContent,
+          status: "approved",
+          approvedAt: new Date(),
+          pdfUrl: null,
+          sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
+          sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
+        }).returning({ id: insightsGeneratedDocumentsTable.id });
+        consultingDocId = ins!.id;
+      }
+    } else {
+      const [ins] = await db.insert(insightsGeneratedDocumentsTable).values({
+        customerId: customerId ?? null,
+        projectId:  projectId  ?? null,
+        category:   "consulting",
+        docType:    deliverableType,
+        title,
+        htmlContent,
+        status: "approved",
+        approvedAt: new Date(),
+        pdfUrl: null,
+        sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
+        sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
+      }).returning({ id: insightsGeneratedDocumentsTable.id });
+      consultingDocId = ins!.id;
+    }
 
-    const pdfUrl = `/api/admin/insights/documents/${newDoc!.id}/download`;
+    const pdfUrl = `/api/admin/insights/documents/${consultingDocId}/download`;
     const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
       .set({ pdfUrl })
-      .where(eq(insightsGeneratedDocumentsTable.id, newDoc!.id))
+      .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
       .returning();
 
     // Notify any open client tabs for this project that the scope has changed
