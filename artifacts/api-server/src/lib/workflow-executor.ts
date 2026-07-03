@@ -306,6 +306,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         linkedinPostId: "dry-run-linkedin-post-id",
         linkedinPostUrl: "https://www.linkedin.com/feed/update/dry-run-linkedin-post-id",
         preview: interp(node.data.postBody as string | undefined, p) ?? "(no post body configured)",
+        ...(node.data.imageUrl ? { imageUrl: interp(node.data.imageUrl as string | undefined, p) ?? "" } : {}),
       };
 
     case "post_twitter":
@@ -314,6 +315,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         twitterTweetId: "dry-run-tweet-id",
         twitterTweetUrl: "https://twitter.com/i/web/status/dry-run-tweet-id",
         preview: interp(node.data.postBody as string | undefined, p) ?? "(no tweet text configured)",
+        ...(node.data.imageUrl ? { imageUrl: interp(node.data.imageUrl as string | undefined, p) ?? "" } : {}),
       };
 
     case "post_facebook":
@@ -322,11 +324,64 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         facebookPostId: "dry-run-facebook-post-id",
         facebookPostUrl: "https://www.facebook.com/dry-run/posts/facebook-post-id",
         preview: interp(node.data.postBody as string | undefined, p) ?? "(no post body configured)",
+        ...(node.data.imageUrl ? { imageUrl: interp(node.data.imageUrl as string | undefined, p) ?? "" } : {}),
       };
 
     default:
       return { dryRun: true, note: "dry run — node skipped", nodeType: node.type };
   }
+}
+
+// ── OAuth 1.0a helper ─────────────────────────────────────────────────────────
+
+/**
+ * Build an OAuth 1.0a Authorization header using HMAC-SHA1.
+ * Pass bodyParams only for application/x-www-form-urlencoded requests whose
+ * body fields must be included in the signature base string; omit for JSON
+ * or multipart/form-data requests.
+ */
+async function buildOAuth1Header(
+  method: string,
+  url: string,
+  apiKey: string,
+  apiSecret: string,
+  accessToken: string,
+  accessSecret: string,
+  bodyParams: Record<string, string> = {},
+): Promise<string> {
+  const { createHmac } = await import("crypto");
+  const enc = (s: string) => encodeURIComponent(s);
+  const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const ts = Math.floor(Date.now() / 1000).toString();
+
+  const oauthParams: Record<string, string> = {
+    oauth_consumer_key: apiKey,
+    oauth_nonce: nonce,
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: ts,
+    oauth_token: accessToken,
+    oauth_version: "1.0",
+  };
+
+  const allParams: Record<string, string> = { ...oauthParams, ...bodyParams };
+  const paramStr = Object.entries(allParams)
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([k, v]) => `${enc(k)}=${enc(v)}`)
+    .join("&");
+  const sigBase = `${method}&${enc(url)}&${enc(paramStr)}`;
+  const sigKey = `${enc(apiSecret)}&${enc(accessSecret)}`;
+
+  const hmac = createHmac("sha1", sigKey);
+  hmac.update(sigBase);
+  const signature = hmac.digest("base64");
+
+  return (
+    "OAuth " +
+    Object.entries({ ...oauthParams, oauth_signature: signature })
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([k, v]) => `${enc(k)}="${enc(v)}"`)
+      .join(", ")
+  );
 }
 
 // ── Node execution ────────────────────────────────────────────────────────────
@@ -1249,6 +1304,7 @@ Return ONLY a JSON object with these exact keys:
         const orgId = interp((node.data.orgId as string | undefined) ?? "", payload)
           || process.env.LINKEDIN_ORG_ID;
         const postBody = interp(node.data.postBody as string | undefined, payload);
+        const imageUrl = interpOrNull(node.data.imageUrl as string | undefined, payload);
 
         if (!accessToken) {
           nodeError = true;
@@ -1260,6 +1316,77 @@ Return ONLY a JSON object with these exact keys:
           nodeError = true;
           output = { error: "post_linkedin: postBody is empty — configure the post body field on this node" };
         } else {
+          // Optionally upload an image and attach it to the post
+          let shareMediaCategory: string = "NONE";
+          let mediaItems: unknown[] = [];
+
+          if (imageUrl) {
+            try {
+              // Step 1: Register upload intent with LinkedIn Assets API
+              type LiRegResp = {
+                value?: {
+                  uploadMechanism?: {
+                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"?: { uploadUrl?: string };
+                  };
+                  asset?: string;
+                };
+              };
+              const regResp = await fetch("https://api.linkedin.com/v2/assets?action=registerUpload", {
+                method: "POST",
+                headers: {
+                  "Authorization": `Bearer ${accessToken}`,
+                  "Content-Type": "application/json",
+                  "X-Restli-Protocol-Version": "2.0.0",
+                },
+                body: JSON.stringify({
+                  registerUploadRequest: {
+                    recipes: ["urn:li:digitalmediaRecipe:feedshare-image"],
+                    owner: `urn:li:organization:${orgId}`,
+                    serviceRelationships: [
+                      { relationshipType: "OWNER", identifier: "urn:li:userGeneratedContent" },
+                    ],
+                  },
+                }),
+              });
+
+              if (regResp.ok) {
+                const regJson = (await regResp.json()) as LiRegResp;
+                const uploadUrl =
+                  regJson.value?.uploadMechanism?.[
+                    "com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest"
+                  ]?.uploadUrl;
+                const assetUrn = regJson.value?.asset;
+
+                if (uploadUrl && assetUrn) {
+                  // Step 2: Download source image
+                  const imgResp = await fetch(imageUrl);
+                  if (imgResp.ok) {
+                    const imgBuf = await imgResp.arrayBuffer();
+                    const contentType = imgResp.headers.get("content-type") ?? "image/jpeg";
+
+                    // Step 3: Upload binary to LinkedIn
+                    await fetch(uploadUrl, {
+                      method: "PUT",
+                      headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Content-Type": contentType,
+                      },
+                      body: imgBuf,
+                    });
+
+                    shareMediaCategory = "IMAGE";
+                    mediaItems = [
+                      { status: "READY", description: { text: "" }, media: assetUrn, title: { text: "" } },
+                    ];
+                  }
+                }
+              }
+            } catch (imgErr) {
+              // Image upload is best-effort — log and fall back to text-only post
+              logger.warn({ err: imgErr, imageUrl }, "post_linkedin: image upload failed, falling back to text-only");
+            }
+          }
+
           const resp = await fetch("https://api.linkedin.com/v2/ugcPosts", {
             method: "POST",
             headers: {
@@ -1273,7 +1400,8 @@ Return ONLY a JSON object with these exact keys:
               specificContent: {
                 "com.linkedin.ugc.ShareContent": {
                   shareCommentary: { text: postBody },
-                  shareMediaCategory: "NONE",
+                  shareMediaCategory,
+                  ...(mediaItems.length > 0 && { media: mediaItems }),
                 },
               },
               visibility: { "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC" },
@@ -1299,6 +1427,7 @@ Return ONLY a JSON object with these exact keys:
         const accessToken   = process.env.TWITTER_ACCESS_TOKEN;
         const accessSecret  = process.env.TWITTER_ACCESS_TOKEN_SECRET;
         const tweetText     = interp(node.data.postBody as string | undefined, payload);
+        const imageUrl      = interpOrNull(node.data.imageUrl as string | undefined, payload);
 
         if (!apiKey || !apiSecret || !accessToken || !accessSecret) {
           nodeError = true;
@@ -1307,48 +1436,70 @@ Return ONLY a JSON object with these exact keys:
           nodeError = true;
           output = { error: "post_twitter: postBody is empty — configure the tweet text on this node" };
         } else {
-          // OAuth 1.0a HMAC-SHA1 signing (user-context, no external library required)
-          const method = "POST";
-          const url = "https://api.twitter.com/2/tweets";
-          const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-          const ts = Math.floor(Date.now() / 1000).toString();
+          // Optionally upload an image and get a media_id to attach to the tweet
+          let mediaId: string | undefined;
 
-          const oauthParams: Record<string, string> = {
-            oauth_consumer_key: apiKey,
-            oauth_nonce: nonce,
-            oauth_signature_method: "HMAC-SHA1",
-            oauth_timestamp: ts,
-            oauth_token: accessToken,
-            oauth_version: "1.0",
-          };
+          if (imageUrl) {
+            try {
+              // Download the source image
+              const imgResp = await fetch(imageUrl);
+              if (imgResp.ok) {
+                const imgBuf = Buffer.from(await imgResp.arrayBuffer());
+                const mediaData = imgBuf.toString("base64");
 
-          // Build the signature base string
-          const enc = (s: string) => encodeURIComponent(s);
-          const paramStr = Object.entries(oauthParams)
-            .sort(([a], [b]) => a < b ? -1 : 1)
-            .map(([k, v]) => `${enc(k)}=${enc(v)}`)
-            .join("&");
-          const sigBase = `${method}&${enc(url)}&${enc(paramStr)}`;
-          const sigKey = `${enc(apiSecret)}&${enc(accessSecret)}`;
+                // Twitter v1.1 media/upload uses URL-encoded form; include media_data in
+                // the OAuth signature base string per the spec.
+                const uploadUrl = "https://upload.twitter.com/1.1/media/upload.json";
+                const uploadAuthHeader = await buildOAuth1Header(
+                  "POST",
+                  uploadUrl,
+                  apiKey,
+                  apiSecret,
+                  accessToken,
+                  accessSecret,
+                  { media_data: mediaData },
+                );
 
-          // HMAC-SHA1 via Web Crypto (available in Node 18+)
-          const { createHmac } = await import("crypto");
-          const hmac = createHmac("sha1", sigKey);
-          hmac.update(sigBase);
-          const signature = hmac.digest("base64");
+                const uploadResp = await fetch(uploadUrl, {
+                  method: "POST",
+                  headers: {
+                    "Authorization": uploadAuthHeader,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                  },
+                  body: new URLSearchParams({ media_data: mediaData }).toString(),
+                });
 
-          const authHeader = "OAuth " + Object.entries({ ...oauthParams, oauth_signature: signature })
-            .sort(([a], [b]) => a < b ? -1 : 1)
-            .map(([k, v]) => `${enc(k)}="${enc(v)}"`)
-            .join(", ");
+                if (uploadResp.ok) {
+                  const uploadJson = (await uploadResp.json()) as { media_id_string?: string };
+                  mediaId = uploadJson.media_id_string;
+                }
+              }
+            } catch (imgErr) {
+              // Image upload is best-effort — log and fall back to text-only tweet
+              logger.warn({ err: imgErr, imageUrl }, "post_twitter: image upload failed, falling back to text-only");
+            }
+          }
 
-          const resp = await fetch(url, {
-            method,
+          const tweetUrl = "https://api.twitter.com/2/tweets";
+          const authHeader = await buildOAuth1Header(
+            "POST",
+            tweetUrl,
+            apiKey,
+            apiSecret,
+            accessToken,
+            accessSecret,
+          );
+
+          const tweetBody: Record<string, unknown> = { text: tweetText };
+          if (mediaId) tweetBody.media = { media_ids: [mediaId] };
+
+          const resp = await fetch(tweetUrl, {
+            method: "POST",
             headers: {
               "Authorization": authHeader,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ text: tweetText }),
+            body: JSON.stringify(tweetBody),
           });
 
           if (!resp.ok) {
@@ -1356,7 +1507,7 @@ Return ONLY a JSON object with these exact keys:
             const errText = await resp.text().catch(() => "");
             output = { error: `post_twitter: Twitter API error ${resp.status}`, detail: errText.slice(0, 400) };
           } else {
-            const json = await resp.json() as { data?: { id?: string } };
+            const json = (await resp.json()) as { data?: { id?: string } };
             const tweetId = json?.data?.id ?? "unknown";
             const twitterTweetUrl = `https://twitter.com/i/web/status/${tweetId}`;
             output = { twitterTweetId: tweetId, twitterTweetUrl };
@@ -1371,6 +1522,7 @@ Return ONLY a JSON object with these exact keys:
         const pageId = interp((node.data.pageId as string | undefined) ?? "", payload)
           || process.env.FACEBOOK_PAGE_ID;
         const postBody = interp(node.data.postBody as string | undefined, payload);
+        const imageUrl = interpOrNull(node.data.imageUrl as string | undefined, payload);
 
         if (!pageAccessToken) {
           nodeError = true;
@@ -1381,7 +1533,29 @@ Return ONLY a JSON object with these exact keys:
         } else if (!postBody?.trim()) {
           nodeError = true;
           output = { error: "post_facebook: postBody is empty — configure the post body field on this node" };
+        } else if (imageUrl) {
+          // Photo post: use /{page-id}/photos with url + caption so the image
+          // is displayed inline rather than as a link card.
+          const resp = await fetch(
+            `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/photos`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: imageUrl, caption: postBody, access_token: pageAccessToken }),
+            },
+          );
+          if (!resp.ok) {
+            nodeError = true;
+            const errText = await resp.text().catch(() => "");
+            output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
+          } else {
+            const json = (await resp.json()) as { id?: string; post_id?: string };
+            const rawId = json?.post_id ?? json?.id ?? "unknown";
+            const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
+            output = { facebookPostId: rawId, facebookPostUrl };
+          }
         } else {
+          // Text-only post
           const resp = await fetch(
             `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/feed`,
             {
@@ -1395,7 +1569,7 @@ Return ONLY a JSON object with these exact keys:
             const errText = await resp.text().catch(() => "");
             output = { error: `post_facebook: Facebook Graph API error ${resp.status}`, detail: errText.slice(0, 400) };
           } else {
-            const json = await resp.json() as { id?: string };
+            const json = (await resp.json()) as { id?: string };
             const rawId = json?.id ?? "unknown";
             const facebookPostUrl = `https://www.facebook.com/${rawId.replace("_", "/posts/")}`;
             output = { facebookPostId: rawId, facebookPostUrl };

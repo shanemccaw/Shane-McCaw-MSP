@@ -1459,6 +1459,13 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <PayloadField
+              label="Image URL (optional)"
+              value={(node.data.imageUrl as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
+              placeholder="https://… or {{ogImageUrl}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
               label="LinkedIn Org ID (optional)"
               value={(node.data.orgId as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, orgId: v })}
@@ -1467,7 +1474,7 @@ function NodeConfigPanel({
             />
             <div className="rounded-lg bg-[#051424] border border-[#0A66C2]/30 p-3 space-y-1.5">
               <p className="text-[10px] text-[#7D8590] leading-relaxed">
-                Requires <span className="font-mono text-[#0A66C2]">LINKEDIN_ACCESS_TOKEN</span> and <span className="font-mono text-[#0A66C2]">LINKEDIN_ORG_ID</span> in Replit Secrets. Obtain a long-lived page token from the LinkedIn Developer Portal.
+                Requires <span className="font-mono text-[#0A66C2]">LINKEDIN_ACCESS_TOKEN</span> and <span className="font-mono text-[#0A66C2]">LINKEDIN_ORG_ID</span> in Replit Secrets. Obtain a long-lived page token from the LinkedIn Developer Portal. When an Image URL is provided the image is uploaded via the LinkedIn Assets API and attached to the post.
               </p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{linkedinPostId}}"} · {"{{linkedinPostUrl}}"}</p>
             </div>
@@ -1484,9 +1491,16 @@ function NodeConfigPanel({
               multiline
               ancestorOutputs={ancestorOutputs}
             />
+            <PayloadField
+              label="Image URL (optional)"
+              value={(node.data.imageUrl as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
+              placeholder="https://… or {{ogImageUrl}}"
+              ancestorOutputs={ancestorOutputs}
+            />
             <div className="rounded-lg bg-[#0D0D0D] border border-[#E7E7E7]/20 p-3 space-y-1.5">
               <p className="text-[10px] text-[#7D8590] leading-relaxed">
-                Requires five secrets in Replit Secrets: <span className="font-mono text-[#E7E7E7]">TWITTER_API_KEY</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_API_SECRET</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN_SECRET</span>, and (optionally) <span className="font-mono text-[#E7E7E7]">TWITTER_BEARER_TOKEN</span>. Create an app with Read &amp; Write access in the Twitter Developer Portal.
+                Requires five secrets in Replit Secrets: <span className="font-mono text-[#E7E7E7]">TWITTER_API_KEY</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_API_SECRET</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN</span>, <span className="font-mono text-[#E7E7E7]">TWITTER_ACCESS_TOKEN_SECRET</span>, and (optionally) <span className="font-mono text-[#E7E7E7]">TWITTER_BEARER_TOKEN</span>. Create an app with Read &amp; Write access in the Twitter Developer Portal. When an Image URL is provided it is uploaded via the v1.1 media upload API and attached to the tweet.
               </p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{twitterTweetId}}"} · {"{{twitterTweetUrl}}"}</p>
             </div>
@@ -1504,6 +1518,13 @@ function NodeConfigPanel({
               ancestorOutputs={ancestorOutputs}
             />
             <PayloadField
+              label="Image URL (optional)"
+              value={(node.data.imageUrl as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, imageUrl: v })}
+              placeholder="https://… or {{ogImageUrl}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
               label="Facebook Page ID (optional)"
               value={(node.data.pageId as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, pageId: v })}
@@ -1512,7 +1533,7 @@ function NodeConfigPanel({
             />
             <div className="rounded-lg bg-[#071533] border border-[#1877F2]/30 p-3 space-y-1.5">
               <p className="text-[10px] text-[#7D8590] leading-relaxed">
-                Requires <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ACCESS_TOKEN</span> and <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ID</span> in Replit Secrets. Generate a permanent Page access token via Meta for Developers → Graph API Explorer.
+                Requires <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ACCESS_TOKEN</span> and <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ID</span> in Replit Secrets. Generate a permanent Page access token via Meta for Developers → Graph API Explorer. When an Image URL is provided the post is created via the <span className="font-mono text-[#1877F2]">/photos</span> endpoint with the image attached.
               </p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{facebookPostId}}"} · {"{{facebookPostUrl}}"}</p>
             </div>
