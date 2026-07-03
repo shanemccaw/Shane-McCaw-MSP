@@ -103,7 +103,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
 const KNOWN_EVENTS: Array<{
   name: string;
   description: string;
-  payloadFields: Array<{ key: string; label: string }>;
+  payloadFields: Array<{ key: string; label: string; enumValues?: string[] }>;
 }> = [
   { name: "lead.created",             description: "A new lead was submitted via any channel (contact form, quiz, etc.)",   payloadFields: [{ key: "leadId", label: "Lead ID" }, { key: "leadName", label: "Full name" }, { key: "leadEmail", label: "Email address" }, { key: "company", label: "Company name" }, { key: "serviceArea", label: "Service area of interest" }] },
   { name: "lead.qualified",           description: "A lead passed qualification scoring and is ready to convert",            payloadFields: [{ key: "leadId", label: "Lead ID" }, { key: "qualificationId", label: "Qualification record ID" }, { key: "score", label: "Overall qualification score" }] },
@@ -116,13 +116,13 @@ const KNOWN_EVENTS: Array<{
   { name: "m365.health_check_complete", description: "An M365 health check script finished running",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "score", label: "Overall health score" }, { key: "status", label: "Job completion status" }] },
   { name: "m365.diagnostic_failed",    description: "A Quick Win diagnostic run failed mid-way (Azure credentials absent or network error)", payloadFields: [{ key: "clientId", label: "Client user ID" }, { key: "failed", label: "Always true for this event" }, { key: "completedAt", label: "ISO timestamp of failure" }] },
   { name: "onboarding.complete",      description: "A client completed the onboarding questionnaire",                        payloadFields: [{ key: "clientId", label: "Client ID" }, { key: "projectId", label: "Linked project ID" }] },
-  { name: "quiz.lead_submitted",      description: "A lead completed the M365 readiness quiz and their results were scored",  payloadFields: [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "leadName", label: "Lead full name" }, { key: "leadEmail", label: "Lead email" }, { key: "company", label: "Company name" }, { key: "totalScore", label: "Overall quiz score 0–100" }, { key: "tier", label: "Score tier (Beginner/Intermediate/Advanced)" }, { key: "recommendedService", label: "Top recommended service" }] },
+  { name: "quiz.lead_submitted",      description: "A lead completed the M365 readiness quiz and their results were scored",  payloadFields: [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "leadName", label: "Lead full name" }, { key: "leadEmail", label: "Lead email" }, { key: "company", label: "Company name" }, { key: "totalScore", label: "Overall quiz score 0–100" }, { key: "tier", label: "Score tier (Beginner/Intermediate/Advanced)", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }] },
   { name: "customer.script_result",   description: "A customer ran a downloaded diagnostic script and the results were received by the server", payloadFields: [{ key: "scriptName", label: "Script title" }, { key: "scriptId", label: "Library script UUID" }, { key: "customerId", label: "Client user ID" }, { key: "kanbanTaskId", label: "Linked kanban task ID" }, { key: "projectId", label: "Linked project ID" }, { key: "resultId", label: "Script run result row ID" }, { key: "results", label: "Full results object returned by the script" }] },
 ];
 
 // ── Node output registry (what each action injects into the next payload) ─────
 
-const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
+const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValues?: string[] }>> = {
   // platform / generic action sub-types
   create_lead:            [{ key: "leadId", label: "Created lead ID" }, { key: "leadName", label: "Full name" }, { key: "leadEmail", label: "Email" }],
   convert_to_opportunity: [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
@@ -130,19 +130,19 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   create_project:         [{ key: "projectId", label: "Created project ID" }, { key: "projectTitle", label: "Project title" }],
   execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }, { key: "runbookName", label: "Runbook name" }],
   update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
-  generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type" }, { key: "name", label: "Document name" }],
+  generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }],
   http_request:           [{ key: "status", label: "HTTP response status code" }, { key: "ok", label: "true if 2xx response" }],
   sql_query:              [{ key: "queryRows", label: "Array of result rows" }],
   emit_event:             [{ key: "eventName", label: "Name of the emitted event" }],
   send_email:             [{ key: "sent", label: "true if email was sent" }],
   send_sms:               [{ key: "sent", label: "true if SMS was sent" }],
   // CRM nodes
-  score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High" }, { key: "qualified", label: "true if score ≥ threshold" }],
-  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage" }],
+  score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "qualified", label: "true if score ≥ threshold" }],
+  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage", enumValues: ["new", "qualified", "proposal", "negotiation", "won", "lost"] }],
   create_opportunity:    [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   // Diagnostics nodes
-  parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier" }, { key: "recommendedService", label: "Top recommended service" }],
-  generate_readiness_score: [{ key: "readinessScore", label: "Composite readiness score 0–100" }, { key: "readinessLabel", label: "Low / Medium / High" }, { key: "recordId", label: "Health history record ID" }],
+  parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }],
+  generate_readiness_score: [{ key: "readinessScore", label: "Composite readiness score 0–100" }, { key: "readinessLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "recordId", label: "Health history record ID" }],
   attach_quiz_insights:     [{ key: "insightsAttached", label: "true when saved" }, { key: "documentId", label: "Created insight document ID" }],
   // M365 Health nodes
   validate_m365_permissions: [{ key: "permissionsValid", label: "true if all perms present" }, { key: "missingCount", label: "Number of missing permissions" }, { key: "jobId", label: "Azure job ID" }],
@@ -158,11 +158,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
   publish_article:  [{ key: "published", label: "true if article was saved" }, { key: "slug", label: "Final article slug (may differ if conflict resolved)" }, { key: "articleId", label: "Database row ID" }, { key: "title", label: "Article title as saved" }],
   topic_picker:     [{ key: "articleTopic", label: "AI-selected article topic" }, { key: "topicCategory", label: "Category assigned to the topic" }, { key: "topicRationale", label: "One-sentence rationale from AI" }],
   // Marketing Actions (extended)
-  create_marketing_campaign: [{ key: "campaignId", label: "Created campaign DB ID" }, { key: "campaignName", label: "Campaign name" }, { key: "campaignStatus", label: "Campaign status (draft / active)" }],
+  create_marketing_campaign: [{ key: "campaignId", label: "Created campaign DB ID" }, { key: "campaignName", label: "Campaign name" }, { key: "campaignStatus", label: "Campaign status (draft / active)", enumValues: ["draft", "active"] }],
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
-  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
+  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)", enumValues: ["lead", "client", "project", "article"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
   // News
@@ -173,7 +173,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string }>> = {
     { key: "newsArticleSuggestion", label: "One-paragraph blog lead-in" },
     { key: "hotScore",            label: "Relevance score 0–100" },
     { key: "isHot",               label: "true when hotScore exceeds the threshold" },
-    { key: "targetSector",        label: "Market sector (Government, Healthcare, etc.)" },
+    { key: "targetSector",        label: "Market sector (Government, Healthcare, etc.)", enumValues: ["Government", "Healthcare", "Finance", "Education", "Technology", "Legal", "Non-Profit"] },
     { key: "campaignBrief",       label: "Marketing brief (audience, hook, 3 angles) — only when isHot is true" },
     { key: "campaignId",          label: "DB ID of auto-created campaign draft — only when Auto-build campaign is on and isHot" },
   ],
@@ -776,7 +776,7 @@ interface AncestorGroup {
   nodeName: string;
   /** true for the start/trigger node — its outputs live at the top-level payload, not under steps.<nodeId> */
   isStartNode: boolean;
-  outputs: Array<{ key: string; label: string }>;
+  outputs: Array<{ key: string; label: string; enumValues?: string[] }>;
 }
 
 function getAncestorOutputs(
@@ -3489,12 +3489,26 @@ function SwitchCasePanel({
   const cases = ((node.data.cases as SwitchCaseItem[] | undefined) ?? []);
   const switchExpr = (node.data.switchExpr as string) ?? "";
 
-  // Detect if any referenced key has known list values (static registry or ask_for_input options)
+  // Detect if any referenced key has known enum values by scanning ancestorOutputs metadata first.
+  // Falls back to the static registry (for domain-specific keys like reports_to_run not in NODE_OUTPUTS)
+  // and then to ask_for_input select field options.
   const referencedKeys = extractReferencedKeys(switchExpr);
   const detectedList = (() => {
     for (const key of referencedKeys) {
+      // Primary: scan ancestorOutputs for any output entry that declares enumValues for this key
+      for (const group of ancestorOutputs) {
+        const output = group.outputs.find(o => o.key === key && o.enumValues && o.enumValues.length > 0);
+        if (output?.enumValues) {
+          return {
+            label: output.label.replace(/\s*\(.*\)$/, "").trim(), // strip parenthetical notes from label
+            groups: [{ group: "Values", items: output.enumValues.map(v => ({ id: v, label: v })) }],
+          };
+        }
+      }
+      // Fallback: static registry for domain-specific keys not expressed in NODE_OUTPUTS
       const reg = LIST_VALUE_REGISTRY[key];
       if (reg) return reg;
+      // Supplemental: ask_for_input select fields (dynamic, set by the admin at design time)
       const dynamic = findAskForInputSelectOptions(key, nodes);
       if (dynamic) return dynamic;
     }
