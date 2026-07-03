@@ -3259,6 +3259,101 @@ interface SwitchCaseItem {
   label: string;
 }
 
+const SWITCH_CASE_MAX = 20;
+
+function BuildCasesPopover({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (selected: { id: string; label: string }[]) => void;
+  onCancel: () => void;
+}) {
+  const [checked, setChecked] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const g of DOCUMENT_TYPE_GROUPS) {
+      for (const item of g.items) {
+        init[item.id] = true;
+      }
+    }
+    return init;
+  });
+
+  function toggleItem(id: string) {
+    setChecked(prev => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function toggleGroup(group: string, value: boolean) {
+    const g = DOCUMENT_TYPE_GROUPS.find(g => g.group === group);
+    if (!g) return;
+    const patch: Record<string, boolean> = {};
+    for (const item of g.items) patch[item.id] = value;
+    setChecked(prev => ({ ...prev, ...patch }));
+  }
+
+  function handleAdd() {
+    const selected: { id: string; label: string }[] = [];
+    for (const g of DOCUMENT_TYPE_GROUPS) {
+      for (const item of g.items) {
+        if (checked[item.id]) selected.push({ id: item.id, label: item.label });
+      }
+    }
+    onAdd(selected);
+  }
+
+  return (
+    <div className="rounded-lg border border-[#30363D] bg-[#161B22] p-3 space-y-3">
+      {DOCUMENT_TYPE_GROUPS.map(g => {
+        const allChecked = g.items.every(item => checked[item.id]);
+        const noneChecked = g.items.every(item => !checked[item.id]);
+        return (
+          <div key={g.group} className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-[#FB923C] uppercase tracking-wider">{g.group}</span>
+              <button
+                type="button"
+                onClick={() => toggleGroup(g.group, noneChecked ? true : false)}
+                className="text-[9px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+              >
+                {allChecked ? "Deselect all" : "Select all"}
+              </button>
+            </div>
+            <div className="space-y-1">
+              {g.items.map(item => (
+                <label key={item.id} className="flex items-center gap-2 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={checked[item.id] ?? false}
+                    onChange={() => toggleItem(item.id)}
+                    className="w-3 h-3 rounded accent-orange-500 shrink-0"
+                  />
+                  <span className="text-[11px] text-[#E6EDF3] group-hover:text-white transition-colors">{item.label}</span>
+                  <span className="text-[9px] text-[#484F58] font-mono ml-auto">{item.id}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2 pt-1 border-t border-[#30363D]">
+        <button
+          type="button"
+          onClick={handleAdd}
+          className="px-3 py-1 rounded-lg bg-[#FB923C]/15 border border-[#FB923C]/40 text-[11px] font-semibold text-[#FB923C] hover:bg-[#FB923C]/25 transition-colors"
+        >
+          Add as Cases
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-[11px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SwitchCasePanel({
   node,
   onChange,
@@ -3269,13 +3364,18 @@ function SwitchCasePanel({
   ancestorOutputs: AncestorGroup[];
 }) {
   const cases = ((node.data.cases as SwitchCaseItem[] | undefined) ?? []);
+  const switchExpr = (node.data.switchExpr as string) ?? "";
+  const showBuildButton = switchExpr.includes("reports_to_run");
+
+  const [buildOpen, setBuildOpen] = useState(false);
+  const [pendingCases, setPendingCases] = useState<{ id: string; label: string }[] | null>(null);
 
   function updateCases(next: SwitchCaseItem[]) {
     onChange(node.id, { ...node.data, cases: next });
   }
 
   function addCase() {
-    if (cases.length >= 10) return;
+    if (cases.length >= SWITCH_CASE_MAX) return;
     updateCases([
       ...cases,
       { id: crypto.randomUUID(), matchValue: "", label: "" },
@@ -3300,6 +3400,21 @@ function SwitchCasePanel({
     updateCases(next);
   }
 
+  function handleBuildAdd(selected: { id: string; label: string }[]) {
+    if (cases.length > 0) {
+      setPendingCases(selected);
+      setBuildOpen(false);
+    } else {
+      applyBuiltCases(selected);
+    }
+  }
+
+  function applyBuiltCases(selected: { id: string; label: string }[]) {
+    updateCases(selected.map(s => ({ id: crypto.randomUUID(), matchValue: s.id, label: s.label })));
+    setBuildOpen(false);
+    setPendingCases(null);
+  }
+
   const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#FB923C]";
 
   return (
@@ -3307,18 +3422,60 @@ function SwitchCasePanel({
       {/* Switch expression */}
       <PayloadField
         label="Switch on (expression)"
-        value={(node.data.switchExpr as string) ?? ""}
+        value={switchExpr}
         onChange={v => onChange(node.id, { ...node.data, switchExpr: v })}
         placeholder="{{status}} or {{tier}}"
         ancestorOutputs={ancestorOutputs}
       />
 
+      {/* Build Cases from Document Types button */}
+      {showBuildButton && (
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => { setBuildOpen(v => !v); setPendingCases(null); }}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-[#FB923C]/40 bg-[#FB923C]/8 text-[11px] font-semibold text-[#FB923C] hover:bg-[#FB923C]/15 hover:border-[#FB923C]/70 transition-colors"
+          >
+            <span>✦</span> Build Cases from Document Types
+          </button>
+          {buildOpen && (
+            <BuildCasesPopover
+              onAdd={handleBuildAdd}
+              onCancel={() => setBuildOpen(false)}
+            />
+          )}
+          {pendingCases && (
+            <div className="rounded-lg border border-amber-500/40 bg-amber-500/8 px-3 py-2 space-y-2">
+              <p className="text-[11px] text-amber-400">
+                This will replace your {cases.length} existing case{cases.length !== 1 ? "s" : ""} — OK?
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => applyBuiltCases(pendingCases)}
+                  className="px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/30 transition-colors"
+                >
+                  Replace cases
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPendingCases(null)}
+                  className="text-[11px] text-[#7D8590] hover:text-[#E6EDF3] transition-colors underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Case list */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider">Cases</span>
-          {cases.length >= 10 && (
-            <span className="text-[10px] text-amber-400">Max 10 cases</span>
+          {cases.length >= SWITCH_CASE_MAX && (
+            <span className="text-[10px] text-amber-400">Max 20 cases</span>
           )}
         </div>
 
@@ -3372,7 +3529,7 @@ function SwitchCasePanel({
         <button
           type="button"
           onClick={addCase}
-          disabled={cases.length >= 10}
+          disabled={cases.length >= SWITCH_CASE_MAX}
           className="w-full py-1.5 rounded-lg border border-dashed border-[#FB923C]/40 text-[11px] text-[#FB923C] hover:border-[#FB923C]/70 hover:bg-[#FB923C]/5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           + Add Case
