@@ -9872,21 +9872,42 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
 
     const mergedDocIds = Array.from(new Set([...snapshotDocIds, ...liveDocs.map(d => d.id)]));
 
-    const docsRaw = mergedDocIds.length > 0
-      ? await db.select({
-          id: insightsGeneratedDocumentsTable.id,
-          title: insightsGeneratedDocumentsTable.title,
-          category: insightsGeneratedDocumentsTable.category,
-          docType: insightsGeneratedDocumentsTable.docType,
-          htmlContent: insightsGeneratedDocumentsTable.htmlContent,
-          sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
-          sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
-          createdAt: insightsGeneratedDocumentsTable.createdAt,
-        })
+    const docSelectFields = {
+      id: insightsGeneratedDocumentsTable.id,
+      title: insightsGeneratedDocumentsTable.title,
+      category: insightsGeneratedDocumentsTable.category,
+      docType: insightsGeneratedDocumentsTable.docType,
+      htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+      sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+      createdAt: insightsGeneratedDocumentsTable.createdAt,
+    };
+
+    let docsRaw = mergedDocIds.length > 0
+      ? await db.select(docSelectFields)
           .from(insightsGeneratedDocumentsTable)
           .where(inArray(insightsGeneratedDocumentsTable.id, mergedDocIds))
           .orderBy(asc(insightsGeneratedDocumentsTable.createdAt))
       : [];
+
+    // Fallback: if no docs resolved (stale/non-existent snapshot IDs and no live
+    // delivered docs), fetch the latest approved or delivered doc per doc_type for
+    // this project so the presentation is never shown completely empty.
+    if (docsRaw.length === 0 && pres.projectId) {
+      const fallbackRaw = await db.select(docSelectFields)
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          eq(insightsGeneratedDocumentsTable.projectId, pres.projectId),
+          inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered"]),
+        ))
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt));
+      // Keep only the newest doc per doc_type, then restore chronological order
+      const seenTypes = new Set<string>();
+      docsRaw = fallbackRaw
+        .filter(d => { if (seenTypes.has(d.docType)) return false; seenTypes.add(d.docType); return true; })
+        .reverse();
+    }
+
     const docs = docsRaw.map(d => ({ ...d, htmlContent: stripStagedForReviewBanner(d.htmlContent) }));
 
     // Derive sowPhases from the live SOW document — uses shared helper so GET,

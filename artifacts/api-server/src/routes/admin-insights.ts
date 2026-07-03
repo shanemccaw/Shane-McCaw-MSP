@@ -91,6 +91,52 @@ async function broadcastSowChangeForProject(projectId: number): Promise<void> {
   }
 }
 
+// ── Helper: upsert a new doc into draft presentations for the same project ────
+// When a SOW or other document is generated/approved for a project, any draft
+// presentations for that project should include it (replacing any stale entry
+// with the same doc_type so IDs don't pile up).
+async function syncPresentationDocIds(
+  projectId: number,
+  newDocId: number,
+  newDocType: string,
+): Promise<void> {
+  try {
+    const drafts = await db
+      .select({ id: quickWinPresentationsTable.id, documentsIncluded: quickWinPresentationsTable.documentsIncluded })
+      .from(quickWinPresentationsTable)
+      .where(and(
+        eq(quickWinPresentationsTable.projectId, projectId),
+        eq(quickWinPresentationsTable.status, "draft"),
+      ));
+
+    for (const draft of drafts) {
+      const existing = (draft.documentsIncluded ?? []) as number[];
+
+      // Find which existing IDs have the same doc_type so we can replace them
+      const sameTypeDocs = existing.length > 0
+        ? await db
+            .select({ id: insightsGeneratedDocumentsTable.id })
+            .from(insightsGeneratedDocumentsTable)
+            .where(and(
+              inArray(insightsGeneratedDocumentsTable.id, existing),
+              eq(insightsGeneratedDocumentsTable.docType, newDocType),
+            ))
+        : [];
+
+      const sameTypeIds = new Set(sameTypeDocs.map(d => d.id));
+      // Remove stale same-type entries; append new doc if not already present
+      const filtered = existing.filter(id => !sameTypeIds.has(id));
+      if (!filtered.includes(newDocId)) filtered.push(newDocId);
+
+      await db.update(quickWinPresentationsTable)
+        .set({ documentsIncluded: filtered, updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, draft.id));
+    }
+  } catch (err) {
+    logger.warn({ err, projectId, newDocId }, "syncPresentationDocIds: failed (non-fatal)");
+  }
+}
+
 // ── Brand colours ─────────────────────────────────────────────────────────────
 
 const navyPdf  = rgb(0.039, 0.145, 0.251); // #0A2540
@@ -981,6 +1027,14 @@ router.put("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
       void ensureOpportunityForSow(updated.customerId, updated.id);
     }
 
+    // When a SOW/consolidated_sow is approved or delivered, sync it into draft
+    // presentations for the same project so they always reference the latest doc.
+    if ((body.data.status === "approved" || body.data.status === "delivered") &&
+        updated.projectId &&
+        (updated.docType === "sow" || updated.docType === "consolidated_sow")) {
+      void syncPresentationDocIds(updated.projectId, updated.id, updated.docType);
+    }
+
     // If HTML content was updated on a SOW document, the pricing may have changed —
     // notify any open client tabs so they can re-fetch and show the stale-scope banner.
     if (body.data.htmlContent !== undefined && updated.projectId &&
@@ -1128,6 +1182,11 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
     // When a SOW is sent to a client, promote them to the Opportunities pipeline
     if (doc.customerId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
       void ensureOpportunityForSow(doc.customerId, doc.id);
+    }
+
+    // Sync doc into draft presentations for the same project on delivery
+    if (doc.projectId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
+      void syncPresentationDocIds(doc.projectId, doc.id, doc.docType);
     }
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl, pdfAttached: !!pdfBuffer });
@@ -1445,6 +1504,8 @@ INSTRUCTIONS:
       // Notify any open client tabs for this project that the scope has changed
       if (projectId) {
         void broadcastSowChangeForProject(projectId);
+        // Sync new consolidated_sow doc into any draft presentations for this project
+        void syncPresentationDocIds(projectId, docId, "consolidated_sow");
       }
 
       return res.json({ document: withPdf });
@@ -1646,6 +1707,8 @@ INSTRUCTIONS:
     // Notify any open client tabs for this project that the scope has changed
     if (isSowType && projectId) {
       void broadcastSowChangeForProject(projectId);
+      // Sync new SOW doc into any draft presentations for this project
+      void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
     }
 
     return res.json({ document: withPdf });
@@ -1765,6 +1828,11 @@ router.post("/admin/insights/consulting/:id/send", requireAdmin, async (req: Req
       })
       .where(eq(insightsGeneratedDocumentsTable.id, id))
       .returning();
+
+    // Sync doc into draft presentations for the same project on delivery
+    if (doc.projectId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
+      void syncPresentationDocIds(doc.projectId, doc.id, doc.docType);
+    }
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl });
   } catch (err) {
