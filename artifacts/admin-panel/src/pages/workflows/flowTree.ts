@@ -42,6 +42,18 @@ export interface StoredEdge {
 
 export const CONTAINER_TYPES = new Set(["foreach", "condition", "switch_case"]);
 
+/**
+ * Data-aware container check.
+ * Returns true for static container types AND for fetch_news_headlines when
+ * autoBuildCampaign is active (making it a dynamic campaign-body container).
+ */
+export function isContainerNode(node: StoredNode): boolean {
+  const type = (node.data.nodeType as string) || node.type || "";
+  if (CONTAINER_TYPES.has(type)) return true;
+  if (type === "fetch_news_headlines" && node.data.autoBuildCampaign === true) return true;
+  return false;
+}
+
 // ── Graph → Tree ──────────────────────────────────────────────────────────────
 
 export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): FlowStep[] {

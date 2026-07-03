@@ -19,6 +19,7 @@ import {
   treeReorderStep,
   treeMoveStepIntoBranch,
   treeToGraph,
+  isContainerNode,
 } from "./flowTree";
 import type { FlowStep, StoredNode, StoredEdge } from "./flowTree";
 
@@ -346,8 +347,8 @@ function StepCard({
     onDuplicateNode(step.id);
   }
 
-  const isContainer = step.nodeType === "foreach" || step.nodeType === "condition" || step.nodeType === "switch_case"
-    || (step.nodeType === "fetch_news_headlines" && step.data.autoBuildCampaign === true);
+  const storedNode: StoredNode = { id: step.id, position: { x: 0, y: 0 }, data: step.data };
+  const isContainer = isContainerNode(storedNode);
 
   const ctx = React.useContext(FlowCanvasContext);
   const isDragging = ctx.draggedId === step.id;
@@ -875,19 +876,21 @@ function BranchStepList({
             onGraphChange={onGraphChange}
             onDuplicateNode={onDuplicateNode}
           />
-          {/* "+" after each step within the branch */}
-          <AddButton
-            afterNodeId={step.id}
-            sourceHandle={undefined}
-            isArchived={isArchived}
-            nodeIdCounter={nodeIdCounter}
-            nodeStyles={nodeStyles}
-            libraryCategories={libraryCategories}
-            allLibraryNodes={allLibraryNodes}
-            nodes={nodes}
-            edges={edges}
-            onGraphChange={onGraphChange}
-          />
+          {/* "+" after each step within the branch — suppressed for terminal news node */}
+          {!(step.nodeType === "fetch_news_headlines" && !step.data.autoBuildCampaign) && (
+            <AddButton
+              afterNodeId={step.id}
+              sourceHandle={undefined}
+              isArchived={isArchived}
+              nodeIdCounter={nodeIdCounter}
+              nodeStyles={nodeStyles}
+              libraryCategories={libraryCategories}
+              allLibraryNodes={allLibraryNodes}
+              nodes={nodes}
+              edges={edges}
+              onGraphChange={onGraphChange}
+            />
+          )}
           {idx < steps.length - 1 && <div className="h-1" />}
         </React.Fragment>
       ))}
