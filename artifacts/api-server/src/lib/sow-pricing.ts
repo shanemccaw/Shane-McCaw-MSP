@@ -1,13 +1,30 @@
-export interface SowPricingLine {
-  title: string;
-  scope: string;
-  priceUsd: number;
-  notes: string;
+import { z } from "zod";
+
+/**
+ * Zod schema for a single SOW pricing line as stored in the `sow_pricing_lines`
+ * JSONB column. Adding new optional fields here is the single migration point —
+ * old rows that pre-date a field will deserialise with the field `undefined`,
+ * which is safe for all optional properties.
+ */
+export const SowPricingLineSchema = z.object({
+  title: z.string(),
+  scope: z.string(),
+  priceUsd: z.number(),
+  notes: z.string(),
   /** Distinguishes customer-toggleable workstream phases from mandatory price adjustments. */
-  line_type?: "workstream" | "adjustment";
-  /** Estimated duration in weeks for this workstream phase (optional). */
-  weeks?: number;
-}
+  line_type: z.enum(["workstream", "adjustment"]).optional(),
+  /** Estimated duration in weeks for this workstream phase. */
+  weeks: z.number().int().positive().optional(),
+  /**
+   * ISO-8601 date (YYYY-MM-DD) for when this phase is expected to be
+   * delivered, computed at generation time as nextBusinessMonday + cumulative
+   * weeks. Stored so regenerated SOWs produce the same dates rather than
+   * shifting with the clock.
+   */
+  deliveryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD").optional(),
+});
+
+export type SowPricingLine = z.infer<typeof SowPricingLineSchema>;
 
 /**
  * Returns the next Business Monday strictly after the given date.
@@ -22,6 +39,31 @@ export function nextBusinessMonday(from: Date = new Date()): Date {
   const daysUntilMonday = dayOfWeek === 1 ? 7 : (8 - dayOfWeek) % 7;
   d.setDate(d.getDate() + daysUntilMonday);
   return d;
+}
+
+/**
+ * Compute and attach a `deliveryDate` (ISO-8601 YYYY-MM-DD string) to each
+ * workstream line based on cumulative duration starting from `engagementStart`.
+ *
+ * Lines without a `weeks` value do not receive a `deliveryDate`.
+ * Adjustment lines should not be passed here — pass only workstream lines.
+ *
+ * The date is calculated as: engagementStart + Σ(weeks[0..i]) × 7 days.
+ * Storing the date at generation time means a later SOW regeneration that
+ * happens to land on a different day of the week cannot shift the schedule.
+ */
+export function assignDeliveryDates(
+  workstreamLines: SowPricingLine[],
+  engagementStart: Date = nextBusinessMonday(),
+): SowPricingLine[] {
+  let cumulativeWeeks = 0;
+  return workstreamLines.map(line => {
+    if (line.weeks === undefined || line.weeks <= 0) return line;
+    cumulativeWeeks += line.weeks;
+    const deliveryDate = new Date(engagementStart);
+    deliveryDate.setDate(deliveryDate.getDate() + cumulativeWeeks * 7);
+    return { ...line, deliveryDate: deliveryDate.toISOString().slice(0, 10) };
+  });
 }
 
 /**

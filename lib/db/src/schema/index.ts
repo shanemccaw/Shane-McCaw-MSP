@@ -1473,11 +1473,25 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   deliveredAt: timestamp("delivered_at"),
   // Parsed pricing extracted from SOW/Consolidated SOW — used to populate the
   // presentation Scope step and Overview total.
+  // Schema evolution: add new optional fields here; old rows deserialise with
+  // the field `undefined`, which is safe for all optional properties.
+  // The canonical runtime type is `SowPricingLine` from @workspace/api-server
+  // lib/sow-pricing.ts (validated by SowPricingLineSchema).
   sowPricingLines: jsonb("sow_pricing_lines").$type<Array<{
     title: string;
     scope: string;
     priceUsd: number;
     notes: string;
+    /** "workstream" = customer-toggleable phase; "adjustment" = mandatory price modifier. */
+    line_type?: "workstream" | "adjustment";
+    /** Estimated duration in weeks for this workstream phase. */
+    weeks?: number;
+    /**
+     * ISO-8601 date (YYYY-MM-DD) computed at generation time as
+     * nextBusinessMonday + cumulative weeks. Stored so regenerated SOWs
+     * reproduce the same schedule rather than drifting with the clock.
+     */
+    deliveryDate?: string;
   }>>(),
   sowTotalPrice: numeric("sow_total_price", { precision: 12, scale: 2 }),
   errorMessage: text("error_message"),

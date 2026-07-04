@@ -10258,23 +10258,39 @@ function buildScopedSowHtml(
     d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-  // Compute engagement start = next Business Monday from generation time
+  // Compute engagement start = next Business Monday from generation time.
+  // Used only as a fallback for phases that do not carry a persisted deliveryDate.
   const engagementStart = nextBusinessMonday(new Date());
 
   // Determine whether any phase carries a week estimate — if so, show timeline columns
   const hasWeeks = phases.some(p => p.weeks !== undefined && p.weeks > 0);
 
-  // Compute cumulative delivery dates (phases accumulate weeks from the start)
+  // Compute delivery dates: prefer the persisted deliveryDate on each phase so that
+  // a scoped-SOW render does not silently shift a schedule that was already computed
+  // at generation time and potentially communicated to the client.  Fall back to
+  // cumulative-week arithmetic only for phases that pre-date the deliveryDate field.
   let cumulativeWeeks = 0;
   const phaseDeliveryDates: Array<{ durationLabel: string; deliveryDate: string }> = phases.map(p => {
     if (hasWeeks) {
       const w = p.weeks ?? 0;
-      cumulativeWeeks += w;
-      const deliveryDate = new Date(engagementStart);
-      deliveryDate.setDate(deliveryDate.getDate() + cumulativeWeeks * 7);
+      // Use the stored delivery date when available; recompute only for legacy rows
+      const resolvedDeliveryDate: string = (() => {
+        if (p.deliveryDate) {
+          // Parse the stored YYYY-MM-DD and reformat for display
+          const stored = new Date(p.deliveryDate + "T00:00:00");
+          return fmtDate(stored);
+        }
+        if (w > 0) {
+          cumulativeWeeks += w;
+          const computed = new Date(engagementStart);
+          computed.setDate(computed.getDate() + cumulativeWeeks * 7);
+          return fmtDate(computed);
+        }
+        return "—";
+      })();
       return {
         durationLabel: w > 0 ? `${w} week${w !== 1 ? "s" : ""}` : "—",
-        deliveryDate: w > 0 ? fmtDate(deliveryDate) : "—",
+        deliveryDate: resolvedDeliveryDate,
       };
     }
     return { durationLabel: "", deliveryDate: "" };
@@ -10487,17 +10503,27 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
           ? namedAdjustmentLines.map(a => `- ${a.title}${a.description ? ` (${a.description})` : ""}: ${fmtUsd(a.price)}`).join("\n")
           : null;
 
-        // Compute delivery dates for the scoped phases (same cumulative logic as buildScopedSowHtml)
+        // Build delivery info for the AI prompt, preferring the persisted deliveryDate
+        // on each phase so a regeneration cannot silently shift a schedule that was
+        // already communicated to the client.  Fall back to cumulative-week arithmetic
+        // only for legacy rows that pre-date the deliveryDate field.
         const sowEngagementStart = nextBusinessMonday(new Date());
         const fmtSowDate = (d: Date) =>
           d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
         let sowCumulativeWeeks = 0;
         const scopedPhaseDeliveryInfo = scopedPhases.map(p => {
           const w = p.weeks ?? 0;
-          sowCumulativeWeeks += w;
-          const deliveryDate = new Date(sowEngagementStart);
-          deliveryDate.setDate(deliveryDate.getDate() + sowCumulativeWeeks * 7);
-          return { weeks: w, deliveryDate: w > 0 ? fmtSowDate(deliveryDate) : null };
+          let displayDate: string | null = null;
+          if (p.deliveryDate) {
+            // Use the stored ISO date; parse with explicit time to avoid TZ-shift
+            displayDate = fmtSowDate(new Date(p.deliveryDate + "T00:00:00"));
+          } else if (w > 0) {
+            sowCumulativeWeeks += w;
+            const computed = new Date(sowEngagementStart);
+            computed.setDate(computed.getDate() + sowCumulativeWeeks * 7);
+            displayDate = fmtSowDate(computed);
+          }
+          return { weeks: w, deliveryDate: displayDate };
         });
         const hasDeliveryDates = scopedPhases.some(p => (p.weeks ?? 0) > 0);
 

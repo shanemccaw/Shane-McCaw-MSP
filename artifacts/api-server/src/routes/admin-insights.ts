@@ -60,7 +60,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, nextBusinessMonday, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1627,11 +1627,24 @@ INSTRUCTIONS:
           const rawHtmlContent = extractAiHtml(aiResponse);
           const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
           const htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
+          const engagementStart = nextBusinessMonday();
           const sowLines = [
-            ...workstreamLines.map(l => ({ ...l, line_type: "workstream" as const })),
+            ...assignDeliveryDates(
+              workstreamLines.map(l => ({ ...l, line_type: "workstream" as const })),
+              engagementStart,
+            ),
             ...adjustmentLines.map(l => ({ ...l, line_type: "adjustment" as const })),
           ];
           const sowTotal = computedTotal;
+
+          // Runtime validation — ensure every line conforms to the canonical schema
+          // before persisting. Warns on violation but does not discard lines so that
+          // a soft field-format mismatch cannot silently lose pricing data.
+          const { z } = await import("zod");
+          const sowLinesValidation = z.array(SowPricingLineSchema).safeParse(sowLines);
+          if (!sowLinesValidation.success) {
+            logger.warn({ docId, issues: sowLinesValidation.error.issues }, "consolidated_sow: sowPricingLines failed schema validation — persisting anyway");
+          }
 
           await db.update(insightsGeneratedDocumentsTable)
             .set({
@@ -1823,8 +1836,12 @@ INSTRUCTIONS:
         if (isSowType) {
           const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
           htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
+          const engagementStart2 = nextBusinessMonday();
           sowLines2 = [
-            ...ws2.map(l => ({ ...l, line_type: "workstream" as const })),
+            ...assignDeliveryDates(
+              ws2.map(l => ({ ...l, line_type: "workstream" as const })),
+              engagementStart2,
+            ),
             ...adj2.map(l => ({ ...l, line_type: "adjustment" as const })),
           ];
           sowTotal2 = ct2;
@@ -1832,6 +1849,17 @@ INSTRUCTIONS:
           htmlContent = rawHtmlContent2;
           sowLines2 = [];
           sowTotal2 = 0;
+        }
+
+        // Runtime validation — ensure every line conforms to the canonical schema
+        // before persisting. Warns on violation but does not discard lines so that
+        // a soft field-format mismatch cannot silently lose pricing data.
+        if (sowLines2.length > 0) {
+          const { z: zv } = await import("zod");
+          const sowLines2Validation = zv.array(SowPricingLineSchema).safeParse(sowLines2);
+          if (!sowLines2Validation.success) {
+            logger.warn({ consultingDocId, issues: sowLines2Validation.error.issues }, "consulting: sowPricingLines failed schema validation — persisting anyway");
+          }
         }
 
         await db.update(insightsGeneratedDocumentsTable)
