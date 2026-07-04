@@ -10521,57 +10521,65 @@ ${originalSowRow.htmlContent}`;
       : null;
     const prevTotalCents = typeof pres.scopedTotalPrice === "number" ? pres.scopedTotalPrice : null;
 
-    // Persist so the scoped state survives a page refresh during the same session
+    // Persist so the scoped state survives a page refresh during the same session.
+    // Both writes are wrapped in a transaction: if the insights_generated_documents
+    // upsert fails (e.g. a constraint violation), the presentation update is rolled
+    // back so the two tables never diverge.
     const nowTs = new Date();
-    await db.update(quickWinPresentationsTable)
-      .set({
-        scopedSowHtml,
-        scopedTotalPrice: scopedTotalCents,
-        scopedPhaseIds: safeIds,
-        scopedSowVersion: generationSowVersion,
-        updatedAt: nowTs,
-      })
-      .where(eq(quickWinPresentationsTable.id, id));
+    await db.transaction(async (tx) => {
+      await tx.update(quickWinPresentationsTable)
+        .set({
+          scopedSowHtml,
+          scopedTotalPrice: scopedTotalCents,
+          scopedPhaseIds: safeIds,
+          scopedSowVersion: generationSowVersion,
+          updatedAt: nowTs,
+        })
+        .where(eq(quickWinPresentationsTable.id, id));
 
-    // Upsert into insights_generated_documents so the scoped SOW is linked to
-    // the customer (and project if set) and surfaces wherever other generated
-    // docs appear. Two partial unique indexes handle the null vs non-null project_id
-    // split, since NULL != NULL in a standard unique constraint.
-    if (pres.projectId != null) {
-      await db.execute(sql`
-        INSERT INTO insights_generated_documents
-          (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
-        VALUES
-          (${pres.clientUserId}, ${pres.projectId}, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
-           ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
-        ON CONFLICT (customer_id, project_id, doc_type)
-        WHERE doc_type = 'scoped_sow' AND project_id IS NOT NULL
-        DO UPDATE SET
-          html_content    = EXCLUDED.html_content,
-          sow_total_price = EXCLUDED.sow_total_price,
-          title           = EXCLUDED.title,
-          category        = EXCLUDED.category,
-          status          = 'draft',
-          updated_at      = EXCLUDED.updated_at
-      `);
-    } else {
-      await db.execute(sql`
-        INSERT INTO insights_generated_documents
-          (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
-        VALUES
-          (${pres.clientUserId}, NULL, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
-           ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
-        ON CONFLICT (customer_id, doc_type)
-        WHERE doc_type = 'scoped_sow' AND project_id IS NULL
-        DO UPDATE SET
-          html_content    = EXCLUDED.html_content,
-          sow_total_price = EXCLUDED.sow_total_price,
-          title           = EXCLUDED.title,
-          category        = EXCLUDED.category,
-          status          = 'draft',
-          updated_at      = EXCLUDED.updated_at
-      `);
-    }
+      // Upsert into insights_generated_documents so the scoped SOW is linked to
+      // the customer (and project if set) and surfaces wherever other generated
+      // docs appear. Two partial unique indexes handle the null vs non-null project_id
+      // split, since NULL != NULL in a standard unique constraint.
+      if (pres.projectId != null) {
+        await tx.execute(sql`
+          INSERT INTO insights_generated_documents
+            (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
+          VALUES
+            (${pres.clientUserId}, ${pres.projectId}, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
+             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
+          ON CONFLICT (customer_id, project_id, doc_type)
+          WHERE doc_type = 'scoped_sow' AND project_id IS NOT NULL
+          DO UPDATE SET
+            html_content    = EXCLUDED.html_content,
+            sow_total_price = EXCLUDED.sow_total_price,
+            title           = EXCLUDED.title,
+            category        = EXCLUDED.category,
+            status          = 'draft',
+            updated_at      = EXCLUDED.updated_at
+        `);
+      } else {
+        await tx.execute(sql`
+          INSERT INTO insights_generated_documents
+            (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
+          VALUES
+            (${pres.clientUserId}, NULL, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
+             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
+          ON CONFLICT (customer_id, doc_type)
+          WHERE doc_type = 'scoped_sow' AND project_id IS NULL
+          DO UPDATE SET
+            html_content    = EXCLUDED.html_content,
+            sow_total_price = EXCLUDED.sow_total_price,
+            title           = EXCLUDED.title,
+            category        = EXCLUDED.category,
+            status          = 'draft',
+            updated_at      = EXCLUDED.updated_at
+        `);
+      }
+    }).catch((txErr: unknown) => {
+      req.log.warn({ err: txErr, presentationId: id }, "portal: scoped SOW transaction failed — both writes rolled back");
+      throw txErr;
+    });
 
     // Emit sow.scope_reduced if the client narrowed their scope vs. their previous selection.
     // Only fires when a prior scoped selection exists (first-time scoping is not a reduction).
