@@ -216,8 +216,14 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
   const { fetchWithAuth } = useAuth();
   const [downloading, setDownloading] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeHeight, setIframeHeight] = useState(600);
 
-  const handleIframeLoad = () => { setIframeLoaded(true); onReady?.(); };
+  const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    const h = e.currentTarget.contentDocument?.body?.scrollHeight;
+    if (h) setIframeHeight(Math.max(600, h + 32));
+    setIframeLoaded(true);
+    onReady?.();
+  };
 
   const srcdoc = useMemo(() => buildSrcdoc(doc.htmlContent), [doc.htmlContent]);
   const statCards = useMemo(() => extractStatCards(doc.htmlContent, doc.docType), [doc.htmlContent, doc.docType]);
@@ -396,9 +402,15 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
         </div>
 
         {/* ── Document iframe ── */}
-        <div className="flex-1 rounded-xl border border-border shadow-sm bg-white relative min-h-0 overflow-hidden">
+        {/* overflow-y-scroll + touch momentum so iOS can scroll both up and down
+            through the iframe content (absolute/h-full iframes don't scroll on iOS Safari
+            in fixed overlays). The iframe is sized to its content height on load. */}
+        <div
+          className="flex-1 rounded-xl border border-border shadow-sm bg-white relative min-h-0 overflow-y-scroll"
+          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+        >
           {!iframeLoaded && (
-            <div className="absolute inset-0 bg-white rounded-xl p-6 flex flex-col gap-3 z-10">
+            <div className="absolute inset-0 bg-white rounded-xl p-6 flex flex-col gap-3 z-10 pointer-events-none">
               {[["w-1/2", "h-7", "rounded-lg"], ["w-full", "h-4", "rounded"], ["w-11/12", "h-4", "rounded"], ["w-4/5", "h-4", "rounded"]].map(([w, h, r], i) => (
                 <div key={i} className={`${h} bg-slate-100 ${r} ${w} overflow-hidden relative`}>
                   <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-[shimmer_1.2s_ease-in-out_infinite]" />
@@ -415,7 +427,8 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
           <iframe
             srcDoc={srcdoc}
             title={doc.title}
-            className="absolute inset-0 w-full h-full border-0"
+            className="w-full border-0 block"
+            style={{ height: iframeHeight }}
             sandbox="allow-same-origin"
             onLoad={handleIframeLoad}
           />

@@ -34,6 +34,7 @@ export default function SowSelectorPanel({
   originalSowHtml,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
+  const [docIframeHeight, setDocIframeHeight] = useState(600);
 
   useEffect(() => {
     const raf = requestAnimationFrame(() => { onReady?.(); });
@@ -205,15 +206,25 @@ export default function SowSelectorPanel({
             </div>
           )}
 
-          {/* SOW iframe — fills remaining height */}
+          {/* SOW iframe — fills remaining height.
+              Uses overflow-y-scroll on the wrapper (not absolute/h-full on the iframe)
+              so iOS Safari can scroll in both directions inside fixed overlays. */}
           {activeHtml ? (
-            <div className="flex-1 min-h-0 relative">
+            <div
+              className="flex-1 min-h-0 overflow-y-scroll"
+              style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+            >
               <iframe
                 key={showScoped ? "scoped" : "original"}
                 srcDoc={activeHtml}
                 title={docLabel}
-                className="absolute inset-0 w-full h-full border-0"
+                className="w-full border-0 block"
+                style={{ height: docIframeHeight }}
                 sandbox="allow-same-origin"
+                onLoad={(e) => {
+                  const h = e.currentTarget.contentDocument?.body?.scrollHeight;
+                  if (h) setDocIframeHeight(Math.max(600, h + 32));
+                }}
               />
             </div>
           ) : (
