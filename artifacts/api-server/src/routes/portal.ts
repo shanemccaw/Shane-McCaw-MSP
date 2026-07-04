@@ -10458,22 +10458,22 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     const excludedPhases = effectiveSowPhases.filter(p => !safeIds.includes(p.id));
 
     // Attempt an AI-driven scoped rewrite from the original Consolidated SOW.
-    // Falls back to the invoice-style HTML if the original SOW is missing or the AI call fails.
-    //
-    // IMPORTANT: the AI path is only used when NO phases are excluded (i.e., all phases are
-    // selected and the AI is just reformatting/styling the full document).  When a scope
-    // reduction is in effect (one or more phases excluded), the AI is unreliable — it tends to
-    // include excluded phases regardless of instruction.  In that case we always use
-    // buildScopedSowHtml, which is deterministic and guaranteed to contain only the selected
-    // phases.
+    // Strategy:
+    //   1. Always try AI when the original SOW HTML is available — it preserves the
+    //      professional narrative format the client sees.
+    //   2. After the AI responds, validate the output: if any excluded phase title still
+    //      appears as a heading in the rendered text, the AI failed to filter it out.
+    //   3. On validation failure OR any AI error, fall back to buildScopedSowHtml which
+    //      is deterministic and guaranteed to contain only the selected phases.
     let scopedSowHtml: string;
 
-    if (originalSowRow?.htmlContent && excludedPhases.length === 0) {
+    // Helper: strip HTML tags and decode basic entities so we can search plain text
+    const stripHtmlTags = (html: string) =>
+      html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s+/g, " ");
+
+    if (originalSowRow?.htmlContent) {
       try {
         const { anthropic } = await import("@workspace/integrations-anthropic-ai");
-
-        // All phases are selected; no exclusions needed — keep excludedPhases list consistent.
-        // (already computed above: excludedPhases.length === 0)
 
         const selectedPhaseList = scopedPhases
           .map(p => `- ${p.title}: ${fmtUsd(p.price)}`)
@@ -10523,27 +10523,33 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
             : []),
         ].join("\n");
 
-        const prompt = `You are a senior Microsoft 365 consulting document editor. You are given a Consolidated Statement of Work HTML document and a scoped selection of phases. Produce a revised version of this document that covers ONLY the selected phases.
+        // Build the exclusion guard — only meaningful when phases are actually excluded.
+        const exclusionGuard = excludedPhases.length > 0 ? `
+CRITICAL — PHASE REMOVAL CHECKLIST (verify before outputting):
+${excludedPhases.map((p, i) => `  ${i + 1}. "${p.title}" — find EVERY section, heading, bullet, table row, and sentence that mentions this phase. Delete all of them completely.`).join("\n")}
+After removing the above, search your output once more for each excluded phase title. If you still find it, delete it.` : "";
 
-SELECTED PHASES (include all their content — keep approach text, deliverables, timelines verbatim):
+        const prompt = `You are a senior Microsoft 365 consulting document editor. You are given a Consolidated Statement of Work HTML document. Produce a revised version that covers ONLY the selected phases below — preserving the original document's style, structure, narrative quality, and CSS exactly.
+
+SELECTED PHASES — include all content for these phases verbatim:
 ${selectedPhaseList}
 
-EXCLUDED PHASES (remove every mention — zero references anywhere in the document):
+EXCLUDED PHASES — completely remove every trace of these from the output:
 ${excludedPhaseList}
-${adjustmentLineList ? `\nPRICING ADJUSTMENTS (mandatory — always included regardless of phase selection):\n${adjustmentLineList}\n` : ""}
+${adjustmentLineList ? `\nPRICING ADJUSTMENTS (mandatory — always include regardless of phase selection):\n${adjustmentLineList}\n` : ""}
 ${pricingTableSpec}
+${exclusionGuard}
 
 DATE: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
 
 RULES:
-- Output ONLY valid HTML — no markdown fences, no commentary, just the complete document
+- Output ONLY valid HTML — no markdown fences, no preamble, no commentary — just the complete document starting with <!DOCTYPE or <html
 - Preserve ALL <style> blocks and inline CSS exactly — same visual style as the original
-- Keep every heading, narrative paragraph, deliverable bullet, and timeline entry for the selected phases VERBATIM
-- Erase every section, table row, bullet point, and sentence that refers to an excluded phase as if it never existed
-- Update the Scope of Work section to list only the selected phases
+- Keep every heading, narrative paragraph, deliverable bullet, and timeline for SELECTED phases VERBATIM
+- Completely delete every section heading, paragraph, bullet, and table row for EXCLUDED phases — as though those phases were never in the document
 - Replace the pricing table EXACTLY as specified in PRICING TABLE above — do not recalculate or invent figures
-- The grand total MUST be ${fmtUsd(scopedTotalDollars)} — this is authoritative; do not sum the rows yourself
-- Insert a short styled banner (matching the original header style) stating this is a scoped engagement covering only the selected phases
+- The grand total MUST be ${fmtUsd(scopedTotalDollars)} — this is authoritative
+- Add a brief styled banner (matching the original header style) noting this is a scoped engagement covering only the selected phases
 - Do not alter the signature block, terms and conditions, or contact information
 
 ORIGINAL DOCUMENT:
@@ -10565,20 +10571,29 @@ ${originalSowRow.htmlContent}`;
         ) {
           throw new Error("AI returned empty, too-short, or structurally malformed HTML");
         }
-        scopedSowHtml = aiHtml;
+
+        // Validate: if any excluded phase title still appears in the rendered text,
+        // the AI failed to filter it out — fall back to the deterministic builder.
+        if (excludedPhases.length > 0) {
+          const plainText = stripHtmlTags(aiHtml).toLowerCase();
+          const leakedPhase = excludedPhases.find(p => plainText.includes(p.title.toLowerCase()));
+          if (leakedPhase) {
+            req.log.warn(
+              { presentationId: id, leakedPhase: leakedPhase.title },
+              "portal: AI scoped SOW leaked excluded phase — falling back to invoice HTML"
+            );
+            scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
+          } else {
+            req.log.info({ presentationId: id, selected: safeIds.length, excluded: excludedPhases.length }, "portal: AI scoped SOW passed exclusion validation");
+            scopedSowHtml = aiHtml;
+          }
+        } else {
+          scopedSowHtml = aiHtml;
+        }
       } catch (aiErr) {
         req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to invoice");
         scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
       }
-    } else if (excludedPhases.length > 0) {
-      // Scope reduction: one or more phases are excluded. Skip AI entirely — it cannot
-      // reliably remove excluded-phase content from a complex HTML document.
-      // buildScopedSowHtml is deterministic and only renders the selected phases.
-      req.log.info(
-        { presentationId: id, selected: safeIds.length, excluded: excludedPhases.map(p => p.title) },
-        "portal: scope reduction — using invoice-style HTML (AI bypassed for correctness)"
-      );
-      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
     } else {
       req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
       scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
