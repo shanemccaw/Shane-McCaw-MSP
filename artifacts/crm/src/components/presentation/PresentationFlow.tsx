@@ -1365,9 +1365,14 @@ export default function PresentationFlow({
                                 <span className={`text-xs font-bold uppercase tracking-widest ${sowVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>Scope & Investment</span>
                               </div>
                               <div className="mb-4 min-h-[3rem]">
-                                {totalFmt && (
+                                {!hasSowDocument ? (
+                                  <div className="flex items-center gap-1.5 mb-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse" />
+                                    <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
+                                  </div>
+                                ) : totalFmt ? (
                                   <p className="text-2xl font-extrabold text-[#0A2540] mb-2">{totalFmt}</p>
-                                )}
+                                ) : null}
                                 {topPhases.length > 0 && (
                                   <ul className="space-y-0.5">
                                     {topPhases.map((phase, i) => (
@@ -1417,6 +1422,11 @@ export default function PresentationFlow({
                               </div>
                               {sowResetBlocked ? (
                                 <p className="text-xs text-amber-700 mb-4 min-h-[3rem]">Regenerate your scoped SOW on the Scope & Pricing step to unlock payment.</p>
+                              ) : !hasSowDocument ? (
+                                <div className="mb-3 min-h-[3rem] flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 animate-pulse" />
+                                  <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
+                                </div>
                               ) : upfrontFmt ? (
                                 <div className="mb-3 min-h-[3rem]">
                                   <p className="text-2xl font-extrabold text-[#0A2540]">
