@@ -9927,20 +9927,44 @@ async function deriveEffectiveSowData(
       selected: effectiveSelectedPhaseIds.includes(p.id),
     }));
 
-    // Adjustments are mandatory — always applied in full regardless of phase selection.
-    // Filter out any aggregation rows (subtotals, grand totals) that were accidentally
-    // stored as individual lines — these cause double-counting when the real items exist.
+    // Strip aggregation rows (subtotals, grand totals) that were accidentally stored.
     const realAdjustmentLines = adjustmentLivelines.filter(l => {
       const t = l.title.toLowerCase();
       return !t.includes("subtotal") && !t.includes("grand total") && t !== "total";
     });
 
+    // Apply workstream-scoped ADJUSTMENT MAP — only include adjustments permitted
+    // for the workstream types present in this SOW.  This enforces the pricing rules
+    // regardless of how old the stored sowPricingLines are and fixes any adjustments
+    // that were generated before the workstream-scoped rules were introduced.
+    // If no workstream titles match a canonical pattern, skip filtering to be safe.
+    const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
+      { ws: /governance/i,           allowed: [/complexity/i, /timeline/i] },
+      { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /complexity/i, /data[\s-]?sprawl/i, /security|compliance/i, /timeline/i] },
+      { ws: /dlp|data[\s-]?prot/i,   allowed: [/data[\s-]?sprawl/i, /complexity/i, /security|compliance/i, /timeline/i] },
+      { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i, /data[\s-]?sprawl/i, /complexity/i, /timeline/i] },
+      { ws: /licens/i,               allowed: [/tenant[\s-]?size/i, /complexity/i, /timeline/i] },
+    ];
+    const workstreamTitles = allPhases.map(p => p.title);
+    const allowedAdjPatterns: RegExp[] = [];
+    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+      if (workstreamTitles.some(t => ws.test(t))) {
+        allowedAdjPatterns.push(...allowed);
+      }
+    }
+    const scopedAdjustmentLines = allowedAdjPatterns.length > 0
+      ? realAdjustmentLines.filter(l => allowedAdjPatterns.some(p => p.test(l.title)))
+      : realAdjustmentLines;
+
+    // Adjustments are mandatory for the selected scope — always applied regardless of
+    // which phases are toggled on/off (phase selection only removes workstream rows,
+    // never adjustment rows).
     // If tagged lines exist, sum them directly; otherwise fall back to the gap method.
     let adjustmentsTotal: number;
-    if (realAdjustmentLines.length > 0) {
-      adjustmentsTotal = realAdjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
+    if (scopedAdjustmentLines.length > 0) {
+      adjustmentsTotal = scopedAdjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
     } else if (adjustmentLivelines.length > 0) {
-      // All tagged lines were aggregation rows — nothing real to sum; treat as 0.
+      // All tagged lines were aggregation rows or filtered out — treat as 0.
       adjustmentsTotal = 0;
     } else {
       const allPhasesSum = livelines.reduce((s, l) => s + l.priceUsd, 0);
@@ -9955,7 +9979,7 @@ async function deriveEffectiveSowData(
 
     // Build the named adjustment lines array for the frontend so it can display
     // each factor individually (title + description + amount) rather than a single total.
-    const namedAdjustmentLines = realAdjustmentLines.map(l => ({
+    const namedAdjustmentLines = scopedAdjustmentLines.map(l => ({
       title: l.title,
       description: l.scope || l.notes || "",
       price: l.priceUsd,
