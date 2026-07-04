@@ -10,10 +10,21 @@ export interface SowPricingLine {
  * Handles ```html ... ```, ``` ... ```, and any leading/trailing whitespace.
  */
 export function stripMarkdownFence(text: string): string {
-  return text
+  let result = text
     .replace(/^```[a-zA-Z]*\n?/, "")
     .replace(/\n?```\s*$/, "")
     .trim();
+
+  // Claude sometimes appends markdown commentary or "Document Summary" blocks
+  // after the closing </html> tag. Truncate everything after </html> so only
+  // the HTML document is stored — this is a universal safety net for all
+  // document-generation paths.
+  const htmlCloseMatch = result.match(/<\/html\s*>/i);
+  if (htmlCloseMatch?.index !== undefined) {
+    result = result.slice(0, htmlCloseMatch.index + htmlCloseMatch[0].length);
+  }
+
+  return result;
 }
 
 /**

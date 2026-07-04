@@ -151,7 +151,8 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
-- Total length: 800-1500 words of body content`;
+- Total length: 800-1500 words of body content
+- CRITICAL: Output the HTML document and then STOP. Do NOT add any text, summary, commentary, or explanation after the closing </html> tag. The response must end exactly at </html>.`;
 
 const CONSULTING_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
 
@@ -177,7 +178,8 @@ INSTRUCTIONS:
 - Write in first person as Shane McCaw with expert consulting tone
 - Be specific and actionable — reference client's actual environment data
 - Include a professional header ("Shane McCaw Consulting") and footer
-- Total length: 1000-2000 words`;
+- Total length: 1000-2000 words
+- CRITICAL: Output the HTML document and then STOP. Do NOT add any text, summary, commentary, or explanation after the closing </html> tag. The response must end exactly at </html>.`;
 
 const TASK_EXECUTION_GUIDE_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional SOW Task Execution Guide in HTML format.
 
