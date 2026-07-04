@@ -197,7 +197,7 @@ export default function SowSelectorPanel({
                 Saving…
               </div>
             )}
-            {showToggle && !readOnly && (
+            {showToggle && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold mt-1.5">
                 <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
