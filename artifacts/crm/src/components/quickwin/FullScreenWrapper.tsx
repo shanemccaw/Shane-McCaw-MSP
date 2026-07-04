@@ -309,7 +309,6 @@ export default function FullScreenWrapper() {
   const [tickerVisible, setTickerVisible] = useState(true);
 
   useEffect(() => {
-    if (mode !== "ProjectTasksView") return undefined;
     let fadeTimer: ReturnType<typeof setTimeout>;
     const interval = setInterval(() => {
       setTickerVisible(false);
@@ -322,7 +321,7 @@ export default function FullScreenWrapper() {
       clearInterval(interval);
       clearTimeout(fadeTimer);
     };
-  }, [mode]);
+  }, []);
 
   // ── Elapsed time timer ────────────────────────────────────────────────────
   const timerStartRef = useRef<number | null>(null);
@@ -1003,10 +1002,20 @@ export default function FullScreenWrapper() {
 
             {/* ── CENTER: Active tasks — in_progress + waiting_on_customer ── */}
             <div className={`lg:col-span-6 flex-col gap-3 min-h-0 ${kanbanTab === "active" ? "flex" : "hidden"} lg:flex`}>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4] shrink-0 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse inline-block" />
-                Active · {inProgressTasks.length + waitingTasks.length}
-              </p>
+              <div className="shrink-0 flex flex-col gap-0.5">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#0078D4] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse inline-block" />
+                  Active · {inProgressTasks.length + waitingTasks.length}
+                </p>
+                {inProgressTasks.length > 1 && (
+                  <p
+                    className="text-[10px] text-black/35 truncate pl-3 leading-snug"
+                    style={{ opacity: tickerVisible ? 1 : 0, transition: "opacity 350ms ease" }}
+                  >
+                    {tickerMessages[tickerIdx % tickerMessages.length]}
+                  </p>
+                )}
+              </div>
 
               {/* Manual script panel when applicable */}
               {showScriptPanel && (
