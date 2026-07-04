@@ -544,14 +544,6 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         published: false,
       };
 
-    case "find_object": {
-      const dryFoType = (node.data.objectType as string | undefined) ?? "lead";
-      if (dryFoType === "stripe_invoice") {
-        return { dryRun: true, found: true, objectId: "dry-run-inv-id", objectType: "stripe_invoice", stripeInvoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString(), amountDue: 50000, customerId: "cus_dry_run" };
-      }
-      return { dryRun: true, found: true, objectId: 1, objectType: dryFoType };
-    }
-
     case "edit_stripe_invoice":
       return { dryRun: true, invoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString() };
 
@@ -758,6 +750,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "find_object": {
       const foType = (node.data.objectType as string | undefined) ?? "lead";
+      if (foType === "stripe_invoice") {
+        return { dryRun: true, found: true, objectId: "dry-run-inv-id", objectType: "stripe_invoice", stripeInvoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString(), amountDue: 50000, customerId: "cus_dry_run" };
+      }
       if (foType === "insights_document") {
         return {
           dryRun:          true,
