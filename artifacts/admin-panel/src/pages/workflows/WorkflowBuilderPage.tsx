@@ -193,7 +193,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
-  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key (or Stripe invoice ID) of the found record" }, { key: "objectType", label: "Type queried", enumValues: ["lead", "client", "project", "article", "stripe_invoice"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (all types)" }, { key: "stripeInvoiceId", label: "Stripe invoice ID (stripe_invoice only)" }, { key: "dueDate", label: "Invoice due date ISO string (stripe_invoice only)" }, { key: "amountDue", label: "Amount due in cents (stripe_invoice only)" }, { key: "customerId", label: "Stripe customer ID (stripe_invoice only)" }],
+  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key (or Stripe invoice ID) of the found record" }, { key: "objectType", label: "Type queried", enumValues: ["lead", "client", "project", "article", "stripe_invoice", "insights_document"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (all types)" }, { key: "stripeInvoiceId", label: "Stripe invoice ID (stripe_invoice only)" }, { key: "dueDate", label: "Invoice due date ISO string (stripe_invoice only)" }, { key: "amountDue", label: "Amount due in cents (stripe_invoice only)" }, { key: "customerId", label: "Customer ID (stripe_invoice/insights_document)" }, { key: "documentId", label: "Insights document DB ID (insights_document only)" }, { key: "title", label: "Document title (insights_document only)" }, { key: "category", label: "Document category — report or consulting (insights_document only)" }, { key: "docType", label: "Document type e.g. full_readiness_report (insights_document only)" }, { key: "htmlContent", label: "Full HTML body of the document (insights_document only)" }, { key: "pdfUrl", label: "PDF download URL if generated (insights_document only)" }, { key: "sowPricingLines", label: "SOW pricing lines array (insights_document only)" }, { key: "sowTotalPrice", label: "SOW total price as decimal string (insights_document only)" }, { key: "approvedAt", label: "ISO timestamp when document was approved (insights_document only)" }, { key: "deliveredAt", label: "ISO timestamp when document was delivered (insights_document only)" }, { key: "projectId", label: "Linked project ID (insights_document only)" }],
   compose: [{ key: "value", label: "Composed value — string, or parsed JSON object/array when 'Parse as JSON' is enabled" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
@@ -588,7 +588,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Data",
     nodes: [
-      { type: "find_object", label: "Find Object", description: "Look up a lead, client, project, or article by field value", tags: ["data", "lookup", "find", "lead", "client", "project"] },
+      { type: "find_object", label: "Find Object", description: "Look up a lead, client, project, article, Stripe invoice, or insights document by field value", tags: ["data", "lookup", "find", "lead", "client", "project", "insights", "document"] },
       { type: "compose",     label: "Compose",     description: "Evaluate any value or expression and expose it downstream as {{steps.<id>.value}}", tags: ["data", "compose", "expression", "variable", "glue", "transform"] },
     ],
   },
@@ -4372,11 +4372,12 @@ function PublishLandingPagePanel({
 // ── Find Object panel ─────────────────────────────────────────────────────────
 
 const FIND_OBJECT_TYPES = [
-  { value: "lead",          label: "Lead",           fields: ["email", "name", "id"] },
-  { value: "client",        label: "Client",         fields: ["email", "id"] },
-  { value: "project",       label: "Project",        fields: ["id"] },
-  { value: "article",       label: "Article",        fields: ["slug", "id"] },
-  { value: "stripe_invoice", label: "Stripe Invoice", fields: ["clientUserId", "projectId", "stripeInvoiceId"] },
+  { value: "lead",               label: "Lead",               fields: ["email", "name", "id"] },
+  { value: "client",             label: "Client",             fields: ["email", "id"] },
+  { value: "project",            label: "Project",            fields: ["id"] },
+  { value: "article",            label: "Article",            fields: ["slug", "id"] },
+  { value: "stripe_invoice",     label: "Stripe Invoice",     fields: ["clientUserId", "projectId", "stripeInvoiceId"] },
+  { value: "insights_document",  label: "Insights Document",  fields: ["id", "customerId", "projectId", "docType", "title"] },
 ];
 
 // ── Ask AI panel ──────────────────────────────────────────────────────────────
@@ -4631,7 +4632,7 @@ const LIST_VALUE_REGISTRY: Record<
   },
   objectType: {
     label: "Object Type",
-    groups: [{ group: "Types", items: [{ id: "lead", label: "Lead" }, { id: "client", label: "Client" }, { id: "project", label: "Project" }, { id: "article", label: "Article" }] }],
+    groups: [{ group: "Types", items: [{ id: "lead", label: "Lead" }, { id: "client", label: "Client" }, { id: "project", label: "Project" }, { id: "article", label: "Article" }, { id: "stripe_invoice", label: "Stripe Invoice" }, { id: "insights_document", label: "Insights Document" }] }],
   },
   campaignStatus: {
     label: "Campaign Status",

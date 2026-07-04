@@ -754,6 +754,32 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         presentationId: "dry-run-pres-id",
       };
 
+    case "find_object": {
+      const foType = (node.data.objectType as string | undefined) ?? "lead";
+      if (foType === "insights_document") {
+        return {
+          dryRun:          true,
+          found:           true,
+          objectType:      "insights_document",
+          objectId:        1,
+          documentId:      1,
+          title:           "Dry-run: M365 Readiness Assessment",
+          category:        "report",
+          docType:         "full_readiness_report",
+          status:          "delivered",
+          htmlContent:     "<h1>Dry-run Insights Document</h1><p>This is synthetic content returned during a dry run.</p>",
+          pdfUrl:          null,
+          sowPricingLines: [{ title: "Phase 1 — Discovery", scope: "Initial assessment and planning", priceUsd: 12500, notes: "", line_type: "workstream", weeks: 2 }],
+          sowTotalPrice:   "12500.00",
+          approvedAt:      null,
+          deliveredAt:     new Date().toISOString(),
+          customerId:      1,
+          projectId:       1,
+        };
+      }
+      return { dryRun: true, found: true, objectType: foType, objectId: 1 };
+    }
+
     default:
       return { dryRun: true, error: true, reason: `unknown node type: ${node.type}` };
   }
@@ -2419,6 +2445,37 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               const foErrMsg = foStripeErr instanceof Error ? foStripeErr.message : String(foStripeErr);
               output = { found: false, objectType: "stripe_invoice", error: foErrMsg };
             }
+            break;
+          }
+          case "insights_document": {
+            const foIdField = foField === "id"         ? eq(insightsGeneratedDocumentsTable.id,         parseInt(foValue, 10)) :
+                              foField === "customerId" ? eq(insightsGeneratedDocumentsTable.customerId,  parseInt(foValue, 10)) :
+                              foField === "projectId"  ? eq(insightsGeneratedDocumentsTable.projectId,   parseInt(foValue, 10)) :
+                              foField === "docType"    ? eq(insightsGeneratedDocumentsTable.docType,     foValue) :
+                              foField === "title"      ? eq(insightsGeneratedDocumentsTable.title,       foValue) :
+                              eq(insightsGeneratedDocumentsTable.id, parseInt(foValue, 10));
+            const foDocRows = await db.select().from(insightsGeneratedDocumentsTable).where(foIdField).limit(1);
+            const foDoc = foDocRows[0];
+            output = foDoc
+              ? {
+                  found:           true,
+                  objectType:      "insights_document",
+                  objectId:        foDoc.id,
+                  documentId:      foDoc.id,
+                  title:           foDoc.title,
+                  category:        foDoc.category,
+                  docType:         foDoc.docType,
+                  status:          foDoc.status,
+                  htmlContent:     foDoc.htmlContent,
+                  pdfUrl:          foDoc.pdfUrl ?? null,
+                  sowPricingLines: foDoc.sowPricingLines ?? [],
+                  sowTotalPrice:   foDoc.sowTotalPrice ?? null,
+                  approvedAt:      foDoc.approvedAt?.toISOString() ?? null,
+                  deliveredAt:     foDoc.deliveredAt?.toISOString() ?? null,
+                  customerId:      foDoc.customerId ?? null,
+                  projectId:       foDoc.projectId ?? null,
+                }
+              : { found: false, objectType: "insights_document", fieldName: foField, fieldValue: foValue };
             break;
           }
           default:
