@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 const STAGES = [
   { label: "Analysing your assessment results" },
@@ -10,14 +10,20 @@ const STAGES = [
 
 const DELAYS = [0, 25000, 55000, 95000, 150000];
 
+const STALL_DELAY_MS = 2 * 60 * 1000;
+
 interface Props {
   clientName: string | null | undefined;
   projectTitle: string | null | undefined;
+  presentationId: number;
+  shareToken?: string | null;
   onClose: () => void;
 }
 
-export default function SowGeneratingCard({ clientName, projectTitle, onClose }: Props) {
+export default function SowGeneratingCard({ clientName, projectTitle, presentationId, shareToken, onClose }: Props) {
   const [activeStage, setActiveStage] = useState(0);
+  const [isStalled, setIsStalled] = useState(false);
+  const stalledFired = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,6 +36,20 @@ export default function SowGeneratingCard({ clientName, projectTitle, onClose }:
     });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (stalledFired.current) return;
+      stalledFired.current = true;
+      setIsStalled(true);
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      void fetch(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {});
+    }, STALL_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [presentationId, shareToken]);
 
   const progressPct =
     activeStage === STAGES.length - 1
@@ -113,10 +133,16 @@ export default function SowGeneratingCard({ clientName, projectTitle, onClose }:
 
       {/* Footer */}
       <div className="px-6 pb-5 pt-2 border-t border-gray-100 mt-1">
-        <p className="text-[11px] text-gray-400 leading-relaxed">
-          This page will refresh automatically the moment it's ready to review and sign.
-          Typically takes 1–10 minutes.
-        </p>
+        {isStalled ? (
+          <p className="text-[11px] text-amber-600 leading-relaxed font-medium">
+            Taking longer than usual — we're on it. This page will refresh automatically when it's ready.
+          </p>
+        ) : (
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            This page will refresh automatically the moment it's ready to review and sign.
+            Typically takes 1–10 minutes.
+          </p>
+        )}
         <button
           onClick={onClose}
           className="mt-3 text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-2"

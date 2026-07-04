@@ -10248,6 +10248,53 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
   }
 });
 
+// POST /portal/presentations/:id/sow-stall-check
+// Called by the client after 2 minutes on the SOW-pending step with no document.
+// Fires sow.generation_stalled and returns {status:"stalled"}.
+// All retry intelligence lives in the seeded workflow — no DB checks here.
+router.post("/portal/presentations/:id/sow-stall-check", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+
+    const [pres] = await db
+      .select({ id: quickWinPresentationsTable.id, clientUserId: quickWinPresentationsTable.clientUserId, projectId: quickWinPresentationsTable.projectId, shareToken: quickWinPresentationsTable.shareToken })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isValidToken) { res.status(403).json({ error: "Access denied" }); return; }
+
+    req.log.info({ presentationId: id, projectId: pres.projectId, customerId: pres.clientUserId }, "portal: sow stall detected — firing sow.generation_stalled");
+
+    void fireWorkflowsForEvent("sow.generation_stalled", {
+      presentationId: id,
+      customerId: pres.clientUserId,
+      projectId: pres.projectId,
+    });
+
+    res.json({ status: "stalled" });
+  } catch (err) {
+    req.log.error(err, "portal: sow-stall-check failed");
+    res.status(500).json({ error: "Failed to signal stall" });
+  }
+});
+
 // GET /portal/presentations/:id/offer — PAY-TODAY limited-time offer state
 // Returns discount parameters tied to a 72-hour window anchored at first visit.
 router.get("/portal/presentations/:id/offer", async (req: Request, res: Response) => {

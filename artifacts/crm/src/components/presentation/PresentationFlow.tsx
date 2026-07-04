@@ -1587,6 +1587,8 @@ export default function PresentationFlow({
                   <SowGeneratingCard
                     clientName={data.clientName}
                     projectTitle={data.projectTitle}
+                    presentationId={presentationId}
+                    shareToken={shareToken}
                     onClose={onClose}
                   />
                 </div>
