@@ -69,8 +69,8 @@ const DOC_TYPE_META: Record<string, DocMeta> = {
   },
   license_optimization_report: {
     riskLevel: "medium",
-    covers: ["License utilization and waste analysis", "Unlicensed or underused user accounts", "Cost reduction opportunities"],
-    headline: "Significant licensing waste was found in your Microsoft 365 tenant.",
+    covers: ["License utilization rate and waste analysis", "Unlicensed and underlicensed user accounts identified", "Licenses to remove with projected annual cost savings"],
+    headline: "Low license utilization detected — unused seats identified with immediate cost reduction available.",
   },
   remediation_plan: {
     riskLevel: "high",

@@ -136,37 +136,70 @@ export function extractLicenseCards(text: string): StatCard[] {
   const seen = new Set<string>();
   const add = (c: StatCard) => { if (!seen.has(c.label)) { seen.add(c.label); cards.push(c); } };
 
-  // Unlicensed %
-  const pctM = text.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s+(?:of\s+(?:users?\s+)?)?(?:unlicensed|inactive|without[^.]{0,30}licens|not\s+licensed)/i);
-  if (pctM) {
-    const pct = Math.round(parseFloat(pctM[1]));
-    add({ value: `${pct}%`, label: "Inactive / Unlicensed Users", detail: "Paying for seats with no active usage", severity: pct >= 50 ? "critical" : "warning" });
+  // ── 1. Utilization rate — "9.09% utilization", "utilization rate of 9.09%" ──
+  const utilM = text.match(/(\d{1,3}(?:\.\d+)?)\s*%\s+(?:license\s+)?(?:utilization|utilized)/i)
+    ?? text.match(/(?:utilization|utilized)[^.]{0,25}?(\d{1,3}(?:\.\d+)?)\s*%/i);
+  if (utilM) {
+    const pct = parseFloat(utilM[1]);
+    const display = Number.isInteger(pct) ? `${pct}%` : `${pct.toFixed(2)}%`;
+    add({ value: display, label: "License Utilization", detail: "Of assigned licenses actively being used", severity: pct <= 15 ? "critical" : pct <= 40 ? "warning" : "info" });
   }
 
-  // "X of Y users" fraction
-  const fracM = text.match(/(\d+)\s+of\s+(\d+)\s+users?[^.]{0,40}(?:unlicensed|inactive|without[^.]{0,30}licens)/i)
-    ?? text.match(/only\s+(\d+)\s+of\s+(\d+)\s+users?[^.]{0,40}(?:active|licens)/i);
-  if (fracM && !seen.has("Inactive / Unlicensed Users")) {
-    const unlicensed = parseInt(fracM[1]);
-    const total = parseInt(fracM[2]);
-    if (total > 0) {
-      const pct = Math.round((unlicensed / total) * 100);
-      add({ value: `${pct}%`, label: "Inactive / Unlicensed Users", detail: `${unlicensed} of ${total} users inactive or unlicensed`, severity: pct >= 50 ? "critical" : "warning" });
+  // ── 2. Unlicensed user count — "20 unlicensed users", "20 users unlicensed" ─
+  const unlicCountM = text.match(/(\d+)\s+unlicensed\s+(?:users?|accounts?)/i)
+    ?? text.match(/(\d+)\s+(?:users?|accounts?)[^.]{0,20}(?:unlicensed|without[^.]{0,15}licens)/i);
+  if (unlicCountM) {
+    const n = parseInt(unlicCountM[1]);
+    add({ value: `${n}`, label: "Unlicensed Users", detail: "Users operating without an active M365 license", severity: n >= 10 ? "warning" : "info" });
+  } else {
+    // Fallback: X% unlicensed
+    const pctM = text.match(/\b(\d{1,3}(?:\.\d+)?)\s*%\s+(?:of\s+(?:users?\s+)?)?(?:unlicensed|inactive|without[^.]{0,30}licens|not\s+licensed)/i);
+    if (pctM) {
+      const pct = Math.round(parseFloat(pctM[1]));
+      add({ value: `${pct}%`, label: "Inactive / Unlicensed Users", detail: "Paying for seats with no active usage", severity: pct >= 50 ? "critical" : "warning" });
+    }
+    // Fallback: X of Y users fraction
+    const fracM = text.match(/(\d+)\s+of\s+(\d+)\s+users?[^.]{0,40}(?:unlicensed|inactive|without[^.]{0,30}licens)/i)
+      ?? text.match(/only\s+(\d+)\s+of\s+(\d+)\s+users?[^.]{0,40}(?:active|licens)/i);
+    if (fracM && !seen.has("Inactive / Unlicensed Users")) {
+      const unlicensed = parseInt(fracM[1]);
+      const total = parseInt(fracM[2]);
+      if (total > 0) {
+        const pct = Math.round((unlicensed / total) * 100);
+        add({ value: `${pct}%`, label: "Inactive / Unlicensed Users", detail: `${unlicensed} of ${total} users inactive or unlicensed`, severity: pct >= 50 ? "critical" : "warning" });
+      }
     }
   }
 
-  // Wasted seats
-  const wastedM = text.match(/\b(\d+)\s+unused\s+licens|\b(\d+)\s+(?:unassigned|wasted)\s+(?:licens|seats?)/i);
-  if (wastedM) {
-    const n = parseInt(wastedM[1] ?? wastedM[2]);
-    add({ value: `${n}`, label: "Unused Licenses", detail: "Seats being paid for with no active user", severity: "warning" });
+  // ── 3. Unused / removable license count ──────────────────────────────────────
+  // "23 unused licenses", "remove 23 licenses", "23 licenses can be removed"
+  let unusedCount: number | null = null;
+  const unusedM = text.match(/\b(\d+)\s+(?:unused|unassigned|wasted)\s+(?:licens|seats?)/i)
+    ?? text.match(/(?:remove|eliminate|cut|reduce)\s+(\d+)\s+licens/i)
+    ?? text.match(/\b(\d+)\s+licens[^.]{0,40}(?:can\s+be\s+(?:removed|eliminated|cut)|not\s+being\s+used|going\s+unused|sitting\s+idle)/i);
+  if (unusedM) {
+    unusedCount = parseInt(unusedM[1]);
+    add({ value: `${unusedCount}`, label: "Unused Licenses", detail: "Seats that can be cut — zero active usage", severity: "warning" });
   }
 
-  // Cost waste
-  const costM = text.match(/\$\s*(\d[\d,]+)\s*(?:per year|\/year|annual|wasted)/i)
-    ?? text.match(/annual[^.]{0,20}waste[^.]{0,20}\$\s*(\d[\d,]+)/i);
-  if (costM) {
-    add({ value: `$${costM[1]}`, label: "Annual License Waste", detail: "Estimated yearly spend on unused licenses", severity: "warning" });
+  // ── 4. Annual savings ─────────────────────────────────────────────────────────
+  // Prefer explicit dollar figure from doc; otherwise calculate from unused count
+  const explicitCostM = text.match(/\$\s*(\d[\d,]+)\s*(?:per\s+year|\/year|annual(?:ly)?|wasted(?:\s+annually)?)/i)
+    ?? text.match(/annual[^.]{0,20}(?:waste|saving)[^.]{0,20}\$\s*(\d[\d,]+)/i)
+    ?? text.match(/\$\s*(\d[\d,]+)\s*(?:in\s+)?(?:annual|yearly)\s+(?:saving|reduction|cost)/i);
+  if (explicitCostM) {
+    add({ value: `$${explicitCostM[1]}`, label: "Annual License Waste", detail: "Estimated yearly spend on unused licenses", severity: "warning" });
+  } else if (unusedCount !== null) {
+    // Extract per-seat price from doc; fall back to M365 Business Standard $12.50/user/mo
+    const priceM = text.match(/\$\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:per\s+user\s+per\s+month|\/user\/mo(?:nth)?|per\s+seat)/i);
+    const pricePerSeat = priceM ? parseFloat(priceM[1]) : 12.50;
+    const annual = Math.round(unusedCount * pricePerSeat * 12);
+    const display = annual >= 10000
+      ? `$${Math.round(annual / 1000)}K`
+      : annual >= 1000
+      ? `$${(annual / 1000).toFixed(1).replace(/\.0$/, "")}K`
+      : `$${annual}`;
+    add({ value: display, label: "Annual License Waste", detail: `${unusedCount} unused seats × $${pricePerSeat.toFixed(2)}/user/mo`, severity: "warning" });
   }
 
   return cards.slice(0, 4);
