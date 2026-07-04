@@ -73,11 +73,15 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         .limit(1);
 
       const triggerRows = await db
-        .select({ type: wfTriggersTable.type })
+        .select({ type: wfTriggersTable.type, config: wfTriggersTable.config })
         .from(wfTriggersTable)
         .where(eq(wfTriggersTable.definitionId, def.id));
 
       const triggerTypes = [...new Set(triggerRows.map(t => t.type))];
+      const triggerEventNames = triggerRows
+        .filter(t => t.type === "event")
+        .map(t => (t.config as Record<string, unknown>).eventName as string | undefined)
+        .filter((n): n is string => typeof n === "string" && n.length > 0);
 
       const [lastRun] = await db
         .select({ status: wfRunsTable.status, createdAt: wfRunsTable.createdAt })
@@ -111,6 +115,7 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
         publishedVersionNumber: published?.versionNumber ?? null,
         triggerCount: triggerRows.length,
         triggerTypes,
+        triggerEventNames,
         lastRunStatus: lastRun?.status ?? null,
         lastRunAt: lastRun?.createdAt ?? null,
         askForInputFields,

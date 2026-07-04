@@ -348,11 +348,43 @@ interface WfDefinition {
   publishedVersionNumber: number | null;
   triggerCount: number;
   triggerTypes: string[];
+  triggerEventNames: string[];
   lastRunStatus: string | null;
   lastRunAt: string | null;
   createdAt: string;
   metadata?: { system?: boolean };
   askForInputFields: AskForInputField[] | null;
+}
+
+type TriggerCategory = "CRM" | "Payments" | "Scheduling" | "M365";
+
+const CATEGORY_STYLES: Record<TriggerCategory, string> = {
+  CRM:        "bg-blue-500/15 text-blue-300 border-blue-500/25",
+  Payments:   "bg-emerald-500/15 text-emerald-300 border-emerald-500/25",
+  Scheduling: "bg-amber-500/15 text-amber-300 border-amber-500/25",
+  M365:       "bg-violet-500/15 text-violet-300 border-violet-500/25",
+};
+
+function deriveTriggerCategories(eventNames: string[]): TriggerCategory[] {
+  const cats = new Set<TriggerCategory>();
+
+  for (const ev of eventNames) {
+    const e = ev.toLowerCase();
+    if (/^(client|lead|opportunity|kanban|crm)\./.test(e)) cats.add("CRM");
+    else if (/^(payment|stripe|invoice|checkout|order)\./.test(e)) cats.add("Payments");
+    else if (/^(booking|appointment|calendar|scheduling)\./.test(e)) cats.add("Scheduling");
+    else if (/^(m365|sow|agreement|phase|copilot|sharepoint|teams)/.test(e)) cats.add("M365");
+  }
+
+  return [...cats];
+}
+
+function CategoryPill({ category }: { category: TriggerCategory }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border flex-shrink-0 ${CATEGORY_STYLES[category]}`}>
+      {category}
+    </span>
+  );
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -414,6 +446,9 @@ function WorkflowCard({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-sm text-[#E6EDF3] truncate">{def.name}</span>
+          {deriveTriggerCategories(def.triggerEventNames ?? []).map(cat => (
+            <CategoryPill key={cat} category={cat} />
+          ))}
           {def.publishedVersionLabel && (
             <span className="text-[10px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium flex-shrink-0">
               {def.publishedVersionLabel}
