@@ -5001,6 +5001,39 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             { presentationId, sessionId: session.id },
             "processStripeEvent: presentation marked as paid",
           );
+
+          // Emit agreement_signed AFTER confirmed deposit payment so that
+          // create_phased_invoices can reliably extract the payment method
+          // from the completed payment_intent (it is only guaranteed to be
+          // set once checkout.session.completed fires with payment_status=paid).
+          const paymentPlanMeta = session.metadata?.paymentPlan ?? "full";
+          const userIdMeta = parseInt(session.metadata?.userId ?? "", 10);
+          const totalPriceMeta = parseFloat(session.metadata?.totalPrice ?? "0");
+          try {
+            const [presentationRow] = await db
+              .select({ projectId: quickWinPresentationsTable.projectId })
+              .from(quickWinPresentationsTable)
+              .where(eq(quickWinPresentationsTable.id, presentationId))
+              .limit(1);
+            const [clientProfile] = !isNaN(userIdMeta)
+              ? await db.select({ email: usersTable.email, name: usersTable.name })
+                  .from(usersTable)
+                  .where(eq(usersTable.id, userIdMeta))
+                  .limit(1)
+              : [null];
+            void emitWorkflowEvent("agreement_signed", {
+              contractId: presentationId,
+              projectId: presentationRow?.projectId ?? null,
+              clientId: !isNaN(userIdMeta) ? userIdMeta : null,
+              clientEmail: clientProfile?.email ?? "",
+              clientName: clientProfile?.name ?? "",
+              paymentPlan: paymentPlanMeta,
+              totalAmount: Math.round(totalPriceMeta * 100),
+              stripeSessionId: session.id,
+            });
+          } catch (emitErr) {
+            req.log.warn({ err: emitErr, presentationId, sessionId: session.id }, "processStripeEvent: failed to emit agreement_signed workflow event (non-fatal)");
+          }
         }
       }
     }
@@ -6078,6 +6111,34 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
       projectId: updated.projectId ?? undefined,
       metadata: { from: existing.status, to: updated.status },
     });
+  }
+
+  // Emit phase_completed event when a step is marked complete
+  if (status === "completed" && updated.projectId) {
+    void (async () => {
+      try {
+        // Look up paymentPlan from the linked presentation for this project
+        const [pres] = await db
+          .select({ paymentPlan: quickWinPresentationsTable.paymentPlan })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.projectId, updated.projectId!))
+          .limit(1);
+        const [proj] = await db
+          .select({ clientUserId: projectsTable.clientUserId })
+          .from(projectsTable)
+          .where(eq(projectsTable.id, updated.projectId!))
+          .limit(1);
+        void emitWorkflowEvent("phase_completed", {
+          phaseId: updated.id,
+          projectId: updated.projectId,
+          clientId: proj?.clientUserId ?? null,
+          paymentPlan: pres?.paymentPlan ?? "full",
+          stripeInvoiceId: updated.stripeInvoiceId ?? null,
+        });
+      } catch (e) {
+        req.log.warn({ err: e, stepId: updated.id }, "workflow-steps: failed to emit phase_completed event (non-fatal)");
+      }
+    })();
   }
 
   // When a phase is moved to in_progress, auto-populate its template tasks into the Kanban backlog
@@ -10810,6 +10871,12 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
       })
       .where(eq(quickWinPresentationsTable.id, id));
 
+    // Note: agreement_signed workflow event is emitted from the Stripe webhook
+    // handler (checkout.session.completed / presentation_checkout), not here.
+    // Emitting at signing time is premature — the payment method is not yet
+    // confirmed, which would cause create_phased_invoices to fail to bind a
+    // default PM to the Stripe customer.
+
     res.json({
       ok: true,
       signedAt: signedAt.toISOString(),
@@ -10990,6 +11057,11 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
         updatedAt: new Date(),
       })
       .where(eq(quickWinPresentationsTable.id, id));
+
+    // Note: agreement_signed workflow event is emitted from the Stripe webhook
+    // handler (checkout.session.completed) once payment is confirmed, not here.
+    // At this point the payment_intent has no payment_method yet — emitting now
+    // would cause create_phased_invoices to fail to bind the PM for auto-charges.
 
     res.json({ url: session.url });
   } catch (err) {

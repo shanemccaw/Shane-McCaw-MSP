@@ -995,6 +995,13 @@
       "when": 1783151144410,
       "tag": "0138_add_scoped_sow_unique_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 139,
+      "version": "7",
+      "when": 1783190055229,
+      "tag": "0139_add_workflow_step_stripe_invoice_id",
+      "breakpoints": true
     }
   ]
 }

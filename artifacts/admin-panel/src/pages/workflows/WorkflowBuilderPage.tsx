@@ -111,6 +111,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Payments (Stripe) ──
   generate_invoice_stripe_payment: { bg: "#041A1A", border: "#34D399", icon: "🧾", label: "Generate Invoice"       },
   generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
+  create_phased_invoices:          { bg: "#041A1A", border: "#F59E0B", icon: "📋", label: "Create Phased Invoices" },
+  charge_stripe_invoice:           { bg: "#041A1A", border: "#EF4444", icon: "⚡", label: "Charge Invoice"         },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -134,6 +136,8 @@ const KNOWN_EVENTS: Array<{
   { name: "quiz.lead_submitted",      description: "A lead completed the M365 readiness quiz and their results were scored",  payloadFields: [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "leadName", label: "Lead full name" }, { key: "leadEmail", label: "Lead email" }, { key: "company", label: "Company name" }, { key: "totalScore", label: "Overall quiz score 0–100" }, { key: "tier", label: "Score tier (Beginner/Intermediate/Advanced)", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }] },
   { name: "customer.script_result",   description: "A customer ran a downloaded diagnostic script and the results were received by the server", payloadFields: [{ key: "scriptName", label: "Script title" }, { key: "scriptId", label: "Library script UUID" }, { key: "customerId", label: "Client user ID" }, { key: "kanbanTaskId", label: "Linked kanban task ID" }, { key: "projectId", label: "Linked project ID" }, { key: "resultId", label: "Script run result row ID" }, { key: "results", label: "Full results object returned by the script" }] },
   { name: "sow.scope_reduced",        description: "A client deselected phases in the SOW selector and regenerated a scoped SOW with a lower total or fewer phases than their previous selection", payloadFields: [{ key: "presentationId", label: "Presentation ID" }, { key: "clientUserId", label: "Client user ID" }, { key: "removedPhaseCount", label: "Number of phases removed vs previous selection" }, { key: "previousTotal", label: "Previous scoped total in cents" }, { key: "newTotal", label: "New scoped total in cents" }] },
+  { name: "agreement_signed",         description: "A client signed the engagement agreement and initiated Stripe checkout — fires for both full and phased payment plans", payloadFields: [{ key: "contractId", label: "Presentation ID (acts as contract)" }, { key: "projectId", label: "Linked project ID" }, { key: "clientId", label: "Client user ID" }, { key: "clientEmail", label: "Client email" }, { key: "clientName", label: "Client name" }, { key: "paymentPlan", label: "Payment plan chosen", enumValues: ["full", "phased"] }, { key: "totalAmount", label: "Total engagement amount in cents" }, { key: "stripeSessionId", label: "Stripe Checkout session ID (deposit payment)" }] },
+  { name: "phase_completed",          description: "An admin marked a project phase (workflow step) as completed — carries the linked Stripe invoice ID for the phased billing workflow", payloadFields: [{ key: "phaseId", label: "Workflow step ID" }, { key: "projectId", label: "Project ID" }, { key: "clientId", label: "Client user ID" }, { key: "paymentPlan", label: "Payment plan on file", enumValues: ["full", "phased"] }, { key: "stripeInvoiceId", label: "Stripe draft invoice ID linked to this phase (null if not set)" }] },
 ];
 
 // ── Node output registry (what each action injects into the next payload) ─────
@@ -269,6 +273,16 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   generate_stripe_payment_link: [
     { key: "paymentLinkId",  label: "Stripe payment link ID" },
     { key: "paymentLinkUrl", label: "Shareable payment link URL" },
+  ],
+  create_phased_invoices: [
+    { key: "invoiceIds",      label: "Array of created Stripe draft invoice IDs" },
+    { key: "phaseCount",      label: "Number of phase invoices created" },
+    { key: "totalScheduled",  label: "Total amount scheduled across all phases (cents)" },
+  ],
+  charge_stripe_invoice: [
+    { key: "chargeStatus",            label: "Charge outcome", enumValues: ["succeeded", "failed"] },
+    { key: "amountCharged",           label: "Amount charged in smallest currency unit (e.g. cents)" },
+    { key: "stripePaymentIntentId",   label: "Stripe PaymentIntent ID (null if charge failed)" },
   ],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
@@ -639,8 +653,10 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Payments",
     nodes: [
-      { type: "generate_invoice_stripe_payment", label: "Generate Invoice",      description: "Create and send a finalised Stripe invoice to a client email",         tags: ["stripe", "invoice", "payment", "billing", "finance"] },
-      { type: "generate_stripe_payment_link",    label: "Generate Payment Link", description: "Create a one-time Stripe Payment Link for a product at a fixed price", tags: ["stripe", "payment", "link", "checkout", "finance"] },
+      { type: "generate_invoice_stripe_payment", label: "Generate Invoice",        description: "Create and send a finalised Stripe invoice to a client email",                    tags: ["stripe", "invoice", "payment", "billing", "finance"] },
+      { type: "generate_stripe_payment_link",    label: "Generate Payment Link",   description: "Create a one-time Stripe Payment Link for a product at a fixed price",          tags: ["stripe", "payment", "link", "checkout", "finance"] },
+      { type: "create_phased_invoices",          label: "Create Phased Invoices",  description: "Create draft Stripe invoices for each SOW phase (20%+per-phase billing plan) and save the deposit payment method as customer default for future auto-charges", tags: ["stripe", "invoice", "phased", "payment", "billing", "draft", "auto-charge"] },
+      { type: "charge_stripe_invoice",           label: "Charge Invoice",          description: "Finalize and immediately charge a Stripe draft invoice using the customer's default payment method", tags: ["stripe", "invoice", "charge", "payment", "auto-charge", "phased"] },
     ],
   },
 ];
@@ -3110,6 +3126,68 @@ function NodeConfigPanel({
                 Creates a Stripe product, a price, and a Payment Link in one step. The link can be embedded in emails, proposals, or the <span className="font-mono text-[#2DD4BF]">build_presentation</span> node's checkout URL. Requires <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY</span> or <span className="font-mono text-[#2DD4BF]">STRIPE_SECRET_KEY_PROD</span>.
               </p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{paymentLinkId}}"} · {"{{paymentLinkUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_phased_invoices" && (
+          <>
+            <PayloadField
+              label="Project ID"
+              hint="The project ID this SOW belongs to. Supports {{variables}} — e.g. {{projectId}}."
+              value={(node.data.projectId as string) ?? "{{projectId}}"}
+              onChange={v => onChange(node.id, { ...node.data, projectId: v })}
+              placeholder="{{projectId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Client Email"
+              hint="Used to look up or create the Stripe customer. Supports {{variables}} — e.g. {{clientEmail}}."
+              value={(node.data.clientEmail as string) ?? "{{clientEmail}}"}
+              onChange={v => onChange(node.id, { ...node.data, clientEmail: v })}
+              placeholder="{{clientEmail}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Client Name (optional)"
+              hint="Display name on the Stripe customer. Supports {{variables}} — e.g. {{clientName}}."
+              value={(node.data.clientName as string) ?? "{{clientName}}"}
+              onChange={v => onChange(node.id, { ...node.data, clientName: v })}
+              placeholder="{{clientName}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Deposit Session ID"
+              hint="Stripe Checkout session ID from the 20% deposit payment. Used to retrieve and save the payment method for future auto-charges. Supports {{variables}} — e.g. {{stripeSessionId}}."
+              value={(node.data.depositSessionId as string) ?? "{{stripeSessionId}}"}
+              onChange={v => onChange(node.id, { ...node.data, depositSessionId: v })}
+              placeholder="{{stripeSessionId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041A1A] border border-[#F59E0B]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Creates one Stripe draft invoice per SOW phase (80% total, distributed by phase amount). Sets <span className="font-mono text-[#F59E0B]">collection_method: charge_automatically</span> and <span className="font-mono text-[#F59E0B]">auto_advance: false</span>. Saves the deposit payment method as the Stripe Customer&apos;s default. Writes the <span className="font-mono text-[#F59E0B]">stripeInvoiceId</span> back to each workflow step row. Requires <span className="font-mono text-[#F59E0B]">STRIPE_SECRET_KEY</span>.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceIds}}"} · {"{{phaseCount}}"} · {"{{totalScheduled}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "charge_stripe_invoice" && (
+          <>
+            <PayloadField
+              label="Invoice ID"
+              hint="Stripe draft invoice ID to finalize and charge. Supports {{variables}} — e.g. {{stripeInvoiceId}}."
+              value={(node.data.invoiceId as string) ?? "{{stripeInvoiceId}}"}
+              onChange={v => onChange(node.id, { ...node.data, invoiceId: v })}
+              placeholder="{{stripeInvoiceId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041A1A] border border-[#EF4444]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Finalizes the Stripe draft invoice then immediately charges the customer&apos;s default payment method. On card decline or any Stripe error, returns <span className="font-mono text-[#EF4444]">chargeStatus: &quot;failed&quot;</span> instead of throwing, so a downstream condition node can branch and notify Shane. Requires <span className="font-mono text-[#EF4444]">STRIPE_SECRET_KEY</span>.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{chargeStatus}}"} · {"{{amountCharged}}"} · {"{{stripePaymentIntentId}}"}</p>
             </div>
           </>
         )}

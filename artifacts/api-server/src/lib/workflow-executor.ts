@@ -44,6 +44,8 @@ import {
   insightsGeneratedDocumentsTable,
   clientM365ProfilesTable,
   deviceTokensTable,
+  workflowStepsTable,
+  quickWinPresentationsTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -718,6 +720,22 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         dryRun: true,
         paymentLinkId: "dry-run-pl-id",
         paymentLinkUrl: "https://buy.stripe.com/dry-run",
+      };
+
+    case "create_phased_invoices":
+      return {
+        dryRun: true,
+        invoiceIds: ["dry-run-inv-1", "dry-run-inv-2"],
+        phaseCount: 2,
+        totalScheduled: 80000,
+      };
+
+    case "charge_stripe_invoice":
+      return {
+        dryRun: true,
+        chargeStatus: "succeeded",
+        amountCharged: 40000,
+        stripePaymentIntentId: "dry-run-pi-id",
       };
 
     case "build_presentation":
@@ -3303,6 +3321,202 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           ...(Object.keys(plMetadata).length > 0 && { metadata: plMetadata }),
         });
         output = { paymentLinkId: plLink.id, paymentLinkUrl: plLink.url };
+        break;
+      }
+
+      // ── Phased invoice creation (20%+per-phase billing) ────────────────────
+
+      case "create_phased_invoices": {
+        const { getStripeKey: getCpiKey } = await import("./stripe");
+        let cpiStripeKey: string;
+        try { cpiStripeKey = getCpiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: StripeCpi } = await import("stripe");
+        const stripeCpi = new StripeCpi(cpiStripeKey);
+
+        const cpiProjectIdRaw = interp(node.data.projectId as string | undefined, payload);
+        const cpiProjectId = cpiProjectIdRaw ? parseInt(cpiProjectIdRaw, 10) : NaN;
+        if (isNaN(cpiProjectId)) { nodeError = true; output = { error: "create_phased_invoices: projectId is required" }; break; }
+
+        const cpiEmail = interp(node.data.clientEmail as string | undefined, payload) ?? String(payload.clientEmail ?? "");
+        const cpiName  = interp(node.data.clientName  as string | undefined, payload) ?? String(payload.clientName  ?? "");
+        const cpiDepositSessionId = interp(node.data.depositSessionId as string | undefined, payload) ?? String(payload.stripeSessionId ?? "");
+
+        if (!cpiEmail) { nodeError = true; output = { error: "create_phased_invoices: clientEmail is required" }; break; }
+        if (!cpiDepositSessionId) { nodeError = true; output = { error: "create_phased_invoices: depositSessionId is required" }; break; }
+
+        // Retrieve the deposit checkout session to extract the confirmed payment method.
+        // This MUST succeed — the workflow is triggered from checkout.session.completed,
+        // so the payment_intent is complete and the payment_method is guaranteed to be set.
+        // Treat failure as a hard node error so the workflow log shows a clear failure
+        // rather than silently creating invoices that can never be auto-charged.
+        let cpiPaymentMethodId: string | null = null;
+        try {
+          const cpiSession = await stripeCpi.checkout.sessions.retrieve(cpiDepositSessionId, {
+            expand: ["payment_intent"],
+          });
+          const pi = cpiSession.payment_intent;
+          if (pi && typeof pi === "object") {
+            cpiPaymentMethodId = typeof pi.payment_method === "string"
+              ? pi.payment_method
+              : (pi.payment_method as { id?: string } | null)?.id ?? null;
+          }
+          if (!cpiPaymentMethodId) {
+            nodeError = true;
+            output = { error: `create_phased_invoices: deposit session ${cpiDepositSessionId} has no confirmed payment method — invoices NOT created to prevent unchargeable drafts` };
+            break;
+          }
+        } catch (e) {
+          nodeError = true;
+          output = { error: `create_phased_invoices: failed to retrieve deposit session payment method: ${String(e)}` };
+          break;
+        }
+
+        // Look up or create the Stripe Customer
+        const cpiCustomers = await stripeCpi.customers.list({ email: cpiEmail, limit: 1 });
+        let cpiCustomerId: string;
+        if (cpiCustomers.data.length > 0) {
+          cpiCustomerId = cpiCustomers.data[0].id;
+        } else {
+          const cpiCust = await stripeCpi.customers.create({ email: cpiEmail, name: cpiName || undefined });
+          cpiCustomerId = cpiCust.id;
+        }
+
+        // Attach payment method as customer default so future auto-charges work
+        if (cpiPaymentMethodId) {
+          try {
+            await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
+          } catch { /* already attached */ }
+          await stripeCpi.customers.update(cpiCustomerId, {
+            invoice_settings: { default_payment_method: cpiPaymentMethodId },
+          });
+        }
+
+        // Retrieve the presentation for this project to get the phased payment schedule
+        const cpiPresRows = await db
+          .select({
+            id: quickWinPresentationsTable.id,
+            paymentSchedule: quickWinPresentationsTable.paymentSchedule,
+          })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.projectId, cpiProjectId))
+          .limit(1);
+
+        type CpiPhaseEntry = { phaseId: string; phaseTitle: string; amount: number; status: string };
+        type CpiPaymentSchedule = { deposit?: number; phases?: CpiPhaseEntry[] };
+
+        const cpiSchedule = cpiPresRows[0]?.paymentSchedule as CpiPaymentSchedule | null;
+        const cpiPhases = cpiSchedule?.phases ?? [];
+
+        if (cpiPhases.length === 0) {
+          nodeError = true;
+          output = { error: "create_phased_invoices: no phased payment schedule found for project — ensure checkout was completed with paymentPlan=phased" };
+          break;
+        }
+
+        // Look up workflow_steps for this project.
+        // Phase IDs in paymentSchedule use synthetic "sow-0", "sow-1", ... identifiers
+        // (not DB primary keys) — match by title first, then by SOW index order as fallback.
+        const cpiSteps = await db
+          .select({ id: workflowStepsTable.id, title: workflowStepsTable.title, dueDate: workflowStepsTable.dueDate, order: workflowStepsTable.order })
+          .from(workflowStepsTable)
+          .where(eq(workflowStepsTable.projectId, cpiProjectId))
+          .orderBy(workflowStepsTable.order);
+
+        // Build lookup: title (normalised) → step
+        const cpiStepByTitle = new Map(cpiSteps.map(s => [s.title.trim().toLowerCase(), s]));
+        // Build lookup: sow index → step (fallback when title doesn't match)
+        const cpiStepByIndex = new Map(cpiSteps.map((s, i) => [`sow-${i}`, s]));
+
+        const cpiInvoiceIds: string[] = [];
+        let cpiTotalScheduled = 0;
+
+        for (const phase of cpiPhases) {
+          const cpiAmountCents = Math.round(phase.amount * 100);
+          if (cpiAmountCents <= 0) continue;
+          // Match by title first (most reliable), fall back to sow-{index} position
+          const cpiStep =
+            cpiStepByTitle.get(phase.phaseTitle.trim().toLowerCase()) ??
+            cpiStepByIndex.get(phase.phaseId);
+          const cpiDueDate = cpiStep?.dueDate;
+
+          // Create a draft invoice (auto_advance: false = stays as draft until we finalize it)
+          const cpiInvoice = await stripeCpi.invoices.create({
+            customer: cpiCustomerId,
+            collection_method: "charge_automatically",
+            auto_advance: false,
+            metadata: {
+              phaseId: phase.phaseId,
+              phaseTitle: phase.phaseTitle,
+              projectId: String(cpiProjectId),
+              ...(cpiDueDate ? { phaseDueDate: cpiDueDate.toISOString() } : {}),
+            },
+          });
+          await stripeCpi.invoiceItems.create({
+            customer: cpiCustomerId,
+            invoice: cpiInvoice.id,
+            description: `Phase: ${phase.phaseTitle}`,
+            amount: cpiAmountCents,
+            currency: "usd",
+          });
+
+          cpiInvoiceIds.push(cpiInvoice.id);
+          cpiTotalScheduled += cpiAmountCents;
+
+          // Write the stripeInvoiceId back to the matching workflow_step row
+          if (cpiStep) {
+            await db
+              .update(workflowStepsTable)
+              .set({ stripeInvoiceId: cpiInvoice.id })
+              .where(eq(workflowStepsTable.id, cpiStep.id));
+          }
+        }
+
+        output = {
+          invoiceIds: cpiInvoiceIds,
+          phaseCount: cpiInvoiceIds.length,
+          totalScheduled: cpiTotalScheduled,
+        };
+        break;
+      }
+
+      // ── Charge a draft Stripe invoice (phased auto-charge) ─────────────────
+
+      case "charge_stripe_invoice": {
+        const { getStripeKey: getCsiKey } = await import("./stripe");
+        let csiStripeKey: string;
+        try { csiStripeKey = getCsiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: StripeCsi } = await import("stripe");
+        const stripeCsi = new StripeCsi(csiStripeKey);
+
+        const csiInvoiceId = interp(node.data.invoiceId as string | undefined, payload) ?? String(payload.stripeInvoiceId ?? "");
+        if (!csiInvoiceId) { nodeError = true; output = { error: "charge_stripe_invoice: invoiceId is required" }; break; }
+
+        try {
+          // Finalize the draft invoice (makes it ready to be paid)
+          await stripeCsi.invoices.finalizeInvoice(csiInvoiceId, { auto_advance: false });
+          // Immediately charge the customer's default payment method
+          const csiPaid = await stripeCsi.invoices.pay(csiInvoiceId);
+          // The Stripe SDK types don't always reflect expanded fields; cast to any to access payment_intent
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const csiRaw = csiPaid as any;
+          const csiPiRaw = csiRaw.payment_intent;
+          const csiPaymentIntentId = typeof csiPiRaw === "string" ? csiPiRaw : (csiPiRaw as { id?: string } | null)?.id ?? null;
+          output = {
+            chargeStatus: csiPaid.status === "paid" ? "succeeded" : "failed",
+            amountCharged: csiPaid.amount_paid,
+            stripePaymentIntentId: csiPaymentIntentId,
+          };
+        } catch (csiErr) {
+          // Card declined, insufficient funds, etc. — return failure status instead of throwing
+          const csiErrMsg = csiErr instanceof Error ? csiErr.message : String(csiErr);
+          logger.warn({ invoiceId: csiInvoiceId, err: csiErr }, "charge_stripe_invoice: charge failed");
+          output = {
+            chargeStatus: "failed",
+            amountCharged: 0,
+            stripePaymentIntentId: null,
+            error: csiErrMsg,
+          };
+        }
         break;
       }
 

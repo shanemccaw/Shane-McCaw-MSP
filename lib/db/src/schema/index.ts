@@ -185,6 +185,7 @@ export const workflowStepsTable = pgTable("workflow_steps", {
   dueDate: timestamp("due_date"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   workflowTemplateStepId: integer("workflow_template_step_id"),
+  stripeInvoiceId: text("stripe_invoice_id"),
 });
 
 export type InsertWorkflowStep = typeof workflowStepsTable.$inferInsert;
@@ -1717,7 +1718,9 @@ export interface WfNode {
     | "build_presentation"
     // Payments (Stripe)
     | "generate_invoice_stripe_payment"
-    | "generate_stripe_payment_link";
+    | "generate_stripe_payment_link"
+    | "create_phased_invoices"
+    | "charge_stripe_invoice";
   position: { x: number; y: number };
   data: WfNodeData;
 }
