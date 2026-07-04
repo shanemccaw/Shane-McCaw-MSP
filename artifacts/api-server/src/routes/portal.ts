@@ -10539,10 +10539,12 @@ ${originalSowRow.htmlContent}`;
         ON CONFLICT (customer_id, project_id, doc_type)
         WHERE doc_type = 'scoped_sow' AND project_id IS NOT NULL
         DO UPDATE SET
-          html_content   = EXCLUDED.html_content,
+          html_content    = EXCLUDED.html_content,
           sow_total_price = EXCLUDED.sow_total_price,
-          title          = EXCLUDED.title,
-          updated_at     = EXCLUDED.updated_at
+          title           = EXCLUDED.title,
+          category        = EXCLUDED.category,
+          status          = 'draft',
+          updated_at      = EXCLUDED.updated_at
       `);
     } else {
       await db.execute(sql`
@@ -10557,6 +10559,8 @@ ${originalSowRow.htmlContent}`;
           html_content    = EXCLUDED.html_content,
           sow_total_price = EXCLUDED.sow_total_price,
           title           = EXCLUDED.title,
+          category        = EXCLUDED.category,
+          status          = 'draft',
           updated_at      = EXCLUDED.updated_at
       `);
     }
