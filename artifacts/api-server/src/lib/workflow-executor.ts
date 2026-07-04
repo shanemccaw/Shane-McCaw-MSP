@@ -1157,6 +1157,31 @@ async function executeNode(
             output = { emitted: true, eventType: emitEventType };
             logger.info({ runId, definitionId, eventType: emitEventType, chainDepth: currentChainDepth }, "wf-executor: emit_event node fired");
           }
+        } else if (actionType === "sql_query") {
+          // Execute a read-only SQL query and spread first-row fields into the step output
+          // so downstream condition nodes can branch on them (e.g. status, age_ms).
+          // {{token}} placeholders in the query are resolved from the current payload via interp().
+          // WARNING: values are string-interpolated — only use with trusted internal event payloads.
+          const rawQuery = node.data.query as string | undefined;
+          if (!rawQuery?.trim()) {
+            nodeError = true;
+            output = { error: "sql_query: node.data.query is empty" };
+          } else {
+            const interpolatedQuery = interp(rawQuery, payload) ?? rawQuery;
+            try {
+              const result = await pool.query(interpolatedQuery);
+              const firstRow = (result.rows[0] as Record<string, unknown> | undefined) ?? null;
+              output = firstRow
+                ? { rowCount: result.rowCount ?? result.rows.length, ...firstRow }
+                : { rowCount: 0 };
+              logger.info({ runId, rowCount: result.rowCount ?? result.rows.length }, "wf-executor: sql_query node executed");
+            } catch (queryErr) {
+              nodeError = true;
+              const errMsg = queryErr instanceof Error ? queryErr.message : String(queryErr);
+              output = { error: `sql_query failed: ${errMsg.slice(0, 200)}` };
+              logger.warn({ runId, err: queryErr }, "wf-executor: sql_query node failed");
+            }
+          }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
         }

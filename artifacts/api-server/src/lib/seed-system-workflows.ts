@@ -213,7 +213,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             nodeType: "action",
             actionType: "sql_query",
             label: "Fetch Latest SOW Row",
-            query: "SELECT status FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1",
+            query: "SELECT status, EXTRACT(EPOCH FROM (NOW() - created_at)) * 1000 AS age_ms FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1",
           },
         },
         {
@@ -223,7 +223,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           data: {
             nodeType: "condition",
             label: "Should Retry?",
-            expression: "status != 'generating'",
+            expression: "status != 'generating' || age_ms > 120000",
           },
         },
         {
@@ -467,6 +467,39 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId],
         );
         logger.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
+      } else if (seed.name === "SOW Generation Auto-Retry") {
+        // One-time patch: update the sql_query node to include age_ms and fix the condition
+        // expression to gate on recency (status != 'generating' || age_ms > 120000).
+        // Fires only when the old query (selecting only 'status') is still present.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = (
+                SELECT jsonb_set(
+                  graph,
+                  '{nodes}',
+                  jsonb_agg(
+                    CASE
+                      WHEN node->'data'->>'actionType' = 'sql_query'
+                      THEN jsonb_set(node, '{data,query}',
+                             $2::jsonb)
+                      WHEN node->'data'->>'nodeType' = 'condition'
+                      THEN jsonb_set(node, '{data,expression}',
+                             $3::jsonb)
+                      ELSE node
+                    END
+                  )
+                )
+                FROM jsonb_array_elements(graph->'nodes') AS node
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> '[{"data":{"actionType":"sql_query","query":"SELECT status FROM insights_generated_documents"}}]'`,
+          [
+            defId,
+            JSON.stringify("SELECT status, EXTRACT(EPOCH FROM (NOW() - created_at)) * 1000 AS age_ms FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1"),
+            JSON.stringify("status != 'generating' || age_ms > 120000"),
+          ],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query + condition nodes");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
