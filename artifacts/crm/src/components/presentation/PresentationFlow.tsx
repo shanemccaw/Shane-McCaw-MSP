@@ -207,6 +207,14 @@ export default function PresentationFlow({
     if (!isNaN(urlStep) && urlStep >= 0) {
       const steps = buildSteps(initialData.documents, readOnly);
       const clamped = Math.min(urlStep, steps.length - 1);
+      // If there's no SOW document, hard-lock all sow-gated steps — deep-links land on step 0.
+      const hasSOW = initialData.documents.some(
+        d => d.docType === "consolidated_sow" || d.docType === "sow"
+      );
+      const sowGated = new Set<Step["kind"]>(["sow", "payment", "contract", "checkout", "confirmation"]);
+      if (!hasSOW && steps[clamped] && sowGated.has(steps[clamped].kind)) {
+        return 0;
+      }
       // If the URL tries to land on the Agreement step but no plan has been chosen,
       // redirect to the Payment Options step so the client picks a plan first.
       if (steps[clamped]?.kind === "contract" && !initialData.paymentPlan) {
@@ -261,6 +269,16 @@ export default function PresentationFlow({
       return 0;
     });
   }, [data.documents]);
+
+  // True when the presentation has an uploaded SOW document (consolidated_sow or sow type).
+  // When false, the Scope, Payment, Agreement, Checkout, and Confirmation steps are all locked —
+  // the client can review presentation documents but cannot proceed to scoping or payment.
+  const hasSowDocument = sortedDocs.some(
+    d => d.docType === "consolidated_sow" || d.docType === "sow"
+  );
+
+  // The set of step kinds that require an SOW document to be unlocked.
+  const sowGatedKinds = new Set<Step["kind"]>(["sow", "payment", "contract", "checkout", "confirmation"]);
 
   const steps = buildSteps(sortedDocs, readOnly);
   const currentStep = steps[stepIndex];
@@ -709,6 +727,12 @@ export default function PresentationFlow({
   const isPaid = data.status === "paid";
 
   const goNext = () => {
+    // Hard-block Next entirely when the next step would be SOW-gated and there's no SOW document.
+    if (!hasSowDocument && currentStep && sowGatedKinds.has(currentStep.kind)) return;
+    if (!hasSowDocument) {
+      const nextStep = steps[stepIndex + 1];
+      if (nextStep && sowGatedKinds.has(nextStep.kind)) return;
+    }
     if (readOnly && currentStep?.kind === "sow") {
       setShowLoginGate(true);
       return;
@@ -755,7 +779,9 @@ export default function PresentationFlow({
     // Hard-block sidebar navigation to contract when no payment plan has been chosen.
     // Redirect to the payment step so the client picks a plan first.
     const blockedByNoPlan = targetStep?.kind === "contract" && !selectedPlan;
-    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan) {
+    // Hard-block all SOW-gated steps when no SOW document is present.
+    const blockedByNoSow = !hasSowDocument && !!targetStep && sowGatedKinds.has(targetStep.kind);
+    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan && !blockedByNoSow) {
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
@@ -776,6 +802,8 @@ export default function PresentationFlow({
   const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
     const targetStep = steps[idx];
+    // Hard-block jumps to any SOW-gated step when no SOW document exists.
+    if (!hasSowDocument && targetStep && sowGatedKinds.has(targetStep.kind)) return;
     // Hard-block jumps to contract/checkout when a scoped SOW reset is pending
     if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "checkout")) return;
     // Hard-block jumps to checkout without a signed agreement.
@@ -885,13 +913,16 @@ export default function PresentationFlow({
           const isFuture = i > maxVisitedStep;
           const isResetBlocked = sowResetBlocked && (step.kind === "contract" || step.kind === "checkout");
           const isUnsignedGated = step.kind === "checkout" && !data.signedAt;
-          const isBlocked = isResetBlocked || isUnsignedGated;
+          const isNoSowGated = !hasSowDocument && sowGatedKinds.has(step.kind);
+          const isBlocked = isResetBlocked || isUnsignedGated || isNoSowGated;
           return (
             <button
               key={i}
               onClick={() => { if (!isFuture && !isBlocked) navigateToStep(i); }}
               title={
-                isResetBlocked
+                isNoSowGated
+                  ? "Statement of Work not yet available"
+                  : isResetBlocked
                   ? "Regenerate your scoped SOW before signing or paying"
                   : isUnsignedGated
                   ? "Sign the agreement to unlock payment"
@@ -902,7 +933,9 @@ export default function PresentationFlow({
                   : `Complete step ${i} to unlock`
               }
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all mb-0.5 ${
-                isBlocked
+                isNoSowGated
+                  ? "text-white/20 cursor-not-allowed"
+                  : isBlocked
                   ? "text-amber-400/60 cursor-not-allowed"
                   : isActive
                   ? "bg-[#0078D4] text-white cursor-pointer"
@@ -915,7 +948,9 @@ export default function PresentationFlow({
             >
               {/* Step number dot */}
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                isResetBlocked
+                isNoSowGated
+                  ? "bg-white/5 text-white/20"
+                  : isResetBlocked
                   ? "bg-amber-400/20 text-amber-400/60"
                   : isActive
                   ? "bg-white/20 text-white"
@@ -923,7 +958,11 @@ export default function PresentationFlow({
                   ? "bg-white/20 text-white/70"
                   : "bg-white/10 text-white/30"
               }`}>
-                {isResetBlocked ? (
+                {isNoSowGated ? (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                ) : isResetBlocked ? (
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                   </svg>
@@ -1308,8 +1347,10 @@ export default function PresentationFlow({
                           {/* 2 — Scope & Investment */}
                           {sowStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(sowStepIndex, "scope")}
-                              className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                              onClick={() => !hasSowDocument ? undefined : jumpToStep(sowStepIndex, "scope")}
+                              disabled={!hasSowDocument}
+                              title={!hasSowDocument ? "Statement of Work not yet available" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${!hasSowDocument ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowVisited ? "bg-emerald-500" : "bg-[#0078D4]"}`} />
                               {sowVisited && <ReviewedBadge />}
@@ -1351,10 +1392,10 @@ export default function PresentationFlow({
                           {/* 3 — Payment */}
                           {paymentStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(paymentStepIndex, "payment")}
-                              disabled={sowResetBlocked}
-                              title={sowResetBlocked ? "Regenerate your scoped SOW before paying" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              onClick={() => (!hasSowDocument || sowResetBlocked) ? undefined : jumpToStep(paymentStepIndex, "payment")}
+                              disabled={!hasSowDocument || sowResetBlocked}
+                              title={!hasSowDocument ? "Statement of Work not yet available" : sowResetBlocked ? "Regenerate your scoped SOW before paying" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : paymentVisited ? "bg-emerald-500" : "bg-purple-500"}`} />
                               {paymentVisited && !sowResetBlocked && <ReviewedBadge />}
@@ -1407,10 +1448,10 @@ export default function PresentationFlow({
                           {/* 4 — Agreement */}
                           {contractStepIndex >= 0 && (
                             <button
-                              onClick={() => jumpToStep(contractStepIndex, "agreement")}
-                              disabled={sowResetBlocked}
-                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              onClick={() => (!hasSowDocument || sowResetBlocked) ? undefined : jumpToStep(contractStepIndex, "agreement")}
+                              disabled={!hasSowDocument || sowResetBlocked}
+                              title={!hasSowDocument ? "Statement of Work not yet available" : sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
                               {contractVisited && !sowResetBlocked && <ReviewedBadge />}
@@ -1469,7 +1510,22 @@ export default function PresentationFlow({
             )}
 
             {/* SOW selector */}
-            {currentStep?.kind === "sow" && (
+            {currentStep?.kind === "sow" && !hasSowDocument && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6 py-12">
+                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-[#0A2540]">Statement of Work not yet available</p>
+                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+                    Shane is preparing your Statement of Work. You'll be notified when it's ready to review.
+                  </p>
+                </div>
+              </div>
+            )}
+            {currentStep?.kind === "sow" && hasSowDocument && (
               <div className="flex-1 overflow-hidden flex flex-col">
                 <PayTodayBanner offer={offer} />
                 <SowSelectorPanel
