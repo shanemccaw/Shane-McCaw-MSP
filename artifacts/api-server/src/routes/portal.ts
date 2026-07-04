@@ -10156,19 +10156,28 @@ router.get("/portal/presentations/:id/offer", async (req: Request, res: Response
 
     const { effectiveTotalPrice, adjustmentsTotal } = await deriveEffectiveSowData(pres);
 
+    // Use cents-based arithmetic throughout so displayed amounts exactly match
+    // what Stripe will charge (same rounding path as the checkout handler).
+    const originalCents = Math.round(effectiveTotalPrice * 100);
+
     let savingsAmount: number;
     let discountedTotal: number;
     let variant: "adjustments_waived" | "percentage_off";
+    let discountPct: number | null = null;
 
     if (adjustmentsTotal > 0) {
       variant = "adjustments_waived";
-      savingsAmount = adjustmentsTotal;
-      discountedTotal = effectiveTotalPrice - adjustmentsTotal;
+      const adjustmentsCents = Math.round(adjustmentsTotal * 100);
+      savingsAmount = adjustmentsCents / 100;
+      discountedTotal = (originalCents - adjustmentsCents) / 100;
     } else {
       variant = "percentage_off";
-      const pct = parseFloat(String(coupon.discountValue)) / 100;
-      savingsAmount = Math.round(effectiveTotalPrice * pct);
-      discountedTotal = effectiveTotalPrice - savingsAmount;
+      const rawPct = parseFloat(String(coupon.discountValue));
+      const pct = rawPct / 100;
+      const discountedCents = Math.round(originalCents * (1 - pct));
+      savingsAmount = (originalCents - discountedCents) / 100;
+      discountedTotal = discountedCents / 100;
+      discountPct = rawPct;
     }
 
     res.json({
@@ -10178,6 +10187,7 @@ router.get("/portal/presentations/:id/offer", async (req: Request, res: Response
       discountedTotal,
       originalTotal: effectiveTotalPrice,
       variant,
+      ...(discountPct !== null && { discountPct }),
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get pay-today offer");
@@ -10679,8 +10689,11 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       ? await getOrCreateStripeCustomer(stripe, userProfile)
       : undefined;
 
-    // Verify PAY-TODAY offer server-side if requested (full plan only)
+    // Verify PAY-TODAY offer server-side if requested (full plan only).
+    // Compute everything in cents to exactly match the offer-endpoint rounding.
     let discountedPriceDollars: number | null = null;
+    let stripeDiscounts: Array<{ coupon: string }> = [];
+
     if (applyPayToday && paymentPlan === "full") {
       const [coupon] = await db.select().from(couponsTable)
         .where(and(eq(couponsTable.code, "PAY-TODAY"), eq(couponsTable.active, true)))
@@ -10688,20 +10701,36 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       if (coupon && (!coupon.expiresAt || coupon.expiresAt >= new Date()) && pres.firstVisitedAt) {
         const expiresAt = new Date(pres.firstVisitedAt.getTime() + 72 * 60 * 60 * 1000);
         if (new Date() <= expiresAt) {
+          const originalCents = Math.round(totalPrice * 100);
+          let discountedCents: number;
           if (adjustmentsTotal > 0) {
-            discountedPriceDollars = totalPrice - adjustmentsTotal;
+            discountedCents = originalCents - Math.round(adjustmentsTotal * 100);
           } else {
             const pct = parseFloat(String(coupon.discountValue)) / 100;
-            discountedPriceDollars = Math.round((totalPrice * (1 - pct)) * 100) / 100;
+            discountedCents = Math.round(originalCents * (1 - pct));
           }
+          discountedPriceDollars = discountedCents / 100;
+
+          // Create a one-time Stripe coupon so the discount is traceable in Stripe
+          // as a named coupon rather than a silently pre-discounted unit price.
+          const discountCents = originalCents - discountedCents;
+          const stripeCoupon = await stripe.coupons.create({
+            amount_off: discountCents,
+            currency: "usd",
+            duration: "once",
+            name: "PAY-TODAY Discount",
+            metadata: { presentationId: String(id), couponCode: "PAY-TODAY" },
+          });
+          stripeDiscounts = [{ coupon: stripeCoupon.id }];
         }
       }
     }
 
-    const effectiveChargePrice = discountedPriceDollars !== null ? discountedPriceDollars : totalPrice;
-
+    // For full-plan with PAY-TODAY: charge the original price and let Stripe apply
+    // the coupon discount — produces a transparent line-item discount in Stripe's UI.
+    // For full-plan without discount, or phased deposit: charge the computed amount.
     const chargeAmount = paymentPlan === "full"
-      ? Math.round(effectiveChargePrice * 100)
+      ? Math.round(totalPrice * 100)   // Stripe applies coupon on top; correct for both paths
       : Math.round(totalPrice * 0.2 * 100);
 
     const projectTitle = pres.projectId
@@ -10710,23 +10739,20 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
 
     const portalBase = getPortalBaseUrl(); // already ends in /crm
 
-    const discountLabel = discountedPriceDollars !== null ? " — Pay Today Discount Applied" : "";
-
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
       customer: customerId,
       billing_address_collection: "required",
+      ...(stripeDiscounts.length > 0 && { discounts: stripeDiscounts }),
       line_items: [{
         price_data: {
           currency: "usd",
           product_data: {
             name: paymentPlan === "full"
-              ? `${projectTitle} — Full Payment${discountLabel}`
+              ? `${projectTitle} — Full Payment`
               : `${projectTitle} — 20% Deposit (Phase 1)`,
             description: paymentPlan === "phased"
               ? `20% upfront deposit. Remaining phases invoiced upon completion.`
-              : discountedPriceDollars !== null
-              ? `PAY-TODAY discount applied. Original price: $${totalPrice.toLocaleString()}`
               : undefined,
           },
           unit_amount: chargeAmount,

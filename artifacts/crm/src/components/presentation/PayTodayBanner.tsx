@@ -7,6 +7,7 @@ export interface OfferState {
   discountedTotal: number;
   originalTotal: number;
   variant: "adjustments_waived" | "percentage_off" | null;
+  discountPct?: number;
 }
 
 function formatCurrency(n: number) {
@@ -57,7 +58,11 @@ export default function PayTodayBanner({ offer }: PayTodayBannerProps) {
         <p className="text-sm font-bold leading-tight">
           {"Pay Today & Save "}
           {formatCurrency(offer.savingsAmount)}
-          {offer.variant === "adjustments_waived" ? " — Adjustments Waived" : " (15% off)"}
+          {offer.variant === "adjustments_waived"
+            ? " — Adjustments Waived"
+            : offer.discountPct != null
+            ? ` (${offer.discountPct}% off)`
+            : " — Limited Offer"}
         </p>
         <p className="text-xs text-white/90 mt-0.5">
           {"Pay in full now for "}
