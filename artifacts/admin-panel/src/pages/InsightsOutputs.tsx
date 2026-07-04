@@ -358,6 +358,7 @@ function DocumentsTab({
   customers: Customer[];
   refreshKey?: number;
 }) {
+  const { toast } = useToast();
   const [docs, setDocs] = useState<InsightsDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<InsightsDocFull | null>(null);
@@ -497,7 +498,20 @@ function DocumentsTab({
     if (selectedDoc?.id === id) setSelectedDoc(null);
   };
 
-  const downloadPdf = (doc: InsightsDoc) => window.open(`${API}/admin/insights/documents/${doc.id}/download`, "_blank");
+  const downloadPdf = async (doc: InsightsDoc) => {
+    try {
+      const res = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}/download`);
+      if (!res.ok) { toast({ title: "Download failed", description: "Could not retrieve the document.", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (doc.title ?? "document").replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
+      a.href = url; a.download = `${safeTitle}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", description: "An unexpected error occurred.", variant: "destructive" });
+    }
+  };
 
   const openSend = (doc: InsightsDoc) => {
     const customerEmail = doc.customerId
@@ -748,6 +762,7 @@ function ConsultingTab({
   fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response>;
   customers: Customer[];
 }) {
+  const { toast } = useToast();
   const [docs, setDocs] = useState<InsightsDoc[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<InsightsDocFull | null>(null);
@@ -893,7 +908,20 @@ function ConsultingTab({
     if (selectedDoc?.id === id) setSelectedDoc(null);
   };
 
-  const downloadPdf = (doc: InsightsDoc) => window.open(`${API}/admin/insights/documents/${doc.id}/download`, "_blank");
+  const downloadPdf = async (doc: InsightsDoc) => {
+    try {
+      const res = await fetchWithAuth(`${API}/admin/insights/documents/${doc.id}/download`);
+      if (!res.ok) { toast({ title: "Download failed", description: "Could not retrieve the document.", variant: "destructive" }); return; }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safeTitle = (doc.title ?? "document").replace(/[^a-z0-9_\- ]/gi, "_").slice(0, 80);
+      a.href = url; a.download = `${safeTitle}.pdf`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", description: "An unexpected error occurred.", variant: "destructive" });
+    }
+  };
 
   return (
     <div className="flex gap-5">
