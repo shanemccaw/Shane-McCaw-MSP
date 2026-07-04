@@ -142,7 +142,7 @@ export default function SowSelectorPanel({
                     {phase.deliveryDate && (
                       <p className={`text-[10px] mt-1 font-medium ${phase.selected ? "text-[#0078D4]/70" : "text-gray-300"}`}>
                         Est. delivery:{" "}
-                        {new Date(phase.deliveryDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                        {new Date(phase.deliveryDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })}
                       </p>
                     )}
                   </div>
