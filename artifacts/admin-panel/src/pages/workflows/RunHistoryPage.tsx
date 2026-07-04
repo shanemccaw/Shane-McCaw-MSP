@@ -66,6 +66,17 @@ const TRIGGER_ICONS: Record<string, string> = {
   event:    "📡",
 };
 
+const CATEGORY_STYLES: Record<EventCategory, string> = {
+  CRM:        "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  Payments:   "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  Scheduling: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  M365:       "bg-violet-500/20 text-violet-300 border-violet-500/30",
+};
+
+function getEventCategory(eventName: string): EventCategory | null {
+  return EVENT_CATALOG.find(e => e.name === eventName)?.category as EventCategory | null ?? null;
+}
+
 function StatusChip({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[status] ?? "bg-[#1C2128] text-[#7D8590] border-[#30363D]"}`}>
@@ -116,10 +127,27 @@ function RunRow({
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-sm">
-            <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
-            <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
-          </span>
+          {run.triggerType === "event" && run.triggerRef && run.triggerRef !== "draft_test" ? (
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="flex items-center gap-1">
+                <span className="text-sm mr-0.5">{TRIGGER_ICONS.event}</span>
+                <span className="text-xs text-[#E6EDF3] font-mono truncate">{run.triggerRef}</span>
+              </span>
+              {(() => {
+                const cat = getEventCategory(run.triggerRef);
+                return cat ? (
+                  <span className={`inline-flex items-center self-start px-1.5 py-0.5 rounded text-[9px] font-semibold border ${CATEGORY_STYLES[cat]}`}>
+                    {cat}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+          ) : (
+            <span className="text-sm">
+              <span className="mr-1">{TRIGGER_ICONS[run.triggerType] ?? "•"}</span>
+              <span className="text-xs text-[#7D8590] capitalize">{run.triggerType}</span>
+            </span>
+          )}
           {run.triggerRef === "draft_test" && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30 uppercase tracking-wider">Draft</span>
           )}
