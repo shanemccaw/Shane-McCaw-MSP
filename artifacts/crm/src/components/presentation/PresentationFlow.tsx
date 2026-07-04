@@ -1603,7 +1603,7 @@ export default function PresentationFlow({
                     )}
 
                     <p className="text-sm text-black/50 leading-relaxed mb-6">
-                      Shane is crafting a tailored proposal for your project. You'll receive an email the moment it's ready to review.
+                      Shane is crafting a tailored proposal for your project. This page will refresh automatically the moment it's ready.
                     </p>
 
                     {/* Progress dots */}

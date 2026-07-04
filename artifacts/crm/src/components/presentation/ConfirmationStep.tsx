@@ -38,22 +38,13 @@ function ScoreRing({ score, size = 52 }: { score: number; size?: number }) {
       <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#e5e7eb" strokeWidth={5} />
       <circle
         cx={size / 2} cy={size / 2} r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth={5}
+        fill="none" stroke={color} strokeWidth={5}
         strokeDasharray={`${fill} ${circ}`}
         strokeLinecap="round"
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{ transition: "stroke-dasharray 0.8s ease" }}
       />
-      <text
-        x="50%" y="50%"
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={11}
-        fontWeight="700"
-        fill={color}
-      >
+      <text x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="700" fill={color}>
         {score}%
       </text>
     </svg>
@@ -103,31 +94,21 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   ),
 };
 
+// Document generation stages — reveal sequentially to give a sense of real work
+const DOC_STAGES = [
+  { label: "Analysing your assessment results",  delay: 0 },
+  { label: "Mapping remediation priorities",      delay: 2800 },
+  { label: "Calculating your engagement pricing", delay: 6000 },
+  { label: "Drafting your Statement of Work",     delay: 10000 },
+  { label: "Applying final formatting",           delay: 14500 },
+];
+
+// Background onboarding steps shown beneath the doc progress card
 const BG_TASKS = [
-  {
-    label: "Payment confirmed & recorded",
-    detail: "Your invoice has been updated in your billing portal.",
-    delay: 0,
-    done: true,
-  },
-  {
-    label: "Setting up your client workspace",
-    detail: "Provisioning your dedicated SharePoint environment and Teams channel.",
-    delay: 800,
-    done: false,
-  },
-  {
-    label: "Scheduling your kickoff session",
-    detail: "Shane will reach out within one business day to confirm a time.",
-    delay: 1800,
-    done: false,
-  },
-  {
-    label: "Sending your welcome package",
-    detail: "Onboarding materials and next-steps guide are on their way.",
-    delay: 2800,
-    done: false,
-  },
+  { label: "Payment confirmed & recorded",   detail: "Your invoice has been updated in your billing portal.", delay: 0,    done: true },
+  { label: "Setting up your client workspace", detail: "Provisioning your dedicated SharePoint environment and Teams channel.", delay: 800,  done: false },
+  { label: "Scheduling your kickoff session",  detail: "Shane will reach out within one business day to confirm a time.", delay: 1800, done: false },
+  { label: "Sending your welcome package",     detail: "Your onboarding guide and next-steps checklist are being prepared.", delay: 2800, done: false },
 ];
 
 interface Props {
@@ -138,21 +119,32 @@ interface Props {
 
 export default function ConfirmationStep({ clientName, projectTitle, onClose }: Props) {
   const { fetchWithAuth } = useAuth();
-  const [visibleTasks, setVisibleTasks] = useState<number>(1);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [visibleTasks,  setVisibleTasks]  = useState<number>(1);
+  const [activeStage,   setActiveStage]   = useState<number>(0);
+  const [health,        setHealth]        = useState<HealthResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState(true);
 
+  // Reveal activity-feed tasks one by one
   useEffect(() => {
     let cancelled = false;
     BG_TASKS.forEach((task, i) => {
       if (i === 0) return;
-      setTimeout(() => {
-        if (!cancelled) setVisibleTasks(v => Math.max(v, i + 1));
-      }, task.delay);
+      setTimeout(() => { if (!cancelled) setVisibleTasks(v => Math.max(v, i + 1)); }, task.delay);
     });
     return () => { cancelled = true; };
   }, []);
 
+  // Advance through doc-generation stages
+  useEffect(() => {
+    let cancelled = false;
+    DOC_STAGES.forEach((stage, i) => {
+      if (i === 0) return;
+      setTimeout(() => { if (!cancelled) setActiveStage(i); }, stage.delay);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch tenant health scores
   useEffect(() => {
     fetchWithAuth("/api/portal/health/summary")
       .then(r => r.ok ? (r.json() as Promise<HealthResponse>) : ({ hasData: false as const }))
@@ -162,6 +154,11 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
   }, [fetchWithAuth]);
 
   const healthData = health && health.hasData ? (health as HealthSummaryData) : null;
+
+  // Progress bar target: creep from 0 → ~88 % across all stage timings then hold
+  const progressPct   = activeStage === DOC_STAGES.length - 1
+    ? 88   // held near-complete — will snap to 100 when the real doc lands
+    : Math.round((activeStage / (DOC_STAGES.length - 1)) * 80);
 
   return (
     <div className="flex-1 flex flex-col items-center overflow-y-auto px-4 py-8 gap-8" style={{ backgroundColor: "rgb(248,249,251)" }}>
@@ -183,7 +180,102 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
             </p>
           )}
           <p className="text-muted-foreground mt-2 text-sm leading-relaxed">
-            Your agreement is signed and payment is confirmed. Shane is now setting things up — you'll hear from him within one business day.
+            Your agreement is signed and payment is confirmed. Shane is now setting things up.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Document generation progress ── */}
+      <div className="w-full max-w-md bg-white rounded-2xl border border-[#0078D4]/30 shadow-sm overflow-hidden">
+        {/* Card header */}
+        <div className="px-5 py-4 border-b border-border bg-[#0078D4]/[0.04] flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            {/* animated document icon */}
+            <div className="relative w-8 h-8 flex-shrink-0">
+              <svg className="w-8 h-8 text-[#0078D4]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <span className="absolute -top-0.5 -right-0.5 flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0078D4] opacity-50" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-[#0078D4]" />
+              </span>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#0A2540] leading-tight">Generating your Statement of Work</p>
+              <p className="text-[11px] text-muted-foreground">This page will refresh automatically once it's ready</p>
+            </div>
+          </div>
+          {/* Spinning cog */}
+          <svg className="w-4 h-4 text-[#0078D4] animate-spin flex-shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+
+        {/* Progress bar */}
+        <div className="px-5 pt-4 pb-1">
+          <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-[#0078D4] to-[#00B4D8]"
+              style={{
+                width: `${progressPct}%`,
+                transition: "width 1.8s cubic-bezier(0.4, 0, 0.2, 1)",
+              }}
+            />
+          </div>
+          <p className="text-right text-[10px] text-muted-foreground mt-1">{progressPct}%</p>
+        </div>
+
+        {/* Stage list */}
+        <ul className="px-5 pb-4 space-y-2.5 mt-1">
+          {DOC_STAGES.map((stage, i) => {
+            const isDone    = i < activeStage;
+            const isActive  = i === activeStage;
+            const isPending = i > activeStage;
+            return (
+              <li
+                key={i}
+                className="flex items-center gap-2.5"
+                style={{
+                  opacity: isPending ? 0.35 : 1,
+                  transition: "opacity 0.4s ease",
+                  animation: isActive ? undefined : i === activeStage - 1 ? "fadeSlideIn 0.4s ease both" : undefined,
+                }}
+              >
+                {/* Status icon */}
+                <span className="flex-shrink-0 flex items-center justify-center w-4 h-4">
+                  {isDone ? (
+                    <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : isActive ? (
+                    <svg className="w-3.5 h-3.5 text-[#0078D4] animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                  )}
+                </span>
+                <span
+                  className="text-xs leading-snug"
+                  style={{ color: isDone ? "#16a34a" : isActive ? "#0078D4" : "#9ca3af", fontWeight: isActive ? 600 : isDone ? 500 : 400 }}
+                >
+                  {stage.label}
+                  {isActive && <span className="ml-1 animate-pulse">…</span>}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        {/* Footer note */}
+        <div className="px-5 py-3 bg-gray-50 border-t border-border flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-[11px] text-gray-500">
+            Generation typically takes 60–90 seconds. The page will reload automatically — no action required.
           </p>
         </div>
       </div>
@@ -196,11 +288,7 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
         </div>
         <ul className="divide-y divide-border">
           {BG_TASKS.slice(0, visibleTasks).map((task, i) => (
-            <li
-              key={i}
-              className="px-5 py-3.5 flex items-start gap-3"
-              style={{ animation: "fadeSlideIn 0.35s ease both" }}
-            >
+            <li key={i} className="px-5 py-3.5 flex items-start gap-3" style={{ animation: "fadeSlideIn 0.35s ease both" }}>
               <div className="mt-0.5 flex-shrink-0">
                 {task.done ? (
                   <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100">
@@ -250,7 +338,6 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
 
         {!healthLoading && healthData && (
           <>
-            {/* Overall score bar */}
             <div className="px-5 py-4 flex items-center gap-4 border-b border-border">
               <ScoreRing score={healthData.overallLatest} size={60} />
               <div>
@@ -265,8 +352,6 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
                 )}
               </div>
             </div>
-
-            {/* Category grid */}
             <div className="grid grid-cols-2 divide-x divide-y divide-border">
               {healthData.categories.map((cat) => (
                 <div key={cat.key} className="px-4 py-3 flex items-center gap-3">
@@ -297,7 +382,6 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
         Return to Portal
       </button>
 
-      {/* animation keyframes */}
       <style>{`
         @keyframes fadeSlideIn {
           from { opacity: 0; transform: translateY(6px); }
@@ -307,3 +391,4 @@ export default function ConfirmationStep({ clientName, projectTitle, onClose }: 
     </div>
   );
 }
+

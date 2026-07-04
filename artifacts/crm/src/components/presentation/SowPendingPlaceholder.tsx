@@ -54,7 +54,7 @@ export default function SowPendingPlaceholder({ projectTitle, clientName, onClos
           )}
 
           <p className="text-sm text-white/60 leading-relaxed mb-8">
-            Shane is crafting a tailored proposal for your project. You'll receive an email the moment it's ready to review and sign.
+            Shane is crafting a tailored proposal for your project. This page will refresh automatically the moment it's ready to review and sign.
           </p>
 
           {/* Animated progress dots */}
