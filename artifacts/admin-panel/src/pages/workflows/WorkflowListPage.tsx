@@ -365,15 +365,41 @@ const CATEGORY_STYLES: Record<TriggerCategory, string> = {
   M365:       "bg-violet-500/15 text-violet-300 border-violet-500/25",
 };
 
+const EVENT_CATEGORY_MAP: Record<string, TriggerCategory> = {
+  "lead.created":                    "CRM",
+  "lead.qualified":                  "CRM",
+  "opportunity.created":             "CRM",
+  "client.created":                  "CRM",
+  "project.created":                 "CRM",
+  "project.phase_changed":           "CRM",
+  "onboarding.complete":             "CRM",
+  "sow.scope_reduced":               "CRM",
+  "contract.signed":                 "CRM",
+  "payment.received":                "Payments",
+  "agreement_signed":                "Payments",
+  "phase_completed":                 "Payments",
+  "phase.delivery_date_changed":     "Scheduling",
+  "milestone.delivery_date_changed": "Scheduling",
+  "m365.health_check_complete":      "M365",
+  "m365.diagnostic_failed":          "M365",
+  "quiz.lead_submitted":             "M365",
+  "customer.script_result":          "M365",
+};
+
 function deriveTriggerCategories(eventNames: string[]): TriggerCategory[] {
   const cats = new Set<TriggerCategory>();
 
   for (const ev of eventNames) {
-    const e = ev.toLowerCase();
-    if (/^(client|lead|opportunity|kanban|crm)\./.test(e)) cats.add("CRM");
-    else if (/^(payment|stripe|invoice|checkout|order)\./.test(e)) cats.add("Payments");
-    else if (/^(booking|appointment|calendar|scheduling)\./.test(e)) cats.add("Scheduling");
-    else if (/^(m365|sow|agreement|phase|copilot|sharepoint|teams)/.test(e)) cats.add("M365");
+    const mapped = EVENT_CATEGORY_MAP[ev];
+    if (mapped) {
+      cats.add(mapped);
+    } else {
+      const e = ev.toLowerCase();
+      if (/^(client|lead|opportunity|kanban|crm)\./.test(e)) cats.add("CRM");
+      else if (/^(payment|stripe|invoice|checkout|order)\./.test(e)) cats.add("Payments");
+      else if (/^(booking|appointment|calendar|scheduling)\./.test(e)) cats.add("Scheduling");
+      else if (/^(m365|copilot|sharepoint|teams)/.test(e)) cats.add("M365");
+    }
   }
 
   return [...cats];
