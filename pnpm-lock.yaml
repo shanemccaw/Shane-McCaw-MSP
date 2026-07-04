@@ -392,7 +392,7 @@ importers:
         version: 7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(@types/node@25.6.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.9(@types/node@25.6.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4))
       wouter:
         specifier: ^3.3.5
         version: 3.10.0(react@19.1.0)
@@ -546,7 +546,7 @@ importers:
         version: 3.1.0
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(@types/node@25.6.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.9(@types/node@25.6.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4))
 
   artifacts/crm:
     dependencies:
@@ -566,8 +566,8 @@ importers:
         specifier: ^1.9.4
         version: 1.9.4
       react-signature-canvas:
-        specifier: 1.1.0-alpha.2
-        version: 1.1.0-alpha.2(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+        specifier: 1.0.6
+        version: 1.0.6(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
       three:
         specifier: ^0.185.0
         version: 0.185.0
@@ -696,8 +696,8 @@ importers:
         specifier: 'catalog:'
         version: 19.2.3(@types/react@19.2.14)
       '@types/react-signature-canvas':
-        specifier: ^1.0.7
-        version: 1.0.7
+        specifier: ^1.0.5
+        version: 1.0.5
       '@types/three':
         specifier: ^0.185.0
         version: 0.185.0
@@ -781,7 +781,7 @@ importers:
         version: 7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)
       vitest:
         specifier: ^4.1.9
-        version: 4.1.9(@types/node@25.6.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)
+        version: 4.1.9(@types/node@25.6.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4))
       wouter:
         specifier: ^3.3.5
         version: 3.10.0(react@19.1.0)
@@ -3969,8 +3969,8 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
-  '@types/react-signature-canvas@1.0.7':
-    resolution: {integrity: sha512-0ulzaUvcIQ0HdNB5fHj+KE7ztWhlhYRsi65TdPIRj/t+FD5Rr8NJKBv4/xLViz7HsUh/tgqsoyKeARrm9+gPIg==}
+  '@types/react-signature-canvas@1.0.5':
+    resolution: {integrity: sha512-jzqEeDR6kxxhg1Ck462zH+C+qMu8hoV5zz0hqnQCp0Q0tHuFEAN2/f0c4NlHyDUfAALX+HPi+eK5SBRdqsEeEg==}
 
   '@types/react@19.2.14':
     resolution: {integrity: sha512-ilcTH/UniCkMdtexkoCN0bI7pMcJDvmQFPvuPvmEaYA/NSfFTAgdUSLAoVjaRJm7+6PvcM+q1zYOwS4wTYMF9w==}
@@ -7204,19 +7204,12 @@ packages:
       react: ^16.14.0 || ^17.0.0 || ^18.0.0 || ^19.0.0 || ^19.0.0-rc
       react-dom: ^16.14.0 || ^17.0.0 || ^18.0.0 || ^19.0.0 || ^19.0.0-rc
 
-  react-signature-canvas@1.1.0-alpha.2:
-    resolution: {integrity: sha512-tKUNk3Gmh04Ug4K8p5g8Is08BFUKvbXxi0PyetQ/f8OgCBzcx4vqNf9+OArY/TdNdfHtswXQNRwZD6tyELjkjQ==}
+  react-signature-canvas@1.0.6:
+    resolution: {integrity: sha512-NoMHomYu9HxFeLjUGbIeV9abPdWSROfFxFNDekGdwmmaIx+w5ziOEiU2C34X0Ao4GxFnwqyUy/BpYlA4lCD1CA==}
     peerDependencies:
-      '@types/prop-types': ^15.7.3
-      '@types/react': ^19.2.0
       prop-types: ^15.5.8
-      react: 0.14 - 19
-      react-dom: 0.14 - 19
-    peerDependenciesMeta:
-      '@types/prop-types':
-        optional: true
-      '@types/react':
-        optional: true
+      react: 0.14 - 18
+      react-dom: 0.14 - 18
 
   react-smooth@4.0.4:
     resolution: {integrity: sha512-gnGKTpYwqL0Iii09gHobNolvX4Kiq4PKx6eWBCYYix+8cdw+cGo3do906l1NBPKkSWx1DghC1dlWG9L2uGd61Q==}
@@ -8140,6 +8133,7 @@ packages:
       '@vitest/ui': 4.1.9
       happy-dom: '*'
       jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       '@edge-runtime/vm':
         optional: true
@@ -11880,7 +11874,7 @@ snapshots:
     dependencies:
       '@types/react': 19.2.14
 
-  '@types/react-signature-canvas@1.0.7':
+  '@types/react-signature-canvas@1.0.5':
     dependencies:
       '@types/react': 19.2.14
       '@types/signature_pad': 2.3.6
@@ -15624,17 +15618,13 @@ snapshots:
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
 
-  react-signature-canvas@1.1.0-alpha.2(@types/react@19.2.14)(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
+  react-signature-canvas@1.0.6(prop-types@15.8.1)(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
-      '@babel/runtime': 7.29.2
-      '@types/signature_pad': 2.3.6
       prop-types: 15.8.1
       react: 19.1.0
       react-dom: 19.1.0(react@19.1.0)
       signature_pad: 2.3.2
       trim-canvas: 0.1.2
-    optionalDependencies:
-      '@types/react': 19.2.14
 
   react-smooth@4.0.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0):
     dependencies:
@@ -16526,7 +16516,7 @@ snapshots:
       tsx: 4.21.0
       yaml: 2.8.4
 
-  vitest@4.1.9(@types/node@25.6.2)(jiti@2.7.0)(jsdom@29.1.1(@noble/hashes@2.2.0))(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4):
+  vitest@4.1.9(@types/node@25.6.2)(jsdom@29.1.1(@noble/hashes@2.2.0))(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4)):
     dependencies:
       '@vitest/expect': 4.1.9
       '@vitest/mocker': 4.1.9(vite@7.3.3(@types/node@25.6.2)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.48.0)(tsx@4.21.0)(yaml@2.8.4))
@@ -16552,17 +16542,7 @@ snapshots:
       '@types/node': 25.6.2
       jsdom: 29.1.1(@noble/hashes@2.2.0)
     transitivePeerDependencies:
-      - jiti
-      - less
-      - lightningcss
       - msw
-      - sass
-      - sass-embedded
-      - stylus
-      - sugarss
-      - terser
-      - tsx
-      - yaml
 
   vlq@1.0.1: {}
 
