@@ -1616,6 +1616,7 @@ export default function PresentationFlow({
                   adjustmentLines={data.adjustmentLines}
                   adjustmentsTotal={data.adjustmentsTotal}
                   scopedCalculated={scopedDocMatchesSelection}
+                  originalTotalPrice={data.totalPrice + (data.adjustmentsTotal ?? 0)}
                 />
               </div>
             )}

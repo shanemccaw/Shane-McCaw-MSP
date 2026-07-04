@@ -27,6 +27,8 @@ interface SowSelectorPanelProps {
   adjustmentLines?: AdjustmentLine[];
   adjustmentsTotal?: number;
   scopedCalculated?: boolean;
+  /** Full-scope total (all phases + all adjustments) — shown in the toggle header when viewing the Full SOW */
+  originalTotalPrice?: number;
 }
 
 function formatCurrency(n: number): string {
@@ -45,6 +47,7 @@ export default function SowSelectorPanel({
   adjustmentLines = [],
   adjustmentsTotal = 0,
   scopedCalculated = false,
+  originalTotalPrice,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
   // Separate heights for each document so toggling never resets the layout.
@@ -374,7 +377,9 @@ export default function SowSelectorPanel({
                   </button>
                 </div>
                 <span className="text-xs font-bold text-[#0078D4]">
-                  {formatCurrency(displayTotal)}
+                  {viewMode === "full" && originalTotalPrice !== undefined
+                    ? formatCurrency(originalTotalPrice)
+                    : formatCurrency(displayTotal)}
                 </span>
               </div>
             </div>
