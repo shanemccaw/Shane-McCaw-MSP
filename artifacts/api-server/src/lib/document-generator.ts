@@ -585,9 +585,11 @@ export async function generateAndDeliverDocument(
     if (pricingAppendix) prompt += pricingAppendix;
   }
 
+  // SOW documents are significantly longer than other doc types — use a higher
+  // token budget so pricing tables and closing sections are never cut off.
   const aiResponse = await anthropic.messages.create({
     model: "claude-haiku-4-5",
-    max_tokens: 8000,
+    max_tokens: isSowDoc ? 16000 : 8000,
     messages: [{ role: "user", content: prompt }],
   });
 
