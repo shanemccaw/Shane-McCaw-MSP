@@ -6113,6 +6113,32 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
     });
   }
 
+  // Emit phase.delivery_date_changed when dueDate is modified
+  if (
+    dueDate !== undefined &&
+    updated.projectId &&
+    String(existing.dueDate ?? "") !== String(updated.dueDate ?? "")
+  ) {
+    void (async () => {
+      try {
+        const [proj] = await db
+          .select({ clientUserId: projectsTable.clientUserId })
+          .from(projectsTable)
+          .where(eq(projectsTable.id, updated.projectId!))
+          .limit(1);
+        void emitWorkflowEvent("phase.delivery_date_changed", {
+          phaseId: updated.id,
+          projectId: updated.projectId,
+          clientUserId: proj?.clientUserId ?? null,
+          oldDueDate: existing.dueDate ? existing.dueDate.toISOString() : null,
+          newDueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
+        });
+      } catch (e) {
+        req.log.warn({ err: e, stepId: updated.id }, "workflow-steps: failed to emit phase.delivery_date_changed (non-fatal)");
+      }
+    })();
+  }
+
   // Emit phase_completed event when a step is marked complete
   if (status === "completed" && updated.projectId) {
     void (async () => {
@@ -6453,6 +6479,23 @@ router.patch("/admin/kanban-tasks/:id", requireAdmin, async (req: Request, res: 
       actionType: "kanban_task_due_date_set",
       metadata: { from: existingTask.dueDate ?? null, to: dueDate ?? null },
     });
+    // Emit milestone.delivery_date_changed when the dueDate actually changed
+    if (String(existingTask.dueDate ?? "") !== String(updated.dueDate ?? "")) {
+      void (async () => {
+        try {
+          void emitWorkflowEvent("milestone.delivery_date_changed", {
+            taskId: updated.id,
+            phaseId: updated.workflowStepId ?? null,
+            projectId: updated.projectId,
+            clientUserId: taskProject?.clientUserId ?? null,
+            oldDueDate: existingTask.dueDate ? existingTask.dueDate.toISOString() : null,
+            newDueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
+          });
+        } catch (e) {
+          logger.warn({ err: e, taskId: updated.id }, "kanban-tasks: failed to emit milestone.delivery_date_changed (non-fatal)");
+        }
+      })();
+    }
   } else if (title !== undefined || description !== undefined || priority !== undefined) {
     void createAuditLog({
       ...auditBase,

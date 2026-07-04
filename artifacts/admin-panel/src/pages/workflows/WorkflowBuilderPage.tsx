@@ -113,6 +113,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
   create_phased_invoices:          { bg: "#041A1A", border: "#F59E0B", icon: "📋", label: "Create Phased Invoices" },
   charge_stripe_invoice:           { bg: "#041A1A", border: "#EF4444", icon: "⚡", label: "Charge Invoice"         },
+  edit_stripe_invoice:             { bg: "#041A1A", border: "#818CF8", icon: "✏️", label: "Edit Invoice"            },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -138,6 +139,8 @@ const KNOWN_EVENTS: Array<{
   { name: "sow.scope_reduced",        description: "A client deselected phases in the SOW selector and regenerated a scoped SOW with a lower total or fewer phases than their previous selection", payloadFields: [{ key: "presentationId", label: "Presentation ID" }, { key: "clientUserId", label: "Client user ID" }, { key: "removedPhaseCount", label: "Number of phases removed vs previous selection" }, { key: "previousTotal", label: "Previous scoped total in cents" }, { key: "newTotal", label: "New scoped total in cents" }] },
   { name: "agreement_signed",         description: "A client signed the engagement agreement and initiated Stripe checkout — fires for both full and phased payment plans", payloadFields: [{ key: "contractId", label: "Presentation ID (acts as contract)" }, { key: "projectId", label: "Linked project ID" }, { key: "clientId", label: "Client user ID" }, { key: "clientEmail", label: "Client email" }, { key: "clientName", label: "Client name" }, { key: "paymentPlan", label: "Payment plan chosen", enumValues: ["full", "phased"] }, { key: "totalAmount", label: "Total engagement amount in cents" }, { key: "stripeSessionId", label: "Stripe Checkout session ID (deposit payment)" }] },
   { name: "phase_completed",          description: "An admin marked a project phase (workflow step) as completed — carries the linked Stripe invoice ID for the phased billing workflow", payloadFields: [{ key: "phaseId", label: "Workflow step ID" }, { key: "projectId", label: "Project ID" }, { key: "clientId", label: "Client user ID" }, { key: "paymentPlan", label: "Payment plan on file", enumValues: ["full", "phased"] }, { key: "stripeInvoiceId", label: "Stripe draft invoice ID linked to this phase (null if not set)" }] },
+  { name: "phase.delivery_date_changed", description: "A project phase (workflow step) due date was changed by an admin", payloadFields: [{ key: "phaseId", label: "Workflow step ID" }, { key: "projectId", label: "Project ID" }, { key: "clientUserId", label: "Client user ID" }, { key: "oldDueDate", label: "Previous due date (ISO string, or null)" }, { key: "newDueDate", label: "New due date (ISO string, or null)" }] },
+  { name: "milestone.delivery_date_changed", description: "A milestone/task due date was changed by an admin", payloadFields: [{ key: "taskId", label: "Kanban task ID" }, { key: "phaseId", label: "Parent workflow step ID (null if not linked)" }, { key: "projectId", label: "Project ID" }, { key: "clientUserId", label: "Client user ID" }, { key: "oldDueDate", label: "Previous due date (ISO string, or null)" }, { key: "newDueDate", label: "New due date (ISO string, or null)" }] },
 ];
 
 // ── Node output registry (what each action injects into the next payload) ─────
@@ -185,7 +188,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   publish_landing_page:      [{ key: "landingPageId", label: "Landing page DB ID" }, { key: "slug", label: "Landing page slug" }, { key: "published", label: "true after publish" }, { key: "wasAlreadyPublished", label: "true if page was already live" }],
   generate_landing_page:     [{ key: "landingPageId", label: "Newly created landing page DB ID" }, { key: "slug", label: "URL slug of the new page" }, { key: "headline", label: "AI-generated headline" }, { key: "subheadline", label: "AI-generated subheadline" }, { key: "published", label: "Always false — use Publish Landing Page node to go live" }],
   // Data
-  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key of the found record" }, { key: "objectType", label: "Type queried (lead / client / project / article)", enumValues: ["lead", "client", "project", "article"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (lead/project only)" }],
+  find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key (or Stripe invoice ID) of the found record" }, { key: "objectType", label: "Type queried", enumValues: ["lead", "client", "project", "article", "stripe_invoice"] }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (all types)" }, { key: "stripeInvoiceId", label: "Stripe invoice ID (stripe_invoice only)" }, { key: "dueDate", label: "Invoice due date ISO string (stripe_invoice only)" }, { key: "amountDue", label: "Amount due in cents (stripe_invoice only)" }, { key: "customerId", label: "Stripe customer ID (stripe_invoice only)" }],
   compose: [{ key: "value", label: "Composed value — string, or parsed JSON object/array when 'Parse as JSON' is enabled" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
@@ -283,6 +286,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "chargeStatus",            label: "Charge outcome", enumValues: ["succeeded", "failed"] },
     { key: "amountCharged",           label: "Amount charged in smallest currency unit (e.g. cents)" },
     { key: "stripePaymentIntentId",   label: "Stripe PaymentIntent ID (null if charge failed)" },
+  ],
+  edit_stripe_invoice: [
+    { key: "invoiceId",  label: "Stripe invoice ID" },
+    { key: "status",     label: "Invoice status after update (should be draft)" },
+    { key: "dueDate",    label: "Updated due date as ISO string (or null if not set)" },
   ],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
@@ -657,6 +665,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "generate_stripe_payment_link",    label: "Generate Payment Link",   description: "Create a one-time Stripe Payment Link for a product at a fixed price",          tags: ["stripe", "payment", "link", "checkout", "finance"] },
       { type: "create_phased_invoices",          label: "Create Phased Invoices",  description: "Create draft Stripe invoices for each SOW phase (20%+per-phase billing plan) and save the deposit payment method as customer default for future auto-charges", tags: ["stripe", "invoice", "phased", "payment", "billing", "draft", "auto-charge"] },
       { type: "charge_stripe_invoice",           label: "Charge Invoice",          description: "Finalize and immediately charge a Stripe draft invoice using the customer's default payment method", tags: ["stripe", "invoice", "charge", "payment", "auto-charge", "phased"] },
+      { type: "edit_stripe_invoice",             label: "Edit Invoice",            description: "Update a Stripe draft invoice — set due date, description, or footer. Useful for shifting invoice dates when a phase delivery date changes.", tags: ["stripe", "invoice", "edit", "due-date", "update", "phased"] },
     ],
   },
 ];
@@ -3192,6 +3201,49 @@ function NodeConfigPanel({
           </>
         )}
 
+        {nodeType === "edit_stripe_invoice" && (
+          <>
+            <PayloadField
+              label="Invoice ID"
+              hint="Stripe draft invoice ID to update. Use {{stripeInvoiceId}} to reference the output of a Find Object (Stripe Invoice) node."
+              value={(node.data.stripeInvoiceIdExpr as string) ?? "{{stripeInvoiceId}}"}
+              onChange={v => onChange(node.id, { ...node.data, stripeInvoiceIdExpr: v })}
+              placeholder="{{stripeInvoiceId}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Due Date"
+              hint="New due date for the invoice. Accepts an ISO date string (e.g. {{newDueDate}} from a delivery_date_changed event), a Unix epoch in seconds, or any date string parseable by JavaScript. Leave blank to keep the existing due date."
+              value={(node.data.dueDateExpr as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, dueDateExpr: v })}
+              placeholder="{{newDueDate}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Description (optional)"
+              hint="Updated invoice description shown on the Stripe-hosted invoice page. Leave blank to keep the existing description."
+              value={(node.data.descriptionExpr as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, descriptionExpr: v })}
+              placeholder="Phase 2 — delivery extended to {{newDueDate}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <PayloadField
+              label="Footer (optional)"
+              hint="Updated invoice footer text. Leave blank to keep the existing footer."
+              value={(node.data.footerExpr as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, footerExpr: v })}
+              placeholder="Thank you for your business."
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#041A1A] border border-[#818CF8]/30 p-3 space-y-1.5">
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                Updates a <span className="font-mono text-[#818CF8]">draft</span> Stripe invoice. Only updates fields whose expression resolves to a non-empty string. Fails with an error if the invoice is not in draft status — wire a <span className="font-mono text-amber-400">condition</span> node on <span className="font-mono text-[#818CF8]">{"{{found}} == true"}</span> before this node if using Find Object. Requires <span className="font-mono text-[#818CF8]">STRIPE_SECRET_KEY</span>.
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{invoiceId}}"} · {"{{status}}"} · {"{{dueDate}}"}</p>
+            </div>
+          </>
+        )}
+
         {nodeType === "condition" && (
           <>
             <PayloadField
@@ -4311,10 +4363,11 @@ function PublishLandingPagePanel({
 // ── Find Object panel ─────────────────────────────────────────────────────────
 
 const FIND_OBJECT_TYPES = [
-  { value: "lead",    label: "Lead",    fields: ["email", "name", "id"] },
-  { value: "client",  label: "Client",  fields: ["email", "id"] },
-  { value: "project", label: "Project", fields: ["id"] },
-  { value: "article", label: "Article", fields: ["slug", "id"] },
+  { value: "lead",          label: "Lead",           fields: ["email", "name", "id"] },
+  { value: "client",        label: "Client",         fields: ["email", "id"] },
+  { value: "project",       label: "Project",        fields: ["id"] },
+  { value: "article",       label: "Article",        fields: ["slug", "id"] },
+  { value: "stripe_invoice", label: "Stripe Invoice", fields: ["clientUserId", "projectId", "stripeInvoiceId"] },
 ];
 
 // ── Ask AI panel ──────────────────────────────────────────────────────────────

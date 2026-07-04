@@ -542,8 +542,16 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         published: false,
       };
 
-    case "find_object":
-      return { dryRun: true, found: true, objectId: 1, objectType: (node.data.objectType as string | undefined) ?? "lead" };
+    case "find_object": {
+      const dryFoType = (node.data.objectType as string | undefined) ?? "lead";
+      if (dryFoType === "stripe_invoice") {
+        return { dryRun: true, found: true, objectId: "dry-run-inv-id", objectType: "stripe_invoice", stripeInvoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString(), amountDue: 50000, customerId: "cus_dry_run" };
+      }
+      return { dryRun: true, found: true, objectId: 1, objectType: dryFoType };
+    }
+
+    case "edit_stripe_invoice":
+      return { dryRun: true, invoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString() };
 
     case "compose": {
       const dryResolved = interp(node.data.inputs as string | undefined, payload) ?? "";
@@ -2297,8 +2305,142 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               : { found: false, objectType: "article", fieldName: foField, fieldValue: foValue };
             break;
           }
+          case "stripe_invoice": {
+            const { getStripeKey: getFoStripeKey } = await import("./stripe");
+            let foStripeKey: string;
+            try { foStripeKey = getFoStripeKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+            const { default: StripeFo } = await import("stripe");
+            const stripeFo = new StripeFo(foStripeKey);
+
+            try {
+              if (foField === "stripeInvoiceId") {
+                const inv = await stripeFo.invoices.retrieve(foValue);
+                if (inv.status !== "draft") {
+                  output = { found: false, objectType: "stripe_invoice", reason: `invoice ${foValue} is not in draft status (current: ${inv.status})` };
+                  break;
+                }
+                output = {
+                  found: true,
+                  objectType: "stripe_invoice",
+                  objectId: inv.id,
+                  stripeInvoiceId: inv.id,
+                  status: inv.status,
+                  dueDate: inv.due_date ? new Date(inv.due_date * 1000).toISOString() : null,
+                  amountDue: inv.amount_due,
+                  customerId: typeof inv.customer === "string" ? inv.customer : (inv.customer as { id?: string } | null)?.id ?? null,
+                };
+              } else if (foField === "clientUserId") {
+                const clientId = parseInt(foValue, 10);
+                if (isNaN(clientId)) { output = { found: false, objectType: "stripe_invoice", reason: "clientUserId must be a number" }; break; }
+                const [clientUser] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, clientId)).limit(1);
+                if (!clientUser) { output = { found: false, objectType: "stripe_invoice", reason: "client not found" }; break; }
+                const foCustomers = await stripeFo.customers.search({ query: `email:"${clientUser.email}"`, limit: 1 });
+                if (foCustomers.data.length === 0) { output = { found: false, objectType: "stripe_invoice", reason: "no Stripe customer for client" }; break; }
+                const foCustomerId = foCustomers.data[0].id;
+                const foInvoices = await stripeFo.invoices.list({ customer: foCustomerId, status: "draft", limit: 1 });
+                if (foInvoices.data.length === 0) { output = { found: false, objectType: "stripe_invoice", reason: "no draft invoices for customer" }; break; }
+                const foInv = foInvoices.data[0];
+                output = {
+                  found: true, objectType: "stripe_invoice", objectId: foInv.id, stripeInvoiceId: foInv.id,
+                  status: foInv.status ?? "unknown",
+                  dueDate: foInv.due_date ? new Date(foInv.due_date * 1000).toISOString() : null,
+                  amountDue: foInv.amount_due, customerId: foCustomerId,
+                };
+              } else if (foField === "projectId") {
+                const projId = parseInt(foValue, 10);
+                if (isNaN(projId)) { output = { found: false, objectType: "stripe_invoice", reason: "projectId must be a number" }; break; }
+                const [foProj] = await db.select({ clientUserId: projectsTable.clientUserId }).from(projectsTable).where(eq(projectsTable.id, projId)).limit(1);
+                if (!foProj?.clientUserId) { output = { found: false, objectType: "stripe_invoice", reason: "project or client not found" }; break; }
+                const [foProjUser] = await db.select({ email: usersTable.email }).from(usersTable).where(eq(usersTable.id, foProj.clientUserId)).limit(1);
+                if (!foProjUser) { output = { found: false, objectType: "stripe_invoice", reason: "client user not found" }; break; }
+                const foProjCustomers = await stripeFo.customers.search({ query: `email:"${foProjUser.email}"`, limit: 1 });
+                if (foProjCustomers.data.length === 0) { output = { found: false, objectType: "stripe_invoice", reason: "no Stripe customer for client" }; break; }
+                const foProjCustomerId = foProjCustomers.data[0].id;
+                const foProjInvoices = await stripeFo.invoices.list({ customer: foProjCustomerId, status: "draft", limit: 100 });
+                const foProjInv = foProjInvoices.data.find(i => {
+                  const meta = (i.metadata ?? {}) as Record<string, string>;
+                  return meta.projectId === String(projId);
+                });
+                if (!foProjInv) { output = { found: false, objectType: "stripe_invoice", reason: "no draft invoice with matching projectId metadata found for customer" }; break; }
+                output = {
+                  found: true, objectType: "stripe_invoice", objectId: foProjInv.id, stripeInvoiceId: foProjInv.id,
+                  status: foProjInv.status ?? "unknown",
+                  dueDate: foProjInv.due_date ? new Date(foProjInv.due_date * 1000).toISOString() : null,
+                  amountDue: foProjInv.amount_due, customerId: foProjCustomerId,
+                };
+              } else {
+                output = { found: false, objectType: "stripe_invoice", reason: `unsupported fieldName: ${foField}` };
+              }
+            } catch (foStripeErr) {
+              const foErrMsg = foStripeErr instanceof Error ? foStripeErr.message : String(foStripeErr);
+              output = { found: false, objectType: "stripe_invoice", error: foErrMsg };
+            }
+            break;
+          }
           default:
             output = { found: false, objectType: foObjectType, reason: `unsupported objectType: ${foObjectType}` };
+        }
+        break;
+      }
+
+      // ── Edit Stripe Invoice ────────────────────────────────────────────────
+      case "edit_stripe_invoice": {
+        const { getStripeKey: getEsiKey } = await import("./stripe");
+        let esiStripeKey: string;
+        try { esiStripeKey = getEsiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: StripeEsi } = await import("stripe");
+        const stripeEsi = new StripeEsi(esiStripeKey);
+
+        const esiInvoiceId = (interp(node.data.stripeInvoiceIdExpr as string | undefined, payload) ?? "").trim();
+        if (!esiInvoiceId) { nodeError = true; output = { error: "edit_stripe_invoice: stripeInvoiceIdExpr resolved to empty string" }; break; }
+
+        try {
+          const esiCurrent = await stripeEsi.invoices.retrieve(esiInvoiceId);
+          if (esiCurrent.status !== "draft") {
+            nodeError = true;
+            output = { error: `edit_stripe_invoice: invoice ${esiInvoiceId} is not in draft status (current: ${esiCurrent.status})` };
+            break;
+          }
+
+          const esiUpdateParams: Record<string, unknown> = {};
+
+          const esiDueDateRaw = (interp(node.data.dueDateExpr as string | undefined, payload) ?? "").trim();
+          if (esiDueDateRaw) {
+            let esiDueDateEpoch: number;
+            const esiAsNumber = Number(esiDueDateRaw);
+            if (!isNaN(esiAsNumber) && esiAsNumber > 1_000_000) {
+              // Already an epoch (seconds or milliseconds)
+              esiDueDateEpoch = esiAsNumber > 9_999_999_999 ? Math.floor(esiAsNumber / 1000) : Math.floor(esiAsNumber);
+            } else {
+              // ISO date string or other parseable date
+              const esiParsed = new Date(esiDueDateRaw);
+              if (isNaN(esiParsed.getTime())) {
+                nodeError = true;
+                output = { error: `edit_stripe_invoice: dueDateExpr "${esiDueDateRaw}" is not a valid date` };
+                break;
+              }
+              esiDueDateEpoch = Math.floor(esiParsed.getTime() / 1000);
+            }
+            esiUpdateParams.due_date = esiDueDateEpoch;
+          }
+
+          const esiDescription = (interp(node.data.descriptionExpr as string | undefined, payload) ?? "").trim();
+          if (esiDescription) esiUpdateParams.description = esiDescription;
+
+          const esiFooter = (interp(node.data.footerExpr as string | undefined, payload) ?? "").trim();
+          if (esiFooter) esiUpdateParams.footer = esiFooter;
+
+          const esiUpdated = await stripeEsi.invoices.update(esiInvoiceId, esiUpdateParams as Parameters<typeof stripeEsi.invoices.update>[1]);
+          output = {
+            invoiceId: esiUpdated.id,
+            status: esiUpdated.status ?? "unknown",
+            dueDate: esiUpdated.due_date ? new Date(esiUpdated.due_date * 1000).toISOString() : null,
+          };
+        } catch (esiErr) {
+          const esiErrMsg = esiErr instanceof Error ? esiErr.message : String(esiErr);
+          logger.warn({ invoiceId: esiInvoiceId, err: esiErr }, "edit_stripe_invoice: update failed");
+          nodeError = true;
+          output = { error: esiErrMsg };
         }
         break;
       }

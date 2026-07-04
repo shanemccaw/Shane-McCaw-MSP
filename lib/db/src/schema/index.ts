@@ -1720,7 +1720,8 @@ export interface WfNode {
     | "generate_invoice_stripe_payment"
     | "generate_stripe_payment_link"
     | "create_phased_invoices"
-    | "charge_stripe_invoice";
+    | "charge_stripe_invoice"
+    | "edit_stripe_invoice";
   position: { x: number; y: number };
   data: WfNodeData;
 }
