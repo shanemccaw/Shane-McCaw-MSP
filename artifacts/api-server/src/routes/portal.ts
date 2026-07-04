@@ -10890,7 +10890,7 @@ ${originalSowRow.htmlContent}`;
             (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
           VALUES
             (${pres.clientUserId}, ${pres.projectId}, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
-             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
+             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'delivered', ${nowTs}, ${nowTs})
           ON CONFLICT (customer_id, project_id, doc_type)
           WHERE doc_type = 'scoped_sow' AND project_id IS NOT NULL
           DO UPDATE SET
@@ -10898,7 +10898,7 @@ ${originalSowRow.htmlContent}`;
             sow_total_price = EXCLUDED.sow_total_price,
             title           = EXCLUDED.title,
             category        = EXCLUDED.category,
-            status          = 'draft',
+            status          = 'delivered',
             updated_at      = EXCLUDED.updated_at
         `);
       } else {
@@ -10907,7 +10907,7 @@ ${originalSowRow.htmlContent}`;
             (customer_id, project_id, doc_type, category, title, html_content, sow_total_price, status, created_at, updated_at)
           VALUES
             (${pres.clientUserId}, NULL, 'scoped_sow', 'consulting', 'Scoped Statement of Work',
-             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'draft', ${nowTs}, ${nowTs})
+             ${scopedSowHtml}, ${String(scopedTotalDollars)}, 'delivered', ${nowTs}, ${nowTs})
           ON CONFLICT (customer_id, doc_type)
           WHERE doc_type = 'scoped_sow' AND project_id IS NULL
           DO UPDATE SET
@@ -10915,7 +10915,7 @@ ${originalSowRow.htmlContent}`;
             sow_total_price = EXCLUDED.sow_total_price,
             title           = EXCLUDED.title,
             category        = EXCLUDED.category,
-            status          = 'draft',
+            status          = 'delivered',
             updated_at      = EXCLUDED.updated_at
         `);
       }
