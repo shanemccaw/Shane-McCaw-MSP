@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 interface SowPhase {
   id: string;
@@ -37,6 +37,27 @@ export default function SowSelectorPanel({
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
   const [docIframeHeight, setDocIframeHeight] = useState(600);
 
+  // viewMode controls which document is shown when both exist.
+  // Defaults to "scoped" whenever a scoped SOW is present.
+  // Resets to "scoped" when scopedSowHtml transitions from null → value.
+  // Resets to "full" when scopedSowHtml transitions from value → null.
+  const [viewMode, setViewMode] = useState<"scoped" | "full">(
+    scopedSowHtml ? "scoped" : "full"
+  );
+  const prevScopedRef = useRef<string | null | undefined>(scopedSowHtml);
+
+  useEffect(() => {
+    const prev = prevScopedRef.current;
+    prevScopedRef.current = scopedSowHtml;
+    if (!prev && scopedSowHtml) {
+      // Scoped SOW just became available → show it
+      setViewMode("scoped");
+    } else if (prev && !scopedSowHtml) {
+      // Scoped SOW was cleared → fall back to full
+      setViewMode("full");
+    }
+  }, [scopedSowHtml]);
+
   useEffect(() => {
     const raf = requestAnimationFrame(() => { onReady?.(); });
     return () => cancelAnimationFrame(raf);
@@ -47,9 +68,21 @@ export default function SowSelectorPanel({
   const displayTotal = readOnly ? totalPrice : (selectedTotal || totalPrice);
 
   const hasScopeReduction = phases.length > 0 && selectedPhases.length < phases.length;
-  const showScoped = !!scopedSowHtml && hasScopeReduction;
-  const activeHtml = showScoped ? scopedSowHtml : originalSowHtml;
-  const docLabel = showScoped ? "Scoped Statement of Work" : "Full Statement of Work";
+  // Toggle is shown only when a scoped SOW actually exists
+  const showToggle = !!scopedSowHtml && hasScopeReduction;
+
+  // Resolve the active HTML based on viewMode (when toggle is visible) or fall back to original
+  const activeHtml = showToggle
+    ? (viewMode === "scoped" ? scopedSowHtml : originalSowHtml)
+    : originalSowHtml;
+
+  // iframeKey forces a clean re-render when switching modes
+  const iframeKey = showToggle ? viewMode : "original";
+
+  // Label used for the iframe title attribute (accessibility)
+  const iframeTitle = showToggle
+    ? (viewMode === "scoped" ? "Scoped Statement of Work" : "Full Statement of Work")
+    : "Full Statement of Work";
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -170,7 +203,7 @@ export default function SowSelectorPanel({
                 Saving…
               </div>
             )}
-            {showScoped && !readOnly && (
+            {showToggle && !readOnly && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold mt-1.5">
                 <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -192,24 +225,72 @@ export default function SowSelectorPanel({
 
         {/* RIGHT: Document viewer */}
         <div className={`${mobileTab === "doc" ? "flex" : "hidden"} md:flex flex-1 flex-col min-h-0`}>
-          {/* Document label strip */}
-          {activeHtml && (
-            <div className={`flex-shrink-0 flex items-center justify-between px-4 py-2 border-b ${
-              showScoped
-                ? "bg-[#EBF5FF] border-[#0078D4]/20"
-                : "bg-slate-50 border-border"
-            }`}>
-              <div className="flex items-center gap-2">
-                <div className={`w-1.5 h-1.5 rounded-full ${showScoped ? "bg-[#0078D4]" : "bg-slate-400"}`} />
-                <span className={`text-xs font-bold uppercase tracking-widest ${
-                  showScoped ? "text-[#0078D4]" : "text-slate-500"
-                }`}>
-                  {docLabel}
+
+          {/* ── Toggle control (replaces the old label strip when scoped SOW exists) ── */}
+          {showToggle ? (
+            <div className="flex-shrink-0 flex flex-col gap-0 border-b border-[#0078D4]/20 bg-[#EBF5FF] px-4 py-2.5">
+              {/* Pill toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 bg-white/70 border border-[#0078D4]/20 rounded-full p-0.5">
+                  <button
+                    onClick={() => setViewMode("scoped")}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      viewMode === "scoped"
+                        ? "bg-[#0078D4] text-white shadow-sm"
+                        : "text-slate-500 hover:text-[#0078D4]"
+                    }`}
+                  >
+                    Scoped SOW
+                  </button>
+                  <button
+                    onClick={() => setViewMode("full")}
+                    className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
+                      viewMode === "full"
+                        ? "bg-[#0078D4] text-white shadow-sm"
+                        : "text-slate-500 hover:text-[#0078D4]"
+                    }`}
+                  >
+                    Full SOW
+                  </button>
+                </div>
+                <span className="text-xs font-bold text-[#0078D4]">
+                  {formatCurrency(displayTotal)}
                 </span>
               </div>
-              <span className={`text-xs font-bold ${showScoped ? "text-[#0078D4]" : "text-slate-500"}`}>
-                {formatCurrency(displayTotal)}
-              </span>
+            </div>
+          ) : (
+            /* Original label strip — shown only when no scoped SOW exists */
+            activeHtml && (
+              <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-slate-50 border-border">
+                <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  <span className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                    Full Statement of Work
+                  </span>
+                </div>
+                <span className="text-xs font-bold text-slate-500">
+                  {formatCurrency(displayTotal)}
+                </span>
+              </div>
+            )
+          )}
+
+          {/* "Superseded" notice — shown below the toggle when viewing the Full SOW */}
+          {showToggle && viewMode === "full" && (
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200">
+              <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-xs text-slate-500">
+                This is the original full-scope version. The{" "}
+                <button
+                  onClick={() => setViewMode("scoped")}
+                  className="font-semibold text-[#0078D4] hover:underline"
+                >
+                  Scoped SOW
+                </button>{" "}
+                is the active document for this engagement.
+              </p>
             </div>
           )}
 
@@ -222,9 +303,9 @@ export default function SowSelectorPanel({
               style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
             >
               <iframe
-                key={showScoped ? "scoped" : "original"}
+                key={iframeKey}
                 srcDoc={activeHtml}
-                title={docLabel}
+                title={iframeTitle}
                 className="w-full border-0 block"
                 style={{ height: docIframeHeight }}
                 sandbox="allow-same-origin"
