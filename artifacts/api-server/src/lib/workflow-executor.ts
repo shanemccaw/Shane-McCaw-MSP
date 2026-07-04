@@ -966,11 +966,16 @@ async function executeNode(
             const projectLine = projectName ? ` · Project: ${projectName}` : "";
             const dateStr     = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
-            const profileSample = (runs as { profileUpdates: Record<string, unknown> | null }[])
-              .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
-              .slice(0, 30)
+            // Merge all profileUpdates into one object (most-recent run wins) so
+            // critical metrics like totalUserCount and sharepointSiteCount are never
+            // silently dropped by a per-run slice cap.
+            const mergedWfProfile: Record<string, unknown> = {};
+            for (const run of [...(runs as { profileUpdates: Record<string, unknown> | null }[])].reverse()) {
+              Object.assign(mergedWfProfile, run.profileUpdates ?? {});
+            }
+            const profileSample = Object.entries(mergedWfProfile)
               .map(([k, v]) => `  ${k}: ${String(v)}`)
-              .join("\n");
+              .join("\n") || "  No telemetry captured yet.";
 
             const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
 

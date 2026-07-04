@@ -1502,7 +1502,7 @@ INSTRUCTIONS:
       try {
         const aiResponse = await anthropic.messages.create({
           model: "claude-haiku-4-5",
-          max_tokens: 8000,
+          max_tokens: 16000,
           messages: [{ role: "user", content: prompt }],
         }, { signal: sowAbort.signal });
 
