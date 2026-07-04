@@ -10454,15 +10454,26 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     const fmtUsd = (n: number) =>
       new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
 
+    // Determine which phases were excluded from the selection.
+    const excludedPhases = effectiveSowPhases.filter(p => !safeIds.includes(p.id));
+
     // Attempt an AI-driven scoped rewrite from the original Consolidated SOW.
     // Falls back to the invoice-style HTML if the original SOW is missing or the AI call fails.
+    //
+    // IMPORTANT: the AI path is only used when NO phases are excluded (i.e., all phases are
+    // selected and the AI is just reformatting/styling the full document).  When a scope
+    // reduction is in effect (one or more phases excluded), the AI is unreliable — it tends to
+    // include excluded phases regardless of instruction.  In that case we always use
+    // buildScopedSowHtml, which is deterministic and guaranteed to contain only the selected
+    // phases.
     let scopedSowHtml: string;
 
-    if (originalSowRow?.htmlContent) {
+    if (originalSowRow?.htmlContent && excludedPhases.length === 0) {
       try {
         const { anthropic } = await import("@workspace/integrations-anthropic-ai");
 
-        const excludedPhases = effectiveSowPhases.filter(p => !safeIds.includes(p.id));
+        // All phases are selected; no exclusions needed — keep excludedPhases list consistent.
+        // (already computed above: excludedPhases.length === 0)
 
         const selectedPhaseList = scopedPhases
           .map(p => `- ${p.title}: ${fmtUsd(p.price)}`)
@@ -10559,6 +10570,15 @@ ${originalSowRow.htmlContent}`;
         req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to invoice");
         scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
       }
+    } else if (excludedPhases.length > 0) {
+      // Scope reduction: one or more phases are excluded. Skip AI entirely — it cannot
+      // reliably remove excluded-phase content from a complex HTML document.
+      // buildScopedSowHtml is deterministic and only renders the selected phases.
+      req.log.info(
+        { presentationId: id, selected: safeIds.length, excluded: excludedPhases.map(p => p.title) },
+        "portal: scope reduction — using invoice-style HTML (AI bypassed for correctness)"
+      );
+      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
     } else {
       req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
       scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
