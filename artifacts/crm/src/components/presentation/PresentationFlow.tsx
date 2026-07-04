@@ -5,6 +5,8 @@ import DocumentPanel from "./DocumentPanel";
 import SowSelectorPanel from "./SowSelectorPanel";
 import ContractSignPanel from "./ContractSignPanel";
 import PaymentOptionsPanel from "./PaymentOptionsPanel";
+import PayTodayBanner from "./PayTodayBanner";
+import type { OfferState } from "./PayTodayBanner";
 import AnimatedBackground from "../quickwin/AnimatedBackground";
 import { computeOverviewStats } from "@/lib/doc-stat-extractors";
 
@@ -55,6 +57,7 @@ interface PresentationData {
   scopedSowHtml?: string | null;
   scopedTotalPrice?: number | null;
   scopedPhaseIds?: string[] | null;
+  discountedTotalCents?: number | null;
 }
 
 interface PresentationFlowProps {
@@ -79,8 +82,8 @@ function buildSteps(docs: PresentationDoc[], readOnly: boolean): Step[] {
   for (let i = 0; i < docs.length; i++) steps.push({ kind: "doc", index: i });
   steps.push({ kind: "sow" });
   if (!readOnly) {
-    steps.push({ kind: "contract" });
     steps.push({ kind: "payment" });
+    steps.push({ kind: "contract" });
     steps.push({ kind: "confirmation" });
   }
   return steps;
@@ -172,7 +175,19 @@ export default function PresentationFlow({
   const computeInitialStep = () => {
     if (startAtPayment) {
       const steps = buildSteps(initialData.documents, readOnly);
-      const targetKind = initialData.status === "paid" ? "confirmation" : "payment";
+      // New flow: SOW → Payment → Agreement → Confirmation
+      // After Stripe redirect (startAtPayment=true):
+      //   paid + not yet signed → land on contract step
+      //   paid + signed         → confirmation
+      //   draft (payment failed/cancelled) → back to payment
+      let targetKind: Step["kind"];
+      if (initialData.status === "paid" && initialData.signedAt) {
+        targetKind = "confirmation";
+      } else if (initialData.status === "paid") {
+        targetKind = "contract";
+      } else {
+        targetKind = "payment";
+      }
       const idx = steps.findIndex(s => s.kind === targetKind);
       return idx >= 0 ? idx : 0;
     }
@@ -263,6 +278,18 @@ export default function PresentationFlow({
   const [checkingOut, setCheckingOut] = useState(false);
   const [showLoginGate, setShowLoginGate] = useState(false);
   const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
+  const [offer, setOffer] = useState<OfferState | null>(null);
+
+  // Fetch PAY-TODAY offer state on mount (owner only, not share-token read-only)
+  useEffect(() => {
+    if (readOnly) return;
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    void fetchFn(`/api/portal/presentations/${presentationId}/offer${tokenParam}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((o: OfferState | null) => { if (o) setOffer(o); })
+      .catch(() => { /* non-fatal */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentationId, readOnly, shareToken]);
 
   // ── Scoped SOW regeneration state ─────────────────────────────────────────
   const [scopedSowDoc, setScopedSowDoc] = useState<string | null>(initialData.scopedSowHtml ?? null);
@@ -298,10 +325,14 @@ export default function PresentationFlow({
   // client has a scope reduction active. While this is true, signing and payment are
   // hard-blocked — the client must regenerate a fresh scoped SOW first.
   const sowResetBlocked = scopedSowWasReset && hasScopeReduction;
-  // Effective price used for contract/payment steps
+  // Effective price used for payment step (list price before any discount)
   const effectivePrice = hasScopeReduction && scopedDocMatchesSelection && scopedTotalPriceDollars !== null
     ? scopedTotalPriceDollars
     : grandTotal;
+  // Contract step shows the actual price paid (discounted if PAY-TODAY was applied)
+  const contractPrice = data.discountedTotalCents != null
+    ? Math.round(data.discountedTotalCents) / 100
+    : effectivePrice;
 
   // Aggregate stats for the Overview teaser cards — uses the same per-family
   // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
@@ -506,29 +537,7 @@ export default function PresentationFlow({
         body: JSON.stringify({ signatureData, signerName: name }),
       });
       if (res.ok) {
-        // Zero-price offers skip Stripe entirely — call claim-free and jump to confirmation
-        if (grandTotal === 0) {
-          setCheckingOut(true);
-          setFreeClaimError(null);
-          try {
-            const claimRes = await fetchFn(`/api/portal/presentations/${presentationId}/claim-free`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-            });
-            if (claimRes.ok) {
-              window.location.href = `${window.location.pathname}?payment=success`;
-            } else {
-              const body = await claimRes.json().catch(() => ({})) as { error?: string };
-              setFreeClaimError(body.error ?? "Something went wrong. Please try again or contact support.");
-            }
-          } catch {
-            setFreeClaimError("Network error. Please check your connection and try again.");
-          } finally {
-            setCheckingOut(false);
-          }
-          return;
-        }
-
+        // Payment was completed before this step — just record signature and proceed.
         setData(prev => ({
           ...prev,
           signatureData,
@@ -543,7 +552,30 @@ export default function PresentationFlow({
     }
   };
 
-  const handleCheckout = async (plan: "full" | "phased") => {
+  // Zero-price path: claim the engagement for free (no Stripe) from the Payment step.
+  const handleClaimFree = async () => {
+    if (sowResetBlocked) return;
+    setCheckingOut(true);
+    setFreeClaimError(null);
+    try {
+      const claimRes = await fetchFn(`/api/portal/presentations/${presentationId}/claim-free`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (claimRes.ok) {
+        window.location.href = `${window.location.pathname}?payment=success`;
+      } else {
+        const body = await claimRes.json().catch(() => ({})) as { error?: string };
+        setFreeClaimError(body.error ?? "Something went wrong. Please try again or contact support.");
+      }
+    } catch {
+      setFreeClaimError("Network error. Please check your connection and try again.");
+    } finally {
+      setCheckingOut(false);
+    }
+  };
+
+  const handleCheckout = async (plan: "full" | "phased", applyPayToday: boolean) => {
     // Hard-block checkout when the scoped SOW was reset mid-session and scope reduction is active.
     // This guard covers the case where the reset fires while the client is already on the payment step.
     if (sowResetBlocked) return;
@@ -552,7 +584,7 @@ export default function PresentationFlow({
       const res = await fetchFn(`/api/portal/presentations/${presentationId}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentPlan: plan }),
+        body: JSON.stringify({ paymentPlan: plan, applyPayToday }),
       });
       if (res.ok) {
         const { url } = await res.json() as { url: string };
@@ -1342,6 +1374,7 @@ export default function PresentationFlow({
             {/* SOW selector */}
             {currentStep?.kind === "sow" && (
               <div className="flex-1 overflow-hidden flex flex-col">
+                <PayTodayBanner offer={offer} />
                 <SowSelectorPanel
                   phases={phasesWithSelection}
                   totalPrice={selectedTotal}
@@ -1363,44 +1396,34 @@ export default function PresentationFlow({
                   selectedPhases={selectedPhases}
                   adjustmentsTotal={data.adjustmentsTotal ?? 0}
                   adjustmentLines={data.adjustmentLines ?? []}
-                  totalPrice={effectivePrice}
+                  totalPrice={contractPrice}
                   onChangeName={setSignerName}
                   onSign={handleSign}
-                  signing={signing || checkingOut}
+                  signing={signing}
                   alreadySigned={!!data.signedAt}
                   contractBody={data.contractBody}
                   scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
                   onReady={handleStepReady}
                 />
-                {freeClaimError && (
-                  <div className="mx-4 mb-4 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                    <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <p className="text-sm text-red-700 flex-1">{freeClaimError}</p>
-                    <button
-                      onClick={() => setFreeClaimError(null)}
-                      className="text-red-400 hover:text-red-600 flex-shrink-0"
-                      aria-label="Dismiss"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                )}
               </div>
             )}
 
             {/* Payment */}
             {currentStep?.kind === "payment" && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <PaymentOptionsPanel
-                  totalPrice={effectivePrice}
-                  onCheckout={handleCheckout}
-                  loading={checkingOut}
-                  alreadyPaid={isPaid}
-                />
+                <PayTodayBanner offer={offer} />
+                <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
+                  <PaymentOptionsPanel
+                    totalPrice={effectivePrice}
+                    onCheckout={handleCheckout}
+                    onClaimFree={grandTotal === 0 ? handleClaimFree : undefined}
+                    loading={checkingOut}
+                    alreadyPaid={isPaid}
+                    offer={offer}
+                    freeClaimError={freeClaimError}
+                    onDismissFreeClaimError={() => setFreeClaimError(null)}
+                  />
+                </div>
               </div>
             )}
 

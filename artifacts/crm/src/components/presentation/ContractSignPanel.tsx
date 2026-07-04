@@ -273,7 +273,7 @@ export default function ContractSignPanel({
                 Signing…
               </span>
             ) : (
-              "Sign & Continue to Payment"
+              "Sign Agreement"
             )}
           </button>
 

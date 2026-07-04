@@ -10068,6 +10068,13 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       }
     }
 
+    // Record first-visit timestamp for owner (used to anchor the PAY-TODAY 72-hour window)
+    if (isOwner && !pres.firstVisitedAt) {
+      await db.update(quickWinPresentationsTable)
+        .set({ firstVisitedAt: new Date(), updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, id));
+    }
+
     res.json({
       id: pres.id,
       projectId: pres.projectId,
@@ -10092,10 +10099,88 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       scopedSowHtml: scopedSowIsValid ? (pres.scopedSowHtml ?? null) : null,
       scopedTotalPrice: scopedSowIsValid && pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null,
       scopedPhaseIds: scopedSowIsValid ? (pres.scopedPhaseIds ?? null) : null,
+      discountedTotalCents: pres.discountedTotalCents ?? null,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get presentation");
     res.status(500).json({ error: "Failed to get presentation" });
+  }
+});
+
+// GET /portal/presentations/:id/offer — PAY-TODAY limited-time offer state
+// Returns discount parameters tied to a 72-hour window anchored at first visit.
+router.get("/portal/presentations/:id/offer", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id)).limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isValidToken) { res.status(403).json({ error: "Access denied" }); return; }
+
+    // Fetch PAY-TODAY coupon
+    const [coupon] = await db.select().from(couponsTable)
+      .where(and(eq(couponsTable.code, "PAY-TODAY"), eq(couponsTable.active, true)))
+      .limit(1);
+    if (!coupon) { res.json({ active: false }); return; }
+
+    // Determine first-visit anchor. If not yet recorded, set it now.
+    let firstVisitedAt = pres.firstVisitedAt;
+    if (!firstVisitedAt) {
+      firstVisitedAt = new Date();
+      await db.update(quickWinPresentationsTable)
+        .set({ firstVisitedAt, updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, id));
+    }
+
+    const OFFER_WINDOW_MS = 72 * 60 * 60 * 1000;
+    const expiresAt = new Date(firstVisitedAt.getTime() + OFFER_WINDOW_MS);
+    if (new Date() > expiresAt) { res.json({ active: false }); return; }
+
+    const { effectiveTotalPrice, adjustmentsTotal } = await deriveEffectiveSowData(pres);
+
+    let savingsAmount: number;
+    let discountedTotal: number;
+    let variant: "adjustments_waived" | "percentage_off";
+
+    if (adjustmentsTotal > 0) {
+      variant = "adjustments_waived";
+      savingsAmount = adjustmentsTotal;
+      discountedTotal = effectiveTotalPrice - adjustmentsTotal;
+    } else {
+      variant = "percentage_off";
+      const pct = parseFloat(String(coupon.discountValue)) / 100;
+      savingsAmount = Math.round(effectiveTotalPrice * pct);
+      discountedTotal = effectiveTotalPrice - savingsAmount;
+    }
+
+    res.json({
+      active: true,
+      expiresAt: expiresAt.toISOString(),
+      savingsAmount,
+      discountedTotal,
+      originalTotal: effectiveTotalPrice,
+      variant,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to get pay-today offer");
+    res.status(500).json({ error: "Failed to get offer" });
   }
 });
 
@@ -10551,7 +10636,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
   try {
     const id = parseInt(String(req.params.id ?? ""), 10);
     const userId = req.user!.id;
-    const { paymentPlan } = req.body as { paymentPlan: "full" | "phased" };
+    const { paymentPlan, applyPayToday } = req.body as { paymentPlan: "full" | "phased"; applyPayToday?: boolean };
 
     if (!paymentPlan || !["full", "phased"].includes(paymentPlan)) {
       res.status(400).json({ error: "paymentPlan must be 'full' or 'phased'" }); return;
@@ -10569,7 +10654,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
 
     // Use live SOW pricing so the Stripe charge always matches what the client
     // saw on page 3, even if the SOW was regenerated after presentation creation.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice } =
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal } =
       await deriveEffectiveSowData(pres);
     const totalPrice = effectiveTotalPrice;
     if (totalPrice <= 0) { res.status(400).json({ error: "Invalid total price" }); return; }
@@ -10593,8 +10678,29 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       ? await getOrCreateStripeCustomer(stripe, userProfile)
       : undefined;
 
+    // Verify PAY-TODAY offer server-side if requested (full plan only)
+    let discountedPriceDollars: number | null = null;
+    if (applyPayToday && paymentPlan === "full") {
+      const [coupon] = await db.select().from(couponsTable)
+        .where(and(eq(couponsTable.code, "PAY-TODAY"), eq(couponsTable.active, true)))
+        .limit(1);
+      if (coupon && pres.firstVisitedAt) {
+        const expiresAt = new Date(pres.firstVisitedAt.getTime() + 72 * 60 * 60 * 1000);
+        if (new Date() <= expiresAt) {
+          if (adjustmentsTotal > 0) {
+            discountedPriceDollars = totalPrice - adjustmentsTotal;
+          } else {
+            const pct = parseFloat(String(coupon.discountValue)) / 100;
+            discountedPriceDollars = Math.round((totalPrice * (1 - pct)) * 100) / 100;
+          }
+        }
+      }
+    }
+
+    const effectiveChargePrice = discountedPriceDollars !== null ? discountedPriceDollars : totalPrice;
+
     const chargeAmount = paymentPlan === "full"
-      ? Math.round(totalPrice * 100)
+      ? Math.round(effectiveChargePrice * 100)
       : Math.round(totalPrice * 0.2 * 100);
 
     const projectTitle = pres.projectId
@@ -10602,6 +10708,8 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       : "M365 Consulting";
 
     const portalBase = getPortalBaseUrl(); // already ends in /crm
+
+    const discountLabel = discountedPriceDollars !== null ? " — Pay Today Discount Applied" : "";
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
@@ -10612,10 +10720,12 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
           currency: "usd",
           product_data: {
             name: paymentPlan === "full"
-              ? `${projectTitle} — Full Payment`
+              ? `${projectTitle} — Full Payment${discountLabel}`
               : `${projectTitle} — 20% Deposit (Phase 1)`,
             description: paymentPlan === "phased"
               ? `20% upfront deposit. Remaining phases invoiced upon completion.`
+              : discountedPriceDollars !== null
+              ? `PAY-TODAY discount applied. Original price: $${totalPrice.toLocaleString()}`
               : undefined,
           },
           unit_amount: chargeAmount,
@@ -10631,6 +10741,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
         userId: String(userId),
         paymentPlan,
         totalPrice: String(totalPrice),
+        ...(discountedPriceDollars !== null && { discountedTotal: String(discountedPriceDollars) }),
       },
     });
 
@@ -10667,6 +10778,10 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
         paymentPlan,
         stripeSessionId: session.id,
         paymentSchedule,
+        ...(discountedPriceDollars !== null && {
+          payTodayDiscountApplied: true,
+          discountedTotalCents: Math.round(discountedPriceDollars * 100),
+        }),
         updatedAt: new Date(),
       })
       .where(eq(quickWinPresentationsTable.id, id));

@@ -1,10 +1,15 @@
 import { useState } from "react";
+import type { OfferState } from "./PayTodayBanner";
 
 interface PaymentOptionsPanelProps {
   totalPrice: number;
-  onCheckout: (plan: "full" | "phased") => Promise<void>;
+  onCheckout: (plan: "full" | "phased", applyPayToday: boolean) => Promise<void>;
+  onClaimFree?: () => Promise<void>;
   loading: boolean;
   alreadyPaid?: boolean;
+  offer?: OfferState | null;
+  freeClaimError?: string | null;
+  onDismissFreeClaimError?: () => void;
 }
 
 function formatCurrency(n: number): string {
@@ -14,13 +19,20 @@ function formatCurrency(n: number): string {
 export default function PaymentOptionsPanel({
   totalPrice,
   onCheckout,
+  onClaimFree,
   loading,
   alreadyPaid = false,
+  offer = null,
+  freeClaimError = null,
+  onDismissFreeClaimError,
 }: PaymentOptionsPanelProps) {
   const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(null);
 
   const upfrontAmount = Math.round(totalPrice * 0.2 * 100) / 100;
   const remainingAmount = totalPrice - upfrontAmount;
+
+  const offerActive = offer?.active === true;
+  const discountedFullPrice = offerActive ? offer!.discountedTotal : null;
 
   if (alreadyPaid) {
     return (
@@ -36,6 +48,53 @@ export default function PaymentOptionsPanel({
             Your payment has been processed. Shane will be in touch shortly to kick off your engagement.
           </p>
         </div>
+      </div>
+    );
+  }
+
+  if (totalPrice === 0 && onClaimFree) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-6 text-center py-12">
+        <div className="w-20 h-20 rounded-full bg-[#0078D4]/10 flex items-center justify-center">
+          <svg className="w-10 h-10 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h2 className="text-2xl font-extrabold text-[#0A2540]">This Engagement Is Complimentary</h2>
+          <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
+            No payment is required. Claim your complimentary engagement to proceed.
+          </p>
+        </div>
+        {freeClaimError && (
+          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 max-w-sm text-left">
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="text-sm text-red-700 flex-1">{freeClaimError}</p>
+            {onDismissFreeClaimError && (
+              <button onClick={onDismissFreeClaimError} className="text-red-400 hover:text-red-600 flex-shrink-0" aria-label="Dismiss">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+        <button
+          onClick={() => void onClaimFree()}
+          disabled={loading}
+          className="px-8 py-3.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg shadow-[#0078D4]/20"
+        >
+          {loading ? (
+            <span className="flex items-center gap-2">
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              Processing…
+            </span>
+          ) : (
+            "Claim Complimentary Engagement"
+          )}
+        </button>
       </div>
     );
   }
@@ -69,13 +128,30 @@ export default function PaymentOptionsPanel({
               </svg>
             </div>
           )}
-          <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mb-3">
+          {offerActive && (
+            <div className="absolute top-3 left-3">
+              <span className="text-[10px] font-bold uppercase tracking-widest bg-amber-500 text-white px-2 py-0.5 rounded-full">
+                Best Deal
+              </span>
+            </div>
+          )}
+          <div className={`w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center mb-3 ${offerActive ? "mt-5" : ""}`}>
             <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
           <h3 className="text-sm font-extrabold text-[#0A2540] mb-1">Pay in Full</h3>
-          <p className="text-2xl font-extrabold text-[#0078D4] mb-2">{formatCurrency(totalPrice)}</p>
+          {offerActive && discountedFullPrice !== null ? (
+            <div className="mb-2">
+              <p className="text-2xl font-extrabold text-amber-600">{formatCurrency(discountedFullPrice)}</p>
+              <p className="text-sm text-muted-foreground line-through">{formatCurrency(totalPrice)}</p>
+              <p className="text-xs font-semibold text-amber-600 mt-0.5">
+                Save {formatCurrency(totalPrice - discountedFullPrice)} today
+              </p>
+            </div>
+          ) : (
+            <p className="text-2xl font-extrabold text-[#0078D4] mb-2">{formatCurrency(totalPrice)}</p>
+          )}
           <p className="text-xs text-muted-foreground leading-relaxed">
             Single payment today. Best value — no additional billing steps. Work begins immediately upon payment confirmation.
           </p>
@@ -131,21 +207,27 @@ export default function PaymentOptionsPanel({
       {/* CTA */}
       <div className="flex-shrink-0">
         <button
-          onClick={() => selectedPlan && void onCheckout(selectedPlan)}
+          onClick={() => selectedPlan && void onCheckout(selectedPlan, offerActive && selectedPlan === "full")}
           disabled={!selectedPlan || loading}
-          className="w-full py-3.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg shadow-[#0078D4]/20"
+          className={`w-full py-3.5 rounded-xl text-white font-bold text-sm active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg ${
+            offerActive && selectedPlan === "full"
+              ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+              : "bg-[#0078D4] hover:bg-[#0078D4]/90 shadow-[#0078D4]/20"
+          }`}
         >
           {loading ? (
             <span className="flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               Redirecting to checkout…
             </span>
+          ) : selectedPlan === "full" ? (
+            offerActive && discountedFullPrice !== null
+              ? `Pay ${formatCurrency(discountedFullPrice)} Today (Save ${formatCurrency(totalPrice - discountedFullPrice)})`
+              : `Pay ${formatCurrency(totalPrice)} Now`
+          ) : selectedPlan === "phased" ? (
+            `Pay ${formatCurrency(upfrontAmount)} to Start`
           ) : (
-            selectedPlan === "full"
-              ? `Pay ${formatCurrency(totalPrice)} Now`
-              : selectedPlan === "phased"
-              ? `Pay ${formatCurrency(upfrontAmount)} to Start`
-              : "Select a Payment Plan"
+            "Select a Payment Plan"
           )}
         </button>
         <p className="text-xs text-center text-muted-foreground mt-2">
