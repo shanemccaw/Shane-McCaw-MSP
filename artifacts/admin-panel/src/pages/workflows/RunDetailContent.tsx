@@ -68,6 +68,7 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
   post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
   send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
+  send_mobile_push:          { bg: "#1A0D2E", border: "#A855F7", icon: "📱", label: "Mobile Push"          },
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },

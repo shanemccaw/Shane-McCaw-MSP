@@ -43,6 +43,7 @@ import {
   scriptRunResultsTable,
   insightsGeneratedDocumentsTable,
   clientM365ProfilesTable,
+  deviceTokensTable,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
@@ -50,6 +51,7 @@ import {
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
+import { sendPushNotifications } from "./push";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -456,6 +458,13 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       const dryLink    = interp(node.data.linkPath  as string | undefined, payload) ?? null;
       logger.info({ dryTitle, dryBody, dryLink }, "workflow-executor [dry-run]: send_browser_notification would send");
       return { dryRun: true, notificationSent: true, preview: { title: dryTitle, body: dryBody, linkPath: dryLink } };
+    }
+
+    case "send_mobile_push": {
+      const dryMpTitle = interp(node.data.title as string | undefined, payload) ?? "(no title)";
+      const dryMpBody  = interp(node.data.body  as string | undefined, payload) ?? "";
+      logger.info({ dryMpTitle, dryMpBody }, "workflow-executor [dry-run]: send_mobile_push would send");
+      return { dryRun: true, sent: true, sentCount: 0, preview: { title: dryMpTitle, body: dryMpBody } };
     }
 
     case "send_campaign_email":
@@ -1476,6 +1485,22 @@ async function executeNode(
             logger.warn({ sbnErr, runId }, "send_browser_notification: push dispatch failed — continuing run");
             output = { notificationSent: false, error: String(sbnErr) };
           }
+        }
+        break;
+      }
+
+      case "send_mobile_push": {
+        const smpTitle  = interp(node.data.title as string | undefined, payload)?.trim() ?? "";
+        const smpBody   = interp(node.data.body  as string | undefined, payload) ?? "";
+        const tokenRows = await db.select({ token: deviceTokensTable.token }).from(deviceTokensTable);
+        if (!tokenRows.length) {
+          logger.warn({ runId }, "send_mobile_push: no device tokens registered — skipping");
+          output = { sent: false, sentCount: 0 };
+        } else {
+          const tokens = tokenRows.map(r => r.token);
+          await sendPushNotifications(tokens, smpTitle || "Notification", smpBody);
+          logger.info({ runId, sentCount: tokens.length }, "send_mobile_push: dispatched to device tokens");
+          output = { sent: true, sentCount: tokens.length };
         }
         break;
       }

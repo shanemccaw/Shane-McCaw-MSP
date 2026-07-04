@@ -1668,6 +1668,7 @@ export interface WfNode {
     | "system_action"
     // Notifications
     | "send_browser_notification"
+    | "send_mobile_push"
     // Input
     | "ask_for_input"
     // Logic

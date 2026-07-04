@@ -86,6 +86,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
   // ── Notifications ──
   send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
+  send_mobile_push:          { bg: "#1A0D2E", border: "#A855F7", icon: "📱", label: "Mobile Push"          },
   // ── Input ──
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   // ── Logic ──
@@ -200,6 +201,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
   // Send Browser Notification
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
+  // Send Mobile Push
+  send_mobile_push: [{ key: "sent", label: "true if push was dispatched to at least one device" }, { key: "sentCount", label: "Number of device tokens reached" }],
   // Report Progress — passes payload through unchanged
   report_progress: [],
   // Approval Gate — outputs injected into payload after the gate is approved and execution resumes
@@ -565,6 +568,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "send_email",               label: "Send Email",               description: "Send a plain email to any address",                              tags: ["email", "send", "notify", "communication"] },
       { type: "send_sms",                 label: "Send SMS",                 description: "Send an SMS to an E.164 phone number via Twilio",               tags: ["sms", "text", "notify", "communication"] },
       { type: "send_browser_notification", label: "Browser Notification",    description: "Push an OS-level browser alert to all subscribed admins",       tags: ["notification", "push", "browser", "alert", "admin"] },
+      { type: "send_mobile_push",          label: "Mobile Push",              description: "Send an Expo push notification to all registered mobile devices", tags: ["notification", "push", "mobile", "expo", "alert", "admin"] },
     ],
   },
   {
@@ -1693,6 +1697,16 @@ function NodeConfigPanel({
             <PayloadField label="Link path (optional)" value={(node.data.linkPath as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, linkPath: v })} placeholder="/admin-panel/crm/leads" ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
               <p className="text-[10px] text-[#484F58]">All three fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Sends to all subscribed admins. Requires <span className="font-mono text-[#7D8590]">VAPID_PUBLIC_KEY</span> and <span className="font-mono text-[#7D8590]">VAPID_PRIVATE_KEY</span> secrets — gracefully skipped if absent. Output: <span className="font-mono text-[#7D8590]">{"{{notificationSent}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "send_mobile_push" && (
+          <>
+            <PayloadField label="Title" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="New lead: {{leadName}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{company}} submitted a contact form." multiline ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Both fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Broadcasts to all registered Expo device tokens. If no tokens are registered the node outputs <span className="font-mono text-[#7D8590]">sent: false</span> without failing. Outputs: <span className="font-mono text-[#7D8590]">{"{{sent}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{sentCount}}"}</span>.</p>
             </div>
           </>
         )}
