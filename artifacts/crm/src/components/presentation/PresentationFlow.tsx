@@ -1777,6 +1777,14 @@ export default function PresentationFlow({
                     </>
                   )}
                 </button>
+              ) : currentStep?.kind === "sow" && !hasSowDocument ? (
+                <div className="flex items-center gap-2 text-sm text-black/40 font-medium select-none">
+                  <span className="relative flex h-2 w-2 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0078D4] opacity-40" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0078D4]/60" />
+                  </span>
+                  <span>Your Statement of Work is being prepared</span>
+                </div>
               ) : !isLast ? (
                 <button
                   onClick={goNext}
