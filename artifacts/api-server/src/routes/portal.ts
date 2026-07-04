@@ -6126,10 +6126,16 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
           .from(projectsTable)
           .where(eq(projectsTable.id, updated.projectId!))
           .limit(1);
+        const [pres] = await db
+          .select({ paymentPlan: quickWinPresentationsTable.paymentPlan })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.projectId, updated.projectId!))
+          .limit(1);
         void emitWorkflowEvent("phase.delivery_date_changed", {
           phaseId: updated.id,
           projectId: updated.projectId,
           clientUserId: proj?.clientUserId ?? null,
+          paymentPlan: pres?.paymentPlan ?? null,
           oldDueDate: existing.dueDate ? existing.dueDate.toISOString() : null,
           newDueDate: updated.dueDate ? updated.dueDate.toISOString() : null,
         });
