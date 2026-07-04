@@ -1458,6 +1458,9 @@ export default function PresentationFlow({
                   contractBody={data.contractBody}
                   scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
                   onReady={handleStepReady}
+                  selectedPlan={selectedPlan}
+                  waivedAdjustmentsTotal={contractAdjustmentsWaived ? (data.adjustmentsTotal ?? 0) : 0}
+                  waivedAdjustmentLines={contractAdjustmentsWaived ? (data.adjustmentLines ?? []) : []}
                 />
               </div>
             )}

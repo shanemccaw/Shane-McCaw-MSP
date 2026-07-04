@@ -9633,10 +9633,10 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
 
     // Build SOW phases from stored pricing lines when available, otherwise derive
     // from workflow steps (evenly split) or a single default phase.
-    type StoredLine = { title: string; scope: string; priceUsd: number; notes: string };
+    type StoredLine = { title: string; scope: string; priceUsd: number; notes: string; deliveryDate?: string | null };
     const storedLines = (activeSowDoc?.sowPricingLines ?? []) as StoredLine[];
 
-    let sowPhases: Array<{ id: string; title: string; description: string; price: number; selected: boolean }>;
+    let sowPhases: Array<{ id: string; title: string; description: string; price: number; selected: boolean; deliveryDate?: string | null }>;
 
     if (storedLines.length > 0) {
       sowPhases = storedLines.map((l, i) => ({
@@ -9645,6 +9645,7 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
         description: l.scope || l.notes || "",
         price: l.priceUsd,
         selected: true,
+        ...(l.deliveryDate != null ? { deliveryDate: l.deliveryDate } : {}),
       }));
     } else if (steps.length > 0) {
       const phaseCount = steps.length;
@@ -9691,7 +9692,7 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
 //                      IDs so toggle preferences are honoured where possible.
 //                      Pass [] to default all phases to selected.
 // ---------------------------------------------------------------------------
-type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean; weeks?: number };
+type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean; weeks?: number; deliveryDate?: string | null };
 
 // Compute a stable fingerprint for the current SOW pricing so clients can
 // detect when the scope has changed without comparing full phase arrays.
@@ -9762,7 +9763,7 @@ async function deriveEffectiveSowData(
   );
 
   if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
-    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string; weeks?: number }>;
+    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string; weeks?: number; deliveryDate?: string | null }>;
 
     // Separate workstream lines (customer-toggleable) from adjustment lines (mandatory).
     // Old rows without line_type are treated as workstream for backwards compatibility.
@@ -9776,6 +9777,7 @@ async function deriveEffectiveSowData(
       price: l.priceUsd,
       selected: true,
       ...(l.weeks !== undefined ? { weeks: l.weeks } : {}),
+      ...(l.deliveryDate != null ? { deliveryDate: l.deliveryDate } : {}),
     }));
 
     const allNewIds = allPhases.map(p => p.id);

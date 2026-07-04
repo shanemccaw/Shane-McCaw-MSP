@@ -31,6 +31,7 @@ interface SowPhase {
   description: string;
   price: number;
   selected: boolean;
+  deliveryDate?: string | null;
 }
 
 interface AdjustmentLine {
@@ -52,10 +53,20 @@ interface ContractSignPanelProps {
   contractBody?: string | null;
   scopedSowHtml?: string | null;
   onReady?: () => void;
+  selectedPlan?: "full" | "phased" | null;
+  waivedAdjustmentsTotal?: number;
+  waivedAdjustmentLines?: AdjustmentLine[];
 }
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function formatDeliveryDate(raw: string | null | undefined): string {
+  if (!raw) return "TBD";
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return "TBD";
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 export default function ContractSignPanel({
@@ -71,6 +82,9 @@ export default function ContractSignPanel({
   contractBody,
   scopedSowHtml,
   onReady,
+  selectedPlan,
+  waivedAdjustmentsTotal = 0,
+  waivedAdjustmentLines = [],
 }: ContractSignPanelProps) {
   const agreementBody = contractBody ?? DEFAULT_AGREEMENT_BODY;
   const sigPad = useRef<SignatureCanvas | null>(null);
@@ -103,6 +117,17 @@ export default function ContractSignPanel({
 
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
+  const showPayFullDiscount = selectedPlan === "full" && waivedAdjustmentsTotal > 0;
+  const showPhasedSchedule = selectedPlan === "phased";
+  const upfrontAmount = Math.round(totalPrice * 0.2 * 100) / 100;
+  const remainingAmount = Math.round((totalPrice - upfrontAmount) * 100) / 100;
+
+  const paymentTermsText = selectedPlan === "full"
+    ? "Client has elected to pay the full engagement fee in a single payment. The total amount is due upon signing and will be charged to the payment method on file. No further invoices will be issued for this engagement."
+    : selectedPlan === "phased"
+    ? "Client has elected to pay 20% of the total engagement fee upfront upon signing, with the remainder invoiced per phase upon completion of each deliverable. All invoices are payable within 15 days of issuance."
+    : null;
+
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       {/* Letterhead */}
@@ -125,25 +150,88 @@ export default function ContractSignPanel({
             <div>
               <h4 className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0A2540] mb-2">Statement of Work — Selected Phases</h4>
               <table className="w-full text-xs border-collapse">
+                <thead>
+                  {showPhasedSchedule && (
+                    <tr className="border-b border-slate-200">
+                      <th className="py-1 text-left text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground pr-4">Phase</th>
+                      <th className="py-1 text-left text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground pr-4">Expected Delivery</th>
+                      <th className="py-1 text-right text-[0.65rem] font-bold uppercase tracking-widest text-muted-foreground">Price</th>
+                    </tr>
+                  )}
+                </thead>
                 <tbody>
                   {selectedPhases.map((phase) => (
                     <tr key={phase.id} className="border-b border-slate-100">
                       <td className="py-1.5 text-[#374151] pr-4">{phase.title}</td>
+                      {showPhasedSchedule && (
+                        <td className="py-1.5 text-[#374151] pr-4">{formatDeliveryDate(phase.deliveryDate)}</td>
+                      )}
                       <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(phase.price)}</td>
                     </tr>
                   ))}
-                  {adjustmentsTotal > 0 && (
+
+                  {/* Pay-in-full: show waived adjustment rows with strikethrough */}
+                  {showPayFullDiscount && (
+                    <>
+                      <tr className="border-b border-slate-200">
+                        <td className={`py-1.5 text-[#374151] pr-4 font-medium${showPhasedSchedule ? "" : ""}`} colSpan={showPhasedSchedule ? 1 : 1}>
+                          Workstream Subtotal
+                        </td>
+                        {showPhasedSchedule && <td className="py-1.5 pr-4" />}
+                        <td className="py-1.5 text-right font-semibold text-[#0A2540]">
+                          {formatCurrency(totalPrice)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td colSpan={showPhasedSchedule ? 3 : 2} className="pt-2 pb-0.5">
+                          <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0078D4]">Price Adjustments (Waived)</p>
+                        </td>
+                      </tr>
+                      {waivedAdjustmentLines.length > 0 ? (
+                        waivedAdjustmentLines.map((adj, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1.5 text-[#374151] pr-4">
+                              {adj.title}
+                              {adj.description && (
+                                <span className="block text-[0.65rem] text-muted-foreground font-normal">{adj.description}</span>
+                              )}
+                              <span className="text-[0.65rem] text-muted-foreground font-medium ml-1">(waived)</span>
+                            </td>
+                            {showPhasedSchedule && <td className="py-1.5 pr-4" />}
+                            <td className="py-1.5 text-right font-semibold text-[#374151]">
+                              <span className="line-through">{formatCurrency(adj.price)}</span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="border-b border-slate-100">
+                          <td className="py-1.5 text-[#374151] pr-4">
+                            Complexity, sprawl, and compliance factors
+                            <span className="text-[0.65rem] text-muted-foreground font-medium ml-1">(waived)</span>
+                          </td>
+                          {showPhasedSchedule && <td className="py-1.5 pr-4" />}
+                          <td className="py-1.5 text-right font-semibold text-[#374151]">
+                            <span className="line-through">{formatCurrency(waivedAdjustmentsTotal)}</span>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  )}
+
+                  {/* Standard adjustment rows (non-waived) */}
+                  {!showPayFullDiscount && adjustmentsTotal > 0 && (
                     <>
                       <tr className="border-b border-slate-200">
                         <td className="py-1.5 text-[#374151] pr-4 font-medium">
                           Workstream Subtotal
                         </td>
+                        {showPhasedSchedule && <td className="py-1.5 pr-4" />}
                         <td className="py-1.5 text-right font-semibold text-[#0A2540]">
                           {formatCurrency(totalPrice - adjustmentsTotal)}
                         </td>
                       </tr>
                       <tr>
-                        <td colSpan={2} className="pt-2 pb-0.5">
+                        <td colSpan={showPhasedSchedule ? 3 : 2} className="pt-2 pb-0.5">
                           <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0078D4]">Price Adjustments</p>
                         </td>
                       </tr>
@@ -156,6 +244,7 @@ export default function ContractSignPanel({
                                 <span className="block text-[0.65rem] text-muted-foreground font-normal">{adj.description}</span>
                               )}
                             </td>
+                            {showPhasedSchedule && <td className="py-1.5 pr-4" />}
                             <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adj.price)}</td>
                           </tr>
                         ))
@@ -164,17 +253,54 @@ export default function ContractSignPanel({
                           <td className="py-1.5 text-[#374151] pr-4">
                             Complexity, sprawl, and compliance factors
                           </td>
+                          {showPhasedSchedule && <td className="py-1.5 pr-4" />}
                           <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adjustmentsTotal)}</td>
                         </tr>
                       )}
                     </>
                   )}
+
                   <tr className="border-t-2 border-slate-300">
                     <td className="pt-2 font-bold text-[#0A2540]">Total Engagement Investment</td>
+                    {showPhasedSchedule && <td className="pt-2" />}
                     <td className="pt-2 text-right font-extrabold text-[#0A2540]">{formatCurrency(totalPrice)}</td>
                   </tr>
                 </tbody>
               </table>
+
+              {/* Pay-in-full discount callout banner */}
+              {showPayFullDiscount && (
+                <div className="mt-3 flex items-start gap-2.5 rounded-lg bg-green-50 border border-green-200 px-4 py-3">
+                  <div className="mt-0.5 w-4 h-4 flex-shrink-0">
+                    <svg className="w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-green-800">Pay-in-Full Discount Applied</p>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      You saved <span className="font-bold">{formatCurrency(waivedAdjustmentsTotal)}</span> by paying in full.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Phased payment schedule */}
+              {showPhasedSchedule && (
+                <div className="mt-3 rounded-lg bg-blue-50 border border-blue-200 px-4 py-3">
+                  <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0078D4] mb-2">Payment Schedule</p>
+                  <div className="space-y-1.5 text-xs text-[#374151]">
+                    <div className="flex justify-between items-baseline">
+                      <span className="font-medium text-[#0A2540]">Due upon signing (20% upfront)</span>
+                      <span className="font-bold text-[#0A2540]">{formatCurrency(upfrontAmount)}</span>
+                    </div>
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-muted-foreground">Remaining balance ({selectedPhases.length} phase{selectedPhases.length !== 1 ? "s" : ""}, invoiced on completion)</span>
+                      <span className="font-semibold text-[#0A2540]">{formatCurrency(remainingAmount)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -193,6 +319,16 @@ export default function ContractSignPanel({
               <p className="text-[0.65rem] text-muted-foreground mt-1">
                 This scoped SOW reflects only the phases you selected and constitutes the agreed scope for this agreement.
               </p>
+            </div>
+          )}
+
+          {/* Dynamic payment terms block (plan-specific, prepended before T&C) */}
+          {paymentTermsText && (
+            <div>
+              <h4 className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0A2540] mb-2">Payment Terms</h4>
+              <div className="text-[0.75rem] text-[#374151] leading-relaxed bg-slate-50 rounded-lg px-3 py-2">
+                {paymentTermsText}
+              </div>
             </div>
           )}
 
