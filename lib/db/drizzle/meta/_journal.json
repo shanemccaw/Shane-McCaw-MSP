@@ -981,6 +981,13 @@
       "when": 1751752800000,
       "tag": "0136_add_scoped_sow_version",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1783149008545,
+      "tag": "0137_add_pay_today_fields",
+      "breakpoints": true
     }
   ]
 }

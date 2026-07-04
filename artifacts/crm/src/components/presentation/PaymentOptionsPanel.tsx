@@ -1,5 +1,20 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { OfferState } from "./PayTodayBanner";
+
+function useIsOfferLive(expiresAt: string | null | undefined): boolean {
+  const [live, setLive] = useState<boolean>(() => {
+    if (!expiresAt) return false;
+    return new Date(expiresAt).getTime() > Date.now();
+  });
+  useEffect(() => {
+    if (!expiresAt) { setLive(false); return; }
+    const check = () => setLive(new Date(expiresAt).getTime() > Date.now());
+    check();
+    const interval = setInterval(check, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+  return live;
+}
 
 interface PaymentOptionsPanelProps {
   totalPrice: number;
@@ -31,7 +46,8 @@ export default function PaymentOptionsPanel({
   const upfrontAmount = Math.round(totalPrice * 0.2 * 100) / 100;
   const remainingAmount = totalPrice - upfrontAmount;
 
-  const offerActive = offer?.active === true;
+  const isOfferLive = useIsOfferLive(offer?.active ? offer.expiresAt : null);
+  const offerActive = offer?.active === true && isOfferLive;
   const discountedFullPrice = offerActive ? offer!.discountedTotal : null;
 
   if (alreadyPaid) {

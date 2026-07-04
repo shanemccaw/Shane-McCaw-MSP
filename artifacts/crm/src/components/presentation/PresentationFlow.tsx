@@ -1251,55 +1251,7 @@ export default function PresentationFlow({
                             </button>
                           )}
 
-                          {/* 3 — Agreement */}
-                          {contractStepIndex >= 0 && (
-                            <button
-                              onClick={() => jumpToStep(contractStepIndex, "agreement")}
-                              disabled={sowResetBlocked}
-                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
-                            >
-                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
-                              {contractVisited && !sowResetBlocked && <ReviewedBadge />}
-                              {sowResetBlocked && (
-                                <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full leading-none">
-                                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01" /></svg>
-                                  Blocked
-                                </span>
-                              )}
-                              <div className="flex items-center gap-2 mb-3">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${contractVisited ? "bg-emerald-50" : "bg-slate-100"}`}>
-                                  <svg className={`w-4 h-4 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                  </svg>
-                                </div>
-                                <span className={`text-xs font-bold uppercase tracking-widest ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>Agreement</span>
-                              </div>
-                              <p className="text-sm font-bold text-[#0A2540] mb-3">Personalised, legally binding e-signature contract</p>
-                              {sowResetBlocked ? (
-                                <p className="text-xs text-amber-700 mb-4">Regenerate your scoped SOW on the Scope & Pricing step to unlock signing.</p>
-                              ) : (
-                                <div className="flex flex-wrap gap-1.5 mb-4">
-                                  {(["E-Signature", "Legally Binding", "Personalised Contract"] as const).map(pill => (
-                                    <span key={pill} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${contractVisited ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                      {pill}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                              {!sowResetBlocked && (
-                                <div className="flex items-center justify-end">
-                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
-                                    {contractVisited ? "Review again" : "Preview agreement"}
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                  </span>
-                                </div>
-                              )}
-                            </button>
-                          )}
-
-                          {/* 4 — Payment */}
+                          {/* 3 — Payment */}
                           {paymentStepIndex >= 0 && (
                             <button
                               onClick={() => jumpToStep(paymentStepIndex, "payment")}
@@ -1351,6 +1303,54 @@ export default function PresentationFlow({
                                     </span>
                                   </div>
                                 </>
+                              )}
+                            </button>
+                          )}
+
+                          {/* 4 — Agreement */}
+                          {contractStepIndex >= 0 && (
+                            <button
+                              onClick={() => jumpToStep(contractStepIndex, "agreement")}
+                              disabled={sowResetBlocked}
+                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                            >
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              {contractVisited && !sowResetBlocked && <ReviewedBadge />}
+                              {sowResetBlocked && (
+                                <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full leading-none">
+                                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01" /></svg>
+                                  Blocked
+                                </span>
+                              )}
+                              <div className="flex items-center gap-2 mb-3">
+                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${contractVisited ? "bg-emerald-50" : "bg-slate-100"}`}>
+                                  <svg className={`w-4 h-4 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                                  </svg>
+                                </div>
+                                <span className={`text-xs font-bold uppercase tracking-widest ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>Agreement</span>
+                              </div>
+                              <p className="text-sm font-bold text-[#0A2540] mb-3">Personalised, legally binding e-signature contract</p>
+                              {sowResetBlocked ? (
+                                <p className="text-xs text-amber-700 mb-4">Regenerate your scoped SOW on the Scope & Pricing step to unlock signing.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                  {(["E-Signature", "Legally Binding", "Personalised Contract"] as const).map(pill => (
+                                    <span key={pill} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${contractVisited ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                      {pill}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {!sowResetBlocked && (
+                                <div className="flex items-center justify-end">
+                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
+                                    {contractVisited ? "Review again" : "Preview agreement"}
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                  </span>
+                                </div>
                               )}
                             </button>
                           )}

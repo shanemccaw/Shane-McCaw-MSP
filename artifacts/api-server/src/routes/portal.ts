@@ -10139,6 +10139,7 @@ router.get("/portal/presentations/:id/offer", async (req: Request, res: Response
       .where(and(eq(couponsTable.code, "PAY-TODAY"), eq(couponsTable.active, true)))
       .limit(1);
     if (!coupon) { res.json({ active: false }); return; }
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) { res.json({ active: false }); return; }
 
     // Determine first-visit anchor. If not yet recorded, set it now.
     let firstVisitedAt = pres.firstVisitedAt;
@@ -10684,7 +10685,7 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       const [coupon] = await db.select().from(couponsTable)
         .where(and(eq(couponsTable.code, "PAY-TODAY"), eq(couponsTable.active, true)))
         .limit(1);
-      if (coupon && pres.firstVisitedAt) {
+      if (coupon && (!coupon.expiresAt || coupon.expiresAt >= new Date()) && pres.firstVisitedAt) {
         const expiresAt = new Date(pres.firstVisitedAt.getTime() + 72 * 60 * 60 * 1000);
         if (new Date() <= expiresAt) {
           if (adjustmentsTotal > 0) {
@@ -10778,10 +10779,8 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
         paymentPlan,
         stripeSessionId: session.id,
         paymentSchedule,
-        ...(discountedPriceDollars !== null && {
-          payTodayDiscountApplied: true,
-          discountedTotalCents: Math.round(discountedPriceDollars * 100),
-        }),
+        payTodayDiscountApplied: discountedPriceDollars !== null,
+        discountedTotalCents: discountedPriceDollars !== null ? Math.round(discountedPriceDollars * 100) : null,
         updatedAt: new Date(),
       })
       .where(eq(quickWinPresentationsTable.id, id));
