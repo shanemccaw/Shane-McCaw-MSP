@@ -1000,9 +1000,12 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
       const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
-        max_tokens: 8192,
+        max_tokens: 16000,
         messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: reportAbort.signal });
+      if (aiResponse.stop_reason === "max_tokens") {
+        logger.warn({ docType, reportDocId }, "insights report: output hit max_tokens — document may be truncated");
+      }
       htmlContent = extractAiHtml(aiResponse);
     } catch (aiErr) {
       // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
@@ -1765,10 +1768,12 @@ INSTRUCTIONS:
       const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
-        max_tokens: 8192,
+        max_tokens: 16000,
         messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: consultingAbort.signal });
-
+      if (aiResponse.stop_reason === "max_tokens") {
+        logger.warn({ deliverableType: prompt.slice(0, 60), consultingDocId }, "insights consulting: output hit max_tokens — document may be truncated");
+      }
       const rawHtmlContent2 = extractAiHtml(aiResponse);
 
       // Apply the same server-side Grand Total correction to regular SOW types
