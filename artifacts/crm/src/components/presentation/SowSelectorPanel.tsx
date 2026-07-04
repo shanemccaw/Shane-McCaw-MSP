@@ -35,7 +35,9 @@ export default function SowSelectorPanel({
   originalSowHtml,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
-  const [docIframeHeight, setDocIframeHeight] = useState(600);
+  // Separate heights for each document so toggling never resets the layout.
+  const [scopedIframeHeight, setScopedIframeHeight] = useState(600);
+  const [fullIframeHeight, setFullIframeHeight] = useState(600);
 
   // viewMode controls which document is shown when both exist.
   // Defaults to "scoped" whenever a scoped SOW is present.
@@ -71,18 +73,8 @@ export default function SowSelectorPanel({
   // Toggle is shown only when a scoped SOW actually exists
   const showToggle = !!scopedSowHtml && hasScopeReduction;
 
-  // Resolve the active HTML based on viewMode (when toggle is visible) or fall back to original
-  const activeHtml = showToggle
-    ? (viewMode === "scoped" ? scopedSowHtml : originalSowHtml)
-    : originalSowHtml;
-
-  // iframeKey forces a clean re-render when switching modes
-  const iframeKey = showToggle ? viewMode : "original";
-
-  // Label used for the iframe title attribute (accessibility)
-  const iframeTitle = showToggle
-    ? (viewMode === "scoped" ? "Scoped Statement of Work" : "Full Statement of Work")
-    : "Full Statement of Work";
+  // When the toggle is not active, show whichever document is available.
+  const fallbackHtml = originalSowHtml ?? null;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -212,7 +204,7 @@ export default function SowSelectorPanel({
               </div>
             )}
             {/* On mobile, link to switch to the document preview tab */}
-            {activeHtml && (
+            {(scopedSowHtml || fallbackHtml) && (
               <button
                 onClick={() => setMobileTab("doc")}
                 className="md:hidden mt-2 w-full text-xs font-semibold text-[#0078D4] hover:text-[#0078D4]/80 transition-colors"
@@ -260,7 +252,7 @@ export default function SowSelectorPanel({
             </div>
           ) : (
             /* Original label strip — shown only when no scoped SOW exists */
-            activeHtml && (
+            fallbackHtml && (
               <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b bg-slate-50 border-border">
                 <div className="flex items-center gap-2">
                   <div className="w-1.5 h-1.5 rounded-full bg-slate-400" />
@@ -294,26 +286,49 @@ export default function SowSelectorPanel({
             </div>
           )}
 
-          {/* SOW iframe — fills remaining height.
-              Uses overflow-y-scroll on the wrapper (not absolute/h-full on the iframe)
-              so iOS Safari can scroll in both directions inside fixed overlays. */}
-          {activeHtml ? (
+          {/* SOW iframe(s) — both rendered once; inactive one hidden via CSS so scroll
+              position and iframe height are preserved on toggle. Uses overflow-y-scroll
+              on the wrapper (not absolute/h-full on the iframe) so iOS Safari can scroll
+              in both directions inside fixed overlays. */}
+          {(showToggle || fallbackHtml) ? (
             <div
               className="flex-1 min-h-0 overflow-y-scroll"
               style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
             >
-              <iframe
-                key={iframeKey}
-                srcDoc={activeHtml}
-                title={iframeTitle}
-                className="w-full border-0 block"
-                style={{ height: docIframeHeight }}
-                sandbox="allow-same-origin"
-                onLoad={(e) => {
-                  const h = e.currentTarget.contentDocument?.body?.scrollHeight;
-                  if (h) setDocIframeHeight(Math.max(600, h + 32));
-                }}
-              />
+              {/* Scoped SOW — rendered whenever scopedSowHtml is available */}
+              {scopedSowHtml && (
+                <iframe
+                  srcDoc={scopedSowHtml}
+                  title="Scoped Statement of Work"
+                  className="w-full border-0 block"
+                  style={{
+                    height: scopedIframeHeight,
+                    display: showToggle && viewMode !== "scoped" ? "none" : undefined,
+                  }}
+                  sandbox="allow-same-origin"
+                  onLoad={(e) => {
+                    const h = e.currentTarget.contentDocument?.body?.scrollHeight;
+                    if (h) setScopedIframeHeight(Math.max(600, h + 32));
+                  }}
+                />
+              )}
+              {/* Full / original SOW */}
+              {(originalSowHtml ?? fallbackHtml) && (
+                <iframe
+                  srcDoc={(originalSowHtml ?? fallbackHtml)!}
+                  title="Full Statement of Work"
+                  className="w-full border-0 block"
+                  style={{
+                    height: fullIframeHeight,
+                    display: showToggle && viewMode !== "full" ? "none" : undefined,
+                  }}
+                  sandbox="allow-same-origin"
+                  onLoad={(e) => {
+                    const h = e.currentTarget.contentDocument?.body?.scrollHeight;
+                    if (h) setFullIframeHeight(Math.max(600, h + 32));
+                  }}
+                />
+              )}
             </div>
           ) : (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
