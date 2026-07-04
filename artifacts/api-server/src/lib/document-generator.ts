@@ -613,12 +613,12 @@ export async function generateAndDeliverDocument(
     if (pricingAppendix) prompt += pricingAppendix;
   }
 
-  // SOW documents are significantly longer than other doc types — use a higher
-  // token budget so pricing tables and closing sections are never cut off.
+  // All document types can be very long for complex customers — use the full
+  // 16 000-token budget so no report is ever cut off mid-section.
   const docStylePrefix = await getDocumentStylePrefix();
   const aiResponse = await anthropic.messages.create({
     model: "claude-haiku-4-5",
-    max_tokens: isSowDoc ? 16000 : 8000,
+    max_tokens: 16000,
     messages: [{ role: "user", content: docStylePrefix + prompt }],
   });
 
