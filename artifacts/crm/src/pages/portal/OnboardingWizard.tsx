@@ -667,6 +667,12 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
     return "app-reg";
   });
 
+  // True while the server credential check is in flight (onboarding mode only).
+  // We hide the App Registration form during this window so returning customers
+  // who already submitted credentials never see a flash of the app-reg step
+  // before the auto-advance to "quick-win" fires.
+  const [credentialChecking, setCredentialChecking] = useState(mode === "onboarding");
+
   const [completing, setCompleting] = useState(false);
   const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
 
@@ -694,7 +700,8 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
           return prev;
         });
       })
-      .catch(() => { /* non-fatal — keep showing app-reg */ });
+      .catch(() => { /* non-fatal — keep showing app-reg */ })
+      .finally(() => { setCredentialChecking(false); });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1050,9 +1057,15 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
         {/* Step content */}
         <div className="flex-1 min-h-0 bg-[#F7F9FC]">
           {currentStep === "app-reg" && (
-            <StepAppRegistration
-              onSaveAndContinue={handleAppRegSaveAndContinue}
-            />
+            credentialChecking ? (
+              <div className="flex h-full items-center justify-center">
+                <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <StepAppRegistration
+                onSaveAndContinue={handleAppRegSaveAndContinue}
+              />
+            )
           )}
           {currentStep === "quick-win" && (
             <StepQuickWin
