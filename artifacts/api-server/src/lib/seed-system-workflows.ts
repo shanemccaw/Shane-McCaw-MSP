@@ -268,8 +268,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       edges: [
         { id: "e1", source: "start",    target: "check"      },
         { id: "e2", source: "check",    target: "branch"     },
-        { id: "e3", source: "branch",   target: "generate",  sourceHandle: "yes" },
-        { id: "e4", source: "branch",   target: "end_active", sourceHandle: "no"  },
+        { id: "e3", source: "branch",   target: "generate",  sourceHandle: "true"  },
+        { id: "e4", source: "branch",   target: "end_active", sourceHandle: "false" },
         { id: "e5", source: "generate", target: "emit"       },
         { id: "e6", source: "emit",     target: "end_retried" },
       ],
@@ -468,38 +468,55 @@ export async function seedSystemWorkflows(): Promise<void> {
         );
         logger.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
       } else if (seed.name === "SOW Generation Auto-Retry") {
-        // One-time patch: update the sql_query node to include age_ms and fix the condition
-        // expression to gate on recency (status != 'generating' || age_ms > 120000).
-        // Fires only when the old query (selecting only 'status') is still present.
+        // One-time patch: fix old v1 graphs that were seeded before the sql_query handler
+        // was implemented. Corrects three things:
+        //  1. sql_query node: adds age_ms to SELECT so the condition can gate on recency
+        //  2. condition expression: status != 'generating' || age_ms > 120000
+        //  3. branch edges: yes/no → true/false (executor routes condition edges as true/false)
+        // Guards fire independently so partial fixes are applied even if one already ran.
         await pool.query(
           `UPDATE wf_versions
-              SET graph = (
-                SELECT jsonb_set(
+              SET graph = jsonb_set(
+                jsonb_set(
                   graph,
                   '{nodes}',
-                  jsonb_agg(
+                  (
+                    SELECT jsonb_agg(
+                      CASE
+                        WHEN node->'data'->>'actionType' = 'sql_query'
+                        THEN jsonb_set(node, '{data,query}', $2::jsonb)
+                        WHEN node->'data'->>'nodeType' = 'condition'
+                        THEN jsonb_set(node, '{data,expression}', $3::jsonb)
+                        ELSE node
+                      END
+                    )
+                    FROM jsonb_array_elements(graph->'nodes') AS node
+                  )
+                ),
+                '{edges}',
+                (
+                  SELECT jsonb_agg(
                     CASE
-                      WHEN node->'data'->>'actionType' = 'sql_query'
-                      THEN jsonb_set(node, '{data,query}',
-                             $2::jsonb)
-                      WHEN node->'data'->>'nodeType' = 'condition'
-                      THEN jsonb_set(node, '{data,expression}',
-                             $3::jsonb)
-                      ELSE node
+                      WHEN edge->>'sourceHandle' = 'yes' THEN jsonb_set(edge, '{sourceHandle}', '"true"')
+                      WHEN edge->>'sourceHandle' = 'no'  THEN jsonb_set(edge, '{sourceHandle}', '"false"')
+                      ELSE edge
                     END
                   )
+                  FROM jsonb_array_elements(graph->'edges') AS edge
                 )
-                FROM jsonb_array_elements(graph->'nodes') AS node
               )
            WHERE definition_id = $1
-             AND graph->'nodes' @> '[{"data":{"actionType":"sql_query","query":"SELECT status FROM insights_generated_documents"}}]'`,
+             AND (
+               graph->'nodes' @> '[{"data":{"actionType":"sql_query","query":"SELECT status FROM insights_generated_documents"}}]'
+               OR graph->'edges' @> '[{"sourceHandle":"yes"}]'
+             )`,
           [
             defId,
             JSON.stringify("SELECT status, EXTRACT(EPOCH FROM (NOW() - created_at)) * 1000 AS age_ms FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1"),
             JSON.stringify("status != 'generating' || age_ms > 120000"),
           ],
         );
-        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query + condition nodes");
+        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query, condition, and edge handles");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
