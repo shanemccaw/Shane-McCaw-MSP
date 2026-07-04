@@ -867,6 +867,7 @@ INSTRUCTIONS:
 Client: {{clientName}}
 Deliverable title: {{title}}
 Date: {{date}}
+ENGAGEMENT START DATE: {{engagementStart}} (the first Monday that is at least one full week after document generation — use this as the baseline for all delivery date calculations)
 
 EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
 {{existingDocs}}
@@ -877,10 +878,15 @@ ENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and delive
 INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
-- Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
-- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (two-part: workstream table + adjustments summary) → Timeline (phased, with real calendar delivery dates per phase) → Acceptance Criteria
+- Do NOT include a Resource Requirements section — Shane McCaw is the sole consultant on this engagement
+- Do NOT include a Payment Terms section — payment is managed separately through the client portal
+- Do NOT include a Signature Block — document execution is handled through the portal
+- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- For the Duration (Weeks) column: assign a realistic integer number of weeks to each workstream phase based on scope (e.g. 2–16 weeks). Format as "N weeks" (e.g. "4 weeks")
+- For the Delivery Date column: compute dates cumulatively from ENGAGEMENT START DATE. Phase 1 delivery = ENGAGEMENT START DATE + Phase 1 weeks. Phase 2 delivery = Phase 1 delivery + Phase 2 weeks. Continue for all phases. Format as "Mon DD, YYYY" (e.g. "Aug 4, 2026"). These MUST be real calendar dates, not relative estimates
 - You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends"); shared adjustments must NOT be added to individual workstream rows
-- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments are listed ONCE in the "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
+- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments are listed ONCE in the "Pricing Adjustments" summary section, never repeated on individual rows
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
