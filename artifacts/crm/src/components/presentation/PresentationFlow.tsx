@@ -1723,7 +1723,7 @@ export default function PresentationFlow({
                 </span>
               ) : currentStep?.kind === "checkout" ? (
                 null
-              ) : currentStep?.kind === "sow" && sowResetBlocked ? (
+              ) : currentStep?.kind === "sow" && hasSowDocument && sowResetBlocked ? (
                 /* Scoped SOW was invalidated mid-session — show Regenerate (if can) + disabled Continue */
                 <div className="flex items-center gap-2">
                   {!readOnly && user && (
@@ -1758,7 +1758,7 @@ export default function PresentationFlow({
                     </svg>
                   </button>
                 </div>
-              ) : currentStep?.kind === "sow" && needsRegeneration && !readOnly && user ? (
+              ) : currentStep?.kind === "sow" && hasSowDocument && needsRegeneration && !readOnly && user ? (
                 <button
                   onClick={() => void handleRegenerateSow()}
                   disabled={regeneratingSow || savingSelections}
