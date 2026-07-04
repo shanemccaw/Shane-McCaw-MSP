@@ -357,6 +357,7 @@ export default function PresentationFlow({
   const [scopedTotalPriceDollars, setScopedTotalPriceDollars] = useState<number | null>(initialData.scopedTotalPrice ?? null);
   const [lastRegenPhaseIds, setLastRegenPhaseIds] = useState<string[] | null>(initialData.scopedPhaseIds ?? null);
   const [regeneratingSow, setRegeneratingSow] = useState(false);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   // True when a previously generated scoped SOW was invalidated by a pricing update.
   // Stays true until the client successfully regenerates a new scoped SOW.
   const [scopedSowWasReset, setScopedSowWasReset] = useState(false);
@@ -581,6 +582,7 @@ export default function PresentationFlow({
   const handleRegenerateSow = async () => {
     if (!user || regeneratingSow) return;
     setRegeneratingSow(true);
+    setRegenerateError(null);
     try {
       const res = await fetchFn(`/api/portal/presentations/${presentationId}/regenerate-scoped-sow`, {
         method: "POST",
@@ -594,7 +596,12 @@ export default function PresentationFlow({
         setLastRegenPhaseIds(result.scopedPhaseIds);
         // Client has regenerated with the current pricing — clear the reset notice
         setScopedSowWasReset(false);
+      } else {
+        const errBody = await res.json().catch(() => ({})) as { error?: string };
+        setRegenerateError(errBody.error ?? "Failed to regenerate your Statement of Work. Please try again.");
       }
+    } catch {
+      setRegenerateError("Connection error — please check your internet and try again.");
     } finally {
       setRegeneratingSow(false);
     }
@@ -1738,6 +1745,12 @@ export default function PresentationFlow({
                 null
               ) : currentStep?.kind === "sow" && hasSowDocument && sowResetBlocked ? (
                 /* Scoped SOW was invalidated mid-session — show Regenerate (if can) + disabled Continue */
+                <div className="flex flex-col items-end gap-2">
+                  {regenerateError && (
+                    <p className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 max-w-xs text-right">
+                      {regenerateError}
+                    </p>
+                  )}
                 <div className="flex items-center gap-2">
                   {!readOnly && user && (
                     <button
@@ -1771,26 +1784,34 @@ export default function PresentationFlow({
                     </svg>
                   </button>
                 </div>
+                </div>
               ) : currentStep?.kind === "sow" && hasSowDocument && needsRegeneration && !readOnly && user ? (
-                <button
-                  onClick={() => void handleRegenerateSow()}
-                  disabled={regeneratingSow || savingSelections}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20 disabled:opacity-60"
-                >
-                  {regeneratingSow ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
-                      <span>Generating…</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      <span>Regenerate SOW</span>
-                    </>
+                <div className="flex flex-col items-end gap-2">
+                  {regenerateError && (
+                    <p className="text-xs text-red-600 font-medium bg-red-50 border border-red-200 rounded-lg px-3 py-1.5 max-w-xs text-right">
+                      {regenerateError}
+                    </p>
                   )}
-                </button>
+                  <button
+                    onClick={() => void handleRegenerateSow()}
+                    disabled={regeneratingSow || savingSelections}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20 disabled:opacity-60"
+                  >
+                    {regeneratingSow ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                        <span>Generating…</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span>Regenerate SOW</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               ) : currentStep?.kind === "sow" && !hasSowDocument ? (
                 <div className="flex items-center gap-2 text-sm text-black/40 font-medium select-none">
                   <span className="relative flex h-2 w-2 flex-shrink-0">

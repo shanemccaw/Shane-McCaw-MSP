@@ -10479,15 +10479,22 @@ function buildScopedSowHtml(
     return { durationLabel: "", deliveryDate: "" };
   });
 
+  // Narrative phase blocks — each selected phase gets a titled card with its description.
+  const phaseBlocks = phases.map(p => `
+    <div style="margin-bottom:16px;padding:12px 14px;border:1px solid #E5EAF1;border-left:3px solid #0078D4;border-radius:4px">
+      <div style="font-size:13px;font-weight:700;color:#0A2540;margin-bottom:${p.description ? "5px" : "0"}">${p.title}</div>
+      ${p.description ? `<p style="font-size:12px;color:#374151;line-height:1.6;margin:0">${p.description}</p>` : ""}
+      ${hasWeeks && phaseDeliveryDates[phases.indexOf(p)]?.durationLabel ? `<div style="margin-top:6px;font-size:11px;color:#64748B">Duration: ${phaseDeliveryDates[phases.indexOf(p)]!.durationLabel}${phaseDeliveryDates[phases.indexOf(p)]!.deliveryDate ? ` · Target delivery: ${phaseDeliveryDates[phases.indexOf(p)]!.deliveryDate}` : ""}</div>` : ""}
+    </div>`).join("");
+
+  // Pricing table rows — single Phase column, no duplicate Scope Summary column.
   const phaseRows = phases
     .map(
       (p, i) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:${hasWeeks ? "30%" : "40%"}">
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top">
           <div style="font-weight:700;color:#0A2540;font-size:13px">${p.title}</div>
-          ${p.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${p.description}</div>` : ""}
         </td>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${p.description || ""}</td>
         ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:center;font-size:12px;color:#374151;white-space:nowrap">${phaseDeliveryDates[i]!.durationLabel}</td>` : ""}
         ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:center;font-size:12px;color:#374151;white-space:nowrap">${phaseDeliveryDates[i]!.deliveryDate}</td>` : ""}
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:#0078D4;white-space:nowrap;font-size:13px">${fmt(p.price)}</td>
@@ -10499,11 +10506,10 @@ function buildScopedSowHtml(
     .map(
       (a) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:${hasWeeks ? "30%" : "40%"}">
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top">
           <div style="font-weight:700;color:#0A2540;font-size:13px">${a.title}</div>
-          ${a.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${a.description}</div>` : ""}
+          ${a.description ? `<div style="font-size:11px;color:#64748B;margin-top:2px">${a.description}</div>` : ""}
         </td>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${a.description || ""}</td>
         ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1"></td>` : ""}
         ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1"></td>` : ""}
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:${a.price < 0 ? "#DC2626" : "#0078D4"};white-space:nowrap;font-size:13px">${fmt(a.price)}</td>
@@ -10526,8 +10532,9 @@ function buildScopedSowHtml(
   h1{font-size:20px;font-weight:800;color:#0A2540;margin-bottom:2px}
   .sub{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#0078D4;margin-bottom:20px}
   .banner{background:#EBF5FF;border:1.5px solid #0078D4;border-radius:8px;padding:10px 16px;margin-bottom:20px;font-size:12px;color:#0A2540;line-height:1.5}
-  .meta{display:flex;gap:32px;margin-bottom:20px;font-size:12px;color:#374151}
+  .meta{display:flex;gap:32px;flex-wrap:wrap;margin-bottom:24px;font-size:12px;color:#374151}
   .meta strong{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:2px}
+  h2.section{font-size:14px;font-weight:800;color:#0A2540;margin-bottom:12px;padding-bottom:6px;border-bottom:2px solid #E5EAF1}
   table{width:100%;border-collapse:collapse}
   thead tr{background:#0A2540}
   thead th{padding:9px 12px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;text-align:left}
@@ -10551,11 +10558,15 @@ function buildScopedSowHtml(
   <div><strong>Phases Selected</strong>${phases.length}</div>
   ${engagementStartLabel}
 </div>
+
+<h2 class="section">Engagement Scope</h2>
+${phaseBlocks}
+
+<h2 class="section" style="margin-top:28px">Investment Summary</h2>
 <table>
   <thead>
     <tr>
-      <th style="width:${hasWeeks ? "30%" : "35%"}">Phase</th>
-      <th>Scope Summary</th>
+      <th>Phase</th>
       ${hasWeeks ? `<th class="center">Duration</th>` : ""}
       ${hasWeeks ? `<th class="center">Delivery Date</th>` : ""}
       <th style="text-align:right">Investment</th>
@@ -10565,7 +10576,6 @@ function buildScopedSowHtml(
     ${rows}
     <tr class="total-row">
       <td>Total Engagement Investment</td>
-      <td></td>
       ${hasWeeks ? `<td></td>` : ""}
       ${hasWeeks ? `<td></td>` : ""}
       <td class="total-price">${fmt(totalDollars)}</td>
@@ -10614,41 +10624,63 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     const scopedSubtotal = scopedPhases.reduce((s, p) => s + p.price, 0);
     const scopedTotalDollars = scopedSubtotal + adjustmentsTotal;
 
-    // Fetch project / client metadata and the original Consolidated SOW in parallel
-    const [projectRow, clientUserRow, originalSowRow] = await Promise.all([
+    // Fetch project / client metadata and the original Consolidated SOW.
+    // SOW lookup uses a two-step strategy so a missing project linkage never silently
+    // falls back to the invoice builder:
+    //   1. Query by document ID — use the IDs already stored on the presentation's
+    //      documentsIncluded array.  This is authoritative and avoids customer+project
+    //      mismatches when a client has multiple projects.
+    //   2. Fall back to customer+project search (legacy rows without documentsIncluded)
+    //      with a warning.  Still hard-fails if nothing is found.
+    const [projectRow, clientUserRow] = await Promise.all([
       pres.projectId
         ? db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, pres.projectId)).limit(1).then(r => r[0] ?? null)
         : Promise.resolve(null),
       pres.clientUserId
         ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1).then(r => r[0] ?? null)
         : Promise.resolve(null),
-      // Prefer the SOW for this exact project+client; fall back to any approved SOW for the client.
-      // This prevents selecting the wrong document when a client has multiple projects.
-      pres.clientUserId
-        ? (async () => {
-            const baseConditions = and(
-              eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId!),
-              inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
-              inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered", "draft"]),
-            );
-            if (pres.projectId) {
-              const projectScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
-                .from(insightsGeneratedDocumentsTable)
-                .where(and(baseConditions, eq(insightsGeneratedDocumentsTable.projectId, pres.projectId)))
-                .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
-                .limit(1);
-              if (projectScoped[0]) return projectScoped[0];
-            }
-            // Fallback: any approved SOW for this client (e.g. project not yet linked)
-            const clientScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
-              .from(insightsGeneratedDocumentsTable)
-              .where(baseConditions)
-              .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
-              .limit(1);
-            return clientScoped[0] ?? null;
-          })()
-        : Promise.resolve(null),
     ]);
+
+    // Step 1: look up by document IDs stored on documentsIncluded
+    let originalSowRow: { htmlContent: string | null } | null = null;
+    const docIds = Array.isArray(pres.documentsIncluded) ? (pres.documentsIncluded as number[]) : [];
+    if (docIds.length > 0) {
+      const byId = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          inArray(insightsGeneratedDocumentsTable.id, docIds),
+          inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+        ))
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+        .limit(1);
+      if (byId[0]) originalSowRow = byId[0];
+    }
+
+    // Step 2: fall back to customer+project search if IDs didn't resolve
+    if (!originalSowRow && pres.clientUserId) {
+      req.log.warn({ presentationId: id, docIds }, "portal: documentsIncluded yielded no SOW — falling back to customer+project search");
+      const baseConditions = and(
+        eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId),
+        inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+        inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered", "draft"]),
+      );
+      if (pres.projectId) {
+        const projectScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+          .from(insightsGeneratedDocumentsTable)
+          .where(and(baseConditions, eq(insightsGeneratedDocumentsTable.projectId, pres.projectId)))
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          .limit(1);
+        if (projectScoped[0]) originalSowRow = projectScoped[0];
+      }
+      if (!originalSowRow) {
+        const clientScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+          .from(insightsGeneratedDocumentsTable)
+          .where(baseConditions)
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          .limit(1);
+        originalSowRow = clientScoped[0] ?? null;
+      }
+    }
 
     const fmtUsd = (n: number) =>
       new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
@@ -10764,11 +10796,12 @@ RULES:
 ORIGINAL DOCUMENT:
 ${originalSowRow.htmlContent}`;
 
-        const aiResponse = await anthropic.messages.create({
+        const stream = anthropic.messages.stream({
           model: "claude-sonnet-4-5",
-          max_tokens: 16000,
+          max_tokens: 32000,
           messages: [{ role: "user", content: prompt }],
         });
+        const aiResponse = await stream.finalMessage();
 
         const aiHtml = extractAiHtml(aiResponse);
         const lowerHtml = aiHtml.toLowerCase();
@@ -10781,15 +10814,18 @@ ${originalSowRow.htmlContent}`;
           throw new Error("AI returned empty, too-short, or structurally malformed HTML");
         }
 
-        // Validate: if any excluded phase title still appears in the rendered text,
-        // the AI failed to filter it out — fall back to the deterministic builder.
+        // Validate: check only heading tags (<h2>/<h3>/<h4>) for excluded phase titles.
+        // Checking full plain text produces false positives when a phase title appears
+        // in a boilerplate sentence like "Phases not included in this scope: ...".
         if (excludedPhases.length > 0) {
-          const plainText = stripHtmlTags(aiHtml).toLowerCase();
-          const leakedPhase = excludedPhases.find(p => plainText.includes(p.title.toLowerCase()));
+          const headingText = (aiHtml.match(/<h[2-4][^>]*>([\s\S]*?)<\/h[2-4]>/gi) ?? [])
+            .map(h => h.replace(/<[^>]+>/g, " ").toLowerCase())
+            .join(" ");
+          const leakedPhase = excludedPhases.find(p => headingText.includes(p.title.toLowerCase()));
           if (leakedPhase) {
             req.log.warn(
               { presentationId: id, leakedPhase: leakedPhase.title },
-              "portal: AI scoped SOW leaked excluded phase — falling back to invoice HTML"
+              "portal: AI scoped SOW leaked excluded phase heading — falling back to narrative fallback"
             );
             scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
           } else {
@@ -10800,12 +10836,17 @@ ${originalSowRow.htmlContent}`;
           scopedSowHtml = aiHtml;
         }
       } catch (aiErr) {
-        req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to invoice");
+        req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to narrative template");
         scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
       }
     } else {
-      req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
-      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
+      // No original Consolidated SOW found — this should never happen in production
+      // because the client cannot reach the regeneration button until Shane has generated
+      // the initial SOW.  Return a clear 422 so the client gets actionable feedback
+      // instead of silently receiving an invoice table.
+      req.log.error({ presentationId: id, docIds }, "portal: regenerate-scoped-sow — no original SOW found after both lookup strategies");
+      res.status(422).json({ error: "No original Statement of Work found for this presentation. Please ask your consultant to generate the SOW first, then try again." });
+      return;
     }
 
     // Strip any internal pricing-formula notes Claude may have rendered as visible text
