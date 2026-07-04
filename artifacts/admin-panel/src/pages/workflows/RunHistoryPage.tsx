@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { format, formatDistanceToNow } from "date-fns";
 
 // ── Event catalog (compact — category + name only) ─────────────────────────────
@@ -198,17 +198,46 @@ function RunRow({
 
 export default function RunHistoryPage({ initialDefinitionId }: { initialDefinitionId?: number }) {
   const { fetchWithAuth } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const searchStr = useSearch();
   const qc = useQueryClient();
-  const [defIdFilter, setDefIdFilter] = useState(initialDefinitionId ?? 0);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
-  const [triggerTypeFilter, setTriggerTypeFilter] = useState("");
-  const [eventCategoryFilter, setEventCategoryFilter] = useState<EventCategory | "">("");
-  const [eventNameFilter, setEventNameFilter] = useState("");
-  const [offset, setOffset] = useState(0);
   const [systemExpanded, setSystemExpanded] = useState(false);
+
+  // ── Parse filter state from URL search params ──────────────────────────────
+  const sp = new URLSearchParams(searchStr);
+  const defIdFilter    = Number(sp.get("wf") ?? initialDefinitionId ?? 0);
+  const statusFilter   = sp.get("status") ?? "";
+  const fromDate       = sp.get("from") ?? "";
+  const toDate         = sp.get("to") ?? "";
+  const triggerTypeFilter   = sp.get("trigger") ?? "";
+  const eventCategoryFilter = (sp.get("category") ?? "") as EventCategory | "";
+  const eventNameFilter     = sp.get("event") ?? "";
+  const offset              = Number(sp.get("offset") ?? 0);
+
+  // Seed the URL with initialDefinitionId on first mount if no wf param yet
+  useEffect(() => {
+    if (initialDefinitionId && !sp.has("wf")) {
+      const next = new URLSearchParams(searchStr);
+      next.set("wf", String(initialDefinitionId));
+      navigate(`${location}?${next.toString()}`, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Helper: update one or more params, always reset offset unless explicitly set
+  function setFilters(patch: Record<string, string | number | null>, resetOffset = true) {
+    const next = new URLSearchParams(searchStr);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === "" || value === 0) {
+        next.delete(key);
+      } else {
+        next.set(key, String(value));
+      }
+    }
+    if (resetOffset) next.delete("offset");
+    const qs = next.toString();
+    navigate(`${location}${qs ? `?${qs}` : ""}`, { replace: true });
+  }
 
   // Reject modal state
   const [rejectApprovalId, setRejectApprovalId] = useState<number | null>(null);
@@ -323,7 +352,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
           <div className="flex items-center gap-3 flex-wrap">
             <select
               value={defIdFilter}
-              onChange={e => { setDefIdFilter(Number(e.target.value)); setOffset(0); }}
+              onChange={e => setFilters({ wf: Number(e.target.value) || null })}
               className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
             >
               <option value={0}>All Workflows</option>
@@ -331,7 +360,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             </select>
             <select
               value={statusFilter}
-              onChange={e => { setStatusFilter(e.target.value); setOffset(0); }}
+              onChange={e => setFilters({ status: e.target.value || null })}
               className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
             >
               <option value="">All Statuses</option>
@@ -347,7 +376,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
               <input
                 type="date"
                 value={fromDate}
-                onChange={e => { setFromDate(e.target.value); setOffset(0); }}
+                onChange={e => setFilters({ from: e.target.value || null })}
                 className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
               />
             </div>
@@ -356,13 +385,13 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
               <input
                 type="date"
                 value={toDate}
-                onChange={e => { setToDate(e.target.value); setOffset(0); }}
+                onChange={e => setFilters({ to: e.target.value || null })}
                 className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
               />
             </div>
             {(fromDate || toDate) && (
               <button
-                onClick={() => { setFromDate(""); setToDate(""); setOffset(0); }}
+                onClick={() => setFilters({ from: null, to: null })}
                 className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
               >
                 Clear dates
@@ -376,12 +405,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
               <span className="text-xs text-[#484F58]">Trigger</span>
               <select
                 value={triggerTypeFilter}
-                onChange={e => {
-                  setTriggerTypeFilter(e.target.value);
-                  setEventCategoryFilter("");
-                  setEventNameFilter("");
-                  setOffset(0);
-                }}
+                onChange={e => setFilters({ trigger: e.target.value || null, category: null, event: null })}
                 className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
               >
                 <option value="">All Triggers</option>
@@ -398,11 +422,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
                   <span className="text-xs text-[#484F58]">Category</span>
                   <select
                     value={eventCategoryFilter}
-                    onChange={e => {
-                      setEventCategoryFilter(e.target.value as EventCategory | "");
-                      setEventNameFilter("");
-                      setOffset(0);
-                    }}
+                    onChange={e => setFilters({ category: e.target.value || null, event: null })}
                     className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
                   >
                     <option value="">All Categories</option>
@@ -417,7 +437,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
                     <span className="text-xs text-[#484F58]">Event</span>
                     <select
                       value={eventNameFilter}
-                      onChange={e => { setEventNameFilter(e.target.value); setOffset(0); }}
+                      onChange={e => setFilters({ event: e.target.value || null })}
                       className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
                     >
                       <option value="">All {eventCategoryFilter} Events</option>
@@ -432,12 +452,7 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
 
             {(triggerTypeFilter || eventCategoryFilter || eventNameFilter) && (
               <button
-                onClick={() => {
-                  setTriggerTypeFilter("");
-                  setEventCategoryFilter("");
-                  setEventNameFilter("");
-                  setOffset(0);
-                }}
+                onClick={() => setFilters({ trigger: null, category: null, event: null })}
                 className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
               >
                 Clear trigger
@@ -532,14 +547,14 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             </span>
             <div className="flex gap-2">
               <button
-                onClick={() => setOffset(o => Math.max(0, o - limit))}
+                onClick={() => setFilters({ offset: Math.max(0, offset - limit) || null }, false)}
                 disabled={offset === 0}
                 className="px-3 py-1.5 text-xs bg-[#161B22] border border-[#30363D] text-[#7D8590] disabled:opacity-40 rounded-lg hover:text-[#E6EDF3] transition-colors"
               >
                 Previous
               </button>
               <button
-                onClick={() => setOffset(o => o + limit)}
+                onClick={() => setFilters({ offset: offset + limit }, false)}
                 disabled={offset + limit >= total}
                 className="px-3 py-1.5 text-xs bg-[#161B22] border border-[#30363D] text-[#7D8590] disabled:opacity-40 rounded-lg hover:text-[#E6EDF3] transition-colors"
               >
