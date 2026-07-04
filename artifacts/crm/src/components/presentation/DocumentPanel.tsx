@@ -266,7 +266,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
       {/* Keyframe for OMG panel entrance — injected once, no layout shift */}
       <style>{`@keyframes omgPanelIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}`}</style>
 
-      <div className="flex flex-col h-full">
+      <div className="flex flex-col">
 
         {/* ── Document header bar ── */}
         <div className="flex items-start justify-between gap-4 mb-3 flex-shrink-0">
@@ -402,12 +402,12 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
         </div>
 
         {/* ── Document iframe ── */}
-        {/* overflow-y-scroll + touch momentum so iOS can scroll both up and down
-            through the iframe content (absolute/h-full iframes don't scroll on iOS Safari
-            in fixed overlays). The iframe is sized to its content height on load. */}
+        {/* No flex-1 here — the doc step does NOT use h-full, so the outer
+            scrollAreaRef handles all scrolling. The iframe is sized to its content
+            height on load, creating a naturally tall document that iOS can scroll. */}
         <div
-          className="flex-1 rounded-xl border border-border shadow-sm bg-white relative min-h-0 overflow-y-scroll"
-          style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+          className="rounded-xl border border-border shadow-sm bg-white relative overflow-hidden"
+          style={{ minHeight: 600 }}
         >
           {!iframeLoaded && (
             <div className="absolute inset-0 bg-white rounded-xl p-6 flex flex-col gap-3 z-10 pointer-events-none">
