@@ -1475,10 +1475,17 @@ export default function PresentationFlow({
                                     <span className="inline-flex items-center text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Or pay in full</span>
                                   </div>
                                   <div className="flex items-center justify-end">
-                                    <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`}>
-                                      {paymentVisited ? "Review again" : "View payment options"}
-                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                    </span>
+                                    {(!hasSowDocument || scopeStale) ? (
+                                      <span className="text-xs font-semibold inline-flex items-center gap-1.5 text-amber-600">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                        Building customized plan…
+                                      </span>
+                                    ) : (
+                                      <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`}>
+                                        {paymentVisited ? "Review again" : "View payment options"}
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                      </span>
+                                    )}
                                   </div>
                                 </>
                               )}
@@ -1524,10 +1531,17 @@ export default function PresentationFlow({
                               )}
                               {!sowResetBlocked && (
                                 <div className="flex items-center justify-end">
-                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
-                                    {contractVisited ? "Review again" : "Preview agreement"}
-                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                  </span>
+                                  {(!hasSowDocument || scopeStale) ? (
+                                    <span className="text-xs font-semibold inline-flex items-center gap-1.5 text-amber-600">
+                                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                      Building customized plan…
+                                    </span>
+                                  ) : (
+                                    <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
+                                      {contractVisited ? "Review again" : "Preview agreement"}
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                    </span>
+                                  )}
                                 </div>
                               )}
                             </button>
