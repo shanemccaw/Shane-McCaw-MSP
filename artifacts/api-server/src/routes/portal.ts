@@ -10268,17 +10268,31 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
       pres.clientUserId
         ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1).then(r => r[0] ?? null)
         : Promise.resolve(null),
+      // Prefer the SOW for this exact project+client; fall back to any approved SOW for the client.
+      // This prevents selecting the wrong document when a client has multiple projects.
       pres.clientUserId
-        ? db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
-            .from(insightsGeneratedDocumentsTable)
-            .where(and(
-              eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId),
+        ? (async () => {
+            const baseConditions = and(
+              eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId!),
               inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
               inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered", "draft"]),
-            ))
-            .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
-            .limit(1)
-            .then(r => r[0] ?? null)
+            );
+            if (pres.projectId) {
+              const projectScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+                .from(insightsGeneratedDocumentsTable)
+                .where(and(baseConditions, eq(insightsGeneratedDocumentsTable.projectId, pres.projectId)))
+                .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+                .limit(1);
+              if (projectScoped[0]) return projectScoped[0];
+            }
+            // Fallback: any approved SOW for this client (e.g. project not yet linked)
+            const clientScoped = await db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+              .from(insightsGeneratedDocumentsTable)
+              .where(baseConditions)
+              .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+              .limit(1);
+            return clientScoped[0] ?? null;
+          })()
         : Promise.resolve(null),
     ]);
 
@@ -10334,8 +10348,14 @@ ${originalSowRow.htmlContent}`;
         });
 
         const aiHtml = extractAiHtml(aiResponse);
-        if (!aiHtml || aiHtml.length < 500) {
-          throw new Error("AI returned empty or too-short HTML");
+        const lowerHtml = aiHtml.toLowerCase();
+        if (
+          !aiHtml ||
+          aiHtml.length < 500 ||
+          !lowerHtml.includes("<html") ||
+          !lowerHtml.includes("</html>")
+        ) {
+          throw new Error("AI returned empty, too-short, or structurally malformed HTML");
         }
         scopedSowHtml = aiHtml;
       } catch (aiErr) {
