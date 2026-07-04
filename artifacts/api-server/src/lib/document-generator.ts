@@ -96,19 +96,37 @@ STEP 2 — BASE CEILINGS (select the row matching the detected tier):
   Include only the workstreams relevant to this engagement.
   Workstream Total = sum of all included workstream Base Ceilings.
 
-STEP 3 — ADJUSTMENTS (flat per-tier amounts — apply each adjustment if the findings support it; if a category does not apply, add $0 and explain why):
+STEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):
+
+  Adjustment amounts by tier:
   Adjustment        | Tier01  | Tier02   | Tier03   | Tier04
+  Tenant Size       | $2,000  |  $5,000  | $10,000  | $15,000
   Complexity        | $5,000  | $15,000  | $25,000  | $35,000
   Data Sprawl       | $5,000  | $10,000  | $20,000  | $25,000
   Security/Compli.  | $5,000  | $10,000  | $20,000  | $25,000
   Copilot Readiness | $5,000  | $10,000  | $20,000  | $25,000
+  Timeline          | $3,000  |  $8,000  | $15,000  | $20,000
 
-  Criteria for applying each adjustment:
-  - Complexity: apply if the findings show multiple critical gaps or ≥ 3 remediation domains.
+  ADJUSTMENT MAP — permitted adjustments per workstream (only these may appear in the SOW):
+    Governance Remediation  → Complexity (label as "Governance Complexity" when it is the only workstream), Timeline
+    Security Remediation    → Tenant Size, Complexity, Data Sprawl, Security/Compliance, Timeline
+    Data Protection / DLP   → Data Sprawl, Complexity, Security/Compliance, Timeline
+    Copilot Readiness       → Copilot Readiness, Data Sprawl, Complexity, Timeline
+    Licensing Optimization  → Tenant Size, Complexity, Timeline
+
+  Rules — strictly enforced:
+  1. Only include an adjustment if its workstream is present in this SOW AND findings support it.
+  2. Each eligible adjustment appears AT MOST ONCE in the Pricing Adjustments table — never duplicate even when multiple workstreams permit it.
+  3. Never add adjustment amounts to individual workstream rows.
+  Adjustment Total = sum of all applicable permitted adjustments at the tier-correct dollar amount.
+
+  Criteria for applying each adjustment (only when the relevant workstream is present and findings justify it):
+  - Tenant Size: apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.
+  - Complexity: apply if findings show multiple critical gaps or ≥ 3 remediation domains.
   - Data Sprawl: apply if DLP policies = 0, sensitivity labels unconfigured, or ≥ 50 SharePoint sites with no governance.
   - Security/Compliance: apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
   - Copilot Readiness: apply ONLY when Copilot-related workstreams are in scope; base on Copilot score and blocker count.
-  Adjustment Total = sum of all applicable adjustments at the tier-correct dollar amount.
+  - Timeline: apply if the client requires accelerated or compressed delivery relative to standard schedule.
 
 STEP 4 — TOTALS:
   Engagement Total = Workstream Total + Adjustment Total.

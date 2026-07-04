@@ -19,6 +19,7 @@
     "migration-status": "tsx ./src/migration-status.ts",
     "migrate-runbook-ids": "tsx ./src/migrate-runbook-ids.ts",
     "patch-consolidated-sow-prompt": "tsx ./src/patch-consolidated-sow-prompt.ts",
+    "patch-sow-adjustment-rules": "tsx ./src/patch-sow-adjustment-rules.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:stripe": "pnpm --filter @workspace/api-server run test"
   },

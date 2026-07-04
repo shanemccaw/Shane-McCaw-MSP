@@ -875,19 +875,37 @@ STEP 2 — BASE CEILINGS (select the row matching the detected tier):
   Include only the workstreams relevant to this engagement.
   Workstream Total = sum of all included workstream Base Ceilings.
 
-STEP 3 — ADJUSTMENTS (flat per-tier amounts — apply each adjustment if the findings support it; if a category does not apply, add $0 and explain why):
+STEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):
+
+  Adjustment amounts by tier:
   Adjustment        | Tier01  | Tier02   | Tier03   | Tier04
+  Tenant Size       | $2,000  |  $5,000  | $10,000  | $15,000
   Complexity        | $5,000  | $15,000  | $25,000  | $35,000
   Data Sprawl       | $5,000  | $10,000  | $20,000  | $25,000
   Security/Compli.  | $5,000  | $10,000  | $20,000  | $25,000
   Copilot Readiness | $5,000  | $10,000  | $20,000  | $25,000
+  Timeline          | $3,000  |  $8,000  | $15,000  | $20,000
 
-  Criteria for applying each adjustment:
-  - Complexity: apply if the findings show multiple critical gaps or ≥ 3 remediation domains.
+  ADJUSTMENT MAP — permitted adjustments per workstream (only these may appear in the SOW):
+    Governance Remediation  → Complexity (label as "Governance Complexity" when it is the only workstream), Timeline
+    Security Remediation    → Tenant Size, Complexity, Data Sprawl, Security/Compliance, Timeline
+    Data Protection / DLP   → Data Sprawl, Complexity, Security/Compliance, Timeline
+    Copilot Readiness       → Copilot Readiness, Data Sprawl, Complexity, Timeline
+    Licensing Optimization  → Tenant Size, Complexity, Timeline
+
+  Rules — strictly enforced:
+  1. Only include an adjustment if its workstream is present in this SOW AND findings support it.
+  2. Each eligible adjustment appears AT MOST ONCE in the Pricing Adjustments table — never duplicate even when multiple workstreams permit it.
+  3. Never add adjustment amounts to individual workstream rows.
+  Adjustment Total = sum of all applicable permitted adjustments at the tier-correct dollar amount.
+
+  Criteria for applying each adjustment (only when the relevant workstream is present and findings justify it):
+  - Tenant Size: apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.
+  - Complexity: apply if findings show multiple critical gaps or ≥ 3 remediation domains.
   - Data Sprawl: apply if DLP policies = 0, sensitivity labels unconfigured, or ≥ 50 SharePoint sites with no governance.
   - Security/Compliance: apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
   - Copilot Readiness: apply ONLY when Copilot-related workstreams are in scope; base on Copilot score and blocker count.
-  Adjustment Total = sum of all applicable adjustments at the tier-correct dollar amount.
+  - Timeline: apply if the client requires accelerated or compressed delivery relative to standard schedule.
 
 STEP 4 — TOTALS:
   Engagement Total = Workstream Total + Adjustment Total.
@@ -1568,11 +1586,11 @@ INSTRUCTIONS:
 - Do NOT include a Resource Requirements section — Shane McCaw is the sole consultant on this engagement
 - Do NOT include a Payment Terms section — payment is managed separately through the client portal
 - Do NOT include a Signature Block — document execution is handled through the portal
-- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists ONLY the adjustments permitted for the workstreams present in this SOW (per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below), each appearing once, followed by a Grand Total row — do NOT list adjustments that are not permitted for the workstreams present
 - For the Duration (Weeks) column: assign a realistic integer number of weeks to each workstream phase based on the scope of work (e.g. 2–16 weeks). Format as "N weeks" (e.g. "4 weeks")
 - For the Delivery Date column: compute dates cumulatively starting from the ENGAGEMENT START DATE. Phase 1 delivery = ENGAGEMENT START DATE + Phase 1 weeks. Phase 2 delivery = Phase 1 delivery date + Phase 2 weeks. Continue this pattern for all subsequent phases. Format as "Mon DD, YYYY" (e.g. "Aug 4, 2026"). These MUST be real calendar dates, not relative estimates
 - You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends"); shared adjustments must NOT be added to individual workstream rows
-- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) are listed ONCE in a "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
+- You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; only the adjustments permitted for the workstreams present (per the ADJUSTMENT MAP) are listed in the "Pricing Adjustments" summary section below the workstream table, each appearing once and never on individual rows
 - The Grand Total MUST equal the arithmetic sum of all workstream Final Prices plus all adjustment amounts. Show the arithmetic explicitly in the Grand Total cell: "Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[total]". Verify the addition before writing the number.
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
@@ -2019,7 +2037,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const previewEngagementStart = nextBusinessMonday(new Date());
       const previewEngagementStartLabel = previewEngagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-      const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"`;
+      const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"\n- Pricing Adjustments: list ONLY the adjustments permitted for the workstreams present per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below — each adjustment once only, never on individual workstream rows`;
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW);
       const assembledPrompt = rawTemplate
         .replace(/\{\{clientName\}\}/g, clientName).replace(/\{\{title\}\}/g, title)
