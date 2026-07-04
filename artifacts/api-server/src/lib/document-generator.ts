@@ -619,7 +619,7 @@ export async function generateAndDeliverDocument(
   // 16 000-token budget so no report is ever cut off mid-section.
   const docStylePrefix = await getDocumentStylePrefix();
   const aiResponse = await anthropic.messages.create({
-    model: "claude-haiku-4-5",
+    model: "claude-sonnet-4-6",
     max_tokens: 16000,
     messages: [{ role: "user", content: docStylePrefix + prompt }],
   });

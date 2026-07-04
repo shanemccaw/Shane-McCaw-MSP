@@ -999,7 +999,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
     try {
       const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: "claude-sonnet-4-6",
         max_tokens: 16000,
         messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: reportAbort.signal });
@@ -1107,7 +1107,7 @@ router.post("/admin/insights/documents/payload-preview", requireAdmin, async (re
     const stylePrefix = await getDocumentStylePrefix();
 
     return res.json({
-      model: "claude-haiku-4-5",
+      model: "claude-sonnet-4-6",
       maxTokens: 16000,
       stylePrefix: stylePrefix.trim(),
       assembledPrompt,
@@ -1630,7 +1630,7 @@ INSTRUCTIONS:
       try {
         const docStylePrefix = await getDocumentStylePrefix();
         const aiResponse = await anthropic.messages.create({
-          model: "claude-haiku-4-5",
+          model: "claude-sonnet-4-6",
           max_tokens: 16000,
           messages: [{ role: "user", content: docStylePrefix + prompt }],
         }, { signal: sowAbort.signal });
@@ -1839,7 +1839,7 @@ INSTRUCTIONS:
     try {
       const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: "claude-sonnet-4-6",
         max_tokens: 16000,
         messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: consultingAbort.signal });
@@ -2014,7 +2014,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       for (const row of healthHistoryRows) { if (!(row.category in latestScores)) latestScores[row.category] = row.score; }
 
       return res.json({
-        model: "claude-haiku-4-5",
+        model: "claude-sonnet-4-6",
         maxTokens: 16000,
         stylePrefix: stylePrefix.trim(),
         assembledPrompt,
@@ -2114,7 +2114,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
     const stylePrefix = await getDocumentStylePrefix();
 
     const result: Record<string, unknown> = {
-      model: "claude-haiku-4-5",
+      model: "claude-sonnet-4-6",
       maxTokens: 16000,
       stylePrefix: stylePrefix.trim(),
       assembledPrompt,
