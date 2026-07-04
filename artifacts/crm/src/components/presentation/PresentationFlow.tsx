@@ -10,6 +10,7 @@ import type { OfferState } from "./PayTodayBanner";
 import AnimatedBackground from "../quickwin/AnimatedBackground";
 import CopilotAura from "../wizard/CopilotAura";
 import { computeOverviewStats } from "@/lib/doc-stat-extractors";
+import ConfirmationStep from "./ConfirmationStep";
 
 interface PresentationDoc {
   id: number;
@@ -1723,25 +1724,11 @@ export default function PresentationFlow({
 
             {/* Confirmation */}
             {currentStep?.kind === "confirmation" && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center">
-                <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-2xl font-extrabold text-[#0A2540]">You're All Set!</h2>
-                  <p className="text-muted-foreground mt-2 max-w-sm">
-                    Your agreement is signed and payment is confirmed. Shane will reach out within one business day to kick off your engagement.
-                  </p>
-                </div>
-                <button
-                  onClick={onClose}
-                  className="px-8 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 shadow-lg shadow-[#0078D4]/20 transition-all"
-                >
-                  Return to Portal
-                </button>
-              </div>
+              <ConfirmationStep
+                clientName={data.clientName ?? null}
+                projectTitle={data.projectTitle ?? null}
+                onClose={onClose}
+              />
             )}
           </div>
         </div>
