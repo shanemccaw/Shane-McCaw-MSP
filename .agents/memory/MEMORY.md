@@ -9,3 +9,4 @@
 - [ARM SDK runbookDraft.replaceContent JSON crash](arm-runbook-draft-content.md) — SDK treats replaceContent as LRO and JSON-parses the PS script body; bypass with raw fetch + bearer token
 - [drizzle-kit push requires TTY](drizzle-kit-tty.md) — push-force still fails non-interactively when drizzle-kit detects schema conflicts; use executeSql() in code_execution to CREATE TABLE directly
 - [AI prompt seeder is insert-only](ai-prompt-seeder.md) — seedAiPrompts() uses ON CONFLICT DO NOTHING; changing the code constant has zero effect if the row exists. Use executeSql UPDATE to change a live prompt.
+- [Anthropic streaming for long requests](anthropic-streaming-long-requests.md) — messages.create() hard-times out at 10 min; any high-token generation (Opus, 32k+ output) must use messages.stream() + finalMessage() instead.

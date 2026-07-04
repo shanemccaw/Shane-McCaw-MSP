@@ -1603,11 +1603,15 @@ INSTRUCTIONS:
           const docStylePrefix = await getDocumentStylePrefix();
           // Consolidated SOW is the highest-stakes deliverable — use the most capable
           // model with maximum output tokens so the document is never cut short.
-          const aiResponse = await anthropic.messages.create({
+          // Streaming is required: Opus at 32k tokens can exceed the 10-minute
+          // non-streaming timeout. stream() keeps the connection alive; finalMessage()
+          // returns the same shape as messages.create() so nothing else changes.
+          const stream = anthropic.messages.stream({
             model: "claude-opus-4-8",
             max_tokens: 32000,
             messages: [{ role: "user", content: docStylePrefix + prompt }],
           });
+          const aiResponse = await stream.finalMessage();
           if (aiResponse.stop_reason === "max_tokens") {
             logger.warn({ docId }, "consolidated_sow: output hit max_tokens — document may be truncated");
           }
