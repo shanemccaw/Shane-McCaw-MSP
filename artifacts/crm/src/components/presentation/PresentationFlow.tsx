@@ -650,6 +650,10 @@ export default function PresentationFlow({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex]);
 
+  // isPaid must stay true after signing so back-navigation to the payment step
+  // shows "payment confirmed" and not the checkout options.
+  const isPaid = data.status === "paid" || data.status === "signed";
+
   const goNext = () => {
     if (readOnly && currentStep?.kind === "sow") {
       setShowLoginGate(true);
@@ -662,10 +666,13 @@ export default function PresentationFlow({
     }
     if (stepIndex < steps.length - 1) {
       const next = stepIndex + 1;
-      // Also hard-block jumping directly into contract/payment when sowResetBlocked,
-      // regardless of which step we're navigating from.
       const nextStep = steps[next];
+      // Hard-block jumping directly into contract/payment when sowResetBlocked.
       if (sowResetBlocked && (nextStep?.kind === "contract" || nextStep?.kind === "payment")) {
+        return;
+      }
+      // Hard-block advancing to Agreement before payment is confirmed.
+      if (nextStep?.kind === "contract" && !isPaid) {
         return;
       }
       directionRef.current = "forward";
@@ -685,7 +692,9 @@ export default function PresentationFlow({
     const targetStep = steps[i];
     // Hard-block sidebar navigation to contract/payment when a scoped SOW reset is pending
     const blockedByReset = sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment");
-    if (i <= maxVisitedStep && !blockedByReset) {
+    // Hard-block sidebar navigation to Agreement before payment is confirmed.
+    const blockedByUnpaid = targetStep?.kind === "contract" && !isPaid;
+    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnpaid) {
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
@@ -700,9 +709,11 @@ export default function PresentationFlow({
   // Also fires a fire-and-forget card_click event (first click per cardName only)
   const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
-    // Hard-block jumps to contract/payment when a scoped SOW reset is pending
     const targetStep = steps[idx];
+    // Hard-block jumps to contract/payment when a scoped SOW reset is pending
     if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment")) return;
+    // Hard-block jumps to Agreement before payment is confirmed.
+    if (targetStep?.kind === "contract" && !isPaid) return;
     if (cardName && !firedCardClicks.current.has(cardName)) {
       firedCardClicks.current.add(cardName);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
@@ -715,7 +726,7 @@ export default function PresentationFlow({
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, steps]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, isPaid, steps]);
 
   const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
@@ -750,7 +761,6 @@ export default function PresentationFlow({
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isConfirmation = currentStep?.kind === "confirmation";
-  const isPaid = data.status === "paid";
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full min-h-0">
@@ -791,13 +801,17 @@ export default function PresentationFlow({
           const isVisited = i <= maxVisitedStep && i !== stepIndex;
           const isFuture = i > maxVisitedStep;
           const isResetBlocked = sowResetBlocked && (step.kind === "contract" || step.kind === "payment");
+          const isUnpaidGated = step.kind === "contract" && !isPaid;
+          const isBlocked = isResetBlocked || isUnpaidGated;
           return (
             <button
               key={i}
-              onClick={() => { if (!isFuture && !isResetBlocked) navigateToStep(i); }}
+              onClick={() => { if (!isFuture && !isBlocked) navigateToStep(i); }}
               title={
                 isResetBlocked
                   ? "Regenerate your scoped SOW before signing or paying"
+                  : isUnpaidGated
+                  ? "Complete payment to unlock the agreement"
                   : isActive
                   ? "Current step"
                   : isVisited
@@ -805,7 +819,7 @@ export default function PresentationFlow({
                   : `Complete step ${i} to unlock`
               }
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all mb-0.5 ${
-                isResetBlocked
+                isBlocked
                   ? "text-amber-400/60 cursor-not-allowed"
                   : isActive
                   ? "bg-[#0078D4] text-white cursor-pointer"
@@ -1311,9 +1325,9 @@ export default function PresentationFlow({
                           {contractStepIndex >= 0 && (
                             <button
                               onClick={() => jumpToStep(contractStepIndex, "agreement")}
-                              disabled={sowResetBlocked}
-                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              disabled={sowResetBlocked || !isPaid}
+                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : !isPaid ? "Complete payment to unlock the agreement" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(sowResetBlocked || !isPaid) ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
                               {contractVisited && !sowResetBlocked && <ReviewedBadge />}
