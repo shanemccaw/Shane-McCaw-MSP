@@ -65,6 +65,7 @@ import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
+import { persistSowPricing } from "./sow-pricing-persist.js";
 
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
@@ -414,6 +415,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       if (at === "execute_runbook" || at === "update_m365_profile")
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
+      if (at === "calculate_pricing")    return { dryRun: true, documentId: num("documentId"), totalPrice: 0, lineCount: 0 };
       return { dryRun: true, actionType: at ?? "none", note: "dry run — action skipped" };
     }
 
@@ -847,6 +849,7 @@ const PROMOTED_ACTION_TYPES = new Set([
   "http_request", "sql_query", "send_email", "send_sms", "emit_event",
   "cancel_workflow", "create_lead", "convert_to_opportunity", "create_client",
   "create_project", "update_m365_profile", "execute_runbook", "generate_document",
+  "calculate_pricing",
 ]);
 
 // ── Node execution ────────────────────────────────────────────────────────────
@@ -1151,6 +1154,17 @@ async function executeNode(
               .set({ title: docTitle, htmlContent, status: "approved", approvedAt: new Date(), updatedAt: new Date() })
               .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
 
+            // For consolidated SOW documents, also write pricing lines so the
+            // client's Scope & Pricing step shows correct prices immediately —
+            // without requiring a separate calculate_pricing node or admin action.
+            if (docType === "consolidated_sow") {
+              try {
+                await persistSowPricing(reportDocId, htmlContent);
+              } catch (pricingErr) {
+                logger.warn({ runId, reportDocId, err: pricingErr }, "wf-executor: generate_document — persistSowPricing failed (non-fatal)");
+              }
+            }
+
             // Remove superseded prior doc now that the new one is live
             if (priorWfDocId !== null) {
               await db.delete(insightsGeneratedDocumentsTable)
@@ -1206,6 +1220,43 @@ async function executeNode(
               const errMsg = queryErr instanceof Error ? queryErr.message : String(queryErr);
               output = { error: `sql_query failed: ${errMsg.slice(0, 200)}` };
               logger.warn({ runId, err: queryErr }, "wf-executor: sql_query node failed");
+            }
+          }
+        } else if (actionType === "calculate_pricing") {
+          // Re-parse pricing from a previously-generated SOW document and write
+          // sowPricingLines + sowTotalPrice back to the DB row.  Accepts documentId
+          // from the payload (piped from an upstream generate_document node) or from
+          // node.data.documentId as a hard-coded fallback.
+          // An optional docType override can be supplied via node.data.docType but
+          // is not required — the node always writes pricing regardless of doc type.
+          const rawDocId =
+            interp(node.data.documentId as string | undefined, payload) ??
+            String((payload.documentId as number | undefined) ?? "");
+          const calcDocId = rawDocId ? parseInt(rawDocId, 10) : NaN;
+          const calcDocType = interp(node.data.docType as string | undefined, payload) ?? null;
+
+          if (isNaN(calcDocId)) {
+            nodeError = true;
+            output = { error: "calculate_pricing requires a valid documentId" };
+          } else {
+            const docRow = await db
+              .select({
+                htmlContent: insightsGeneratedDocumentsTable.htmlContent,
+              })
+              .from(insightsGeneratedDocumentsTable)
+              .where(eq(insightsGeneratedDocumentsTable.id, calcDocId))
+              .limit(1);
+
+            if (!docRow[0]) {
+              nodeError = true;
+              output = { error: `calculate_pricing: document ${calcDocId} not found` };
+            } else if (!docRow[0].htmlContent?.trim()) {
+              nodeError = true;
+              output = { error: `calculate_pricing: document ${calcDocId} has no htmlContent` };
+            } else {
+              const { lineCount, totalPrice } = await persistSowPricing(calcDocId, docRow[0].htmlContent);
+              output = { documentId: calcDocId, totalPrice, lineCount, ...(calcDocType ? { docType: calcDocType } : {}) };
+              logger.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
             }
           }
         } else {

@@ -241,9 +241,20 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           },
         },
         {
-          id: "emit",
+          id: "calc_pricing",
           type: "action",
           position: { x: 150, y: 610 },
+          data: {
+            nodeType: "action",
+            actionType: "calculate_pricing",
+            label: "Write SOW Pricing Lines",
+            documentId: "{{documentId}}",
+          },
+        },
+        {
+          id: "emit",
+          type: "action",
+          position: { x: 150, y: 750 },
           data: {
             nodeType: "action",
             actionType: "emit_event",
@@ -255,7 +266,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         {
           id: "end_retried",
           type: "end",
-          position: { x: 150, y: 750 },
+          position: { x: 150, y: 890 },
           data: { nodeType: "end", label: "Retried" },
         },
         {
@@ -266,12 +277,13 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
       ],
       edges: [
-        { id: "e1", source: "start",    target: "check"      },
-        { id: "e2", source: "check",    target: "branch"     },
-        { id: "e3", source: "branch",   target: "generate",  sourceHandle: "true"  },
-        { id: "e4", source: "branch",   target: "end_active", sourceHandle: "false" },
-        { id: "e5", source: "generate", target: "emit"       },
-        { id: "e6", source: "emit",     target: "end_retried" },
+        { id: "e1", source: "start",        target: "check"       },
+        { id: "e2", source: "check",        target: "branch"      },
+        { id: "e3", source: "branch",       target: "generate",   sourceHandle: "true"  },
+        { id: "e4", source: "branch",       target: "end_active", sourceHandle: "false" },
+        { id: "e5", source: "generate",     target: "calc_pricing" },
+        { id: "e7", source: "calc_pricing", target: "emit"        },
+        { id: "e6", source: "emit",         target: "end_retried" },
       ],
     },
   },
@@ -547,6 +559,56 @@ export async function seedSystemWorkflows(): Promise<void> {
           ],
         );
         logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry age threshold 120000 → 300000");
+
+        // Patch v3: insert calc_pricing node between generate and emit.
+        // Guard: fires only when the calc_pricing node is not already present.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                jsonb_set(
+                  graph,
+                  '{nodes}',
+                  (graph->'nodes') || $2::jsonb
+                ),
+                '{edges}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN edge->>'source' = 'generate' AND edge->>'target' = 'emit'
+                      THEN jsonb_build_object(
+                             'id',     'e5',
+                             'source', 'generate',
+                             'target', 'calc_pricing'
+                           )
+                      ELSE edge
+                    END
+                  ) || $3::jsonb
+                  FROM jsonb_array_elements(graph->'edges') AS edge
+                )
+              )
+           WHERE definition_id = $1
+             AND NOT graph->'nodes' @> '[{"id":"calc_pricing"}]'`,
+          [
+            defId,
+            JSON.stringify([{
+              id: "calc_pricing",
+              type: "action",
+              position: { x: 150, y: 610 },
+              data: {
+                nodeType: "action",
+                actionType: "calculate_pricing",
+                label: "Write SOW Pricing Lines",
+                documentId: "{{documentId}}",
+              },
+            }]),
+            JSON.stringify([{
+              id: "e7",
+              source: "calc_pricing",
+              target: "emit",
+            }]),
+          ],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — inserted calc_pricing node");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)

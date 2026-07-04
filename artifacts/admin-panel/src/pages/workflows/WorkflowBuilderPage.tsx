@@ -45,6 +45,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   execute_runbook:        { bg: "#110D22", border: "#A78BFA",  icon: "⚙️", label: "Execute Runbook"        },
   update_m365_profile:    { bg: "#110D22", border: "#8B5CF6",  icon: "☁️", label: "Update M365 Profile"    },
   generate_document:      { bg: "#111620", border: "#64748B",  icon: "📄", label: "Generate Document"      },
+  calculate_pricing:      { bg: "#111620", border: "#00B4D8",  icon: "💲", label: "Calculate Pricing"       },
   // ── CRM ──
   score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
   assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
@@ -159,6 +160,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }, { key: "runbookName", label: "Runbook name" }],
   update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
   generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }],
+  calculate_pricing:      [{ key: "documentId", label: "Document ID (echoed)" }, { key: "totalPrice", label: "Computed total price (USD)" }, { key: "lineCount", label: "Number of pricing lines written" }],
   http_request:           [{ key: "status", label: "HTTP response status code" }, { key: "ok", label: "true if 2xx response" }],
   sql_query:              [{ key: "queryRows", label: "Array of result rows" }],
   emit_event:             [{ key: "eventName", label: "Name of the emitted event" }],
@@ -632,6 +634,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "execute_runbook",     label: "Execute Runbook",      description: "Trigger an Azure Automation runbook",                tags: ["azure", "runbook", "automation", "m365"] },
       { type: "update_m365_profile", label: "Update M365 Profile",  description: "Update a client's M365 profile via Azure Automation", tags: ["azure", "m365", "profile", "runbook"] },
       { type: "generate_document",   label: "Generate Document",    description: "Create a document record for a client",              tags: ["document", "client", "report", "generate"] },
+      { type: "calculate_pricing",   label: "Calculate Pricing",    description: "Parse SOW HTML and write sowPricingLines to the DB",  tags: ["document", "sow", "pricing", "calculate"] },
     ],
   },
   {
@@ -1683,6 +1686,7 @@ function NodeConfigPanel({
                 </optgroup>
                 <optgroup label="Documents">
                   <option value="generate_document">📄 Generate Document</option>
+                  <option value="calculate_pricing">💲 Calculate Pricing</option>
                 </optgroup>
               </select>
             </div>
@@ -1885,6 +1889,16 @@ function NodeConfigPanel({
                 <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
                   <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets to be configured. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>.</p>
+                </div>
+              </>
+            )}
+
+            {(node.data.actionType as string) === "calculate_pricing" && (
+              <>
+                <PayloadField label="Document ID" value={(node.data.documentId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, documentId: v })} placeholder="{{documentId}}" ancestorOutputs={ancestorOutputs} />
+                <PayloadField label="Doc Type Override (optional)" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder="consolidated_sow" ancestorOutputs={ancestorOutputs} />
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                  <p className="text-[10px] text-[#484F58]">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-[#7D8590]">sowPricingLines</span> + <span className="font-mono text-[#7D8590]">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-[#7D8590]">{"{{totalPrice}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{lineCount}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -2150,6 +2164,16 @@ function NodeConfigPanel({
             </div>
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Emits a real-time status message into the run log. Supports <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Payload passes through unchanged.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "calculate_pricing" && (
+          <>
+            <PayloadField label="Document ID" value={(node.data.documentId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, documentId: v })} placeholder="{{documentId}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Doc Type Override (optional)" value={(node.data.docType as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docType: v })} placeholder="consolidated_sow" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Parses SOW pricing from the document's HTML and writes <span className="font-mono text-[#7D8590]">sowPricingLines</span> + <span className="font-mono text-[#7D8590]">sowTotalPrice</span> back to the DB. Pipe <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span> from an upstream <em>Generate Document</em> node. Outputs: <span className="font-mono text-[#7D8590]">{"{{totalPrice}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{lineCount}}"}</span>.</p>
             </div>
           </>
         )}
