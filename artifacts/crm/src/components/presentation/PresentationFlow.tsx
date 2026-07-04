@@ -988,7 +988,7 @@ export default function PresentationFlow({
               </div>
             </div>
           )}
-          <div key={stepIndex} className={`max-w-4xl mx-auto px-4 sm:px-6 py-6 h-full flex flex-col ${
+          <div key={stepIndex} className={`${currentStep?.kind === "sow" ? "w-full" : "max-w-4xl mx-auto px-4 sm:px-6 py-6"} h-full flex flex-col ${
             isExiting
               ? (directionRef.current === "forward" ? "animate-slide-out-left" : "animate-slide-out-right")
               : stepReady
