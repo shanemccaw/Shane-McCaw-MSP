@@ -60,7 +60,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1655,6 +1655,14 @@ INSTRUCTIONS:
 
           const rawHtmlContent = extractAiHtml(aiResponse);
           const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
+
+          // Validate pricing consistency before patching so the AI's original
+          // Grand Total value is compared against the arithmetic sum.
+          const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, rawHtmlContent);
+          if (!sowValidation.ok) {
+            logger.warn({ docId, issues: sowValidation.issues }, "consolidated_sow: pricing validation warnings");
+          }
+
           const htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
           const engagementStart = nextBusinessMonday();
           const sowLines = [
@@ -1871,6 +1879,14 @@ INSTRUCTIONS:
         let sowTotal2: number;
         if (isSowType) {
           const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
+
+          // Validate pricing consistency before patching so the AI's original
+          // Grand Total value is compared against the arithmetic sum.
+          const sowValidation2 = validateSowPricing(ws2, adj2, rawHtmlContent2);
+          if (!sowValidation2.ok) {
+            logger.warn({ consultingDocId, issues: sowValidation2.issues }, "consulting: pricing validation warnings");
+          }
+
           htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
           const engagementStart2 = nextBusinessMonday();
           sowLines2 = [

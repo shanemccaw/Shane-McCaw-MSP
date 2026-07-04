@@ -399,6 +399,128 @@ export function parseSowAllPricing(html: string): {
   return { workstreamLines, adjustmentLines, computedTotal };
 }
 
+// ---------------------------------------------------------------------------
+// Pricing validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Workstream → permitted adjustment patterns.
+ *
+ * This mirrors the WORKSTREAM_ADJ_MAP used in portal.ts `deriveEffectiveSowData`.
+ * Any change to the permitted set MUST be applied in both places.
+ *
+ * Keys:
+ *   ws      — regex that matches the workstream phase title
+ *   allowed — regexes that match permitted adjustment titles for that workstream
+ */
+const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
+  { ws: /governance/i,           allowed: [/complexity/i, /timeline/i] },
+  { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /complexity/i, /data[\s-]?sprawl/i, /security|compliance/i, /timeline/i] },
+  { ws: /dlp|data[\s-]?prot/i,   allowed: [/data[\s-]?sprawl/i, /complexity/i, /security|compliance/i, /timeline/i] },
+  { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i, /data[\s-]?sprawl/i, /complexity/i, /timeline/i] },
+  { ws: /licens/i,               allowed: [/tenant[\s-]?size/i, /complexity/i, /timeline/i] },
+];
+
+export interface SowValidationResult {
+  ok: boolean;
+  /** Human-readable description of each violation found. Empty when ok === true. */
+  issues: string[];
+}
+
+/**
+ * Validate parsed SOW pricing data for three categories of issue:
+ *
+ *   1. **Duplicate adjustments** — the same adjustment title appearing more than
+ *      once causes double-counting of that factor's dollar amount.
+ *
+ *   2. **Grand-total arithmetic** — the Grand Total displayed in the raw HTML
+ *      must equal workstreamSum + adjustmentSum within $1 rounding tolerance.
+ *      Pass `rawHtml` BEFORE `patchSowGrandTotal()` is applied so the AI's
+ *      original value is compared rather than the already-corrected value.
+ *
+ *   3. **Unpermitted adjustments** — each adjustment must be in the allowed set
+ *      for at least one of the workstreams present in the SOW.  When no
+ *      workstream title matches any canonical pattern the check is skipped so
+ *      that an unrecognised engagement type never blocks generation.
+ *
+ * This function is intentionally non-blocking — callers should log the issues
+ * but continue with persistence so that a rule change doesn't break in-flight
+ * engagements.
+ */
+export function validateSowPricing(
+  workstreamLines: SowPricingLine[],
+  adjustmentLines: SowPricingLine[],
+  rawHtml: string,
+): SowValidationResult {
+  const issues: string[] = [];
+
+  // ── 1. Duplicate adjustment titles ──────────────────────────────────────────
+  const titleCount = new Map<string, number>();
+  for (const line of adjustmentLines) {
+    const key = line.title.toLowerCase().trim();
+    titleCount.set(key, (titleCount.get(key) ?? 0) + 1);
+  }
+  for (const [key, count] of titleCount) {
+    if (count > 1) {
+      const priceEach = adjustmentLines.find(l => l.title.toLowerCase().trim() === key)?.priceUsd ?? 0;
+      issues.push(
+        `Duplicate adjustment "${key}" appears ${count} times — over-counts by $${((count - 1) * priceEach).toLocaleString("en-US")}`,
+      );
+    }
+  }
+
+  // ── 2. Grand-total arithmetic ────────────────────────────────────────────────
+  const workstreamSum = workstreamLines.reduce((s, l) => s + l.priceUsd, 0);
+  const adjustmentSum = adjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
+  const computedTotal = workstreamSum + adjustmentSum;
+
+  if (computedTotal > 0) {
+    // Extract the first "Grand Total" dollar figure from the raw HTML text.
+    const plainText = rawHtml.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    const gtMatch = plainText.match(/grand\s+total[\s\S]{0,80}?\$([0-9,]+(?:\.\d{2})?)/i);
+    if (gtMatch) {
+      const displayedTotal = parseFloat(gtMatch[1].replace(/,/g, ""));
+      if (!isNaN(displayedTotal) && Math.abs(displayedTotal - computedTotal) > 1) {
+        issues.push(
+          `Grand Total arithmetic mismatch: HTML shows $${displayedTotal.toLocaleString("en-US")} but ` +
+          `workstreams ($${workstreamSum.toLocaleString("en-US")}) + adjustments ($${adjustmentSum.toLocaleString("en-US")}) = ` +
+          `$${computedTotal.toLocaleString("en-US")}`,
+        );
+      }
+    }
+  }
+
+  // ── 3. Unpermitted adjustments ───────────────────────────────────────────────
+  if (workstreamLines.length > 0 && adjustmentLines.length > 0) {
+    const workstreamTitles = workstreamLines.map(l => l.title);
+    const allowedPatterns: RegExp[] = [];
+    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+      if (workstreamTitles.some(t => ws.test(t))) {
+        allowedPatterns.push(...allowed);
+      }
+    }
+
+    // Only enforce when at least one workstream matched a canonical pattern.
+    if (allowedPatterns.length > 0) {
+      // Check each unique adjustment title (duplicates already reported above).
+      const seen = new Set<string>();
+      for (const line of adjustmentLines) {
+        const key = line.title.toLowerCase().trim();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        if (!allowedPatterns.some(p => p.test(line.title))) {
+          issues.push(
+            `Unpermitted adjustment "${line.title}" ($${line.priceUsd.toLocaleString("en-US")}) ` +
+            `is not in the allowed set for workstreams: [${workstreamTitles.join(", ")}]`,
+          );
+        }
+      }
+    }
+  }
+
+  return { ok: issues.length === 0, issues };
+}
+
 /**
  * Find every "Grand Total" row in a SOW HTML document and overwrite its
  * rightmost dollar amount with `correctTotal`.
