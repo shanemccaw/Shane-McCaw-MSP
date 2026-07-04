@@ -8,6 +8,7 @@ import PaymentOptionsPanel from "./PaymentOptionsPanel";
 import PayTodayBanner from "./PayTodayBanner";
 import type { OfferState } from "./PayTodayBanner";
 import AnimatedBackground from "../quickwin/AnimatedBackground";
+import CopilotAura from "../wizard/CopilotAura";
 import { computeOverviewStats } from "@/lib/doc-stat-extractors";
 
 interface PresentationDoc {
@@ -1511,47 +1512,45 @@ export default function PresentationFlow({
 
             {/* SOW selector */}
             {currentStep?.kind === "sow" && !hasSowDocument && (
-              <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center bg-[#060E1A]">
-                {/* Screen-edge aurora glow */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
-                  <div style={{ position: "absolute", inset: 0, top: 0, left: 0, right: 0, height: "clamp(80px,18%,180px)", background: "linear-gradient(to bottom,rgba(0,120,212,0.38) 0%,rgba(0,120,212,0.12) 50%,transparent 100%)" }} />
-                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "clamp(60px,14%,140px)", background: "linear-gradient(to top,rgba(123,127,245,0.28) 0%,rgba(123,127,245,0.08) 50%,transparent 100%)" }} />
-                  <div style={{ position: "absolute", inset: "0 auto 0 0", width: "clamp(40px,8%,120px)", background: "linear-gradient(to right,rgba(0,180,216,0.24) 0%,transparent 100%)" }} />
-                  <div style={{ position: "absolute", inset: "0 0 0 auto", width: "clamp(40px,8%,120px)", background: "linear-gradient(to left,rgba(0,120,212,0.20) 0%,transparent 100%)" }} />
+              <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(248,249,251)" }}>
+                {/* Torus knot — same pattern as FullScreenWrapper / diagnostic */}
+                <div className="fixed inset-0 -z-10 pointer-events-none">
+                  <AnimatedBackground />
                 </div>
 
-                {/* Centered frosted-glass card */}
-                <div className="relative px-6 py-8 w-full max-w-sm mx-auto text-center" style={{ zIndex: 2 }}>
-                  {/* Animated beacon */}
+                {/* Screen-edge Copilot Aura */}
+                <CopilotAura />
+
+                {/* Centered card — matches diagnostic light aesthetic */}
+                <div className="relative z-10 px-6 py-8 w-full max-w-sm mx-auto text-center">
+                  {/* Animated "preparing" badge */}
                   <div className="flex justify-center mb-6">
-                    <span className="relative flex h-4 w-4">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0078D4] opacity-40" />
-                      <span className="relative inline-flex rounded-full h-4 w-4 bg-[#0078D4]/70" />
-                    </span>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] text-[11px] font-bold" style={{ backdropFilter: "blur(8px)" }}>
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
+                      PROPOSAL IN PROGRESS
+                    </div>
                   </div>
 
                   {/* Card */}
                   <div
-                    className="rounded-2xl px-7 py-8 border border-white/10 shadow-2xl"
-                    style={{ background: "rgba(10,20,40,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
+                    className="rounded-2xl px-7 py-8 border border-black/5 shadow-xl"
+                    style={{ background: "rgba(255,255,255,0.80)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
                   >
-                    <div className="w-8 h-0.5 bg-[#0078D4] mx-auto mb-5 rounded-full" />
-
                     {data.clientName && (
-                      <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-widest mb-2">
+                      <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-widest mb-3">
                         Hi, {data.clientName}
                       </p>
                     )}
 
-                    <h2 className="text-lg font-extrabold text-white leading-snug mb-2">
+                    <h2 className="text-xl font-bold text-[#191c1e] leading-snug mb-2">
                       Your Statement of Work<br />is being prepared
                     </h2>
 
                     {data.projectTitle && (
-                      <p className="text-xs font-semibold text-[#00B4D8] mb-3">{data.projectTitle}</p>
+                      <p className="text-sm font-semibold text-[#0078D4] mb-4">{data.projectTitle}</p>
                     )}
 
-                    <p className="text-xs text-white/55 leading-relaxed mb-5">
+                    <p className="text-sm text-black/50 leading-relaxed mb-6">
                       Shane is crafting a tailored proposal for your project. You'll receive an email the moment it's ready to review.
                     </p>
 
@@ -1560,7 +1559,7 @@ export default function PresentationFlow({
                       {[0, 1, 2].map((i) => (
                         <span
                           key={i}
-                          className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/60 animate-pulse"
+                          className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse"
                           style={{ animationDelay: `${i * 0.3}s` }}
                         />
                       ))}
