@@ -7,9 +7,10 @@ import {
   BarChart2, FileText, Users, Settings, RefreshCw, X, ChevronRight, ChevronDown,
   Download, Send, CheckCircle, Archive, AlertTriangle, Plus, Pencil,
   Trash2, Eye, Zap, Shield, Globe, Cpu, BookOpen, Clock, Play, Loader2, Layers,
-  SlidersHorizontal, Copy, RotateCcw,
+  SlidersHorizontal, Copy, RotateCcw, Search,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { InsightsPayloadDialog, type PayloadPreview } from "@/components/InsightsPayloadDialog";
 
 const API = "/api";
 
@@ -546,6 +547,10 @@ function DocumentsTab({
   const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
   const [promptDialogKey,  setPromptDialogKey]  = useState<string>("");
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"generate" | "preview">("generate");
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
+  const [payloadLoading, setPayloadLoading] = useState(false);
 
   useEffect(() => {
     if (!dialogCustomerId) { setDialogProjects([]); return; }
@@ -594,14 +599,34 @@ function DocumentsTab({
     });
   }, [docs, fetchWithAuth, loadDocs]);
 
-  const openWizard = (type: string) => {
+  const openWizard = (type: string, mode: "generate" | "preview" = "generate") => {
     const t = REPORT_TYPES.find(r => r.key === type);
     setWizardType(type);
     setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
     setWizardStep("confirm"); setError(null);
     setDialogCustomerId(customerId);
     setDialogProjectId(projectId);
+    setWizardMode(mode);
     setWizardOpen(true);
+  };
+
+  const previewPayload = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    setPayloadLoading(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/payload-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: dialogCustomerId, projectId: dialogProjectId, docType: wizardType, title: wizardTitle }),
+      });
+      const d = await r.json() as PayloadPreview & { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Failed to fetch payload");
+      setPayloadData(d);
+      setWizardOpen(false);
+      setPayloadOpen(true);
+    } catch (e) {
+      toast({ title: "Payload preview failed", description: String(e), variant: "destructive" });
+    } finally { setPayloadLoading(false); }
   };
 
   const generate = async () => {
@@ -732,11 +757,20 @@ function DocumentsTab({
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="flex items-center justify-between mt-auto">
-                  {count > 0 && <span className="text-xs text-gray-500">{count} generated</span>}
-                  <button onClick={() => openWizard(rt.key)} className="ml-auto flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
-                    <Plus className="w-3 h-3" /> Generate
-                  </button>
+                <div className="flex items-center justify-between mt-auto gap-2">
+                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} generated</span>}
+                  <div className="flex gap-1.5 ml-auto">
+                    <button
+                      onClick={() => openWizard(rt.key, "preview")}
+                      title="Preview the AI payload before generating"
+                      className="flex items-center gap-1 text-gray-400 hover:text-blue-300 border border-gray-600/50 hover:border-blue-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Search className="w-3 h-3" /> View Payload
+                    </button>
+                    <button onClick={() => openWizard(rt.key)} className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                      <Plus className="w-3 h-3" /> Generate
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -867,7 +901,16 @@ function DocumentsTab({
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">Cancel</button>
-              <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 transition-colors">Generate Report</button>
+              <button
+                onClick={() => void previewPayload()}
+                disabled={payloadLoading || !wizardTitle.trim() || !dialogCustomerId || !dialogProjectId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-gray-600 hover:border-blue-500/60 text-gray-300 hover:text-blue-300 disabled:opacity-40 transition-colors"
+              >
+                {payloadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</> : <><Search className="w-3.5 h-3.5" /> Preview Payload</>}
+              </button>
+              {wizardMode === "generate" && (
+                <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium disabled:opacity-40 transition-colors">Generate Report</button>
+              )}
             </div>
           </div>
         )}
@@ -904,6 +947,15 @@ function DocumentsTab({
           <iframe srcDoc={selectedDoc.htmlContent} className="w-full h-full min-h-[600px] rounded-lg" sandbox="allow-same-origin" title="Full Preview" />
         )}
       </SlideOver>
+
+      {payloadData && (
+        <InsightsPayloadDialog
+          open={payloadOpen}
+          onClose={() => setPayloadOpen(false)}
+          payload={payloadData}
+          docTypeLabel={REPORT_TYPES.find(r => r.key === wizardType)?.label ?? wizardType}
+        />
+      )}
 
       <Modal open={sendOpen} onClose={() => setSendOpen(false)} title="Send to Client">
         <div className="flex flex-col gap-4">
@@ -965,6 +1017,10 @@ function ConsultingTab({
   const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
   const [promptDialogKey,  setPromptDialogKey]  = useState<string>("");
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [wizardMode, setWizardMode] = useState<"generate" | "preview">("generate");
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
+  const [payloadLoading, setPayloadLoading] = useState(false);
 
   useEffect(() => {
     if (!dialogCustomerId) { setDialogProjects([]); return; }
@@ -1012,14 +1068,34 @@ function ConsultingTab({
     });
   }, [docs, fetchWithAuth, loadDocs]);
 
-  const openWizard = (type: string) => {
+  const openWizard = (type: string, mode: "generate" | "preview" = "generate") => {
     const t = CONSULTING_TYPES.find(c => c.key === type);
     setWizardType(type);
     setWizardTitle(`${t?.label ?? type} — ${new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}`);
     setWizardStep("confirm"); setError(null);
     setDialogCustomerId(customerId);
     setDialogProjectId(projectId);
+    setWizardMode(mode);
     setWizardOpen(true);
+  };
+
+  const previewPayload = async () => {
+    if (!dialogCustomerId || !dialogProjectId) return;
+    setPayloadLoading(true); setError(null);
+    try {
+      const r = await fetchWithAuth(`${API}/admin/insights/consulting/payload-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: dialogCustomerId, projectId: dialogProjectId, deliverableType: wizardType, title: wizardTitle }),
+      });
+      const d = await r.json() as PayloadPreview & { error?: string };
+      if (!r.ok) throw new Error(d.error ?? "Failed to fetch payload");
+      setPayloadData(d);
+      setWizardOpen(false);
+      setPayloadOpen(true);
+    } catch (e) {
+      toast({ title: "Payload preview failed", description: String(e), variant: "destructive" });
+    } finally { setPayloadLoading(false); }
   };
 
   const generate = async () => {
@@ -1131,11 +1207,20 @@ function ConsultingTab({
                     <SlidersHorizontal className="w-3.5 h-3.5" />
                   </button>
                 </div>
-                <div className="flex items-center justify-between">
-                  {count > 0 && <span className="text-xs text-gray-500">{count} staged</span>}
-                  <button onClick={() => openWizard(ct.key)} className="ml-auto flex items-center gap-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
-                    <Plus className="w-3 h-3" /> Generate
-                  </button>
+                <div className="flex items-center justify-between gap-2">
+                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} staged</span>}
+                  <div className="flex gap-1.5 ml-auto">
+                    <button
+                      onClick={() => openWizard(ct.key, "preview")}
+                      title="Preview the AI payload before generating"
+                      className="flex items-center gap-1 text-gray-400 hover:text-purple-300 border border-gray-600/50 hover:border-purple-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                    >
+                      <Search className="w-3 h-3" /> View Payload
+                    </button>
+                    <button onClick={() => openWizard(ct.key)} className="flex items-center gap-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                      <Plus className="w-3 h-3" /> Generate
+                    </button>
+                  </div>
                 </div>
               </div>
             );
@@ -1262,7 +1347,16 @@ function ConsultingTab({
             </div>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setWizardOpen(false)} className="px-4 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-700">Cancel</button>
-              <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-purple-700 hover:bg-purple-600 text-white font-medium disabled:opacity-40">Generate</button>
+              <button
+                onClick={() => void previewPayload()}
+                disabled={payloadLoading || !wizardTitle.trim() || !dialogCustomerId || !dialogProjectId}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm border border-gray-600 hover:border-purple-500/60 text-gray-300 hover:text-purple-300 disabled:opacity-40 transition-colors"
+              >
+                {payloadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</> : <><Search className="w-3.5 h-3.5" /> Preview Payload</>}
+              </button>
+              {wizardMode === "generate" && (
+                <button onClick={() => void generate()} disabled={!wizardTitle.trim() || !dialogCustomerId || !dialogProjectId} className="px-4 py-2 rounded-lg text-sm bg-purple-700 hover:bg-purple-600 text-white font-medium disabled:opacity-40">Generate</button>
+              )}
             </div>
           </div>
         )}
@@ -1319,6 +1413,15 @@ function ConsultingTab({
         promptKey={promptDialogKey}
         fetchWithAuth={fetchWithAuth}
       />
+
+      {payloadData && (
+        <InsightsPayloadDialog
+          open={payloadOpen}
+          onClose={() => setPayloadOpen(false)}
+          payload={payloadData}
+          docTypeLabel={CONSULTING_TYPES.find(c => c.key === wizardType)?.label ?? wizardType}
+        />
+      )}
     </div>
   );
 }

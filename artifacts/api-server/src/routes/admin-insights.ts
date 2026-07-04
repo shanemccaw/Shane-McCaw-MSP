@@ -1050,6 +1050,78 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
   }
 });
 
+// ── POST /api/admin/insights/documents/payload-preview ────────────────────────
+// Returns the assembled Claude payload (data + substituted prompt) for a report
+// document without actually calling the AI. Read-only — no DB writes.
+
+router.post("/admin/insights/documents/payload-preview", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = generateDocSchema.safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
+    const { customerId, projectId, docType, title } = body.data;
+
+    const [runs, customer, project] = await Promise.all([
+      fetchRunsForCustomer(customerId, projectId, 50),
+      customerId
+        ? db.select({ name: usersTable.name, company: usersTable.company })
+            .from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
+        : Promise.resolve([]),
+      projectId
+        ? db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    const healthScores = customerId ? await fetchClientHealthScores(customerId) : null;
+    const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+    const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
+    const clientName  = (customer as { company: string | null; name: string | null }[])[0]?.company
+      ?? (customer as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
+    const projectName = (project as { title: string }[])[0]?.title ?? "";
+    const docLabel    = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
+
+    const profileSamplePairs = (runs as { profileUpdates: Record<string, unknown> }[])
+      .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
+      .slice(0, 30);
+    const profileSample = profileSamplePairs.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n");
+
+    const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
+    const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
+    const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
+
+    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+    const assembledPrompt = substituteTokens(rawReportTemplate, {
+      docLabel,
+      clientName,
+      projectLine: projectName ? ` · Project: ${projectName}` : "",
+      title,
+      date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      scores: scoresBlock,
+      findingsCount: String(findings.length),
+      findings: findingsBlock,
+      recommendationsCount: String(recommendations.length),
+      recommendations: recommendationsBlock,
+      profileSample: profileSample || "  No telemetry captured yet.",
+      runCount: String(runs.length),
+    });
+
+    const stylePrefix = await getDocumentStylePrefix();
+
+    return res.json({
+      model: "claude-haiku-4-5",
+      maxTokens: 16000,
+      stylePrefix: stylePrefix.trim(),
+      assembledPrompt,
+      scores,
+      findings: findings.slice(0, 15),
+      recommendations: recommendations.slice(0, 10),
+      profileSample: profileSamplePairs.map(([k, v]) => [k, String(v)]),
+    });
+  } catch (err) {
+    logger.error({ err }, "insights document payload-preview error");
+    return res.status(500).json({ error: "Failed to assemble payload preview" });
+  }
+});
+
 // ── PUT /api/admin/insights/documents/:id ─────────────────────────────────────
 
 const updateDocSchema = z.object({
@@ -1835,6 +1907,228 @@ INSTRUCTIONS:
   } catch (err) {
     logger.error({ err }, "insights consulting generate error");
     return res.status(500).json({ error: "Failed to generate consulting deliverable" });
+  }
+});
+
+// ── POST /api/admin/insights/consulting/payload-preview ───────────────────────
+// Returns the assembled Claude payload for a consulting deliverable without
+// actually calling the AI. Read-only — no DB writes.
+
+router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = generateConsultingSchema.safeParse(req.body);
+    if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
+    const { customerId, projectId, deliverableType, title } = body.data;
+
+    // ── Special path: Consolidated SOW ──────────────────────────────────────────
+    if (deliverableType === "consolidated_sow") {
+      const stripHtml = (html: string) =>
+        html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 1800);
+
+      const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
+        customerId
+          ? db.select({ id: insightsGeneratedDocumentsTable.id, title: insightsGeneratedDocumentsTable.title, docType: insightsGeneratedDocumentsTable.docType, category: insightsGeneratedDocumentsTable.category, htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+              .from(insightsGeneratedDocumentsTable)
+              .where(and(eq(insightsGeneratedDocumentsTable.customerId, customerId), notInArray(insightsGeneratedDocumentsTable.docType, ["sow", "consolidated_sow"])))
+              .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          : Promise.resolve([] as { id: number; title: string; docType: string; category: string; htmlContent: string }[]),
+        db.select({ title: engagementProjectsTable.title, priceRange: engagementProjectsTable.priceRange, description: engagementProjectsTable.description, sowItems: engagementProjectsTable.sowItems })
+          .from(engagementProjectsTable).where(eq(engagementProjectsTable.isVisible, true)).orderBy(engagementProjectsTable.sortOrder),
+        customerId
+          ? db.select({ name: usersTable.name, company: usersTable.company }).from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
+          : Promise.resolve([] as { name: string | null; company: string | null }[]),
+        customerId
+          ? db.select({ profile: clientM365ProfilesTable.profile }).from(clientM365ProfilesTable).where(eq(clientM365ProfilesTable.clientId, customerId)).limit(1)
+          : Promise.resolve([] as { profile: Record<string, unknown> | null }[]),
+        customerId
+          ? db.select({ scriptName: scriptRunResultsTable.scriptName, parsedFindings: scriptRunResultsTable.parsedFindings, recommendations: scriptRunResultsTable.recommendations, profileUpdates: scriptRunResultsTable.profileUpdates, scoreImpact: scriptRunResultsTable.scoreImpact, createdAt: scriptRunResultsTable.createdAt })
+              .from(scriptRunResultsTable).where(and(eq(scriptRunResultsTable.customerId, customerId), eq(scriptRunResultsTable.status, "completed"))).orderBy(desc(scriptRunResultsTable.createdAt)).limit(50)
+          : Promise.resolve([] as { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null; scoreImpact: Record<string, unknown> | null; createdAt: Date }[]),
+        customerId
+          ? db.select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score }).from(clientHealthHistoryTable).where(eq(clientHealthHistoryTable.clientId, customerId)).orderBy(desc(clientHealthHistoryTable.recordedAt)).limit(50)
+          : Promise.resolve([] as { category: string; score: number }[]),
+      ]);
+
+      const clientName = (customerRow as { company: string | null; name: string | null }[])[0]?.company ?? (customerRow as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
+
+      const docsBlock = existingDocs.length > 0
+        ? existingDocs.map((d, i) => `[Document ${i + 1}] ${d.title} (${d.docType})\n${stripHtml(d.htmlContent)}`).join("\n\n---\n\n")
+        : "No prior documents found for this client.";
+
+      const projectsBlock = engagementProjects.length > 0
+        ? engagementProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
+        : "No engagement project pricing configured.";
+
+      const telemetryLines: string[] = [];
+      const profile = (m365ProfileRow as { profile: Record<string, unknown> | null }[])[0]?.profile;
+      if (profile && Object.keys(profile).length > 0) {
+        telemetryLines.push("M365 HEALTH PROFILE FLAGS:");
+        for (const [k, v] of Object.entries(profile)) telemetryLines.push(`  ${k}: ${String(v)}`);
+      }
+
+      type RunRow = { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null };
+      const typedRuns = scriptRuns as RunRow[];
+      const allFindings = [...new Set(typedRuns.flatMap(r => r.parsedFindings ?? []))].slice(0, 40);
+      const allRecs     = [...new Set(typedRuns.flatMap(r => r.recommendations ?? []))].slice(0, 30);
+
+      if (allFindings.length > 0) { telemetryLines.push(`\nSCRIPT FINDINGS (${typedRuns.length} run${typedRuns.length === 1 ? "" : "s"}):`); for (const f of allFindings) telemetryLines.push(`  • ${f}`); }
+      if (allRecs.length > 0) { telemetryLines.push("\nRECOMMENDATIONS FROM SCRIPTS:"); for (const r of allRecs) telemetryLines.push(`  • ${r}`); }
+
+      const mergedSowProfile: Record<string, unknown> = {};
+      for (const run of [...typedRuns].reverse()) Object.assign(mergedSowProfile, run.profileUpdates ?? {});
+      if (Object.keys(mergedSowProfile).length > 0) {
+        telemetryLines.push("\nCONFIGURATION TELEMETRY (from script runs):");
+        for (const [k, v] of Object.entries(mergedSowProfile)) telemetryLines.push(`  ${k}: ${String(v)}`);
+      }
+      const tenantTelemetryBlock = telemetryLines.length > 0 ? telemetryLines.join("\n") : "No tenant telemetry collected yet.";
+
+      const sp = mergedSowProfile;
+      const sowTenantFacts = [
+        `Total Users in Tenant:       ${sp.totalUserCount ?? "unknown"}`,
+        `Licensed Users:              ${sp.licensedUserCount ?? "unknown"}`,
+        `Active User Percent:         ${sp.activeUserPercent ?? "unknown"}%`,
+        `SharePoint Sites:            ${sp.sharepointSiteCount ?? "unknown"}`,
+        `Microsoft 365 Groups:        ${sp.m365GroupCount ?? "unknown"}`,
+        `Teams Count:                 ${sp.teamCount ?? sp.teamsCount ?? "unknown"}`,
+        `Guest Users:                 ${sp.guestUserCount ?? "unknown"}`,
+        `External Sharing Enabled:    ${sp.externalSharingEnabled ?? "unknown"}`,
+        `DLP Policies:                ${sp.dlpPoliciesCount ?? (sp.hasDLP === false ? 0 : "unknown")}`,
+        `Sensitivity Labels:          ${sp.sensitivityLabelsConfigured === false ? "None configured" : (sp.sensitivityLabelsConfigured ?? "unknown")}`,
+        `Conditional Access Policies: ${sp.conditionalAccessPolicyCount ?? sp.conditionalAccessPoliciesCount ?? (sp.conditionalAccessEnabled === false ? 0 : "unknown")}`,
+        `Copilot Licenses:            ${sp.copilotLicenseCount ?? (sp.hasCopilotLicenses === false ? 0 : "unknown")}`,
+        `MFA Enforced:                ${sp.mfaEnforced ?? "unknown"}`,
+      ].join("\n");
+
+      const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}`;
+      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW);
+      const assembledPrompt = rawTemplate
+        .replace(/\{\{clientName\}\}/g, clientName).replace(/\{\{title\}\}/g, title)
+        .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
+        .replace(/\{\{existingDocs\}\}/g, docsBlock).replace(/\{\{engagementProjects\}\}/g, projectsBlock)
+        .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
+        + `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+
+      const stylePrefix = await getDocumentStylePrefix();
+      const healthHistoryRows = scoresRow as { category: string; score: number }[];
+      const latestScores: Record<string, number> = {};
+      for (const row of healthHistoryRows) { if (!(row.category in latestScores)) latestScores[row.category] = row.score; }
+
+      return res.json({
+        model: "claude-haiku-4-5",
+        maxTokens: 16000,
+        stylePrefix: stylePrefix.trim(),
+        assembledPrompt,
+        scores: {
+          security: latestScores["security"] ?? 0, compliance: latestScores["compliance"] ?? 0,
+          copilot: latestScores["copilot"] ?? 0, governance: latestScores["governance"] ?? 0,
+          productivity: latestScores["productivity"] ?? 0,
+          composite: Object.values(latestScores).length > 0 ? Math.round(Object.values(latestScores).reduce((a, b) => a + b, 0) / Object.values(latestScores).length) : 0,
+        },
+        findings: allFindings.slice(0, 15),
+        recommendations: allRecs.slice(0, 10),
+        profileSample: Object.entries(mergedSowProfile).slice(0, 30).map(([k, v]) => [k, String(v)]),
+        tenantFacts: sowTenantFacts,
+        pricingFormula: TIER_02_PRICING_FORMULA_BLOCK,
+      });
+    }
+    // ── End Consolidated SOW ─────────────────────────────────────────────────────
+
+    const [runs, customer, project] = await Promise.all([
+      fetchRunsForCustomer(customerId, projectId, 50),
+      customerId
+        ? db.select({ name: usersTable.name, company: usersTable.company }).from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
+        : Promise.resolve([]),
+      projectId
+        ? db.select({ title: projectsTable.title, phase: projectsTable.phase, description: projectsTable.description }).from(projectsTable).where(eq(projectsTable.id, projectId)).limit(1)
+        : Promise.resolve([]),
+    ]);
+
+    const healthScores = customerId ? await fetchClientHealthScores(customerId) : null;
+    const scores = healthScores ?? computeScoresFromRuns(runs as { scoreImpact: Record<string, number> }[]);
+    const { findings, recommendations } = collectFindings(runs as { parsedFindings: string[]; recommendations: string[] }[]);
+    const clientName = (customer as { company: string | null; name: string | null }[])[0]?.company ?? (customer as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
+    const projRow = (project as { title: string; phase: string | null; description: string | null }[])[0];
+    const projectDesc = projRow ? `Project: ${projRow.title}${projRow.phase ? ` (${projRow.phase})` : ""}${projRow.description ? ` — ${projRow.description}` : ""}` : "";
+
+    const profileSamplePairs = (runs as { profileUpdates: Record<string, unknown> }[])
+      .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
+      .slice(0, 30);
+    const profileSample = profileSamplePairs.map(([k, v]) => `  ${k}: ${String(v)}`).join("\n");
+
+    const sectionHintsConsulting: Record<string, string> = {
+      sow: "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Pricing (see Tier 02 formula below), Acceptance Criteria, Terms & Conditions",
+      remediation_plan: "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
+      deployment_plan: "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
+      governance_framework: "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process",
+      security_hardening_plan: "Include: Threat Assessment, Identity & Access Hardening, Conditional Access Policy Design, Privileged Access Workstations, Defender Configuration, Security Monitoring, Incident Response",
+      copilot_enablement_plan: "Include: Readiness Assessment, License & Entitlement Review, Data Governance Pre-work, Pilot Group Selection, Training Plan, Success Metrics, Rollout Phases, Adoption Strategy",
+      identity_modernization_plan: "Include: Current Identity State, Entra ID Configuration, MFA Enforcement, Privileged Identity Management, External Identities, B2B/B2C Strategy, Migration Roadmap, Legacy System Decommission",
+      copilot_readiness: "Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness, Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)",
+      task_execution_guide: "Include: Task overview, Step-by-step execution instructions per task, Pre-conditions, Success criteria, Rollback steps",
+    };
+
+    const typeLabel = CONSULTING_TYPE_LABELS[deliverableType] ?? deliverableType;
+    const scoresBlock = `- Security: ${scores.security}/100\n- Compliance: ${scores.compliance}/100\n- Copilot: ${scores.copilot}/100\n- Governance: ${scores.governance}/100\n- Productivity: ${scores.productivity}/100\n- Composite: ${scores.composite}/100`;
+    const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+    const recommendationsInline = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
+
+    const isSowType = deliverableType === "sow";
+    const priorDocs = (customerId && projectId)
+      ? await db.select({ title: insightsGeneratedDocumentsTable.title, docType: insightsGeneratedDocumentsTable.docType, htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+          .from(insightsGeneratedDocumentsTable)
+          .where(and(eq(insightsGeneratedDocumentsTable.customerId, customerId), eq(insightsGeneratedDocumentsTable.projectId, projectId), ne(insightsGeneratedDocumentsTable.docType, deliverableType)))
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+      : [];
+
+    const stripHtmlText = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 400);
+    const priorDocsSummary = priorDocs.length > 0
+      ? `PRIOR DOCUMENTS FOR THIS CLIENT:\n${priorDocs.map(d => `[${d.title} (${d.docType})]: ${stripHtmlText(d.htmlContent)}`).join("\n\n")}\n\n`
+      : "";
+
+    let pricingAppendix = "";
+    if (isSowType) {
+      const engProjects = await db.select({ title: engagementProjectsTable.title, priceRange: engagementProjectsTable.priceRange, description: engagementProjectsTable.description, sowItems: engagementProjectsTable.sowItems })
+        .from(engagementProjectsTable).where(eq(engagementProjectsTable.isVisible, true)).orderBy(engagementProjectsTable.sortOrder);
+      const catalogueBlock = engProjects.length > 0
+        ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
+        : "No engagement project pricing configured.";
+      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+    }
+
+    const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
+      sectionHints: sectionHintsConsulting[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
+    });
+    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback);
+    let assembledPrompt = substituteTokens(rawConsultingTemplate, {
+      typeLabel, clientName,
+      projectDesc: projectDesc ? projectDesc + "\n" : "",
+      title,
+      date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      scores: scoresBlock, findings: findingsInline, recommendations: recommendationsInline,
+      profileSample: profileSample || "  No telemetry captured yet.",
+      sectionHints: sectionHintsConsulting[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
+      priorDocsSummary,
+    });
+    if (pricingAppendix) assembledPrompt += pricingAppendix;
+
+    const stylePrefix = await getDocumentStylePrefix();
+
+    const result: Record<string, unknown> = {
+      model: "claude-haiku-4-5",
+      maxTokens: 16000,
+      stylePrefix: stylePrefix.trim(),
+      assembledPrompt,
+      scores,
+      findings: findings.slice(0, 15),
+      recommendations: recommendations.slice(0, 10),
+      profileSample: profileSamplePairs.map(([k, v]) => [k, String(v)]),
+    };
+    if (isSowType) result["pricingFormula"] = TIER_02_PRICING_FORMULA_BLOCK;
+
+    return res.json(result);
+  } catch (err) {
+    logger.error({ err }, "insights consulting payload-preview error");
+    return res.status(500).json({ error: "Failed to assemble consulting payload preview" });
   }
 });
 

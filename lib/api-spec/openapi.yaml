@@ -16,6 +16,8 @@ tags:
     description: Lead management operations
   - name: services
     description: Public service catalog operations
+  - name: insights
+    description: Insights document generation operations
 paths:
   /healthz:
     get:
@@ -1099,8 +1101,152 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/insights/documents/payload-preview:
+    post:
+      operationId: insightsDocumentsPayloadPreview
+      tags: [insights]
+      summary: Preview assembled AI payload for a report document (read-only)
+      description: Assembles the full Claude prompt and gathers all associated data for the given document type without generating a document or calling the AI API. Returns the exact model settings, style prefix, prompt, and supporting data that would be sent to Claude.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsPayloadPreviewInput"
+      responses:
+        "200":
+          description: Assembled payload returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsPayloadPreviewResponse"
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error assembling payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/insights/consulting/payload-preview:
+    post:
+      operationId: insightsConsultingPayloadPreview
+      tags: [insights]
+      summary: Preview assembled AI payload for a consulting deliverable (read-only)
+      description: Assembles the full Claude prompt and gathers all associated data for the given consulting deliverable type without generating a document or calling the AI API. SOW types include additional tenantFacts and pricingFormula fields.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsConsultingPayloadPreviewInput"
+      responses:
+        "200":
+          description: Assembled payload returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsPayloadPreviewResponse"
+        "400":
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error assembling payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
+    InsightsPayloadPreviewInput:
+      type: object
+      required: [customerId, projectId, docType, title]
+      properties:
+        customerId:
+          type: integer
+        projectId:
+          type: integer
+        docType:
+          type: string
+        title:
+          type: string
+
+    InsightsConsultingPayloadPreviewInput:
+      type: object
+      required: [customerId, projectId, deliverableType, title]
+      properties:
+        customerId:
+          type: integer
+        projectId:
+          type: integer
+        deliverableType:
+          type: string
+        title:
+          type: string
+
+    InsightsPayloadScores:
+      type: object
+      required: [security, compliance, copilot, governance, productivity, composite]
+      properties:
+        security:
+          type: integer
+        compliance:
+          type: integer
+        copilot:
+          type: integer
+        governance:
+          type: integer
+        productivity:
+          type: integer
+        composite:
+          type: integer
+
+    InsightsPayloadPreviewResponse:
+      type: object
+      required: [model, maxTokens, stylePrefix, assembledPrompt, scores, findings, recommendations, profileSample]
+      properties:
+        model:
+          type: string
+        maxTokens:
+          type: integer
+        stylePrefix:
+          type: string
+        assembledPrompt:
+          type: string
+        scores:
+          $ref: "#/components/schemas/InsightsPayloadScores"
+        findings:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        profileSample:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+        tenantFacts:
+          type: string
+        pricingFormula:
+          type: string
+
     ClientM365ProfileResponse:
       type: object
       required: [profile]

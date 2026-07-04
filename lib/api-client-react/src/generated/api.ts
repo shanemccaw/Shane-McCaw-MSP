@@ -44,6 +44,9 @@ import type {
   HealthStatus,
   IngestedEmail,
   IngestedEmailList,
+  InsightsConsultingPayloadPreviewInput,
+  InsightsPayloadPreviewInput,
+  InsightsPayloadPreviewResponse,
   InstructionSet,
   InstructionSetInput,
   Lead,
@@ -3724,5 +3727,149 @@ export const useDeleteQuizLead = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteQuizLeadMutationOptions(options));
+    }
+
+export const getInsightsDocumentsPayloadPreviewUrl = () => {
+
+
+
+
+  return `/api/admin/insights/documents/payload-preview`
+}
+
+/**
+ * Assembles the full Claude prompt and gathers all associated data for the given document type without generating a document or calling the AI API. Returns the exact model settings, style prefix, prompt, and supporting data that would be sent to Claude.
+ * @summary Preview assembled AI payload for a report document (read-only)
+ */
+export const insightsDocumentsPayloadPreview = async (insightsPayloadPreviewInput: InsightsPayloadPreviewInput, options?: RequestInit): Promise<InsightsPayloadPreviewResponse> => {
+
+  return customFetch<InsightsPayloadPreviewResponse>(getInsightsDocumentsPayloadPreviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      insightsPayloadPreviewInput,)
+  }
+);}
+
+
+
+
+export const getInsightsDocumentsPayloadPreviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>, TError,{data: BodyType<InsightsPayloadPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>, TError,{data: BodyType<InsightsPayloadPreviewInput>}, TContext> => {
+
+const mutationKey = ['insightsDocumentsPayloadPreview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>, {data: BodyType<InsightsPayloadPreviewInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  insightsDocumentsPayloadPreview(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InsightsDocumentsPayloadPreviewMutationResult = NonNullable<Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>>
+    export type InsightsDocumentsPayloadPreviewMutationBody = BodyType<InsightsPayloadPreviewInput>
+    export type InsightsDocumentsPayloadPreviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Preview assembled AI payload for a report document (read-only)
+ */
+export const useInsightsDocumentsPayloadPreview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>, TError,{data: BodyType<InsightsPayloadPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof insightsDocumentsPayloadPreview>>,
+        TError,
+        {data: BodyType<InsightsPayloadPreviewInput>},
+        TContext
+      > => {
+      return useMutation(getInsightsDocumentsPayloadPreviewMutationOptions(options));
+    }
+
+export const getInsightsConsultingPayloadPreviewUrl = () => {
+
+
+
+
+  return `/api/admin/insights/consulting/payload-preview`
+}
+
+/**
+ * Assembles the full Claude prompt and gathers all associated data for the given consulting deliverable type without generating a document or calling the AI API. SOW types include additional tenantFacts and pricingFormula fields.
+ * @summary Preview assembled AI payload for a consulting deliverable (read-only)
+ */
+export const insightsConsultingPayloadPreview = async (insightsConsultingPayloadPreviewInput: InsightsConsultingPayloadPreviewInput, options?: RequestInit): Promise<InsightsPayloadPreviewResponse> => {
+
+  return customFetch<InsightsPayloadPreviewResponse>(getInsightsConsultingPayloadPreviewUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      insightsConsultingPayloadPreviewInput,)
+  }
+);}
+
+
+
+
+export const getInsightsConsultingPayloadPreviewMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>, TError,{data: BodyType<InsightsConsultingPayloadPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>, TError,{data: BodyType<InsightsConsultingPayloadPreviewInput>}, TContext> => {
+
+const mutationKey = ['insightsConsultingPayloadPreview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>, {data: BodyType<InsightsConsultingPayloadPreviewInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  insightsConsultingPayloadPreview(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InsightsConsultingPayloadPreviewMutationResult = NonNullable<Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>>
+    export type InsightsConsultingPayloadPreviewMutationBody = BodyType<InsightsConsultingPayloadPreviewInput>
+    export type InsightsConsultingPayloadPreviewMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Preview assembled AI payload for a consulting deliverable (read-only)
+ */
+export const useInsightsConsultingPayloadPreview = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>, TError,{data: BodyType<InsightsConsultingPayloadPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof insightsConsultingPayloadPreview>>,
+        TError,
+        {data: BodyType<InsightsConsultingPayloadPreviewInput>},
+        TContext
+      > => {
+      return useMutation(getInsightsConsultingPayloadPreviewMutationOptions(options));
     }
 

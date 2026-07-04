@@ -844,3 +844,67 @@ export const DeleteQuizLeadParams = zod.object({
 })
 
 
+/**
+ * Assembles the full Claude prompt and gathers all associated data for the given document type without generating a document or calling the AI API. Returns the exact model settings, style prefix, prompt, and supporting data that would be sent to Claude.
+ * @summary Preview assembled AI payload for a report document (read-only)
+ */
+export const InsightsDocumentsPayloadPreviewBody = zod.object({
+  "customerId": zod.number(),
+  "projectId": zod.number(),
+  "docType": zod.string(),
+  "title": zod.string()
+})
+
+export const InsightsDocumentsPayloadPreviewResponse = zod.object({
+  "model": zod.string(),
+  "maxTokens": zod.number(),
+  "stylePrefix": zod.string(),
+  "assembledPrompt": zod.string(),
+  "scores": zod.object({
+  "security": zod.number(),
+  "compliance": zod.number(),
+  "copilot": zod.number(),
+  "governance": zod.number(),
+  "productivity": zod.number(),
+  "composite": zod.number()
+}),
+  "findings": zod.array(zod.string()),
+  "recommendations": zod.array(zod.string()),
+  "profileSample": zod.array(zod.array(zod.string())),
+  "tenantFacts": zod.string().optional(),
+  "pricingFormula": zod.string().optional()
+})
+
+
+/**
+ * Assembles the full Claude prompt and gathers all associated data for the given consulting deliverable type without generating a document or calling the AI API. SOW types include additional tenantFacts and pricingFormula fields.
+ * @summary Preview assembled AI payload for a consulting deliverable (read-only)
+ */
+export const InsightsConsultingPayloadPreviewBody = zod.object({
+  "customerId": zod.number(),
+  "projectId": zod.number(),
+  "deliverableType": zod.string(),
+  "title": zod.string()
+})
+
+export const InsightsConsultingPayloadPreviewResponse = zod.object({
+  "model": zod.string(),
+  "maxTokens": zod.number(),
+  "stylePrefix": zod.string(),
+  "assembledPrompt": zod.string(),
+  "scores": zod.object({
+  "security": zod.number(),
+  "compliance": zod.number(),
+  "copilot": zod.number(),
+  "governance": zod.number(),
+  "productivity": zod.number(),
+  "composite": zod.number()
+}),
+  "findings": zod.array(zod.string()),
+  "recommendations": zod.array(zod.string()),
+  "profileSample": zod.array(zod.array(zod.string())),
+  "tenantFacts": zod.string().optional(),
+  "pricingFormula": zod.string().optional()
+})
+
+

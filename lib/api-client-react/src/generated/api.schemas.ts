@@ -5,6 +5,42 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface InsightsPayloadPreviewInput {
+  customerId: number;
+  projectId: number;
+  docType: string;
+  title: string;
+}
+
+export interface InsightsConsultingPayloadPreviewInput {
+  customerId: number;
+  projectId: number;
+  deliverableType: string;
+  title: string;
+}
+
+export interface InsightsPayloadScores {
+  security: number;
+  compliance: number;
+  copilot: number;
+  governance: number;
+  productivity: number;
+  composite: number;
+}
+
+export interface InsightsPayloadPreviewResponse {
+  model: string;
+  maxTokens: number;
+  stylePrefix: string;
+  assembledPrompt: string;
+  scores: InsightsPayloadScores;
+  findings: string[];
+  recommendations: string[];
+  profileSample: string[][];
+  tenantFacts?: string;
+  pricingFormula?: string;
+}
+
 export type ClientM365ProfileResponseProfile = { [key: string]: unknown } | null;
 
 export interface ClientM365ProfileResponse {
