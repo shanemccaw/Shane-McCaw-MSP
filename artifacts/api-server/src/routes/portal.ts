@@ -9843,6 +9843,7 @@ async function deriveEffectiveSowData(
     sowPhases: unknown;
     selectedPhaseIds: unknown;
     totalPrice: unknown;
+    projectId?: number | null;
   },
   storedSelectedIds?: string[],
 ): Promise<{
@@ -9865,12 +9866,37 @@ async function deriveEffectiveSowData(
         .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
     : [];
 
-  const sowDoc = docsWithPricing.find(
+  let sowDoc = docsWithPricing.find(
     d =>
       (d.docType === "consolidated_sow" || d.docType === "sow") &&
       Array.isArray(d.sowPricingLines) &&
       (d.sowPricingLines as unknown[]).length > 0,
   );
+
+  // Secondary lookup: if the included docs contain no SOW with pricing, check the
+  // project's most recent approved consolidated_sow / sow. This handles the common
+  // case where the SOW was generated after the presentation was created and therefore
+  // its doc ID was never added to documentsIncluded.
+  if (!sowDoc && pres.projectId) {
+    const [projectSow] = await db.select({
+      docType: insightsGeneratedDocumentsTable.docType,
+      sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+    })
+      .from(insightsGeneratedDocumentsTable)
+      .where(
+        and(
+          eq(insightsGeneratedDocumentsTable.projectId, pres.projectId),
+          inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+          inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered"]),
+        )
+      )
+      .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+      .limit(1);
+    if (projectSow && Array.isArray(projectSow.sowPricingLines) && (projectSow.sowPricingLines as unknown[]).length > 0) {
+      sowDoc = projectSow;
+    }
+  }
 
   if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
     const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string; weeks?: number; deliveryDate?: string | null }>;
