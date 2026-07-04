@@ -188,8 +188,9 @@ export default function PresentationFlow({
   const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
 
   const computeInitialStep = () => {
+    const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
     if (startAtPayment) {
-      const steps = buildSteps(initialData.documents, readOnly);
+      const steps = buildSteps(initialData.documents.filter(d => !isSowDoc(d)), readOnly);
       // New flow: Payment Options → Agreement → Checkout → Confirmation
       // After Stripe redirect (startAtPayment=true):
       //   paid               → confirmation (payment complete)
@@ -208,7 +209,7 @@ export default function PresentationFlow({
     }
     const urlStep = parseInt(new URLSearchParams(search).get("step") ?? "", 10);
     if (!isNaN(urlStep) && urlStep >= 0) {
-      const steps = buildSteps(initialData.documents, readOnly);
+      const steps = buildSteps(initialData.documents.filter(d => !isSowDoc(d)), readOnly);
       const clamped = Math.min(urlStep, steps.length - 1);
       // If there's no SOW document, hard-lock all sow-gated steps — deep-links land on step 0.
       const hasSOW = initialData.documents.some(
@@ -280,10 +281,20 @@ export default function PresentationFlow({
     d => d.docType === "consolidated_sow" || d.docType === "sow"
   );
 
+  // Navigation docs — sortedDocs minus SOW documents. SOW content is already
+  // surfaced by the dedicated "Scope & Pricing" step, so a separate nav entry
+  // for each SOW document would be redundant and confusing for clients.
+  // All step-index arithmetic (buildSteps, stepLabel, doc panel) uses navDocs;
+  // SOW-gating checks and document-content lookups keep using sortedDocs.
+  const navDocs = useMemo(
+    () => sortedDocs.filter(d => d.docType !== "consolidated_sow" && d.docType !== "sow"),
+    [sortedDocs],
+  );
+
   // The set of step kinds that require an SOW document to be unlocked.
   const sowGatedKinds = new Set<Step["kind"]>(["payment", "contract", "checkout", "confirmation"]);
 
-  const steps = buildSteps(sortedDocs, readOnly);
+  const steps = buildSteps(navDocs, readOnly);
   const currentStep = steps[stepIndex];
 
   const [stepReady, setStepReady] = useState(() => {
@@ -532,7 +543,8 @@ export default function PresentationFlow({
           if (!isSowDoc(a) && isSowDoc(b)) return -1;
           return 0;
         });
-        const freshStepCount = buildSteps(freshSortedDocs, readOnly).length;
+        const freshNavDocs = freshSortedDocs.filter(d => !isSowDoc(d));
+        const freshStepCount = buildSteps(freshNavDocs, readOnly).length;
         // Clamp current position and max-visited to the new step list size
         setStepIndex(prev => Math.min(prev, freshStepCount - 1));
         setMaxVisitedStep(prev => Math.min(prev, freshStepCount - 1));
@@ -752,7 +764,7 @@ export default function PresentationFlow({
   // Track when we enter a doc step — record start time
   useEffect(() => {
     if (currentStep?.kind === "doc") {
-      const doc = sortedDocs[currentStep.index];
+      const doc = navDocs[currentStep.index];
       docStepStartRef.current = {
         stepIndex,
         docId: doc?.id ?? null,
@@ -1022,7 +1034,7 @@ export default function PresentationFlow({
                 )}
               </span>
               <span className="text-[12px] font-medium leading-tight line-clamp-2">
-                {stepLabel(step, sortedDocs)}
+                {stepLabel(step, navDocs)}
               </span>
             </button>
           );
@@ -1153,7 +1165,7 @@ export default function PresentationFlow({
           </button>
 
           <p className="text-white text-sm font-semibold truncate flex-1 text-center">
-            {stepLabel(currentStep, sortedDocs)}
+            {stepLabel(currentStep, navDocs)}
           </p>
 
           <button
@@ -1601,7 +1613,7 @@ export default function PresentationFlow({
             {/* Document panels */}
             {currentStep?.kind === "doc" && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <DocumentPanel doc={sortedDocs[currentStep.index]} onReady={handleStepReady} />
+                <DocumentPanel doc={navDocs[currentStep.index]} onReady={handleStepReady} />
               </div>
             )}
 
@@ -1765,7 +1777,7 @@ export default function PresentationFlow({
               </button>
 
               <p className="text-xs text-muted-foreground hidden sm:block">
-                {stepLabel(currentStep, sortedDocs)}
+                {stepLabel(currentStep, navDocs)}
               </p>
 
               {currentStep?.kind === "contract" && !data.signedAt ? (
@@ -1863,7 +1875,7 @@ export default function PresentationFlow({
                   <span>
                     Next
                     {steps[stepIndex + 1] && (
-                      <span className="opacity-80 hidden sm:inline">: {stepLabel(steps[stepIndex + 1], sortedDocs)}</span>
+                      <span className="opacity-80 hidden sm:inline">: {stepLabel(steps[stepIndex + 1], navDocs)}</span>
                     )}
                   </span>
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
