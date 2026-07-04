@@ -230,6 +230,39 @@ export function parseSowAllPricing(html: string): {
     }
   }
 
+  // Fallback: if the AI rendered adjustments as a div/text block instead of a
+  // <table>, the table scanner above finds nothing in adjustmentLines.  Try to
+  // extract the Grand Total from text patterns the AI commonly emits:
+  //   "Grand Total = $32,000 (workstreams) + $20,000 (adjustments) = $52,000"
+  //   "Grand Total: $52,000"
+  //   "Total Engagement Price: $52,000"
+  // When a text-based grand total is larger than the workstream sum, the gap is
+  // treated as an implied adjustments total and pushed as a synthetic line.
+  if (adjustmentLines.length === 0 && workstreamLines.length > 0) {
+    const workstreamSum = workstreamLines.reduce((s, l) => s + l.priceUsd, 0);
+    const plainText = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+    // Pattern 1: multi-step calc "Grand Total = ... = $X,XXX"
+    const calcMatch = plainText.match(/grand\s+total\s*=[\s\S]{0,200}?=\s*\$([0-9,]+)/i);
+    const calcValue = calcMatch ? parseFloat(calcMatch[1].replace(/,/g, "")) : 0;
+
+    // Pattern 2: simple label "Grand Total: $X,XXX" or "Total Engagement Price: $X,XXX"
+    const labelMatch = plainText.match(
+      /(?:grand\s+total|total\s+engagement\s+(?:price|investment|fee))\s*[:\-–]?\s*\$([0-9,]+)/i,
+    );
+    const labelValue = labelMatch ? parseFloat(labelMatch[1].replace(/,/g, "")) : 0;
+
+    const impliedGrandTotal = Math.max(calcValue, labelValue);
+    if (impliedGrandTotal > workstreamSum) {
+      adjustmentLines.push({
+        title: "Price Adjustments",
+        scope: "",
+        priceUsd: impliedGrandTotal - workstreamSum,
+        notes: "Derived from SOW grand total",
+      });
+    }
+  }
+
   const computedTotal =
     workstreamLines.reduce((s, l) => s + l.priceUsd, 0) +
     adjustmentLines.reduce((s, l) => s + l.priceUsd, 0);

@@ -116,12 +116,11 @@ STEP 4 — TOTALS:
 Always show the detected tier, always show each step's arithmetic, never leave pricing blank, never say TBD.
 
 Output requirements for the Pricing section:
-- Show a pricing table with columns: Project/Workstream, Base Ceiling, Adjustments (itemised), Final Price (USD), Reasoning
-- Always show Base Ceiling for each line
-- Always show each adjustment that applies and its dollar value
-- Always show Final Price
-- Always explain the reasoning for each tier chosen
-- Never invent new pricing models. Never use TBD. Never treat the Base Ceiling as a maximum.
+- Show a per-workstream pricing table with columns: Project/Workstream | Base Ceiling | Final Price (USD) | Reasoning. Do NOT add per-row adjustment columns.
+- After the per-workstream table, render a SECOND HTML <table> for Pricing Adjustments. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row titled "Adjustments Subtotal" showing the sum.
+- After both tables, show the Grand Total calculation as plain text: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[grand total].
+- Always explain the reasoning for each tier and each adjustment applied.
+- Never invent new pricing models. Never use TBD.
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
 // ── Prompt fallbacks (no "Staged for Review" banner — docs are auto-delivered) ─

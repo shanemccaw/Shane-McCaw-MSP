@@ -875,10 +875,9 @@ Output requirements for the Pricing section:
 - Show a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning
   - Each row shows ONLY the workstream's own Base Ceiling and Final Price — NO per-row adjustment breakdown.
   - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).
-- After the per-workstream table, add a separate "Pricing Adjustments" section listing each applicable shared adjustment factor and its dollar value ONCE — not repeated per workstream.
-- End with a Grand Total row: sum of all workstream Base Ceilings + sum of all applicable adjustments.
-- The Grand Total MUST be arithmetically correct. Show the calculation explicitly as: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[total]. Double-check before outputting.
-- Always explain the reasoning for each adjustment applied in the Pricing Adjustments section.
+- After the per-workstream table, render a second HTML <table> for the Pricing Adjustments section. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row with title "Adjustments Subtotal" showing the sum.
+- End with a Grand Total row after both tables. Show the calculation as plain text: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[grand total]. Double-check the arithmetic before outputting.
+- Always explain the reasoning for each adjustment applied in the Pricing Adjustments table.
 - Never invent new pricing models. Never use TBD.
 - Your goal is to produce a firm, defensible, enterprise-grade project price.`;
 
