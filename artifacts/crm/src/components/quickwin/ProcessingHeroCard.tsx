@@ -58,7 +58,7 @@ export default function ProcessingHeroCard({
 
   return (
     <div
-      className="rounded-xl p-8 flex flex-col w-full max-w-[380px] min-h-[420px] relative border shadow-[0_12px_40px_rgba(0,120,212,0.15)] ring-1 ring-[#0078D4]/5 bg-white"
+      className="rounded-xl p-6 flex flex-col w-full relative border shadow-[0_12px_40px_rgba(0,120,212,0.15)] ring-1 ring-[#0078D4]/5 bg-white"
       style={{
         backdropFilter: "blur(12px)",
         transform: isExiting ? "translateX(-100%) scale(0.96)" : "scale(1.02)",
