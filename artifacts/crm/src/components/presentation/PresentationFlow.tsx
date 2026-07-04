@@ -25,6 +25,12 @@ interface SowPhase {
   selected: boolean;
 }
 
+interface AdjustmentLine {
+  title: string;
+  description: string;
+  price: number;
+}
+
 interface PresentationData {
   id: number;
   projectId: number | null;
@@ -35,6 +41,7 @@ interface PresentationData {
   selectedPhaseIds: string[];
   totalPrice: number;
   adjustmentsTotal?: number;
+  adjustmentLines?: AdjustmentLine[];
   sowVersion?: string;
   signatureData: string | null;
   signedAt: string | null;
@@ -395,7 +402,7 @@ export default function PresentationFlow({
         body: JSON.stringify({ selectedPhaseIds: newIds }),
       });
       if (res.ok) {
-        const updated = await res.json() as { totalPrice: number; adjustmentsTotal?: number; selectedPhaseIds: string[] };
+        const updated = await res.json() as { totalPrice: number; adjustmentsTotal?: number; adjustmentLines?: AdjustmentLine[]; selectedPhaseIds: string[] };
         setData(prev => ({ ...prev, ...updated }));
       }
     } finally {
@@ -1180,6 +1187,7 @@ export default function PresentationFlow({
                   signerName={signerName}
                   selectedPhases={selectedPhases}
                   adjustmentsTotal={data.adjustmentsTotal ?? 0}
+                  adjustmentLines={data.adjustmentLines ?? []}
                   totalPrice={grandTotal}
                   onChangeName={setSignerName}
                   onSign={handleSign}

@@ -9786,10 +9786,20 @@ async function deriveEffectiveSowData(
     }));
 
     // Adjustments are mandatory — always applied in full regardless of phase selection.
+    // Filter out any aggregation rows (subtotals, grand totals) that were accidentally
+    // stored as individual lines — these cause double-counting when the real items exist.
+    const realAdjustmentLines = adjustmentLivelines.filter(l => {
+      const t = l.title.toLowerCase();
+      return !t.includes("subtotal") && !t.includes("grand total") && t !== "total";
+    });
+
     // If tagged lines exist, sum them directly; otherwise fall back to the gap method.
     let adjustmentsTotal: number;
-    if (adjustmentLivelines.length > 0) {
-      adjustmentsTotal = adjustmentLivelines.reduce((s, l) => s + l.priceUsd, 0);
+    if (realAdjustmentLines.length > 0) {
+      adjustmentsTotal = realAdjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
+    } else if (adjustmentLivelines.length > 0) {
+      // All tagged lines were aggregation rows — nothing real to sum; treat as 0.
+      adjustmentsTotal = 0;
     } else {
       const allPhasesSum = livelines.reduce((s, l) => s + l.priceUsd, 0);
       const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
@@ -9801,7 +9811,15 @@ async function deriveEffectiveSowData(
       .reduce((sum, p) => sum + p.price, 0);
     const effectiveTotalPrice = selectedPhasesTotal + adjustmentsTotal;
 
-    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, sowVersion: computeSowVersion(effectiveSowPhases) };
+    // Build the named adjustment lines array for the frontend so it can display
+    // each factor individually (title + description + amount) rather than a single total.
+    const namedAdjustmentLines = realAdjustmentLines.map(l => ({
+      title: l.title,
+      description: l.scope || l.notes || "",
+      price: l.priceUsd,
+    }));
+
+    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, namedAdjustmentLines, sowVersion: computeSowVersion(effectiveSowPhases) };
   }
 
   // No live SOW pricing — fall back to creation-time snapshot.
@@ -9817,6 +9835,8 @@ async function deriveEffectiveSowData(
     effectiveSelectedPhaseIds: fallbackSelected,
     effectiveTotalPrice: fallbackTotal,
     adjustmentsTotal,
+    // Snapshot fallback has no individual adjustment line detail
+    namedAdjustmentLines: [] as Array<{ title: string; description: string; price: number }>,
     sowVersion: computeSowVersion(fallbackPhases),
   };
 }
@@ -10014,6 +10034,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       selectedPhaseIds: effectiveSelectedPhaseIds,
       totalPrice: effectiveTotalPrice,
       adjustmentsTotal,
+      adjustmentLines: namedAdjustmentLines,
       sowVersion,
       signatureData: pres.signatureData,
       signedAt: pres.signedAt,
@@ -10050,7 +10071,7 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
 
     // Validate incoming IDs against the live SOW phase list and compute total
     // from live prices so a stale snapshot never produces a wrong total.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, adjustmentsTotal, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, adjustmentsTotal, namedAdjustmentLines, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
     const validIds = effectiveSowPhases.map(p => p.id);
     const safeSelectedIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
     // If the client sends an empty list (or only stale IDs), fall back to the
@@ -10066,7 +10087,7 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
       .set({ selectedPhaseIds: finalSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ totalPrice: newTotal, adjustmentsTotal, selectedPhaseIds: finalSelectedIds, sowVersion });
+    res.json({ totalPrice: newTotal, adjustmentsTotal, adjustmentLines: namedAdjustmentLines, selectedPhaseIds: finalSelectedIds, sowVersion });
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });

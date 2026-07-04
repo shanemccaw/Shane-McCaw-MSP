@@ -33,10 +33,17 @@ interface SowPhase {
   selected: boolean;
 }
 
+interface AdjustmentLine {
+  title: string;
+  description: string;
+  price: number;
+}
+
 interface ContractSignPanelProps {
   signerName: string;
   selectedPhases: SowPhase[];
   adjustmentsTotal?: number;
+  adjustmentLines?: AdjustmentLine[];
   totalPrice: number;
   onChangeName: (name: string) => void;
   onSign: (signatureData: string, signerName: string) => Promise<void>;
@@ -54,6 +61,7 @@ export default function ContractSignPanel({
   signerName,
   selectedPhases,
   adjustmentsTotal = 0,
+  adjustmentLines = [],
   totalPrice,
   onChangeName,
   onSign,
@@ -124,21 +132,39 @@ export default function ContractSignPanel({
                   ))}
                   {adjustmentsTotal > 0 && (
                     <>
-                      <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-[#374151] pr-4">
+                      <tr className="border-b border-slate-200">
+                        <td className="py-1.5 text-[#374151] pr-4 font-medium">
                           Workstream Subtotal
                         </td>
                         <td className="py-1.5 text-right font-semibold text-[#0A2540]">
                           {formatCurrency(totalPrice - adjustmentsTotal)}
                         </td>
                       </tr>
-                      <tr className="border-b border-slate-100">
-                        <td className="py-1.5 text-[#374151] pr-4">
-                          Price Adjustments
-                          <span className="block text-[0.65rem] text-muted-foreground font-normal">Complexity, sprawl, and compliance factors</span>
+                      <tr>
+                        <td colSpan={2} className="pt-2 pb-0.5">
+                          <p className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0078D4]">Price Adjustments</p>
                         </td>
-                        <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adjustmentsTotal)}</td>
                       </tr>
+                      {adjustmentLines.length > 0 ? (
+                        adjustmentLines.map((adj, i) => (
+                          <tr key={i} className="border-b border-slate-100">
+                            <td className="py-1.5 text-[#374151] pr-4">
+                              {adj.title}
+                              {adj.description && (
+                                <span className="block text-[0.65rem] text-muted-foreground font-normal">{adj.description}</span>
+                              )}
+                            </td>
+                            <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adj.price)}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="border-b border-slate-100">
+                          <td className="py-1.5 text-[#374151] pr-4">
+                            Complexity, sprawl, and compliance factors
+                          </td>
+                          <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adjustmentsTotal)}</td>
+                        </tr>
+                      )}
                     </>
                   )}
                   <tr className="border-t-2 border-slate-300">

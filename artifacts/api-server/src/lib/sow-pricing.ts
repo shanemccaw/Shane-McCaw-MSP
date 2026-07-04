@@ -209,9 +209,13 @@ export function parseSowAllPricing(html: string): {
       const priceCell = cells[priceIdx] ?? "";
       const titleLower = titleCell.toLowerCase();
 
-      // Skip only true header rows and summary rows — use exact/anchored matching
-      // so that legitimate adjustment rows like "Tenant Size Adjustment Factor"
-      // are NOT accidentally excluded by a substring hit on "factor".
+      // Skip header rows, summary rows, and any aggregation rows.
+      // Use exact/anchored matching for column names (e.g. "factor") so that
+      // legitimate rows like "Tenant Size Adjustment Factor" aren't excluded.
+      // Use substring matching for aggregation titles (subtotal, total) so that
+      // "Adjustments Subtotal" and similar rows are excluded — those are display
+      // artefacts and must not be stored as real pricing lines (they cause
+      // double-counting when the individual items are already stored).
       if (
         titleLower === "" ||
         titleLower === "factor" ||
@@ -222,7 +226,9 @@ export function parseSowAllPricing(html: string): {
         titleLower === "subtotal" ||
         titleLower === "grand total" ||
         /^grand\s+total/.test(titleLower) ||
-        /^sub\s*total/.test(titleLower)
+        /^sub\s*total/.test(titleLower) ||
+        titleLower.includes("subtotal") ||
+        titleLower.includes("grand total")
       ) continue;
 
       // Require an explicit "$" in the price cell to guard against non-currency
