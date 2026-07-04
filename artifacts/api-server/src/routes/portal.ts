@@ -11991,6 +11991,10 @@ router.patch("/admin/presentations/:id/phase-dates", requireAdmin, async (req: R
       .where(eq(quickWinPresentationsTable.id, id)).limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
+    if (guardAgainstSignedPresentation(pres, "PATCH /admin/presentations/:id/phase-dates", logger)) {
+      res.status(409).json({ error: "Presentation is already signed and cannot be modified" }); return;
+    }
+
     // ── 1. Update sowPricingLines on every linked consolidated/consulting SOW doc ──
     const docIds = (pres.documentsIncluded ?? []) as number[];
     if (docIds.length > 0) {
