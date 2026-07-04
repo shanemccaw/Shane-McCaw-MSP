@@ -70,8 +70,10 @@ export default function SowSelectorPanel({
   const displayTotal = readOnly ? totalPrice : (selectedTotal || totalPrice);
 
   const hasScopeReduction = phases.length > 0 && selectedPhases.length < phases.length;
-  // Toggle is shown only when a scoped SOW actually exists
-  const showToggle = !!scopedSowHtml && hasScopeReduction;
+  // Toggle is shown when a scoped SOW exists AND either:
+  //   a) the client has deselected at least one phase (interactive scoping), or
+  //   b) the panel is in read-only mode (post-sign) — the scope was already committed.
+  const showToggle = !!scopedSowHtml && (readOnly || hasScopeReduction);
 
   // When the toggle is not active, show whichever document is available.
   const fallbackHtml = originalSowHtml ?? null;
@@ -295,8 +297,9 @@ export default function SowSelectorPanel({
               className="flex-1 min-h-0 overflow-y-scroll"
               style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
             >
-              {/* Scoped SOW — rendered whenever scopedSowHtml is available */}
-              {scopedSowHtml && (
+              {/* Scoped SOW — rendered only when the toggle is active so it never
+                  stacks with the full iframe in single-document mode */}
+              {showToggle && scopedSowHtml && (
                 <iframe
                   srcDoc={scopedSowHtml}
                   title="Scoped Statement of Work"
