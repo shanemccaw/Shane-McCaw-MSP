@@ -9737,6 +9737,7 @@ async function deriveEffectiveSowData(
   effectiveSelectedPhaseIds: string[];
   effectiveTotalPrice: number;
   adjustmentsTotal: number;
+  namedAdjustmentLines: Array<{ title: string; description: string; price: number }>;
   sowVersion: string;
 }> {
   const docIds = (pres.documentsIncluded ?? []) as number[];
@@ -10148,12 +10149,13 @@ function buildScopedSowHtml(
   totalDollars: number,
   projectTitle?: string | null,
   clientName?: string | null,
+  adjustmentLines?: Array<{ title: string; description: string; price: number }>,
 ): string {
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
-  const rows = phases
+  const phaseRows = phases
     .map(
       (p) => `
       <tr>
@@ -10166,6 +10168,22 @@ function buildScopedSowHtml(
       </tr>`,
     )
     .join("");
+
+  const adjRows = (adjustmentLines ?? [])
+    .map(
+      (a) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:40%">
+          <div style="font-weight:700;color:#0A2540;font-size:13px">${a.title}</div>
+          ${a.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${a.description}</div>` : ""}
+        </td>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${a.description || ""}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:${a.price < 0 ? "#DC2626" : "#0078D4"};white-space:nowrap;font-size:13px">${fmt(a.price)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  const rows = phaseRows + adjRows;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -10248,7 +10266,7 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     }
 
     // Derive live SOW phases and validate the incoming selection
-    const { effectiveSowPhases, adjustmentsTotal } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const { effectiveSowPhases, adjustmentsTotal, namedAdjustmentLines } = await deriveEffectiveSowData(pres, selectedPhaseIds);
     const validIds = effectiveSowPhases.map(p => p.id);
     const safeIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
     if (safeIds.length === 0) {
@@ -10316,6 +10334,22 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
           ? excludedPhases.map(p => `- ${p.title}`).join("\n")
           : "None — all phases are selected";
 
+        const phasesSubtotal = scopedPhases.reduce((s, p) => s + p.price, 0);
+        const adjustmentLineList = namedAdjustmentLines.length > 0
+          ? namedAdjustmentLines.map(a => `- ${a.title}${a.description ? ` (${a.description})` : ""}: ${fmtUsd(a.price)}`).join("\n")
+          : null;
+
+        const pricingTableSpec = [
+          "PRICING TABLE — reproduce this exactly, in this order:",
+          ...scopedPhases.map(p => `  ROW: ${p.title} | ${fmtUsd(p.price)}`),
+          ...(namedAdjustmentLines.length > 0
+            ? ["  --- (subtotal row if the original has one) ---",
+               ...namedAdjustmentLines.map(a => `  ROW: ${a.title}${a.description ? ` — ${a.description}` : ""} | ${fmtUsd(a.price)}`)]
+            : []),
+          `  TOTAL ROW: ${fmtUsd(scopedTotalDollars)}`,
+          `  (Phases subtotal ${fmtUsd(phasesSubtotal)}${namedAdjustmentLines.length > 0 ? ` + adjustments ${fmtUsd(adjustmentsTotal)}` : ""} = ${fmtUsd(scopedTotalDollars)})`,
+        ].join("\n");
+
         const prompt = `You are a senior Microsoft 365 consulting document editor. You are given a Consolidated Statement of Work HTML document and a scoped selection of phases. Produce a revised version of this document that covers ONLY the selected phases.
 
 SELECTED PHASES (include all their content — keep approach text, deliverables, timelines verbatim):
@@ -10323,8 +10357,9 @@ ${selectedPhaseList}
 
 EXCLUDED PHASES (remove every mention — zero references anywhere in the document):
 ${excludedPhaseList}
+${adjustmentLineList ? `\nPRICING ADJUSTMENTS (mandatory — always included regardless of phase selection):\n${adjustmentLineList}\n` : ""}
+${pricingTableSpec}
 
-SCOPED TOTAL: ${fmtUsd(scopedTotalDollars)}
 DATE: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
 
 RULES:
@@ -10333,8 +10368,8 @@ RULES:
 - Keep every heading, narrative paragraph, deliverable bullet, and timeline entry for the selected phases VERBATIM
 - Erase every section, table row, bullet point, and sentence that refers to an excluded phase as if it never existed
 - Update the Scope of Work section to list only the selected phases
-- Replace the pricing table with only the selected phases and their exact prices listed above
-- Set every grand-total, investment-total, and pricing-summary figure to ${fmtUsd(scopedTotalDollars)} exactly
+- Replace the pricing table EXACTLY as specified in PRICING TABLE above — do not recalculate or invent figures
+- The grand total MUST be ${fmtUsd(scopedTotalDollars)} — this is authoritative; do not sum the rows yourself
 - Insert a short styled banner (matching the original header style) stating this is a scoped engagement covering only the selected phases
 - Do not alter the signature block, terms and conditions, or contact information
 
@@ -10360,11 +10395,11 @@ ${originalSowRow.htmlContent}`;
         scopedSowHtml = aiHtml;
       } catch (aiErr) {
         req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to invoice");
-        scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name);
+        scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
       }
     } else {
       req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
-      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name);
+      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
     }
 
     const scopedTotalCents = Math.round(scopedTotalDollars * 100);
