@@ -1034,7 +1034,7 @@ export default function FullScreenWrapper() {
                 <div className="grid grid-cols-2 gap-2 flex-1 content-start overflow-y-auto">
                   {/* Loading state */}
                   {kanbanTasks.length === 0 && (
-                    <div className="flex items-center gap-3 py-10 justify-center">
+                    <div className="col-span-2 flex items-center gap-3 py-10 justify-center">
                       <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
                       <p className="text-sm text-black/40">Loading tasks…</p>
                     </div>
@@ -1127,7 +1127,7 @@ export default function FullScreenWrapper() {
                   {/* Queued — nothing active yet */}
                   {kanbanTasks.length > 0 && inProgressTasks.length === 0 && waitingTasks.length === 0 && !allTasksDone && (
                     credentialsMissing ? (
-                      <div className="mx-2 my-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 flex flex-col gap-3">
+                      <div className="col-span-2 mx-2 my-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-5 flex flex-col gap-3">
                         <div className="flex items-start gap-3">
                           <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
                             <svg className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1148,7 +1148,7 @@ export default function FullScreenWrapper() {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex flex-col items-center gap-3 py-10">
+                      <div className="col-span-2 flex flex-col items-center gap-3 py-10">
                         <div className="w-6 h-6 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
                         <p className="text-sm text-black/40">Scripts queued — waiting to start…</p>
                       </div>
@@ -1157,7 +1157,7 @@ export default function FullScreenWrapper() {
 
                   {/* All done */}
                   {allTasksDone && (
-                    <div className="flex flex-col items-center gap-5 py-8">
+                    <div className="col-span-2 flex flex-col items-center gap-5 py-8">
                       <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
                         <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
