@@ -1567,10 +1567,8 @@ export default function PresentationFlow({
             {/* SOW selector */}
             {currentStep?.kind === "sow" && !hasSowDocument && (
               <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(248,249,251)" }}>
-                {/* Torus knot — same pattern as FullScreenWrapper / diagnostic */}
-                <div className="fixed inset-0 -z-10 pointer-events-none">
-                  <AnimatedBackground />
-                </div>
+                {/* Torus knot — z-[1] so it sits above the panel background but below z-10 content */}
+                <AnimatedBackground />
 
                 {/* Screen-edge Copilot Aura */}
                 <CopilotAura />

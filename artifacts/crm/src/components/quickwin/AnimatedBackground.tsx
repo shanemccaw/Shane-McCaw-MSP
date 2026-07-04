@@ -17,6 +17,9 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
     let geometry: THREE.BufferGeometry | undefined;
     let material: THREE.ShaderMaterial | undefined;
 
+    // Guard: skip if another instance already appended a canvas (StrictMode double-invoke)
+    if (container.querySelector("canvas")) return;
+
     try {
       const width = container.clientWidth || window.innerWidth;
       const height = fullScreen ? (container.clientHeight || window.innerHeight) : 600;
@@ -26,6 +29,12 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
       renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
 
       renderer.setSize(width, height);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+      // Must be block — inline canvas leaves a baseline descender gap at the bottom
+      // that can misalign or partially clip the canvas inside overflow:hidden containers.
+      renderer.domElement.style.display = "block";
+
       container.appendChild(renderer.domElement);
 
       geometry = new THREE.TorusKnotGeometry(2.2, 0.6, 200, 32, 2, 3);
@@ -103,13 +112,19 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
       return () => {
         cancelAnimationFrame(animFrameId!);
         window.removeEventListener("resize", onResize);
-        renderer!.dispose();
-        geometry!.dispose();
-        material!.dispose();
+        // Remove canvas first so the container is clean before context loss
         const c = containerRef.current;
         if (c && c.contains(renderer!.domElement)) {
           c.removeChild(renderer!.domElement);
         }
+        // Force immediate WebGL context release so StrictMode's second mount
+        // doesn't hit the browser's context limit silently
+        try {
+          renderer!.getContext().getExtension("WEBGL_lose_context")?.loseContext();
+        } catch { /* ignore */ }
+        renderer!.dispose();
+        geometry!.dispose();
+        material!.dispose();
       };
     } catch {
       // WebGL not available (e.g. headless browser, restricted environment).
@@ -118,7 +133,7 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
       try { renderer?.dispose(); } catch { /* ignore */ }
       try { geometry?.dispose(); } catch { /* ignore */ }
       try { material?.dispose(); } catch { /* ignore */ }
-      return;
+      return undefined;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullScreen]);
@@ -128,8 +143,8 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
       ref={containerRef}
       className={
         fullScreen
-          ? "fixed inset-0 w-full h-full z-0 opacity-50 pointer-events-none overflow-hidden"
-          : "fixed top-0 left-1/2 -translate-x-1/2 w-full h-[600px] z-0 opacity-40 pointer-events-none overflow-hidden"
+          ? "fixed inset-0 w-full h-full z-[1] opacity-50 pointer-events-none"
+          : "fixed top-0 left-1/2 -translate-x-1/2 w-full h-[600px] z-[1] opacity-40 pointer-events-none"
       }
     />
   );
