@@ -211,7 +211,7 @@ export default function PresentationFlow({
       const hasSOW = initialData.documents.some(
         d => d.docType === "consolidated_sow" || d.docType === "sow"
       );
-      const sowGated = new Set<Step["kind"]>(["sow", "payment", "contract", "checkout", "confirmation"]);
+      const sowGated = new Set<Step["kind"]>(["payment", "contract", "checkout", "confirmation"]);
       if (!hasSOW && steps[clamped] && sowGated.has(steps[clamped].kind)) {
         return 0;
       }
@@ -278,7 +278,7 @@ export default function PresentationFlow({
   );
 
   // The set of step kinds that require an SOW document to be unlocked.
-  const sowGatedKinds = new Set<Step["kind"]>(["sow", "payment", "contract", "checkout", "confirmation"]);
+  const sowGatedKinds = new Set<Step["kind"]>(["payment", "contract", "checkout", "confirmation"]);
 
   const steps = buildSteps(sortedDocs, readOnly);
   const currentStep = steps[stepIndex];
@@ -1511,17 +1511,61 @@ export default function PresentationFlow({
 
             {/* SOW selector */}
             {currentStep?.kind === "sow" && !hasSowDocument && (
-              <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center px-6 py-12">
-                <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center">
-                  <svg className="w-7 h-7 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                  </svg>
+              <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center bg-[#060E1A]">
+                {/* Screen-edge aurora glow */}
+                <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ zIndex: 1 }}>
+                  <div style={{ position: "absolute", inset: 0, top: 0, left: 0, right: 0, height: "clamp(80px,18%,180px)", background: "linear-gradient(to bottom,rgba(0,120,212,0.38) 0%,rgba(0,120,212,0.12) 50%,transparent 100%)" }} />
+                  <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: "clamp(60px,14%,140px)", background: "linear-gradient(to top,rgba(123,127,245,0.28) 0%,rgba(123,127,245,0.08) 50%,transparent 100%)" }} />
+                  <div style={{ position: "absolute", inset: "0 auto 0 0", width: "clamp(40px,8%,120px)", background: "linear-gradient(to right,rgba(0,180,216,0.24) 0%,transparent 100%)" }} />
+                  <div style={{ position: "absolute", inset: "0 0 0 auto", width: "clamp(40px,8%,120px)", background: "linear-gradient(to left,rgba(0,120,212,0.20) 0%,transparent 100%)" }} />
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-[#0A2540]">Statement of Work not yet available</p>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-                    Shane is preparing your Statement of Work. You'll be notified when it's ready to review.
-                  </p>
+
+                {/* Centered frosted-glass card */}
+                <div className="relative px-6 py-8 w-full max-w-sm mx-auto text-center" style={{ zIndex: 2 }}>
+                  {/* Animated beacon */}
+                  <div className="flex justify-center mb-6">
+                    <span className="relative flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#0078D4] opacity-40" />
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-[#0078D4]/70" />
+                    </span>
+                  </div>
+
+                  {/* Card */}
+                  <div
+                    className="rounded-2xl px-7 py-8 border border-white/10 shadow-2xl"
+                    style={{ background: "rgba(10,20,40,0.72)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
+                  >
+                    <div className="w-8 h-0.5 bg-[#0078D4] mx-auto mb-5 rounded-full" />
+
+                    {data.clientName && (
+                      <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-widest mb-2">
+                        Hi, {data.clientName}
+                      </p>
+                    )}
+
+                    <h2 className="text-lg font-extrabold text-white leading-snug mb-2">
+                      Your Statement of Work<br />is being prepared
+                    </h2>
+
+                    {data.projectTitle && (
+                      <p className="text-xs font-semibold text-[#00B4D8] mb-3">{data.projectTitle}</p>
+                    )}
+
+                    <p className="text-xs text-white/55 leading-relaxed mb-5">
+                      Shane is crafting a tailored proposal for your project. You'll receive an email the moment it's ready to review.
+                    </p>
+
+                    {/* Progress dots */}
+                    <div className="flex items-center justify-center gap-1.5">
+                      {[0, 1, 2].map((i) => (
+                        <span
+                          key={i}
+                          className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/60 animate-pulse"
+                          style={{ animationDelay: `${i * 0.3}s` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
