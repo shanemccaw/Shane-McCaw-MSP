@@ -8,7 +8,7 @@ const STAGES = [
   { label: "Applying final formatting" },
 ];
 
-const DELAYS = [0, 3500, 7500, 12000, 17000];
+const DELAYS = [0, 25000, 55000, 95000, 150000];
 
 interface Props {
   clientName: string | null | undefined;
@@ -115,7 +115,7 @@ export default function SowGeneratingCard({ clientName, projectTitle, onClose }:
       <div className="px-6 pb-5 pt-2 border-t border-gray-100 mt-1">
         <p className="text-[11px] text-gray-400 leading-relaxed">
           This page will refresh automatically the moment it's ready to review and sign.
-          Typically takes 60–90 seconds.
+          Typically takes 1–10 minutes.
         </p>
         <button
           onClick={onClose}
