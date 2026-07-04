@@ -841,7 +841,7 @@ Final Price = Base Ceiling + Tenant Size Adjustment + Complexity Adjustment + Da
 
 Always calculate each adjustment. Always show the breakdown. Never leave pricing blank. Never say "TBD." Never treat the Base Ceiling as a maximum.
 
-**Tenant Size Adjustment** (derive user count from the tenant telemetry — activeUserPercent, license counts, or script findings):
+**Tenant Size Adjustment** (use ONLY the "Total Users in Tenant" value from the TENANT FACTS block injected at the bottom of this prompt — do NOT infer from activeUserPercent or any other field; do NOT invent or estimate a user count):
 - Under 250 users → +$0
 - 250–750 users → +$7,500
 - 750–1,500 users → +$15,000
@@ -1406,19 +1406,50 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
         for (const r of allRecs) telemetryLines.push(`  • ${r}`);
       }
 
-      // 4. Profile key-value updates from script runs (additional telemetry keys)
-      const profileKV = typedRuns
-        .flatMap(r => Object.entries(r.profileUpdates ?? {}))
-        .slice(0, 40)
-        .map(([k, v]) => `  ${k}: ${String(v)}`);
-      if (profileKV.length > 0) {
+      // 4. Profile key-value updates from script runs — merge all runs into one
+      //    deduplicated object (most-recent run wins) so critical keys like
+      //    totalUserCount and sharepointSiteCount are never silently dropped
+      //    by a flatMap slice cap.
+      const mergedSowProfile: Record<string, unknown> = {};
+      for (const run of [...typedRuns].reverse()) {
+        Object.assign(mergedSowProfile, run.profileUpdates ?? {});
+      }
+      if (Object.keys(mergedSowProfile).length > 0) {
         telemetryLines.push("\nCONFIGURATION TELEMETRY (from script runs):");
-        telemetryLines.push(...profileKV);
+        for (const [k, v] of Object.entries(mergedSowProfile)) {
+          telemetryLines.push(`  ${k}: ${String(v)}`);
+        }
       }
 
       const tenantTelemetryBlock = telemetryLines.length > 0
         ? telemetryLines.join("\n")
         : "No tenant telemetry collected yet — generate this SOW after running assessment scripts.";
+
+      // Build an explicit TENANT FACTS block so the AI has unambiguous, labelled
+      // numbers for every pricing adjustment. This is injected directly before the
+      // pricing formula with a strict "no hallucination" directive.
+      const sp = mergedSowProfile;
+      const sowTenantFacts = [
+        `Total Users in Tenant:       ${sp.totalUserCount ?? "unknown"}`,
+        `Licensed Users:              ${sp.licensedUserCount ?? "unknown"}`,
+        `Unlicensed Users:            ${typeof sp.totalUserCount === "number" && typeof sp.licensedUserCount === "number" ? sp.totalUserCount - sp.licensedUserCount : "unknown"}`,
+        `Active User Percent:         ${sp.activeUserPercent ?? "unknown"}%`,
+        `SharePoint Sites:            ${sp.sharepointSiteCount ?? "unknown"}`,
+        `Microsoft 365 Groups:        ${sp.m365GroupCount ?? "unknown"}`,
+        `Teams Count:                 ${sp.teamCount ?? sp.teamsCount ?? "unknown"}`,
+        `Public Teams:                ${sp.teamsPublicCount ?? "unknown"}`,
+        `Guest Users:                 ${sp.guestUserCount ?? "unknown"}`,
+        `External Sharing Enabled:    ${sp.externalSharingEnabled ?? "unknown"}`,
+        `External Shares Found:       ${sp.externalUserSharesFound ?? "unknown"}`,
+        `DLP Policies:                ${sp.dlpPoliciesCount ?? (sp.hasDLP === false ? 0 : "unknown")}`,
+        `Sensitivity Labels:          ${sp.sensitivityLabelsConfigured === false ? "None configured" : (sp.sensitivityLabelsConfigured ?? "unknown")}`,
+        `Retention Policies:          ${sp.hasRetentionPolicies === false ? "None" : (sp.hasRetentionPolicies ?? "unknown")}`,
+        `Conditional Access Policies: ${sp.conditionalAccessPolicyCount ?? sp.conditionalAccessPoliciesCount ?? (sp.conditionalAccessEnabled === false ? 0 : "unknown")}`,
+        `Copilot Licenses:            ${sp.copilotLicenseCount ?? (sp.hasCopilotLicenses === false ? 0 : "unknown")}`,
+        `Copilot Readiness Score:     ${sp.copilotReadinessScore ?? "unknown"}/100`,
+        `Intune Enabled:              ${sp.intuneEnabled ?? "unknown"}`,
+        `MFA Enforced:                ${sp.mfaEnforced ?? "unknown"}`,
+      ].join("\n");
       // ── End tenant telemetry block ─────────────────────────────────────────
 
       const CONSOLIDATED_SOW_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
@@ -1457,7 +1488,7 @@ INSTRUCTIONS:
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       // Find any prior completed consolidated_sow for this customer+project (to replace on success)
       let priorSowId: number | null = null;
