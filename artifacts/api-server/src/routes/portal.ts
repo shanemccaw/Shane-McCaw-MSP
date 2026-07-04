@@ -13,7 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, extractAiHtml } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -10260,15 +10260,93 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     const scopedSubtotal = scopedPhases.reduce((s, p) => s + p.price, 0);
     const scopedTotalDollars = scopedSubtotal + adjustmentsTotal;
 
-    // Fetch project / client metadata for the HTML header
-    const [project] = pres.projectId
-      ? await db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, pres.projectId)).limit(1)
-      : [null];
-    const [clientUser] = pres.clientUserId
-      ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1)
-      : [null];
+    // Fetch project / client metadata and the original Consolidated SOW in parallel
+    const [projectRow, clientUserRow, originalSowRow] = await Promise.all([
+      pres.projectId
+        ? db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, pres.projectId)).limit(1).then(r => r[0] ?? null)
+        : Promise.resolve(null),
+      pres.clientUserId
+        ? db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1).then(r => r[0] ?? null)
+        : Promise.resolve(null),
+      pres.clientUserId
+        ? db.select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+            .from(insightsGeneratedDocumentsTable)
+            .where(and(
+              eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId),
+              inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+              inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered", "draft"]),
+            ))
+            .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+            .limit(1)
+            .then(r => r[0] ?? null)
+        : Promise.resolve(null),
+    ]);
 
-    const scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, project?.title, clientUser?.name);
+    const fmtUsd = (n: number) =>
+      new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+
+    // Attempt an AI-driven scoped rewrite from the original Consolidated SOW.
+    // Falls back to the invoice-style HTML if the original SOW is missing or the AI call fails.
+    let scopedSowHtml: string;
+
+    if (originalSowRow?.htmlContent) {
+      try {
+        const { anthropic } = await import("@workspace/integrations-anthropic-ai");
+
+        const excludedPhases = effectiveSowPhases.filter(p => !safeIds.includes(p.id));
+
+        const selectedPhaseList = scopedPhases
+          .map(p => `- ${p.title}: ${fmtUsd(p.price)}`)
+          .join("\n");
+        const excludedPhaseList = excludedPhases.length > 0
+          ? excludedPhases.map(p => `- ${p.title}`).join("\n")
+          : "None — all phases are selected";
+
+        const prompt = `You are a senior Microsoft 365 consulting document editor. You are given a Consolidated Statement of Work HTML document and a scoped selection of phases. Produce a revised version of this document that covers ONLY the selected phases.
+
+SELECTED PHASES (include all their content — keep approach text, deliverables, timelines verbatim):
+${selectedPhaseList}
+
+EXCLUDED PHASES (remove every mention — zero references anywhere in the document):
+${excludedPhaseList}
+
+SCOPED TOTAL: ${fmtUsd(scopedTotalDollars)}
+DATE: ${new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+
+RULES:
+- Output ONLY valid HTML — no markdown fences, no commentary, just the complete document
+- Preserve ALL <style> blocks and inline CSS exactly — same visual style as the original
+- Keep every heading, narrative paragraph, deliverable bullet, and timeline entry for the selected phases VERBATIM
+- Erase every section, table row, bullet point, and sentence that refers to an excluded phase as if it never existed
+- Update the Scope of Work section to list only the selected phases
+- Replace the pricing table with only the selected phases and their exact prices listed above
+- Set every grand-total, investment-total, and pricing-summary figure to ${fmtUsd(scopedTotalDollars)} exactly
+- Insert a short styled banner (matching the original header style) stating this is a scoped engagement covering only the selected phases
+- Do not alter the signature block, terms and conditions, or contact information
+
+ORIGINAL DOCUMENT:
+${originalSowRow.htmlContent}`;
+
+        const aiResponse = await anthropic.messages.create({
+          model: "claude-sonnet-4-5",
+          max_tokens: 16000,
+          messages: [{ role: "user", content: prompt }],
+        });
+
+        const aiHtml = extractAiHtml(aiResponse);
+        if (!aiHtml || aiHtml.length < 500) {
+          throw new Error("AI returned empty or too-short HTML");
+        }
+        scopedSowHtml = aiHtml;
+      } catch (aiErr) {
+        req.log.warn({ aiErr }, "portal: AI scoped SOW rewrite failed — falling back to invoice");
+        scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name);
+      }
+    } else {
+      req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
+      scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name);
+    }
+
     const scopedTotalCents = Math.round(scopedTotalDollars * 100);
 
     // Capture the SOW version in effect at generation time so the GET handler
