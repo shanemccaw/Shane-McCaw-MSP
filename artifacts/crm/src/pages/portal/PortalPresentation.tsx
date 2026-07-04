@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearch, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PresentationFlow from "@/components/presentation/PresentationFlow";
+import SowPendingPlaceholder from "@/components/presentation/SowPendingPlaceholder";
 import PortalLayout from "@/components/PortalLayout";
 
 interface PresentationData {
@@ -106,6 +107,17 @@ export default function PortalPresentation() {
   }
 
   if (!data) return null;
+
+  // No SOW phases yet — show the full-screen holding page (no PortalLayout wrapper)
+  if (data.sowPhases.length === 0) {
+    return (
+      <SowPendingPlaceholder
+        projectTitle={data.projectTitle}
+        clientName={data.clientName}
+        onClose={() => navigate(user ? "/portal" : "/")}
+      />
+    );
+  }
 
   // Detect return from Stripe — navigate directly to payment/confirmation step
   const returnedWithPayment = new URLSearchParams(search).get("payment") === "success";

@@ -1,7 +1,11 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-export default function AnimatedBackground() {
+interface AnimatedBackgroundProps {
+  fullScreen?: boolean;
+}
+
+export default function AnimatedBackground({ fullScreen = false }: AnimatedBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -15,7 +19,7 @@ export default function AnimatedBackground() {
 
     try {
       const width = container.clientWidth || window.innerWidth;
-      const height = 600;
+      const height = fullScreen ? (container.clientHeight || window.innerHeight) : 600;
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
@@ -89,8 +93,9 @@ export default function AnimatedBackground() {
 
       function onResize() {
         const w = containerRef.current?.clientWidth || window.innerWidth;
-        renderer!.setSize(w, height);
-        camera.aspect = w / height;
+        const h = fullScreen ? (containerRef.current?.clientHeight || window.innerHeight) : 600;
+        renderer!.setSize(w, h);
+        camera.aspect = w / h;
         camera.updateProjectionMatrix();
       }
       window.addEventListener("resize", onResize);
@@ -115,12 +120,17 @@ export default function AnimatedBackground() {
       try { material?.dispose(); } catch { /* ignore */ }
       return;
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fullScreen]);
 
   return (
     <div
       ref={containerRef}
-      className="fixed top-0 left-1/2 -translate-x-1/2 w-full h-[600px] z-0 opacity-40 pointer-events-none overflow-hidden"
+      className={
+        fullScreen
+          ? "fixed inset-0 w-full h-full z-0 opacity-50 pointer-events-none overflow-hidden"
+          : "fixed top-0 left-1/2 -translate-x-1/2 w-full h-[600px] z-0 opacity-40 pointer-events-none overflow-hidden"
+      }
     />
   );
 }
