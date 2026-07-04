@@ -1175,6 +1175,8 @@ export default function PresentationFlow({
               const upfrontFmt = total > 0 ? fmtCur(Math.round(total * 0.2)) : "";
               const topPhases  = (data.sowPhases ?? []).slice(0, 3);
               const extraPhases = Math.max(0, (data.sowPhases?.length ?? 0) - 3);
+              // True only after the client has actually visited the SOW step with a fresh document
+              const sowReviewed = hasSowDocument && sowStepIndex >= 0 && maxVisitedStep >= sowStepIndex && !scopeStale;
               return (
                 <>
                   <div className="fixed inset-0 -z-10 pointer-events-none">
@@ -1211,7 +1213,7 @@ export default function PresentationFlow({
                         <p className="text-xs text-muted-foreground mt-0.5">Phases</p>
                       </div>
                       <div className="bg-white rounded-xl border border-border p-4">
-                        {!hasSowDocument ? (
+                        {!sowReviewed ? (
                           <div className="flex items-center justify-center gap-1.5 h-8">
                             <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse" />
                             <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
@@ -1381,7 +1383,7 @@ export default function PresentationFlow({
                                 <span className={`text-xs font-bold uppercase tracking-widest ${sowVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>Scope & Investment</span>
                               </div>
                               <div className="mb-4 min-h-[3rem]">
-                                {!hasSowDocument ? (
+                                {!sowActuallyReviewed ? (
                                   <div className="flex items-center gap-1.5 mb-2">
                                     <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse" />
                                     <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
@@ -1450,7 +1452,7 @@ export default function PresentationFlow({
                               </div>
                               {sowResetBlocked ? (
                                 <p className="text-xs text-amber-700 mb-4 min-h-[3rem]">Regenerate your scoped SOW on the Scope & Pricing step to unlock payment.</p>
-                              ) : !hasSowDocument ? (
+                              ) : !sowActuallyReviewed ? (
                                 <div className="mb-3 min-h-[3rem] flex items-center gap-1.5">
                                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400/60 animate-pulse" />
                                   <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
