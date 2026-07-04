@@ -1423,10 +1423,13 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
       const clientName = (customerRow as { company: string | null; name: string | null }[])[0]?.company
         ?? (customerRow as { company: string | null; name: string | null }[])[0]?.name ?? "Client";
 
+      // Trim each doc to 600 chars — Opus needs maximum output headroom for thorough generation
       const docsBlock = existingDocs.length > 0
-        ? existingDocs.map((d, i) =>
-            `[Document ${i + 1}] ${d.title} (${d.docType})\n${stripHtml(d.htmlContent)}`
-          ).join("\n\n---\n\n")
+        ? existingDocs.map((d, i) => {
+            const excerpt = d.htmlContent
+              .replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 600);
+            return `[Document ${i + 1}] ${d.title} (${d.docType})\n${excerpt}`;
+          }).join("\n\n---\n\n")
         : "No prior documents found for this client — generate from scratch using best practices.";
 
       const projectsBlock = engagementProjects.length > 0
@@ -1598,11 +1601,16 @@ INSTRUCTIONS:
       void (async () => {
         try {
           const docStylePrefix = await getDocumentStylePrefix();
+          // Consolidated SOW is the highest-stakes deliverable — use the most capable
+          // model with maximum output tokens so the document is never cut short.
           const aiResponse = await anthropic.messages.create({
-            model: "claude-sonnet-4-6",
-            max_tokens: 16000,
+            model: "claude-opus-4-8",
+            max_tokens: 32000,
             messages: [{ role: "user", content: docStylePrefix + prompt }],
           });
+          if (aiResponse.stop_reason === "max_tokens") {
+            logger.warn({ docId }, "consolidated_sow: output hit max_tokens — document may be truncated");
+          }
 
           const rawHtmlContent = extractAiHtml(aiResponse);
           const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
