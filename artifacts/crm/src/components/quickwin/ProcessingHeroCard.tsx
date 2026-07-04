@@ -24,7 +24,7 @@ export default function ProcessingHeroCard({
 
   return (
     <div
-      className="rounded-xl p-3.5 flex flex-col gap-2.5 w-[210px] flex-shrink-0 relative border border-[#0078D4]/15 shadow-[0_4px_20px_rgba(0,120,212,0.10)] bg-white"
+      className="rounded-xl p-3.5 flex flex-col gap-2.5 w-full relative border border-[#0078D4]/15 shadow-[0_4px_20px_rgba(0,120,212,0.10)] bg-white"
       style={{
         transform: isExiting ? "translateX(-120%) scale(0.92)" : "scale(1)",
         opacity: isExiting ? 0 : 1,
