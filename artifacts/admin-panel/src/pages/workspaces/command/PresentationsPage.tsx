@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   ExternalLink, Copy, ChevronDown, ChevronUp, CheckCircle,
-  Clock, DollarSign, FileText, User, Calendar, CreditCard,
+  Clock, DollarSign, FileText, User, Calendar, CreditCard, Pencil, Save, X,
 } from "lucide-react";
 
 interface SowPhase {
@@ -12,6 +12,7 @@ interface SowPhase {
   description: string;
   price: number;
   selected: boolean;
+  deliveryDate?: string | null;
 }
 
 interface PaymentScheduleEntry {
@@ -66,11 +67,58 @@ function formatDate(s: string | null) {
   return new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function PresentationDetailPanel({ p }: { p: Presentation }) {
+function PresentationDetailPanel({ p, onPhaseDatesUpdated }: { p: Presentation; onPhaseDatesUpdated: (id: number, phases: SowPhase[]) => void }) {
+  const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
-  const selectedPhases = p.sowPhases?.filter(ph => p.selectedPhaseIds?.includes(ph.id) ?? ph.selected) ?? [];
   const allPhases = p.sowPhases ?? [];
+
+  // Delivery-date edit state: maps phaseId → YYYY-MM-DD string or ""
+  const [editingDates, setEditingDates] = useState(false);
+  const [draftDates, setDraftDates] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  function startEdit() {
+    const initial: Record<string, string> = {};
+    for (const ph of allPhases) {
+      initial[ph.id] = ph.deliveryDate ?? "";
+    }
+    setDraftDates(initial);
+    setEditingDates(true);
+  }
+
+  function cancelEdit() {
+    setEditingDates(false);
+    setDraftDates({});
+  }
+
+  async function saveDates() {
+    setSaving(true);
+    try {
+      const phases = allPhases.map(ph => ({
+        id: ph.id,
+        deliveryDate: draftDates[ph.id] || null,
+      }));
+      const res = await fetchWithAuth(`/api/admin/presentations/${p.id}/phase-dates`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phases }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Optimistically update local phase list
+      const updated = allPhases.map(ph => ({
+        ...ph,
+        deliveryDate: draftDates[ph.id] || null,
+      }));
+      onPhaseDatesUpdated(p.id, updated);
+      toast({ title: "Saved", description: "Delivery dates updated." });
+      setEditingDates(false);
+    } catch (err) {
+      toast({ title: "Error", description: String(err), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   function copyToken() {
     if (!p.shareToken) return;
@@ -84,15 +132,45 @@ function PresentationDetailPanel({ p }: { p: Presentation }) {
     <div className="border-t border-gray-100 bg-gray-50 px-5 py-4 space-y-5 text-sm">
       {allPhases.length > 0 && (
         <div>
-          <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-            <FileText className="w-4 h-4 text-blue-500" /> SOW Phases
-          </h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-gray-700 flex items-center gap-1.5">
+              <FileText className="w-4 h-4 text-blue-500" /> SOW Phases
+            </h4>
+            {!editingDates ? (
+              <button
+                onClick={startEdit}
+                className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                <Pencil className="w-3 h-3" /> Set Dates
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={cancelEdit}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                >
+                  <X className="w-3 h-3" /> Cancel
+                </button>
+                <button
+                  onClick={() => void saveDates()}
+                  disabled={saving}
+                  className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                >
+                  <Save className="w-3 h-3" /> {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            )}
+          </div>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-gray-400 border-b border-gray-200">
                 <th className="text-left py-1 font-medium">Phase</th>
                 <th className="text-left py-1 font-medium">Description</th>
                 <th className="text-right py-1 font-medium">Price</th>
+                <th className="text-center py-1 font-medium">
+                  {editingDates ? "Delivery Date (YYYY-MM-DD)" : "Delivery Date"}
+                </th>
                 <th className="text-center py-1 font-medium">Selected</th>
               </tr>
             </thead>
@@ -105,6 +183,20 @@ function PresentationDetailPanel({ p }: { p: Presentation }) {
                     <td className="py-1.5 pr-3 text-gray-500">{ph.description || "—"}</td>
                     <td className="py-1.5 text-right text-gray-800 whitespace-nowrap">{formatCurrency(ph.price)}</td>
                     <td className="py-1.5 text-center">
+                      {editingDates ? (
+                        <input
+                          type="date"
+                          value={draftDates[ph.id] ?? ""}
+                          onChange={e => setDraftDates(prev => ({ ...prev, [ph.id]: e.target.value }))}
+                          className="text-xs border border-gray-300 rounded px-1.5 py-0.5 text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        />
+                      ) : ph.deliveryDate ? (
+                        <span className="text-gray-700">{formatDate(ph.deliveryDate)}</span>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                    <td className="py-1.5 text-center">
                       {isSelected
                         ? <CheckCircle className="w-3.5 h-3.5 text-green-500 inline-block" />
                         : <span className="text-gray-300">—</span>}
@@ -114,6 +206,11 @@ function PresentationDetailPanel({ p }: { p: Presentation }) {
               })}
             </tbody>
           </table>
+          {editingDates && (
+            <p className="mt-1.5 text-xs text-gray-400">
+              Dates flow through to the client's payment card ("Est. completion") and contract. Leave blank to clear.
+            </p>
+          )}
         </div>
       )}
 
@@ -191,7 +288,7 @@ function PresentationDetailPanel({ p }: { p: Presentation }) {
   );
 }
 
-function PresentationCard({ p }: { p: Presentation }) {
+function PresentationCard({ p, onPhaseDatesUpdated }: { p: Presentation; onPhaseDatesUpdated: (id: number, phases: SowPhase[]) => void }) {
   const [expanded, setExpanded] = useState(false);
 
   const selectedCount = p.selectedPhaseIds?.length
@@ -254,7 +351,7 @@ function PresentationCard({ p }: { p: Presentation }) {
         </div>
       </button>
 
-      {expanded && <PresentationDetailPanel p={p} />}
+      {expanded && <PresentationDetailPanel p={p} onPhaseDatesUpdated={onPhaseDatesUpdated} />}
     </div>
   );
 }
@@ -291,6 +388,12 @@ export default function PresentationsPage() {
 
   useEffect(() => { load(1); }, [load]);
 
+  const handlePhaseDatesUpdated = useCallback((presId: number, updatedPhases: SowPhase[]) => {
+    setPresentations(prev => prev.map(p =>
+      p.id === presId ? { ...p, sowPhases: updatedPhases } : p
+    ));
+  }, []);
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -326,7 +429,7 @@ export default function PresentationsPage() {
 
       <div className="space-y-3">
         {presentations.map(p => (
-          <PresentationCard key={p.id} p={p} />
+          <PresentationCard key={p.id} p={p} onPhaseDatesUpdated={handlePhaseDatesUpdated} />
         ))}
       </div>
 

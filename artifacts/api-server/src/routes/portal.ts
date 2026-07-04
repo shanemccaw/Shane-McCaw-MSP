@@ -13,7 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, type SowPricingLine } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -11961,6 +11961,91 @@ router.get("/admin/presentations", requireAdmin, async (req: Request, res: Respo
   } catch (err) {
     logger.error({ err }, "portal: failed to fetch admin presentations list");
     res.status(500).json({ error: "Failed to load presentations" });
+  }
+});
+
+// PATCH /api/admin/presentations/:id/phase-dates
+// Lets the admin set or clear a deliveryDate on each SOW phase.
+// Updates sowPricingLines on the linked document (live source read by deriveEffectiveSowData)
+// and mirrors the dates into the sowPhases snapshot for display in the admin panel.
+router.patch("/admin/presentations/:id/phase-dates", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const { phases } = req.body as { phases?: unknown };
+    if (!Array.isArray(phases)) { res.status(400).json({ error: "phases must be an array" }); return; }
+
+    // Validate and build id→date map
+    const dateMap = new Map<string, string | null>();
+    for (const entry of phases) {
+      const e = entry as Record<string, unknown>;
+      if (typeof e.id !== "string") continue;
+      const d = e.deliveryDate;
+      // Accept YYYY-MM-DD strings or null/undefined (clear)
+      const validated = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+      dateMap.set(e.id, validated);
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id)).limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    // ── 1. Update sowPricingLines on every linked consolidated/consulting SOW doc ──
+    const docIds = (pres.documentsIncluded ?? []) as number[];
+    if (docIds.length > 0) {
+      const docs = await db.select({
+        id: insightsGeneratedDocumentsTable.id,
+        sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+      })
+        .from(insightsGeneratedDocumentsTable)
+        .where(and(
+          inArray(insightsGeneratedDocumentsTable.id, docIds),
+          inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+        ));
+
+      for (const doc of docs) {
+        if (!Array.isArray(doc.sowPricingLines) || doc.sowPricingLines.length === 0) continue;
+
+        let workstreamIdx = 0;
+        const updatedLines = (doc.sowPricingLines as SowPricingLine[]).map(line => {
+          if (line.line_type === "adjustment") return line;
+          const phaseId = `sow-${workstreamIdx}`;
+          workstreamIdx++;
+          if (!dateMap.has(phaseId)) return line;
+          const newDate = dateMap.get(phaseId);
+          if (newDate === null) {
+            const { deliveryDate: _removed, ...rest } = line;
+            return rest as SowPricingLine;
+          }
+          return { ...line, deliveryDate: newDate } as SowPricingLine;
+        });
+
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ sowPricingLines: updatedLines, updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, doc.id));
+      }
+    }
+
+    // ── 2. Mirror dates into the sowPhases snapshot so the admin panel can display them ──
+    type SnapPhase = { id: string; title: string; description: string; price: number; selected: boolean; deliveryDate?: string | null };
+    const snap = (pres.sowPhases ?? []) as SnapPhase[];
+    if (snap.length > 0) {
+      const updatedSnap = snap.map(phase => {
+        if (!dateMap.has(phase.id)) return phase;
+        const newDate = dateMap.get(phase.id);
+        return { ...phase, deliveryDate: newDate ?? null };
+      });
+      await db.update(quickWinPresentationsTable)
+        .set({ sowPhases: updatedSnap, updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, id));
+    }
+
+    req.log.info({ presentationId: id, phasesUpdated: dateMap.size }, "admin: updated SOW phase delivery dates");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin: failed to update SOW phase delivery dates");
+    res.status(500).json({ error: "Failed to update delivery dates" });
   }
 });
 
