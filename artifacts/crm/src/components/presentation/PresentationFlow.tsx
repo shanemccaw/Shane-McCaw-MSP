@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import DocumentPanel from "./DocumentPanel";
 import SowSelectorPanel from "./SowSelectorPanel";
@@ -140,6 +141,7 @@ export default function PresentationFlow({
   onClose,
 }: PresentationFlowProps) {
   const { fetchWithAuth, user } = useAuth();
+  const search = useSearch();
 
   const [data, setData] = useState<PresentationData>(initialData);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -154,11 +156,18 @@ export default function PresentationFlow({
   const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
 
   const computeInitialStep = () => {
-    if (!startAtPayment) return 0;
-    const steps = buildSteps(initialData.documents, readOnly);
-    const targetKind = initialData.status === "paid" ? "confirmation" : "payment";
-    const idx = steps.findIndex(s => s.kind === targetKind);
-    return idx >= 0 ? idx : 0;
+    if (startAtPayment) {
+      const steps = buildSteps(initialData.documents, readOnly);
+      const targetKind = initialData.status === "paid" ? "confirmation" : "payment";
+      const idx = steps.findIndex(s => s.kind === targetKind);
+      return idx >= 0 ? idx : 0;
+    }
+    const urlStep = parseInt(new URLSearchParams(search).get("step") ?? "", 10);
+    if (!isNaN(urlStep) && urlStep >= 0) {
+      const steps = buildSteps(initialData.documents, readOnly);
+      return Math.min(urlStep, steps.length - 1);
+    }
+    return 0;
   };
 
   const lsKey = `pf-progress-${presentationId}`;
@@ -177,6 +186,15 @@ export default function PresentationFlow({
   const [stepIndex, setStepIndex] = useState(computeInitialStep);
   const [maxVisitedStep, setMaxVisitedStep] = useState(computeInitialMaxVisited);
   const [signerName, setSignerName] = useState(data.signerName ?? user?.name ?? "");
+
+  // Keep ?step=N in the URL in sync with the active slide so refresh / shared
+  // links land on the right slide.  Using replaceState avoids polluting the
+  // back-button history with every slide advance.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set("step", String(stepIndex));
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [stepIndex]);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
