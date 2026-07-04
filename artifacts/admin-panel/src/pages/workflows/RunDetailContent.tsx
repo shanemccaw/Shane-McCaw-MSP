@@ -662,9 +662,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                     const isProgress = log.level === "progress";
                     const step  = isProgress ? (log.metadata?.step  as number | undefined) : undefined;
                     const total = isProgress ? (log.metadata?.total as number | undefined) : undefined;
+                    const pricingTotal = log.metadata?.totalPrice as number | undefined;
+                    const pricingLines = log.metadata?.lineCount  as number | undefined;
+                    const hasPricing   = pricingTotal != null;
                     const dotColor = log.level === "error" ? "#EF4444"
                                    : log.level === "warn"  ? "#F59E0B"
                                    : isProgress            ? "#00B4D8"
+                                   : hasPricing            ? "#00B4D8"
                                    :                         "#0078D4";
                     return (
                       <div key={log.id} className="relative">
@@ -688,6 +692,18 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                             <span className="ml-2 text-[10px] text-cyan-400/60 font-mono">({step}/{total})</span>
                           )}
                         </p>
+                        {hasPricing && (
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#00B4D8]/15 border border-[#00B4D8]/35 text-[#00B4D8]">
+                              💲 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pricingTotal!)}
+                            </span>
+                            {pricingLines != null && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                                {pricingLines} line{pricingLines !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

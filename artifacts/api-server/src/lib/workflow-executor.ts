@@ -4021,6 +4021,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
     errorMessage: nodeError ? (output.error as string ?? "node error") : null,
   }).catch(() => { /* non-fatal */ });
 
+  const completionMeta: Record<string, unknown> | undefined =
+    !nodeError &&
+    (node.data?.actionType as string) === "calculate_pricing" &&
+    output.totalPrice != null
+      ? { totalPrice: output.totalPrice as number, lineCount: output.lineCount as number }
+      : undefined;
+
   await db.insert(wfRunNodeLogsTable).values({
     runId,
     nodeId: node.id,
@@ -4028,6 +4035,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
     message: nodeError
       ? `Node ${node.type} (${node.id}) failed: ${output.error ?? "error"}`
       : `Node ${node.type} (${node.id}) completed in ${durationMs}ms`,
+    ...(completionMeta ? { metadata: completionMeta } : {}),
   }).catch(() => { /* non-fatal */ });
 
   const prevNodes = (payload.nodes as Record<string, unknown>) ?? {};
