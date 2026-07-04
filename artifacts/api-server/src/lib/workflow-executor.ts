@@ -1250,8 +1250,21 @@ async function executeNode(
               output = { error: `calculate_pricing: document ${calcDocId} has no htmlContent` };
             } else {
               const { lineCount, totalPrice } = await persistSowPricing(calcDocId, docRow[0].htmlContent);
-              output = { documentId: calcDocId, totalPrice, lineCount, ...(calcDocType ? { docType: calcDocType } : {}) };
-              logger.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
+              if (lineCount === 0) {
+                nodeError = true;
+                output = {
+                  error:
+                    "No pricing lines found — check that the document is a SOW and that its pricing table contains rows with dollar amounts. " +
+                    "The upstream generate_document node may have produced malformed or non-SOW HTML.",
+                  documentId: calcDocId,
+                  lineCount: 0,
+                  totalPrice: 0,
+                };
+                logger.warn({ runId, calcDocId, calcDocType }, "wf-executor: calculate_pricing found 0 pricing lines — failing node");
+              } else {
+                output = { documentId: calcDocId, totalPrice, lineCount, ...(calcDocType ? { docType: calcDocType } : {}) };
+                logger.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
+              }
             }
           }
         } else {
