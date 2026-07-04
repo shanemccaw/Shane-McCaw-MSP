@@ -26,6 +26,7 @@ interface SowSelectorPanelProps {
   originalSowHtml?: string | null;
   adjustmentLines?: AdjustmentLine[];
   adjustmentsTotal?: number;
+  scopedCalculated?: boolean;
 }
 
 function formatCurrency(n: number): string {
@@ -43,6 +44,7 @@ export default function SowSelectorPanel({
   originalSowHtml,
   adjustmentLines = [],
   adjustmentsTotal = 0,
+  scopedCalculated = false,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
   // Separate heights for each document so toggling never resets the layout.
@@ -247,7 +249,7 @@ export default function SowSelectorPanel({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold text-gray-400 leading-snug">{adj.title}</p>
-                        {hasScopeReduction ? (
+                        {hasScopeReduction && !scopedCalculated ? (
                           <span className="text-xs font-semibold text-gray-300 italic whitespace-nowrap flex-shrink-0">
                             Calculating…
                           </span>
@@ -289,7 +291,7 @@ export default function SowSelectorPanel({
                 {adjustmentLines.map((adj, i) => (
                   <div key={i} className="flex items-center justify-between text-xs text-gray-400">
                     <span className="truncate mr-2">{adj.title}</span>
-                    {hasScopeReduction ? (
+                    {hasScopeReduction && !scopedCalculated ? (
                       <span className="flex-shrink-0 italic text-gray-300">Calculating…</span>
                     ) : (
                       <span className="flex-shrink-0">+{formatCurrency(adj.price)}</span>
@@ -301,7 +303,7 @@ export default function SowSelectorPanel({
             )}
             <div className="flex items-center justify-between mb-0.5">
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {hasScopeReduction && hasAdjustments ? "Phases Subtotal" : "Total Investment"}
+                {hasScopeReduction && hasAdjustments && !scopedCalculated ? "Phases Subtotal" : "Total Investment"}
               </p>
               {!readOnly && (
                 <p className="text-xs text-muted-foreground">
@@ -310,9 +312,9 @@ export default function SowSelectorPanel({
               )}
             </div>
             <p className="text-2xl font-extrabold text-[#0A2540]">
-              {hasScopeReduction && hasAdjustments ? formatCurrency(phasesSubtotal) : formatCurrency(displayTotal)}
+              {hasScopeReduction && hasAdjustments && !scopedCalculated ? formatCurrency(phasesSubtotal) : formatCurrency(displayTotal)}
             </p>
-            {hasScopeReduction && hasAdjustments && (
+            {hasScopeReduction && hasAdjustments && !scopedCalculated && (
               <p className="text-xs text-gray-400 italic mt-0.5">+ adjustments recalculating…</p>
             )}
             {saving && (

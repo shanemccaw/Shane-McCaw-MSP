@@ -1615,6 +1615,7 @@ export default function PresentationFlow({
                   originalSowHtml={sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow")?.htmlContent ?? null}
                   adjustmentLines={data.adjustmentLines}
                   adjustmentsTotal={data.adjustmentsTotal}
+                  scopedCalculated={scopedDocMatchesSelection}
                 />
               </div>
             )}
