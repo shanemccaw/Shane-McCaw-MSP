@@ -24,6 +24,8 @@ export interface WebPushPayload {
   body?: string;
   linkPath?: string | null;
   playSound?: boolean;
+  /** JSON-serialised SoundSource — present when a play_sound workflow node targets "desktop" */
+  soundPayload?: string;
 }
 
 export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void> {
@@ -56,6 +58,7 @@ export async function sendWebPushToAdmins(payload: WebPushPayload): Promise<void
     body: payload.body ?? "",
     linkPath: payload.linkPath ?? null,
     playSound: payload.playSound ?? false,
+    ...(payload.soundPayload !== undefined ? { soundPayload: payload.soundPayload } : {}),
   });
 
   const staleIds: number[] = [];

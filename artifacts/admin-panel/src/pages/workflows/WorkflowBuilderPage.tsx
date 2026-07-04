@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { playSoundFromParams, type SoundParams } from "@/lib/playSound";
 import {
   type Node,
   type Edge,
@@ -88,6 +89,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
   send_mobile_push:          { bg: "#1A0D2E", border: "#A855F7", icon: "📱", label: "Mobile Push"          },
   create_notification:       { bg: "#0A1A10", border: "#22C55E", icon: "🔕", label: "In-App Notification"  },
+  // ── Alerts & Notifications ──
+  play_sound:                { bg: "#1A0A18", border: "#E879F9", icon: "🔊", label: "Play Sound"            },
   // ── Input ──
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   // ── Logic ──
@@ -200,6 +203,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
   post_facebook: [{ key: "facebookPostId", label: "Facebook page_id_post_id composite" }, { key: "facebookPostUrl", label: "Direct URL to the Facebook post" }],
+  // Play Sound
+  play_sound: [
+    { key: "soundPlayed",  label: "true if sound was dispatched (Browser SSE or Desktop push)" },
+    { key: "soundTarget",  label: "Target that received the sound: browser or desktop", enumValues: ["browser", "desktop"] },
+  ],
   // Send Browser Notification
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
   // Send Mobile Push
@@ -573,6 +581,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "send_browser_notification", label: "Browser Notification",    description: "Push an OS-level browser alert to all subscribed admins",       tags: ["notification", "push", "browser", "alert", "admin"] },
       { type: "send_mobile_push",          label: "Mobile Push",              description: "Send an Expo push notification to all registered mobile devices", tags: ["notification", "push", "mobile", "expo", "alert", "admin"] },
       { type: "create_notification",       label: "In-App Notification",      description: "Insert a persistent alert into the admin notification bell/drawer", tags: ["notification", "in-app", "bell", "drawer", "alert", "admin"] },
+    ],
+  },
+  {
+    name: "Alerts & Notifications",
+    nodes: [
+      { type: "play_sound", label: "Play Sound", description: "Play an audio alert in the browser or deliver it via desktop push notification — preset library, custom URL, or AI-synthesised tone", tags: ["sound", "audio", "alert", "notification", "play", "chime", "beep"] },
     ],
   },
   {
@@ -1268,6 +1282,196 @@ function ImageUrlField({
   );
 }
 
+// ── Play Sound config panel ────────────────────────────────────────────────────
+
+const SOUND_PRESETS = [
+  { value: "success", label: "✅ Success chime" },
+  { value: "error",   label: "❌ Error buzz" },
+  { value: "alert",   label: "⚠️ Alert beep" },
+  { value: "ping",    label: "🔔 Notification ping" },
+  { value: "fanfare", label: "🎉 Celebration fanfare" },
+] as const;
+
+function PlaySoundPanel({
+  node,
+  onChange,
+  fetchWithAuth,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+}) {
+  const target     = (node.data.target    as string | undefined) ?? "browser";
+  const soundMode  = (node.data.soundMode as string | undefined) ?? "preset";
+  const sound      = (node.data.sound     as string | undefined) ?? "ping";
+  const url        = (node.data.url       as string | undefined) ?? "";
+  const synthDesc  = (node.data.synthDesc as string | undefined) ?? "";
+  const synthParams = node.data.synthParams as Record<string, unknown> | undefined;
+
+  const [synthLoading, setSynthLoading] = useState(false);
+  const [synthError,   setSynthError]   = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const up = (patch: Record<string, unknown>) => onChange(node.id, { ...node.data, ...patch });
+
+  const handleGenerate = async () => {
+    if (!synthDesc.trim()) return;
+    setSynthLoading(true);
+    setSynthError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/workflows/synthesise-sound", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: synthDesc }),
+      });
+      const json = await res.json() as { ok?: boolean; params?: Record<string, unknown>; error?: string };
+      if (!res.ok || !json.params) {
+        setSynthError(json.error ?? "Sound synthesis failed");
+      } else {
+        up({ synthParams: json.params });
+      }
+    } catch (e) {
+      setSynthError(String(e));
+    } finally {
+      setSynthLoading(false);
+    }
+  };
+
+  const handlePreview = async () => {
+    setPreviewLoading(true);
+    try {
+      if (soundMode === "generate" && synthParams) {
+        await playSoundFromParams({ type: "params", params: synthParams as unknown as SoundParams });
+      } else if (soundMode === "url" && url.trim()) {
+        await playSoundFromParams({ type: "url", url: url.trim() });
+      } else {
+        await playSoundFromParams({ type: "preset", preset: sound });
+      }
+    } catch { }
+    finally { setPreviewLoading(false); }
+  };
+
+  return (
+    <>
+      {/* Target */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Target</label>
+        <div className="flex gap-2">
+          {(["browser", "desktop"] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => up({ target: t })}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                target === t
+                  ? "bg-[#E879F9]/10 border-[#E879F9]/60 text-[#E879F9]"
+                  : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+              }`}
+            >
+              {t === "browser" ? "🌐 Browser" : "🖥 Desktop"}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-[#484F58] leading-relaxed">
+          {target === "browser"
+            ? "Plays audio directly in the open admin panel tab via the Web Audio API (instant)."
+            : "Delivers a web push notification — plays audio in any tab when the SW broadcasts it."}
+        </p>
+      </div>
+
+      {/* Sound mode */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-[#7D8590]">Sound source</label>
+        <div className="flex gap-1.5">
+          {([["preset", "Preset"], ["url", "Custom URL"], ["generate", "AI Generate"]] as const).map(([m, l]) => (
+            <button
+              key={m}
+              onClick={() => up({ soundMode: m })}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-medium border transition-colors ${
+                soundMode === m
+                  ? "bg-[#E879F9]/10 border-[#E879F9]/60 text-[#E879F9]"
+                  : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Preset picker */}
+      {soundMode === "preset" && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Preset sound</label>
+          <select
+            value={sound}
+            onChange={e => up({ sound: e.target.value })}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+          >
+            {SOUND_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Custom URL */}
+      {soundMode === "url" && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#7D8590]">Audio URL</label>
+          <input
+            value={url}
+            onChange={e => up({ url: e.target.value })}
+            placeholder="https://example.com/chime.mp3"
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58]"
+          />
+          <p className="text-[10px] text-[#484F58]">Must be a publicly accessible audio file (MP3, OGG, WAV). Browser target only — URLs are not delivered via push.</p>
+        </div>
+      )}
+
+      {/* AI Generate */}
+      {soundMode === "generate" && (
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-[#7D8590]">Describe the moment</label>
+          <textarea
+            value={synthDesc}
+            onChange={e => up({ synthDesc: e.target.value })}
+            placeholder="e.g. payment received, urgent warning, new lead"
+            rows={2}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58] resize-none"
+          />
+          <button
+            onClick={() => void handleGenerate()}
+            disabled={!synthDesc.trim() || synthLoading}
+            className="w-full py-1.5 rounded-lg text-xs font-medium border bg-[#E879F9]/10 border-[#E879F9]/40 text-[#E879F9] hover:bg-[#E879F9]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {synthLoading ? "Generating…" : "✨ Generate sound parameters"}
+          </button>
+          {synthError && <p className="text-[10px] text-red-400">{synthError}</p>}
+          {synthParams && !synthError && (
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2 text-[10px] text-[#484F58]">
+              <span className="text-[#22C55E]">✓</span> Sound parameters generated — click Preview to hear them.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview button */}
+      <button
+        onClick={() => void handlePreview()}
+        disabled={previewLoading || (soundMode === "generate" && !synthParams) || (soundMode === "url" && !url.trim())}
+        className="w-full py-1.5 rounded-lg text-xs font-medium border bg-[#1A1020] border-[#E879F9]/30 text-[#C084FC] hover:bg-[#E879F9]/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        {previewLoading ? "Playing…" : "▶ Preview sound"}
+      </button>
+
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">
+          Outputs: <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> (boolean), <span className="font-mono text-[#7D8590]">{"{{soundTarget}}"}</span>.
+          Browser target plays in real-time via SSE. Desktop target delivers via web push (requires VAPID secrets).
+        </p>
+      </div>
+    </>
+  );
+}
+
 // ── Config panel ──────────────────────────────────────────────────────────────
 
 function NodeConfigPanel({
@@ -1692,6 +1896,10 @@ function NodeConfigPanel({
             <PayloadField label="To (E.164 phone)" value={(node.data.to as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, to: v })} placeholder="+12025550100" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Message" value={(node.data.message as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, message: v })} placeholder="Hi {{payload.name}}, your project is ready." multiline ancestorOutputs={ancestorOutputs} />
           </>
+        )}
+
+        {nodeType === "play_sound" && (
+          <PlaySoundPanel node={node} onChange={onChange} fetchWithAuth={fetchWithAuth} />
         )}
 
         {nodeType === "send_browser_notification" && (

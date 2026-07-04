@@ -1679,10 +1679,11 @@ export interface WfNode {
     | "compose"
     // System
     | "system_action"
-    // Notifications
+    // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"
     | "create_notification"
+    | "play_sound"
     // Input
     | "ask_for_input"
     // Logic

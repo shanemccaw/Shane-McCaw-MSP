@@ -17,7 +17,27 @@ self.addEventListener("push", function (event) {
     requireInteraction: false,
   };
 
-  // If this push requests a sound, broadcast PLAY_PURCHASE_SOUND to all open
+  // play_sound workflow node (Desktop target): broadcast PLAY_WORKFLOW_SOUND with
+  // the sound source spec so open admin-panel tabs can play it via Web Audio API.
+  if (payload.soundPayload) {
+    event.waitUntil(
+      Promise.all([
+        self.registration.showNotification(title, options),
+        clients
+          .matchAll({ type: "window", includeUncontrolled: true })
+          .then(function (windowClients) {
+            for (var i = 0; i < windowClients.length; i++) {
+              if (windowClients[i].url.includes("/admin-panel")) {
+                windowClients[i].postMessage({ type: "PLAY_WORKFLOW_SOUND", source: payload.soundPayload });
+              }
+            }
+          }),
+      ])
+    );
+    return;
+  }
+
+  // Legacy purchase sound: broadcast PLAY_PURCHASE_SOUND to all open
   // admin-panel clients so the tab can play it (or queue it for next focus).
   if (payload.playSound) {
     event.waitUntil(

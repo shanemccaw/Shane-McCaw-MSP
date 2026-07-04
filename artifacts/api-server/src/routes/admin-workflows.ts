@@ -43,6 +43,8 @@ import { eq, and, desc, asc, count, sql, gte, lte } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
+import { registerAdminWorkflowEventClient } from "../lib/sse-broadcast";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 import crypto from "crypto";
 
 const router = Router();
@@ -1267,6 +1269,100 @@ router.post("/admin/workflows/definitions/:id/publish-to-prod", requireAdmin, as
   } catch (err) {
     req.log.error({ err, defId }, "workflows: publish-to-prod failed");
     sendError(res, 500, err instanceof Error ? err.message : "Failed to publish to production");
+  }
+});
+
+// ── Admin workflow events SSE stream ─────────────────────────────────────────
+// GET /api/admin/workflows/sound-events
+// Admin panel tabs subscribe here to receive real-time play_sound events
+// emitted by the workflow executor (Browser target).
+
+router.get("/admin/workflows/sound-events", requireAdmin, (req: Request, res: Response) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const keepAlive = setInterval(() => {
+    try { res.write(": keep-alive\n\n"); } catch { clearInterval(keepAlive); }
+  }, 25_000);
+
+  registerAdminWorkflowEventClient(res, () => clearInterval(keepAlive));
+});
+
+// ── Sound synthesiser ─────────────────────────────────────────────────────────
+// POST /api/admin/workflows/synthesise-sound
+// Calls Claude to produce Web Audio API parameters from a natural-language
+// description. Returns JSON parameters — no audio binary is generated
+// server-side; the browser synthesises sound from the params.
+
+const SYNTHESISE_SOUND_SCHEMA = z.object({
+  description: z.string().min(1).max(500),
+});
+
+router.post("/admin/workflows/synthesise-sound", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = SYNTHESISE_SOUND_SCHEMA.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "description is required (1–500 chars)" });
+    return;
+  }
+
+  const { description } = parsed.data;
+
+  const systemPrompt = `You are an audio design assistant that converts moment descriptions into Web Audio API synthesis parameters.
+Return ONLY valid JSON matching this exact schema — no prose, no markdown fences:
+{
+  "waveform": "sine" | "square" | "sawtooth" | "triangle",
+  "notes": [{ "frequency": number, "startTime": number, "duration": number, "gain": number }],
+  "totalDuration": number,
+  "envelope": { "attack": number, "decay": number, "sustain": number, "release": number }
+}
+Rules:
+- frequency in Hz (e.g. 440 = A4). Use musically meaningful pitches.
+- startTime and duration in seconds. totalDuration should equal the natural end of the last note + its duration + release.
+- gain per note: 0.0–1.0.
+- envelope times in seconds; release should be short (0.1–0.5 s).
+- Keep totalDuration ≤ 3.0 seconds.
+- For success/positive: use ascending notes, sine waveform, gentle gain.
+- For error/warning: use descending notes or dissonant interval, square or sawtooth waveform, stronger gain.
+- For alert/ping: single note, brief duration.
+- For celebration/fanfare: 3–5 ascending notes, triangle waveform.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: "user", content: `Generate sound parameters for: "${description}"` }],
+    });
+
+    const raw = message.content[0]?.type === "text" ? message.content[0].text : "";
+
+    let params: Record<string, unknown> | null = null;
+    const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (fenceMatch?.[1]) {
+      try { params = JSON.parse(fenceMatch[1].trim()) as Record<string, unknown>; } catch { }
+    }
+    if (!params) {
+      const start = raw.indexOf("{");
+      const end = raw.lastIndexOf("}");
+      if (start !== -1 && end > start) {
+        try { params = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>; } catch { }
+      }
+    }
+
+    if (!params) {
+      req.log.warn({ raw }, "synthesise-sound: AI returned non-JSON response");
+      res.status(500).json({ error: "AI returned unexpected format" });
+      return;
+    }
+
+    req.log.info({ description }, "synthesise-sound: parameters generated");
+    res.json({ ok: true, params });
+  } catch (err) {
+    req.log.error({ err }, "synthesise-sound: AI call failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Sound synthesis failed" });
   }
 });
 

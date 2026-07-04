@@ -60,3 +60,29 @@ export function broadcastPresentationDocsChange(presentationId: number): void {
 export function getPresentationSSEClientCount(presentationId: number): number {
   return presentationSSEClients.get(presentationId)?.size ?? 0;
 }
+
+// ── Admin-global workflow events SSE ──────────────────────────────────────────
+// Used by the play_sound workflow node (Browser target) to deliver real-time
+// audio playback instructions to open admin panel tabs.
+
+const adminWorkflowEventClients = new Set<Response>();
+
+export function registerAdminWorkflowEventClient(res: Response, onClose: () => void): void {
+  adminWorkflowEventClients.add(res);
+  res.on("close", () => {
+    adminWorkflowEventClients.delete(res);
+    onClose();
+  });
+}
+
+export function broadcastAdminWorkflowEvent(event: Record<string, unknown>): void {
+  if (adminWorkflowEventClients.size === 0) return;
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of adminWorkflowEventClients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function getAdminWorkflowEventClientCount(): number {
+  return adminWorkflowEventClients.size;
+}

@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import NotificationDrawer from "@/components/NotificationDrawer";
 import { usePurchaseSound } from "@/hooks/usePurchaseSound";
+import { playSoundFromParams } from "@/lib/playSound";
 
 interface NavItem {
   label: string;
@@ -704,6 +705,79 @@ export default function DashboardShell({ children }: { children: ReactNode }) {
       }
     } catch {}
   }, [fetchWithAuth]);
+
+  // ─── Workflow sound SSE consumer ────────────────────────────────────────────
+  // Connects to the admin workflow events stream and plays sounds when the
+  // play_sound node (Browser target) fires during a workflow run.
+  const startWorkflowSoundSSE = useCallback(async (signal: AbortSignal) => {
+    try {
+      const res = await fetchWithAuth("/api/admin/workflows/sound-events", { signal });
+      if (!res.ok || !res.body) return false;
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        if (signal.aborted) break;
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const dataLine = part.split("\n").find(l => l.startsWith("data: "));
+          if (!dataLine) continue;
+          try {
+            const parsed = JSON.parse(dataLine.slice(6)) as { type?: string; source?: unknown };
+            if (parsed.type === "play_sound" && parsed.source) {
+              void playSoundFromParams(parsed.source as Parameters<typeof playSoundFromParams>[0]);
+            }
+          } catch {}
+        }
+      }
+      return true;
+    } catch {
+      return signal.aborted;
+    }
+  }, [fetchWithAuth]);
+
+  useEffect(() => {
+    const outerAbort = new AbortController();
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let streamAbort: AbortController | null = null;
+
+    const connect = async () => {
+      if (outerAbort.signal.aborted) return;
+      streamAbort = new AbortController();
+      const ok = await startWorkflowSoundSSE(streamAbort.signal);
+      if (!outerAbort.signal.aborted) {
+        retryTimer = setTimeout(connect, ok ? 1000 : 5000);
+      }
+    };
+
+    void connect();
+    return () => {
+      outerAbort.abort();
+      streamAbort?.abort();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [startWorkflowSoundSSE]);
+
+  // ─── Service worker PLAY_WORKFLOW_SOUND handler ───────────────────────────
+  // Handles sounds delivered via desktop push notification.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type !== "PLAY_WORKFLOW_SOUND") return;
+      try {
+        const source = JSON.parse(event.data.source as string) as Parameters<typeof playSoundFromParams>[0];
+        void playSoundFromParams(source);
+      } catch {}
+    };
+    navigator.serviceWorker.addEventListener("message", handleSwMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", handleSwMessage);
+  }, []);
 
   const startCampaignSSE = useCallback(async (signal: AbortSignal) => {
     try {

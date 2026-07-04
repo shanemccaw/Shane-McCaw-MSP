@@ -1025,6 +1025,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
           .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark report doc as failed"));
       }
     })();
+    return;
   } catch (err) {
     logger.error({ err }, "insights document generate error");
     return res.status(500).json({ error: "Failed to generate document" });
@@ -1864,6 +1865,7 @@ INSTRUCTIONS:
           .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark consulting doc as failed"));
       }
     })();
+    return;
   } catch (err) {
     logger.error({ err }, "insights consulting generate error");
     return res.status(500).json({ error: "Failed to generate consulting deliverable" });

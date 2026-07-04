@@ -52,6 +52,7 @@ import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
+import { broadcastAdminWorkflowEvent } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -451,6 +452,13 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "notify_major_changes":
       return { dryRun: true, notified: false, skipped: true };
+
+    case "play_sound": {
+      const psTarget = (node.data.target as string | undefined) ?? "browser";
+      const psSound  = (node.data.sound  as string | undefined) ?? "ping";
+      logger.info({ psTarget, psSound }, "workflow-executor [dry-run]: play_sound would play");
+      return { dryRun: true, soundPlayed: false, soundTarget: psTarget, skipped: true };
+    }
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -1553,6 +1561,48 @@ async function executeNode(
         break;
       }
 
+      case "play_sound": {
+        const psTarget  = (node.data.target  as string | undefined)?.trim() ?? "browser";
+        const psSound   = (node.data.sound   as string | undefined)?.trim() ?? "ping";
+        const psUrl     = (node.data.url     as string | undefined)?.trim() ?? "";
+        const psParams  = node.data.synthParams as Record<string, unknown> | undefined;
+        const psLabel   = psParams ? "synthesised" : (psUrl ? psUrl : psSound);
+
+        if (psTarget === "desktop") {
+          // Deliver via web push — the service worker will broadcast PLAY_WORKFLOW_SOUND
+          // to open admin panel tabs, which then call playSoundFromParams.
+          try {
+            await sendWebPushToAdmins({
+              title: "🔔 Workflow Sound",
+              body: `Playing: ${psLabel}`,
+              linkPath: null,
+              playSound: false,
+              soundPayload: JSON.stringify(
+                psParams ? { type: "params", params: psParams }
+                  : psUrl   ? { type: "url",    url: psUrl }
+                  : { type: "preset", preset: psSound }
+              ),
+            } as Parameters<typeof sendWebPushToAdmins>[0] & { soundPayload?: string });
+            logger.info({ runId, psLabel }, "play_sound [desktop]: web push dispatched");
+            output = { soundPlayed: true, soundTarget: "desktop" };
+          } catch (psErr) {
+            logger.warn({ psErr, runId }, "play_sound [desktop]: push dispatch failed");
+            output = { soundPlayed: false, soundTarget: "desktop", error: String(psErr) };
+          }
+        } else {
+          // Browser target — emit SSE event; open admin panel tabs pick it up
+          broadcastAdminWorkflowEvent({
+            type: "play_sound",
+            source: psParams ? { type: "params", params: psParams }
+              : psUrl   ? { type: "url",    url: psUrl }
+              : { type: "preset", preset: psSound },
+          });
+          logger.info({ runId, psLabel }, "play_sound [browser]: SSE event broadcast");
+          output = { soundPlayed: true, soundTarget: "browser" };
+        }
+        break;
+      }
+
       case "send_campaign_email": {
         // Escape a plain string value for safe insertion into HTML
         function escHtml(s: string): string {
@@ -2346,7 +2396,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // If the AI failed to return parseable JSON, log it so it's visible in
         // the run logs and downstream nodes can fall back gracefully.
         if (!fnhAiText || Object.keys(fnhParsed).length === 0) {
-          logger.warn({ runId, nodeId, rawResponse: fnhAiText.slice(0, 500) },
+          logger.warn({ runId, nodeId: node.id, rawResponse: fnhAiText.slice(0, 500) },
             "fetch_news_headlines: AI did not return valid JSON — fields will be derived from first headline");
         }
 
