@@ -77,48 +77,43 @@ const CONSULTING_SECTION_HINTS: Record<string, string> = {
 
 // ── Tier 02 Pricing Formula (verbatim — embedded into every SOW prompt) ───────
 
-const TIER_02_PRICING_FORMULA = `You are pricing Tier 02 Microsoft 365 remediation projects. These are NOT assessments. These are project-based remediation engagements where real problems are fixed.
+const TIER_02_PRICING_FORMULA = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
 
-Use the base price range from the Engagement Projects Catalogue as the starting point. The upper value in the range (e.g., $25,000, $30,000, $35,000) is the Base Ceiling. The Base Ceiling is NOT a maximum. It is only the starting point.
+STEP 1 — DETECT TENANT TIER (use ONLY "Total Users in Tenant" from the TENANT FACTS block — never infer from any other field):
+  Tier01: 1–50 users
+  Tier02: 51–250 users
+  Tier03: 251–750 users
+  Tier04: 751+ users
 
-Final Price = Base Ceiling + Tenant Size Adjustment + Complexity Adjustment + Data Sprawl Adjustment + Security/Compliance Adjustment + Copilot Readiness Adjustment (if applicable) + Timeline Adjustment
+STEP 2 — BASE CEILINGS (select the row matching the detected tier):
+  Workstream        | Tier01   | Tier02   | Tier03   | Tier04
+  Governance        | $10,000  | $25,000  | $30,000  | $35,000
+  Security          | $10,000  | $28,000  | $35,000  | $42,000
+  Copilot           |  $8,000  | $30,000  | $35,000  | $42,000
+  Info Architecture | $12,000  | $25,000  | $30,000  | $42,000
+  License Optim.    |  $4,000  |  $8,000  | $12,000  | $15,000
 
-Always calculate each adjustment. Always show the breakdown. Never leave pricing blank. Never say "TBD." Never treat the Base Ceiling as a maximum.
+  Include only the workstreams relevant to this engagement.
+  Workstream Total = sum of all included workstream Base Ceilings.
 
-**Tenant Size Adjustment** (use ONLY the totalUserCount from the TENANT FACTS block injected above — do NOT infer from activeUserPercent or any other field; do NOT invent a user count):
-- Under 250 users → +$0
-- 250–750 users → +$7,500
-- 750–1,500 users → +$15,000
-- 1,500–3,000 users → +$25,000
-- 3,000+ users → +$40,000
+STEP 3 — ADJUSTMENTS (flat per-tier amounts — apply each adjustment if the findings support it; if a category does not apply, add $0 and explain why):
+  Adjustment        | Tier01  | Tier02   | Tier03   | Tier04
+  Complexity        | $5,000  | $15,000  | $25,000  | $35,000
+  Data Sprawl       | $5,000  | $10,000  | $20,000  | $25,000
+  Security/Compli.  | $5,000  | $10,000  | $20,000  | $25,000
+  Copilot Readiness | $5,000  | $10,000  | $20,000  | $25,000
 
-**Complexity Adjustment** (assess from findings — number of critical gaps, number of remediation domains):
-- Low complexity → +$0
-- Moderate complexity → +$10,000
-- High complexity → +$20,000
-- Extreme complexity → +$35,000
+  Criteria for applying each adjustment:
+  - Complexity: apply if the findings show multiple critical gaps or ≥ 3 remediation domains.
+  - Data Sprawl: apply if DLP policies = 0, sensitivity labels unconfigured, or ≥ 50 SharePoint sites with no governance.
+  - Security/Compliance: apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
+  - Copilot Readiness: apply ONLY when Copilot-related workstreams are in scope; base on Copilot score and blocker count.
+  Adjustment Total = sum of all applicable adjustments at the tier-correct dollar amount.
 
-**Data Sprawl Adjustment** (assess from DLP, SharePoint, sensitivity label, and retention policy findings):
-- Low sprawl → +$0
-- Moderate sprawl → +$5,000
-- High sprawl → +$12,500
-- Severe sprawl → +$25,000
+STEP 4 — TOTALS:
+  Engagement Total = Workstream Total + Adjustment Total.
 
-**Security & Compliance Adjustment** (derive from compliance flags and industry context):
-- Basic → +$0
-- HIPAA/Financial → +$7,500
-- Defense/ITAR/CMMC → +$15,000
-- High-risk identity/security issues → +$25,000
-
-**Copilot Readiness Adjustment** (only for Copilot-related projects — assess from hasCopilotLicenses, sensitivityLabelsConfigured, DLP, and Copilot score):
-- Minor blockers → +$5,000
-- Moderate blockers → +$12,500
-- Major blockers → +$25,000
-
-**Timeline Adjustment**:
-- Standard → +$0
-- Expedited → +$5,000
-- Rapid → +$10,000
+Always show the detected tier, always show each step's arithmetic, never leave pricing blank, never say TBD.
 
 Output requirements for the Pricing section:
 - Show a pricing table with columns: Project/Workstream, Base Ceiling, Adjustments (itemised), Final Price (USD), Reasoning
