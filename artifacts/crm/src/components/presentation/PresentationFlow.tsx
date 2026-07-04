@@ -334,6 +334,16 @@ export default function PresentationFlow({
     ? Math.round(data.discountedTotalCents) / 100
     : effectivePrice;
 
+  // When PAY-TODAY "adjustments_waived" is in effect the discount equals adjustmentsTotal,
+  // so contractPrice already has them factored out. Passing the original adjustmentsTotal
+  // to ContractSignPanel would cause it to subtract them again ("Workstream Subtotal" =
+  // contractPrice - adjustmentsTotal = effectivePrice - 2*adjustmentsTotal — wrong).
+  // Zero the adjustment props so the breakdown stays internally consistent.
+  const contractAdjustmentsWaived =
+    data.discountedTotalCents != null && (data.adjustmentsTotal ?? 0) > 0;
+  const contractAdjustmentsTotal = contractAdjustmentsWaived ? 0 : (data.adjustmentsTotal ?? 0);
+  const contractAdjustmentLines  = contractAdjustmentsWaived ? [] : (data.adjustmentLines ?? []);
+
   // Aggregate stats for the Overview teaser cards — uses the same per-family
   // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
   const overviewStats = useMemo(
@@ -1408,8 +1418,8 @@ export default function PresentationFlow({
                 <ContractSignPanel
                   signerName={signerName}
                   selectedPhases={selectedPhases}
-                  adjustmentsTotal={data.adjustmentsTotal ?? 0}
-                  adjustmentLines={data.adjustmentLines ?? []}
+                  adjustmentsTotal={contractAdjustmentsTotal}
+                  adjustmentLines={contractAdjustmentLines}
                   totalPrice={contractPrice}
                   onChangeName={setSignerName}
                   onSign={handleSign}
