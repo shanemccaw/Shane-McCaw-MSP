@@ -206,7 +206,14 @@ export default function PresentationFlow({
     const urlStep = parseInt(new URLSearchParams(search).get("step") ?? "", 10);
     if (!isNaN(urlStep) && urlStep >= 0) {
       const steps = buildSteps(initialData.documents, readOnly);
-      return Math.min(urlStep, steps.length - 1);
+      const clamped = Math.min(urlStep, steps.length - 1);
+      // If the URL tries to land on the Agreement step but no plan has been chosen,
+      // redirect to the Payment Options step so the client picks a plan first.
+      if (steps[clamped]?.kind === "contract" && !initialData.paymentPlan) {
+        const pmtIdx = steps.findIndex(s => s.kind === "payment");
+        return pmtIdx >= 0 ? pmtIdx : clamped;
+      }
+      return clamped;
     }
     return 0;
   };
@@ -307,6 +314,22 @@ export default function PresentationFlow({
       .catch(() => { /* non-fatal */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presentationId, readOnly, shareToken]);
+
+  // ── Runtime safety net: if currentStep is "contract" but no plan is chosen,
+  // redirect to payment. Catches any path not covered by the init / nav guards
+  // (e.g. localStorage restoring a visited step from a prior session where plan
+  // was never persisted server-side).
+  useEffect(() => {
+    if (currentStep?.kind === "contract" && !selectedPlan) {
+      const pmtIdx = steps.findIndex(s => s.kind === "payment");
+      if (pmtIdx >= 0) {
+        directionRef.current = "back";
+        applyStepChange(pmtIdx);
+      }
+    }
+  // Only re-run when the active step or plan changes — not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep?.kind, selectedPlan]);
 
   // ── Scoped SOW regeneration state ─────────────────────────────────────────
   const [scopedSowDoc, setScopedSowDoc] = useState<string | null>(initialData.scopedSowHtml ?? null);
