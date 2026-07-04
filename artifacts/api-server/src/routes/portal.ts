@@ -10024,6 +10024,13 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       } catch { /* non-fatal — proceed with existing status */ }
     }
 
+    // Restore scoped SOW state if it was persisted and still matches an actual scope reduction
+    const allLivePhaseIds = effectiveSowPhases.map(p => p.id);
+    const hasScopeReduction =
+      Array.isArray(pres.scopedPhaseIds) &&
+      pres.scopedPhaseIds.length > 0 &&
+      pres.scopedPhaseIds.length < allLivePhaseIds.length;
+
     res.json({
       id: pres.id,
       projectId: pres.projectId,
@@ -10045,6 +10052,9 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       clientName: clientUser?.name ?? null,
       contractBody,
       workflowName: project?.workflowName ?? null,
+      scopedSowHtml: hasScopeReduction ? (pres.scopedSowHtml ?? null) : null,
+      scopedTotalPrice: hasScopeReduction && pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null,
+      scopedPhaseIds: hasScopeReduction ? (pres.scopedPhaseIds ?? null) : null,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get presentation");
@@ -10091,6 +10101,158 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Helper — build a clean scoped SOW HTML document from selected phases.
+// ---------------------------------------------------------------------------
+function buildScopedSowHtml(
+  phases: SowPhaseObj[],
+  totalDollars: number,
+  projectTitle?: string | null,
+  clientName?: string | null,
+): string {
+  const fmt = (n: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  const rows = phases
+    .map(
+      (p) => `
+      <tr>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:40%">
+          <div style="font-weight:700;color:#0A2540;font-size:13px">${p.title}</div>
+          ${p.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${p.description}</div>` : ""}
+        </td>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${p.description || ""}</td>
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:#0078D4;white-space:nowrap;font-size:13px">${fmt(p.price)}</td>
+      </tr>`,
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#0A2540;background:#fff;padding:28px 32px}
+  h1{font-size:20px;font-weight:800;color:#0A2540;margin-bottom:2px}
+  .sub{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#0078D4;margin-bottom:20px}
+  .banner{background:#EBF5FF;border:1.5px solid #0078D4;border-radius:8px;padding:10px 16px;margin-bottom:20px;font-size:12px;color:#0A2540;line-height:1.5}
+  .meta{display:flex;gap:32px;margin-bottom:20px;font-size:12px;color:#374151}
+  .meta strong{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748B;margin-bottom:2px}
+  table{width:100%;border-collapse:collapse}
+  thead tr{background:#0A2540}
+  thead th{padding:9px 12px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;text-align:left}
+  thead th:last-child{text-align:right}
+  .total-row td{border-top:2px solid #0A2540;padding:12px 12px 4px;font-weight:800;font-size:14px;color:#0A2540}
+  .total-price{text-align:right;font-size:16px;color:#0A2540}
+  footer{margin-top:24px;font-size:10px;color:#94A3B8;text-align:center}
+</style>
+</head>
+<body>
+<h1>Statement of Work</h1>
+<p class="sub">Shane McCaw Consulting — Scoped Engagement</p>
+<div class="banner">
+  <strong>Scoped Statement of Work</strong> — This version reflects your selected phases only. The investment total below applies exclusively to the phases listed.
+</div>
+<div class="meta">
+  ${projectTitle ? `<div><strong>Project</strong>${projectTitle}</div>` : ""}
+  ${clientName ? `<div><strong>Prepared For</strong>${clientName}</div>` : ""}
+  <div><strong>Date</strong>${today}</div>
+  <div><strong>Phases Selected</strong>${phases.length}</div>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:35%">Phase</th>
+      <th>Scope Summary</th>
+      <th style="text-align:right">Investment</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${rows}
+    <tr class="total-row">
+      <td>Total Engagement Investment</td>
+      <td></td>
+      <td class="total-price">${fmt(totalDollars)}</td>
+    </tr>
+  </tbody>
+</table>
+<footer>Generated ${today} · Shane McCaw Consulting · Microsoft 365 &amp; Copilot AI Expertise</footer>
+</body>
+</html>`;
+}
+
+// POST /portal/presentations/:id/regenerate-scoped-sow
+// Generates a scoped SOW containing only the selected phases with a recalculated total.
+// The resulting HTML and price are persisted so they survive page refreshes during the session.
+router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const userId = req.user!.id;
+    const { selectedPhaseIds } = req.body as { selectedPhaseIds: string[] };
+
+    if (!Array.isArray(selectedPhaseIds) || selectedPhaseIds.length === 0) {
+      res.status(400).json({ error: "selectedPhaseIds must be a non-empty array" }); return;
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    if (guardAgainstSignedPresentation(pres, "POST /presentations/:id/regenerate-scoped-sow", logger)) {
+      res.status(409).json({ error: "Presentation is already signed and cannot be modified" }); return;
+    }
+
+    // Derive live SOW phases and validate the incoming selection
+    const { effectiveSowPhases, adjustmentsTotal } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const validIds = effectiveSowPhases.map(p => p.id);
+    const safeIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
+    if (safeIds.length === 0) {
+      res.status(400).json({ error: "None of the provided phase IDs are valid" }); return;
+    }
+
+    // Compute scoped total in dollars
+    const scopedPhases = effectiveSowPhases.filter(p => safeIds.includes(p.id));
+    const scopedSubtotal = scopedPhases.reduce((s, p) => s + p.price, 0);
+    const scopedTotalDollars = scopedSubtotal + adjustmentsTotal;
+
+    // Fetch project / client metadata for the HTML header
+    const [project] = pres.projectId
+      ? await db.select({ title: projectsTable.title }).from(projectsTable).where(eq(projectsTable.id, pres.projectId)).limit(1)
+      : [null];
+    const [clientUser] = pres.clientUserId
+      ? await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, pres.clientUserId)).limit(1)
+      : [null];
+
+    const scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, project?.title, clientUser?.name);
+    const scopedTotalCents = Math.round(scopedTotalDollars * 100);
+
+    // Persist so the scoped state survives a page refresh during the same session
+    await db.update(quickWinPresentationsTable)
+      .set({
+        scopedSowHtml,
+        scopedTotalPrice: scopedTotalCents,
+        scopedPhaseIds: safeIds,
+        updatedAt: new Date(),
+      })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    res.json({
+      scopedSowHtml,
+      scopedTotalPrice: scopedTotalDollars,
+      scopedPhaseIds: safeIds,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to regenerate scoped SOW");
+    res.status(500).json({ error: "Failed to regenerate scoped SOW" });
   }
 });
 
@@ -10156,17 +10318,28 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
+    // Derive the effective price at signing time — this is the binding amount.
+    // If a scoped SOW was generated and matches the current selection, it's
+    // the scoped price; otherwise it's the full SOW total.
+    const { effectiveTotalPrice: effectivePriceCents } = await deriveEffectiveSowData(pres);
+
+    const signedAt = new Date();
     await db.update(quickWinPresentationsTable)
       .set({
         signatureData,
         signerName,
-        signedAt: new Date(),
+        signedAt,
         status: "signed",
-        updatedAt: new Date(),
+        updatedAt: signedAt,
       })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ ok: true, signedAt: new Date().toISOString() });
+    res.json({
+      ok: true,
+      signedAt: signedAt.toISOString(),
+      effectivePriceCents,
+      scopedPhaseIds: pres.scopedPhaseIds ?? null,
+    });
   } catch (err) {
     logger.error({ err }, "portal: failed to sign presentation");
     res.status(500).json({ error: "Failed to sign" });

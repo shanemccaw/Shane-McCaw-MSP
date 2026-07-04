@@ -1582,6 +1582,9 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
   stripeSessionId: text("stripe_session_id"),
   paymentSchedule: jsonb("payment_schedule"),
   status: text("status", { enum: ["draft", "signed", "paid"] }).notNull().default("draft"),
+  scopedSowHtml: text("scoped_sow_html"),
+  scopedTotalPrice: integer("scoped_total_price"),
+  scopedPhaseIds: jsonb("scoped_phase_ids").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

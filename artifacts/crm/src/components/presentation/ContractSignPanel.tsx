@@ -50,6 +50,7 @@ interface ContractSignPanelProps {
   signing: boolean;
   alreadySigned?: boolean;
   contractBody?: string | null;
+  scopedSowHtml?: string | null;
   onReady?: () => void;
 }
 
@@ -68,6 +69,7 @@ export default function ContractSignPanel({
   signing,
   alreadySigned = false,
   contractBody,
+  scopedSowHtml,
   onReady,
 }: ContractSignPanelProps) {
   const agreementBody = contractBody ?? DEFAULT_AGREEMENT_BODY;
@@ -173,6 +175,24 @@ export default function ContractSignPanel({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Scoped SOW — shown when client generated a scoped document */}
+          {scopedSowHtml && (
+            <div>
+              <h4 className="text-[0.65rem] font-bold uppercase tracking-widest text-[#0078D4] mb-2">Scoped Statement of Work</h4>
+              <div className="rounded-lg border border-[#0078D4]/30 overflow-hidden" style={{ height: "320px" }}>
+                <iframe
+                  srcDoc={scopedSowHtml}
+                  title="Scoped Statement of Work"
+                  className="w-full h-full border-0"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+              <p className="text-[0.65rem] text-muted-foreground mt-1">
+                This scoped SOW reflects only the phases you selected and constitutes the agreed scope for this agreement.
+              </p>
             </div>
           )}
 

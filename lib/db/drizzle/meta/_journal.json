@@ -967,6 +967,13 @@
       "when": 1751580001000,
       "tag": "0134_add_error_message_to_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "7",
+      "when": 1751666400000,
+      "tag": "0135_add_scoped_sow_columns",
+      "breakpoints": true
     }
   ]
 }

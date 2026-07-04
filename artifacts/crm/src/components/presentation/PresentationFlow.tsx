@@ -52,6 +52,9 @@ interface PresentationData {
   clientName: string | null;
   contractBody: string | null;
   workflowName: string | null;
+  scopedSowHtml?: string | null;
+  scopedTotalPrice?: number | null;
+  scopedPhaseIds?: string[] | null;
 }
 
 interface PresentationFlowProps {
@@ -261,6 +264,12 @@ export default function PresentationFlow({
   const [showLoginGate, setShowLoginGate] = useState(false);
   const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
 
+  // ── Scoped SOW regeneration state ─────────────────────────────────────────
+  const [scopedSowDoc, setScopedSowDoc] = useState<string | null>(initialData.scopedSowHtml ?? null);
+  const [scopedTotalPriceDollars, setScopedTotalPriceDollars] = useState<number | null>(initialData.scopedTotalPrice ?? null);
+  const [lastRegenPhaseIds, setLastRegenPhaseIds] = useState<string[] | null>(initialData.scopedPhaseIds ?? null);
+  const [regeneratingSow, setRegeneratingSow] = useState(false);
+
   const currentSowPhases = data.sowPhases ?? [];
   const selectedPhaseIds = data.selectedPhaseIds ?? currentSowPhases.map(p => p.id);
   const phasesWithSelection = currentSowPhases.map(p => ({
@@ -272,6 +281,20 @@ export default function PresentationFlow({
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0) || data.totalPrice;
   // grandTotal includes price adjustments — used in Agreement, Payment, and checkout
   const grandTotal = selectedTotal + (data.adjustmentsTotal ?? 0);
+
+  // ── Scoped SOW detection ───────────────────────────────────────────────────
+  const allPhaseIds = currentSowPhases.map(p => p.id);
+  const hasScopeReduction = allPhaseIds.length > 0 && !allPhaseIds.every(id => selectedPhaseIds.includes(id));
+  // True when the last regeneration exactly matches the current selection
+  const arraysMatch = (a: string[], b: string[]) =>
+    a.length === b.length && a.every(id => b.includes(id));
+  const scopedDocMatchesSelection = hasScopeReduction && scopedSowDoc !== null && lastRegenPhaseIds !== null && arraysMatch(lastRegenPhaseIds, selectedPhaseIds);
+  // True when we need a (re)generation before the client can proceed
+  const needsRegeneration = hasScopeReduction && !scopedDocMatchesSelection;
+  // Effective price used for contract/payment steps
+  const effectivePrice = hasScopeReduction && scopedDocMatchesSelection && scopedTotalPriceDollars !== null
+    ? scopedTotalPriceDollars
+    : grandTotal;
 
   // Aggregate stats for the Overview teaser cards — uses the same per-family
   // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
@@ -394,6 +417,15 @@ export default function PresentationFlow({
       : [...selectedPhaseIds, phaseId];
 
     setData(prev => ({ ...prev, selectedPhaseIds: newIds }));
+
+    // If the client re-selects all phases, clear the scoped SOW — it's no longer needed
+    const isFullSelection = allPhaseIds.every(id => newIds.includes(id));
+    if (isFullSelection) {
+      setScopedSowDoc(null);
+      setScopedTotalPriceDollars(null);
+      setLastRegenPhaseIds(null);
+    }
+
     setSavingSelections(true);
     try {
       const res = await fetchFn(`/api/portal/presentations/${presentationId}/selections`, {
@@ -407,6 +439,26 @@ export default function PresentationFlow({
       }
     } finally {
       setSavingSelections(false);
+    }
+  };
+
+  const handleRegenerateSow = async () => {
+    if (!user || regeneratingSow) return;
+    setRegeneratingSow(true);
+    try {
+      const res = await fetchFn(`/api/portal/presentations/${presentationId}/regenerate-scoped-sow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ selectedPhaseIds }),
+      });
+      if (res.ok) {
+        const result = await res.json() as { scopedSowHtml: string; scopedTotalPrice: number; scopedPhaseIds: string[] };
+        setScopedSowDoc(result.scopedSowHtml);
+        setScopedTotalPriceDollars(result.scopedTotalPrice);
+        setLastRegenPhaseIds(result.scopedPhaseIds);
+      }
+    } finally {
+      setRegeneratingSow(false);
     }
   };
 
@@ -1176,6 +1228,8 @@ export default function PresentationFlow({
                   readOnly={readOnly}
                   onReady={handleStepReady}
                   onTogglePhase={(id) => void handleTogglePhase(id)}
+                  scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
+                  originalSowHtml={sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow")?.htmlContent ?? null}
                 />
               </div>
             )}
@@ -1188,12 +1242,13 @@ export default function PresentationFlow({
                   selectedPhases={selectedPhases}
                   adjustmentsTotal={data.adjustmentsTotal ?? 0}
                   adjustmentLines={data.adjustmentLines ?? []}
-                  totalPrice={grandTotal}
+                  totalPrice={effectivePrice}
                   onChangeName={setSignerName}
                   onSign={handleSign}
                   signing={signing || checkingOut}
                   alreadySigned={!!data.signedAt}
                   contractBody={data.contractBody}
+                  scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
                   onReady={handleStepReady}
                 />
                 {freeClaimError && (
@@ -1220,7 +1275,7 @@ export default function PresentationFlow({
             {currentStep?.kind === "payment" && (
               <div className="flex-1 overflow-hidden flex flex-col">
                 <PaymentOptionsPanel
-                  totalPrice={grandTotal}
+                  totalPrice={effectivePrice}
                   onCheckout={handleCheckout}
                   loading={checkingOut}
                   alreadyPaid={isPaid}
@@ -1276,6 +1331,26 @@ export default function PresentationFlow({
                 <span className="text-xs text-muted-foreground">Sign above to continue</span>
               ) : currentStep?.kind === "payment" ? (
                 <span className="text-xs text-muted-foreground">Select a plan to continue</span>
+              ) : currentStep?.kind === "sow" && needsRegeneration && !readOnly && user ? (
+                <button
+                  onClick={() => void handleRegenerateSow()}
+                  disabled={regeneratingSow || savingSelections}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20 disabled:opacity-60"
+                >
+                  {regeneratingSow ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                      <span>Generating…</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Regenerate SOW</span>
+                    </>
+                  )}
+                </button>
               ) : !isLast ? (
                 <button
                   onClick={goNext}
