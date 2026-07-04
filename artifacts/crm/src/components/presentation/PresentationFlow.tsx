@@ -409,6 +409,24 @@ export default function PresentationFlow({
     ? Math.round(data.discountedTotalCents) / 100
     : effectivePrice;
 
+  // Per-phase billing amounts for the 20% upfront + per-phase plan.
+  // The deposit is 20% of effectivePrice. The remaining 80% is split across phases
+  // proportionally by their raw SOW price weight — mirroring the server formula in portal.ts.
+  // This ensures the "Due at completion" display matches what Stripe will actually charge.
+  const _phasedDeposit = Math.round(effectivePrice * 0.2 * 100) / 100;
+  const _phasedRemaining = effectivePrice - _phasedDeposit;
+  const _phasesRawTotal = selectedPhases.reduce((s, p) => s + p.price, 0) || 1;
+  let _phasesAllocated = 0;
+  const phasedPhaseAmounts: number[] = selectedPhases.map((p, i) => {
+    if (i === selectedPhases.length - 1) {
+      const last = Math.round((_phasedRemaining - _phasesAllocated) * 100) / 100;
+      return last;
+    }
+    const amount = Math.round((_phasedRemaining * (p.price / _phasesRawTotal)) * 100) / 100;
+    _phasesAllocated += amount;
+    return amount;
+  });
+
   // When PAY-TODAY "adjustments_waived" is in effect the discount equals adjustmentsTotal,
   // so contractPrice already has them factored out. Passing the original adjustmentsTotal
   // to ContractSignPanel would cause it to subtract them again ("Workstream Subtotal" =
@@ -1679,7 +1697,7 @@ export default function PresentationFlow({
                     offer={offer}
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
-                    sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
+                    sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate })) : undefined}
                     selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
                     adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                   />
@@ -1711,7 +1729,7 @@ export default function PresentationFlow({
                       offer={offer}
                       freeClaimError={freeClaimError}
                       onDismissFreeClaimError={() => setFreeClaimError(null)}
-                      sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
+                      sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate })) : undefined}
                       selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
                       adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                     />
