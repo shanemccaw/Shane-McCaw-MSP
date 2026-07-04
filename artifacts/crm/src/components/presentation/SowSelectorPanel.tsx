@@ -48,6 +48,7 @@ export default function SowSelectorPanel({
   // Separate heights for each document so toggling never resets the layout.
   const [scopedIframeHeight, setScopedIframeHeight] = useState(600);
   const [fullIframeHeight, setFullIframeHeight] = useState(600);
+  const [dependencyWarning, setDependencyWarning] = useState<string | null>(null);
 
   // viewMode controls which document is shown when both exist.
   // Defaults to "scoped" whenever a scoped SOW is present.
@@ -89,6 +90,45 @@ export default function SowSelectorPanel({
 
   // When the toggle is not active, show whichever document is available.
   const fallbackHtml = originalSowHtml ?? null;
+
+  // ── Copilot Deployment dependency rule ────────────────────────────────────
+  // Copilot Deployment cannot be selected without at least one of:
+  //   Governance Remediation | Security & Compliance | Information Architecture
+  // (only enforced when those prerequisite phases exist in this SOW)
+  const isCopilotDeployPhase = (title: string) =>
+    /copilot/i.test(title) && /deploy/i.test(title);
+  const isPrerequisitePhase = (title: string) =>
+    /governance/i.test(title) ||
+    (/security/i.test(title) && /compliance/i.test(title)) ||
+    (/information/i.test(title) && /architecture/i.test(title));
+
+  const prereqsExistInSow = phases.some(p => isPrerequisitePhase(p.title));
+
+  const handlePhaseClick = (phaseId: string) => {
+    if (readOnly || saving) return;
+
+    // Compute what the selection would look like after this toggle
+    const tentative = phases.map(p =>
+      p.id === phaseId ? { ...p, selected: !p.selected } : p
+    );
+    const tentativeSelected = tentative.filter(p => p.selected);
+
+    // Check: Copilot Deployment selected alone (no prerequisite alongside it)?
+    const copilotAlone =
+      prereqsExistInSow &&
+      tentativeSelected.some(p => isCopilotDeployPhase(p.title)) &&
+      !tentativeSelected.some(p => isPrerequisitePhase(p.title));
+
+    if (copilotAlone) {
+      setDependencyWarning(
+        "Copilot Deployment requires at least one of: Governance Remediation, Security & Compliance, or Information Architecture."
+      );
+      return;
+    }
+
+    setDependencyWarning(null);
+    onTogglePhase(phaseId);
+  };
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -137,7 +177,7 @@ export default function SowSelectorPanel({
             {phases.map((phase) => (
               <div
                 key={phase.id}
-                onClick={() => !readOnly && !saving && onTogglePhase(phase.id)}
+                onClick={() => handlePhaseClick(phase.id)}
                 className={`rounded-xl border-2 p-3 transition-all select-none ${
                   readOnly
                     ? "cursor-default"
@@ -220,6 +260,16 @@ export default function SowSelectorPanel({
               </div>
             )}
           </div>
+
+          {/* Dependency warning — shown when Copilot Deployment is selected alone */}
+          {dependencyWarning && (
+            <div className="flex-shrink-0 mx-3 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 flex items-start gap-2">
+              <svg className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-xs text-amber-700 leading-snug">{dependencyWarning}</p>
+            </div>
+          )}
 
           {/* Pinned total footer */}
           <div className="flex-shrink-0 border-t border-border px-4 py-3">
