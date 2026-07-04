@@ -3775,12 +3775,12 @@ export async function executeWorkflowRun(
         continue;
       }
 
-      // fetch_news_headlines: the "hot" edge fires only when isHot=true.
-      // All other outgoing edges (e.g. an unconditional "done" edge) always fire.
-      // Without this, every downstream campaign node runs even when hotScore=0
-      // and newsTopic is empty, producing confused AI responses.
+      // fetch_news_headlines: the "hot" edge fires only when isHot=true,
+      // UNLESS the node has autoBuildCampaign=true — in that case the user wants
+      // the campaign to run regardless of hotScore, so treat the hot edge as active.
       if (node.type === "fetch_news_headlines") {
-        const isHot = Boolean(output.isHot);
+        const autoBuild = Boolean(node.data?.autoBuildCampaign);
+        const isHot = autoBuild || Boolean(output.isHot);
         for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
           const active = e.sourceHandle === "hot" ? isHot : true;
           resolveEdge(e.target, active);
