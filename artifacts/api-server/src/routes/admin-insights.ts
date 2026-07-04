@@ -1653,6 +1653,7 @@ INSTRUCTIONS:
             .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark sow doc as failed"));
         }
       })();
+      return; // response already sent above — must not fall through to the shared handler below
     }
     // ── End Consolidated SOW ─────────────────────────────────────────────────────
 
