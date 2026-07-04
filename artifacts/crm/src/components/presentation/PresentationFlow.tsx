@@ -290,7 +290,9 @@ export default function PresentationFlow({
   const [checkingOut, setCheckingOut] = useState(false);
   // Plan selection is lifted here so the checkout step can access it.
   // The payment step just selects full/phased; actual Stripe happens at checkout.
-  const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(null);
+  // Seed from the server-persisted paymentPlan so returning clients (or deep-links)
+  // always see plan-specific Agreement terms even if they skip the payment step.
+  const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(initialData.paymentPlan ?? null);
   const [showLoginGate, setShowLoginGate] = useState(false);
   const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
   const [offer, setOffer] = useState<OfferState | null>(null);
@@ -727,9 +729,17 @@ export default function PresentationFlow({
     const blockedByReset = sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "checkout");
     // Hard-block sidebar navigation to checkout without a signed agreement.
     const blockedByUnsigned = targetStep?.kind === "checkout" && !data.signedAt;
-    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned) {
+    // Hard-block sidebar navigation to contract when no payment plan has been chosen.
+    // Redirect to the payment step so the client picks a plan first.
+    const blockedByNoPlan = targetStep?.kind === "contract" && !selectedPlan;
+    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan) {
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
+      setSidebarOpen(false);
+    } else if (blockedByNoPlan && paymentStepIndex >= 0) {
+      // Redirect them to pick a plan first
+      directionRef.current = "back";
+      applyStepChange(paymentStepIndex);
       setSidebarOpen(false);
     }
   };
@@ -747,6 +757,16 @@ export default function PresentationFlow({
     if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "checkout")) return;
     // Hard-block jumps to checkout without a signed agreement.
     if (targetStep?.kind === "checkout" && !data.signedAt) return;
+    // Hard-block jumps to contract when no payment plan has been chosen — redirect to payment.
+    if (targetStep?.kind === "contract" && !selectedPlan) {
+      const pmtIdx = steps.findIndex(s => s.kind === "payment");
+      if (pmtIdx >= 0) {
+        directionRef.current = "back";
+        setMaxVisitedStep(m => Math.max(m, pmtIdx));
+        applyStepChange(pmtIdx);
+      }
+      return;
+    }
     if (cardName && !firedCardClicks.current.has(cardName)) {
       firedCardClicks.current.add(cardName);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
@@ -759,7 +779,7 @@ export default function PresentationFlow({
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, data.signedAt, steps]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, data.signedAt, steps, selectedPlan]);
 
   const firstDocStepIndex    = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex         = steps.findIndex(s => s.kind === "sow");
