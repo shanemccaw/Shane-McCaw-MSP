@@ -1179,9 +1179,7 @@ export default function PresentationFlow({
               const sowReviewed = hasSowDocument && sowStepIndex >= 0 && maxVisitedStep >= sowStepIndex && !scopeStale;
               return (
                 <>
-                  <div className="fixed inset-0 -z-10 pointer-events-none">
-                    <AnimatedBackground />
-                  </div>
+                  <AnimatedBackground fullScreen />
                   <div className="relative z-10 flex-1 flex flex-col items-center text-center gap-6 py-2 max-w-2xl mx-auto w-full">
 
                     {/* Icon + heading */}
