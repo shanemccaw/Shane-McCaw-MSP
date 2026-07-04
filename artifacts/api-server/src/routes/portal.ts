@@ -9959,7 +9959,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
 
     // Derive sowPhases from the live SOW document — uses shared helper so GET,
     // PATCH, and checkout all stay consistent.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, sowVersion } =
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, namedAdjustmentLines, sowVersion } =
       await deriveEffectiveSowData(pres);
 
     // Fetch project + client name + service id for template lookup
