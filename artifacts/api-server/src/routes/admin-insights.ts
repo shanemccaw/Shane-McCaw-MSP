@@ -44,6 +44,7 @@ import {
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "../lib/sse-broadcast";
+import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -1042,6 +1043,15 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
           void syncPresentationDocIds(projectId, reportDocId, docType);
           void broadcastDocsChangeForProject(projectId);
         }
+
+        void emitWorkflowEvent("document.generated", {
+          documentId:   reportDocId,
+          documentType: docType,
+          clientId:     customerId ?? null,
+          clientName,
+          generatedAt:  new Date().toISOString(),
+          priceCents:   0,
+        });
       } catch (err) {
         logger.error({ err, docType, reportDocId }, "insights report: background generation failed");
         await db.update(insightsGeneratedDocumentsTable)
@@ -1735,6 +1745,15 @@ INSTRUCTIONS:
             void syncPresentationDocIds(projectId, docId, "consolidated_sow");
             void broadcastDocsChangeForProject(projectId);
           }
+
+          void emitWorkflowEvent("document.generated", {
+            documentId:   docId,
+            documentType: "consolidated_sow",
+            clientId:     customerId ?? null,
+            clientName,
+            generatedAt:  new Date().toISOString(),
+            priceCents:   sowTotal > 0 ? Math.round(sowTotal * 100) : 0,
+          });
         } catch (err) {
           logger.error({ err, docId }, "insights consolidated_sow: background generation failed");
           await db.update(insightsGeneratedDocumentsTable)
@@ -1987,6 +2006,15 @@ INSTRUCTIONS:
           void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
           void broadcastDocsChangeForProject(projectId);
         }
+
+        void emitWorkflowEvent("document.generated", {
+          documentId:   consultingDocId,
+          documentType: deliverableType,
+          clientId:     customerId ?? null,
+          clientName,
+          generatedAt:  new Date().toISOString(),
+          priceCents:   sowTotal2 > 0 ? Math.round(sowTotal2 * 100) : 0,
+        });
       } catch (err) {
         logger.error({ err, deliverableType, consultingDocId }, "insights consulting: background generation failed");
         await db.update(insightsGeneratedDocumentsTable)
