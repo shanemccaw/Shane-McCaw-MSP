@@ -1211,9 +1211,16 @@ export default function PresentationFlow({
                         <p className="text-xs text-muted-foreground mt-0.5">Phases</p>
                       </div>
                       <div className="bg-white rounded-xl border border-border p-4">
-                        <p className="text-2xl font-extrabold text-[#0078D4]">
-                          {total >= 1000 ? `$${Math.round(total / 1000)}k` : total > 0 ? `$${total}` : "TBD"}
-                        </p>
+                        {!hasSowDocument ? (
+                          <div className="flex items-center justify-center gap-1.5 h-8">
+                            <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse" />
+                            <span className="text-sm font-semibold text-muted-foreground">Calculating…</span>
+                          </div>
+                        ) : (
+                          <p className="text-2xl font-extrabold text-[#0078D4]">
+                            {total >= 1000 ? `$${Math.round(total / 1000)}k` : total > 0 ? `$${total}` : "TBD"}
+                          </p>
+                        )}
                         <p className="text-xs text-muted-foreground mt-0.5">Investment</p>
                       </div>
                     </div>
