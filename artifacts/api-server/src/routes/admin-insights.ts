@@ -62,7 +62,7 @@ import {
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
-import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "../lib/workstream-normalizer";
+import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1680,8 +1680,11 @@ INSTRUCTIONS:
           // workstreams present in this SOW (e.g. Copilot Readiness in a
           // Governance-only engagement). Happens before validation and storage so
           // clients never see hallucinated adjustments in the document.
+          // Use the canonical resolved keys from the engagement project catalogue
+          // (not the AI's own generated workstream rows) so hallucinated workstream
+          // rows (e.g. "Copilot AI Pre-work") cannot unlock extra adjustments.
           const { html: purgedHtml, removedTitles } = purgeSowAdjustments(
-            rawHtmlContent, rawAdj, rawWs.map(l => l.title),
+            rawHtmlContent, rawAdj, resolvedWorkstreamKeys,
           );
           if (removedTitles.length > 0) {
             logger.warn({ docId, removedTitles }, "consolidated_sow: purged non-permitted adjustments from HTML");
@@ -1835,6 +1838,8 @@ INSTRUCTIONS:
 
     // For SOW types embed Tier 02 pricing formula + catalogue + pre-computed tenant tier
     let pricingAppendix = "";
+    // Hoisted so the IIFE can use it to drive purgeSowAdjustments
+    let sowResolvedKeys: WorkstreamKey[] = [];
     if (isSowType) {
       const engProjects = await db.select({
         title:       engagementProjectsTable.title,
@@ -1851,8 +1856,9 @@ INSTRUCTIONS:
       // Resolve raw project titles to canonical workstream keys so the AI
       // can reliably cross-reference the ADJUSTMENT MAP regardless of label variance.
       const rawSowTitles = engProjects.map(p => p.title);
-      const { resolvedKeys: sowResolvedKeys, unresolvedTitles: sowUnresolvedTitles } =
+      const { resolvedKeys: _sowResolvedKeys, unresolvedTitles: sowUnresolvedTitles } =
         resolveWorkstreamKeys(rawSowTitles);
+      sowResolvedKeys = _sowResolvedKeys;
       const sowWorkstreamContextBlock = buildWorkstreamContextBlock(
         rawSowTitles, sowResolvedKeys, sowUnresolvedTitles,
       );
@@ -1933,8 +1939,11 @@ INSTRUCTIONS:
           const { workstreamLines: rawWs2, adjustmentLines: rawAdj2 } = parseSowAllPricing(rawHtmlContent2);
 
           // Purge non-permitted adjustments from the AI-generated HTML
+          // Use canonical resolved keys from the engagement catalogue, not the
+          // AI's own generated workstream rows, to prevent hallucinated rows
+          // from unlocking extra adjustments.
           const { html: purgedHtml2, removedTitles: removed2 } = purgeSowAdjustments(
-            rawHtmlContent2, rawAdj2, rawWs2.map(l => l.title),
+            rawHtmlContent2, rawAdj2, sowResolvedKeys,
           );
           if (removed2.length > 0) {
             logger.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");
