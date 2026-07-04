@@ -1152,9 +1152,10 @@ async function executeNode(
               try { extraPayload = JSON.parse(interp(rawExtraPayload, payload) ?? "{}") as Record<string, unknown>; }
               catch { /* ignore bad JSON */ }
             }
-            await emitWorkflowEvent(emitEventType, { ...payload, ...extraPayload }, definitionId);
+            const currentChainDepth = (payload._chainDepth as number | undefined) ?? 0;
+            await emitWorkflowEvent(emitEventType, { ...payload, ...extraPayload }, definitionId, currentChainDepth);
             output = { emitted: true, eventType: emitEventType };
-            logger.info({ runId, definitionId, eventType: emitEventType }, "wf-executor: emit_event node fired");
+            logger.info({ runId, definitionId, eventType: emitEventType, chainDepth: currentChainDepth }, "wf-executor: emit_event node fired");
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
@@ -4686,16 +4687,35 @@ export async function fireStartupTriggers(): Promise<void> {
   }
 }
 
+// ── Chain-depth runaway guard ─────────────────────────────────────────────────
+// Multi-hop chains (A→B→A→B…) can run away if they never terminate.
+// Normal cascading chains (e.g. 5-phase project ≈ 10 hops) complete well below
+// this limit.  When exceeded we log a warning and suppress further emissions.
+
+const MAX_WORKFLOW_CHAIN_DEPTH = 50;
+
 // ── Event emitter helper ──────────────────────────────────────────────────────
 
 export async function emitWorkflowEvent(
   eventType: string,
   payload: Record<string, unknown> = {},
   sourceDefinitionId?: number,
+  chainDepth = 0,
 ): Promise<void> {
   // Honor _sourceDefinitionId from payload when no explicit param is provided
   // (supports callers that thread source via payload metadata)
   const srcDefId = sourceDefinitionId ?? (payload._sourceDefinitionId as number | undefined);
+
+  // Depth guard — suppress runaway chains and log a diagnostic warning
+  if (chainDepth > MAX_WORKFLOW_CHAIN_DEPTH) {
+    const chainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
+    logger.warn(
+      { eventType, chainDepth, maxDepth: MAX_WORKFLOW_CHAIN_DEPTH, sourceDefinitionId: srcDefId, chainDefIds },
+      "wf-executor: chain depth exceeded MAX_WORKFLOW_CHAIN_DEPTH — suppressing further event emissions to prevent runaway chain",
+    );
+    return;
+  }
+
   try {
     const triggers = await db.select().from(wfTriggersTable).where(and(
       eq(wfTriggersTable.type, "event"),
@@ -4710,8 +4730,15 @@ export async function emitWorkflowEvent(
           logger.info({ definitionId: srcDefId, eventType }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
           continue;
         }
-        // Inject _sourceDefinitionId into emitted payload so downstream callers can propagate it
-        const emitPayload: Record<string, unknown> = { ...payload, _eventType: eventType };
+        // Thread chain depth and definition ID history through payload so the
+        // depth counter survives the async setImmediate boundary into executeWorkflowRun
+        const prevChainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
+        const emitPayload: Record<string, unknown> = {
+          ...payload,
+          _eventType: eventType,
+          _chainDepth: chainDepth + 1,
+          _chainDefIds: srcDefId != null ? [...prevChainDefIds, srcDefId] : prevChainDefIds,
+        };
         if (srcDefId != null) emitPayload._sourceDefinitionId = srcDefId;
         await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, emitPayload);
       }
@@ -4785,9 +4812,21 @@ export async function fireWorkflowsForEvent(
   eventName: string,
   payload: Record<string, unknown> = {},
   sourceDefinitionId?: number,
+  chainDepth = 0,
 ): Promise<number[]> {
   // Honor _sourceDefinitionId from payload when no explicit param is provided
   const srcDefId = sourceDefinitionId ?? (payload._sourceDefinitionId as number | undefined);
+
+  // Depth guard — suppress runaway chains and log a diagnostic warning
+  if (chainDepth > MAX_WORKFLOW_CHAIN_DEPTH) {
+    const chainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
+    logger.warn(
+      { eventName, chainDepth, maxDepth: MAX_WORKFLOW_CHAIN_DEPTH, sourceDefinitionId: srcDefId, chainDefIds },
+      "wf-executor: chain depth exceeded MAX_WORKFLOW_CHAIN_DEPTH — suppressing further event emissions to prevent runaway chain",
+    );
+    return [];
+  }
+
   try {
     const allEventTriggers = await db
       .select()
@@ -4805,8 +4844,15 @@ export async function fireWorkflowsForEvent(
           logger.info({ definitionId: srcDefId, eventName }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
           return;
         }
-        // Inject _sourceDefinitionId into emitted payload for downstream propagation
-        const emitPayload: Record<string, unknown> = { ...payload, eventName };
+        // Thread chain depth and definition ID history through payload so the
+        // depth counter survives the async setImmediate boundary into executeWorkflowRun
+        const prevChainDefIds = (payload._chainDefIds as number[] | undefined) ?? [];
+        const emitPayload: Record<string, unknown> = {
+          ...payload,
+          eventName,
+          _chainDepth: chainDepth + 1,
+          _chainDefIds: srcDefId != null ? [...prevChainDefIds, srcDefId] : prevChainDefIds,
+        };
         if (srcDefId != null) emitPayload._sourceDefinitionId = srcDefId;
         const runId = await fireWorkflowForDefinition(
           t.definitionId,
