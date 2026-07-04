@@ -143,12 +143,6 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
             Typically takes 1–10 minutes.
           </p>
         )}
-        <button
-          onClick={onClose}
-          className="mt-3 text-[11px] font-semibold text-gray-400 hover:text-gray-600 transition-colors underline underline-offset-2"
-        >
-          Return to portal
-        </button>
       </div>
     </div>
   );
