@@ -149,7 +149,11 @@ export default function PresentationFlow({
   // Track the SOW version that was in effect when the page first loaded.
   // If a poll or SSE push reveals a different version the stale-scope banner appears.
   const initialSowVersionRef = useRef<string | undefined>(initialData.sowVersion);
+  const initialDocFingerprintRef = useRef<string>(
+    [...initialData.documents].map(d => d.id).sort((a, b) => a - b).join(","),
+  );
   const [scopeStale, setScopeStale] = useState(false);
+  const [docsStale, setDocsStale] = useState(false);
   const [refreshingScope, setRefreshingScope] = useState(false);
 
   // Dwell-time tracking: record when the client entered the current doc step
@@ -279,14 +283,19 @@ export default function PresentationFlow({
   // When that happens, we need to alert the client before they sign/pay.
 
   const checkScopeVersion = useCallback(async () => {
-    if (!initialSowVersionRef.current) return;
     try {
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
       const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
       if (!res.ok) return;
-      const fresh = await res.json() as { sowVersion?: string };
-      if (fresh.sowVersion && fresh.sowVersion !== initialSowVersionRef.current) {
+      const fresh = await res.json() as { sowVersion?: string; documents?: { id: number }[] };
+      // Check SOW version staleness
+      if (initialSowVersionRef.current && fresh.sowVersion && fresh.sowVersion !== initialSowVersionRef.current) {
         setScopeStale(true);
+      }
+      // Check document staleness (any doc added, removed, or replaced)
+      const freshFingerprint = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
+      if (freshFingerprint !== initialDocFingerprintRef.current) {
+        setDocsStale(true);
       }
     } catch { /* non-fatal — ignore network errors */ }
   }, [fetchFn, presentationId, shareToken]);
@@ -302,7 +311,7 @@ export default function PresentationFlow({
       es.onmessage = (event: MessageEvent) => {
         try {
           const payload = JSON.parse(event.data as string) as { type?: string; sowVersion?: string };
-          if (payload.type === "scope_changed") {
+          if (payload.type === "scope_changed" || payload.type === "docs_changed") {
             void checkScopeVersion();
           }
         } catch { /* ignore malformed events */ }
@@ -330,14 +339,28 @@ export default function PresentationFlow({
       const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
       if (res.ok) {
         const fresh = await res.json() as PresentationData;
+        // Update refs so future polls don't immediately re-trigger the banners
         initialSowVersionRef.current = fresh.sowVersion;
+        initialDocFingerprintRef.current = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
+        // Recompute the step list from fresh docs to get the new count before clamping
+        const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
+        const freshSortedDocs = [...(fresh.documents ?? [])].sort((a, b) => {
+          if (isSowDoc(a) && !isSowDoc(b)) return 1;
+          if (!isSowDoc(a) && isSowDoc(b)) return -1;
+          return 0;
+        });
+        const freshStepCount = buildSteps(freshSortedDocs, readOnly).length;
+        // Clamp current position and max-visited to the new step list size
+        setStepIndex(prev => Math.min(prev, freshStepCount - 1));
+        setMaxVisitedStep(prev => Math.min(prev, freshStepCount - 1));
         setData(fresh);
         setScopeStale(false);
+        setDocsStale(false);
       }
     } catch { /* non-fatal */ } finally {
       setRefreshingScope(false);
     }
-  }, [fetchFn, presentationId, shareToken]);
+  }, [fetchFn, presentationId, shareToken, readOnly]);
 
   // Flush dwell time for the doc step that was just left
   const flushDocDwell = useCallback((leavingStepIndex: number) => {
@@ -712,14 +735,18 @@ export default function PresentationFlow({
       {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0">
 
-        {/* Stale-scope banner — shown when the SOW has been updated since the page loaded */}
-        {scopeStale && (
+        {/* Stale banner — shown when documents or scope have changed since the page loaded */}
+        {(scopeStale || docsStale) && (
           <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center gap-3">
             <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <p className="flex-1 text-sm text-amber-800 font-medium">
-              The scope of work has been updated. Please review the latest pricing before signing or paying.
+              {scopeStale && docsStale
+                ? "Your documents and scope of work have been updated — refresh to see the latest."
+                : docsStale
+                ? "New or updated documents are available — refresh to see them."
+                : "The scope of work has been updated. Please review the latest pricing before signing or paying."}
             </p>
             <button
               onClick={() => { void handleRefreshScope(); }}
@@ -736,10 +763,10 @@ export default function PresentationFlow({
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
               )}
-              {refreshingScope ? "Refreshing…" : "Refresh scope"}
+              {refreshingScope ? "Refreshing…" : "Refresh"}
             </button>
             <button
-              onClick={() => setScopeStale(false)}
+              onClick={() => { setScopeStale(false); setDocsStale(false); }}
               className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 transition-colors"
               aria-label="Dismiss"
             >

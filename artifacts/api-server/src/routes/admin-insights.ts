@@ -43,7 +43,7 @@ import {
   engagementProjectsTable,
   quickWinPresentationsTable,
 } from "@workspace/db";
-import { broadcastPresentationScopeChange } from "../lib/sse-broadcast";
+import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "../lib/sse-broadcast";
 import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -88,6 +88,23 @@ async function broadcastSowChangeForProject(projectId: number): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err, projectId }, "broadcastSowChangeForProject: failed");
+  }
+}
+
+// ── Helper: broadcast document list change to open presentation tabs ──────────
+// Called fire-and-forget after any document is generated or deleted so open
+// client presentation tabs can show the "documents updated" banner immediately.
+async function broadcastDocsChangeForProject(projectId: number): Promise<void> {
+  try {
+    const presentations = await db
+      .select({ id: quickWinPresentationsTable.id })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.projectId, projectId));
+    for (const p of presentations) {
+      broadcastPresentationDocsChange(p.id);
+    }
+  } catch (err) {
+    logger.warn({ err, projectId }, "broadcastDocsChangeForProject: failed");
   }
 }
 
@@ -1020,6 +1037,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
     // appears immediately without requiring a separate status change.
     if (projectId) {
       void syncPresentationDocIds(projectId, reportDocId, docType);
+      void broadcastDocsChangeForProject(projectId);
     }
 
     return res.json({ document: withPdf });
@@ -1070,6 +1088,7 @@ router.put("/admin/insights/documents/:id", requireAdmin, async (req: Request, r
         updated.projectId &&
         (updated.docType === "sow" || updated.docType === "consolidated_sow")) {
       void syncPresentationDocIds(updated.projectId, updated.id, updated.docType);
+      void broadcastDocsChangeForProject(updated.projectId);
     }
 
     // If HTML content was updated on a SOW document, the pricing may have changed —
@@ -1092,7 +1111,14 @@ router.delete("/admin/insights/documents/:id", requireAdmin, async (req: Request
   try {
     const id = parseInt(String(req.params["id"] ?? ""), 10);
     if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+    // Fetch projectId before deleting so we can broadcast to affected presentation tabs
+    const [toDelete] = await db
+      .select({ projectId: insightsGeneratedDocumentsTable.projectId })
+      .from(insightsGeneratedDocumentsTable)
+      .where(eq(insightsGeneratedDocumentsTable.id, id))
+      .limit(1);
     await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.id, id));
+    if (toDelete?.projectId) void broadcastDocsChangeForProject(toDelete.projectId);
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, "insights document delete error");
@@ -1224,6 +1250,7 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
     // Sync doc into draft presentations for the same project on delivery
     if (doc.projectId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
       void syncPresentationDocIds(doc.projectId, doc.id, doc.docType);
+      void broadcastDocsChangeForProject(doc.projectId);
     }
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl, pdfAttached: !!pdfBuffer });
@@ -1582,6 +1609,7 @@ INSTRUCTIONS:
         void broadcastSowChangeForProject(projectId);
         // Sync new consolidated_sow doc into any draft presentations for this project
         void syncPresentationDocIds(projectId, docId, "consolidated_sow");
+        void broadcastDocsChangeForProject(projectId);
       }
 
       return res.json({ document: withPdf });
@@ -1795,6 +1823,7 @@ INSTRUCTIONS:
       void broadcastSowChangeForProject(projectId);
       // Sync new SOW doc into any draft presentations for this project
       void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
+      void broadcastDocsChangeForProject(projectId);
     }
 
     return res.json({ document: withPdf });
@@ -1918,6 +1947,7 @@ router.post("/admin/insights/consulting/:id/send", requireAdmin, async (req: Req
     // Sync doc into draft presentations for the same project on delivery
     if (doc.projectId && (doc.docType === "sow" || doc.docType === "consolidated_sow")) {
       void syncPresentationDocIds(doc.projectId, doc.id, doc.docType);
+      void broadcastDocsChangeForProject(doc.projectId);
     }
 
     return res.json({ ok: true, document: updated, sentTo: toEmail, sharepointUrl });

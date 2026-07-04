@@ -48,6 +48,15 @@ export function broadcastPresentationScopeChange(presentationId: number, sowVers
   }
 }
 
+export function broadcastPresentationDocsChange(presentationId: number): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "docs_changed" })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
 export function getPresentationSSEClientCount(presentationId: number): number {
   return presentationSSEClients.get(presentationId)?.size ?? 0;
 }
