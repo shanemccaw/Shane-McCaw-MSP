@@ -1619,7 +1619,10 @@ INSTRUCTIONS:
           const rawHtmlContent = extractAiHtml(aiResponse);
           const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
           const htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
-          const sowLines = [...workstreamLines, ...adjustmentLines];
+          const sowLines = [
+            ...workstreamLines.map(l => ({ ...l, line_type: "workstream" as const })),
+            ...adjustmentLines.map(l => ({ ...l, line_type: "adjustment" as const })),
+          ];
           const sowTotal = computedTotal;
 
           await db.update(insightsGeneratedDocumentsTable)
@@ -1812,7 +1815,10 @@ INSTRUCTIONS:
         if (isSowType) {
           const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
           htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
-          sowLines2 = [...ws2, ...adj2];
+          sowLines2 = [
+            ...ws2.map(l => ({ ...l, line_type: "workstream" as const })),
+            ...adj2.map(l => ({ ...l, line_type: "adjustment" as const })),
+          ];
           sowTotal2 = ct2;
         } else {
           htmlContent = rawHtmlContent2;

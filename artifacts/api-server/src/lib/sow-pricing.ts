@@ -3,6 +3,8 @@ export interface SowPricingLine {
   scope: string;
   priceUsd: number;
   notes: string;
+  /** Distinguishes customer-toggleable workstream phases from mandatory price adjustments. */
+  line_type?: "workstream" | "adjustment";
 }
 
 /**

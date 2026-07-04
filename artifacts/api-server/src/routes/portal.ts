@@ -9759,8 +9759,14 @@ async function deriveEffectiveSowData(
   );
 
   if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
-    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string }>;
-    const allPhases: SowPhaseObj[] = livelines.map((l, i) => ({
+    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string }>;
+
+    // Separate workstream lines (customer-toggleable) from adjustment lines (mandatory).
+    // Old rows without line_type are treated as workstream for backwards compatibility.
+    const workstreamLivelines = livelines.filter(l => l.line_type !== "adjustment");
+    const adjustmentLivelines = livelines.filter(l => l.line_type === "adjustment");
+
+    const allPhases: SowPhaseObj[] = workstreamLivelines.map((l, i) => ({
       id: `sow-${i}`,
       title: l.title,
       description: l.scope || l.notes || "",
@@ -9779,12 +9785,16 @@ async function deriveEffectiveSowData(
       selected: effectiveSelectedPhaseIds.includes(p.id),
     }));
 
-    // Derive adjustments as the gap between the SOW's grand total and the sum of
-    // its parsed workstream lines. The AI puts this in sowTotalPrice; if it is
-    // missing or ≤ workstream sum, adjustmentsTotal is 0 (never negative).
-    const allPhasesSum = allPhases.reduce((s, p) => s + p.price, 0);
-    const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
-    const adjustmentsTotal = Math.max(0, sowGrandTotal - allPhasesSum);
+    // Adjustments are mandatory — always applied in full regardless of phase selection.
+    // If tagged lines exist, sum them directly; otherwise fall back to the gap method.
+    let adjustmentsTotal: number;
+    if (adjustmentLivelines.length > 0) {
+      adjustmentsTotal = adjustmentLivelines.reduce((s, l) => s + l.priceUsd, 0);
+    } else {
+      const allPhasesSum = livelines.reduce((s, l) => s + l.priceUsd, 0);
+      const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
+      adjustmentsTotal = Math.max(0, sowGrandTotal - allPhasesSum);
+    }
 
     const selectedPhasesTotal = effectiveSowPhases
       .filter(p => p.selected)
