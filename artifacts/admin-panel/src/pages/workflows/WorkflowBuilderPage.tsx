@@ -6520,6 +6520,25 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     },
   });
 
+  // Triggers — same cache key as StartNodeTriggers; React Query deduplicates the network request.
+  const { data: pageTriggers = [] } = useQuery<WfTrigger[]>({
+    queryKey: ["wf-triggers", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/triggers`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  // Derive the category shown on the Start node badge from the first event trigger.
+  const canvasTriggerCategory = (() => {
+    const firstEvent = pageTriggers.find(t => t.type === "event");
+    if (!firstEvent) return null;
+    const evName = (firstEvent.config as Record<string, unknown>).eventName as string | undefined;
+    if (!evName) return null;
+    return KNOWN_EVENTS.find(e => e.name === evName)?.category ?? null;
+  })();
+
   const { data: versions = [], isFetched: versionsFetched } = useQuery({
     queryKey: ["wf-versions", defId],
     queryFn: async () => {
@@ -7231,6 +7250,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           onSelectNode={id => { setSelectedNodeId(id); }}
           onGraphChange={handleGraphChange}
           onDuplicateNode={duplicateNode}
+          triggerCategory={canvasTriggerCategory}
         />
 
         {/* Node config panel */}
