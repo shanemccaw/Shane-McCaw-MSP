@@ -1486,6 +1486,8 @@ export default function PresentationFlow({
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
                     sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
+                    selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
+                    adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                   />
                 </div>
               </div>
@@ -1516,6 +1518,8 @@ export default function PresentationFlow({
                       freeClaimError={freeClaimError}
                       onDismissFreeClaimError={() => setFreeClaimError(null)}
                       sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
+                      selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
+                      adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                     />
                   )}
                 </div>

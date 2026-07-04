@@ -23,6 +23,11 @@ interface SowPhaseForPayment {
   deliveryDate?: string | null;
 }
 
+interface PriceLineItem {
+  title: string;
+  price: number;
+}
+
 interface PaymentOptionsPanelProps {
   totalPrice: number;
   /** Provide to trigger Stripe checkout (checkout step). Omit for plan-select-only mode. */
@@ -40,6 +45,10 @@ interface PaymentOptionsPanelProps {
   onDismissFreeClaimError?: () => void;
   /** Selected SOW phases — shown as a milestone breakdown inside the phased card. */
   sowPhases?: SowPhaseForPayment[];
+  /** Scope line items shown in the Pay in Full card (phase name + price). */
+  selectedPhases?: PriceLineItem[];
+  /** Adjustment lines (discounts/fees) shown below scope lines in the Pay in Full card, struck through. */
+  adjustmentLines?: PriceLineItem[];
 }
 
 function formatCurrency(n: number): string {
@@ -59,6 +68,8 @@ export default function PaymentOptionsPanel({
   freeClaimError = null,
   onDismissFreeClaimError,
   sowPhases,
+  selectedPhases = [],
+  adjustmentLines = [],
 }: PaymentOptionsPanelProps) {
   const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(initialPlan ?? null);
 
@@ -207,6 +218,27 @@ export default function PaymentOptionsPanel({
             </svg>
             Simplest option
           </div>
+          {(selectedPhases.length > 0 || adjustmentLines.length > 0) && (
+            <div className="w-full mt-3 pt-3 border-t border-border/60">
+              <div className={`flex flex-col gap-1 ${selectedPhases.length + adjustmentLines.length >= 5 ? "max-h-[140px] overflow-y-auto pr-1" : ""}`}>
+                {selectedPhases.map((phase, i) => (
+                  <div key={i} className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-[#0A2540] truncate">{phase.title}</span>
+                    <span className="text-xs font-semibold text-[#0078D4] flex-shrink-0">{formatCurrency(phase.price)}</span>
+                  </div>
+                ))}
+                {selectedPhases.length > 0 && adjustmentLines.length > 0 && (
+                  <div className="border-t border-border/40 my-1" />
+                )}
+                {adjustmentLines.map((adj, i) => (
+                  <div key={i} className="flex items-baseline justify-between gap-2">
+                    <span className="text-xs text-muted-foreground truncate">{adj.title}</span>
+                    <span className="text-xs text-muted-foreground line-through flex-shrink-0">{formatCurrency(adj.price)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </button>
 
         {/* 20% upfront + milestone billing */}
