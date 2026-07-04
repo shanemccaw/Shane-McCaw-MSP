@@ -1566,7 +1566,7 @@ export default function PresentationFlow({
             )}
 
             {/* SOW selector */}
-            {currentStep?.kind === "sow" && !hasSowDocument && (
+            {currentStep?.kind === "sow" && (!hasSowDocument || regeneratingSow) && (
               <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(243,246,250)" }}>
                 {/* Torus knot — z-[1] so it sits above the panel background but below z-10 content */}
                 <AnimatedBackground />
@@ -1594,7 +1594,7 @@ export default function PresentationFlow({
                 </div>
               </div>
             )}
-            {currentStep?.kind === "sow" && hasSowDocument && (
+            {currentStep?.kind === "sow" && hasSowDocument && !regeneratingSow && (
               <div className="flex-1 overflow-hidden flex flex-col">
                 <PayTodayBanner offer={offer} />
                 <SowSelectorPanel
