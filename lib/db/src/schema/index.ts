@@ -1585,6 +1585,7 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
   scopedSowHtml: text("scoped_sow_html"),
   scopedTotalPrice: integer("scoped_total_price"),
   scopedPhaseIds: jsonb("scoped_phase_ids").$type<string[]>(),
+  scopedSowVersion: text("scoped_sow_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

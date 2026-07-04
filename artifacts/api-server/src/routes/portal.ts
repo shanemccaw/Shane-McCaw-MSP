@@ -10031,6 +10031,42 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       pres.scopedPhaseIds.length > 0 &&
       pres.scopedPhaseIds.length < allLivePhaseIds.length;
 
+    // Validate that the stored scoped SOW matches the current live SOW pricing.
+    // Two complementary checks are used so that both obvious and subtle drift is caught:
+    //
+    //   Primary:   sowVersion string comparison — catches any price or phase-list change,
+    //              including cases where individual prices offset each other and the total
+    //              happens to be the same (e.g. phase A +$500, phase B -$500).
+    //
+    //   Secondary: total price comparison — provides a safety net for rows that were
+    //              persisted before scopedSowVersion was added (legacy rows have null).
+    //              Computes expected = sum of live prices for selected phases + adjustmentsTotal,
+    //              matching the same formula used in regenerate-scoped-sow.
+    let scopedSowIsValid = hasScopeReduction;
+    if (hasScopeReduction && Array.isArray(pres.scopedPhaseIds) && pres.scopedPhaseIds.length > 0) {
+      const storedIds = pres.scopedPhaseIds as string[];
+      const primaryMismatch =
+        pres.scopedSowVersion != null &&
+        pres.scopedSowVersion !== sowVersion;
+      const expectedDollars =
+        effectiveSowPhases
+          .filter(p => storedIds.includes(p.id))
+          .reduce((s, p) => s + p.price, 0) + adjustmentsTotal;
+      const storedDollars = pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null;
+      const secondaryMismatch =
+        pres.scopedSowVersion == null &&
+        storedDollars != null &&
+        Math.abs(expectedDollars - storedDollars) > 0.005;
+      if (primaryMismatch || secondaryMismatch) {
+        // SOW pricing drifted — wipe the stale scoped SOW so the client must regenerate
+        await db.update(quickWinPresentationsTable)
+          .set({ scopedSowHtml: null, scopedTotalPrice: null, scopedPhaseIds: null, scopedSowVersion: null, updatedAt: new Date() })
+          .where(eq(quickWinPresentationsTable.id, id));
+        scopedSowIsValid = false;
+        req.log?.info({ presentationId: id, primaryMismatch, secondaryMismatch }, "portal: stale scoped SOW cleared due to pricing drift");
+      }
+    }
+
     res.json({
       id: pres.id,
       projectId: pres.projectId,
@@ -10052,9 +10088,9 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       clientName: clientUser?.name ?? null,
       contractBody,
       workflowName: project?.workflowName ?? null,
-      scopedSowHtml: hasScopeReduction ? (pres.scopedSowHtml ?? null) : null,
-      scopedTotalPrice: hasScopeReduction && pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null,
-      scopedPhaseIds: hasScopeReduction ? (pres.scopedPhaseIds ?? null) : null,
+      scopedSowHtml: scopedSowIsValid ? (pres.scopedSowHtml ?? null) : null,
+      scopedTotalPrice: scopedSowIsValid && pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null,
+      scopedPhaseIds: scopedSowIsValid ? (pres.scopedPhaseIds ?? null) : null,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get presentation");
@@ -10235,12 +10271,17 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
     const scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, project?.title, clientUser?.name);
     const scopedTotalCents = Math.round(scopedTotalDollars * 100);
 
+    // Capture the SOW version in effect at generation time so the GET handler
+    // can detect pricing drift on subsequent page refreshes.
+    const { sowVersion: generationSowVersion } = await deriveEffectiveSowData(pres);
+
     // Persist so the scoped state survives a page refresh during the same session
     await db.update(quickWinPresentationsTable)
       .set({
         scopedSowHtml,
         scopedTotalPrice: scopedTotalCents,
         scopedPhaseIds: safeIds,
+        scopedSowVersion: generationSowVersion,
         updatedAt: new Date(),
       })
       .where(eq(quickWinPresentationsTable.id, id));

@@ -974,6 +974,13 @@
       "when": 1751666400000,
       "tag": "0135_add_scoped_sow_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1751752800000,
+      "tag": "0136_add_scoped_sow_version",
+      "breakpoints": true
     }
   ]
 }

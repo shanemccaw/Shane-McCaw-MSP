@@ -269,6 +269,9 @@ export default function PresentationFlow({
   const [scopedTotalPriceDollars, setScopedTotalPriceDollars] = useState<number | null>(initialData.scopedTotalPrice ?? null);
   const [lastRegenPhaseIds, setLastRegenPhaseIds] = useState<string[] | null>(initialData.scopedPhaseIds ?? null);
   const [regeneratingSow, setRegeneratingSow] = useState(false);
+  // True when a previously generated scoped SOW was invalidated by a pricing update.
+  // Stays true until the client successfully regenerates a new scoped SOW.
+  const [scopedSowWasReset, setScopedSowWasReset] = useState(false);
 
   const currentSowPhases = data.sowPhases ?? [];
   const selectedPhaseIds = data.selectedPhaseIds ?? currentSowPhases.map(p => p.id);
@@ -321,6 +324,16 @@ export default function PresentationFlow({
       // Check SOW version staleness
       if (initialSowVersionRef.current && fresh.sowVersion && fresh.sowVersion !== initialSowVersionRef.current) {
         setScopeStale(true);
+        // Immediately invalidate any previously generated scoped SOW — it was
+        // built with now-stale line prices and must not be used for sign/pay.
+        setScopedSowDoc(prev => {
+          if (prev !== null) {
+            setScopedSowWasReset(true);
+          }
+          return null;
+        });
+        setScopedTotalPriceDollars(null);
+        setLastRegenPhaseIds(null);
       }
       // Check document staleness (any doc added, removed, or replaced)
       const freshFingerprint = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
@@ -383,6 +396,19 @@ export default function PresentationFlow({
         // Clamp current position and max-visited to the new step list size
         setStepIndex(prev => Math.min(prev, freshStepCount - 1));
         setMaxVisitedStep(prev => Math.min(prev, freshStepCount - 1));
+        // Sync scoped SOW state from fresh server data.
+        // The server clears the scoped SOW when it detects pricing drift, so
+        // we must reflect that here rather than keep showing a stale document.
+        const freshScopedSow = fresh.scopedSowHtml ?? null;
+        setScopedSowDoc(prev => {
+          if (prev !== null && freshScopedSow === null) {
+            // Server cleared the scoped SOW due to pricing drift
+            setScopedSowWasReset(true);
+          }
+          return freshScopedSow;
+        });
+        setScopedTotalPriceDollars(fresh.scopedTotalPrice ?? null);
+        setLastRegenPhaseIds(fresh.scopedPhaseIds ?? null);
         setData(fresh);
         setScopeStale(false);
         setDocsStale(false);
@@ -456,6 +482,8 @@ export default function PresentationFlow({
         setScopedSowDoc(result.scopedSowHtml);
         setScopedTotalPriceDollars(result.scopedTotalPrice);
         setLastRegenPhaseIds(result.scopedPhaseIds);
+        // Client has regenerated with the current pricing — clear the reset notice
+        setScopedSowWasReset(false);
       }
     } finally {
       setRegeneratingSow(false);
@@ -796,17 +824,24 @@ export default function PresentationFlow({
 
         {/* Stale banner — shown when documents or scope have changed since the page loaded */}
         {(scopeStale || docsStale) && (
-          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center gap-3">
-            <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
-            <p className="flex-1 text-sm text-amber-800 font-medium">
-              {scopeStale && docsStale
-                ? "Your documents and scope of work have been updated — refresh to see the latest."
-                : docsStale
-                ? "New or updated documents are available — refresh to see them."
-                : "The scope of work has been updated. Please review the latest pricing before signing or paying."}
-            </p>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-amber-800 font-medium">
+                {scopeStale && docsStale
+                  ? "Your documents and scope of work have been updated — refresh to see the latest."
+                  : docsStale
+                  ? "New or updated documents are available — refresh to see them."
+                  : "The scope of work has been updated. Please review the latest pricing before signing or paying."}
+              </p>
+              {scopedSowWasReset && scopeStale && (
+                <p className="text-sm text-amber-700 mt-1">
+                  Your scoped document has been reset because the pricing was updated — please regenerate.
+                </p>
+              )}
+            </div>
             <button
               onClick={() => { void handleRefreshScope(); }}
               disabled={refreshingScope}
@@ -826,6 +861,28 @@ export default function PresentationFlow({
             </button>
             <button
               onClick={() => { setScopeStale(false); setDocsStale(false); }}
+              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Scoped SOW reset notice — persists after a scope refresh so the client
+            knows to regenerate their scoped document before proceeding */}
+        {scopedSowWasReset && !scopeStale && !docsStale && (
+          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center gap-3">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <p className="flex-1 text-sm text-amber-800 font-medium">
+              Your scoped document has been reset because the pricing was updated — please regenerate.
+            </p>
+            <button
+              onClick={() => setScopedSowWasReset(false)}
               className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 transition-colors"
               aria-label="Dismiss"
             >
