@@ -1383,10 +1383,15 @@ export default function FullScreenWrapper() {
                         <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" />
                       </div>
                     </div>
-                    <p className="text-[14px] text-black/50 mt-1">
+                    <p
+                      className="text-[14px] text-black/50 mt-1"
+                      style={{ opacity: activeKanbanTask ? (tickerVisible ? 1 : 0) : 1, transition: "opacity 350ms ease" }}
+                    >
                       {activeKanbanTask ? (
                         <>Currently running{" "}
-                          <span className="text-[#0078D4] font-semibold">{activeKanbanTask.title}</span>.
+                          <span className="text-[#0078D4] font-semibold">
+                            {tickerMessages[tickerIdx % tickerMessages.length]?.replace(/^[A-Za-z]+:\s*/, "").replace(/…$/, "")}
+                          </span>.
                         </>
                       ) : completedKanbanTasks.length === kanbanTasks.length && kanbanTasks.length > 0 ? (
                         "All tasks complete."
