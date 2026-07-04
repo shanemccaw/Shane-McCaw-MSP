@@ -44,13 +44,13 @@ export const CONTAINER_TYPES = new Set(["foreach", "condition", "switch_case"]);
 
 /**
  * Data-aware container check.
- * Returns true for static container types AND for fetch_news_headlines when
- * autoBuildCampaign is active (making it a dynamic campaign-body container).
+ * Returns true for static container types and fetch_news_headlines (which
+ * always renders hot / notHot branches regardless of autoBuildCampaign).
  */
 export function isContainerNode(node: StoredNode): boolean {
   const type = (node.data.nodeType as string) || node.type || "";
   if (CONTAINER_TYPES.has(type)) return true;
-  if (type === "fetch_news_headlines" && node.data.autoBuildCampaign === true) return true;
+  if (type === "fetch_news_headlines") return true;
   return false;
 }
 
@@ -147,12 +147,16 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       return result;
     }
 
-    // ── Fetch News Headlines (campaign container when autoBuildCampaign) ──────
-    if (type === "fetch_news_headlines" && node.data.autoBuildCampaign === true) {
-      const hotEdge  = out.find(e => e.sourceHandle === "hot");
-      const nextEdge = out.find(e => !e.sourceHandle);
+    // ── Fetch News Headlines (hot / notHot branches) ──────────────────────────
+    if (type === "fetch_news_headlines") {
+      const hotEdge    = out.find(e => e.sourceHandle === "hot");
+      const notHotEdge = out.find(e => e.sourceHandle === "notHot");
+      const nextEdge   = out.find(e => !e.sourceHandle);
 
-      step.branches = { hot: hotEdge ? buildSequence(hotEdge.target, stopSet) : [] };
+      step.branches = {
+        hot:    hotEdge    ? buildSequence(hotEdge.target,    stopSet) : [],
+        notHot: notHotEdge ? buildSequence(notHotEdge.target, stopSet) : [],
+      };
 
       const result: FlowStep[] = [step];
       if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
@@ -308,12 +312,15 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         feeders_ = [{ id: step.id, handle: "done" }];
       }
 
-      // ── Fetch News Headlines (campaign body) ───────────────────────────────
-      else if (step.nodeType === "fetch_news_headlines" && step.branches["hot"] !== undefined) {
-        const hotSteps = step.branches["hot"] ?? [];
-        const { nextY: afterHot } = doLayout(hotSteps, x + BRANCH_W, y, [{ id: step.id, handle: "hot" }]);
-        y = afterHot + 40;
-        // Continuation via plain edge from the news node
+      // ── Fetch News Headlines (hot / notHot branches side-by-side) ─────────
+      else if (step.nodeType === "fetch_news_headlines" && step.branches) {
+        const hotSteps    = step.branches["hot"]    ?? [];
+        const notHotSteps = step.branches["notHot"] ?? [];
+        const leftX  = x - BRANCH_W / 2;
+        const rightX = x + BRANCH_W / 2;
+        const { nextY: hotEnd }    = doLayout(hotSteps,    leftX,  y, [{ id: step.id, handle: "hot" }]);
+        const { nextY: notHotEnd } = doLayout(notHotSteps, rightX, y, [{ id: step.id, handle: "notHot" }]);
+        y = Math.max(hotEnd, notHotEnd) + 40;
         feeders_ = [{ id: step.id }];
       }
 

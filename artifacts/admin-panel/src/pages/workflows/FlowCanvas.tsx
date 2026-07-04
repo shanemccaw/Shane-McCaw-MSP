@@ -568,7 +568,7 @@ function ContainerBody({
     if (nodeType === "foreach") return "body";
     if (nodeType === "condition") return branchKey;
     if (nodeType === "switch_case") return branchKey === "__default__" ? "default" : `case-${branchKey}`;
-    if (nodeType === "fetch_news_headlines") return "hot";
+    if (nodeType === "fetch_news_headlines") return branchKey; // "hot" or "notHot"
     return undefined;
   }
 
@@ -745,31 +745,61 @@ function ContainerBody({
     );
   }
 
-  // ── Fetch News Headlines (Campaign body) ────────────────────────────────────
+  // ── Fetch News Headlines (hot / notHot branches) ───────────────────────────
   if (nodeType === "fetch_news_headlines") {
-    const hotSteps = branches["hot"] ?? [];
+    const hotSteps    = branches["hot"]    ?? [];
+    const notHotSteps = branches["notHot"] ?? [];
     return (
-      <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-hidden bg-[#06B6D4]/5">
-        <div className="px-3 py-1.5 flex items-center gap-1.5">
-          <span className="text-[9px] uppercase tracking-widest font-bold text-[#06B6D4]">🔥 Campaign</span>
-        </div>
-        <div className="px-4 pb-3">
-          <BranchStepList
-            steps={hotSteps}
-            containerId={step.id}
-            containerHandle="hot"
-            lastNodeIdFn={lastNodeId}
-            branchKey="hot"
-            isArchived={isArchived}
-            nodeStyles={nodeStyles}
-            nodeIdCounter={nodeIdCounter}
-            libraryCategories={libraryCategories}
-            allLibraryNodes={allLibraryNodes}
-            nodes={nodes}
-            edges={edges}
-            onGraphChange={onGraphChange}
-            onDuplicateNode={onDuplicateNode}
-          />
+      <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-hidden">
+        <div className="grid grid-cols-2 divide-x divide-[#06B6D4]/20">
+          {/* Hot branch */}
+          <div className="bg-[#06B6D4]/5">
+            <div className="px-3 py-1.5 flex items-center gap-1.5">
+              <span className="text-[9px] uppercase tracking-widest font-bold text-[#06B6D4]">🔥 Hot — Run Campaign</span>
+            </div>
+            <div className="px-3 pb-3">
+              <BranchStepList
+                steps={hotSteps}
+                containerId={step.id}
+                containerHandle="hot"
+                lastNodeIdFn={lastNodeId}
+                branchKey="hot"
+                isArchived={isArchived}
+                nodeStyles={nodeStyles}
+                nodeIdCounter={nodeIdCounter}
+                libraryCategories={libraryCategories}
+                allLibraryNodes={allLibraryNodes}
+                nodes={nodes}
+                edges={edges}
+                onGraphChange={onGraphChange}
+                onDuplicateNode={onDuplicateNode}
+              />
+            </div>
+          </div>
+          {/* Not Hot branch */}
+          <div className="bg-slate-900/30">
+            <div className="px-3 py-1.5 flex items-center gap-1.5">
+              <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400">❄️ Not Hot — Skip</span>
+            </div>
+            <div className="px-3 pb-3">
+              <BranchStepList
+                steps={notHotSteps}
+                containerId={step.id}
+                containerHandle="notHot"
+                lastNodeIdFn={lastNodeId}
+                branchKey="notHot"
+                isArchived={isArchived}
+                nodeStyles={nodeStyles}
+                nodeIdCounter={nodeIdCounter}
+                libraryCategories={libraryCategories}
+                allLibraryNodes={allLibraryNodes}
+                nodes={nodes}
+                edges={edges}
+                onGraphChange={onGraphChange}
+                onDuplicateNode={onDuplicateNode}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -876,8 +906,8 @@ function BranchStepList({
             onGraphChange={onGraphChange}
             onDuplicateNode={onDuplicateNode}
           />
-          {/* "+" after each step within the branch — suppressed for terminal news node */}
-          {!(step.nodeType === "fetch_news_headlines" && !step.data.autoBuildCampaign) && (
+          {/* "+" after each step within the branch — suppressed for news node (branches have their own AddButtons) */}
+          {step.nodeType !== "fetch_news_headlines" && (
             <AddButton
               afterNodeId={step.id}
               sourceHandle={undefined}
@@ -1119,7 +1149,7 @@ export default function FlowCanvas({
                     />
 
                     {/* "+" after each top-level step — hidden for terminal news node */}
-                    {!(step.nodeType === "fetch_news_headlines" && !step.data.autoBuildCampaign) && (
+                    {step.nodeType !== "fetch_news_headlines" && (
                       <AddButton
                         afterNodeId={step.id}
                         sourceHandle={step.nodeType === "foreach" ? "done" : undefined}
