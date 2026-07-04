@@ -27,6 +27,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { extractAiHtml, parseSowPricing } from "./sow-pricing";
+import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream-normalizer";
 import { ensureOpportunityForSow } from "./crm-pipeline";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -585,6 +586,15 @@ export async function generateAndDeliverDocument(
       const engagementProjects = await fetchEngagementProjects();
       const engagementProjectsBlock = formatEngagementProjectsBlock(engagementProjects);
 
+      // Resolve raw project titles to canonical workstream keys so the AI
+      // can reliably cross-reference the ADJUSTMENT MAP regardless of label variance.
+      const rawEngTitles = engagementProjects.map(ep => ep.title);
+      const { resolvedKeys: engResolvedKeys, unresolvedTitles: engUnresolvedTitles } =
+        resolveWorkstreamKeys(rawEngTitles);
+      const engWorkstreamContextBlock = buildWorkstreamContextBlock(
+        rawEngTitles, engResolvedKeys, engUnresolvedTitles,
+      );
+
       // Build a structured TENANT FACTS block from the merged profile so the AI
       // has exact numbers for every pricing adjustment. This prevents hallucination
       // of tenant size, site counts, and data sprawl metrics.
@@ -612,7 +622,7 @@ export async function generateAndDeliverDocument(
         `SharePoint Sites Scanned:   ${p.sharePointSitesScanned ?? p.sharepointSiteCount ?? "unknown"}`,
       ].join("\n");
 
-      pricingAppendix = `\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${tenantFacts}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${engagementProjectsBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA}`;
+      pricingAppendix = `\n\n${engWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${tenantFacts}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${engagementProjectsBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA}`;
     }
 
     const consultingFallback = substituteTokens(CONSULTING_PROMPT_FALLBACK, { sectionHints });

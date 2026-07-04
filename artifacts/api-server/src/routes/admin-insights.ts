@@ -61,6 +61,7 @@ import {
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
+import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "../lib/workstream-normalizer";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1463,6 +1464,15 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
           ).join("\n\n")
         : "No engagement project pricing configured.";
 
+      // Resolve raw project titles to canonical workstream keys so the AI
+      // can reliably cross-reference the ADJUSTMENT MAP regardless of label variance.
+      const rawProjectTitles = engagementProjects.map(p => p.title);
+      const { resolvedKeys: resolvedWorkstreamKeys, unresolvedTitles: unresolvedWorkstreamTitles } =
+        resolveWorkstreamKeys(rawProjectTitles);
+      const workstreamContextBlock = buildWorkstreamContextBlock(
+        rawProjectTitles, resolvedWorkstreamKeys, unresolvedWorkstreamTitles,
+      );
+
       // ── Build tenant telemetry block ───────────────────────────────────────
       const telemetryLines: string[] = [];
 
@@ -1606,7 +1616,7 @@ INSTRUCTIONS:
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       // Find any prior completed consolidated_sow for this customer+project (to replace on success)
       let priorSowId: number | null = null;
@@ -1804,6 +1814,14 @@ INSTRUCTIONS:
       const catalogueBlock = engProjects.length > 0
         ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
         : "No engagement project pricing configured.";
+      // Resolve raw project titles to canonical workstream keys so the AI
+      // can reliably cross-reference the ADJUSTMENT MAP regardless of label variance.
+      const rawSowTitles = engProjects.map(p => p.title);
+      const { resolvedKeys: sowResolvedKeys, unresolvedTitles: sowUnresolvedTitles } =
+        resolveWorkstreamKeys(rawSowTitles);
+      const sowWorkstreamContextBlock = buildWorkstreamContextBlock(
+        rawSowTitles, sowResolvedKeys, sowUnresolvedTitles,
+      );
       // Build merged profile from runs so we can pre-compute the tier server-side
       const mergedForSow: Record<string, unknown> = {};
       for (const run of [...(runs as { profileUpdates?: Record<string, unknown> }[])].reverse()) {
@@ -1811,7 +1829,7 @@ INSTRUCTIONS:
       }
       const sowTier = computeTenantTier(mergedForSow.totalUserCount);
       const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
-      pricingAppendix = `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      pricingAppendix = `\n\n${sowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
     }
 
     // Fallback injects per-type section hints for the case where the DB row is absent
@@ -2055,13 +2073,19 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
 
       const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"\n- Pricing Adjustments: list ONLY the adjustments permitted for the workstreams present per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below — each adjustment once only, never on individual workstream rows`;
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW);
+      const previewRawTitles = engagementProjects.map((p: { title: string }) => p.title);
+      const { resolvedKeys: previewResolvedKeys, unresolvedTitles: previewUnresolvedTitles } =
+        resolveWorkstreamKeys(previewRawTitles);
+      const previewWorkstreamContextBlock = buildWorkstreamContextBlock(
+        previewRawTitles, previewResolvedKeys, previewUnresolvedTitles,
+      );
       const assembledPrompt = rawTemplate
         .replace(/\{\{clientName\}\}/g, clientName).replace(/\{\{title\}\}/g, title)
         .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
         .replace(/\{\{engagementStart\}\}/g, previewEngagementStartLabel)
         .replace(/\{\{existingDocs\}\}/g, docsBlock).replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\n${previewWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       const stylePrefix = await getDocumentStylePrefix();
       const healthHistoryRows = scoresRow as { category: string; score: number }[];
@@ -2149,13 +2173,21 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const catalogueBlock = engProjects.length > 0
         ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
         : "No engagement project pricing configured.";
+      // Resolve raw project titles to canonical workstream keys so the AI
+      // can reliably cross-reference the ADJUSTMENT MAP regardless of label variance.
+      const previewSowRawTitles = engProjects.map(p => p.title);
+      const { resolvedKeys: previewSowResolvedKeys, unresolvedTitles: previewSowUnresolvedTitles } =
+        resolveWorkstreamKeys(previewSowRawTitles);
+      const previewSowWorkstreamContextBlock = buildWorkstreamContextBlock(
+        previewSowRawTitles, previewSowResolvedKeys, previewSowUnresolvedTitles,
+      );
       const mergedForSow: Record<string, unknown> = {};
       for (const run of [...(runs as { profileUpdates?: Record<string, unknown> }[])].reverse()) {
         Object.assign(mergedForSow, run.profileUpdates ?? {});
       }
       const sowTier = computeTenantTier(mergedForSow.totalUserCount);
       const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
-      pricingAppendix = `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      pricingAppendix = `\n\n${previewSowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
     }
 
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
