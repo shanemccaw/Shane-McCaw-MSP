@@ -294,6 +294,10 @@ export default function PresentationFlow({
   const scopedDocMatchesSelection = hasScopeReduction && scopedSowDoc !== null && lastRegenPhaseIds !== null && arraysMatch(lastRegenPhaseIds, selectedPhaseIds);
   // True when we need a (re)generation before the client can proceed
   const needsRegeneration = hasScopeReduction && !scopedDocMatchesSelection;
+  // True when the scoped SOW was invalidated mid-session (pricing updated) and the
+  // client has a scope reduction active. While this is true, signing and payment are
+  // hard-blocked — the client must regenerate a fresh scoped SOW first.
+  const sowResetBlocked = scopedSowWasReset && hasScopeReduction;
   // Effective price used for contract/payment steps
   const effectivePrice = hasScopeReduction && scopedDocMatchesSelection && scopedTotalPriceDollars !== null
     ? scopedTotalPriceDollars
@@ -491,6 +495,9 @@ export default function PresentationFlow({
   };
 
   const handleSign = async (signatureData: string, name: string) => {
+    // Hard-block signing when the scoped SOW was reset mid-session and scope reduction is active.
+    // This guard covers the case where the reset fires while the client is already on the contract step.
+    if (sowResetBlocked) return;
     setSigning(true);
     try {
       const res = await fetchFn(`/api/portal/presentations/${presentationId}/sign`, {
@@ -537,6 +544,9 @@ export default function PresentationFlow({
   };
 
   const handleCheckout = async (plan: "full" | "phased") => {
+    // Hard-block checkout when the scoped SOW was reset mid-session and scope reduction is active.
+    // This guard covers the case where the reset fires while the client is already on the payment step.
+    if (sowResetBlocked) return;
     setCheckingOut(true);
     try {
       const res = await fetchFn(`/api/portal/presentations/${presentationId}/checkout`, {
@@ -613,8 +623,19 @@ export default function PresentationFlow({
       setShowLoginGate(true);
       return;
     }
+    // Hard-block advancing from the SOW step when the scoped SOW was reset mid-session.
+    // The client must regenerate a fresh scoped SOW before they can sign or pay.
+    if (sowResetBlocked && currentStep?.kind === "sow") {
+      return;
+    }
     if (stepIndex < steps.length - 1) {
       const next = stepIndex + 1;
+      // Also hard-block jumping directly into contract/payment when sowResetBlocked,
+      // regardless of which step we're navigating from.
+      const nextStep = steps[next];
+      if (sowResetBlocked && (nextStep?.kind === "contract" || nextStep?.kind === "payment")) {
+        return;
+      }
       directionRef.current = "forward";
       setMaxVisitedStep(m => Math.max(m, next));
       applyStepChange(next);
@@ -629,7 +650,10 @@ export default function PresentationFlow({
   };
 
   const navigateToStep = (i: number) => {
-    if (i <= maxVisitedStep) {
+    const targetStep = steps[i];
+    // Hard-block sidebar navigation to contract/payment when a scoped SOW reset is pending
+    const blockedByReset = sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment");
+    if (i <= maxVisitedStep && !blockedByReset) {
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
@@ -644,6 +668,9 @@ export default function PresentationFlow({
   // Also fires a fire-and-forget card_click event (first click per cardName only)
   const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
+    // Hard-block jumps to contract/payment when a scoped SOW reset is pending
+    const targetStep = steps[idx];
+    if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment")) return;
     if (cardName && !firedCardClicks.current.has(cardName)) {
       firedCardClicks.current.add(cardName);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
@@ -656,7 +683,7 @@ export default function PresentationFlow({
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, steps]);
 
   const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
@@ -731,13 +758,24 @@ export default function PresentationFlow({
           const isActive = i === stepIndex;
           const isVisited = i <= maxVisitedStep && i !== stepIndex;
           const isFuture = i > maxVisitedStep;
+          const isResetBlocked = sowResetBlocked && (step.kind === "contract" || step.kind === "payment");
           return (
             <button
               key={i}
-              onClick={() => { if (!isFuture) navigateToStep(i); }}
-              title={isActive ? "Current step" : isVisited ? "Click to go back to this step" : `Complete step ${i} to unlock`}
+              onClick={() => { if (!isFuture && !isResetBlocked) navigateToStep(i); }}
+              title={
+                isResetBlocked
+                  ? "Regenerate your scoped SOW before signing or paying"
+                  : isActive
+                  ? "Current step"
+                  : isVisited
+                  ? "Click to go back to this step"
+                  : `Complete step ${i} to unlock`
+              }
               className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-all mb-0.5 ${
-                isActive
+                isResetBlocked
+                  ? "text-amber-400/60 cursor-not-allowed"
+                  : isActive
                   ? "bg-[#0078D4] text-white cursor-pointer"
                   : isVisited
                   ? "text-white/70 hover:bg-white/10 hover:text-white cursor-pointer"
@@ -748,13 +786,19 @@ export default function PresentationFlow({
             >
               {/* Step number dot */}
               <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
-                isActive
+                isResetBlocked
+                  ? "bg-amber-400/20 text-amber-400/60"
+                  : isActive
                   ? "bg-white/20 text-white"
                   : isVisited
                   ? "bg-white/20 text-white/70"
                   : "bg-white/10 text-white/30"
               }`}>
-                {isVisited ? (
+                {isResetBlocked ? (
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                ) : isVisited ? (
                   <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
@@ -871,25 +915,17 @@ export default function PresentationFlow({
           </div>
         )}
 
-        {/* Scoped SOW reset notice — persists after a scope refresh so the client
-            knows to regenerate their scoped document before proceeding */}
+        {/* Scoped SOW reset notice — non-dismissable; only clears when the client
+            successfully regenerates a new scoped SOW (or the server confirms a fresh one).
+            Do NOT add a dismiss button here — it would allow bypassing the sign/pay block. */}
         {scopedSowWasReset && !scopeStale && !docsStale && (
           <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center gap-3">
             <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <p className="flex-1 text-sm text-amber-800 font-medium">
-              Your scoped document has been reset because the pricing was updated — please regenerate.
+              Your scoped document was reset because the pricing was updated — please regenerate it on the Scope &amp; Pricing step to continue.
             </p>
-            <button
-              onClick={() => setScopedSowWasReset(false)}
-              className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-amber-600 hover:bg-amber-200 transition-colors"
-              aria-label="Dismiss"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           </div>
         )}
 
@@ -1187,10 +1223,18 @@ export default function PresentationFlow({
                           {contractStepIndex >= 0 && (
                             <button
                               onClick={() => jumpToStep(contractStepIndex, "agreement")}
-                              className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                              disabled={sowResetBlocked}
+                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
-                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
-                              {contractVisited && <ReviewedBadge />}
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
+                              {contractVisited && !sowResetBlocked && <ReviewedBadge />}
+                              {sowResetBlocked && (
+                                <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full leading-none">
+                                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01" /></svg>
+                                  Blocked
+                                </span>
+                              )}
                               <div className="flex items-center gap-2 mb-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${contractVisited ? "bg-emerald-50" : "bg-slate-100"}`}>
                                   <svg className={`w-4 h-4 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1200,20 +1244,26 @@ export default function PresentationFlow({
                                 <span className={`text-xs font-bold uppercase tracking-widest ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>Agreement</span>
                               </div>
                               <p className="text-sm font-bold text-[#0A2540] mb-3">Personalised, legally binding e-signature contract</p>
-                              <div className="flex flex-wrap gap-1.5 mb-4">
-                                {(["E-Signature", "Legally Binding", "Personalised Contract"] as const).map(pill => (
-                                  <span key={pill} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${contractVisited ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
-                                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                    {pill}
+                              {sowResetBlocked ? (
+                                <p className="text-xs text-amber-700 mb-4">Regenerate your scoped SOW on the Scope & Pricing step to unlock signing.</p>
+                              ) : (
+                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                  {(["E-Signature", "Legally Binding", "Personalised Contract"] as const).map(pill => (
+                                    <span key={pill} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${contractVisited ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+                                      <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                      {pill}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                              {!sowResetBlocked && (
+                                <div className="flex items-center justify-end">
+                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
+                                    {contractVisited ? "Review again" : "Preview agreement"}
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
                                   </span>
-                                ))}
-                              </div>
-                              <div className="flex items-center justify-end">
-                                <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${contractVisited ? "text-emerald-600" : "text-slate-500"}`}>
-                                  {contractVisited ? "Review again" : "Preview agreement"}
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                </span>
-                              </div>
+                                </div>
+                              )}
                             </button>
                           )}
 
@@ -1221,10 +1271,18 @@ export default function PresentationFlow({
                           {paymentStepIndex >= 0 && (
                             <button
                               onClick={() => jumpToStep(paymentStepIndex, "payment")}
-                              className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
+                              disabled={sowResetBlocked}
+                              title={sowResetBlocked ? "Regenerate your scoped SOW before paying" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
-                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${paymentVisited ? "bg-emerald-500" : "bg-purple-500"}`} />
-                              {paymentVisited && <ReviewedBadge />}
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : paymentVisited ? "bg-emerald-500" : "bg-purple-500"}`} />
+                              {paymentVisited && !sowResetBlocked && <ReviewedBadge />}
+                              {sowResetBlocked && (
+                                <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full leading-none">
+                                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01" /></svg>
+                                  Blocked
+                                </span>
+                              )}
                               <div className="flex items-center gap-2 mb-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${paymentVisited ? "bg-emerald-50" : "bg-purple-50"}`}>
                                   <svg className={`w-4 h-4 ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1233,7 +1291,9 @@ export default function PresentationFlow({
                                 </div>
                                 <span className={`text-xs font-bold uppercase tracking-widest ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`}>Payment</span>
                               </div>
-                              {upfrontFmt ? (
+                              {sowResetBlocked ? (
+                                <p className="text-xs text-amber-700 mb-4 min-h-[3rem]">Regenerate your scoped SOW on the Scope & Pricing step to unlock payment.</p>
+                              ) : upfrontFmt ? (
                                 <div className="mb-3 min-h-[3rem]">
                                   <p className="text-2xl font-extrabold text-[#0A2540]">
                                     {upfrontFmt} <span className="text-sm font-bold text-muted-foreground">to start</span>
@@ -1246,16 +1306,20 @@ export default function PresentationFlow({
                                   <p className="text-[11px] text-muted-foreground mt-0.5">Pay in full or by milestone</p>
                                 </div>
                               )}
-                              <div className="flex items-center gap-1.5 mb-4">
-                                <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full ${paymentVisited ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"}`}>Milestone billing</span>
-                                <span className="inline-flex items-center text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Or pay in full</span>
-                              </div>
-                              <div className="flex items-center justify-end">
-                                <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`}>
-                                  {paymentVisited ? "Review again" : "View payment options"}
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                </span>
-                              </div>
+                              {!sowResetBlocked && (
+                                <>
+                                  <div className="flex items-center gap-1.5 mb-4">
+                                    <span className={`inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full ${paymentVisited ? "bg-emerald-50 text-emerald-700" : "bg-purple-100 text-purple-700"}`}>Milestone billing</span>
+                                    <span className="inline-flex items-center text-[10px] font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Or pay in full</span>
+                                  </div>
+                                  <div className="flex items-center justify-end">
+                                    <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${paymentVisited ? "text-emerald-600" : "text-purple-600"}`}>
+                                      {paymentVisited ? "Review again" : "View payment options"}
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                    </span>
+                                  </div>
+                                </>
+                              )}
                             </button>
                           )}
 
@@ -1385,9 +1449,48 @@ export default function PresentationFlow({
               </p>
 
               {currentStep?.kind === "contract" && !data.signedAt ? (
-                <span className="text-xs text-muted-foreground">Sign above to continue</span>
+                <span className="text-xs text-muted-foreground">
+                  {sowResetBlocked ? "Go back and regenerate your scoped SOW to sign" : "Sign above to continue"}
+                </span>
               ) : currentStep?.kind === "payment" ? (
-                <span className="text-xs text-muted-foreground">Select a plan to continue</span>
+                <span className="text-xs text-muted-foreground">
+                  {sowResetBlocked ? "Go back and regenerate your scoped SOW to pay" : "Select a plan to continue"}
+                </span>
+              ) : currentStep?.kind === "sow" && sowResetBlocked ? (
+                /* Scoped SOW was invalidated mid-session — show Regenerate (if can) + disabled Continue */
+                <div className="flex items-center gap-2">
+                  {!readOnly && user && (
+                    <button
+                      onClick={() => void handleRegenerateSow()}
+                      disabled={regeneratingSow || savingSelections}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20 disabled:opacity-60"
+                    >
+                      {regeneratingSow ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin flex-shrink-0" />
+                          <span>Generating…</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Regenerate SOW</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  <button
+                    disabled
+                    title="Your scoped SOW was updated — regenerate it before continuing to the agreement"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl border-2 border-dashed border-gray-300 text-gray-400 text-sm font-semibold cursor-not-allowed select-none"
+                  >
+                    <span>Continue to Agreement</span>
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
               ) : currentStep?.kind === "sow" && needsRegeneration && !readOnly && user ? (
                 <button
                   onClick={() => void handleRegenerateSow()}
