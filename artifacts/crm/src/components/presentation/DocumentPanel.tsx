@@ -198,11 +198,8 @@ const DOC_CSS = `
 function stripFence(html: string): string {
   return html.replace(/^```[a-zA-Z]*\r?\n?/, "").replace(/\r?\n?```\s*$/, "").trim();
 }
-function cleanInlineStyles(html: string): string {
-  return html.replace(/\s+style="[^"]*"/gi, "").replace(/\s+style='[^']*'/gi, "");
-}
 function buildSrcdoc(rawHtml: string): string {
-  const body = cleanInlineStyles(stripFence(rawHtml));
+  const body = stripFence(rawHtml);
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"><style>${DOC_CSS}</style></head><body>${body}</body></html>`;
 }
 
