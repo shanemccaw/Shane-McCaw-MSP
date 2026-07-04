@@ -762,6 +762,25 @@ export default function WorkflowListPage() {
     },
   });
 
+  const patchCategoryMut = useMutation({
+    mutationFn: async ({ id, category }: { id: number; category: string | null }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category }),
+      });
+      if (!res.ok) throw new Error("Failed to update category");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      toast({ title: "Category updated" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   function handlePlayClick(def: WfDefinition) {
     const fields = def.askForInputFields;
     if (fields && fields.length > 0) {
@@ -935,6 +954,10 @@ export default function WorkflowListPage() {
     const isSystem = !!def.metadata?.system;
     const trigCats = deriveTriggerCategories(def.triggerEventNames ?? []);
 
+    const currentCategory = (def.metadata?.category as string | undefined) ?? "";
+    const [catInput, setCatInput] = useState(currentCategory);
+    const isCatDirty = catInput !== currentCategory;
+
     return (
       <div className="flex flex-col h-full overflow-hidden">
         {/* Detail header */}
@@ -1005,6 +1028,51 @@ export default function WorkflowListPage() {
             </div>
           </div>
         </div>
+
+        {/* Category field */}
+        {!isSystem && (() => {
+          const existingCategories = [...new Set(
+            userDefs.map(d => (d.metadata?.category as string | undefined) ?? deriveCategory(d.name))
+          )].sort();
+          const datalistId = `cat-suggestions-${def.id}`;
+          return (
+            <div className="px-6 py-3 border-b border-[#21262D] flex-shrink-0">
+              <span className="text-[10px] text-[#484F58] uppercase tracking-wider block mb-2">Category</span>
+              <div className="flex items-center gap-2">
+                <input
+                  list={datalistId}
+                  value={catInput}
+                  onChange={e => setCatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && isCatDirty) patchCategoryMut.mutate({ id: def.id, category: catInput || null }); }}
+                  placeholder={deriveCategory(def.name)}
+                  className="flex-1 min-w-0 bg-[#1C2128] border border-[#30363D] rounded-md px-2.5 py-1.5 text-xs text-[#C9D1D9] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] transition-colors"
+                />
+                <datalist id={datalistId}>
+                  {existingCategories.map(c => <option key={c} value={c} />)}
+                </datalist>
+                <button
+                  onClick={() => patchCategoryMut.mutate({ id: def.id, category: catInput || null })}
+                  disabled={!isCatDirty || patchCategoryMut.isPending}
+                  className="flex-shrink-0 px-3 py-1.5 bg-[#0078D4]/10 hover:bg-[#0078D4]/20 text-[#0078D4] text-xs font-medium rounded-md border border-[#0078D4]/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {patchCategoryMut.isPending ? "Saving…" : "Save"}
+                </button>
+                {catInput && (
+                  <button
+                    onClick={() => { setCatInput(""); patchCategoryMut.mutate({ id: def.id, category: null }); }}
+                    title="Clear override — revert to auto-derived category"
+                    className="flex-shrink-0 px-2 py-1.5 text-[#484F58] hover:text-[#8B949E] text-xs rounded-md border border-transparent hover:border-[#30363D] transition-colors"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+              {!currentCategory && (
+                <p className="text-[10px] text-[#484F58] mt-1.5">Auto-derived: <span className="text-[#7D8590]">{deriveCategory(def.name)}</span></p>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Action toolbar */}
         <div className="px-6 py-4 border-b border-[#21262D] flex-shrink-0">
@@ -1296,7 +1364,7 @@ export default function WorkflowListPage() {
         {/* ── Center panel — Workflow Detail ── */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117] overflow-hidden">
           {selectedDef ? (
-            <DetailPanel def={selectedDef} />
+            <DetailPanel key={selectedDef.id} def={selectedDef} />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-16 h-16 bg-[#1C2128] border border-[#30363D] rounded-2xl flex items-center justify-center mb-4">

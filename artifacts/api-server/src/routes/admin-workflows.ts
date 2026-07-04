@@ -203,6 +203,42 @@ router.put("/admin/workflows/definitions/:id", requireAdmin, async (req: Request
   }
 });
 
+router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  const body = z.object({
+    category: z.string().max(100).nullable(),
+  }).safeParse(req.body);
+  if (!body.success) return sendError(res, 400, body.error.message);
+
+  try {
+    const [existing] = await db
+      .select({ metadata: wfDefinitionsTable.metadata })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.id, id))
+      .limit(1);
+    if (!existing) return sendError(res, 404, "Not found");
+
+    const merged: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+    if (body.data.category === null || body.data.category === "") {
+      delete merged.category;
+    } else {
+      merged.category = body.data.category;
+    }
+
+    const [updated] = await db
+      .update(wfDefinitionsTable)
+      .set({ metadata: merged, updatedAt: new Date() })
+      .where(eq(wfDefinitionsTable.id, id))
+      .returning();
+    res.json(updated);
+  } catch (err) {
+    logger.error({ err }, "Failed to patch definition category");
+    sendError(res, 500, "Failed to update category");
+  }
+});
+
 router.delete("/admin/workflows/definitions/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
