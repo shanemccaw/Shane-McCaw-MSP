@@ -405,7 +405,10 @@ export default function OnboardingContract() {
         setServices(matched);
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch((err: unknown) => {
+        console.warn("[OnboardingContract] Failed to load services:", err);
+        setLoading(false);
+      });
 
     fetch("/api/portal/coupons/available/TESTIMONIAL")
       .then(r => r.json() as Promise<{ available: boolean }>)
@@ -418,7 +421,9 @@ export default function OnboardingContract() {
       fetch(`/api/portal/required-permissions?serviceIds=${serviceIds.join(",")}`)
         .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
         .then(d => { if (d?.permissions?.length) setRequiredPermissions(d.permissions); })
-        .catch(() => { /* silently ignore — permissions section just won't appear */ });
+        .catch((err: unknown) => {
+          console.warn("[OnboardingContract] Failed to load required permissions:", err);
+        });
     }
 
     // Only fetch profile if logged in

@@ -3213,8 +3213,6 @@ function GenerateFromServiceDialog({
         (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
       );
 
-      console.log("[generate-from-service] result type:", result.type, "| packageId:", result.packageId ?? "—", "| modules:", result.modules?.length ?? "—", "| script len:", result.script?.length ?? "—");
-
       if (result.humanOnlyTasks?.length > 0) {
         setHumanOnlyTasks(result.humanOnlyTasks);
       }

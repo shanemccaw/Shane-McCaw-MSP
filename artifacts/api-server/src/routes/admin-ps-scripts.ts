@@ -147,7 +147,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 try {
-    # TODO: Implement automation for: ${taskTitle}
+    # Replace this block with the real PowerShell logic for: ${taskTitle}
     Write-Output "Stub module for: ${taskTitle}"
     Write-Output "Replace this placeholder with the real PowerShell logic."
 } catch {

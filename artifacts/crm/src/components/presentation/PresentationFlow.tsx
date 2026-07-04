@@ -385,7 +385,9 @@ export default function PresentationFlow({
       if (freshFingerprint !== initialDocFingerprintRef.current) {
         setDocsStale(true);
       }
-    } catch { /* non-fatal — ignore network errors */ }
+    } catch (err) {
+      console.warn("[PresentationFlow] Scope version check failed (non-fatal):", err);
+    }
   }, [fetchFn, presentationId, shareToken]);
 
   // SSE subscription — receives immediate push when Shane regenerates the SOW
@@ -458,7 +460,9 @@ export default function PresentationFlow({
         setScopeStale(false);
         setDocsStale(false);
       }
-    } catch { /* non-fatal */ } finally {
+    } catch (err) {
+      console.warn("[PresentationFlow] Refresh scope failed (non-fatal):", err);
+    } finally {
       setRefreshingScope(false);
     }
   }, [fetchFn, presentationId, shareToken, readOnly]);

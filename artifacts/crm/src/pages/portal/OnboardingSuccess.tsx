@@ -166,7 +166,9 @@ export default function OnboardingSuccess() {
                 setSetupEmailSent(true);
               }
             }
-          } catch { /* non-fatal */ }
+          } catch (err) {
+          console.warn("[OnboardingSuccess] Provision request failed (non-fatal):", err);
+        }
 
           sessionStorage.removeItem("onboardingCartSummary");
           setStatus("paid");

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
 import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
@@ -69,12 +70,10 @@ function getRpOrigin(): string {
 function getTotpEncryptionKey(): Buffer {
   const raw = process.env.TOTP_ENCRYPTION_KEY;
   if (raw) return Buffer.from(raw, "hex").subarray(0, 32);
-  const { createHash } = require("crypto") as typeof import("crypto");
   return createHash("sha256").update(getJwtSecret()).digest();
 }
 
 function encryptTotp(plaintext: string): string {
-  const { randomBytes, createCipheriv } = require("crypto") as typeof import("crypto");
   const key = getTotpEncryptionKey();
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
@@ -84,7 +83,6 @@ function encryptTotp(plaintext: string): string {
 }
 
 function decryptTotp(ciphertext: string): string {
-  const { createDecipheriv } = require("crypto") as typeof import("crypto");
   const [ivHex, encHex, tagHex] = ciphertext.split(":");
   const key = getTotpEncryptionKey();
   const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(ivHex, "hex"));

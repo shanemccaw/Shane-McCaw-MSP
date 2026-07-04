@@ -125,7 +125,9 @@ export default function FullScreenWrapper() {
           if (!d || d.status === "pending") setCredentialsMissing(true);
         });
       })
-      .catch(() => { /* non-fatal — leave spinner visible */ });
+      .catch((err: unknown) => {
+        console.warn("[FullScreenWrapper] Credential check failed (non-fatal):", err);
+      });
   }, [isVisible, fetchWithAuth]);
 
   // ── Presentation CTA state ───────────────────────────────────────────────────

@@ -63,7 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
       accessTokenRef.current = data.accessToken;
       return data.accessToken;
-    } catch {
+    } catch (err) {
+      console.warn("[AuthContext] Token refresh failed:", err);
       setState({ user: null, accessToken: null, isLoading: false });
       return null;
     }
@@ -98,7 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState(s => ({ ...s, isLoading: false }));
           }
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          console.warn("[AuthContext] Impersonation exchange failed:", err);
           setState(s => ({ ...s, isLoading: false }));
         });
       return;
@@ -108,7 +110,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!token) {
         setState(s => ({ ...s, isLoading: false }));
       }
-    }).catch(() => {
+    }).catch((err: unknown) => {
+      console.warn("[AuthContext] Initial refresh failed:", err);
       setState(s => ({ ...s, isLoading: false }));
     });
   }, [refresh]);
