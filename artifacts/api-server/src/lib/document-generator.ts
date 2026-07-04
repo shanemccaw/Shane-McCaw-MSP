@@ -85,7 +85,7 @@ Final Price = Base Ceiling + Tenant Size Adjustment + Complexity Adjustment + Da
 
 Always calculate each adjustment. Always show the breakdown. Never leave pricing blank. Never say "TBD." Never treat the Base Ceiling as a maximum.
 
-**Tenant Size Adjustment** (derive user count from the tenant telemetry — activeUserPercent, license counts, or script findings):
+**Tenant Size Adjustment** (use ONLY the totalUserCount from the TENANT FACTS block injected above — do NOT infer from activeUserPercent or any other field; do NOT invent a user count):
 - Under 250 users → +$0
 - 250–750 users → +$7,500
 - 750–1,500 users → +$15,000
@@ -506,11 +506,17 @@ export async function generateAndDeliverDocument(
 
   const scoresBlock = formatScoresBlock(realScores);
 
-  const profileSample = (runs as { profileUpdates: Record<string, unknown> }[])
-    .flatMap(r => Object.entries(r.profileUpdates ?? {}).slice(0, 5))
-    .slice(0, 30)
-    .map(([k, v]) => `  ${k}: ${String(v)}`)
-    .join("\n") || "  No telemetry captured yet.";
+  // Merge all profileUpdates across runs into one object — most-recent run wins
+  // for duplicate keys. We no longer cap at 5 entries per run because critical
+  // metrics like totalUserCount and sharepointSiteCount often appear later in
+  // the JSON object and were silently dropped, causing the AI to hallucinate.
+  const mergedProfile: Record<string, unknown> = {};
+  for (const run of [...(runs as { profileUpdates: Record<string, unknown> }[])].reverse()) {
+    Object.assign(mergedProfile, run.profileUpdates ?? {});
+  }
+  const profileSample = Object.entries(mergedProfile).length > 0
+    ? Object.entries(mergedProfile).map(([k, v]) => `  ${k}: ${String(v)}`).join("\n")
+    : "  No telemetry captured yet.";
 
   const date = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
 
@@ -564,7 +570,35 @@ export async function generateAndDeliverDocument(
     if (isSowDoc) {
       const engagementProjects = await fetchEngagementProjects();
       const engagementProjectsBlock = formatEngagementProjectsBlock(engagementProjects);
-      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${engagementProjectsBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA}`;
+
+      // Build a structured TENANT FACTS block from the merged profile so the AI
+      // has exact numbers for every pricing adjustment. This prevents hallucination
+      // of tenant size, site counts, and data sprawl metrics.
+      const p = mergedProfile as Record<string, unknown>;
+      const tenantFacts = [
+        `Total Users in Tenant:      ${p.totalUserCount ?? "unknown"}`,
+        `Licensed Users:             ${p.licensedUserCount ?? "unknown"}`,
+        `Unlicensed Users:           ${typeof p.totalUserCount === "number" && typeof p.licensedUserCount === "number" ? p.totalUserCount - p.licensedUserCount : "unknown"}`,
+        `Active User Percent:        ${p.activeUserPercent ?? "unknown"}%`,
+        `SharePoint Sites:           ${p.sharepointSiteCount ?? "unknown"}`,
+        `Microsoft 365 Groups:       ${p.m365GroupCount ?? "unknown"}`,
+        `Teams Count:                ${p.teamCount ?? p.teamsCount ?? "unknown"}`,
+        `Public Teams:               ${p.teamsPublicCount ?? "unknown"}`,
+        `Guest Users:                ${p.guestUserCount ?? "unknown"}`,
+        `External Sharing Enabled:   ${p.externalSharingEnabled ?? "unknown"}`,
+        `External Shares Found:      ${p.externalUserSharesFound ?? "unknown"}`,
+        `DLP Policies:               ${p.dlpPoliciesCount ?? (p.hasDLP === false ? 0 : "unknown")}`,
+        `Sensitivity Labels:         ${p.sensitivityLabelsConfigured === false ? "None configured" : (p.sensitivityLabelsConfigured ?? "unknown")}`,
+        `Retention Policies:         ${p.hasRetentionPolicies === false ? "None" : (p.hasRetentionPolicies ?? "unknown")}`,
+        `Conditional Access Policies: ${p.conditionalAccessPolicyCount ?? p.conditionalAccessPoliciesCount ?? (p.conditionalAccessEnabled === false ? 0 : "unknown")}`,
+        `Copilot Licenses:           ${p.copilotLicenseCount ?? (p.hasCopilotLicenses === false ? 0 : "unknown")}`,
+        `Copilot Readiness Score:    ${p.copilotReadinessScore ?? "unknown"}/100`,
+        `Intune Enabled:             ${p.intuneEnabled ?? "unknown"}`,
+        `MFA Enforced:               ${p.mfaEnforced ?? "unknown"}`,
+        `SharePoint Sites Scanned:   ${p.sharePointSitesScanned ?? p.sharepointSiteCount ?? "unknown"}`,
+      ].join("\n");
+
+      pricingAppendix = `\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${tenantFacts}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${engagementProjectsBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA}`;
     }
 
     const consultingFallback = substituteTokens(CONSULTING_PROMPT_FALLBACK, { sectionHints });
