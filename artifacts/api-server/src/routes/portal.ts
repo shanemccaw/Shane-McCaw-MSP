@@ -21,7 +21,7 @@ import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
-import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
+import { fireWorkflowsForEvent, emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
@@ -10373,6 +10373,14 @@ ${originalSowRow.htmlContent}`;
     // can detect pricing drift on subsequent page refreshes.
     const { sowVersion: generationSowVersion } = await deriveEffectiveSowData(pres);
 
+    // Snapshot previous scoped state BEFORE overwriting — used for scope-reduction detection below.
+    // Cast to pick up scoped* columns that exist in the DB but are missing from the generated type.
+    const presExt = pres as typeof pres & { scopedPhaseIds?: string[] | null; scopedTotalPrice?: number | null };
+    const prevPhaseIds = Array.isArray(presExt.scopedPhaseIds) && presExt.scopedPhaseIds.length > 0
+      ? presExt.scopedPhaseIds
+      : null;
+    const prevTotalCents = typeof presExt.scopedTotalPrice === "number" ? presExt.scopedTotalPrice : null;
+
     // Persist so the scoped state survives a page refresh during the same session
     await db.update(quickWinPresentationsTable)
       .set({
@@ -10383,6 +10391,23 @@ ${originalSowRow.htmlContent}`;
         updatedAt: new Date(),
       })
       .where(eq(quickWinPresentationsTable.id, id));
+
+    // Emit sow.scope_reduced if the client narrowed their scope vs. their previous selection.
+    // Only fires when a prior scoped selection exists (first-time scoping is not a reduction).
+    if (prevPhaseIds !== null && prevTotalCents !== null) {
+      const isReduced = safeIds.length < prevPhaseIds.length || scopedTotalCents < prevTotalCents;
+      if (isReduced) {
+        const removedPhaseCount = Math.max(0, prevPhaseIds.length - safeIds.length);
+        void emitWorkflowEvent("sow.scope_reduced", {
+          presentationId: id,
+          clientUserId: userId,
+          removedPhaseCount,
+          previousTotal: prevTotalCents,
+          newTotal: scopedTotalCents,
+        });
+        logger.info({ presentationId: id, clientUserId: userId, removedPhaseCount, prevTotalCents, scopedTotalCents }, "portal: sow.scope_reduced event emitted");
+      }
+    }
 
     res.json({
       scopedSowHtml,

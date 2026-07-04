@@ -19,8 +19,10 @@ import { computeNextCronRun } from "./workflow-executor";
 interface SystemWorkflowSeed {
   name: string;
   description: string;
-  triggerType: "startup" | "schedule";
+  triggerType: "startup" | "schedule" | "event";
   cron?: string;
+  eventName?: string;
+  triggerEnabled?: boolean;
   graph: {
     nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
     edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }>;
@@ -160,6 +162,35 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  {
+    // Starter skeleton for SOW scope-reduction automations.
+    // Created with the trigger DISABLED — enable it in the Workflow Generator
+    // and add action nodes (e.g. send_email, send_sms) before going live.
+    name: "SOW Scope Reduced — Re-engagement",
+    description: "Triggered when a client deselects phases and regenerates a lower-value SOW. Add your re-engagement actions (email, SMS, CRM update) and enable the trigger when ready.",
+    triggerType: "event",
+    eventName: "sow.scope_reduced",
+    triggerEnabled: false,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 80 },
+          data: { nodeType: "start", label: "sow.scope_reduced" },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 220 },
+          data: { nodeType: "end", label: "Done — add actions above" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "end" },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {
@@ -232,7 +263,15 @@ export async function seedSystemWorkflows(): Promise<void> {
       );
 
       if (existingTrigger.rowCount === 0) {
-        if (seed.triggerType === "startup") {
+        if (seed.triggerType === "event" && seed.eventName) {
+          // Explicit event trigger (e.g. sow.scope_reduced). Respects triggerEnabled (default: true).
+          const enabled = seed.triggerEnabled !== false;
+          await pool.query(
+            `INSERT INTO wf_triggers (definition_id, type, config, enabled)
+             VALUES ($1, 'event', $2::jsonb, $3)`,
+            [defId, JSON.stringify({ eventName: seed.eventName }), enabled],
+          );
+        } else if (seed.triggerType === "startup") {
           // Startup trigger: fire once on init, no next_run_at
           // Special case: Kanban Auto-fire uses event trigger, not startup
           if (seed.name.includes("Kanban")) {
