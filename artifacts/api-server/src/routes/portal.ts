@@ -10676,6 +10676,13 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
     // the scoped price; otherwise it's the full SOW total.
     const { effectiveTotalPrice: effectivePriceCents } = await deriveEffectiveSowData(pres);
 
+    // Payment gate — signing is only allowed after payment is confirmed (or the
+    // effective price is zero, i.e. a fully scoped-down / free engagement).
+    // Without this, a client could bypass Stripe and sign without paying.
+    if (effectivePriceCents > 0 && pres.status !== "paid") {
+      res.status(402).json({ error: "Payment required before signing" }); return;
+    }
+
     const signedAt = new Date();
     await db.update(quickWinPresentationsTable)
       .set({
