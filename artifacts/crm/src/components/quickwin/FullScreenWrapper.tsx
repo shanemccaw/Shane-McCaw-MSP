@@ -1063,7 +1063,7 @@ export default function FullScreenWrapper() {
                     return (
                       <div
                         key={task.id}
-                        className="rounded-xl p-6 flex flex-col w-[340px] flex-shrink-0 border border-amber-300/60 bg-amber-50/80 shadow-lg gap-3"
+                        className="rounded-xl p-3.5 flex flex-col w-[210px] flex-shrink-0 border border-amber-300/60 bg-amber-50/80 shadow-md gap-2"
                         style={{ backdropFilter: "blur(12px)" }}
                       >
                         <div className="flex items-center gap-2">
