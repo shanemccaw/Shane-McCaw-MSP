@@ -460,6 +460,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, notificationSent: true, preview: { title: dryTitle, body: dryBody, linkPath: dryLink } };
     }
 
+    case "create_notification": {
+      const cnTitle = interp(node.data.title as string | undefined, payload) ?? "(no title)";
+      const cnBody  = interp(node.data.body  as string | undefined, payload) ?? "";
+      const cnLink  = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
+      const cnType  = (interp(node.data.type as string | undefined, payload) ?? "message") as string;
+      logger.info({ cnTitle, cnBody, cnLink, cnType }, "workflow-executor [dry-run]: create_notification would insert");
+      return { dryRun: true, notificationCount: 0, preview: { title: cnTitle, body: cnBody, linkPath: cnLink, type: cnType } };
+    }
+
     case "send_mobile_push": {
       const dryMpTitle = interp(node.data.title as string | undefined, payload) ?? "(no title)";
       const dryMpBody  = interp(node.data.body  as string | undefined, payload) ?? "";
@@ -1484,6 +1493,45 @@ async function executeNode(
           } catch (sbnErr) {
             logger.warn({ sbnErr, runId }, "send_browser_notification: push dispatch failed — continuing run");
             output = { notificationSent: false, error: String(sbnErr) };
+          }
+        }
+        break;
+      }
+
+      case "create_notification": {
+        const cnTitle = interp(node.data.title    as string | undefined, payload)?.trim() ?? "";
+        const cnBody  = interp(node.data.body     as string | undefined, payload) ?? "";
+        const cnLink  = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
+        const cnType  = (interp(node.data.type    as string | undefined, payload)?.trim() || "message") as
+          "project_update" | "message" | "invoice" | "document" | "general" | "lead_created" | "quiz_lead_created" | "purchase_created";
+        const validTypes = ["project_update","message","invoice","document","general","lead_created","quiz_lead_created","purchase_created"] as const;
+        const resolvedType = (validTypes as readonly string[]).includes(cnType) ? cnType : "message" as const;
+
+        if (!cnTitle) {
+          logger.warn({ runId }, "create_notification: title is empty — skipping insert");
+          output = { notificationCount: 0, skipped: true, reason: "title is empty" };
+        } else {
+          const adminRows = await db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .where(eq(usersTable.role, "admin"));
+
+          if (adminRows.length === 0) {
+            logger.warn({ runId }, "create_notification: no admin users found — skipping insert");
+            output = { notificationCount: 0, skipped: true, reason: "no admin users" };
+          } else {
+            await db.insert(notificationsTable).values(
+              adminRows.map(row => ({
+                userId: row.id,
+                title: cnTitle,
+                body: cnBody || null,
+                type: resolvedType,
+                linkPath: cnLink,
+                read: false,
+              })),
+            );
+            logger.info({ runId, notificationCount: adminRows.length, cnType: resolvedType }, "create_notification: inserted notifications");
+            output = { notificationCount: adminRows.length };
           }
         }
         break;

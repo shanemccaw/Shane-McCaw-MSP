@@ -87,6 +87,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Notifications ──
   send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
   send_mobile_push:          { bg: "#1A0D2E", border: "#A855F7", icon: "📱", label: "Mobile Push"          },
+  create_notification:       { bg: "#0A1A10", border: "#22C55E", icon: "🔕", label: "In-App Notification"  },
   // ── Input ──
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   // ── Logic ──
@@ -203,6 +204,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
   // Send Mobile Push
   send_mobile_push: [{ key: "sent", label: "true if push was dispatched to at least one device" }, { key: "sentCount", label: "Number of device tokens reached" }],
+  // Create In-App Notification
+  create_notification: [{ key: "notificationCount", label: "Number of admin users who received the in-app notification" }],
   // Report Progress — passes payload through unchanged
   report_progress: [],
   // Approval Gate — outputs injected into payload after the gate is approved and execution resumes
@@ -569,6 +572,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "send_sms",                 label: "Send SMS",                 description: "Send an SMS to an E.164 phone number via Twilio",               tags: ["sms", "text", "notify", "communication"] },
       { type: "send_browser_notification", label: "Browser Notification",    description: "Push an OS-level browser alert to all subscribed admins",       tags: ["notification", "push", "browser", "alert", "admin"] },
       { type: "send_mobile_push",          label: "Mobile Push",              description: "Send an Expo push notification to all registered mobile devices", tags: ["notification", "push", "mobile", "expo", "alert", "admin"] },
+      { type: "create_notification",       label: "In-App Notification",      description: "Insert a persistent alert into the admin notification bell/drawer", tags: ["notification", "in-app", "bell", "drawer", "alert", "admin"] },
     ],
   },
   {
@@ -1707,6 +1711,32 @@ function NodeConfigPanel({
             <PayloadField label="Body" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{company}} submitted a contact form." multiline ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
               <p className="text-[10px] text-[#484F58]">Both fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Broadcasts to all registered Expo device tokens. If no tokens are registered the node outputs <span className="font-mono text-[#7D8590]">sent: false</span> without failing. Outputs: <span className="font-mono text-[#7D8590]">{"{{sent}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{sentCount}}"}</span>.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "create_notification" && (
+          <>
+            <PayloadField label="Title (required)" value={(node.data.title as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, title: v })} placeholder="New purchase: {{serviceName}}" ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Body (optional)" value={(node.data.body as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, body: v })} placeholder="{{clientName}} purchased {{serviceName}} — ${{amount}}" multiline ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Link path (optional)" value={(node.data.linkPath as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, linkPath: v })} placeholder="/admin-panel/crm/leads" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Notification type</label>
+              <select
+                value={(node.data.type as string) ?? "message"}
+                onChange={e => onChange(node.id, { ...node.data, type: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60"
+              >
+                <option value="message">Message</option>
+                <option value="document">Document</option>
+                <option value="invoice">Invoice</option>
+                <option value="lead_created">Lead Created</option>
+                <option value="purchase_created">Purchase Created</option>
+                <option value="general">General</option>
+              </select>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Title, body, and link path support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Inserts a persistent row into the notification bell for every admin user. Appears within the next poll cycle (≤ 30 s). Output: <span className="font-mono text-[#7D8590]">{"{{notificationCount}}"}</span>.</p>
             </div>
           </>
         )}
