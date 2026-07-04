@@ -16,6 +16,13 @@ function useIsOfferLive(expiresAt: string | null | undefined): boolean {
   return live;
 }
 
+interface SowPhaseForPayment {
+  id: string;
+  title: string;
+  price: number;
+  deliveryDate?: string | null;
+}
+
 interface PaymentOptionsPanelProps {
   totalPrice: number;
   /** Provide to trigger Stripe checkout (checkout step). Omit for plan-select-only mode. */
@@ -31,6 +38,8 @@ interface PaymentOptionsPanelProps {
   offer?: OfferState | null;
   freeClaimError?: string | null;
   onDismissFreeClaimError?: () => void;
+  /** Selected SOW phases — shown as a milestone breakdown inside the phased card. */
+  sowPhases?: SowPhaseForPayment[];
 }
 
 function formatCurrency(n: number): string {
@@ -49,6 +58,7 @@ export default function PaymentOptionsPanel({
   offer = null,
   freeClaimError = null,
   onDismissFreeClaimError,
+  sowPhases,
 }: PaymentOptionsPanelProps) {
   const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(initialPlan ?? null);
 
@@ -227,8 +237,39 @@ export default function PaymentOptionsPanel({
           </div>
           <h3 className="text-sm font-extrabold text-[#0A2540] mb-1">20% Upfront + Per Phase</h3>
           <p className="text-2xl font-extrabold text-purple-600 mb-0.5">{formatCurrency(upfrontAmount)} <span className="text-base font-bold text-muted-foreground">today</span></p>
-          <p className="text-xs text-muted-foreground mb-2">{formatCurrency(remainingAmount)} billed per completed phase</p>
-          <p className="text-xs text-muted-foreground leading-relaxed">
+
+          {sowPhases && sowPhases.length > 0 ? (
+            <div className="w-full mt-2 mb-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-1.5">Due at completion</p>
+              <div className={`flex flex-col gap-1 ${sowPhases.length >= 5 ? "max-h-[140px] overflow-y-auto pr-1" : ""}`}>
+                {sowPhases.map((phase) => (
+                  <div key={phase.id} className="flex items-start gap-2">
+                    <div className="flex-shrink-0 w-4 h-4 mt-0.5 rounded-full bg-purple-100 flex items-center justify-center">
+                      <svg className="w-2.5 h-2.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343M6.343 7.343A8 8 0 0117.657 18.657" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className="text-xs font-semibold text-[#0A2540] truncate">{phase.title}</span>
+                        <span className="text-xs font-bold text-purple-600 flex-shrink-0">{formatCurrency(phase.price)}</span>
+                      </div>
+                      {phase.deliveryDate && (
+                        <p className="text-[10px] text-muted-foreground leading-tight">
+                          Est. completion: {new Date(phase.deliveryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground mb-2">{formatCurrency(remainingAmount)} billed per completed phase</p>
+          )}
+
+          <p className="text-xs text-muted-foreground leading-relaxed mt-1">
             Pay 20% to kick off the engagement. Each subsequent phase is invoiced and charged upon completion — giving you milestone-based accountability.
           </p>
           <div className="mt-3 flex items-center gap-1 text-xs font-semibold text-purple-600">

@@ -25,6 +25,7 @@ interface SowPhase {
   description: string;
   price: number;
   selected: boolean;
+  deliveryDate?: string | null;
 }
 
 interface AdjustmentLine {
@@ -1481,6 +1482,7 @@ export default function PresentationFlow({
                     offer={offer}
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
+                    sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
                   />
                 </div>
               </div>
@@ -1510,6 +1512,7 @@ export default function PresentationFlow({
                       offer={offer}
                       freeClaimError={freeClaimError}
                       onDismissFreeClaimError={() => setFreeClaimError(null)}
+                      sowPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price, deliveryDate: p.deliveryDate })) : undefined}
                     />
                   )}
                 </div>
