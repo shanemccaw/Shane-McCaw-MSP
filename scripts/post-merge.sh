@@ -2,6 +2,14 @@
 set -e
 pnpm install --no-frozen-lockfile
 
+# Rebuild all composite lib declarations (lib/db, lib/api-zod, etc.) so that
+# api-server and other consumers always see up-to-date type definitions.
+# Without this, adding new schema entries (e.g. WfNode variants) compiles
+# correctly in the source but the stale dist/**.d.ts files make the consuming
+# packages treat the new cases as dead/unreachable code at runtime.
+echo "Building lib declarations…"
+pnpm run typecheck:libs
+
 # Guard: static drift check (no DB connection required).
 # Fails (exit 1) and blocks the merge if:
 #   - The schema file changed since the last `generate` run (hash mismatch)
