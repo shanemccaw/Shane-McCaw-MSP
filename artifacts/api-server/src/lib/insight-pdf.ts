@@ -143,7 +143,7 @@ function cleanInlineStyles(html: string): string {
  * Applies the same CSS and Google Fonts link as the CRM iframe.
  */
 export function buildHtmlDoc(rawHtml: string): string {
-  const body = cleanInlineStyles(stripFence(rawHtml));
+  const body = stripFence(rawHtml);
   return [
     "<!DOCTYPE html>",
     '<html lang="en">',
