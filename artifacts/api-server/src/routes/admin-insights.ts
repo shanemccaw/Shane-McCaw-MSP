@@ -849,14 +849,20 @@ INSTRUCTIONS:
 - Never use TBD or placeholder pricing — always calculate firm prices using the Tier 02 formula when provided
 - Total length: 1000-2000 words`;
 
-// Tier 02 pricing formula — embedded verbatim in every SOW prompt
+// Returns the tier label for a given total user count (matches TENANT FACTS thresholds).
+function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tier02" | "Tier03" | "Tier04" {
+  const n = typeof totalUsers === "number" ? totalUsers : Number(totalUsers);
+  if (!Number.isFinite(n) || n <= 0) return "Tier01";
+  if (n <= 50)  return "Tier01";
+  if (n <= 250) return "Tier02";
+  if (n <= 750) return "Tier03";
+  return "Tier04";
+}
+
+// Tier pricing formula — embedded verbatim in every SOW prompt
 const TIER_02_PRICING_FORMULA_BLOCK = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
 
-STEP 1 — DETECT TENANT TIER (use ONLY "Total Users in Tenant" from the TENANT FACTS block — never infer from any other field):
-  Tier01: 1–50 users
-  Tier02: 51–250 users
-  Tier03: 251–750 users
-  Tier04: 751+ users
+STEP 1 — READ TENANT TIER: use the "Computed Tenant Tier" line from the TENANT FACTS block directly. Do NOT re-derive or override it from any other source (including user counts, company size, or catalogue prices). The tier has already been determined server-side from the live script data.
 
 STEP 2 — BASE CEILINGS (select the row matching the detected tier):
   Workstream        | Tier01   | Tier02   | Tier03   | Tier04
@@ -1511,7 +1517,9 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
       // numbers for every pricing adjustment. This is injected directly before the
       // pricing formula with a strict "no hallucination" directive.
       const sp = mergedSowProfile;
+      const computedTier = computeTenantTier(sp.totalUserCount);
       const sowTenantFacts = [
+        `Computed Tenant Tier:        ${computedTier}  ← server-derived from Total Users in Tenant (${sp.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override`,
         `Total Users in Tenant:       ${sp.totalUserCount ?? "unknown"}`,
         `Licensed Users:              ${sp.licensedUserCount ?? "unknown"}`,
         `Unlicensed Users:            ${typeof sp.totalUserCount === "number" && typeof sp.licensedUserCount === "number" ? sp.totalUserCount - sp.licensedUserCount : "unknown"}`,
@@ -1752,7 +1760,7 @@ INSTRUCTIONS:
       ? `PRIOR DOCUMENTS FOR THIS CLIENT (your output must be consistent with these findings and must not contradict these prior conclusions):\n${priorDocs.map(d => `[${d.title} (${d.docType})]: ${stripHtmlText(d.htmlContent)}`).join("\n\n")}\n\n`
       : "";
 
-    // For SOW types embed Tier 02 pricing formula + catalogue
+    // For SOW types embed Tier 02 pricing formula + catalogue + pre-computed tenant tier
     let pricingAppendix = "";
     if (isSowType) {
       const engProjects = await db.select({
@@ -1767,7 +1775,14 @@ INSTRUCTIONS:
       const catalogueBlock = engProjects.length > 0
         ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
         : "No engagement project pricing configured.";
-      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      // Build merged profile from runs so we can pre-compute the tier server-side
+      const mergedForSow: Record<string, unknown> = {};
+      for (const run of [...(runs as { profileUpdates?: Record<string, unknown> }[])].reverse()) {
+        Object.assign(mergedForSow, run.profileUpdates ?? {});
+      }
+      const sowTier = computeTenantTier(mergedForSow.totalUserCount);
+      const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
+      pricingAppendix = `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
     }
 
     // Fallback injects per-type section hints for the case where the DB row is absent
@@ -1980,7 +1995,9 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const tenantTelemetryBlock = telemetryLines.length > 0 ? telemetryLines.join("\n") : "No tenant telemetry collected yet.";
 
       const sp = mergedSowProfile;
+      const computedTier = computeTenantTier(sp.totalUserCount);
       const sowTenantFacts = [
+        `Computed Tenant Tier:        ${computedTier}  ← server-derived from Total Users in Tenant (${sp.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override`,
         `Total Users in Tenant:       ${sp.totalUserCount ?? "unknown"}`,
         `Licensed Users:              ${sp.licensedUserCount ?? "unknown"}`,
         `Active User Percent:         ${sp.activeUserPercent ?? "unknown"}%`,
@@ -2095,7 +2112,13 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const catalogueBlock = engProjects.length > 0
         ? engProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
         : "No engagement project pricing configured.";
-      pricingAppendix = `\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      const mergedForSow: Record<string, unknown> = {};
+      for (const run of [...(runs as { profileUpdates?: Record<string, unknown> }[])].reverse()) {
+        Object.assign(mergedForSow, run.profileUpdates ?? {});
+      }
+      const sowTier = computeTenantTier(mergedForSow.totalUserCount);
+      const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
+      pricingAppendix = `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
     }
 
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
