@@ -41,6 +41,26 @@ export function stripStagedForReviewBanner(html: string): string {
 }
 
 /**
+ * Removes internal pricing-formula working notes that Claude sometimes renders
+ * as visible text — specifically the "Detected Tenant Tier: …" sentence and the
+ * follow-on "All base ceilings … drawn from the TierXX column." sentence.
+ * These are calculation aids that must never appear in client-facing documents.
+ */
+export function stripTierDetectionText(html: string): string {
+  return html
+    // Remove whole <p> or <div> that starts with the tier detection note
+    .replace(/<p[^>]*>[^<]*Detected Tenant Tier:[^<]*<\/p>/gi, "")
+    .replace(/<div[^>]*>[^<]*Detected Tenant Tier:[^<]*<\/div>/gi, "")
+    // Remove inline sentence: "Detected Tenant Tier: … Tier0X (range)."
+    .replace(/Detected Tenant Tier:[^<]*?\([^)]*\)\./gi, "")
+    // Remove follow-on sentence: "All base ceilings and adjustment amounts … column."
+    .replace(/All base ceilings and adjustment amounts[^<]*?column\./gi, "")
+    // Clean up any double-spaces or leading whitespace left behind
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+/**
  * Canonical extraction point used by all document-generation routes.
  *
  * Pulls the text body from the first content block of an Anthropic message

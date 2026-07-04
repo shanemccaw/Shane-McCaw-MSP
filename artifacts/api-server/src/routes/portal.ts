@@ -13,7 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner, extractAiHtml } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -9956,7 +9956,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
         .reverse();
     }
 
-    const docs = docsRaw.map(d => ({ ...d, htmlContent: stripStagedForReviewBanner(d.htmlContent) }));
+    const docs = docsRaw.map(d => ({ ...d, htmlContent: stripTierDetectionText(stripStagedForReviewBanner(d.htmlContent)) }));
 
     // Derive sowPhases from the live SOW document — uses shared helper so GET,
     // PATCH, and checkout all stay consistent.
@@ -10401,6 +10401,9 @@ ${originalSowRow.htmlContent}`;
       req.log.info({ presentationId: id }, "portal: no original consolidated SOW found — using invoice fallback for scoped SOW");
       scopedSowHtml = buildScopedSowHtml(scopedPhases, scopedTotalDollars, projectRow?.title, clientUserRow?.name, namedAdjustmentLines);
     }
+
+    // Strip any internal pricing-formula notes Claude may have rendered as visible text
+    scopedSowHtml = stripTierDetectionText(scopedSowHtml);
 
     const scopedTotalCents = Math.round(scopedTotalDollars * 100);
 

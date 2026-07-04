@@ -113,7 +113,7 @@ STEP 3 — ADJUSTMENTS (flat per-tier amounts — apply each adjustment if the f
 STEP 4 — TOTALS:
   Engagement Total = Workstream Total + Adjustment Total.
 
-Always show the detected tier, always show each step's arithmetic, never leave pricing blank, never say TBD.
+Use the detected tier and arithmetic INTERNALLY ONLY — do NOT render tier names, tier detection notes, step-by-step arithmetic, or formula working notes as visible text in the HTML document. Never leave pricing blank, never say TBD.
 
 Output requirements for the Pricing section:
 - Show a per-workstream pricing table with columns: Project/Workstream | Base Ceiling | Final Price (USD) | Reasoning. Do NOT add per-row adjustment columns.
