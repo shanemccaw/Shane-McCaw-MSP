@@ -3,15 +3,85 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import {
-  ReactFlow,
-  Background,
-  Controls,
   type NodeTypes,
   Handle,
   Position,
   type NodeProps,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+
+// ── Node styles (mirrored from WorkflowBuilderPage) ────────────────────────────
+
+interface NodeStyle {
+  bg: string;
+  border: string;
+  icon: string;
+  label: string;
+}
+
+const NODE_STYLES: Record<string, NodeStyle> = {
+  start:     { bg: "#0F2A1A", border: "#22C55E",  icon: "▶",  label: "Start"               },
+  end:       { bg: "#1A1A2E", border: "#6366F1",  icon: "⏹",  label: "End"                 },
+  condition: { bg: "#1A1300", border: "#F59E0B",  icon: "◆",  label: "Condition"           },
+  delay:     { bg: "#1A0D2E", border: "#A855F7",  icon: "⏱",  label: "Delay"               },
+  error:     { bg: "#1A0D0D", border: "#EF4444",  icon: "⚠",  label: "Error"               },
+  action:    { bg: "#0D1A2E", border: "#0078D4",  icon: "⚡", label: "Action"              },
+  http_request:           { bg: "#0A1220", border: "#3B82F6",  icon: "🌐", label: "HTTP Request"           },
+  sql_query:              { bg: "#0A1A12", border: "#10B981",  icon: "🗄️", label: "SQL Query"              },
+  send_email:             { bg: "#0D1A2A", border: "#60A5FA",  icon: "📧", label: "Send Email"             },
+  send_sms:               { bg: "#120D22", border: "#A78BFA",  icon: "💬", label: "Send SMS"               },
+  emit_event:             { bg: "#1A0D18", border: "#F472B6",  icon: "📡", label: "Emit Event"             },
+  cancel_workflow:        { bg: "#1A0D0D", border: "#EF4444",  icon: "🛑", label: "Cancel Workflow"        },
+  create_lead:            { bg: "#041A14", border: "#34D399",  icon: "➕", label: "Create Lead"            },
+  convert_to_opportunity: { bg: "#041A14", border: "#2DD4BF",  icon: "🚀", label: "Convert to Opportunity" },
+  create_client:          { bg: "#041A14", border: "#6EE7B7",  icon: "👤", label: "Create Client"          },
+  create_project:         { bg: "#041A14", border: "#4ADE80",  icon: "📁", label: "Create Project"         },
+  execute_runbook:        { bg: "#110D22", border: "#A78BFA",  icon: "⚙️", label: "Execute Runbook"        },
+  update_m365_profile:    { bg: "#110D22", border: "#8B5CF6",  icon: "☁️", label: "Update M365 Profile"    },
+  generate_document:      { bg: "#111620", border: "#64748B",  icon: "📄", label: "Generate Document"      },
+  score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
+  assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
+  create_opportunity:    { bg: "#061A18", border: "#00B4D8", icon: "🚀", label: "Create Opportunity"  },
+  parse_quiz_results:       { bg: "#1C1100", border: "#F59E0B", icon: "📋", label: "Parse Quiz"          },
+  generate_readiness_score: { bg: "#1C1100", border: "#F59E0B", icon: "📊", label: "Readiness Score"     },
+  attach_quiz_insights:     { bg: "#1C1100", border: "#F59E0B", icon: "💡", label: "Attach Insights"     },
+  validate_m365_permissions: { bg: "#110D22", border: "#8B5CF6", icon: "🔐", label: "Validate Perms"      },
+  update_intelligence_tables:{ bg: "#110D22", border: "#8B5CF6", icon: "🧠", label: "Update Intel"        },
+  generate_diff_report:      { bg: "#110D22", border: "#8B5CF6", icon: "📄", label: "Diff Report"         },
+  notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
+  send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
+  create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
+  generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
+  publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
+  topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },
+  generate_image:            { bg: "#1A100A", border: "#F59E0B", icon: "🖼️", label: "Generate Image"           },
+  define_campaign_goal:      { bg: "#0A1A12", border: "#34D399", icon: "🎯", label: "Define Goal"            },
+  define_target_audience:    { bg: "#0A1A12", border: "#6EE7B7", icon: "👥", label: "Define Target Audience" },
+  create_campaign_offer:     { bg: "#0A1A12", border: "#10B981", icon: "🎁", label: "Create Offer"           },
+  create_marketing_campaign: { bg: "#0D1A10", border: "#34D399", icon: "📣", label: "Create Campaign"          },
+  publish_landing_page:      { bg: "#0D1A10", border: "#6EE7B7", icon: "🚀", label: "Publish Landing Page"     },
+  generate_landing_page:     { bg: "#0A1A18", border: "#34D399", icon: "🖥️", label: "Generate Landing Page"    },
+  find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
+  compose:                   { bg: "#0A1A18", border: "#2DD4BF", icon: "⧉",  label: "Compose"                  },
+  ask_ai: { bg: "#110D1F", border: "#A78BFA", icon: "🤖", label: "Ask AI" },
+  fetch_news_headlines: { bg: "#041A14", border: "#06B6D4", icon: "📰", label: "Fetch News Headlines" },
+  post_linkedin: { bg: "#051424", border: "#0A66C2", icon: "🔗", label: "Post to LinkedIn" },
+  post_twitter:  { bg: "#0D0D0D", border: "#E7E7E7", icon: "𝕏",  label: "Post to X / Twitter" },
+  post_facebook: { bg: "#071533", border: "#1877F2", icon: "📘", label: "Post to Facebook" },
+  send_browser_notification: { bg: "#1A1400", border: "#F59E0B", icon: "🔔", label: "Browser Notification" },
+  ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
+  switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
+  foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
+  report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
+  check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
+  create_exchange_calendar_event:       { bg: "#041620", border: "#00B4D8", icon: "📆", label: "Create Calendar Event"    },
+  save_to_sharepoint: { bg: "#0A1A10", border: "#34D399", icon: "💾", label: "Save to SharePoint"  },
+  get_from_sharepoint:{ bg: "#0A1A10", border: "#6EE7B7", icon: "📥", label: "Get from SharePoint" },
+  generate_pdf:       { bg: "#1A0D00", border: "#F97316", icon: "📄", label: "Generate PDF"         },
+  build_presentation: { bg: "#0A1420", border: "#818CF8", icon: "📊", label: "Build Presentation"   },
+  generate_invoice_stripe_payment: { bg: "#041A1A", border: "#34D399", icon: "🧾", label: "Generate Invoice"       },
+  generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
+};
 
 // ── ExpandableJson ─────────────────────────────────────────────────────────────
 
@@ -93,6 +163,8 @@ export const STATUS_STYLES: Record<string, string> = {
   awaiting_approval:  "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
 };
 
+// ── ReplayNode (kept for any external consumers) ───────────────────────────────
+
 const NODE_BORDER: Record<string, string> = {
   start:     "#22C55E",
   end:       "#6366F1",
@@ -101,8 +173,6 @@ const NODE_BORDER: Record<string, string> = {
   delay:     "#A855F7",
   error:     "#EF4444",
 };
-
-// ── Replay node ───────────────────────────────────────────────────────────────
 
 export function ReplayNode({ data }: NodeProps) {
   const nodeType  = (data.nodeType as string) ?? "action";
@@ -155,6 +225,105 @@ export function ReplayNode({ data }: NodeProps) {
 }
 
 export const replayNodeTypes: NodeTypes = { replayNode: ReplayNode };
+
+// ── Vertical replay step card ──────────────────────────────────────────────────
+
+function ReplayStepCard({
+  nodeId,
+  nodeType,
+  label,
+  isCurrent,
+  inPath,
+  isSkipped,
+  hasError,
+  isMutated,
+  onClick,
+}: {
+  nodeId: string;
+  nodeType: string;
+  label: string;
+  isCurrent: boolean;
+  inPath: boolean;
+  isSkipped: boolean;
+  hasError: boolean;
+  isMutated: boolean;
+  onClick: () => void;
+}) {
+  const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? {
+    bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType,
+  };
+
+  const borderColor = isCurrent
+    ? (hasError ? "#EF4444" : style.border)
+    : hasError
+    ? "#EF444466"
+    : inPath
+    ? style.border + "80"
+    : "#30363D";
+
+  const bgColor = hasError && isCurrent
+    ? "#1A0808"
+    : isCurrent
+    ? style.bg
+    : inPath
+    ? style.bg
+    : "#0D1117";
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onClick(); }}
+      className="relative rounded-xl border-2 transition-all cursor-pointer select-none focus:outline-none"
+      style={{
+        borderColor,
+        opacity: isSkipped ? 0.35 : 1,
+        boxShadow: isCurrent
+          ? `0 0 0 1px ${hasError ? "#EF444440" : style.border + "40"}, 0 0 14px ${hasError ? "#EF444440" : style.border + "50"}`
+          : "none",
+      }}
+    >
+      <div
+        className="flex items-center gap-2.5 px-3 py-2.5 rounded-[10px]"
+        style={{ background: bgColor }}
+      >
+        {/* Icon */}
+        <span className="text-base flex-shrink-0 w-6 text-center">{style.icon}</span>
+
+        {/* Label + type badge */}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-[#E6EDF3] truncate leading-snug">{label || style.label}</p>
+          <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: style.border }}>
+            {nodeType.replace(/_/g, " ")}
+          </p>
+          <p className="text-[9px] text-[#484F58] font-mono truncate mt-0.5">{nodeId}</p>
+        </div>
+
+        {/* State badges */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {hasError && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded-full">
+              ⚠ error
+            </span>
+          )}
+          {isMutated && !hasError && (
+            <span className="text-[9px] text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full">✎ mutated</span>
+          )}
+          {isSkipped && (
+            <span className="text-[9px] text-[#484F58] bg-[#1C2128] border border-[#30363D] px-1.5 py-0.5 rounded-full">skipped</span>
+          )}
+          {isCurrent && !hasError && (
+            <span className="text-[9px] text-blue-300 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full">▶ Current</span>
+          )}
+          {isCurrent && hasError && (
+            <span className="text-[9px] text-red-400 bg-red-500/10 border border-red-500/30 px-1.5 py-0.5 rounded-full">⚠ Failed here</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── JSON diff viewer ───────────────────────────────────────────────────────────
 
@@ -266,42 +435,17 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   const branchPath = run.branchPath ?? [];
   const maxStep = branchPath.length - 1;
   const currentNodeId = branchPath[replayStep] ?? null;
-
-  const replayNodes = run.graph?.nodes.map(n => {
-    const nodeIdx = branchPath.indexOf(n.id);
-    const inPath = nodeIdx !== -1 && nodeIdx <= replayStep;
-    const isCurrent = n.id === currentNodeId;
-    const isSkipped = nodeIdx === -1 && branchPath.length > 0;
-    const nodeOutput = run.nodeOutputs.find(o => o.nodeId === n.id);
-    const hasError = nodeOutput?.status === "error";
-    const isMutated = !hasError && nodeOutput != null
-      && Object.keys(nodeOutput.output).length > 0
-      && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
-    return {
-      id: n.id,
-      type: "replayNode",
-      position: n.position,
-      data: {
-        ...n.data,
-        nodeType: n.data.nodeType ?? n.type,
-        inPath,
-        isCurrent,
-        isSkipped,
-        hasError,
-        isMutated,
-      },
-    };
-  }) ?? [];
-
-  const replayEdges = run.graph?.edges.map(e => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    sourceHandle: e.sourceHandle,
-    style: { stroke: "#30363D", strokeWidth: 1.5 },
-  })) ?? [];
-
   const currentOutput = run.nodeOutputs.find(o => o.nodeId === currentNodeId);
+
+  // Build a lookup: nodeId → graph node data
+  const graphNodeMap = new Map(
+    (run.graph?.nodes ?? []).map(n => [n.id, n])
+  );
+
+  // Nodes not in branchPath (skipped/not executed)
+  const skippedNodeIds = (run.graph?.nodes ?? [])
+    .map(n => n.id)
+    .filter(id => !branchPath.includes(id));
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
@@ -346,23 +490,80 @@ export default function RunDetailContent({ runId }: { runId: number }) {
             ) : (
               <>
                 <div className="flex-1 flex overflow-hidden">
-                  <div className="flex-1 bg-[#0D1117]">
-                    <ReactFlow
-                      nodes={replayNodes}
-                      edges={replayEdges}
-                      nodeTypes={replayNodeTypes}
-                      fitView
-                      proOptions={{ hideAttribution: true }}
-                      style={{ background: "#0D1117" }}
-                      nodesDraggable={false}
-                      nodesConnectable={false}
-                      elementsSelectable={false}
-                    >
-                      <Background color="#1C2128" gap={24} size={1} />
-                      <Controls style={{ background: "#161B22", border: "1px solid #30363D", borderRadius: 8 }} />
-                    </ReactFlow>
+                  {/* Vertical card list */}
+                  <div className="flex-1 overflow-y-auto bg-[#0D1117] p-4">
+                    <div className="max-w-lg mx-auto space-y-1">
+                      {branchPath.map((nodeId, idx) => {
+                        const graphNode = graphNodeMap.get(nodeId);
+                        const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
+                        const label = (graphNode?.data?.label as string) ?? nodeType;
+                        const nodeIdx = idx;
+                        const inPath = nodeIdx <= replayStep;
+                        const isCurrent = nodeId === currentNodeId;
+                        const nodeOutput = run.nodeOutputs.find(o => o.nodeId === nodeId);
+                        const hasError = nodeOutput?.status === "error";
+                        const isMutated = !hasError && nodeOutput != null
+                          && Object.keys(nodeOutput.output).length > 0
+                          && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
+
+                        return (
+                          <div key={`${nodeId}-${idx}`}>
+                            <ReplayStepCard
+                              nodeId={nodeId}
+                              nodeType={nodeType}
+                              label={label}
+                              isCurrent={isCurrent}
+                              inPath={inPath}
+                              isSkipped={false}
+                              hasError={hasError}
+                              isMutated={isMutated}
+                              onClick={() => setReplayStep(idx)}
+                            />
+                            {/* Connector line between cards */}
+                            {idx < branchPath.length - 1 && (
+                              <div className="flex justify-center">
+                                <div className="w-px h-3 bg-[#30363D]" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Skipped nodes (in graph but not in branchPath) */}
+                      {skippedNodeIds.length > 0 && (
+                        <>
+                          <div className="flex items-center gap-2 py-3">
+                            <div className="flex-1 h-px bg-[#30363D]" />
+                            <span className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Not executed</span>
+                            <div className="flex-1 h-px bg-[#30363D]" />
+                          </div>
+                          <div className="space-y-1">
+                            {skippedNodeIds.map(nodeId => {
+                              const graphNode = graphNodeMap.get(nodeId);
+                              const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
+                              const label = (graphNode?.data?.label as string) ?? nodeType;
+                              return (
+                                <ReplayStepCard
+                                  key={nodeId}
+                                  nodeId={nodeId}
+                                  nodeType={nodeType}
+                                  label={label}
+                                  isCurrent={false}
+                                  inPath={false}
+                                  isSkipped={true}
+                                  hasError={false}
+                                  isMutated={false}
+                                  onClick={() => {}}
+                                />
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
+                  {/* Sidebar: Input / Output / status for the selected step */}
                   {currentOutput && (
                     <div className="w-64 flex-shrink-0 bg-[#161B22] border-l border-[#30363D] overflow-y-auto p-3 space-y-3">
                       <p className="text-xs font-semibold text-[#E6EDF3]">
