@@ -223,7 +223,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           data: {
             nodeType: "condition",
             label: "Should Retry?",
-            expression: "status != 'generating' || age_ms > 120000",
+            expression: "status != 'generating' || age_ms > 300000",
           },
         },
         {
@@ -468,12 +468,11 @@ export async function seedSystemWorkflows(): Promise<void> {
         );
         logger.info({ defId }, "seed-system-workflows: patched publish_article node to draftOnly:true");
       } else if (seed.name === "SOW Generation Auto-Retry") {
-        // One-time patch: fix old v1 graphs that were seeded before the sql_query handler
-        // was implemented. Corrects three things:
+        // Patch v1: fix old graphs seeded before the sql_query handler was implemented.
         //  1. sql_query node: adds age_ms to SELECT so the condition can gate on recency
-        //  2. condition expression: status != 'generating' || age_ms > 120000
+        //  2. condition expression: status != 'generating' || age_ms > 300000
         //  3. branch edges: yes/no → true/false (executor routes condition edges as true/false)
-        // Guards fire independently so partial fixes are applied even if one already ran.
+        // Guard fires when the old bare-SELECT query or old yes/no handles are present.
         await pool.query(
           `UPDATE wf_versions
               SET graph = jsonb_set(
@@ -513,10 +512,41 @@ export async function seedSystemWorkflows(): Promise<void> {
           [
             defId,
             JSON.stringify("SELECT status, EXTRACT(EPOCH FROM (NOW() - created_at)) * 1000 AS age_ms FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1"),
-            JSON.stringify("status != 'generating' || age_ms > 120000"),
+            JSON.stringify("status != 'generating' || age_ms > 300000"),
           ],
         );
         logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry sql_query, condition, and edge handles");
+
+        // Patch v2: upgrade the age threshold from 120 000 ms (2 min) to 300 000 ms (5 min).
+        // Fires only on graphs that already have the new SELECT (with age_ms) but still
+        // carry the old 120000 guard so the skip window was shorter than intended.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->'data'->>'nodeType' = 'condition'
+                       AND node->'data'->>'expression' = $2
+                      THEN jsonb_set(node, '{data,expression}', $3::jsonb)
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> $4::jsonb`,
+          [
+            defId,
+            "status != 'generating' || age_ms > 120000",
+            JSON.stringify("status != 'generating' || age_ms > 300000"),
+            JSON.stringify([{ data: { nodeType: "condition", expression: "status != 'generating' || age_ms > 120000" } }]),
+          ],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry age threshold 120000 → 300000");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
