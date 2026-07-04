@@ -1566,7 +1566,7 @@ export default function PresentationFlow({
                   <span>
                     Next
                     {steps[stepIndex + 1] && (
-                      <span className="opacity-80">: {stepLabel(steps[stepIndex + 1], sortedDocs)}</span>
+                      <span className="opacity-80 hidden sm:inline">: {stepLabel(steps[stepIndex + 1], sortedDocs)}</span>
                     )}
                   </span>
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

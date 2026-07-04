@@ -176,8 +176,8 @@ function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenant
                   </div>
                   {group.permissions.map(({ permission, reason }) => (
                     <div key={permission} className="px-5 py-2.5 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded">{permission}</code>
+                      <div className="min-w-0 flex-1">
+                        <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded break-all">{permission}</code>
                         <p className="text-xs text-gray-500 mt-1">{reason}</p>
                       </div>
                       <CopyButton text={permission} />
@@ -977,7 +977,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
 
           {/* Mobile steps drawer — slide down when open */}
           <div
-            className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-[#0A2540] border-b border-white/10 ${stepsDrawerOpen ? "max-h-96" : "max-h-0"}`}
+            className={`md:hidden overflow-hidden transition-all duration-300 ease-in-out bg-[#0A2540] border-b border-white/10 ${stepsDrawerOpen ? "max-h-[70vh]" : "max-h-0"}`}
             aria-hidden={!stepsDrawerOpen}
           >
             {/* Backdrop tap-to-close */}
@@ -988,7 +988,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
                 onClick={() => setStepsDrawerOpen(false)}
               />
             )}
-            <div className="relative z-50 px-4 py-4 space-y-1">
+            <div className="relative z-50 px-4 py-4 space-y-1 overflow-y-auto max-h-[70vh]">
               {STEPS.map((step, idx) => {
                 const isActive = currentStep === step.id;
                 const stepPos = currentStep === "done" ? STEPS.length : STEPS.findIndex(s => s.id === currentStep);

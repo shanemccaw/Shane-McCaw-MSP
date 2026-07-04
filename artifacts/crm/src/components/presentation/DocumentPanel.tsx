@@ -396,7 +396,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
         </div>
 
         {/* ── Document iframe ── */}
-        <div className="flex-1 overflow-hidden rounded-xl border border-border shadow-sm bg-white relative min-h-0">
+        <div className="flex-1 rounded-xl border border-border shadow-sm bg-white relative min-h-0 overflow-hidden">
           {!iframeLoaded && (
             <div className="absolute inset-0 bg-white rounded-xl p-6 flex flex-col gap-3 z-10">
               {[["w-1/2", "h-7", "rounded-lg"], ["w-full", "h-4", "rounded"], ["w-11/12", "h-4", "rounded"], ["w-4/5", "h-4", "rounded"]].map(([w, h, r], i) => (
@@ -415,7 +415,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
           <iframe
             srcDoc={srcdoc}
             title={doc.title}
-            className="w-full h-full border-0"
+            className="absolute inset-0 w-full h-full border-0"
             sandbox="allow-same-origin"
             onLoad={handleIframeLoad}
           />
