@@ -39,6 +39,8 @@ interface InsightsDoc {
   status: "draft" | "approved" | "delivered" | "archived" | "generating" | "failed";
   errorMessage: string | null;
   approvedAt: string | null; deliveredAt: string | null; createdAt: string;
+  sowTotalPrice?: string | null;
+  projectTitle?: string | null;
 }
 
 interface InsightsDocFull extends InsightsDoc { htmlContent: string; }
@@ -72,6 +74,7 @@ const REPORT_TYPES = [
 ] as const;
 
 const CONSULTING_TYPES = [
+  { key: "scoped_sow",                  label: "Scoped SOW",                 icon: Layers,        desc: "Presentation-generated SOW with scoped phases and pricing — view only" },
   { key: "consolidated_sow",            label: "Consolidated SOW",           icon: Layers,        desc: "Aggregates all generated docs + project pricing into one comprehensive SOW" },
   { key: "sow",                         label: "Statement of Work",          icon: FileText,      desc: "Formal SOW with scope, timeline, pricing placeholders" },
   { key: "task_execution_guide",        label: "SOW Task Execution Guide",   icon: BookOpen,      desc: "Step-by-step execution guide derived from the SOW tasks and deliverables" },
@@ -1187,6 +1190,7 @@ function ConsultingTab({
           {CONSULTING_TYPES.map(ct => {
             const Icon = ct.icon;
             const count = docs.filter(d => d.docType === ct.key).length;
+            const isViewOnly = ct.key === "scoped_sow";
             return (
               <div key={ct.key} className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 flex flex-col gap-3">
                 <div className="flex items-start gap-3">
@@ -1195,28 +1199,32 @@ function ConsultingTab({
                     <div className="text-white text-sm font-medium">{ct.label}</div>
                     <div className="text-gray-400 text-xs mt-0.5">{ct.desc}</div>
                   </div>
-                  <button
-                    onClick={() => { setPromptDialogKey(`insights-consulting-${ct.key}`); setPromptDialogOpen(true); }}
-                    title="Edit prompt"
-                    className="p-1 rounded text-gray-500 hover:text-purple-400 hover:bg-purple-500/10 transition-colors shrink-0"
-                  >
-                    <SlidersHorizontal className="w-3.5 h-3.5" />
-                  </button>
+                  {!isViewOnly && (
+                    <button
+                      onClick={() => { setPromptDialogKey(`insights-consulting-${ct.key}`); setPromptDialogOpen(true); }}
+                      title="Edit prompt"
+                      className="p-1 rounded text-gray-500 hover:text-purple-400 hover:bg-purple-500/10 transition-colors shrink-0"
+                    >
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} staged</span>}
-                  <div className="flex gap-1.5 ml-auto">
-                    <button
-                      onClick={() => openWizard(ct.key, "preview")}
-                      title="Preview the AI payload before generating"
-                      className="flex items-center gap-1 text-gray-400 hover:text-purple-300 border border-gray-600/50 hover:border-purple-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-                    >
-                      <Search className="w-3 h-3" /> View Payload
-                    </button>
-                    <button onClick={() => openWizard(ct.key)} className="flex items-center gap-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
-                      <Plus className="w-3 h-3" /> Generate
-                    </button>
-                  </div>
+                  {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} {isViewOnly ? "generated" : "staged"}</span>}
+                  {!isViewOnly && (
+                    <div className="flex gap-1.5 ml-auto">
+                      <button
+                        onClick={() => openWizard(ct.key, "preview")}
+                        title="Preview the AI payload before generating"
+                        className="flex items-center gap-1 text-gray-400 hover:text-purple-300 border border-gray-600/50 hover:border-purple-500/50 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
+                      >
+                        <Search className="w-3 h-3" /> View Payload
+                      </button>
+                      <button onClick={() => openWizard(ct.key)} className="flex items-center gap-1.5 bg-purple-700 hover:bg-purple-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg transition-colors">
+                        <Plus className="w-3 h-3" /> Generate
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1242,7 +1250,11 @@ function ConsultingTab({
                     {doc.status === "failed" && doc.errorMessage ? (
                       <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
                     ) : (
-                      <div className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-gray-500 text-xs">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                        {doc.projectTitle && <span className="text-blue-400/70 text-xs truncate max-w-[120px]" title={doc.projectTitle}>· {doc.projectTitle}</span>}
+                        {doc.sowTotalPrice && <span className="text-green-400/80 text-xs font-medium">${parseFloat(doc.sowTotalPrice).toLocaleString()}</span>}
+                      </div>
                     )}
                   </div>
                   <StatusPill status={doc.status} />

@@ -2616,22 +2616,29 @@ router.get("/portal/insights-documents", requireAuth, async (req: Request, res: 
     const userId = req.user!.id;
     const docs = await db
       .select({
-        id:          insightsGeneratedDocumentsTable.id,
-        title:       insightsGeneratedDocumentsTable.title,
-        category:    insightsGeneratedDocumentsTable.category,
-        docType:     insightsGeneratedDocumentsTable.docType,
-        status:      insightsGeneratedDocumentsTable.status,
-        deliveredAt: insightsGeneratedDocumentsTable.deliveredAt,
-        createdAt:   insightsGeneratedDocumentsTable.createdAt,
+        id:            insightsGeneratedDocumentsTable.id,
+        title:         insightsGeneratedDocumentsTable.title,
+        category:      insightsGeneratedDocumentsTable.category,
+        docType:       insightsGeneratedDocumentsTable.docType,
+        status:        insightsGeneratedDocumentsTable.status,
+        deliveredAt:   insightsGeneratedDocumentsTable.deliveredAt,
+        createdAt:     insightsGeneratedDocumentsTable.createdAt,
+        sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
+        projectId:     insightsGeneratedDocumentsTable.projectId,
+        projectTitle:  projectsTable.title,
       })
       .from(insightsGeneratedDocumentsTable)
+      .leftJoin(projectsTable, eq(insightsGeneratedDocumentsTable.projectId, projectsTable.id))
       .where(
         and(
           eq(insightsGeneratedDocumentsTable.customerId, userId),
-          eq(insightsGeneratedDocumentsTable.status, "delivered"),
+          or(
+            eq(insightsGeneratedDocumentsTable.status, "delivered"),
+            eq(insightsGeneratedDocumentsTable.docType, "scoped_sow"),
+          ),
         ),
       )
-      .orderBy(desc(insightsGeneratedDocumentsTable.deliveredAt));
+      .orderBy(desc(insightsGeneratedDocumentsTable.createdAt));
     res.json(docs);
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents list failed");
@@ -2650,13 +2657,14 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
         title:       insightsGeneratedDocumentsTable.title,
         htmlContent: insightsGeneratedDocumentsTable.htmlContent,
         status:      insightsGeneratedDocumentsTable.status,
+        docType:     insightsGeneratedDocumentsTable.docType,
         customerId:  insightsGeneratedDocumentsTable.customerId,
       })
       .from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
-    if (doc.status !== "delivered") { res.status(403).json({ error: "Document not yet delivered" }); return; }
+    if (doc.status !== "delivered" && doc.docType !== "scoped_sow") { res.status(403).json({ error: "Document not yet delivered" }); return; }
     res.json({ id: doc.id, title: doc.title, htmlContent: stripStagedForReviewBanner(doc.htmlContent) });
   } catch (err) {
     req.log.error({ err }, "portal/insights-documents/:id/view failed");

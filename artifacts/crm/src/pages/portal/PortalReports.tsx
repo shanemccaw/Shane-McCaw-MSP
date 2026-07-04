@@ -21,6 +21,9 @@ interface InsightsDocument {
   status: string;
   deliveredAt: string | null;
   createdAt: string;
+  sowTotalPrice?: string | null;
+  projectId?: number | null;
+  projectTitle?: string | null;
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -44,7 +47,9 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   governance_maturity_report:  "Governance Maturity Report",
   data_exposure_risk_report:   "Data Exposure Risk Report",
   license_optimization_report: "License Optimization Report",
+  scoped_sow:                  "Scoped SOW",
   sow:                         "Statement of Work",
+  consolidated_sow:            "Consolidated SOW",
   remediation_plan:            "Remediation Plan",
   deployment_plan:             "Deployment Plan",
   governance_framework:        "Governance Framework",
@@ -181,10 +186,32 @@ export default function PortalReports() {
                           <span className="text-xs bg-gray-100 text-gray-600 font-semibold px-2 py-0.5 rounded-full">
                             {DOC_TYPE_LABELS[doc.docType] ?? doc.docType}
                           </span>
+                          {doc.docType === "scoped_sow" && (
+                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                              doc.status === "delivered"
+                                ? "bg-blue-100 text-blue-700"
+                                : doc.status === "approved"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-yellow-100 text-yellow-700"
+                            }`}>
+                              {doc.status === "delivered" ? "Delivered" : doc.status === "approved" ? "Approved" : "Draft"}
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
                           {doc.deliveredAt && (
                             <span>Delivered {new Date(doc.deliveredAt).toLocaleDateString()}</span>
+                          )}
+                          {doc.docType === "scoped_sow" && !doc.deliveredAt && (
+                            <span>Created {new Date(doc.createdAt).toLocaleDateString()}</span>
+                          )}
+                          {doc.projectTitle && (
+                            <span className="text-[#0078D4]">· {doc.projectTitle}</span>
+                          )}
+                          {doc.sowTotalPrice && (
+                            <span className="font-semibold text-[#0A2540]">
+                              Total: ${parseFloat(doc.sowTotalPrice).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                            </span>
                           )}
                         </div>
                       </div>
