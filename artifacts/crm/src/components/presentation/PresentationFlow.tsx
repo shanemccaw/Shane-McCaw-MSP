@@ -1606,6 +1606,8 @@ export default function PresentationFlow({
                   onTogglePhase={(id) => void handleTogglePhase(id)}
                   scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
                   originalSowHtml={sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow")?.htmlContent ?? null}
+                  adjustmentLines={data.adjustmentLines}
+                  adjustmentsTotal={data.adjustmentsTotal}
                 />
               </div>
             )}

@@ -9,6 +9,12 @@ interface SowPhase {
   deliveryDate?: string | null;
 }
 
+interface AdjustmentLine {
+  title: string;
+  description: string;
+  price: number;
+}
+
 interface SowSelectorPanelProps {
   phases: SowPhase[];
   totalPrice: number;
@@ -18,6 +24,8 @@ interface SowSelectorPanelProps {
   onTogglePhase: (phaseId: string) => void;
   scopedSowHtml?: string | null;
   originalSowHtml?: string | null;
+  adjustmentLines?: AdjustmentLine[];
+  adjustmentsTotal?: number;
 }
 
 function formatCurrency(n: number): string {
@@ -33,6 +41,8 @@ export default function SowSelectorPanel({
   onTogglePhase,
   scopedSowHtml,
   originalSowHtml,
+  adjustmentLines = [],
+  adjustmentsTotal = 0,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
   // Separate heights for each document so toggling never resets the layout.
@@ -67,7 +77,9 @@ export default function SowSelectorPanel({
 
   const selectedPhases = phases.filter(p => p.selected);
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0);
-  const displayTotal = readOnly ? totalPrice : (selectedTotal || totalPrice);
+  const phasesSubtotal = readOnly ? totalPrice : (selectedTotal || totalPrice);
+  const displayTotal = phasesSubtotal + adjustmentsTotal;
+  const hasAdjustments = adjustmentLines.length > 0 && adjustmentsTotal > 0;
 
   const hasScopeReduction = phases.length > 0 && selectedPhases.length < phases.length;
   // Toggle is shown when a scoped SOW exists AND either:
@@ -176,13 +188,60 @@ export default function SowSelectorPanel({
                 </div>
               </div>
             ))}
+
+            {/* Price adjustments — muted, non-interactive, always included in total */}
+            {hasAdjustments && (
+              <div className="pt-1">
+                <div className="flex items-center gap-2 px-1 pb-1.5">
+                  <div className="h-px flex-1 bg-gray-200" />
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+                    Price Adjustments
+                  </span>
+                  <div className="h-px flex-1 bg-gray-200" />
+                </div>
+                <div className="space-y-1.5">
+                  {adjustmentLines.map((adj, i) => (
+                    <div
+                      key={i}
+                      className="rounded-lg border border-dashed border-gray-200 bg-gray-50/70 p-3 select-none cursor-default"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold text-gray-400 leading-snug">{adj.title}</p>
+                        <span className="text-xs font-extrabold whitespace-nowrap flex-shrink-0 text-gray-400">
+                          +{formatCurrency(adj.price)}
+                        </span>
+                      </div>
+                      {adj.description && (
+                        <p className="text-[11px] mt-1 leading-relaxed text-gray-400">{adj.description}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pinned total footer */}
           <div className="flex-shrink-0 border-t border-border px-4 py-3">
+            {/* Breakdown rows — only shown when there are adjustments */}
+            {hasAdjustments && (
+              <div className="mb-2.5 space-y-1">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{hasScopeReduction ? "Selected phases" : "Phases"}</span>
+                  <span>{formatCurrency(phasesSubtotal)}</span>
+                </div>
+                {adjustmentLines.map((adj, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs text-gray-400">
+                    <span className="truncate mr-2">{adj.title}</span>
+                    <span className="flex-shrink-0">+{formatCurrency(adj.price)}</span>
+                  </div>
+                ))}
+                <div className="h-px bg-gray-200 mt-1" />
+              </div>
+            )}
             <div className="flex items-center justify-between mb-0.5">
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {readOnly ? "Total Investment" : hasScopeReduction ? "Selected Total" : "Total Investment"}
+                Total Investment
               </p>
               {!readOnly && (
                 <p className="text-xs text-muted-foreground">
