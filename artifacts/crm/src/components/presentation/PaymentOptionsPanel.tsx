@@ -18,7 +18,12 @@ function useIsOfferLive(expiresAt: string | null | undefined): boolean {
 
 interface PaymentOptionsPanelProps {
   totalPrice: number;
-  onCheckout: (plan: "full" | "phased", applyPayToday: boolean) => Promise<void>;
+  /** Provide to trigger Stripe checkout (checkout step). Omit for plan-select-only mode. */
+  onCheckout?: (plan: "full" | "phased", applyPayToday: boolean) => Promise<void>;
+  /** Called when the user picks a plan in select-only mode (payment step). */
+  onPlanSelected?: (plan: "full" | "phased") => void;
+  /** Pre-selects a plan (used on the checkout step to show the previously chosen plan). */
+  initialPlan?: "full" | "phased" | null;
   onClaimFree?: () => Promise<void>;
   loading: boolean;
   alreadyPaid?: boolean;
@@ -35,6 +40,8 @@ function formatCurrency(n: number): string {
 export default function PaymentOptionsPanel({
   totalPrice,
   onCheckout,
+  onPlanSelected,
+  initialPlan = null,
   onClaimFree,
   loading,
   alreadyPaid = false,
@@ -43,7 +50,7 @@ export default function PaymentOptionsPanel({
   freeClaimError = null,
   onDismissFreeClaimError,
 }: PaymentOptionsPanelProps) {
-  const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(initialPlan ?? null);
 
   const upfrontAmount = Math.round(totalPrice * 0.2 * 100) / 100;
   const remainingAmount = totalPrice - upfrontAmount;
@@ -143,7 +150,7 @@ export default function PaymentOptionsPanel({
       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
         {/* Pay in full */}
         <button
-          onClick={() => setSelectedPlan("full")}
+          onClick={() => { setSelectedPlan("full"); onPlanSelected?.("full"); }}
           className={`relative flex flex-col items-start p-5 rounded-2xl border-2 text-left transition-all ${
             selectedPlan === "full"
               ? "border-[#0078D4] bg-[#0078D4]/5 shadow-md"
@@ -194,7 +201,7 @@ export default function PaymentOptionsPanel({
 
         {/* 20% upfront + milestone billing */}
         <button
-          onClick={() => setSelectedPlan("phased")}
+          onClick={() => { setSelectedPlan("phased"); onPlanSelected?.("phased"); }}
           className={`relative flex flex-col items-start p-5 rounded-2xl border-2 text-left transition-all ${
             selectedPlan === "phased"
               ? "border-[#0078D4] bg-[#0078D4]/5 shadow-md"
@@ -233,36 +240,43 @@ export default function PaymentOptionsPanel({
         </button>
       </div>
 
-      {/* CTA */}
-      <div className="flex-shrink-0">
-        <button
-          onClick={() => selectedPlan && void onCheckout(selectedPlan, offerActive && selectedPlan === "full")}
-          disabled={!selectedPlan || loading}
-          className={`w-full py-3.5 rounded-xl text-white font-bold text-sm active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg ${
-            offerActive && selectedPlan === "full"
-              ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
-              : "bg-[#0078D4] hover:bg-[#0078D4]/90 shadow-[#0078D4]/20"
-          }`}
-        >
-          {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Redirecting to checkout…
-            </span>
-          ) : selectedPlan === "full" ? (
-            offerActive && discountedFullPrice !== null
-              ? `Pay ${formatCurrency(discountedFullPrice)} Today (Save ${formatCurrency(totalPrice - discountedFullPrice)})`
-              : `Pay ${formatCurrency(totalPrice)} Now`
-          ) : selectedPlan === "phased" ? (
-            `Pay ${formatCurrency(upfrontAmount)} to Start`
-          ) : (
-            "Select a Payment Plan"
-          )}
-        </button>
-        <p className="text-xs text-center text-muted-foreground mt-2">
-          Secure checkout powered by Stripe · SSL encrypted
+      {/* CTA — only shown when onCheckout is provided (checkout step, not plan-select step) */}
+      {onCheckout && (
+        <div className="flex-shrink-0">
+          <button
+            onClick={() => selectedPlan && void onCheckout(selectedPlan, offerActive && selectedPlan === "full")}
+            disabled={!selectedPlan || loading}
+            className={`w-full py-3.5 rounded-xl text-white font-bold text-sm active:scale-[0.99] disabled:opacity-50 transition-all shadow-lg ${
+              offerActive && selectedPlan === "full"
+                ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/20"
+                : "bg-[#0078D4] hover:bg-[#0078D4]/90 shadow-[#0078D4]/20"
+            }`}
+          >
+            {loading ? (
+              <span className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Redirecting to checkout…
+              </span>
+            ) : selectedPlan === "full" ? (
+              offerActive && discountedFullPrice !== null
+                ? `Pay ${formatCurrency(discountedFullPrice)} Today (Save ${formatCurrency(totalPrice - discountedFullPrice)})`
+                : `Pay ${formatCurrency(totalPrice)} Now`
+            ) : selectedPlan === "phased" ? (
+              `Pay ${formatCurrency(upfrontAmount)} to Start`
+            ) : (
+              "Select a Payment Plan"
+            )}
+          </button>
+          <p className="text-xs text-center text-muted-foreground mt-2">
+            Secure checkout powered by Stripe · SSL encrypted
+          </p>
+        </div>
+      )}
+      {!onCheckout && (
+        <p className="text-xs text-center text-muted-foreground mt-2 pb-2">
+          {selectedPlan ? "Plan selected — click Next below to continue to your agreement." : "Select a plan above, then click Next below to continue."}
         </p>
-      </div>
+      )}
     </div>
   );
 }

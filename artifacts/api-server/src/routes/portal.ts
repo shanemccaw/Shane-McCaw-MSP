@@ -4993,12 +4993,6 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             { presentationId, sessionId: session.id },
             "processStripeEvent: presentation not found for completed session, skipping paid update",
           );
-        } else if (currentPresentation.status === "signed") {
-          // Already signed — a replayed completed event must never overwrite this.
-          req.log.warn(
-            { presentationId, sessionId: session.id, status: currentPresentation.status },
-            "processStripeEvent: presentation is already signed — skipping paid status update to protect signing flow",
-          );
         } else if (currentPresentation.status !== "paid") {
           await db.update(quickWinPresentationsTable)
             .set({ status: "paid", updatedAt: new Date() })
@@ -10676,12 +10670,9 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
     // the scoped price; otherwise it's the full SOW total.
     const { effectiveTotalPrice: effectivePriceCents } = await deriveEffectiveSowData(pres);
 
-    // Payment gate — signing is only allowed after payment is confirmed (or the
-    // effective price is zero, i.e. a fully scoped-down / free engagement).
-    // Without this, a client could bypass Stripe and sign without paying.
-    if (effectivePriceCents > 0 && pres.status !== "paid") {
-      res.status(402).json({ error: "Payment required before signing" }); return;
-    }
+    // New flow: Agreement is signed BEFORE Stripe payment.
+    // The checkout step (which follows contract signing) handles the payment gate.
+    // Signing is allowed when status is "active" (normal) or "signed" (re-sign idempotency).
 
     const signedAt = new Date();
     await db.update(quickWinPresentationsTable)

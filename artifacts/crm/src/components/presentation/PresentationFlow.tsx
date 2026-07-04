@@ -73,8 +73,9 @@ type Step =
   | { kind: "welcome" }
   | { kind: "doc"; index: number }
   | { kind: "sow" }
-  | { kind: "contract" }
   | { kind: "payment" }
+  | { kind: "contract" }
+  | { kind: "checkout" }
   | { kind: "confirmation" };
 
 function buildSteps(docs: PresentationDoc[], readOnly: boolean): Step[] {
@@ -82,8 +83,10 @@ function buildSteps(docs: PresentationDoc[], readOnly: boolean): Step[] {
   for (let i = 0; i < docs.length; i++) steps.push({ kind: "doc", index: i });
   steps.push({ kind: "sow" });
   if (!readOnly) {
+    // New flow: Scope & Pricing → Payment Options (select plan) → Agreement (sign) → Stripe Checkout → Confirmation
     steps.push({ kind: "payment" });
     steps.push({ kind: "contract" });
+    steps.push({ kind: "checkout" });
     steps.push({ kind: "confirmation" });
   }
   return steps;
@@ -93,8 +96,9 @@ function stepLabel(step: Step, docs: PresentationDoc[]): string {
   if (step.kind === "welcome") return "Overview";
   if (step.kind === "doc") return docs[step.index]?.title ?? `Document ${step.index + 1}`;
   if (step.kind === "sow") return "Scope & Pricing";
+  if (step.kind === "payment") return "Payment Options";
   if (step.kind === "contract") return "Agreement";
-  if (step.kind === "payment") return "Payment";
+  if (step.kind === "checkout") return "Complete Payment";
   if (step.kind === "confirmation") return "Confirmed";
   return "";
 }
@@ -129,6 +133,13 @@ function stepIcon(step: Step) {
     );
   }
   if (step.kind === "payment") {
+    return (
+      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+      </svg>
+    );
+  }
+  if (step.kind === "checkout") {
     return (
       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -175,16 +186,16 @@ export default function PresentationFlow({
   const computeInitialStep = () => {
     if (startAtPayment) {
       const steps = buildSteps(initialData.documents, readOnly);
-      // New flow: SOW → Payment → Agreement → Confirmation
+      // New flow: Payment Options → Agreement → Checkout → Confirmation
       // After Stripe redirect (startAtPayment=true):
-      //   paid + not yet signed → land on contract step
-      //   paid + signed         → confirmation
-      //   draft (payment failed/cancelled) → back to payment
+      //   paid               → confirmation (payment complete)
+      //   signed (not paid)  → checkout step (payment failed/cancelled, retry)
+      //   anything else      → back to payment options
       let targetKind: Step["kind"];
-      if (initialData.status === "paid" && initialData.signedAt) {
+      if (initialData.status === "paid") {
         targetKind = "confirmation";
-      } else if (initialData.status === "paid") {
-        targetKind = "contract";
+      } else if (initialData.status === "signed") {
+        targetKind = "checkout";
       } else {
         targetKind = "payment";
       }
@@ -276,6 +287,9 @@ export default function PresentationFlow({
   const [savingSelections, setSavingSelections] = useState(false);
   const [signing, setSigning] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  // Plan selection is lifted here so the checkout step can access it.
+  // The payment step just selects full/phased; actual Stripe happens at checkout.
+  const [selectedPlan, setSelectedPlan] = useState<"full" | "phased" | null>(null);
   const [showLoginGate, setShowLoginGate] = useState(false);
   const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
   const [offer, setOffer] = useState<OfferState | null>(null);
@@ -664,9 +678,9 @@ export default function PresentationFlow({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex]);
 
-  // isPaid must stay true after signing so back-navigation to the payment step
-  // shows "payment confirmed" and not the checkout options.
-  const isPaid = data.status === "paid" || data.status === "signed";
+  // In the new flow (Payment Options → Agreement → Checkout), "signed" means
+  // committed but not yet paid. isPaid is true only after Stripe payment completes.
+  const isPaid = data.status === "paid";
 
   const goNext = () => {
     if (readOnly && currentStep?.kind === "sow") {
@@ -678,15 +692,19 @@ export default function PresentationFlow({
     if (sowResetBlocked && currentStep?.kind === "sow") {
       return;
     }
+    // Hard-block advancing from the payment options step until a plan is selected.
+    if (currentStep?.kind === "payment" && !selectedPlan) {
+      return;
+    }
     if (stepIndex < steps.length - 1) {
       const next = stepIndex + 1;
       const nextStep = steps[next];
-      // Hard-block jumping directly into contract/payment when sowResetBlocked.
-      if (sowResetBlocked && (nextStep?.kind === "contract" || nextStep?.kind === "payment")) {
+      // Hard-block jumping into contract/checkout when sowResetBlocked (scope must be regenerated).
+      if (sowResetBlocked && (nextStep?.kind === "contract" || nextStep?.kind === "checkout")) {
         return;
       }
-      // Hard-block advancing to Agreement before payment is confirmed.
-      if (nextStep?.kind === "contract" && !isPaid) {
+      // Hard-block advancing to checkout (Stripe) without a signed agreement.
+      if (nextStep?.kind === "checkout" && !data.signedAt) {
         return;
       }
       directionRef.current = "forward";
@@ -704,11 +722,11 @@ export default function PresentationFlow({
 
   const navigateToStep = (i: number) => {
     const targetStep = steps[i];
-    // Hard-block sidebar navigation to contract/payment when a scoped SOW reset is pending
-    const blockedByReset = sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment");
-    // Hard-block sidebar navigation to Agreement before payment is confirmed.
-    const blockedByUnpaid = targetStep?.kind === "contract" && !isPaid;
-    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnpaid) {
+    // Hard-block sidebar navigation to contract/checkout when a scoped SOW reset is pending
+    const blockedByReset = sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "checkout");
+    // Hard-block sidebar navigation to checkout without a signed agreement.
+    const blockedByUnsigned = targetStep?.kind === "checkout" && !data.signedAt;
+    if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned) {
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
@@ -724,10 +742,10 @@ export default function PresentationFlow({
   const jumpToStep = useCallback((idx: number, cardName?: string) => {
     if (idx < 0 || idx >= steps.length) return;
     const targetStep = steps[idx];
-    // Hard-block jumps to contract/payment when a scoped SOW reset is pending
-    if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "payment")) return;
-    // Hard-block jumps to Agreement before payment is confirmed.
-    if (targetStep?.kind === "contract" && !isPaid) return;
+    // Hard-block jumps to contract/checkout when a scoped SOW reset is pending
+    if (sowResetBlocked && (targetStep?.kind === "contract" || targetStep?.kind === "checkout")) return;
+    // Hard-block jumps to checkout without a signed agreement.
+    if (targetStep?.kind === "checkout" && !data.signedAt) return;
     if (cardName && !firedCardClicks.current.has(cardName)) {
       firedCardClicks.current.add(cardName);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
@@ -740,12 +758,13 @@ export default function PresentationFlow({
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, isPaid, steps]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, data.signedAt, steps]);
 
   const firstDocStepIndex    = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex         = steps.findIndex(s => s.kind === "sow");
-  const contractStepIndex    = steps.findIndex(s => s.kind === "contract");
   const paymentStepIndex     = steps.findIndex(s => s.kind === "payment");
+  const contractStepIndex    = steps.findIndex(s => s.kind === "contract");
+  const checkoutStepIndex    = steps.findIndex(s => s.kind === "checkout");
   const confirmationStepIndex = steps.findIndex(s => s.kind === "confirmation");
 
   // Note: no auto-advance on the payment step. When already paid, PaymentOptionsPanel
@@ -820,9 +839,9 @@ export default function PresentationFlow({
           const isActive = i === stepIndex;
           const isVisited = i <= maxVisitedStep && i !== stepIndex;
           const isFuture = i > maxVisitedStep;
-          const isResetBlocked = sowResetBlocked && (step.kind === "contract" || step.kind === "payment");
-          const isUnpaidGated = step.kind === "contract" && !isPaid;
-          const isBlocked = isResetBlocked || isUnpaidGated;
+          const isResetBlocked = sowResetBlocked && (step.kind === "contract" || step.kind === "checkout");
+          const isUnsignedGated = step.kind === "checkout" && !data.signedAt;
+          const isBlocked = isResetBlocked || isUnsignedGated;
           return (
             <button
               key={i}
@@ -830,8 +849,8 @@ export default function PresentationFlow({
               title={
                 isResetBlocked
                   ? "Regenerate your scoped SOW before signing or paying"
-                  : isUnpaidGated
-                  ? "Complete payment to unlock the agreement"
+                  : isUnsignedGated
+                  ? "Sign the agreement to unlock payment"
                   : isActive
                   ? "Current step"
                   : isVisited
@@ -1345,9 +1364,9 @@ export default function PresentationFlow({
                           {contractStepIndex >= 0 && (
                             <button
                               onClick={() => jumpToStep(contractStepIndex, "agreement")}
-                              disabled={sowResetBlocked || !isPaid}
-                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : !isPaid ? "Complete payment to unlock the agreement" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(sowResetBlocked || !isPaid) ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              disabled={sowResetBlocked}
+                              title={sowResetBlocked ? "Regenerate your scoped SOW before signing" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${sowResetBlocked ? "opacity-50 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowResetBlocked ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
                               {contractVisited && !sowResetBlocked && <ReviewedBadge />}
@@ -1442,23 +1461,18 @@ export default function PresentationFlow({
               </div>
             )}
 
-            {/* Payment */}
+            {/* Payment Options — plan selection only, no Stripe yet */}
             {currentStep?.kind === "payment" && (
               <div className="flex-1 overflow-hidden flex flex-col">
-                <PayTodayBanner offer={offer} />
                 <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
                   <PaymentOptionsPanel
                     totalPrice={effectivePrice}
-                    onCheckout={handleCheckout}
-                    onClaimFree={grandTotal === 0 ? handleClaimFree : undefined}
-                    loading={checkingOut}
+                    onPlanSelected={setSelectedPlan}
+                    initialPlan={selectedPlan}
+                    loading={false}
                     alreadyPaid={isPaid}
                     onContinue={isPaid ? () => {
-                      const target = data.signedAt && confirmationStepIndex >= 0
-                        ? confirmationStepIndex
-                        : contractStepIndex >= 0
-                        ? contractStepIndex
-                        : -1;
+                      const target = confirmationStepIndex >= 0 ? confirmationStepIndex : checkoutStepIndex >= 0 ? checkoutStepIndex : -1;
                       if (target < 0) return;
                       directionRef.current = "forward";
                       setMaxVisitedStep(m => Math.max(m, target));
@@ -1468,6 +1482,36 @@ export default function PresentationFlow({
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* Checkout — actual Stripe payment (after signing the agreement) */}
+            {currentStep?.kind === "checkout" && (
+              <div className="flex-1 overflow-hidden flex flex-col">
+                <PayTodayBanner offer={offer} />
+                <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
+                  {grandTotal === 0 ? (
+                    <PaymentOptionsPanel
+                      totalPrice={0}
+                      onClaimFree={handleClaimFree}
+                      loading={checkingOut}
+                      offer={offer}
+                      freeClaimError={freeClaimError}
+                      onDismissFreeClaimError={() => setFreeClaimError(null)}
+                    />
+                  ) : (
+                    <PaymentOptionsPanel
+                      totalPrice={effectivePrice}
+                      onCheckout={handleCheckout}
+                      initialPlan={selectedPlan}
+                      loading={checkingOut}
+                      alreadyPaid={isPaid}
+                      offer={offer}
+                      freeClaimError={freeClaimError}
+                      onDismissFreeClaimError={() => setFreeClaimError(null)}
+                    />
+                  )}
                 </div>
               </div>
             )}
@@ -1520,10 +1564,12 @@ export default function PresentationFlow({
                 <span className="text-xs text-muted-foreground">
                   {sowResetBlocked ? "Go back and regenerate your scoped SOW to sign" : "Sign above to continue"}
                 </span>
-              ) : currentStep?.kind === "payment" ? (
+              ) : currentStep?.kind === "payment" && !selectedPlan ? (
                 <span className="text-xs text-muted-foreground">
-                  {sowResetBlocked ? "Go back and regenerate your scoped SOW to pay" : "Select a plan to continue"}
+                  {sowResetBlocked ? "Go back and regenerate your scoped SOW to pay" : "Select a payment plan above to continue"}
                 </span>
+              ) : currentStep?.kind === "checkout" ? (
+                null
               ) : currentStep?.kind === "sow" && sowResetBlocked ? (
                 /* Scoped SOW was invalidated mid-session — show Regenerate (if can) + disabled Continue */
                 <div className="flex items-center gap-2">
