@@ -22,6 +22,7 @@ interface PaymentOptionsPanelProps {
   onClaimFree?: () => Promise<void>;
   loading: boolean;
   alreadyPaid?: boolean;
+  onContinue?: () => void;
   offer?: OfferState | null;
   freeClaimError?: string | null;
   onDismissFreeClaimError?: () => void;
@@ -37,6 +38,7 @@ export default function PaymentOptionsPanel({
   onClaimFree,
   loading,
   alreadyPaid = false,
+  onContinue,
   offer = null,
   freeClaimError = null,
   onDismissFreeClaimError,
@@ -64,6 +66,17 @@ export default function PaymentOptionsPanel({
             Your payment has been processed. Shane will be in touch shortly to kick off your engagement.
           </p>
         </div>
+        {onContinue && (
+          <button
+            onClick={onContinue}
+            className="px-8 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 shadow-lg shadow-[#0078D4]/20 transition-all flex items-center gap-2"
+          >
+            Continue to Agreement
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+            </svg>
+          </button>
+        )}
       </div>
     );
   }

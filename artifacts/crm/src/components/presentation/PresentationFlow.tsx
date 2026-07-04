@@ -742,10 +742,30 @@ export default function PresentationFlow({
     applyStepChange(idx);
   }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, isPaid, steps]);
 
-  const firstDocStepIndex = steps.findIndex(s => s.kind === "doc");
-  const sowStepIndex      = steps.findIndex(s => s.kind === "sow");
-  const contractStepIndex = steps.findIndex(s => s.kind === "contract");
-  const paymentStepIndex  = steps.findIndex(s => s.kind === "payment");
+  const firstDocStepIndex    = steps.findIndex(s => s.kind === "doc");
+  const sowStepIndex         = steps.findIndex(s => s.kind === "sow");
+  const contractStepIndex    = steps.findIndex(s => s.kind === "contract");
+  const paymentStepIndex     = steps.findIndex(s => s.kind === "payment");
+  const confirmationStepIndex = steps.findIndex(s => s.kind === "confirmation");
+
+  // Auto-advance: when landing on the payment step while already paid via a
+  // forward/initial path, skip to the contract step (or confirmation if signed).
+  // Intentionally skipped when the user navigates *backward* to the payment step
+  // so they can see "Payment Confirmed" + the CTA without being ejected again.
+  useEffect(() => {
+    if (currentStep?.kind !== "payment" || !isPaid) return;
+    if (directionRef.current === "back") return;
+    const target = data.signedAt && confirmationStepIndex >= 0
+      ? confirmationStepIndex
+      : contractStepIndex >= 0
+      ? contractStepIndex
+      : -1;
+    if (target < 0) return;
+    directionRef.current = "forward";
+    setMaxVisitedStep(m => Math.max(m, target));
+    applyStepChange(target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex, isPaid]);
 
   // Flush on unmount (e.g. user closes via browser back / ESC) for the current doc step
   // Also cancel any pending slide transition timer
@@ -1447,6 +1467,17 @@ export default function PresentationFlow({
                     onClaimFree={grandTotal === 0 ? handleClaimFree : undefined}
                     loading={checkingOut}
                     alreadyPaid={isPaid}
+                    onContinue={isPaid ? () => {
+                      const target = data.signedAt && confirmationStepIndex >= 0
+                        ? confirmationStepIndex
+                        : contractStepIndex >= 0
+                        ? contractStepIndex
+                        : -1;
+                      if (target < 0) return;
+                      directionRef.current = "forward";
+                      setMaxVisitedStep(m => Math.max(m, target));
+                      applyStepChange(target);
+                    } : undefined}
                     offer={offer}
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
