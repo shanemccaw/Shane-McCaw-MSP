@@ -782,7 +782,7 @@ function DocumentsTab({
             <h3 className="text-white font-medium text-sm">Generated Reports ({docs.length})</h3>
             <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
           </div>
-          {loading ? (
+          {loading && docs.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-sm">Loading…</div>
           ) : docs.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-sm">No reports generated yet. Use the cards above to generate your first one.</div>
@@ -1232,7 +1232,7 @@ function ConsultingTab({
             <h3 className="text-white font-medium text-sm">Consulting Deliverables ({docs.length})</h3>
             <button onClick={() => void loadDocs()} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><RefreshCw className="w-3 h-3" /></button>
           </div>
-          {loading ? <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
+          {loading && docs.length === 0 ? <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>
           : docs.length === 0 ? <div className="p-6 text-center text-gray-500 text-sm">No deliverables yet. Use the cards above to generate one.</div>
           : (
             <div className="divide-y divide-gray-700/30">
