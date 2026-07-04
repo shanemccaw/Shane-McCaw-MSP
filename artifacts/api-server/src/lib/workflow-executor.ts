@@ -2410,7 +2410,17 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const stripeEsi = new StripeEsi(esiStripeKey);
 
         const esiInvoiceId = (interp(node.data.stripeInvoiceIdExpr as string | undefined, payload) ?? "").trim();
-        if (!esiInvoiceId) { nodeError = true; output = { error: "edit_stripe_invoice: stripeInvoiceIdExpr resolved to empty string" }; break; }
+        if (!esiInvoiceId) {
+          const esiWarnMsg =
+            "edit_stripe_invoice: no Stripe invoice ID was found for this phase. " +
+            "The phase likely has no linked draft invoice — run the \"Create Phased Invoices\" node first, " +
+            "or link an invoice manually by setting stripeInvoiceId on the workflow step row. " +
+            `Expression evaluated: "${node.data.stripeInvoiceIdExpr ?? "(not set)"}"`;
+          logger.warn({ runId, nodeId: node.id, expr: node.data.stripeInvoiceIdExpr }, esiWarnMsg);
+          nodeError = true;
+          output = { error: esiWarnMsg };
+          break;
+        }
 
         try {
           const esiCurrent = await stripeEsi.invoices.retrieve(esiInvoiceId);

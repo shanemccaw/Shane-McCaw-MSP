@@ -96,6 +96,7 @@ interface WorkflowStep {
   description: string | null;
   dueDate: string | null;
   notes: string | null;
+  stripeInvoiceId: string | null;
 }
 
 interface KanbanTask {
@@ -3328,6 +3329,14 @@ export default function ProjectDetailPage() {
                     <tr key={step.id} className="hover:bg-[#1C2128]/50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-semibold text-[#E6EDF3] leading-snug">{step.title}</p>
+                        {!step.stripeInvoiceId && (
+                          <span
+                            className="inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            title="No Stripe invoice is linked to this phase. Run the 'Create Phased Invoices' workflow node to link one."
+                          >
+                            No invoice linked
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {isEditingDesc ? (
