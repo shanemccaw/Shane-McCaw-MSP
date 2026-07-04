@@ -39,7 +39,7 @@ import {
   pendingApprovalsTable,
   type WfGraph,
 } from "@workspace/db";
-import { eq, and, desc, asc, count, sql, gte, lte } from "drizzle-orm";
+import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { fireWorkflowForDefinition, computeNextCronRun, executeWorkflowRun, resumeWorkflowRun } from "../lib/workflow-executor";
@@ -538,6 +538,11 @@ router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Resp
   const status = req.query.status as string | undefined;
   const fromDate = req.query.from as string | undefined;
   const toDate   = req.query.to   as string | undefined;
+  const triggerType = req.query.triggerType as string | undefined;
+  const triggerRef  = req.query.triggerRef  as string | undefined;
+  // triggerRefs: comma-separated list of event names (used for category-level filtering)
+  const triggerRefsRaw = req.query.triggerRefs as string | undefined;
+  const triggerRefs = triggerRefsRaw ? triggerRefsRaw.split(",").map(s => s.trim()).filter(Boolean) : null;
   const limit = Math.min(parseInt(req.query.limit as string || "50", 10), 200);
   const offset = parseInt(req.query.offset as string || "0", 10);
 
@@ -552,6 +557,12 @@ router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Resp
     if (toDate) {
       const d = new Date(toDate);
       if (!isNaN(d.getTime())) conditions.push(lte(wfRunsTable.createdAt, d));
+    }
+    if (triggerType) conditions.push(eq(wfRunsTable.triggerType, triggerType as "manual" | "schedule" | "webhook" | "event"));
+    if (triggerRef) {
+      conditions.push(eq(wfRunsTable.triggerRef, triggerRef));
+    } else if (triggerRefs && triggerRefs.length > 0) {
+      conditions.push(inArray(wfRunsTable.triggerRef, triggerRefs));
     }
 
     const runs = await db

@@ -4,6 +4,31 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
 import { format, formatDistanceToNow } from "date-fns";
 
+// ── Event catalog (compact — category + name only) ─────────────────────────────
+const EVENT_CATALOG: Array<{ category: string; name: string }> = [
+  { category: "CRM",        name: "lead.created" },
+  { category: "CRM",        name: "lead.qualified" },
+  { category: "CRM",        name: "opportunity.created" },
+  { category: "CRM",        name: "client.created" },
+  { category: "CRM",        name: "project.created" },
+  { category: "CRM",        name: "project.phase_changed" },
+  { category: "CRM",        name: "onboarding.complete" },
+  { category: "CRM",        name: "sow.scope_reduced" },
+  { category: "CRM",        name: "contract.signed" },
+  { category: "Payments",   name: "payment.received" },
+  { category: "Payments",   name: "agreement_signed" },
+  { category: "Payments",   name: "phase_completed" },
+  { category: "Scheduling", name: "phase.delivery_date_changed" },
+  { category: "Scheduling", name: "milestone.delivery_date_changed" },
+  { category: "M365",       name: "m365.health_check_complete" },
+  { category: "M365",       name: "m365.diagnostic_failed" },
+  { category: "M365",       name: "quiz.lead_submitted" },
+  { category: "M365",       name: "customer.script_result" },
+];
+
+const EVENT_CATEGORIES = ["CRM", "Payments", "Scheduling", "M365"] as const;
+type EventCategory = (typeof EVENT_CATEGORIES)[number];
+
 interface WfRun {
   id: number;
   definitionId: number;
@@ -151,6 +176,9 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
   const [statusFilter, setStatusFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [triggerTypeFilter, setTriggerTypeFilter] = useState("");
+  const [eventCategoryFilter, setEventCategoryFilter] = useState<EventCategory | "">("");
+  const [eventNameFilter, setEventNameFilter] = useState("");
   const [offset, setOffset] = useState(0);
   const [systemExpanded, setSystemExpanded] = useState(false);
 
@@ -160,16 +188,30 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
 
   const limit = 30;
 
+  // Events for the currently-selected category
+  const categoryEvents = eventCategoryFilter
+    ? EVENT_CATALOG.filter(e => e.category === eventCategoryFilter)
+    : [];
+
   const params = new URLSearchParams();
   if (defIdFilter) params.set("definitionId", String(defIdFilter));
   if (statusFilter) params.set("status", statusFilter);
   if (fromDate) params.set("from", fromDate);
   if (toDate)   params.set("to",   toDate);
+  if (triggerTypeFilter) params.set("triggerType", triggerTypeFilter);
+  if (triggerTypeFilter === "event") {
+    if (eventNameFilter) {
+      params.set("triggerRef", eventNameFilter);
+    } else if (eventCategoryFilter) {
+      const names = EVENT_CATALOG.filter(e => e.category === eventCategoryFilter).map(e => e.name);
+      if (names.length > 0) params.set("triggerRefs", names.join(","));
+    }
+  }
   params.set("limit", String(limit));
   params.set("offset", String(offset));
 
   const { data, isLoading } = useQuery<{ runs: WfRun[]; total: number }>({
-    queryKey: ["wf-runs", defIdFilter, statusFilter, fromDate, toDate, offset],
+    queryKey: ["wf-runs", defIdFilter, statusFilter, fromDate, toDate, triggerTypeFilter, eventCategoryFilter, eventNameFilter, offset],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/runs?${params}`);
       if (!res.ok) throw new Error("Failed to load runs");
@@ -249,54 +291,131 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
         </div>
 
         {/* Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <select
-            value={defIdFilter}
-            onChange={e => { setDefIdFilter(Number(e.target.value)); setOffset(0); }}
-            className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-          >
-            <option value={0}>All Workflows</option>
-            {defs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          <select
-            value={statusFilter}
-            onChange={e => { setStatusFilter(e.target.value); setOffset(0); }}
-            className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-          >
-            <option value="">All Statuses</option>
-            <option value="completed">Completed</option>
-            <option value="running">Running</option>
-            <option value="failed">Failed</option>
-            <option value="pending">Pending</option>
-            <option value="cancelled">Cancelled</option>
-            <option value="awaiting_approval">Awaiting Approval</option>
-          </select>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-[#484F58]">From</span>
-            <input
-              type="date"
-              value={fromDate}
-              onChange={e => { setFromDate(e.target.value); setOffset(0); }}
-              className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-[#484F58]">To</span>
-            <input
-              type="date"
-              value={toDate}
-              onChange={e => { setToDate(e.target.value); setOffset(0); }}
-              className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
-            />
-          </div>
-          {(fromDate || toDate) && (
-            <button
-              onClick={() => { setFromDate(""); setToDate(""); setOffset(0); }}
-              className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+        <div className="space-y-2">
+          <div className="flex items-center gap-3 flex-wrap">
+            <select
+              value={defIdFilter}
+              onChange={e => { setDefIdFilter(Number(e.target.value)); setOffset(0); }}
+              className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
             >
-              Clear dates
-            </button>
-          )}
+              <option value={0}>All Workflows</option>
+              {defs.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={e => { setStatusFilter(e.target.value); setOffset(0); }}
+              className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+            >
+              <option value="">All Statuses</option>
+              <option value="completed">Completed</option>
+              <option value="running">Running</option>
+              <option value="failed">Failed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="awaiting_approval">Awaiting Approval</option>
+            </select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#484F58]">From</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={e => { setFromDate(e.target.value); setOffset(0); }}
+                className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#484F58]">To</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={e => { setToDate(e.target.value); setOffset(0); }}
+                className="bg-[#161B22] border border-[#30363D] rounded-lg px-2 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 [color-scheme:dark]"
+              />
+            </div>
+            {(fromDate || toDate) && (
+              <button
+                onClick={() => { setFromDate(""); setToDate(""); setOffset(0); }}
+                className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+              >
+                Clear dates
+              </button>
+            )}
+          </div>
+
+          {/* Trigger / event filter row */}
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-[#484F58]">Trigger</span>
+              <select
+                value={triggerTypeFilter}
+                onChange={e => {
+                  setTriggerTypeFilter(e.target.value);
+                  setEventCategoryFilter("");
+                  setEventNameFilter("");
+                  setOffset(0);
+                }}
+                className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              >
+                <option value="">All Triggers</option>
+                <option value="manual">🖱 Manual</option>
+                <option value="schedule">📅 Schedule</option>
+                <option value="webhook">🔗 Webhook</option>
+                <option value="event">📡 Event</option>
+              </select>
+            </div>
+
+            {triggerTypeFilter === "event" && (
+              <>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs text-[#484F58]">Category</span>
+                  <select
+                    value={eventCategoryFilter}
+                    onChange={e => {
+                      setEventCategoryFilter(e.target.value as EventCategory | "");
+                      setEventNameFilter("");
+                      setOffset(0);
+                    }}
+                    className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    <option value="">All Categories</option>
+                    {EVENT_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {eventCategoryFilter && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[#484F58]">Event</span>
+                    <select
+                      value={eventNameFilter}
+                      onChange={e => { setEventNameFilter(e.target.value); setOffset(0); }}
+                      className="bg-[#161B22] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    >
+                      <option value="">All {eventCategoryFilter} Events</option>
+                      {categoryEvents.map(ev => (
+                        <option key={ev.name} value={ev.name}>{ev.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </>
+            )}
+
+            {(triggerTypeFilter || eventCategoryFilter || eventNameFilter) && (
+              <button
+                onClick={() => {
+                  setTriggerTypeFilter("");
+                  setEventCategoryFilter("");
+                  setEventNameFilter("");
+                  setOffset(0);
+                }}
+                className="text-xs text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+              >
+                Clear trigger
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Table header */}
