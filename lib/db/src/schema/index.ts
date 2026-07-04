@@ -1,4 +1,5 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
 export interface WizardOption {
@@ -1482,7 +1483,16 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Partial unique indexes for scoped SOW upsert — two are needed because NULL != NULL
+  // in a standard unique constraint, so project_id IS NULL requires its own index.
+  uniqueIndex("igd_scoped_sow_with_project_uidx")
+    .on(t.customerId, t.projectId, t.docType)
+    .where(sql`doc_type = 'scoped_sow' AND project_id IS NOT NULL`),
+  uniqueIndex("igd_scoped_sow_no_project_uidx")
+    .on(t.customerId, t.docType)
+    .where(sql`doc_type = 'scoped_sow' AND project_id IS NULL`),
+]);
 
 export type InsertInsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferInsert;
 export type InsightsGeneratedDocument = typeof insightsGeneratedDocumentsTable.$inferSelect;
