@@ -748,24 +748,10 @@ export default function PresentationFlow({
   const paymentStepIndex     = steps.findIndex(s => s.kind === "payment");
   const confirmationStepIndex = steps.findIndex(s => s.kind === "confirmation");
 
-  // Auto-advance: when landing on the payment step while already paid via a
-  // forward/initial path, skip to the contract step (or confirmation if signed).
-  // Intentionally skipped when the user navigates *backward* to the payment step
-  // so they can see "Payment Confirmed" + the CTA without being ejected again.
-  useEffect(() => {
-    if (currentStep?.kind !== "payment" || !isPaid) return;
-    if (directionRef.current === "back") return;
-    const target = data.signedAt && confirmationStepIndex >= 0
-      ? confirmationStepIndex
-      : contractStepIndex >= 0
-      ? contractStepIndex
-      : -1;
-    if (target < 0) return;
-    directionRef.current = "forward";
-    setMaxVisitedStep(m => Math.max(m, target));
-    applyStepChange(target);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepIndex, isPaid]);
+  // Note: no auto-advance on the payment step. When already paid, PaymentOptionsPanel
+  // renders "Payment Confirmed!" with a "Continue to Agreement →" button (onContinue).
+  // Auto-advancing was removed because it also fired on deliberate forward navigation
+  // through a completed presentation, skipping the payment step unexpectedly.
 
   // Flush on unmount (e.g. user closes via browser back / ESC) for the current doc step
   // Also cancel any pending slide transition timer
