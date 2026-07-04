@@ -1290,6 +1290,22 @@ Risk/warning: use #E8760A border instead
 ];
 
 
+/**
+ * Look up the hardcoded default for a prompt key without touching the DB.
+ * Used by the by-key API endpoint to pre-fill the dialog when no DB row exists.
+ */
+export function getDefaultPromptMeta(key: string): {
+  name: string;
+  description: string;
+  category: string;
+  featureArea: string;
+  featureRoute: string;
+  model: string | null | undefined;
+  body: string;
+} | undefined {
+  return SEEDS.find((s) => s.key === key);
+}
+
 export async function seedAiPrompts(): Promise<void> {
   try {
     const rows = SEEDS.map((s) => ({
