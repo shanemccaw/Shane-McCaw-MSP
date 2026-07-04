@@ -231,7 +231,7 @@ function Router() {
         <RequireAuth role="client"><RequireEngagement><PortalM365Profile /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/automation-setup">
-        <RequireAuth role="client"><RequireEngagement><PortalAppRegistration /></RequireEngagement></RequireAuth>
+        <RequireAuth role="client"><PortalAppRegistration /></RequireAuth>
       </Route>
       <Route path="/portal/security">
         <RequireAuth role="client"><RequireEngagement><PortalSecurity /></RequireEngagement></RequireAuth>
