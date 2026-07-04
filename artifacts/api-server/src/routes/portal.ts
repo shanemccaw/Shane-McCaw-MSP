@@ -2685,7 +2685,8 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
 
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
     if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
-    if (doc.status !== "delivered") { res.status(403).json({ error: "Document not yet delivered" }); return; }
+    // Allow download for approved docs shown in the presentation portal, not just formally "delivered" ones
+    if (!["approved", "delivered"].includes(doc.status ?? "")) { res.status(403).json({ error: "Document not available for download" }); return; }
 
     // Strip staged-for-review banner (same as /view), then build full HTML doc
     const cleanHtml = stripStagedForReviewBanner(doc.htmlContent ?? "");
