@@ -1550,7 +1550,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
 Client: {{clientName}}
 Deliverable title: {{title}}
 Date: {{date}}
-ENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use this as the baseline for all delivery date calculations)
+ENGAGEMENT START DATE: {{engagementStart}} (the first Monday that is at least one full week after the document generation date — use this as the baseline for all phase delivery date calculations)
 
 EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
 {{existingDocs}}

@@ -27,17 +27,32 @@ export const SowPricingLineSchema = z.object({
 export type SowPricingLine = z.infer<typeof SowPricingLineSchema>;
 
 /**
- * Returns the next Business Monday strictly after the given date.
- * If the given date is itself a Monday, the FOLLOWING Monday (7 days later) is returned.
- * This is used to compute the engagement start date for SOW delivery schedules.
+ * Returns the first Monday that falls at least one full calendar week (7 days)
+ * after the given reference date.  This gives the client adequate preparation
+ * time before the engagement begins.
+ *
+ * Algorithm:
+ *   1. Advance 7 days from the reference date to enforce the one-week minimum.
+ *   2. If that landing day is already a Monday, use it.
+ *   3. Otherwise, advance forward to the next Monday.
+ *
+ * Examples (reference → result):
+ *   Saturday  Jul  4 → Saturday  Jul 11 → Monday Jul 13
+ *   Monday    Jul  6 → Monday    Jul 13 → Monday Jul 13  (already Monday)
+ *   Tuesday   Jul  7 → Tuesday   Jul 14 → Monday Jul 20
+ *   Sunday    Jul  5 → Sunday    Jul 12 → Monday Jul 13
  */
 export function nextBusinessMonday(from: Date = new Date()): Date {
   const d = new Date(from);
   d.setHours(0, 0, 0, 0);
-  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  // If today is Monday add 7; otherwise advance to the next calendar Monday
-  const daysUntilMonday = dayOfWeek === 1 ? 7 : (8 - dayOfWeek) % 7;
-  d.setDate(d.getDate() + daysUntilMonday);
+  // Step 1 — skip at least one full week
+  d.setDate(d.getDate() + 7);
+  // Step 2 — advance to the nearest Monday on or after the landed date
+  const dow = d.getDay(); // 0=Sun, 1=Mon … 6=Sat
+  if (dow !== 1) {
+    // (8 - dow) % 7 gives days until next Monday; handles Sun (0) → 1 day, Sat (6) → 2 days, etc.
+    d.setDate(d.getDate() + ((8 - dow) % 7));
+  }
   return d;
 }
 
