@@ -1132,7 +1132,7 @@ export default function FullScreenWrapper() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => navigate("/portal/automation-setup")}
+                          onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/onboarding/wizard"); }}
                           className="w-full rounded-xl bg-[#0078D4] hover:bg-[#006CBF] text-white text-sm font-semibold py-2.5 transition-colors"
                         >
                           Connect Azure Tenant →
@@ -1540,7 +1540,7 @@ export default function FullScreenWrapper() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => navigate("/portal/automation-setup")}
+                          onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/onboarding/wizard"); }}
                           className="w-full rounded-xl bg-[#0078D4] hover:bg-[#006CBF] text-white text-sm font-semibold py-2.5 transition-colors"
                         >
                           Connect Azure Tenant →
