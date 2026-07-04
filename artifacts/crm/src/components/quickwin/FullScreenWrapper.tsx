@@ -1185,13 +1185,6 @@ export default function FullScreenWrapper() {
                             </>
                           )}
                         </button>
-                        <button
-                          onClick={() => { dispatch({ type: "EXIT" }); navigate("/portal/services"); }}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0A2540] text-white font-bold text-sm hover:bg-[#0A2540]/90 active:scale-[0.98]"
-                          style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
-                        >
-                          Purchase Full Plan
-                        </button>
                       </div>
                     </div>
                   )}
