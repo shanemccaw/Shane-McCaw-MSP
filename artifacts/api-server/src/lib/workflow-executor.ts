@@ -2249,22 +2249,49 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         const fnhPrompt = fnhCustomPrompt || DEFAULT_NEWS_PROMPT;
-        const fnhAiInput = `${fnhPrompt}\n\nHEADLINES (${fnhHeadlines.length} stories):\n${JSON.stringify(fnhHeadlines, null, 2)}`;
+        // Send slim headline data (title + source + url + publishedAt only) to
+        // keep the token count under control — descriptions add bulk without
+        // improving topic selection.
+        const fnhSlimHeadlines = fnhHeadlines.map(h => ({
+          title: h.title,
+          source: h.source,
+          url: h.url,
+          publishedAt: h.publishedAt,
+        }));
+        const fnhAiInput = `${fnhPrompt}\n\nHEADLINES (${fnhSlimHeadlines.length} stories):\n${JSON.stringify(fnhSlimHeadlines, null, 2)}`;
 
         const fnhAiResponse = await anthropic.messages.create({
           model: "claude-haiku-4-5",
-          max_tokens: 1024,
+          max_tokens: 2048,
+          system: "You must respond with a single JSON object only — no prose, no markdown fences, no explanation before or after. Start your response with { and end with }.",
           messages: [{ role: "user", content: fnhAiInput }],
         });
 
         const fnhAiText = fnhAiResponse.content.find(b => b.type === "text")?.text ?? "";
         const fnhParsed = extractJsonFromAiText(fnhAiText) ?? {};
 
-        const fnhTopic      = String(fnhParsed.topic      ?? "").trim();
-        const fnhContext    = String(fnhParsed.context    ?? "").trim();
+        // If the AI failed to return parseable JSON, log it so it's visible in
+        // the run logs and downstream nodes can fall back gracefully.
+        if (!fnhAiText || Object.keys(fnhParsed).length === 0) {
+          logger.warn({ runId, nodeId, rawResponse: fnhAiText.slice(0, 500) },
+            "fetch_news_headlines: AI did not return valid JSON — fields will be derived from first headline");
+        }
+
+        const fnhRawTopic   = String(fnhParsed.topic      ?? "").trim();
+        const fnhRawContext = String(fnhParsed.context    ?? "").trim();
         const fnhArticle    = String(fnhParsed.articleSuggestion ?? "").trim();
         const fnhScore      = Math.min(100, Math.max(0, Number(fnhParsed.hotScore) || 0));
         const fnhSector     = String(fnhParsed.targetSector ?? "Enterprise").trim();
+
+        // Fallback: if AI parsing produced empty topic/context (e.g. JSON was
+        // truncated or Haiku returned prose), derive from the first headline so
+        // downstream Ask AI nodes always receive meaningful content.
+        const fnhFirstHeadline = fnhHeadlines[0];
+        const fnhTopic   = fnhRawTopic   || (fnhFirstHeadline ? fnhFirstHeadline.title.slice(0, 100) : "Microsoft 365 update");
+        const fnhContext = fnhRawContext  || (fnhFirstHeadline
+          ? `${fnhFirstHeadline.title} — ${fnhFirstHeadline.description || fnhFirstHeadline.url}`
+          : "");
+
         const fnhIsHot      = fnhScore > fnhThreshold;
 
         let fnhBrief: Record<string, unknown> | null = null;
@@ -3745,6 +3772,19 @@ export async function executeWorkflowRun(
           .set({ branchPath: branchPath as unknown as string[] })
           .where(eq(wfRunsTable.id, runId));
 
+        continue;
+      }
+
+      // fetch_news_headlines: the "hot" edge fires only when isHot=true.
+      // All other outgoing edges (e.g. an unconditional "done" edge) always fire.
+      // Without this, every downstream campaign node runs even when hotScore=0
+      // and newsTopic is empty, producing confused AI responses.
+      if (node.type === "fetch_news_headlines") {
+        const isHot = Boolean(output.isHot);
+        for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
+          const active = e.sourceHandle === "hot" ? isHot : true;
+          resolveEdge(e.target, active);
+        }
         continue;
       }
 
