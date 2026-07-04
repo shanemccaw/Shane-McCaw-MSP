@@ -59,8 +59,8 @@ export interface FlowCanvasProps {
   onSelectNode: (id: string | null) => void;
   onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
   onDuplicateNode: (id: string) => void;
-  /** Category derived from the first event trigger (e.g. "CRM", "Payments"). */
-  triggerCategory?: string | null;
+  /** Distinct categories derived from all event triggers (e.g. ["CRM", "Payments"]). */
+  triggerCategories?: string[];
 }
 
 // ── Node Picker Popover ────────────────────────────────────────────────────────
@@ -450,8 +450,12 @@ function StepCard({
           <p className="text-xs font-semibold text-[#E6EDF3] truncate">{label}</p>
           <p className="text-[10px] text-[#7D8590] truncate">{step.id}</p>
         </div>
-        {step.nodeType === "start" && ctx.triggerCategory && (
-          <CategoryBadge category={ctx.triggerCategory} />
+        {step.nodeType === "start" && ctx.triggerCategories.length > 0 && (
+          <span className="flex items-center gap-1 flex-wrap">
+            {ctx.triggerCategories.map(cat => (
+              <CategoryBadge key={cat} category={cat} />
+            ))}
+          </span>
         )}
 
         {/* Collapse/expand toggle for container nodes */}
@@ -1013,8 +1017,8 @@ interface FlowCanvasCtx {
   onDragEnd: () => void;
   /** Drop a dragged node into the first position of a specific container branch. */
   onDropIntoBranch: (containerId: string, branchKey: string) => void;
-  /** Category of the first event trigger (e.g. "CRM", "Payments"). Null when unknown. */
-  triggerCategory: string | null;
+  /** Distinct categories from all event triggers (e.g. ["CRM", "Payments"]). Empty when unknown. */
+  triggerCategories: string[];
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -1028,7 +1032,7 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   onDrop: () => {},
   onDragEnd: () => {},
   onDropIntoBranch: () => {},
-  triggerCategory: null,
+  triggerCategories: [],
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -1045,7 +1049,7 @@ export default function FlowCanvas({
   onSelectNode,
   onGraphChange,
   onDuplicateNode,
-  triggerCategory = null,
+  triggerCategories = [],
 }: FlowCanvasProps) {
   const tree = React.useMemo(() => graphToTree(nodes, edges), [nodes, edges]);
 
@@ -1106,8 +1110,8 @@ export default function FlowCanvas({
     onDrop: handleDrop,
     onDragEnd: handleDragEnd,
     onDropIntoBranch: handleDropIntoBranch,
-    triggerCategory,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, triggerCategory]);
+    triggerCategories,
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, triggerCategories]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);

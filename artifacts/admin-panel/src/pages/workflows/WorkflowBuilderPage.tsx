@@ -6530,13 +6530,17 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
     },
   });
 
-  // Derive the category shown on the Start node badge from the first event trigger.
-  const canvasTriggerCategory = (() => {
-    const firstEvent = pageTriggers.find(t => t.type === "event");
-    if (!firstEvent) return null;
-    const evName = (firstEvent.config as Record<string, unknown>).eventName as string | undefined;
-    if (!evName) return null;
-    return KNOWN_EVENTS.find(e => e.name === evName)?.category ?? null;
+  // Derive the distinct categories shown on the Start node badges from all event triggers.
+  const canvasTriggerCategories = (() => {
+    const cats: string[] = [];
+    for (const t of pageTriggers) {
+      if (t.type !== "event") continue;
+      const evName = (t.config as Record<string, unknown>).eventName as string | undefined;
+      if (!evName) continue;
+      const cat = KNOWN_EVENTS.find(e => e.name === evName)?.category;
+      if (cat && !cats.includes(cat)) cats.push(cat);
+    }
+    return cats;
   })();
 
   const { data: versions = [], isFetched: versionsFetched } = useQuery({
@@ -7250,7 +7254,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
           onSelectNode={id => { setSelectedNodeId(id); }}
           onGraphChange={handleGraphChange}
           onDuplicateNode={duplicateNode}
-          triggerCategory={canvasTriggerCategory}
+          triggerCategories={canvasTriggerCategories}
         />
 
         {/* Node config panel */}
