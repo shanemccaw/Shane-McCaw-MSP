@@ -34,6 +34,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 };
 
 type RiskLevel = "critical" | "high" | "medium" | "low";
+type ThemeKey = RiskLevel | "sow";
 
 interface DocMeta {
   riskLevel: RiskLevel;
@@ -104,20 +105,20 @@ const DOC_TYPE_META: Record<string, DocMeta> = {
   },
   consolidated_sow: {
     riskLevel: "medium",
-    covers: ["Full scope of engagement and deliverables", "Timeline and phased pricing breakdown", "Acceptance criteria per phase"],
-    headline: "Your engagement roadmap — scope, phases, and investment at a glance.",
+    covers: ["Every phase, deliverable, and acceptance criterion defined", "Investment schedule and payment structure", "Timeline and ownership for each workstream"],
+    headline: "Your personalised engagement roadmap — every phase, deliverable, and investment commitment in one place.",
   },
   sow: {
     riskLevel: "medium",
-    covers: ["Scope of work and engagement terms", "Deliverables and timeline", "Investment and payment structure"],
-    headline: "Scope, deliverables, and investment for your engagement.",
+    covers: ["Full scope of work and engagement terms", "Deliverables, timeline, and milestones", "Investment structure and payment schedule"],
+    headline: "Your full engagement roadmap — phased deliverables, investment schedule, and acceptance criteria defined.",
   },
 };
 
 
 // ─── Visual theme per risk level ──────────────────────────────────────────────
 
-const PANEL_THEME: Record<RiskLevel, {
+const PANEL_THEME: Record<ThemeKey, {
   gradient: string;
   badgeBg: string; badgeText: string; dot: string; badgeLabel: string;
   cardBg: string; cardBorder: string; cardValueColor: string;
@@ -147,6 +148,12 @@ const PANEL_THEME: Record<RiskLevel, {
     cardBg: "bg-white/10", cardBorder: "border-white/20", cardValueColor: "text-white",
     tenantTextColor: "text-green-200/80", headlineColor: "text-white", coversColor: "text-white/70",
   },
+  sow: {
+    gradient: "bg-gradient-to-br from-[#0A2540] via-[#003f7a] to-[#00B4D8]/70",
+    badgeBg: "bg-[#0078D4]/30", badgeText: "text-[#00B4D8]", dot: "bg-[#00B4D8]", badgeLabel: "Consulting Engagement",
+    cardBg: "bg-white/10", cardBorder: "border-white/20", cardValueColor: "text-white",
+    tenantTextColor: "text-[#00B4D8]/80", headlineColor: "text-white", coversColor: "text-white/70",
+  },
 };
 
 const STAT_SEVERITY_ACCENT: Record<StatSeverity, string> = {
@@ -155,13 +162,16 @@ const STAT_SEVERITY_ACCENT: Record<StatSeverity, string> = {
   info:     "border-t-blue-400",
 };
 
+const SOW_STAT_ACCENT = "border-t-[#00B4D8]";
+
 // ─── Compact fallback bar (SOW / deployment plan / docs with < 2 stat cards) ──
 
-const COMPACT_THEME: Record<RiskLevel, { bg: string; border: string; text: string; dot: string; label: string }> = {
+const COMPACT_THEME: Record<ThemeKey, { bg: string; border: string; text: string; dot: string; label: string }> = {
   critical: { bg: "bg-red-50", border: "border-red-200", text: "text-red-700", dot: "bg-red-500", label: "Critical" },
   high:     { bg: "bg-orange-50", border: "border-orange-200", text: "text-orange-700", dot: "bg-orange-500", label: "High" },
   medium:   { bg: "bg-yellow-50", border: "border-yellow-200", text: "text-yellow-700", dot: "bg-yellow-400", label: "Medium" },
   low:      { bg: "bg-green-50", border: "border-green-200", text: "text-green-700", dot: "bg-green-500", label: "Low" },
+  sow:      { bg: "bg-blue-50", border: "border-[#0078D4]/30", text: "text-[#0078D4]", dot: "bg-[#0078D4]", label: "Consulting Engagement" },
 };
 
 // ─── Document iframe helpers ───────────────────────────────────────────────────
@@ -210,6 +220,10 @@ function formatDate(iso: string | null): string {
   } catch { return ""; }
 }
 
+function isSowDocType(docType: string): boolean {
+  return docType === "consolidated_sow" || docType === "sow";
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
@@ -247,9 +261,12 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
   const typeLabel = DOC_TYPE_LABELS[doc.docType] ?? doc.docType;
   const categoryLabel = doc.category === "consulting" ? "Consulting Deliverable" : "Assessment Report";
   const meta = DOC_TYPE_META[doc.docType] ?? null;
-  const riskLevel: RiskLevel = meta?.riskLevel ?? "medium";
-  const theme = PANEL_THEME[riskLevel];
-  const compactTheme = COMPACT_THEME[riskLevel];
+
+  // SOW doc types bypass the risk-level → theme lookup and use the dedicated SOW theme
+  const isSow = isSowDocType(doc.docType);
+  const themeKey: ThemeKey = isSow ? "sow" : (meta?.riskLevel ?? "medium");
+  const theme = PANEL_THEME[themeKey];
+  const compactTheme = COMPACT_THEME[themeKey];
   const formattedDate = formatDate(doc.createdAt);
 
   // OMG panel requires at least 2 stat cards; otherwise fall back to compact bar
@@ -260,6 +277,14 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
     : statCards.length === 3
     ? "grid-cols-3"
     : "grid-cols-2 sm:grid-cols-4";
+
+  // SOW stat cards always use Teal accent tops regardless of extracted severity
+  function statAccent(card: StatCard): string {
+    return isSow ? SOW_STAT_ACCENT : STAT_SEVERITY_ACCENT[card.severity];
+  }
+
+  // Tenant tag line varies by doc type
+  const tenantTagLine = isSow ? "Personalised to your selected scope" : "Generated from your tenant";
 
   return (
     <>
@@ -305,7 +330,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
             className={`flex-shrink-0 mb-3 rounded-xl overflow-hidden shadow-lg ${theme.gradient}`}
             style={{ animation: "omgPanelIn 0.35s ease-out" }}
           >
-            {/* Top strip: risk badge + tenant tag */}
+            {/* Top strip: badge + tenant tag */}
             <div className="flex items-center justify-between gap-3 px-4 pt-3 pb-2 flex-wrap gap-y-1.5">
               <div className={`flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-bold ${theme.badgeBg} ${theme.badgeText} border-white/20`}>
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${theme.dot}`} />
@@ -313,9 +338,13 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
               </div>
               <div className={`flex items-center gap-1.5 text-xs ${theme.tenantTextColor}`}>
                 <svg className="w-3.5 h-3.5 flex-shrink-0 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  {isSow ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  )}
                 </svg>
-                <span className="font-semibold text-white/90">Generated from your tenant</span>
+                <span className="font-semibold text-white/90">{tenantTagLine}</span>
                 {formattedDate && <span>· {formattedDate}</span>}
               </div>
             </div>
@@ -331,7 +360,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
                 {statCards.map((card, i) => (
                   <div
                     key={i}
-                    className={`${theme.cardBg} border-2 ${theme.cardBorder} border-t-4 ${STAT_SEVERITY_ACCENT[card.severity]} rounded-xl px-3 py-3 flex flex-col`}
+                    className={`${theme.cardBg} border-2 ${theme.cardBorder} border-t-4 ${statAccent(card)} rounded-xl px-3 py-3 flex flex-col`}
                   >
                     <span className={`text-3xl sm:text-4xl font-black tabular-nums leading-none tracking-tight ${theme.cardValueColor}`}>
                       {card.value}
@@ -358,19 +387,23 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
 
         ) : (
           /* ── Compact fallback bar (< 2 stats found, SOW, deployment plan) ── */
-          <div className="flex-shrink-0 mb-3 rounded-xl border border-border bg-slate-50 overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-border flex-wrap gap-y-1.5">
+          <div className={`flex-shrink-0 mb-3 rounded-xl border overflow-hidden ${isSow ? "bg-blue-50 border-[#0078D4]/20" : "bg-slate-50 border-border"}`}>
+            <div className={`flex items-center justify-between gap-3 px-4 py-2.5 border-b flex-wrap gap-y-1.5 ${isSow ? "border-[#0078D4]/15" : "border-border"}`}>
               {meta ? (
                 <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs font-semibold ${compactTheme.bg} ${compactTheme.border} ${compactTheme.text}`}>
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${compactTheme.dot}`} />
-                  Risk Level: {compactTheme.label}
+                  {isSow ? compactTheme.label : `Risk Level: ${compactTheme.label}`}
                 </div>
               ) : <span />}
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  {isSow ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                  )}
                 </svg>
-                <span className="font-medium text-[#0078D4]">Generated from your tenant</span>
+                <span className="font-medium text-[#0078D4]">{tenantTagLine}</span>
                 {formattedDate && <span className="text-muted-foreground">· {formattedDate}</span>}
               </div>
             </div>
@@ -380,7 +413,7 @@ export default function DocumentPanel({ doc, onReady }: DocumentPanelProps) {
                 <div className="flex flex-wrap gap-x-5 gap-y-1.5">
                   {meta.covers.map((c, i) => (
                     <span key={i} className="flex items-center gap-1.5 text-xs text-slate-700">
-                      <span className="text-[#0078D4] font-bold">•</span>{c}
+                      <span className={`font-bold ${isSow ? "text-[#00B4D8]" : "text-[#0078D4]"}`}>•</span>{c}
                     </span>
                   ))}
                 </div>
