@@ -20,7 +20,7 @@ interface SowSelectorPanelProps {
 }
 
 function formatCurrency(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
 }
 
 export default function SowSelectorPanel({
@@ -37,31 +37,38 @@ export default function SowSelectorPanel({
     const raf = requestAnimationFrame(() => { onReady?.(); });
     return () => cancelAnimationFrame(raf);
   }, [onReady]);
+
   const selectedPhases = phases.filter(p => p.selected);
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0);
+  const displayTotal = readOnly ? totalPrice : (selectedTotal || totalPrice);
+
+  const hasScopeReduction = phases.length > 0 && selectedPhases.length < phases.length;
+  const showScoped = !!scopedSowHtml && hasScopeReduction;
+  const activeHtml = showScoped ? scopedSowHtml : originalSowHtml;
+  const docLabel = showScoped ? "Scoped Statement of Work" : "Full Statement of Work";
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      {/* Phase selector section */}
-      <div className="flex flex-col flex-shrink-0">
+    <div className="flex h-full min-h-0">
+
+      {/* LEFT: Phase selector */}
+      <div className="w-72 flex-shrink-0 border-r border-border bg-white flex flex-col min-h-0">
         {/* Header */}
-        <div className="mb-5 flex-shrink-0">
-          <h2 className="text-xl font-extrabold text-[#0A2540]">Select Your Scope</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+        <div className="px-4 pt-4 pb-3 flex-shrink-0">
+          <h2 className="text-sm font-extrabold text-[#0A2540]">Select Your Scope</h2>
+          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
             {readOnly
-              ? "Review the phases included in this engagement."
-              : "Choose the phases you'd like to include. Deselect any you want to defer."
-            }
+              ? "Phases included in this engagement."
+              : "Deselect any phases you'd like to defer."}
           </p>
         </div>
 
-        {/* Phase list */}
-        <div className="space-y-3 mb-4">
+        {/* Scrollable phase list */}
+        <div className="flex-1 overflow-y-auto px-3 pb-3 space-y-2 min-h-0">
           {phases.map((phase) => (
             <div
               key={phase.id}
               onClick={() => !readOnly && !saving && onTogglePhase(phase.id)}
-              className={`relative rounded-xl border-2 p-4 transition-all ${
+              className={`rounded-xl border-2 p-3 transition-all select-none ${
                 readOnly
                   ? "cursor-default"
                   : "cursor-pointer hover:border-[#0078D4]/60"
@@ -71,31 +78,33 @@ export default function SowSelectorPanel({
                   : "border-border bg-white"
               }`}
             >
-              <div className="flex items-start gap-4">
+              <div className="flex items-start gap-2.5">
                 {!readOnly && (
-                  <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                  <div className={`mt-0.5 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
                     phase.selected
                       ? "border-[#0078D4] bg-[#0078D4]"
                       : "border-gray-300 bg-white"
                   }`}>
                     {phase.selected && (
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     )}
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <h3 className={`text-sm font-bold ${phase.selected ? "text-[#0A2540]" : "text-gray-500"}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className={`text-xs font-bold leading-snug ${phase.selected ? "text-[#0A2540]" : "text-gray-400"}`}>
                       {phase.title}
-                    </h3>
-                    <span className={`text-sm font-extrabold whitespace-nowrap ${phase.selected ? "text-[#0078D4]" : "text-gray-400"}`}>
+                    </p>
+                    <span className={`text-xs font-extrabold whitespace-nowrap flex-shrink-0 ${
+                      phase.selected ? "text-[#0078D4]" : "text-gray-300"
+                    }`}>
                       {formatCurrency(phase.price)}
                     </span>
                   </div>
                   {phase.description && (
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    <p className={`text-xs mt-1 leading-relaxed ${phase.selected ? "text-muted-foreground" : "text-gray-300"}`}>
                       {phase.description}
                     </p>
                   )}
@@ -105,82 +114,76 @@ export default function SowSelectorPanel({
           ))}
         </div>
 
-        {/* Total */}
-        <div className="flex-shrink-0 bg-white rounded-xl border-2 border-[#0078D4]/30 p-4 mb-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                {readOnly ? "Total Investment" : "Selected Total"}
-              </p>
-              <p className="text-2xl font-extrabold text-[#0A2540] mt-0.5">
-                {formatCurrency(readOnly ? totalPrice : selectedTotal)}
-              </p>
-            </div>
+        {/* Pinned total footer */}
+        <div className="flex-shrink-0 border-t border-border px-4 py-3">
+          <div className="flex items-center justify-between mb-0.5">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              {readOnly ? "Total Investment" : hasScopeReduction ? "Selected Total" : "Total Investment"}
+            </p>
             {!readOnly && (
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">{selectedPhases.length} of {phases.length} phases selected</p>
-                {saving && (
-                  <div className="flex items-center gap-1 text-xs text-[#0078D4] mt-1 justify-end">
-                    <div className="w-3 h-3 border border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
-                    Saving…
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-muted-foreground">
+                {selectedPhases.length}/{phases.length} phases
+              </p>
             )}
           </div>
+          <p className="text-2xl font-extrabold text-[#0A2540]">{formatCurrency(displayTotal)}</p>
+          {saving && (
+            <div className="flex items-center gap-1.5 text-xs text-[#0078D4] mt-1">
+              <div className="w-3 h-3 border border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
+              Saving…
+            </div>
+          )}
+          {showScoped && !readOnly && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold mt-1.5">
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              Scoped SOW ready
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Original SOW document — shown whenever the original HTML is available */}
-      {originalSowHtml && (
-        <div className="flex-shrink-0 flex flex-col gap-0 mt-2">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex-1 h-px bg-slate-200" />
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-200">
-              <svg className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="text-xs font-bold text-slate-500 whitespace-nowrap">Full Statement of Work</span>
+      {/* RIGHT: Document viewer */}
+      <div className="flex-1 flex flex-col min-h-0">
+        {/* Document label strip */}
+        {activeHtml && (
+          <div className={`flex-shrink-0 flex items-center justify-between px-4 py-2 border-b ${
+            showScoped
+              ? "bg-[#EBF5FF] border-[#0078D4]/20"
+              : "bg-slate-50 border-border"
+          }`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-1.5 h-1.5 rounded-full ${showScoped ? "bg-[#0078D4]" : "bg-slate-400"}`} />
+              <span className={`text-xs font-bold uppercase tracking-widest ${
+                showScoped ? "text-[#0078D4]" : "text-slate-500"
+              }`}>
+                {docLabel}
+              </span>
             </div>
-            <div className="flex-1 h-px bg-slate-200" />
+            <span className={`text-xs font-bold ${showScoped ? "text-[#0078D4]" : "text-slate-500"}`}>
+              {formatCurrency(displayTotal)}
+            </span>
           </div>
-          <div className="rounded-xl border border-slate-200 overflow-hidden shadow-sm" style={{ height: "480px" }}>
+        )}
+
+        {/* SOW iframe — fills remaining height */}
+        {activeHtml ? (
+          <div className="flex-1 min-h-0">
             <iframe
-              srcDoc={originalSowHtml}
-              title="Full Statement of Work"
+              key={showScoped ? "scoped" : "original"}
+              srcDoc={activeHtml}
+              title={docLabel}
               className="w-full h-full border-0"
               sandbox="allow-same-origin"
             />
           </div>
-        </div>
-      )}
-
-      {/* Scoped SOW document — shown below the original after regeneration */}
-      {scopedSowHtml && (
-        <div className="flex-shrink-0 flex flex-col gap-0 mt-4">
-          {/* Divider / label */}
-          <div className="flex items-center gap-3 mb-3">
-            <div className="flex-1 h-px bg-[#0078D4]/20" />
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/25">
-              <svg className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              <span className="text-xs font-bold text-[#0078D4] whitespace-nowrap">Scoped Statement of Work — your current selection</span>
-            </div>
-            <div className="flex-1 h-px bg-[#0078D4]/20" />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+            No document available
           </div>
-
-          {/* Scoped SOW iframe */}
-          <div className="rounded-xl border border-[#0078D4]/30 overflow-hidden shadow-sm" style={{ height: "480px" }}>
-            <iframe
-              srcDoc={scopedSowHtml}
-              title="Scoped Statement of Work"
-              className="w-full h-full border-0"
-              sandbox="allow-same-origin"
-            />
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
