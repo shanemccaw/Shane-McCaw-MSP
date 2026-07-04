@@ -831,6 +831,7 @@ async function executeNode(
   runId: number,
   dryRun = false,
   inputValues: Record<string, string | string[]> = {},
+  definitionId?: number,
 ): Promise<{
   output: Record<string, unknown>;
   nextPayload: Record<string, unknown>;
@@ -1137,6 +1138,23 @@ async function executeNode(
 
             logger.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
             output = { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
+          }
+        } else if (actionType === "emit_event") {
+          const emitEventType = interp(node.data.eventType as string | undefined, payload)
+            ?? interp(node.data.eventName as string | undefined, payload);
+          if (!emitEventType) {
+            nodeError = true;
+            output = { error: "emit_event requires eventType or eventName" };
+          } else {
+            const rawExtraPayload = node.data.extraPayload as string | undefined;
+            let extraPayload: Record<string, unknown> = {};
+            if (rawExtraPayload?.trim()) {
+              try { extraPayload = JSON.parse(interp(rawExtraPayload, payload) ?? "{}") as Record<string, unknown>; }
+              catch { /* ignore bad JSON */ }
+            }
+            await emitWorkflowEvent(emitEventType, { ...payload, ...extraPayload }, definitionId);
+            output = { emitted: true, eventType: emitEventType };
+            logger.info({ runId, definitionId, eventType: emitEventType }, "wf-executor: emit_event node fired");
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
@@ -3905,6 +3923,7 @@ async function executeItemSubgraph(
   runId: number,
   dryRun: boolean,
   inputValues: Record<string, string | string[]>,
+  definitionId?: number,
 ): Promise<{
   payload: Record<string, unknown>;
   lastOutput: Record<string, unknown>;
@@ -3962,7 +3981,7 @@ async function executeItemSubgraph(
     }
 
     const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
-      await executeNode(node, currentPayload, runId, dryRun, inputValues);
+      await executeNode(node, currentPayload, runId, dryRun, inputValues, definitionId);
     currentPayload = nextPayload;
     lastOutput = output;
 
@@ -4097,7 +4116,7 @@ export async function executeWorkflowRun(
       // ── Execute ──
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {});
+      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId);
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
@@ -4229,7 +4248,7 @@ export async function executeWorkflowRun(
 
           const iterResult = await executeItemSubgraph(
             graph, itemSubgraphIds, startIds, iterPayload,
-            runId, opts.dryRun ?? false, opts.inputValues ?? {},
+            runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId,
           );
           branchPath.push(...startIds.map(id => `${id}[${i}]`));
 
@@ -4449,7 +4468,7 @@ export async function resumeWorkflowRun(
 
       branchPath.push(nodeId);
 
-      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, false, {});
+      const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle, pauseForApproval } = await executeNode(node, payload, runId, false, {}, run.definitionId);
       payload = nextPayload;
 
       await db.update(wfRunsTable).set({ branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
@@ -4662,7 +4681,11 @@ export async function fireStartupTriggers(): Promise<void> {
 export async function emitWorkflowEvent(
   eventType: string,
   payload: Record<string, unknown> = {},
+  sourceDefinitionId?: number,
 ): Promise<void> {
+  // Honor _sourceDefinitionId from payload when no explicit param is provided
+  // (supports callers that thread source via payload metadata)
+  const srcDefId = sourceDefinitionId ?? (payload._sourceDefinitionId as number | undefined);
   try {
     const triggers = await db.select().from(wfTriggersTable).where(and(
       eq(wfTriggersTable.type, "event"),
@@ -4673,7 +4696,14 @@ export async function emitWorkflowEvent(
       // TriggersPage stores eventName; also accept eventType for forward-compat
       const filterName = (cfg.eventName ?? cfg.eventType) as string | undefined;
       if (!filterName || filterName === eventType) {
-        await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, { ...payload, _eventType: eventType });
+        if (srcDefId != null && trigger.definitionId === srcDefId) {
+          logger.info({ definitionId: srcDefId, eventType }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
+          continue;
+        }
+        // Inject _sourceDefinitionId into emitted payload so downstream callers can propagate it
+        const emitPayload: Record<string, unknown> = { ...payload, _eventType: eventType };
+        if (srcDefId != null) emitPayload._sourceDefinitionId = srcDefId;
+        await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, emitPayload);
       }
     }
   } catch (err) {
@@ -4744,7 +4774,10 @@ export async function fireWorkflowForDefinition(
 export async function fireWorkflowsForEvent(
   eventName: string,
   payload: Record<string, unknown> = {},
+  sourceDefinitionId?: number,
 ): Promise<number[]> {
+  // Honor _sourceDefinitionId from payload when no explicit param is provided
+  const srcDefId = sourceDefinitionId ?? (payload._sourceDefinitionId as number | undefined);
   try {
     const allEventTriggers = await db
       .select()
@@ -4758,11 +4791,18 @@ export async function fireWorkflowsForEvent(
     const runIds: number[] = [];
     await Promise.all(
       matching.map(async t => {
+        if (srcDefId != null && t.definitionId === srcDefId) {
+          logger.info({ definitionId: srcDefId, eventName }, "wf-executor: self-loop guard — skipping re-trigger of source definition");
+          return;
+        }
+        // Inject _sourceDefinitionId into emitted payload for downstream propagation
+        const emitPayload: Record<string, unknown> = { ...payload, eventName };
+        if (srcDefId != null) emitPayload._sourceDefinitionId = srcDefId;
         const runId = await fireWorkflowForDefinition(
           t.definitionId,
           "event",
           `event:${eventName}:trigger:${t.id}`,
-          { ...payload, eventName },
+          emitPayload,
         );
         if (runId != null) runIds.push(runId);
       }),
