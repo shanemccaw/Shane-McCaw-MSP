@@ -981,69 +981,50 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
     }).returning({ id: insightsGeneratedDocumentsTable.id });
     const reportDocId = genRow!.id;
 
-    // Abort the AI call and mark the row failed if the client disconnects mid-generation
-    const reportAbort = new AbortController();
-    let reportDisconnected = false;
-    const onReportClose = () => {
-      if (reportDisconnected) return;
-      reportDisconnected = true;
-      reportAbort.abort();
-      db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
-        .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
-        .catch((err) => logger.warn({ err, docId: reportDocId }, "insights: cleanup on client disconnect failed"));
-    };
-    req.on("close", onReportClose);
+    // Return immediately — Sonnet generation can take 60-120 s and would hit
+    // the proxy timeout if we block.  The client polls GET /documents every 3 s
+    // and will see the row flip from "generating" → "approved" naturally.
+    res.json({ id: reportDocId, status: "generating" });
 
-    let htmlContent: string;
-    try {
-      const docStylePrefix = await getDocumentStylePrefix();
-      const aiResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16000,
-        messages: [{ role: "user", content: docStylePrefix + prompt }],
-      }, { signal: reportAbort.signal });
-      if (aiResponse.stop_reason === "max_tokens") {
-        logger.warn({ docType, reportDocId }, "insights report: output hit max_tokens — document may be truncated");
+    void (async () => {
+      try {
+        const docStylePrefix = await getDocumentStylePrefix();
+        const aiResponse = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 16000,
+          messages: [{ role: "user", content: docStylePrefix + prompt }],
+        });
+        if (aiResponse.stop_reason === "max_tokens") {
+          logger.warn({ docType, reportDocId }, "insights report: output hit max_tokens — document may be truncated");
+        }
+        const htmlContent = extractAiHtml(aiResponse);
+
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ htmlContent, status: "approved", approvedAt: new Date(), pdfUrl: null, updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+
+        if (priorReportId !== null) {
+          await db.delete(insightsGeneratedDocumentsTable)
+            .where(eq(insightsGeneratedDocumentsTable.id, priorReportId));
+        }
+
+        const pdfUrl = `/api/admin/insights/documents/${reportDocId}/download`;
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ pdfUrl })
+          .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
+
+        if (projectId) {
+          void syncPresentationDocIds(projectId, reportDocId, docType);
+          void broadcastDocsChangeForProject(projectId);
+        }
+      } catch (err) {
+        logger.error({ err, docType, reportDocId }, "insights report: background generation failed");
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
+          .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark report doc as failed"));
       }
-      htmlContent = extractAiHtml(aiResponse);
-    } catch (aiErr) {
-      // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
-      const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-      await db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
-        .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
-      throw aiErr;
-    } finally {
-      req.off("close", onReportClose);
-    }
-
-    // Update generating row with finished content
-    await db.update(insightsGeneratedDocumentsTable)
-      .set({ htmlContent, status: "approved", approvedAt: new Date(), pdfUrl: null, updatedAt: new Date() })
-      .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
-
-    // Now that the new doc is live, remove the superseded prior doc (if any)
-    if (priorReportId !== null) {
-      await db.delete(insightsGeneratedDocumentsTable)
-        .where(eq(insightsGeneratedDocumentsTable.id, priorReportId));
-    }
-
-    // Set pdfUrl to the canonical download endpoint for this document
-    const pdfUrl = `/api/admin/insights/documents/${reportDocId}/download`;
-    const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
-      .set({ pdfUrl })
-      .where(eq(insightsGeneratedDocumentsTable.id, reportDocId))
-      .returning();
-
-    // Sync new doc into any draft presentations for the same project so it
-    // appears immediately without requiring a separate status change.
-    if (projectId) {
-      void syncPresentationDocIds(projectId, reportDocId, docType);
-      void broadcastDocsChangeForProject(projectId);
-    }
-
-    return res.json({ document: withPdf });
+    })();
   } catch (err) {
     logger.error({ err }, "insights document generate error");
     return res.status(500).json({ error: "Failed to generate document" });
@@ -1610,84 +1591,60 @@ INSTRUCTIONS:
       }).returning({ id: insightsGeneratedDocumentsTable.id });
       const docId = genSowRow!.id;
 
-      // Abort the AI call and mark the row failed if the client disconnects mid-generation
-      const sowAbort = new AbortController();
-      let sowDisconnected = false;
-      const onSowClose = () => {
-        if (sowDisconnected) return;
-        sowDisconnected = true;
-        sowAbort.abort();
-        db.update(insightsGeneratedDocumentsTable)
-          .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
-          .where(eq(insightsGeneratedDocumentsTable.id, docId))
-          .catch((err) => logger.warn({ err, docId }, "insights: sow cleanup on client disconnect failed"));
-      };
-      req.on("close", onSowClose);
+      // Return immediately — Sonnet generation can take 60-120 s.
+      // Client polls GET /documents every 3 s and will see "generating" → "approved".
+      res.json({ id: docId, status: "generating" });
 
-      let htmlContent: string;
-      let sowLines: SowPricingLine[];
-      let sowTotal: number;
-      try {
-        const docStylePrefix = await getDocumentStylePrefix();
-        const aiResponse = await anthropic.messages.create({
-          model: "claude-sonnet-4-6",
-          max_tokens: 16000,
-          messages: [{ role: "user", content: docStylePrefix + prompt }],
-        }, { signal: sowAbort.signal });
+      void (async () => {
+        try {
+          const docStylePrefix = await getDocumentStylePrefix();
+          const aiResponse = await anthropic.messages.create({
+            model: "claude-sonnet-4-6",
+            max_tokens: 16000,
+            messages: [{ role: "user", content: docStylePrefix + prompt }],
+          });
 
-        const rawHtmlContent = extractAiHtml(aiResponse);
+          const rawHtmlContent = extractAiHtml(aiResponse);
+          const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
+          const htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
+          const sowLines = [...workstreamLines, ...adjustmentLines];
+          const sowTotal = computedTotal;
 
-        // Server-side correction: parse all pricing tables to compute the
-        // authoritative Grand Total, then overwrite whatever the AI wrote.
-        const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
-        htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
-        sowLines = [...workstreamLines, ...adjustmentLines];
-        sowTotal = computedTotal;
-      } catch (aiErr) {
-        // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
-        const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-        await db.update(insightsGeneratedDocumentsTable)
-          .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
-          .where(eq(insightsGeneratedDocumentsTable.id, docId));
-        throw aiErr;
-      } finally {
-        req.off("close", onSowClose);
-      }
+          await db.update(insightsGeneratedDocumentsTable)
+            .set({
+              htmlContent,
+              status: "approved",
+              approvedAt: new Date(),
+              pdfUrl: null,
+              sowPricingLines: sowLines.length > 0 ? sowLines : null,
+              sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+              updatedAt: new Date(),
+            })
+            .where(eq(insightsGeneratedDocumentsTable.id, docId));
 
-      // Update generating row with finished content
-      await db.update(insightsGeneratedDocumentsTable)
-        .set({
-          htmlContent,
-          status: "approved",
-          approvedAt: new Date(),
-          pdfUrl: null,
-          sowPricingLines: sowLines.length > 0 ? sowLines : null,
-          sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
-          updatedAt: new Date(),
-        })
-        .where(eq(insightsGeneratedDocumentsTable.id, docId));
+          if (priorSowId !== null) {
+            await db.delete(insightsGeneratedDocumentsTable)
+              .where(eq(insightsGeneratedDocumentsTable.id, priorSowId));
+          }
 
-      // Remove superseded prior doc now that the new one is live
-      if (priorSowId !== null) {
-        await db.delete(insightsGeneratedDocumentsTable)
-          .where(eq(insightsGeneratedDocumentsTable.id, priorSowId));
-      }
+          const pdfUrl = `/api/admin/insights/documents/${docId}/download`;
+          await db.update(insightsGeneratedDocumentsTable)
+            .set({ pdfUrl })
+            .where(eq(insightsGeneratedDocumentsTable.id, docId));
 
-      const pdfUrl = `/api/admin/insights/documents/${docId}/download`;
-      const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
-        .set({ pdfUrl })
-        .where(eq(insightsGeneratedDocumentsTable.id, docId))
-        .returning();
-
-      // Notify any open client tabs for this project that the scope has changed
-      if (projectId) {
-        void broadcastSowChangeForProject(projectId);
-        // Sync new consolidated_sow doc into any draft presentations for this project
-        void syncPresentationDocIds(projectId, docId, "consolidated_sow");
-        void broadcastDocsChangeForProject(projectId);
-      }
-
-      return res.json({ document: withPdf });
+          if (projectId) {
+            void broadcastSowChangeForProject(projectId);
+            void syncPresentationDocIds(projectId, docId, "consolidated_sow");
+            void broadcastDocsChangeForProject(projectId);
+          }
+        } catch (err) {
+          logger.error({ err, docId }, "insights consolidated_sow: background generation failed");
+          await db.update(insightsGeneratedDocumentsTable)
+            .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
+            .where(eq(insightsGeneratedDocumentsTable.id, docId))
+            .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark sow doc as failed"));
+        }
+      })();
     }
     // ── End Consolidated SOW ─────────────────────────────────────────────────────
 
@@ -1819,91 +1776,75 @@ INSTRUCTIONS:
     }).returning({ id: insightsGeneratedDocumentsTable.id });
     const consultingDocId = genConsultingRow!.id;
 
-    // Abort the AI call and mark the row failed if the client disconnects mid-generation
-    const consultingAbort = new AbortController();
-    let consultingDisconnected = false;
-    const onConsultingClose = () => {
-      if (consultingDisconnected) return;
-      consultingDisconnected = true;
-      consultingAbort.abort();
-      db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", errorMessage: "Client disconnected during generation", updatedAt: new Date() })
-        .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
-        .catch((err) => logger.warn({ err, docId: consultingDocId }, "insights: consulting cleanup on client disconnect failed"));
-    };
-    req.on("close", onConsultingClose);
+    // Return immediately — Sonnet generation can take 60-120 s.
+    // Client polls GET /documents every 3 s and will see "generating" → "approved".
+    res.json({ id: consultingDocId, status: "generating" });
 
-    let htmlContent: string;
-    let sowLines2: SowPricingLine[];
-    let sowTotal2: number;
-    try {
-      const docStylePrefix = await getDocumentStylePrefix();
-      const aiResponse = await anthropic.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16000,
-        messages: [{ role: "user", content: docStylePrefix + prompt }],
-      }, { signal: consultingAbort.signal });
-      if (aiResponse.stop_reason === "max_tokens") {
-        logger.warn({ deliverableType: prompt.slice(0, 60), consultingDocId }, "insights consulting: output hit max_tokens — document may be truncated");
+    void (async () => {
+      try {
+        const docStylePrefix = await getDocumentStylePrefix();
+        const aiResponse = await anthropic.messages.create({
+          model: "claude-sonnet-4-6",
+          max_tokens: 16000,
+          messages: [{ role: "user", content: docStylePrefix + prompt }],
+        });
+        if (aiResponse.stop_reason === "max_tokens") {
+          logger.warn({ deliverableType, consultingDocId }, "insights consulting: output hit max_tokens — document may be truncated");
+        }
+        const rawHtmlContent2 = extractAiHtml(aiResponse);
+
+        let htmlContent: string;
+        let sowLines2: SowPricingLine[];
+        let sowTotal2: number;
+        if (isSowType) {
+          const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
+          htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
+          sowLines2 = [...ws2, ...adj2];
+          sowTotal2 = ct2;
+        } else {
+          htmlContent = rawHtmlContent2;
+          sowLines2 = [];
+          sowTotal2 = 0;
+        }
+
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({
+            htmlContent,
+            status: "approved",
+            approvedAt: new Date(),
+            pdfUrl: null,
+            sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
+            sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
+            updatedAt: new Date(),
+          })
+          .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
+
+        if (priorConsultingId !== null) {
+          await db.delete(insightsGeneratedDocumentsTable)
+            .where(eq(insightsGeneratedDocumentsTable.id, priorConsultingId));
+        }
+
+        const pdfUrl = `/api/admin/insights/documents/${consultingDocId}/download`;
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ pdfUrl })
+          .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
+
+        if (isSowType && projectId) {
+          void broadcastSowChangeForProject(projectId);
+          void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
+          void broadcastDocsChangeForProject(projectId);
+        } else if (projectId) {
+          void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
+          void broadcastDocsChangeForProject(projectId);
+        }
+      } catch (err) {
+        logger.error({ err, deliverableType, consultingDocId }, "insights consulting: background generation failed");
+        await db.update(insightsGeneratedDocumentsTable)
+          .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
+          .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
+          .catch((dbErr) => logger.warn({ dbErr }, "insights: failed to mark consulting doc as failed"));
       }
-      const rawHtmlContent2 = extractAiHtml(aiResponse);
-
-      // Apply the same server-side Grand Total correction to regular SOW types
-      if (isSowType) {
-        const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
-        htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
-        sowLines2 = [...ws2, ...adj2];
-        sowTotal2 = ct2;
-      } else {
-        htmlContent = rawHtmlContent2;
-        sowLines2 = [];
-        sowTotal2 = 0;
-      }
-    } catch (aiErr) {
-      // Mark the placeholder as failed so the admin sees an error indicator instead of a vanished row
-      const errMsg = aiErr instanceof Error ? aiErr.message : String(aiErr);
-      await db.update(insightsGeneratedDocumentsTable)
-        .set({ status: "failed", errorMessage: errMsg.slice(0, 500), updatedAt: new Date() })
-        .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
-      throw aiErr;
-    } finally {
-      req.off("close", onConsultingClose);
-    }
-
-    // Update generating row with finished content
-    await db.update(insightsGeneratedDocumentsTable)
-      .set({
-        htmlContent,
-        status: "approved",
-        approvedAt: new Date(),
-        pdfUrl: null,
-        sowPricingLines: sowLines2.length > 0 ? sowLines2 : null,
-        sowTotalPrice:   sowTotal2 > 0 ? String(sowTotal2) : null,
-        updatedAt: new Date(),
-      })
-      .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId));
-
-    // Remove superseded prior doc now that the new one is live
-    if (priorConsultingId !== null) {
-      await db.delete(insightsGeneratedDocumentsTable)
-        .where(eq(insightsGeneratedDocumentsTable.id, priorConsultingId));
-    }
-
-    const pdfUrl = `/api/admin/insights/documents/${consultingDocId}/download`;
-    const [withPdf] = await db.update(insightsGeneratedDocumentsTable)
-      .set({ pdfUrl })
-      .where(eq(insightsGeneratedDocumentsTable.id, consultingDocId))
-      .returning();
-
-    // Notify any open client tabs for this project that the scope has changed
-    if (isSowType && projectId) {
-      void broadcastSowChangeForProject(projectId);
-      // Sync new SOW doc into any draft presentations for this project
-      void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
-      void broadcastDocsChangeForProject(projectId);
-    }
-
-    return res.json({ document: withPdf });
+    })();
   } catch (err) {
     logger.error({ err }, "insights consulting generate error");
     return res.status(500).json({ error: "Failed to generate consulting deliverable" });
