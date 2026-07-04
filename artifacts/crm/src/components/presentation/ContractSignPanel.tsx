@@ -36,6 +36,7 @@ interface SowPhase {
 interface ContractSignPanelProps {
   signerName: string;
   selectedPhases: SowPhase[];
+  adjustmentsTotal?: number;
   totalPrice: number;
   onChangeName: (name: string) => void;
   onSign: (signatureData: string, signerName: string) => Promise<void>;
@@ -52,6 +53,7 @@ function formatCurrency(n: number): string {
 export default function ContractSignPanel({
   signerName,
   selectedPhases,
+  adjustmentsTotal = 0,
   totalPrice,
   onChangeName,
   onSign,
@@ -120,8 +122,27 @@ export default function ContractSignPanel({
                       <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(phase.price)}</td>
                     </tr>
                   ))}
+                  {adjustmentsTotal > 0 && (
+                    <>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-1.5 text-[#374151] pr-4">
+                          Workstream Subtotal
+                        </td>
+                        <td className="py-1.5 text-right font-semibold text-[#0A2540]">
+                          {formatCurrency(totalPrice - adjustmentsTotal)}
+                        </td>
+                      </tr>
+                      <tr className="border-b border-slate-100">
+                        <td className="py-1.5 text-[#374151] pr-4">
+                          Price Adjustments
+                          <span className="block text-[0.65rem] text-muted-foreground font-normal">Complexity, sprawl, and compliance factors</span>
+                        </td>
+                        <td className="py-1.5 text-right font-semibold text-[#0A2540]">{formatCurrency(adjustmentsTotal)}</td>
+                      </tr>
+                    </>
+                  )}
                   <tr className="border-t-2 border-slate-300">
-                    <td className="pt-2 font-bold text-[#0A2540]">Total</td>
+                    <td className="pt-2 font-bold text-[#0A2540]">Total Engagement Investment</td>
                     <td className="pt-2 text-right font-extrabold text-[#0A2540]">{formatCurrency(totalPrice)}</td>
                   </tr>
                 </tbody>

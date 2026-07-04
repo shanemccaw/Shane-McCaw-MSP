@@ -9735,6 +9735,7 @@ async function deriveEffectiveSowData(
   effectiveSowPhases: SowPhaseObj[];
   effectiveSelectedPhaseIds: string[];
   effectiveTotalPrice: number;
+  adjustmentsTotal: number;
   sowVersion: string;
 }> {
   const docIds = (pres.documentsIncluded ?? []) as number[];
@@ -9743,6 +9744,7 @@ async function deriveEffectiveSowData(
     ? await db.select({
         docType: insightsGeneratedDocumentsTable.docType,
         sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+        sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
       })
         .from(insightsGeneratedDocumentsTable)
         .where(inArray(insightsGeneratedDocumentsTable.id, docIds))
@@ -9775,21 +9777,35 @@ async function deriveEffectiveSowData(
       ...p,
       selected: effectiveSelectedPhaseIds.includes(p.id),
     }));
-    const effectiveTotalPrice = effectiveSowPhases
+
+    // Derive adjustments as the gap between the SOW's grand total and the sum of
+    // its parsed workstream lines. The AI puts this in sowTotalPrice; if it is
+    // missing or ≤ workstream sum, adjustmentsTotal is 0 (never negative).
+    const allPhasesSum = allPhases.reduce((s, p) => s + p.price, 0);
+    const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
+    const adjustmentsTotal = Math.max(0, sowGrandTotal - allPhasesSum);
+
+    const selectedPhasesTotal = effectiveSowPhases
       .filter(p => p.selected)
       .reduce((sum, p) => sum + p.price, 0);
+    const effectiveTotalPrice = selectedPhasesTotal + adjustmentsTotal;
 
-    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, sowVersion: computeSowVersion(effectiveSowPhases) };
+    return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, sowVersion: computeSowVersion(effectiveSowPhases) };
   }
 
-  // No live SOW pricing — fall back to creation-time snapshot
+  // No live SOW pricing — fall back to creation-time snapshot.
+  // At creation time totalPrice was stored as the SOW grand total (workstreams +
+  // adjustments), so derive adjustmentsTotal from the snapshot difference.
   const fallbackPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
   const fallbackSelected = (pres.selectedPhaseIds ?? fallbackPhases.map(p => p.id)) as string[];
   const fallbackTotal = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
+  const fallbackPhasesSum = fallbackPhases.reduce((s, p) => s + p.price, 0);
+  const adjustmentsTotal = Math.max(0, fallbackTotal - fallbackPhasesSum);
   return {
     effectiveSowPhases: fallbackPhases,
     effectiveSelectedPhaseIds: fallbackSelected,
     effectiveTotalPrice: fallbackTotal,
+    adjustmentsTotal,
     sowVersion: computeSowVersion(fallbackPhases),
   };
 }
@@ -9912,7 +9928,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
 
     // Derive sowPhases from the live SOW document — uses shared helper so GET,
     // PATCH, and checkout all stay consistent.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, sowVersion } =
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, sowVersion } =
       await deriveEffectiveSowData(pres);
 
     // Fetch project + client name + service id for template lookup
@@ -9986,6 +10002,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       sowPhases: effectiveSowPhases,
       selectedPhaseIds: effectiveSelectedPhaseIds,
       totalPrice: effectiveTotalPrice,
+      adjustmentsTotal,
       sowVersion,
       signatureData: pres.signatureData,
       signedAt: pres.signedAt,
@@ -10022,7 +10039,7 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
 
     // Validate incoming IDs against the live SOW phase list and compute total
     // from live prices so a stale snapshot never produces a wrong total.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, adjustmentsTotal, sowVersion } = await deriveEffectiveSowData(pres, selectedPhaseIds);
     const validIds = effectiveSowPhases.map(p => p.id);
     const safeSelectedIds = selectedPhaseIds.filter(sid => validIds.includes(sid));
     // If the client sends an empty list (or only stale IDs), fall back to the
@@ -10032,13 +10049,13 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
     const finalSelectedIds = safeSelectedIds.length > 0 ? safeSelectedIds : effectiveSelectedPhaseIds;
     const newTotal = effectiveSowPhases
       .filter(p => finalSelectedIds.includes(p.id))
-      .reduce((sum, p) => sum + p.price, 0);
+      .reduce((sum, p) => sum + p.price, 0) + adjustmentsTotal;
 
     await db.update(quickWinPresentationsTable)
       .set({ selectedPhaseIds: finalSelectedIds, totalPrice: String(newTotal), updatedAt: new Date() })
       .where(eq(quickWinPresentationsTable.id, id));
 
-    res.json({ totalPrice: newTotal, selectedPhaseIds: finalSelectedIds, sowVersion });
+    res.json({ totalPrice: newTotal, adjustmentsTotal, selectedPhaseIds: finalSelectedIds, sowVersion });
   } catch (err) {
     logger.error({ err }, "portal: failed to update presentation selections");
     res.status(500).json({ error: "Failed to update selections" });

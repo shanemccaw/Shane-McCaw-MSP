@@ -33,6 +33,7 @@ interface PresentationData {
   sowPhases: SowPhase[];
   selectedPhaseIds: string[];
   totalPrice: number;
+  adjustmentsTotal?: number;
   sowVersion?: string;
   signatureData: string | null;
   signedAt: string | null;
@@ -238,7 +239,10 @@ export default function PresentationFlow({
     selected: selectedPhaseIds.includes(p.id),
   }));
   const selectedPhases = phasesWithSelection.filter(p => p.selected);
+  // selectedTotal is the workstream-only subtotal (what the Scoping panel shows as toggleable)
   const selectedTotal = selectedPhases.reduce((sum, p) => sum + p.price, 0) || data.totalPrice;
+  // grandTotal includes price adjustments — used in Agreement, Payment, and checkout
+  const grandTotal = selectedTotal + (data.adjustmentsTotal ?? 0);
 
   // Aggregate stats for the Overview teaser cards — uses the same per-family
   // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
@@ -350,7 +354,7 @@ export default function PresentationFlow({
         body: JSON.stringify({ selectedPhaseIds: newIds }),
       });
       if (res.ok) {
-        const updated = await res.json() as { totalPrice: number; selectedPhaseIds: string[] };
+        const updated = await res.json() as { totalPrice: number; adjustmentsTotal?: number; selectedPhaseIds: string[] };
         setData(prev => ({ ...prev, ...updated }));
       }
     } finally {
@@ -368,7 +372,7 @@ export default function PresentationFlow({
       });
       if (res.ok) {
         // Zero-price offers skip Stripe entirely — call claim-free and jump to confirmation
-        if (selectedTotal === 0) {
+        if (grandTotal === 0) {
           setCheckingOut(true);
           setFreeClaimError(null);
           try {
@@ -1130,7 +1134,8 @@ export default function PresentationFlow({
                 <ContractSignPanel
                   signerName={signerName}
                   selectedPhases={selectedPhases}
-                  totalPrice={selectedTotal}
+                  adjustmentsTotal={data.adjustmentsTotal ?? 0}
+                  totalPrice={grandTotal}
                   onChangeName={setSignerName}
                   onSign={handleSign}
                   signing={signing || checkingOut}
@@ -1162,7 +1167,7 @@ export default function PresentationFlow({
             {currentStep?.kind === "payment" && (
               <div className="flex-1 overflow-hidden flex flex-col">
                 <PaymentOptionsPanel
-                  totalPrice={selectedTotal}
+                  totalPrice={grandTotal}
                   onCheckout={handleCheckout}
                   loading={checkingOut}
                   alreadyPaid={isPaid}
