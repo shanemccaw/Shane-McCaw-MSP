@@ -10374,12 +10374,10 @@ ${originalSowRow.htmlContent}`;
     const { sowVersion: generationSowVersion } = await deriveEffectiveSowData(pres);
 
     // Snapshot previous scoped state BEFORE overwriting — used for scope-reduction detection below.
-    // Cast to pick up scoped* columns that exist in the DB but are missing from the generated type.
-    const presExt = pres as typeof pres & { scopedPhaseIds?: string[] | null; scopedTotalPrice?: number | null };
-    const prevPhaseIds = Array.isArray(presExt.scopedPhaseIds) && presExt.scopedPhaseIds.length > 0
-      ? presExt.scopedPhaseIds
+    const prevPhaseIds = Array.isArray(pres.scopedPhaseIds) && pres.scopedPhaseIds.length > 0
+      ? pres.scopedPhaseIds
       : null;
-    const prevTotalCents = typeof presExt.scopedTotalPrice === "number" ? presExt.scopedTotalPrice : null;
+    const prevTotalCents = typeof pres.scopedTotalPrice === "number" ? pres.scopedTotalPrice : null;
 
     // Persist so the scoped state survives a page refresh during the same session
     await db.update(quickWinPresentationsTable)
