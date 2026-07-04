@@ -60,7 +60,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "../lib/workstream-normalizer";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
@@ -1664,16 +1664,31 @@ INSTRUCTIONS:
           }
 
           const rawHtmlContent = extractAiHtml(aiResponse);
-          const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(rawHtmlContent);
+          const { workstreamLines: rawWs, adjustmentLines: rawAdj } = parseSowAllPricing(rawHtmlContent);
 
-          // Validate pricing consistency before patching so the AI's original
-          // Grand Total value is compared against the arithmetic sum.
-          const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, rawHtmlContent);
+          // Purge adjustment rows the AI included that are not permitted for the
+          // workstreams present in this SOW (e.g. Copilot Readiness in a
+          // Governance-only engagement). Happens before validation and storage so
+          // clients never see hallucinated adjustments in the document.
+          const { html: purgedHtml, removedTitles } = purgeSowAdjustments(
+            rawHtmlContent, rawAdj, rawWs.map(l => l.title),
+          );
+          if (removedTitles.length > 0) {
+            logger.warn({ docId, removedTitles }, "consolidated_sow: purged non-permitted adjustments from HTML");
+          }
+
+          // Re-parse after purge so workstreamLines / adjustmentLines / computedTotal
+          // reflect the cleaned document (skip re-parse when nothing was removed).
+          const { workstreamLines, adjustmentLines, computedTotal } =
+            removedTitles.length > 0 ? parseSowAllPricing(purgedHtml) : { workstreamLines: rawWs, adjustmentLines: rawAdj, computedTotal: rawWs.reduce((s, l) => s + l.priceUsd, 0) + rawAdj.reduce((s, l) => s + l.priceUsd, 0) };
+
+          // Validate the cleaned pricing against the purged HTML
+          const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, purgedHtml);
           if (!sowValidation.ok) {
             logger.warn({ docId, issues: sowValidation.issues }, "consolidated_sow: pricing validation warnings");
           }
 
-          const htmlContent = computedTotal > 0 ? patchSowGrandTotal(rawHtmlContent, computedTotal) : rawHtmlContent;
+          const htmlContent = computedTotal > 0 ? patchSowGrandTotal(purgedHtml, computedTotal) : purgedHtml;
           const engagementStart = nextBusinessMonday();
           const sowLines = [
             ...assignDeliveryDates(
@@ -1896,16 +1911,26 @@ INSTRUCTIONS:
         let sowLines2: SowPricingLine[];
         let sowTotal2: number;
         if (isSowType) {
-          const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } = parseSowAllPricing(rawHtmlContent2);
+          const { workstreamLines: rawWs2, adjustmentLines: rawAdj2 } = parseSowAllPricing(rawHtmlContent2);
 
-          // Validate pricing consistency before patching so the AI's original
-          // Grand Total value is compared against the arithmetic sum.
-          const sowValidation2 = validateSowPricing(ws2, adj2, rawHtmlContent2);
+          // Purge non-permitted adjustments from the AI-generated HTML
+          const { html: purgedHtml2, removedTitles: removed2 } = purgeSowAdjustments(
+            rawHtmlContent2, rawAdj2, rawWs2.map(l => l.title),
+          );
+          if (removed2.length > 0) {
+            logger.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");
+          }
+
+          const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } =
+            removed2.length > 0 ? parseSowAllPricing(purgedHtml2) : { workstreamLines: rawWs2, adjustmentLines: rawAdj2, computedTotal: rawWs2.reduce((s, l) => s + l.priceUsd, 0) + rawAdj2.reduce((s, l) => s + l.priceUsd, 0) };
+
+          // Validate the cleaned pricing
+          const sowValidation2 = validateSowPricing(ws2, adj2, purgedHtml2);
           if (!sowValidation2.ok) {
             logger.warn({ consultingDocId, issues: sowValidation2.issues }, "consulting: pricing validation warnings");
           }
 
-          htmlContent = ct2 > 0 ? patchSowGrandTotal(rawHtmlContent2, ct2) : rawHtmlContent2;
+          htmlContent = ct2 > 0 ? patchSowGrandTotal(purgedHtml2, ct2) : purgedHtml2;
           const engagementStart2 = nextBusinessMonday();
           sowLines2 = [
             ...assignDeliveryDates(

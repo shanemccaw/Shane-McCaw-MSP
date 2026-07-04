@@ -522,6 +522,86 @@ export function validateSowPricing(
 }
 
 /**
+ * Strip non-permitted adjustment rows from SOW HTML and correct the
+ * "Adjustments Subtotal" row to match the remaining permitted rows.
+ *
+ * Called server-side immediately after `parseSowAllPricing()` so that
+ * AI hallucinations (e.g. "Copilot Readiness" in a Governance-only SOW)
+ * are removed from the stored document before it is ever shown to a client.
+ *
+ * After calling this function, re-run `parseSowAllPricing()` on the returned
+ * HTML to get accurate `computedTotal` for `patchSowGrandTotal()`.
+ *
+ * @param html              Raw AI-generated SOW HTML (before grand-total patch)
+ * @param adjustmentLines   Adjustment lines already parsed by parseSowAllPricing
+ * @param workstreamTitles  Workstream titles parsed from the same SOW
+ * @returns `{ html, removedTitles }` — html with bad rows excised;
+ *          removedTitles is empty when everything was already clean
+ */
+export function purgeSowAdjustments(
+  html: string,
+  adjustmentLines: SowPricingLine[],
+  workstreamTitles: string[],
+): { html: string; removedTitles: string[] } {
+  // Build the union of permitted patterns from every matched workstream
+  const allowedPatterns: RegExp[] = [];
+  for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+    if (workstreamTitles.some(t => ws.test(t))) {
+      allowedPatterns.push(...allowed);
+    }
+  }
+
+  // If no workstream matched a canonical pattern we cannot safely decide
+  // what is or isn't allowed — skip purging to avoid false positives.
+  if (allowedPatterns.length === 0) return { html, removedTitles: [] };
+
+  const unpermitted = adjustmentLines.filter(
+    l => !allowedPatterns.some(p => p.test(l.title)),
+  );
+  if (unpermitted.length === 0) return { html, removedTitles: [] };
+
+  const removedTitles: string[] = unpermitted.map(l => l.title);
+  const unpermittedKeys = new Set(removedTitles.map(t => t.toLowerCase().trim()));
+
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  // Remove <tr> elements whose first cell matches an unpermitted title
+  let result = html.replace(
+    /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/gi,
+    (match, _open, inner) => {
+      const cells = [...inner.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+        .map(m => stripTags(m[1]));
+      const rowTitle = (cells[0] ?? "").toLowerCase().trim();
+      return unpermittedKeys.has(rowTitle) ? "" : match;
+    },
+  );
+
+  // Recompute the permitted adjustment sum and patch the "Adjustments Subtotal" row
+  const permittedSum = adjustmentLines
+    .filter(l => allowedPatterns.some(p => p.test(l.title)))
+    .reduce((s, l) => s + l.priceUsd, 0);
+
+  if (permittedSum >= 0) {
+    const formatted = `$${permittedSum.toLocaleString("en-US")}`;
+    result = result.replace(
+      /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/gi,
+      (match, openTag: string, inner: string, closeTag: string) => {
+        if (!/adjustments?\s+subtotal/i.test(inner)) return match;
+        const lastDollarIdx = inner.lastIndexOf("$");
+        if (lastDollarIdx < 0) return match;
+        const patched =
+          inner.slice(0, lastDollarIdx) +
+          inner.slice(lastDollarIdx).replace(/\$[\d,]+(?:\.\d{2})?/, formatted);
+        return openTag + patched + closeTag;
+      },
+    );
+  }
+
+  return { html: result, removedTitles };
+}
+
+/**
  * Find every "Grand Total" row in a SOW HTML document and overwrite its
  * rightmost dollar amount with `correctTotal`.
  *
