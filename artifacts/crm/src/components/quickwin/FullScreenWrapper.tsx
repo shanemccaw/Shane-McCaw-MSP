@@ -1022,7 +1022,7 @@ export default function FullScreenWrapper() {
               )}
 
               {!showScriptPanel && (
-                <div className="flex flex-col gap-4 overflow-y-auto flex-1 pr-0.5">
+                <div className="flex flex-row gap-4 overflow-x-auto flex-1 items-start pb-1">
                   {/* Loading state */}
                   {kanbanTasks.length === 0 && (
                     <div className="flex items-center gap-3 py-10 justify-center">
@@ -1063,7 +1063,7 @@ export default function FullScreenWrapper() {
                     return (
                       <div
                         key={task.id}
-                        className="rounded-xl p-6 flex flex-col border border-amber-300/60 bg-amber-50/80 shadow-lg gap-3"
+                        className="rounded-xl p-6 flex flex-col w-[340px] flex-shrink-0 border border-amber-300/60 bg-amber-50/80 shadow-lg gap-3"
                         style={{ backdropFilter: "blur(12px)" }}
                       >
                         <div className="flex items-center gap-2">
