@@ -5,6 +5,40 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import RunDetailContent, { WfRunDetail, STATUS_STYLES, fmtDuration } from "./RunDetailContent";
 
+const EVENT_CATALOG: Array<{ category: string; name: string }> = [
+  { category: "CRM",        name: "lead.created" },
+  { category: "CRM",        name: "lead.qualified" },
+  { category: "CRM",        name: "opportunity.created" },
+  { category: "CRM",        name: "client.created" },
+  { category: "CRM",        name: "project.created" },
+  { category: "CRM",        name: "project.phase_changed" },
+  { category: "CRM",        name: "onboarding.complete" },
+  { category: "CRM",        name: "sow.scope_reduced" },
+  { category: "CRM",        name: "contract.signed" },
+  { category: "Payments",   name: "payment.received" },
+  { category: "Payments",   name: "agreement_signed" },
+  { category: "Payments",   name: "phase_completed" },
+  { category: "Scheduling", name: "phase.delivery_date_changed" },
+  { category: "Scheduling", name: "milestone.delivery_date_changed" },
+  { category: "M365",       name: "m365.health_check_complete" },
+  { category: "M365",       name: "m365.diagnostic_failed" },
+  { category: "M365",       name: "quiz.lead_submitted" },
+  { category: "M365",       name: "customer.script_result" },
+];
+
+type EventCategory = "CRM" | "Payments" | "Scheduling" | "M365";
+
+const CATEGORY_STYLES: Record<EventCategory, string> = {
+  CRM:        "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  Payments:   "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
+  Scheduling: "bg-amber-500/20 text-amber-300 border-amber-500/30",
+  M365:       "bg-violet-500/20 text-violet-300 border-violet-500/30",
+};
+
+function getEventCategory(eventName: string): EventCategory | null {
+  return (EVENT_CATALOG.find(e => e.name === eventName)?.category as EventCategory) ?? null;
+}
+
 interface PendingApproval {
   id: number;
   nodeId: string;
@@ -124,11 +158,41 @@ export default function RunDetailPage({ runId }: { runId: number }) {
               </span>
             )}
           </div>
-          <p className="text-sm text-[#7D8590] mt-0.5 truncate">
-            {run.definitionName ?? "Unknown workflow"} · {run.versionLabel ?? ""} · {run.triggerType}
-            {run.startedAt && ` · ${format(new Date(run.startedAt), "MMM d, HH:mm:ss")}`}
-            {run.durationMs !== null && ` · ${fmtDuration(run.durationMs)}`}
-          </p>
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className="text-sm text-[#7D8590] truncate">
+              {run.definitionName ?? "Unknown workflow"}
+              {run.versionLabel ? ` · ${run.versionLabel}` : ""}
+              {" · "}
+            </span>
+            {run.triggerType === "event" && run.triggerRef && run.triggerRef !== "draft_test" ? (
+              <>
+                <span className="text-sm mr-0.5">📡</span>
+                <span className="text-sm text-[#E6EDF3] font-mono">{run.triggerRef}</span>
+                {(() => {
+                  const cat = getEventCategory(run.triggerRef);
+                  return cat ? (
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold border ${CATEGORY_STYLES[cat]}`}>
+                      {cat}
+                    </span>
+                  ) : null;
+                })()}
+              </>
+            ) : (
+              <span className="text-sm text-[#7D8590] capitalize">
+                {run.triggerType === "event" ? "📡 Event" :
+                 run.triggerType === "manual" ? "🖱 Manual" :
+                 run.triggerType === "schedule" ? "📅 Schedule" :
+                 run.triggerType === "webhook" ? "🔗 Webhook" :
+                 run.triggerType}
+              </span>
+            )}
+            {run.startedAt && (
+              <span className="text-sm text-[#7D8590]">· {format(new Date(run.startedAt), "MMM d, HH:mm:ss")}</span>
+            )}
+            {run.durationMs !== null && (
+              <span className="text-sm text-[#7D8590]">· {fmtDuration(run.durationMs)}</span>
+            )}
+          </div>
         </div>
 
         {(run.status === "running" || run.status === "pending") && (
