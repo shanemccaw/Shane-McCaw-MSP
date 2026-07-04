@@ -1245,7 +1245,9 @@ export default function PresentationFlow({
                       );
 
                       const totalSections = [firstDocStepIndex, sowStepIndex, contractStepIndex, paymentStepIndex].filter(i => i >= 0).length;
-                      const reviewedSections = [docsVisited, sowVisited, contractVisited, paymentVisited].filter(Boolean).length;
+                      const docsActuallyReviewed = docsVisited && !docsStale;
+                      const sowActuallyReviewed  = sowVisited && !scopeStale && hasSowDocument;
+                      const reviewedSections = [docsActuallyReviewed, sowActuallyReviewed, contractVisited, paymentVisited].filter(Boolean).length;
                       const allReviewed = reviewedSections === totalSections && totalSections > 0;
 
                       return (
@@ -1287,8 +1289,8 @@ export default function PresentationFlow({
                               onClick={() => jumpToStep(firstDocStepIndex, "documents")}
                               className="group relative bg-white rounded-xl border border-border p-5 text-left hover:shadow-md hover:-translate-y-0.5 transition-all overflow-hidden"
                             >
-                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${docsVisited ? "bg-emerald-500" : "bg-red-500"}`} />
-                              {docsVisited && <ReviewedBadge />}
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${docsStale ? "bg-amber-400" : docsVisited ? "bg-emerald-500" : "bg-red-500"}`} />
+                              {docsVisited && !docsStale && <ReviewedBadge />}
                               <div className="flex items-center gap-2 mb-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${docsVisited ? "bg-emerald-50" : "bg-red-50"}`}>
                                   <svg className={`w-4 h-4 ${docsVisited ? "text-emerald-600" : "text-red-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1345,10 +1347,17 @@ export default function PresentationFlow({
                                 ) : (
                                   <span className="text-[11px] text-muted-foreground">{data.documents.length} report{data.documents.length !== 1 ? "s" : ""} included</span>
                                 )}
-                                <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${docsVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>
-                                  {docsVisited ? "Review again" : "See your reports"}
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                </span>
+                                {docsStale ? (
+                                  <span className="text-xs font-semibold inline-flex items-center gap-1.5 text-amber-600">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                    Refreshing your analysis…
+                                  </span>
+                                ) : (
+                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${docsVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>
+                                    {docsVisited ? "Review again" : "See your reports"}
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                  </span>
+                                )}
                               </div>
                             </button>
                           )}
@@ -1361,8 +1370,8 @@ export default function PresentationFlow({
                               title={!hasSowDocument ? "Statement of Work not yet available" : undefined}
                               className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${!hasSowDocument ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
-                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${sowVisited ? "bg-emerald-500" : "bg-[#0078D4]"}`} />
-                              {sowVisited && <ReviewedBadge />}
+                              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${(scopeStale || !hasSowDocument) ? "bg-amber-400" : sowVisited ? "bg-emerald-500" : "bg-[#0078D4]"}`} />
+                              {sowVisited && !scopeStale && hasSowDocument && <ReviewedBadge />}
                               <div className="flex items-center gap-2 mb-3">
                                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${sowVisited ? "bg-emerald-50" : "bg-[#0078D4]/10"}`}>
                                   <svg className={`w-4 h-4 ${sowVisited ? "text-emerald-600" : "text-[#0078D4]"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1395,10 +1404,22 @@ export default function PresentationFlow({
                                 )}
                               </div>
                               <div className="flex items-center justify-end">
-                                <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${sowVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>
-                                  {sowVisited ? "Review again" : "Review scope"}
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                </span>
+                                {!hasSowDocument ? (
+                                  <span className="text-xs font-semibold inline-flex items-center gap-1.5 text-amber-600">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                    Building your plan…
+                                  </span>
+                                ) : scopeStale ? (
+                                  <span className="text-xs font-semibold inline-flex items-center gap-1.5 text-amber-600">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse flex-shrink-0" />
+                                    Building customized plan…
+                                  </span>
+                                ) : (
+                                  <span className={`text-xs font-bold group-hover:translate-x-0.5 transition-transform inline-flex items-center gap-0.5 ${sowVisited ? "text-emerald-600" : "text-[#0078D4]"}`}>
+                                    {sowVisited ? "Review again" : "Review scope"}
+                                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                  </span>
+                                )}
                               </div>
                             </button>
                           )}
