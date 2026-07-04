@@ -48,7 +48,7 @@ import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
-import { getPrompt } from "../lib/prompt-loader";
+import { getPrompt, getDocumentStylePrefix } from "../lib/prompt-loader";
 import { sendMessage } from "../lib/graphEmail";
 import {
   graphCredentialsPresent,
@@ -980,10 +980,11 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
 
     let htmlContent: string;
     try {
+      const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 8192,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: reportAbort.signal });
       htmlContent = extractAiHtml(aiResponse);
     } catch (aiErr) {
@@ -1525,10 +1526,11 @@ INSTRUCTIONS:
       let sowLines: SowPricingLine[];
       let sowTotal: number;
       try {
+        const docStylePrefix = await getDocumentStylePrefix();
         const aiResponse = await anthropic.messages.create({
           model: "claude-haiku-4-5",
           max_tokens: 16000,
-          messages: [{ role: "user", content: prompt }],
+          messages: [{ role: "user", content: docStylePrefix + prompt }],
         }, { signal: sowAbort.signal });
 
         const rawHtmlContent = extractAiHtml(aiResponse);
@@ -1732,10 +1734,11 @@ INSTRUCTIONS:
     let sowLines2: SowPricingLine[];
     let sowTotal2: number;
     try {
+      const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 8192,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: docStylePrefix + prompt }],
       }, { signal: consultingAbort.signal });
 
       const rawHtmlContent2 = extractAiHtml(aiResponse);
@@ -2317,10 +2320,11 @@ ${profileSample || "  No telemetry captured yet."}
 Output ONLY valid HTML with inline CSS (white background, #0078D4 accents). Include: branded header, score summary table, findings section, recommendations section, footer. 400-900 words.`;
 
       log("info", `AI document generation started (${docLabel})…`);
+      const docStylePrefix = await getDocumentStylePrefix();
       const aiResponse = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 2048,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: docStylePrefix + prompt }],
       });
 
       const htmlContent = extractAiHtml(aiResponse);

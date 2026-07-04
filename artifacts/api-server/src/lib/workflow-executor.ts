@@ -59,7 +59,7 @@ import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
 import Ajv from "ajv";
-import { getPrompt } from "./prompt-loader";
+import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
@@ -1050,10 +1050,11 @@ async function executeNode(
 
             let htmlContent: string;
             try {
+              const docStylePrefix = await getDocumentStylePrefix();
               const aiResp = await anthropic.messages.create({
                 model: "claude-haiku-4-5",
                 max_tokens: 8192,
-                messages: [{ role: "user", content: prompt }],
+                messages: [{ role: "user", content: docStylePrefix + prompt }],
               });
               const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
               htmlContent = igExtractHtml(rawText);

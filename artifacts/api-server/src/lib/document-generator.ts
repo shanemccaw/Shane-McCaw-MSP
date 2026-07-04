@@ -25,7 +25,7 @@ import {
 import { eq, and, desc, ne } from "drizzle-orm";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
-import { getPrompt } from "./prompt-loader";
+import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { extractAiHtml, parseSowPricing } from "./sow-pricing";
 import { ensureOpportunityForSow } from "./crm-pipeline";
 
@@ -615,10 +615,11 @@ export async function generateAndDeliverDocument(
 
   // SOW documents are significantly longer than other doc types — use a higher
   // token budget so pricing tables and closing sections are never cut off.
+  const docStylePrefix = await getDocumentStylePrefix();
   const aiResponse = await anthropic.messages.create({
     model: "claude-haiku-4-5",
     max_tokens: isSowDoc ? 16000 : 8000,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content: docStylePrefix + prompt }],
   });
 
   if (aiResponse.stop_reason === "max_tokens") {

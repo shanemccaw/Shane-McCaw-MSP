@@ -27,6 +27,27 @@ export async function getPrompt(key: string, fallback: string): Promise<string> 
   return fallback;
 }
 
+/**
+ * Returns the shared document style guide that is prepended to every
+ * AI-generated client document (reports, consulting deliverables, SOWs).
+ * Stored under the key "insights-document-style" in the ai_prompts table
+ * so it is editable without a code deploy.
+ * Returns an empty string if the row is missing or DB lookup fails.
+ */
+export async function getDocumentStylePrefix(): Promise<string> {
+  try {
+    const [row] = await db
+      .select({ promptBody: aiPromptsTable.promptBody })
+      .from(aiPromptsTable)
+      .where(eq(aiPromptsTable.key, "insights-document-style"))
+      .limit(1);
+    if (row?.promptBody) return row.promptBody + "\n\n";
+  } catch (err) {
+    logger.warn({ err }, "prompt-loader: style-guide lookup failed, skipping prefix");
+  }
+  return "";
+}
+
 interface PromptSeed {
   key: string;
   name: string;
@@ -1197,6 +1218,74 @@ Rules:
 - Use groupName "Engineer Tasks" for internal technical work, "Artifacts Produced" for outputs the engineer creates (reports, configs, exports), "Client Deliverables" for customer-facing handoff items
 - Be specific to this exact service using its description, deliverables, inclusions, and features — avoid generic placeholder tasks
 - Every task title must be a concrete action (start with a verb: Provision, Configure, Audit, Deploy, Generate, Validate, Train, Document)`,
+  },
+  {
+    key: "insights-document-style",
+    name: "Document Style Guide",
+    description: "Prepended to every AI-generated client document (reports, consulting deliverables, SOWs). Edit here to change brand colors, typography, page structure, and tone rules for all documents simultaneously.",
+    category: "insights",
+    featureArea: "Command — Insights",
+    featureRoute: "/admin/insights",
+    model: null,
+    body: `DOCUMENT STYLE GUIDE — Shane McCaw Consulting
+This style guide applies to ALL generated documents. Follow every rule below before applying document-specific instructions.
+
+═══ BRANDING & COLORS ═══
+Use inline CSS only — never external stylesheets or <style> blocks.
+
+Primary colors:
+• Deep Navy #0A2540 — header bar background, footer background, dark section backgrounds
+• Electric Blue #0078D4 — H2 headings, accent borders, links
+• Bright Teal #00B4D8 — callout borders, highlight accents (use sparingly)
+• Off-White #F7F9FC — page background, alternating table rows
+• White #FFFFFF — card/body background
+• Body text: #1A1A2E; Muted text: #666666
+
+═══ TYPOGRAPHY ═══
+Font stack: font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif
+• Body: font-size: 15px; line-height: 1.7; color: #1A1A2E
+• H1: font-size: 26px; font-weight: 700; color: #0A2540
+• H2: font-size: 19px; font-weight: 600; color: #0078D4; border-bottom: 2px solid #0078D4; padding-bottom: 6px; margin-top: 32px
+• H3: font-size: 15px; font-weight: 600; color: #0A2540; margin-top: 20px
+
+═══ PAGE STRUCTURE ═══
+Every document MUST include all three of these elements:
+
+1. HEADER BAR (full-width, flush to top):
+<div style="background:#0A2540;color:#ffffff;padding:20px 40px;display:flex;justify-content:space-between;align-items:center;">
+  <div><strong style="font-size:18px;">Shane McCaw Consulting</strong><br><span style="font-size:12px;opacity:0.8;">Microsoft 365 Architect · 30-Year Microsoft Veteran</span></div>
+  <div style="text-align:right;font-size:13px;">[DOCUMENT TITLE]<br>[DATE]</div>
+</div>
+
+2. BODY CONTENT CARD (wrapping ALL document content):
+<div style="max-width:900px;margin:32px auto;background:#ffffff;padding:40px 48px;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+  [ALL DOCUMENT CONTENT HERE]
+</div>
+
+3. FOOTER BAR (full-width, flush to bottom):
+<div style="background:#0A2540;color:#ffffff;padding:16px 40px;text-align:center;font-size:12px;">
+  Shane McCaw Consulting &nbsp;·&nbsp; Confidential &nbsp;·&nbsp; Not for distribution &nbsp;·&nbsp; © [YEAR]
+</div>
+
+═══ TABLES ═══
+Apply to ALL tables: border-collapse:collapse; width:100%; margin:16px 0; font-size:14px
+Header row: background:#0A2540; color:#ffffff; font-weight:600; padding:10px 14px; text-align:left
+Data rows (alternating): odd #ffffff / even #F7F9FC; padding:9px 14px; border:1px solid #E0E7EF
+Currency/number columns: text-align:right
+Total/summary rows: font-weight:600; background:#E8F0FA; border-top:2px solid #0078D4
+
+═══ CALLOUT BOXES ═══
+Standard: border-left:4px solid #0078D4; background:#F0F7FF; padding:14px 18px; border-radius:0 6px 6px 0; margin:16px 0
+Positive/achievement: use #00B4D8 border instead
+Risk/warning: use #E8760A border instead
+
+═══ TONE & CONTENT RULES ═══
+• First person as Shane McCaw — confident, clear, enterprise-grade
+• No filler phrases: never write "I hope this finds you well", "As always", "Please don't hesitate to reach out", "It goes without saying"
+• No generic advice — every recommendation must reference the client's actual environment data and findings
+• Output is pure HTML with inline CSS only — no markdown, no code fences, no <style> blocks
+• No placeholder text — every section must contain real, client-specific content
+• All documents are marked Confidential in the footer`,
   },
 ];
 
