@@ -60,7 +60,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, stripStagedForReviewBanner, nextBusinessMonday, type SowPricingLine } from "../lib/sow-pricing";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1534,11 +1534,15 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
       ].join("\n");
       // ── End tenant telemetry block ─────────────────────────────────────────
 
+      const consolidatedSowEngagementStart = nextBusinessMonday(new Date());
+      const consolidatedSowEngagementStartLabel = consolidatedSowEngagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
       const CONSOLIDATED_SOW_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
 
 Client: {{clientName}}
 Deliverable title: {{title}}
 Date: {{date}}
+ENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use this as the baseline for all delivery date calculations)
 
 EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
 {{existingDocs}}
@@ -1553,7 +1557,9 @@ INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography
 - Structure: Executive Summary → Scope of Work → Deliverables (table) → Project Pricing (table with line items from the catalogue above) → Timeline (phased Gantt-style) → Resource Requirements → Acceptance Criteria → Terms & Conditions → Signature Block
-- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists each shared adjustment factor (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) and its dollar value ONCE, followed by a Grand Total row
+- For the Duration (Weeks) column: assign a realistic integer number of weeks to each workstream phase based on the scope of work (e.g. 2–16 weeks). Format as "N weeks" (e.g. "4 weeks")
+- For the Delivery Date column: compute dates cumulatively starting from the ENGAGEMENT START DATE. Phase 1 delivery = ENGAGEMENT START DATE + Phase 1 weeks. Phase 2 delivery = Phase 1 delivery date + Phase 2 weeks. Continue this pattern for all subsequent phases. Format as "Mon DD, YYYY" (e.g. "Aug 4, 2026")
 - You MUST output a single fixed price per project/workstream (no ranges, no TBD, no "depends"); shared adjustments must NOT be added to individual workstream rows
 - You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; shared adjustments (Tenant Size, Complexity, Data Sprawl, Security/Compliance, Copilot Readiness, Timeline) are listed ONCE in a "Pricing Adjustments" summary section below the workstream table, never repeated on individual rows
 - The Grand Total MUST equal the arithmetic sum of all workstream Final Prices plus all adjustment amounts. Show the arithmetic explicitly in the Grand Total cell: "Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[total]". Verify the addition before writing the number.
@@ -1567,6 +1573,7 @@ INSTRUCTIONS:
         .replace(/\{\{clientName\}\}/g, clientName)
         .replace(/\{\{title\}\}/g, title)
         .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
+        .replace(/\{\{engagementStart\}\}/g, consolidatedSowEngagementStartLabel)
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
@@ -1961,11 +1968,15 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         `MFA Enforced:                ${sp.mfaEnforced ?? "unknown"}`,
       ].join("\n");
 
-      const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}`;
+      const previewEngagementStart = nextBusinessMonday(new Date());
+      const previewEngagementStartLabel = previewEngagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+      const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"`;
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW);
       const assembledPrompt = rawTemplate
         .replace(/\{\{clientName\}\}/g, clientName).replace(/\{\{title\}\}/g, title)
         .replace(/\{\{date\}\}/g, new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }))
+        .replace(/\{\{engagementStart\}\}/g, previewEngagementStartLabel)
         .replace(/\{\{existingDocs\}\}/g, docsBlock).replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
         + `\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;

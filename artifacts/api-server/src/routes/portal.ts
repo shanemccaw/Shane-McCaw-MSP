@@ -13,7 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -9691,7 +9691,7 @@ router.post("/portal/presentations", requireAuth, async (req: Request, res: Resp
 //                      IDs so toggle preferences are honoured where possible.
 //                      Pass [] to default all phases to selected.
 // ---------------------------------------------------------------------------
-type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean };
+type SowPhaseObj = { id: string; title: string; description: string; price: number; selected: boolean; weeks?: number };
 
 // Compute a stable fingerprint for the current SOW pricing so clients can
 // detect when the scope has changed without comparing full phase arrays.
@@ -9762,7 +9762,7 @@ async function deriveEffectiveSowData(
   );
 
   if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
-    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string }>;
+    const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string; weeks?: number }>;
 
     // Separate workstream lines (customer-toggleable) from adjustment lines (mandatory).
     // Old rows without line_type are treated as workstream for backwards compatibility.
@@ -9775,6 +9775,7 @@ async function deriveEffectiveSowData(
       description: l.scope || l.notes || "",
       price: l.priceUsd,
       selected: true,
+      ...(l.weeks !== undefined ? { weeks: l.weeks } : {}),
     }));
 
     const allNewIds = allPhases.map(p => p.id);
@@ -10251,17 +10252,43 @@ function buildScopedSowHtml(
 ): string {
   const fmt = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+  const fmtDate = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+  // Compute engagement start = next Business Monday from generation time
+  const engagementStart = nextBusinessMonday(new Date());
+
+  // Determine whether any phase carries a week estimate — if so, show timeline columns
+  const hasWeeks = phases.some(p => p.weeks !== undefined && p.weeks > 0);
+
+  // Compute cumulative delivery dates (phases accumulate weeks from the start)
+  let cumulativeWeeks = 0;
+  const phaseDeliveryDates: Array<{ durationLabel: string; deliveryDate: string }> = phases.map(p => {
+    if (hasWeeks) {
+      const w = p.weeks ?? 0;
+      cumulativeWeeks += w;
+      const deliveryDate = new Date(engagementStart);
+      deliveryDate.setDate(deliveryDate.getDate() + cumulativeWeeks * 7);
+      return {
+        durationLabel: w > 0 ? `${w} week${w !== 1 ? "s" : ""}` : "—",
+        deliveryDate: w > 0 ? fmtDate(deliveryDate) : "—",
+      };
+    }
+    return { durationLabel: "", deliveryDate: "" };
+  });
 
   const phaseRows = phases
     .map(
-      (p) => `
+      (p, i) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:40%">
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:${hasWeeks ? "30%" : "40%"}">
           <div style="font-weight:700;color:#0A2540;font-size:13px">${p.title}</div>
           ${p.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${p.description}</div>` : ""}
         </td>
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${p.description || ""}</td>
+        ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:center;font-size:12px;color:#374151;white-space:nowrap">${phaseDeliveryDates[i]!.durationLabel}</td>` : ""}
+        ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:center;font-size:12px;color:#374151;white-space:nowrap">${phaseDeliveryDates[i]!.deliveryDate}</td>` : ""}
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:#0078D4;white-space:nowrap;font-size:13px">${fmt(p.price)}</td>
       </tr>`,
     )
@@ -10271,17 +10298,21 @@ function buildScopedSowHtml(
     .map(
       (a) => `
       <tr>
-        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:40%">
+        <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;width:${hasWeeks ? "30%" : "40%"}">
           <div style="font-weight:700;color:#0A2540;font-size:13px">${a.title}</div>
           ${a.description ? `<div style="font-size:11px;color:#64748B;margin-top:3px">${a.description}</div>` : ""}
         </td>
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;vertical-align:top;font-size:12px;color:#374151">${a.description || ""}</td>
+        ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1"></td>` : ""}
+        ${hasWeeks ? `<td style="padding:10px 12px;border-bottom:1px solid #E5EAF1"></td>` : ""}
         <td style="padding:10px 12px;border-bottom:1px solid #E5EAF1;text-align:right;font-weight:700;color:${a.price < 0 ? "#DC2626" : "#0078D4"};white-space:nowrap;font-size:13px">${fmt(a.price)}</td>
       </tr>`,
     )
     .join("");
 
   const rows = phaseRows + adjRows;
+
+  const engagementStartLabel = hasWeeks ? `<div><strong>Engagement Start</strong>${fmtDate(engagementStart)}</div>` : "";
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -10300,6 +10331,7 @@ function buildScopedSowHtml(
   thead tr{background:#0A2540}
   thead th{padding:9px 12px;color:#fff;font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;text-align:left}
   thead th:last-child{text-align:right}
+  thead th.center{text-align:center}
   .total-row td{border-top:2px solid #0A2540;padding:12px 12px 4px;font-weight:800;font-size:14px;color:#0A2540}
   .total-price{text-align:right;font-size:16px;color:#0A2540}
   footer{margin-top:24px;font-size:10px;color:#94A3B8;text-align:center}
@@ -10316,12 +10348,15 @@ function buildScopedSowHtml(
   ${clientName ? `<div><strong>Prepared For</strong>${clientName}</div>` : ""}
   <div><strong>Date</strong>${today}</div>
   <div><strong>Phases Selected</strong>${phases.length}</div>
+  ${engagementStartLabel}
 </div>
 <table>
   <thead>
     <tr>
-      <th style="width:35%">Phase</th>
+      <th style="width:${hasWeeks ? "30%" : "35%"}">Phase</th>
       <th>Scope Summary</th>
+      ${hasWeeks ? `<th class="center">Duration</th>` : ""}
+      ${hasWeeks ? `<th class="center">Delivery Date</th>` : ""}
       <th style="text-align:right">Investment</th>
     </tr>
   </thead>
@@ -10330,6 +10365,8 @@ function buildScopedSowHtml(
     <tr class="total-row">
       <td>Total Engagement Investment</td>
       <td></td>
+      ${hasWeeks ? `<td></td>` : ""}
+      ${hasWeeks ? `<td></td>` : ""}
       <td class="total-price">${fmt(totalDollars)}</td>
     </tr>
   </tbody>
@@ -10437,15 +10474,40 @@ router.post("/portal/presentations/:id/regenerate-scoped-sow", requireAuth, asyn
           ? namedAdjustmentLines.map(a => `- ${a.title}${a.description ? ` (${a.description})` : ""}: ${fmtUsd(a.price)}`).join("\n")
           : null;
 
+        // Compute delivery dates for the scoped phases (same cumulative logic as buildScopedSowHtml)
+        const sowEngagementStart = nextBusinessMonday(new Date());
+        const fmtSowDate = (d: Date) =>
+          d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+        let sowCumulativeWeeks = 0;
+        const scopedPhaseDeliveryInfo = scopedPhases.map(p => {
+          const w = p.weeks ?? 0;
+          sowCumulativeWeeks += w;
+          const deliveryDate = new Date(sowEngagementStart);
+          deliveryDate.setDate(deliveryDate.getDate() + sowCumulativeWeeks * 7);
+          return { weeks: w, deliveryDate: w > 0 ? fmtSowDate(deliveryDate) : null };
+        });
+        const hasDeliveryDates = scopedPhases.some(p => (p.weeks ?? 0) > 0);
+
         const pricingTableSpec = [
           "PRICING TABLE — reproduce this exactly, in this order:",
-          ...scopedPhases.map(p => `  ROW: ${p.title} | ${fmtUsd(p.price)}`),
+          ...(hasDeliveryDates
+            ? [`  ENGAGEMENT START: ${fmtSowDate(sowEngagementStart)} (next Business Monday after document generation)`]
+            : []),
+          ...scopedPhases.map((p, i) => {
+            const di = scopedPhaseDeliveryInfo[i]!;
+            const durationPart = di.weeks > 0 ? ` | ${di.weeks} weeks` : "";
+            const datePart = di.deliveryDate ? ` | ${di.deliveryDate}` : "";
+            return `  ROW: ${p.title} | ${fmtUsd(p.price)}${durationPart}${datePart}`;
+          }),
           ...(namedAdjustmentLines.length > 0
             ? ["  --- (subtotal row if the original has one) ---",
                ...namedAdjustmentLines.map(a => `  ROW: ${a.title}${a.description ? ` — ${a.description}` : ""} | ${fmtUsd(a.price)}`)]
             : []),
           `  TOTAL ROW: ${fmtUsd(scopedTotalDollars)}`,
           `  (Phases subtotal ${fmtUsd(phasesSubtotal)}${namedAdjustmentLines.length > 0 ? ` + adjustments ${fmtUsd(adjustmentsTotal)}` : ""} = ${fmtUsd(scopedTotalDollars)})`,
+          ...(hasDeliveryDates
+            ? ["  NOTE: reproduce the Duration and Delivery Date columns in the pricing table exactly as specified above; do not recalculate or alter the dates"]
+            : []),
         ].join("\n");
 
         const prompt = `You are a senior Microsoft 365 consulting document editor. You are given a Consolidated Statement of Work HTML document and a scoped selection of phases. Produce a revised version of this document that covers ONLY the selected phases.

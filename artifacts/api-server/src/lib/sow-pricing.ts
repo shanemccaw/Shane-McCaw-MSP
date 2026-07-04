@@ -5,6 +5,23 @@ export interface SowPricingLine {
   notes: string;
   /** Distinguishes customer-toggleable workstream phases from mandatory price adjustments. */
   line_type?: "workstream" | "adjustment";
+  /** Estimated duration in weeks for this workstream phase (optional). */
+  weeks?: number;
+}
+
+/**
+ * Returns the next Business Monday strictly after the given date.
+ * If the given date is itself a Monday, the FOLLOWING Monday (7 days later) is returned.
+ * This is used to compute the engagement start date for SOW delivery schedules.
+ */
+export function nextBusinessMonday(from: Date = new Date()): Date {
+  const d = new Date(from);
+  d.setHours(0, 0, 0, 0);
+  const dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+  // If today is Monday add 7; otherwise advance to the next calendar Monday
+  const daysUntilMonday = dayOfWeek === 1 ? 7 : (8 - dayOfWeek) % 7;
+  d.setDate(d.getDate() + daysUntilMonday);
+  return d;
 }
 
 /**
@@ -215,6 +232,11 @@ export function parseSowAllPricing(html: string): {
     );
     if (priceIdx < 0) continue;
 
+    // Detect an optional "Duration" or "Weeks" column (workstream tables only)
+    const durationIdx = isWorkstreamTable
+      ? headerCells.findIndex(h => h.includes("duration") || h === "weeks" || h.includes("week"))
+      : -1;
+
     const bodyHtml = tableHtml
       .replace(/<thead[\s\S]*?<\/thead>/i, "")
       .replace(/<colgroup[\s\S]*?<\/colgroup>/i, "");
@@ -259,7 +281,18 @@ export function parseSowAllPricing(html: string): {
       const priceUsd = parseFloat(priceStr);
       if (isNaN(priceUsd) || priceUsd <= 0) continue;
 
-      const line: SowPricingLine = { title: titleCell, scope: "", priceUsd, notes: "" };
+      // Parse weeks from the Duration cell if present (handles "4 weeks", "4w", "~4", "4")
+      let weeks: number | undefined;
+      if (durationIdx >= 0) {
+        const durationCell = cells[durationIdx] ?? "";
+        const weeksMatch = durationCell.match(/~?(\d+)/);
+        if (weeksMatch) {
+          const parsed = parseInt(weeksMatch[1]!, 10);
+          if (!isNaN(parsed) && parsed > 0) weeks = parsed;
+        }
+      }
+
+      const line: SowPricingLine = { title: titleCell, scope: "", priceUsd, notes: "", ...(weeks !== undefined ? { weeks } : {}) };
 
       if (isWorkstreamTable) {
         workstreamLines.push(line);
