@@ -8,6 +8,9 @@ import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
+import { db } from "@workspace/db";
+import { insightsGeneratedDocumentsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -77,6 +80,14 @@ app.listen(port, (err) => {
   seedAiPrompts().catch((err) => {
     logger.warn({ err }, "AI prompt seed failed (non-fatal)");
   });
+
+  // Any document that was left in "generating" when the previous server process
+  // exited will never complete — mark them failed so the UI can retry/dismiss.
+  db.update(insightsGeneratedDocumentsTable)
+    .set({ status: "failed", errorMessage: "Generation abandoned — server restarted", updatedAt: new Date() })
+    .where(eq(insightsGeneratedDocumentsTable.status, "generating"))
+    .then((res) => { if (res.rowCount) logger.warn({ count: res.rowCount }, "Marked orphaned generating docs as failed on startup"); })
+    .catch((err) => logger.warn({ err }, "Orphaned-doc cleanup failed (non-fatal)"));
 
   seedArticles().catch((err) => {
     logger.warn({ err }, "Article seed failed (non-fatal)");

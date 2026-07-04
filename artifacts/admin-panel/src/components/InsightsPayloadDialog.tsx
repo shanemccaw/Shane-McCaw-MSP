@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Copy, CheckCircle, ChevronDown, ChevronRight, Cpu, FileText, List, BarChart2, Users, DollarSign, Tag } from "lucide-react";
+import { X, Copy, CheckCircle, ChevronDown, ChevronRight, Cpu, FileText, List, BarChart2, Users, DollarSign, Tag, BookOpen, Briefcase } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export interface PayloadPreview {
@@ -16,6 +16,8 @@ export interface PayloadPreview {
   profileSample: [string, string][];
   tenantFacts?: string;
   pricingFormula?: string;
+  existingDocsSummary?: string;
+  engagementProjectsSummary?: string;
 }
 
 interface CollapsibleSectionProps {
@@ -280,6 +282,28 @@ export function InsightsPayloadDialog({ open, onClose, payload, docTypeLabel }: 
               </div>
             )}
           </CollapsibleSection>
+
+          {/* Existing docs — only shown for consolidated SOW */}
+          {payload.existingDocsSummary !== undefined && (
+            <CollapsibleSection
+              title="Existing client documents"
+              icon={<BookOpen className="w-3.5 h-3.5" />}
+              defaultOpen
+            >
+              <MonoPre text={payload.existingDocsSummary || "(none found for this client)"} />
+            </CollapsibleSection>
+          )}
+
+          {/* Engagement projects — only shown for consolidated SOW */}
+          {payload.engagementProjectsSummary !== undefined && (
+            <CollapsibleSection
+              title="Engagement project catalogue"
+              icon={<Briefcase className="w-3.5 h-3.5" />}
+              defaultOpen
+            >
+              <MonoPre text={payload.engagementProjectsSummary || "(no visible engagement projects configured)"} />
+            </CollapsibleSection>
+          )}
 
           {/* SOW extras — only shown for SOW types */}
           {(payload.tenantFacts || payload.pricingFormula) && (

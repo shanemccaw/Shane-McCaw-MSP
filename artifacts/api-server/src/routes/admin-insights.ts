@@ -1959,6 +1959,8 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         maxTokens: 16000,
         stylePrefix: stylePrefix.trim(),
         assembledPrompt,
+        existingDocsSummary: docsBlock,
+        engagementProjectsSummary: projectsBlock,
         scores: {
           security: latestScores["security"] ?? 0, compliance: latestScores["compliance"] ?? 0,
           copilot: latestScores["copilot"] ?? 0, governance: latestScores["governance"] ?? 0,

@@ -632,25 +632,22 @@ function DocumentsTab({
   const generate = async () => {
     if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
-    // Start the request without awaiting so we can immediately refresh the list —
-    // the server inserts a 'generating' row before the AI call, so loadDocs will
-    // find it right away and the auto-poll will take over.
-    const promise = fetchWithAuth(`${API}/admin/insights/documents/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customerId: dialogCustomerId,
-        projectId:  dialogProjectId,
-        docType: wizardType, title: wizardTitle,
-      }),
-    });
-    void loadDocs();
+    // Server returns { id, status: "generating" } immediately (fire-and-forget).
+    // Close the wizard right away — the table auto-polls every 3 s and will show
+    // the row flip from "generating" → "approved" naturally.
     try {
-      const r = await promise;
-      const d = await r.json() as { document?: InsightsDocFull; error?: string };
+      const r = await fetchWithAuth(`${API}/admin/insights/documents/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: dialogCustomerId,
+          projectId:  dialogProjectId,
+          docType: wizardType, title: wizardTitle,
+        }),
+      });
+      const d = await r.json() as { id?: number; status?: string; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
-      setSelectedDoc(d.document!);
-      setWizardStep("done");
+      setWizardOpen(false);
       void loadDocs();
     } catch (e) { setError(String(e)); setWizardStep("confirm"); }
   };
@@ -1101,22 +1098,21 @@ function ConsultingTab({
   const generate = async () => {
     if (!dialogCustomerId || !dialogProjectId) return;
     setWizardStep("generating"); setError(null);
-    // Start the request without awaiting so we can immediately refresh the list —
-    // the server inserts a 'generating' row before the AI call, so loadDocs will
-    // find it right away and the auto-poll will take over.
-    const promise = fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        customerId: dialogCustomerId, projectId: dialogProjectId,
-        deliverableType: wizardType, title: wizardTitle,
-      }),
-    });
-    void loadDocs();
+    // Server returns { id, status: "generating" } immediately (fire-and-forget).
+    // Close the wizard right away — the table auto-polls every 3 s and will show
+    // the row flip from "generating" → "approved" naturally.
     try {
-      const r = await promise;
-      const d = await r.json() as { document?: InsightsDocFull; error?: string };
+      const r = await fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: dialogCustomerId, projectId: dialogProjectId,
+          deliverableType: wizardType, title: wizardTitle,
+        }),
+      });
+      const d = await r.json() as { id?: number; status?: string; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
-      setSelectedDoc(d.document!); setWizardStep("done"); void loadDocs();
+      setWizardOpen(false);
+      void loadDocs();
     } catch (e) { setError(String(e)); setWizardStep("confirm"); }
   };
 
