@@ -6,6 +6,7 @@ interface SowPhase {
   description: string;
   price: number;
   selected: boolean;
+  deliveryDate?: string | null;
 }
 
 interface SowSelectorPanelProps {
@@ -136,6 +137,12 @@ export default function SowSelectorPanel({
                     {phase.description && (
                       <p className={`text-xs mt-1 leading-relaxed ${phase.selected ? "text-muted-foreground" : "text-gray-300"}`}>
                         {phase.description}
+                      </p>
+                    )}
+                    {phase.deliveryDate && (
+                      <p className={`text-[10px] mt-1 font-medium ${phase.selected ? "text-[#0078D4]/70" : "text-gray-300"}`}>
+                        Est. delivery:{" "}
+                        {new Date(phase.deliveryDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                       </p>
                     )}
                   </div>
