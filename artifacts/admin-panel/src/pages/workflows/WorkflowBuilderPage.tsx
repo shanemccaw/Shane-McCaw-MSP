@@ -207,6 +207,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   play_sound: [
     { key: "soundPlayed",  label: "true if sound was dispatched (Browser SSE or Desktop push)" },
     { key: "soundTarget",  label: "Target that received the sound: browser or desktop", enumValues: ["browser", "desktop"] },
+    { key: "soundSkipped", label: "true if the play condition was not met and the sound was skipped" },
   ],
   // Send Browser Notification
   send_browser_notification: [{ key: "notificationSent", label: "true if push notification was dispatched" }],
@@ -1296,10 +1297,12 @@ function PlaySoundPanel({
   node,
   onChange,
   fetchWithAuth,
+  ancestorOutputs,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+  ancestorOutputs: AncestorGroup[];
 }) {
   const target     = (node.data.target    as string | undefined) ?? "browser";
   const soundMode  = (node.data.soundMode as string | undefined) ?? "preset";
@@ -1307,6 +1310,10 @@ function PlaySoundPanel({
   const url        = (node.data.url       as string | undefined) ?? "";
   const synthDesc  = (node.data.synthDesc as string | undefined) ?? "";
   const synthParams = node.data.synthParams as Record<string, unknown> | undefined;
+
+  const playConditionOp   = (node.data.playConditionOp   as string | undefined) ?? "always";
+  const playConditionExpr = (node.data.playConditionExpr as string | undefined) ?? "";
+  const playConditionVal  = (node.data.playConditionVal  as string | undefined) ?? "";
 
   const [synthLoading, setSynthLoading] = useState(false);
   const [synthError,   setSynthError]   = useState<string | null>(null);
@@ -1462,9 +1469,56 @@ function PlaySoundPanel({
         {previewLoading ? "Playing…" : "▶ Preview sound"}
       </button>
 
+      {/* Play only when — condition gate */}
+      <div className="space-y-2 pt-1 border-t border-[#21262D]">
+        <label className="text-xs font-medium text-[#7D8590]">Play only when</label>
+        <select
+          value={playConditionOp}
+          onChange={e => up({ playConditionOp: e.target.value, playConditionExpr: "", playConditionVal: "" })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60"
+        >
+          <option value="always">Always (unconditional)</option>
+          <option value="truthy">Variable is truthy (non-empty, non-zero, non-false)</option>
+          <option value="falsy">Variable is falsy (empty, zero, or false)</option>
+          <option value="eq">Variable equals value…</option>
+          <option value="neq">Variable does not equal value…</option>
+        </select>
+
+        {playConditionOp !== "always" && (
+          <PayloadField
+            label="Condition variable"
+            value={playConditionExpr}
+            onChange={v => up({ playConditionExpr: v })}
+            placeholder="{{steps.execute_runbook.success}}"
+            ancestorOutputs={ancestorOutputs}
+            hint="Reference an ancestor step output. The value is interpolated at runtime and then tested against the chosen operator."
+          />
+        )}
+
+        {(playConditionOp === "eq" || playConditionOp === "neq") && (
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-[#7D8590]">
+              {playConditionOp === "eq" ? "Equals" : "Does not equal"}
+            </label>
+            <input
+              value={playConditionVal}
+              onChange={e => up({ playConditionVal: e.target.value })}
+              placeholder="e.g. true, success, 1"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#E879F9]/60 placeholder-[#484F58]"
+            />
+          </div>
+        )}
+
+        {playConditionOp !== "always" && (
+          <p className="text-[10px] text-[#484F58] leading-relaxed">
+            When the condition is not met, the sound is skipped and <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> will be <span className="font-mono text-[#7D8590]">false</span>.
+          </p>
+        )}
+      </div>
+
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">
-          Outputs: <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> (boolean), <span className="font-mono text-[#7D8590]">{"{{soundTarget}}"}</span>.
+          Outputs: <span className="font-mono text-[#7D8590]">{"{{soundPlayed}}"}</span> (boolean), <span className="font-mono text-[#7D8590]">{"{{soundTarget}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{soundSkipped}}"}</span> (boolean — true when condition not met).
           Browser target plays in real-time via SSE. Desktop target delivers via web push (requires VAPID secrets).
         </p>
       </div>
@@ -1899,7 +1953,7 @@ function NodeConfigPanel({
         )}
 
         {nodeType === "play_sound" && (
-          <PlaySoundPanel node={node} onChange={onChange} fetchWithAuth={fetchWithAuth} />
+          <PlaySoundPanel node={node} onChange={onChange} fetchWithAuth={fetchWithAuth} ancestorOutputs={ancestorOutputs} />
         )}
 
         {nodeType === "send_browser_notification" && (

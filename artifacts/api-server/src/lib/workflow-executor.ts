@@ -1568,6 +1568,39 @@ async function executeNode(
         const psParams  = node.data.synthParams as Record<string, unknown> | undefined;
         const psLabel   = psParams ? "synthesised" : (psUrl ? psUrl : psSound);
 
+        // ── Condition gate ──────────────────────────────────────────────────────
+        const psCondOp   = (node.data.playConditionOp   as string | undefined) ?? "always";
+        const psCondExpr = (node.data.playConditionExpr as string | undefined) ?? "";
+        const psCondVal  = (node.data.playConditionVal  as string | undefined) ?? "";
+
+        if (psCondOp !== "always" && psCondExpr.trim()) {
+          // Resolve the expression against the current payload (step outputs live under
+          // payload.steps.<nodeId>.<key> after the executor merges them in).
+          const resolved = interp(psCondExpr.trim(), payload) ?? "";
+          let conditionMet = false;
+          switch (psCondOp) {
+            case "truthy":
+              conditionMet = resolved !== "" && resolved !== "0" && resolved !== "false" && resolved !== "null";
+              break;
+            case "falsy":
+              conditionMet = resolved === "" || resolved === "0" || resolved === "false" || resolved === "null";
+              break;
+            case "eq":
+              conditionMet = resolved === psCondVal;
+              break;
+            case "neq":
+              conditionMet = resolved !== psCondVal;
+              break;
+            default:
+              conditionMet = true;
+          }
+          if (!conditionMet) {
+            logger.info({ runId, psCondOp, psCondExpr, resolved }, "play_sound: condition not met — skipping");
+            output = { soundPlayed: false, soundSkipped: true, soundTarget: psTarget };
+            break;
+          }
+        }
+
         if (psTarget === "desktop") {
           // Deliver via web push — the service worker will broadcast PLAY_WORKFLOW_SOUND
           // to open admin panel tabs, which then call playSoundFromParams.
