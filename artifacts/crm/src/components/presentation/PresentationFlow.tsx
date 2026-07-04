@@ -325,16 +325,29 @@ export default function PresentationFlow({
   const [freeClaimError, setFreeClaimError] = useState<string | null>(null);
   const [offer, setOffer] = useState<OfferState | null>(null);
 
-  // Fetch PAY-TODAY offer state on mount (owner only, not share-token read-only)
-  useEffect(() => {
+  // Fetch PAY-TODAY offer state on mount and whenever the user enters the payment
+  // step — the offer amount can change mid-session (e.g. after a scoped SOW
+  // regeneration updates adjustmentsTotal) so we always want fresh data there.
+  const fetchOffer = () => {
     if (readOnly) return;
     const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
     void fetchFn(`/api/portal/presentations/${presentationId}/offer${tokenParam}`)
       .then(r => r.ok ? r.json() : null)
       .then((o: OfferState | null) => { if (o) setOffer(o); })
       .catch(() => { /* non-fatal */ });
+  };
+
+  useEffect(() => {
+    fetchOffer();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presentationId, readOnly, shareToken]);
+
+  // Refresh offer whenever the user arrives at the payment step so it always
+  // reflects the latest adjusted price (avoids stale data from mount-time fetch).
+  useEffect(() => {
+    if (currentStep?.kind === "payment") fetchOffer();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep?.kind]);
 
   // ── Runtime safety net: if currentStep is "contract" but no plan is chosen,
   // redirect to payment. Catches any path not covered by the init / nav guards
@@ -596,6 +609,8 @@ export default function PresentationFlow({
         setLastRegenPhaseIds(result.scopedPhaseIds);
         // Client has regenerated with the current pricing — clear the reset notice
         setScopedSowWasReset(false);
+        // Refresh offer so the payment step reflects the updated scoped price
+        fetchOffer();
       } else {
         const errBody = await res.json().catch(() => ({})) as { error?: string };
         setRegenerateError(errBody.error ?? "Failed to regenerate your Statement of Work. Please try again.");
