@@ -11,6 +11,7 @@ import AnimatedBackground from "../quickwin/AnimatedBackground";
 import CopilotAura from "../wizard/CopilotAura";
 import { computeOverviewStats } from "@/lib/doc-stat-extractors";
 import ConfirmationStep from "./ConfirmationStep";
+import SowGeneratingCard from "./SowGeneratingCard";
 
 interface PresentationDoc {
   id: number;
@@ -1137,7 +1138,7 @@ export default function PresentationFlow({
         )}
 
         {/* Body */}
-        <div ref={scrollAreaRef} className="flex-1 overflow-y-auto relative">
+        <div ref={scrollAreaRef} className="flex-1 overflow-x-hidden overflow-y-auto relative">
           {/* Skeleton overlay — shown while async steps (doc, contract) are loading */}
           {!stepReady && (
             <div className="absolute inset-0 z-10 max-w-4xl mx-auto px-4 sm:px-6 py-6 flex flex-col gap-4 pointer-events-none">
@@ -1566,57 +1567,28 @@ export default function PresentationFlow({
 
             {/* SOW selector */}
             {currentStep?.kind === "sow" && !hasSowDocument && (
-              <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(248,249,251)" }}>
+              <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(243,246,250)" }}>
                 {/* Torus knot — z-[1] so it sits above the panel background but below z-10 content */}
                 <AnimatedBackground />
 
                 {/* Screen-edge Copilot Aura */}
                 <CopilotAura />
 
-                {/* Centered card — matches diagnostic light aesthetic */}
-                <div className="relative z-10 px-6 py-8 w-full max-w-sm mx-auto text-center">
-                  {/* Animated "preparing" badge */}
-                  <div className="flex justify-center mb-6">
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] text-[11px] font-bold" style={{ backdropFilter: "blur(8px)" }}>
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
-                      PROPOSAL IN PROGRESS
-                    </div>
+                {/* "Proposal in progress" pill */}
+                <div className="relative z-10 flex justify-center mb-4">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] text-[11px] font-bold" style={{ backdropFilter: "blur(8px)" }}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse" />
+                    PROPOSAL IN PROGRESS
                   </div>
+                </div>
 
-                  {/* Card */}
-                  <div
-                    className="rounded-2xl px-7 py-8 border border-black/5 shadow-xl"
-                    style={{ background: "rgba(255,255,255,0.80)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
-                  >
-                    {data.clientName && (
-                      <p className="text-xs font-semibold text-[#0078D4] uppercase tracking-widest mb-3">
-                        Hi, {data.clientName}
-                      </p>
-                    )}
-
-                    <h2 className="text-xl font-bold text-[#191c1e] leading-snug mb-2">
-                      Your Statement of Work<br />is being prepared
-                    </h2>
-
-                    {data.projectTitle && (
-                      <p className="text-sm font-semibold text-[#0078D4] mb-4">{data.projectTitle}</p>
-                    )}
-
-                    <p className="text-sm text-black/50 leading-relaxed mb-6">
-                      Shane is crafting a tailored proposal for your project. This page will refresh automatically the moment it's ready.
-                    </p>
-
-                    {/* Progress dots */}
-                    <div className="flex items-center justify-center gap-1.5">
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          className="w-1.5 h-1.5 rounded-full bg-[#0078D4]/50 animate-pulse"
-                          style={{ animationDelay: `${i * 0.3}s` }}
-                        />
-                      ))}
-                    </div>
-                  </div>
+                {/* Generating card with staged progress */}
+                <div className="relative z-10 w-full max-w-sm mx-auto px-4">
+                  <SowGeneratingCard
+                    clientName={data.clientName}
+                    projectTitle={data.projectTitle}
+                    onClose={onClose}
+                  />
                 </div>
               </div>
             )}
