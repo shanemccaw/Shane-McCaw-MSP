@@ -247,9 +247,15 @@ export default function SowSelectorPanel({
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold text-gray-400 leading-snug">{adj.title}</p>
-                        <span className="text-xs font-extrabold whitespace-nowrap flex-shrink-0 text-gray-400">
-                          +{formatCurrency(adj.price)}
-                        </span>
+                        {hasScopeReduction ? (
+                          <span className="text-xs font-semibold text-gray-300 italic whitespace-nowrap flex-shrink-0">
+                            Calculating…
+                          </span>
+                        ) : (
+                          <span className="text-xs font-extrabold whitespace-nowrap flex-shrink-0 text-gray-400">
+                            +{formatCurrency(adj.price)}
+                          </span>
+                        )}
                       </div>
                       {adj.description && (
                         <p className="text-[11px] mt-1 leading-relaxed text-gray-400">{adj.description}</p>
@@ -283,7 +289,11 @@ export default function SowSelectorPanel({
                 {adjustmentLines.map((adj, i) => (
                   <div key={i} className="flex items-center justify-between text-xs text-gray-400">
                     <span className="truncate mr-2">{adj.title}</span>
-                    <span className="flex-shrink-0">+{formatCurrency(adj.price)}</span>
+                    {hasScopeReduction ? (
+                      <span className="flex-shrink-0 italic text-gray-300">Calculating…</span>
+                    ) : (
+                      <span className="flex-shrink-0">+{formatCurrency(adj.price)}</span>
+                    )}
                   </div>
                 ))}
                 <div className="h-px bg-gray-200 mt-1" />
@@ -291,7 +301,7 @@ export default function SowSelectorPanel({
             )}
             <div className="flex items-center justify-between mb-0.5">
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                Total Investment
+                {hasScopeReduction && hasAdjustments ? "Phases Subtotal" : "Total Investment"}
               </p>
               {!readOnly && (
                 <p className="text-xs text-muted-foreground">
@@ -299,7 +309,12 @@ export default function SowSelectorPanel({
                 </p>
               )}
             </div>
-            <p className="text-2xl font-extrabold text-[#0A2540]">{formatCurrency(displayTotal)}</p>
+            <p className="text-2xl font-extrabold text-[#0A2540]">
+              {hasScopeReduction && hasAdjustments ? formatCurrency(phasesSubtotal) : formatCurrency(displayTotal)}
+            </p>
+            {hasScopeReduction && hasAdjustments && (
+              <p className="text-xs text-gray-400 italic mt-0.5">+ adjustments recalculating…</p>
+            )}
             {saving && (
               <div className="flex items-center gap-1.5 text-xs text-[#0078D4] mt-1">
                 <div className="w-3 h-3 border border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
