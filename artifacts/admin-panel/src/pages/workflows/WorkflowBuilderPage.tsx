@@ -1927,7 +1927,7 @@ function NodeConfigPanel({
                   <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
                   <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
                     {(((node.data.docCategory as string) ?? "report") === "consulting"
-                      ? "consolidated_sow · sow · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
+                      ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
                       : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
                     )}
                   </p>
@@ -2202,7 +2202,7 @@ function NodeConfigPanel({
               <p className="text-[10px] text-[#484F58] font-medium">Valid values for <span className="text-[#7D8590]">{((node.data.docCategory as string) ?? "report") === "consulting" ? "Consulting Doc" : "Insights Report"}</span>:</p>
               <p className="text-[10px] font-mono text-[#484F58] leading-relaxed">
                 {(((node.data.docCategory as string) ?? "report") === "consulting"
-                  ? "consolidated_sow · sow · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
+                  ? "consolidated_sow · sow · task_execution_guide · remediation_plan · deployment_plan · governance_framework · security_hardening_plan · copilot_enablement_plan · identity_modernization_plan · copilot_readiness"
                   : "executive_summary · full_readiness_report · security_posture_report · governance_maturity_report · data_exposure_risk_report · license_optimization_report"
                 )}
               </p>
