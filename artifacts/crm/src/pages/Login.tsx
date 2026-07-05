@@ -41,7 +41,7 @@ function ringColor(s: number) {
   return s >= 70 ? "#22c55e" : s >= 40 ? "#f59e0b" : "#ef4444";
 }
 
-function M365HealthPanel({ dark = false }: { dark?: boolean }) {
+function M365HealthPanel({ dark = false, vertical = false }: { dark?: boolean; vertical?: boolean }) {
   const startVals = {
     compliance:   Math.round(88 * START_PCT),
     copilot:      Math.round(91 * START_PCT),
@@ -83,6 +83,52 @@ function M365HealthPanel({ dark = false }: { dark?: boolean }) {
   const subCol    = dark ? "rgba(255,255,255,0.35)" : "rgba(10,37,64,0.4)";
   const pctCol    = dark ? "#ffffff"                : ringColor(overall);
   const catCol    = dark ? "rgba(255,255,255,0.45)" : "rgba(10,37,64,0.45)";
+
+  const rV = 34;
+  const circV = 2 * Math.PI * rV;
+
+  if (vertical) {
+    return (
+      <div
+        className="w-full rounded-xl border flex flex-col items-center gap-3 p-4"
+        style={{ background: oBg, backdropFilter: "blur(14px)", borderColor: oBorder }}
+      >
+        {/* Overall ring — centered top */}
+        <div className="flex flex-col items-center gap-1">
+          <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
+            <svg width={80} height={80} viewBox="0 0 80 80" className="-rotate-90">
+              <circle cx="40" cy="40" r={rV} fill="none" stroke={oTrack} strokeWidth="8" />
+              <circle
+                cx="40" cy="40" r={rV} fill="none"
+                stroke={ringColor(overall)} strokeWidth="8"
+                strokeDasharray={circV}
+                strokeDashoffset={circV - (overall / 100) * circV}
+              />
+            </svg>
+            <span className="absolute text-sm font-bold" style={{ color: pctCol }}>{overall}%</span>
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: titleCol }}>M365 Health</p>
+          <p className="text-[9px]" style={{ color: subCol }}>Tenant Posture</p>
+        </div>
+
+        {/* Divider */}
+        <div className="w-full h-px" style={{ background: oDiv }} />
+
+        {/* Category rings — row of 5 */}
+        <div className="flex items-end justify-around w-full gap-1">
+          {SCORE_CATEGORIES.map(({ label, key }) => {
+            const pct = scores[key] ?? 0;
+            return (
+              <div key={key} className="flex flex-col items-center gap-1">
+                <ScoreRing score={pct} size={46} strokeWidth={4} dark={dark} />
+                <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: catCol }}>{label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -247,75 +293,78 @@ function LeftPanel() {
         </div>
       </div>
 
-      {/* Hero */}
-      <div className="flex-1 flex flex-col justify-center">
-        <h1 className="font-black text-white leading-tight mb-4" style={{ fontSize: "clamp(2rem,3.5vw,3rem)" }}>
-          Your M365<br />
-          <span style={{ color: "#00B4D8" }}>Command Center</span>
-        </h1>
-        <p className="text-white/58 text-base leading-relaxed mb-8 max-w-sm">
-          A secure, unified portal for assessments, reports, insights, and project delivery.
-        </p>
+      {/* Hero — text left, health panel right */}
+      <div className="flex-1 flex items-center gap-8 min-h-0">
 
-        {/* Value bullets */}
-        <ul className="space-y-3 mb-8">
-          {VALUE_BULLETS.map(({ icon: Icon, text }) => (
-            <li key={text} className="flex items-center gap-3">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ background: "rgba(0,120,212,0.18)", border: "1px solid rgba(0,120,212,0.30)" }}
-              >
-                <Icon className="w-3.5 h-3.5 text-[#0078D4]" />
-              </div>
-              <span className="text-white/72 text-sm font-medium">{text}</span>
-            </li>
-          ))}
-        </ul>
-
-        {/* Trust & compliance badges */}
-        <div className="mb-8">
-          <p
-            className="text-[9px] font-bold uppercase tracking-widest mb-3"
-            style={{ color: "rgba(255,255,255,0.28)" }}
-          >
-            Security &amp; Compliance
+        {/* Left column: headline + bullets + badges */}
+        <div className="flex-1 min-w-0 flex flex-col justify-center">
+          <h1 className="font-black text-white leading-tight mb-3" style={{ fontSize: "clamp(1.75rem,3vw,2.75rem)" }}>
+            Your M365<br />
+            <span style={{ color: "#00B4D8" }}>Command Center</span>
+          </h1>
+          <p className="text-white/58 text-sm leading-relaxed mb-6 max-w-xs">
+            A secure, unified portal for assessments, reports, insights, and project delivery.
           </p>
-          <div className="flex flex-wrap gap-2 mb-2">
-            {SEC_BADGES.map(({ emoji, label }) => (
-              <div
-                key={label}
-                className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
-                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)" }}
-              >
-                <span className="text-xs leading-none">{emoji}</span>
-                <span className="text-white/68 text-xs font-medium">{label}</span>
-              </div>
+
+          {/* Value bullets */}
+          <ul className="space-y-2.5 mb-6">
+            {VALUE_BULLETS.map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(0,120,212,0.18)", border: "1px solid rgba(0,120,212,0.30)" }}
+                >
+                  <Icon className="w-3.5 h-3.5 text-[#0078D4]" />
+                </div>
+                <span className="text-white/72 text-sm font-medium">{text}</span>
+              </li>
             ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {COMP_BADGES.map(badge => (
-              <span
-                key={badge}
-                className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
-                style={{ color: "rgba(255,255,255,0.48)", border: "1px solid rgba(255,255,255,0.16)" }}
-              >
-                {badge}
-              </span>
-            ))}
+          </ul>
+
+          {/* Trust & compliance badges */}
+          <div>
+            <p
+              className="text-[9px] font-bold uppercase tracking-widest mb-2.5"
+              style={{ color: "rgba(255,255,255,0.28)" }}
+            >
+              Security &amp; Compliance
+            </p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {SEC_BADGES.map(({ emoji, label }) => (
+                <div
+                  key={label}
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)" }}
+                >
+                  <span className="text-xs leading-none">{emoji}</span>
+                  <span className="text-white/68 text-xs font-medium">{label}</span>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {COMP_BADGES.map(badge => (
+                <span
+                  key={badge}
+                  className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                  style={{ color: "rgba(255,255,255,0.48)", border: "1px solid rgba(255,255,255,0.16)" }}
+                >
+                  {badge}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Tenant health snapshot */}
-      <div className="shrink-0">
-        <p
-          className="text-[9px] font-bold uppercase tracking-widest mb-2"
-          style={{ color: "rgba(255,255,255,0.28)" }}
-        >
-          Tenant Health Snapshot
-        </p>
-        <M365HealthPanel dark />
-        <ActivityTicker dark />
+        {/* Right column: tenant health snapshot */}
+        <div className="shrink-0 flex flex-col justify-center" style={{ width: "clamp(200px,30%,260px)" }}>
+          <p
+            className="text-[9px] font-bold uppercase tracking-widest mb-2"
+            style={{ color: "rgba(255,255,255,0.28)" }}
+          >
+            Tenant Health Snapshot
+          </p>
+          <M365HealthPanel dark vertical />
+        </div>
       </div>
     </div>
   );
@@ -603,6 +652,11 @@ export default function LoginPage() {
                 <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
                   M365 Client Portal
                 </span>
+              </div>
+
+              {/* Activity ticker — above the login card */}
+              <div className="w-full max-w-md mb-3">
+                <ActivityTicker />
               </div>
 
               <div className="w-full max-w-md">
