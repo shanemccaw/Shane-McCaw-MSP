@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type ReactNode, lazy, Suspense } from "react";
 import WorkspaceLayout, { type WorkspaceNavItem } from "@/components/WorkspaceLayout";
 import OverviewPage from "@/pages/Overview";
 import MessagesPage from "@/pages/crm/Messages";
@@ -6,9 +6,10 @@ import AnalyticsPage from "@/pages/Analytics";
 import ScriptGeneratorPage from "@/pages/ScriptGeneratorPage";
 import RunningScriptsPage from "@/pages/RunningScriptsPage";
 import PromptCenterPage from "@/pages/PromptCenter";
-import MarketingCommandCenterPage from "@/pages/MarketingCommandCenter";
 import InsightsOutputsPage from "@/pages/InsightsOutputs";
 import PresentationsPage from "@/pages/workspaces/command/PresentationsPage";
+
+const MarketingCommandCenterPage = lazy(() => import("@/pages/MarketingCommandCenter"));
 
 const NAV_ITEMS: WorkspaceNavItem[] = [
   {
@@ -101,7 +102,15 @@ function getContent(section: string): ReactNode {
     case "scripts":          return <ScriptGeneratorPage />;
     case "running-scripts":  return <RunningScriptsPage />;
     case "prompts":          return <PromptCenterPage />;
-    case "marketing":        return <MarketingCommandCenterPage />;
+    case "marketing":        return (
+      <Suspense fallback={
+        <div className="flex-1 flex items-center justify-center">
+          <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }>
+        <MarketingCommandCenterPage />
+      </Suspense>
+    );
     case "insights":         return <InsightsOutputsPage />;
     case "presentations":    return <PresentationsPage />;
     default:                 return <OverviewPage />;
