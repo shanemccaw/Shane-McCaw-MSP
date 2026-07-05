@@ -37,16 +37,16 @@ function ProgressBar({ current, total }: { current: number | null; total: number
   return (
     <div className="mt-3 mb-1">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.45)" }}>
+        <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "rgba(0,0,0,0.40)" }}>
           Progress
         </span>
-        <span className="text-[11px] font-bold tabular-nums" style={{ color: "rgba(255,255,255,0.7)" }}>
+        <span className="text-[11px] font-bold tabular-nums" style={{ color: "rgba(0,0,0,0.55)" }}>
           {isPulsing ? "–" : `${pct}%`}
         </span>
       </div>
       <div
         className="relative w-full h-1.5 rounded-full overflow-hidden"
-        style={{ background: "rgba(255,255,255,0.10)" }}
+        style={{ background: "rgba(0,0,0,0.08)" }}
       >
         {isPulsing ? (
           <div
@@ -69,9 +69,12 @@ function ProgressBar({ current, total }: { current: number | null; total: number
   );
 }
 
-function DarkOverlay({ children }: { children: React.ReactNode }) {
+function LightOverlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-[20000] flex items-center justify-center bg-[#0A2540]">
+    <div
+      className="fixed inset-0 z-[20000] flex items-center justify-center"
+      style={{ backgroundColor: "rgb(248,249,251)" }}
+    >
       <AnimatedBackground fullScreen />
       <CopilotAura />
       <div className="relative z-[20] w-full max-w-sm mx-auto px-4">
@@ -123,23 +126,15 @@ export default function PhaseGeneratingCard({
 
   if (hasError) {
     return (
-      <DarkOverlay>
-        <div
-          className="rounded-2xl shadow-2xl p-6 text-center"
-          style={{
-            background: "rgba(10,37,64,0.72)",
-            backdropFilter: "blur(18px)",
-            WebkitBackdropFilter: "blur(18px)",
-            border: "1px solid rgba(255,255,255,0.12)",
-          }}
-        >
-          <div className="w-12 h-12 rounded-full bg-red-900/40 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <LightOverlay>
+        <div className="rounded-2xl shadow-lg p-6 text-center bg-white border border-black/8">
+          <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-4">
+            <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
           </div>
-          <h2 className="text-lg font-extrabold text-white mb-2">Couldn't Build Your Plan</h2>
-          <p className="text-sm leading-relaxed mb-6" style={{ color: "rgba(255,255,255,0.6)" }}>{errorMessage}</p>
+          <h2 className="text-lg font-extrabold text-[#0A2540] mb-2">Couldn't Build Your Plan</h2>
+          <p className="text-sm leading-relaxed mb-6 text-black/60">{errorMessage}</p>
           <button
             onClick={onError}
             className="w-full py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 transition-colors shadow-lg shadow-[#0078D4]/30"
@@ -147,12 +142,12 @@ export default function PhaseGeneratingCard({
             Continue to Payment Options
           </button>
         </div>
-      </DarkOverlay>
+      </LightOverlay>
     );
   }
 
   return (
-    <DarkOverlay>
+    <LightOverlay>
       {/* Animated ambient ring */}
       <div className="relative flex justify-center mb-6">
         <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ border: "4px solid rgba(0,120,212,0.25)" }}>
@@ -163,22 +158,14 @@ export default function PhaseGeneratingCard({
         </div>
       </div>
 
-      <div
-        className="rounded-2xl shadow-2xl w-full"
-        style={{
-          background: "rgba(10,37,64,0.72)",
-          backdropFilter: "blur(18px)",
-          WebkitBackdropFilter: "blur(18px)",
-          border: "1px solid rgba(255,255,255,0.12)",
-        }}
-      >
+      <div className="rounded-2xl shadow-lg w-full bg-white border border-black/8">
         <div className="px-6 pt-6 pb-4">
           {clientName && (
             <p className="text-[11px] font-bold text-[#00B4D8] uppercase tracking-widest mb-2">
               Hi, {clientName}
             </p>
           )}
-          <h2 className="text-lg font-extrabold text-white leading-snug mb-1">
+          <h2 className="text-lg font-extrabold text-[#0A2540] leading-snug mb-1">
             Building Your Project Plan
           </h2>
           {projectTitle && (
@@ -211,7 +198,7 @@ export default function PhaseGeneratingCard({
                 <li key={i} className="flex items-center gap-2.5" style={{ opacity: row.done && i < rows.length - 1 ? 0.5 : 1, transition: "opacity 0.3s ease" }}>
                   <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">
                     {row.done ? (
-                      <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     ) : isActive ? (
@@ -220,13 +207,13 @@ export default function PhaseGeneratingCard({
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
                     ) : (
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(255,255,255,0.25)" }} />
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(0,0,0,0.20)" }} />
                     )}
                   </span>
                   <span
                     className="text-xs leading-snug"
                     style={{
-                      color: row.done ? "#4ade80" : isActive ? "#0078D4" : "rgba(255,255,255,0.35)",
+                      color: row.done ? "#16a34a" : isActive ? "#0078D4" : "rgba(0,0,0,0.30)",
                       fontWeight: isActive ? 600 : row.done ? 500 : 400,
                     }}
                   >
@@ -239,12 +226,12 @@ export default function PhaseGeneratingCard({
           )}
         </ul>
 
-        <div className="px-6 pb-5 pt-2 mt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-          <p className="text-[11px] leading-relaxed" style={{ color: "rgba(255,255,255,0.4)" }}>
+        <div className="px-6 pb-5 pt-2 mt-1" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+          <p className="text-[11px] leading-relaxed" style={{ color: "rgba(0,0,0,0.40)" }}>
             Analysing your Statement of Work to create AI-generated project phases and pricing.
           </p>
         </div>
       </div>
-    </DarkOverlay>
+    </LightOverlay>
   );
 }
