@@ -24,6 +24,7 @@ import {
   usersTable,
   servicesTable,
   kanbanTasksTable,
+  projectsTable,
 } from "@workspace/db";
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -303,13 +304,16 @@ async function processRunInBackground(
     })
     .where(eq(scriptRunResultsTable.id, runResultId));
 
-  // Determine up-front whether any linked kanban task has triggersHealthScore=true.
-  // This gates snapshotHealthFromProfile so we never write two snapshots for the same run.
+  // Determine whether any linked kanban task has triggersHealthScore=true.
+  // When found AND customerId is missing, derive the customer from the kanban task's project
+  // so the health update always fires for the right client regardless of how the run was started.
   let kanbanHealthScoreTrigger = false;
   let triggerKanbanTaskId: number | null = null;
-  if (finalStatus === "completed" && customerId && kanbanIds.length > 0) {
+  let effectiveCustomerId: number | undefined = customerId;
+
+  if (finalStatus === "completed" && kanbanIds.length > 0) {
     const triggerRows = await db
-      .select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+      .select({ id: kanbanTasksTable.id, projectId: kanbanTasksTable.projectId, taskMetadata: kanbanTasksTable.taskMetadata })
       .from(kanbanTasksTable)
       .where(inArray(kanbanTasksTable.id, kanbanIds));
     const triggeringRow = triggerRows.find(row => {
@@ -318,30 +322,51 @@ async function processRunInBackground(
     });
     kanbanHealthScoreTrigger = !!triggeringRow;
     triggerKanbanTaskId = triggeringRow?.id ?? null;
+
+    // If customerId was not passed to this run but the kanban task is flagged, look it
+    // up from the project so health scoring always works for any customer.
+    if (!effectiveCustomerId && triggeringRow?.projectId) {
+      try {
+        const [project] = await db
+          .select({ clientUserId: projectsTable.clientUserId })
+          .from(projectsTable)
+          .where(eq(projectsTable.id, triggeringRow.projectId))
+          .limit(1);
+        if (project?.clientUserId) {
+          effectiveCustomerId = project.clientUserId;
+          logger.info(
+            { kanbanTaskId: triggeringRow.id, projectId: triggeringRow.projectId, derivedCustomerId: effectiveCustomerId },
+            "admin-m365-run: derived customerId from kanban project (triggersHealthScore=true)",
+          );
+        }
+      } catch (lookupErr) {
+        logger.warn({ lookupErr, triggeringRow }, "admin-m365-run: failed to derive customerId from project (non-fatal)");
+      }
+    }
   }
 
-  if (customerId) {
+  if (effectiveCustomerId) {
     try {
-      await applyScoreImpact(customerId, aiResult.scoreImpact);
+      await applyScoreImpact(effectiveCustomerId, aiResult.scoreImpact);
     } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
+      logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply score impact (non-fatal)");
     }
     try {
-      await applyProfileUpdates(customerId, mergedProfileUpdates);
+      await applyProfileUpdates(effectiveCustomerId, mergedProfileUpdates);
     } catch (err) {
-      logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
+      logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
     }
     // Always snapshot health scores after applying profile updates when the job completed
     // successfully. Both standard and triggersHealthScore runs use the same path — the profile
     // was just written by applyProfileUpdates so it will always be present here.
     if (finalStatus === "completed") {
       try {
-        await snapshotHealthFromProfile(customerId);
+        await snapshotHealthFromProfile(effectiveCustomerId);
       } catch (err) {
-        logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
+        logger.warn({ err, effectiveCustomerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
       }
     } else {
-      logger.warn({ customerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
+      logger.warn({ effectiveCustomerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
     }
   }
 
@@ -349,17 +374,17 @@ async function processRunInBackground(
     try {
       // Mark whether this run explicitly triggered a health score update (for completion notes).
       let healthScoreTriggered = false;
-      if (kanbanHealthScoreTrigger && customerId) {
+      if (kanbanHealthScoreTrigger && effectiveCustomerId) {
         healthScoreTriggered = true;
-        logger.info({ customerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
+        logger.info({ effectiveCustomerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
         void createAuditLog({
           actorName: "System",
           actorRole: "admin",
           actionType: "health_score_updated",
           entityType: "health_score",
-          entityId: String(customerId),
+          entityId: String(effectiveCustomerId),
           entityLabel: "M365 Health Score",
-          clientId: customerId,
+          clientId: effectiveCustomerId,
           metadata: { triggeredByKanbanTaskId: triggerKanbanTaskId },
         }).catch(() => {});
       }
