@@ -41,29 +41,38 @@ const OVERALL_TARGET = Math.round(
   (88 + 91 + 76 + 73 + 84) / 5
 );
 
+// Starting values (~20% of target so the count-up is clearly visible)
+const START_PCT = 0.20;
+
 function M365HealthPanel() {
-  const [scores, setScores] = useState<Record<string, number>>({
-    compliance: 0, copilot: 0, governance: 0, productivity: 0, security: 0,
-  });
-  const [overall, setOverall] = useState(0);
+  const startVals = {
+    compliance:  Math.round(88 * START_PCT),
+    copilot:     Math.round(91 * START_PCT),
+    governance:  Math.round(76 * START_PCT),
+    productivity:Math.round(73 * START_PCT),
+    security:    Math.round(84 * START_PCT),
+  };
+  const [scores, setScores] = useState<Record<string, number>>(startVals);
+  const [overall, setOverall] = useState(Math.round(OVERALL_TARGET * START_PCT));
   const startRef = useRef<number | null>(null);
   const rafRef   = useRef<number | null>(null);
-  const DURATION = 1400;
+  const DURATION = 8000; // 8 s slow count-up
 
   useEffect(() => {
-    function easeOut(t: number) { return 1 - Math.pow(1 - t, 3); }
+    // Linear ease so numbers tick steadily upward
     function tick(now: number) {
       if (startRef.current === null) startRef.current = now;
       const t = Math.min((now - startRef.current) / DURATION, 1);
-      const e = easeOut(t);
+      // interpolate from START_PCT → 1.0
+      const frac = START_PCT + (1 - START_PCT) * t;
       setScores({
-        compliance:  Math.round(88 * e),
-        copilot:     Math.round(91 * e),
-        governance:  Math.round(76 * e),
-        productivity:Math.round(73 * e),
-        security:    Math.round(84 * e),
+        compliance:  Math.round(88 * frac),
+        copilot:     Math.round(91 * frac),
+        governance:  Math.round(76 * frac),
+        productivity:Math.round(73 * frac),
+        security:    Math.round(84 * frac),
       });
-      setOverall(Math.round(OVERALL_TARGET * e));
+      setOverall(Math.round(OVERALL_TARGET * frac));
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
     }
     rafRef.current = requestAnimationFrame(tick);
@@ -77,12 +86,12 @@ function M365HealthPanel() {
 
   return (
     <div
-      className="w-full max-w-2xl rounded-xl border border-black/5 shadow-sm hidden md:flex flex-wrap lg:flex-nowrap items-center gap-6 p-4 mb-4"
+      className="w-full max-w-3xl rounded-xl border border-black/5 shadow-sm hidden md:flex items-center gap-6 p-5 mb-3"
       style={{ backgroundColor: "rgba(255,255,255,0.72)", backdropFilter: "blur(14px)" }}
     >
       {/* Overall ring */}
       <div className="flex items-center gap-4 pr-6 border-r border-black/10 shrink-0">
-        <div className="relative w-14 h-14 flex items-center justify-center">
+        <div className="relative w-16 h-16 flex items-center justify-center">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="10" className="text-black/5" />
             <circle
@@ -90,7 +99,6 @@ function M365HealthPanel() {
               stroke={overallBar} strokeWidth="10"
               strokeDasharray={circ}
               strokeDashoffset={circ - (overall / 100) * circ}
-              style={{ transition: "stroke-dashoffset 80ms linear" }}
             />
           </svg>
           <span className={`absolute text-sm font-bold ${overallText}`}>{overall}%</span>
@@ -101,25 +109,21 @@ function M365HealthPanel() {
         </div>
       </div>
 
-      {/* Category bars */}
-      <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 w-full">
+      {/* Category bars — equal flex columns, no wrapping */}
+      <div className="flex-1 flex items-stretch gap-5 min-w-0">
         {SCORE_CATEGORIES.map(({ label, key }) => {
           const pct = scores[key] ?? 0;
           const { bar, text } = scoreColor(pct);
           return (
-            <div key={key} className="space-y-1.5">
-              <div className="flex justify-between items-center">
+            <div key={key} className="flex-1 flex flex-col justify-between gap-1.5 min-w-0">
+              <div className="flex items-baseline gap-1.5">
                 <span className="text-[11px] font-semibold text-black/50">{label}</span>
-                <span className={`text-xs font-bold ${text}`}>{pct}%</span>
+                <span className={`text-xs font-bold shrink-0 ${text}`}>{pct}%</span>
               </div>
-              <div className="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
                 <div
                   className="h-full rounded-full"
-                  style={{
-                    width: `${pct}%`,
-                    backgroundColor: bar,
-                    transition: "width 80ms linear",
-                  }}
+                  style={{ width: `${pct}%`, backgroundColor: bar }}
                 />
               </div>
             </div>
@@ -452,11 +456,11 @@ export default function LoginPage() {
         {/* ── Centered column — z-40 ────────────────────────────────────── */}
         <div className="relative z-40 flex flex-col items-center justify-center min-h-screen px-5 py-10">
 
-          {/* M365 Health Score panel — above login card, desktop only */}
-          <M365HealthPanel />
-
-          {/* Activity ticker — just above the login card, desktop only */}
+          {/* Activity ticker — above the health panel, desktop only */}
           <ActivityTicker />
+
+          {/* M365 Health Score panel — desktop only */}
+          <M365HealthPanel />
 
           <div className="w-full max-w-md">
 
