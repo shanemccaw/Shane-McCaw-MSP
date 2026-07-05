@@ -65,6 +65,7 @@ import {
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
+import { computeTenantSignals, projectMatchesSignals } from "../lib/tenant-signals";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1811,7 +1812,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
               .where(and(eq(insightsGeneratedDocumentsTable.customerId, customerId), notInArray(insightsGeneratedDocumentsTable.docType, ["sow", "consolidated_sow"])))
               .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
           : Promise.resolve([] as { id: number; title: string; docType: string; category: string; htmlContent: string }[]),
-        db.select({ title: engagementProjectsTable.title, priceRange: engagementProjectsTable.priceRange, description: engagementProjectsTable.description, sowItems: engagementProjectsTable.sowItems })
+        db.select({ title: engagementProjectsTable.title, priceRange: engagementProjectsTable.priceRange, description: engagementProjectsTable.description, sowItems: engagementProjectsTable.sowItems, triggeredBy: engagementProjectsTable.triggeredBy })
           .from(engagementProjectsTable).where(eq(engagementProjectsTable.isVisible, true)).orderBy(engagementProjectsTable.sortOrder),
         customerId
           ? db.select({ name: usersTable.name, company: usersTable.company }).from(usersTable).where(eq(usersTable.id, customerId)).limit(1)
@@ -1833,10 +1834,6 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const docsBlock = existingDocs.length > 0
         ? existingDocs.map((d, i) => `[Document ${i + 1}] ${d.title} (${d.docType})\n${stripHtml(d.htmlContent)}`).join("\n\n---\n\n")
         : "No prior documents found for this client.";
-
-      const projectsBlock = engagementProjects.length > 0
-        ? engagementProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
-        : "No engagement project pricing configured.";
 
       const telemetryLines: string[] = [];
       const profile = (m365ProfileRow as { profile: Record<string, unknown> | null }[])[0]?.profile;
@@ -1860,6 +1857,43 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         for (const [k, v] of Object.entries(mergedSowProfile)) telemetryLines.push(`  ${k}: ${String(v)}`);
       }
       const tenantTelemetryBlock = telemetryLines.length > 0 ? telemetryLines.join("\n") : "No tenant telemetry collected yet.";
+
+      // ── Signal-filter engagement projects (same logic as consolidated-sow-generator) ──
+      type PreviewProjectRow = { title: string; priceRange: string; description: string | null; sowItems: unknown[] | null; triggeredBy: string[] | null };
+      const allEngagementProjects = engagementProjects as PreviewProjectRow[];
+      let signalFilteredProjects = allEngagementProjects;
+      let signalFilterInfo: { firedSignals: string[]; totalProjects: number; includedCount: number; excludedCount: number } = {
+        firedSignals: [], totalProjects: allEngagementProjects.length, includedCount: allEngagementProjects.length, excludedCount: 0,
+      };
+      try {
+        const [signalRulesRes, signalGroupsRes] = await Promise.all([
+          db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
+          db.execute(sql`SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt" FROM signal_rule_groups ORDER BY signal_key, sort_order, id`),
+        ]);
+        const { firedSignals } = computeTenantSignals(
+          mergedSowProfile,
+          allFindings,
+          signalRulesRes.rows as Parameters<typeof computeTenantSignals>[2],
+          signalGroupsRes.rows as Parameters<typeof computeTenantSignals>[3],
+        );
+        signalFilteredProjects = allEngagementProjects.filter(p => {
+          const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy : [];
+          if (triggers.length === 0) return true;
+          const { included } = projectMatchesSignals({ title: p.title, triggeredBy: triggers }, firedSignals);
+          return included;
+        });
+        signalFilterInfo = {
+          firedSignals: firedSignals.map(s => s.key),
+          totalProjects: allEngagementProjects.length,
+          includedCount: signalFilteredProjects.length,
+          excludedCount: allEngagementProjects.length - signalFilteredProjects.length,
+        };
+      } catch (signalErr) {
+        logger.warn({ signalErr }, "consolidated-sow payload-preview: signal evaluation failed — using all projects");
+      }
+      const projectsBlock = signalFilteredProjects.length > 0
+        ? signalFilteredProjects.map(p => `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${p.sowItems?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`).join("\n\n")
+        : "No engagement project pricing configured.";
 
       const sp = mergedSowProfile;
       const computedTier = computeTenantTier(sp.totalUserCount);
@@ -1885,7 +1919,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
 
       const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"\n- Pricing Adjustments: list ONLY the adjustments permitted for the workstreams present per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below — each adjustment once only, never on individual workstream rows`;
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
-      const previewRawTitles = engagementProjects.map((p: { title: string }) => p.title);
+      const previewRawTitles = signalFilteredProjects.map((p: { title: string }) => p.title);
       const { resolvedKeys: previewResolvedKeys, unresolvedTitles: previewUnresolvedTitles } =
         resolveWorkstreamKeys(previewRawTitles);
       const previewWorkstreamContextBlock = buildWorkstreamContextBlock(
@@ -1922,6 +1956,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         profileSample: Object.entries(mergedSowProfile).slice(0, 30).map(([k, v]) => [k, String(v)]),
         tenantFacts: sowTenantFacts,
         pricingFormula: TIER_02_PRICING_FORMULA_BLOCK,
+        signalFilter: signalFilterInfo,
       });
     }
     // ── End Consolidated SOW ─────────────────────────────────────────────────────
