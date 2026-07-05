@@ -256,9 +256,10 @@ const COMP_BADGES = ["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR"];
 function LeftPanel() {
   return (
     <div
-      className="hidden md:flex flex-col px-9 py-9 overflow-y-auto relative"
+      className="hidden md:flex flex-col px-9 py-9 overflow-y-auto relative [&::-webkit-scrollbar]:hidden"
       style={{
         background: "linear-gradient(155deg, #061a2e 0%, #030f1d 55%, #020c19 100%)",
+        scrollbarWidth: "none",
       }}
     >
       {/* Dot-grid depth pattern */}
@@ -319,13 +320,8 @@ function LeftPanel() {
           </p>
         </div>
 
-        {/* ── Product preview carousel ── */}
-        <div className="shrink-0">
-          <ProductCarousel />
-        </div>
-
         {/* ── Floating health snapshot card ── */}
-        <div className="shrink-0 mt-5">
+        <div className="shrink-0 mb-5">
           <div
             className="rounded-2xl overflow-hidden transition-transform duration-200 cursor-default"
             style={{
@@ -340,6 +336,11 @@ function LeftPanel() {
             <M365HealthPanel dark vertical />
           </div>
           <ActivityTicker dark />
+        </div>
+
+        {/* ── Product preview carousel ── */}
+        <div className="shrink-0">
+          <ProductCarousel />
         </div>
 
         {/* ── Trust / security badge strip — bottom, staggered fade-in ── */}
