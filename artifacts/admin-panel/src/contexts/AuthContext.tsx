@@ -140,9 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {
+      // Ignore network errors — always clear local session
+    }
     setState({ user: null, accessToken: null, isLoading: false });
     accessTokenRef.current = null;
+    // Hard redirect: kills all in-flight requests / SSE connections and
+    // ensures no background refresh can race back in before the router updates.
+    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+    window.location.replace(`${base}/login`);
   };
 
   const fetchWithAuth = useCallback(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
