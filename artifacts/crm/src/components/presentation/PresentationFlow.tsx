@@ -778,16 +778,17 @@ export default function PresentationFlow({
     // scopedSowDoc state is initialised from data.scopedSowHtml (column on the
     // presentation row). The scoped SOW may also be stored as a separate document
     // with docType "scoped_sow" — check both so the AI always sees the right scope.
-    const scopedDocHtml = sortedDocs.find(d => d.docType === "scoped_sow")?.htmlContent ?? null;
+    const scopedDoc = sortedDocs.find(d => d.docType === "scoped_sow");
     const sowDoc = sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow");
-    const sowHtmlSnippet = (scopedSowDoc ?? scopedDocHtml ?? sowDoc?.htmlContent ?? "").slice(0, 8000);
+    // Prefer scoped SOW doc ID, fall back to consolidated SOW doc ID
+    const sowDocId = scopedDoc?.id ?? sowDoc?.id ?? null;
     try {
       const resp = await fetchFn(`/api/portal/presentations/${presentationId}/generate-phases${tokenParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           totalPrice: effectivePrice,
-          sowHtml: sowHtmlSnippet,
+          sowDocId,
           projectTitle: data.projectTitle ?? "",
           adjustmentsTotal: data.adjustmentsTotal ?? 0,
           adjustmentLines: (data.adjustmentLines ?? []).map(a => ({ title: a.title, price: a.price })),

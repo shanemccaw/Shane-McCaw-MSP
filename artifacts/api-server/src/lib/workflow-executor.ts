@@ -2760,6 +2760,21 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       // ── Ask AI ────────────────────────────────────────────────────────────
       case "ask_ai": {
+        // If the payload carries a sowDocId but no inline sowHtml, fetch the HTML
+        // from the DB and inject it so {{sowHtml}} interpolation works in promptExpr.
+        if (payload.sowDocId && !payload.sowHtml) {
+          const docId = parseInt(String(payload.sowDocId), 10);
+          if (!isNaN(docId)) {
+            const [docRow] = await db
+              .select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+              .from(insightsGeneratedDocumentsTable)
+              .where(eq(insightsGeneratedDocumentsTable.id, docId))
+              .limit(1);
+            if (docRow?.htmlContent) {
+              payload = { ...payload, sowHtml: docRow.htmlContent };
+            }
+          }
+        }
         const aaPrompt = (interp(node.data.promptExpr as string | undefined, payload) ?? "").trim();
         const aaSystem = (interp(node.data.systemExpr  as string | undefined, payload) ?? "").trim();
         const aaModel  = (node.data.model as string | undefined) ?? "claude-haiku-4-5";
