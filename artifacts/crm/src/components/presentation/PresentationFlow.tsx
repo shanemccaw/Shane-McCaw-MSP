@@ -876,7 +876,9 @@ export default function PresentationFlow({
     const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
     const id = setInterval(async () => {
       try {
-        const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
+        // cache: 'no-store' bypasses the browser cache so a stale 304 never
+        // makes the poll think phases exist when the server just cleared them.
+        const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`, { cache: "no-store" });
         if (!res.ok) return;
         const fresh = await res.json() as { sowPhases?: PhaseGenPhase[] };
         const phases = fresh.sowPhases ?? [];
