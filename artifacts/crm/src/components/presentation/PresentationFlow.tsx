@@ -908,10 +908,13 @@ export default function PresentationFlow({
           { cache: "no-store" },
         );
         if (!res.ok) return;
-        const fresh = await res.json() as { sowPhases?: PhaseGenPhase[] };
-        const phases = fresh.sowPhases ?? [];
-        if (phases.length > 0) {
-          setPhaseGenEvent({ type: "phase_gen_complete", phases });
+        const fresh = await res.json() as { sowPhases?: PhaseGenPhase[]; phaseGenCompleted?: boolean };
+        // phaseGenCompleted is true ONLY when save_presentation_phases actually wrote
+        // AI phases to the sow_phases DB column.  Never use sowPhases.length here —
+        // the server always returns at least one fallback phase from deriveEffectiveSowData,
+        // which would cause premature navigation every single time.
+        if (fresh.phaseGenCompleted === true) {
+          setPhaseGenEvent({ type: "phase_gen_complete", phases: fresh.sowPhases ?? [] });
         }
       } catch { /* non-fatal */ }
     }, 6000);

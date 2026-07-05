@@ -10248,6 +10248,13 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
         .where(eq(quickWinPresentationsTable.id, id));
     }
 
+    // phaseGenCompleted is true only when save_presentation_phases actually wrote
+    // AI-generated phases to the sow_phases DB column.  The client poll uses this
+    // flag — NOT sowPhases.length — so it never navigates away based on the
+    // deriveEffectiveSowData fallback phases that are always present.
+    const rawSowPhases = (pres.sowPhases ?? []) as unknown[];
+    const phaseGenCompleted = Array.isArray(rawSowPhases) && rawSowPhases.length > 0;
+
     res.json({
       id: pres.id,
       projectId: pres.projectId,
@@ -10273,6 +10280,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       scopedTotalPrice: scopedSowIsValid && pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null,
       scopedPhaseIds: scopedSowIsValid ? (pres.scopedPhaseIds ?? null) : null,
       discountedTotalCents: pres.discountedTotalCents ?? null,
+      phaseGenCompleted,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get presentation");
