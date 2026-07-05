@@ -89,40 +89,48 @@ function M365HealthPanel({ dark = false, vertical = false }: { dark?: boolean; v
   const circV = 2 * Math.PI * rV;
 
   if (vertical) {
+    const rC = 22;
+    const circC = 2 * Math.PI * rC;
     return (
       <div
-        className="w-full rounded-xl border flex flex-col items-center gap-3 p-4"
+        className="w-full rounded-xl border flex items-center gap-4 px-4 py-3"
         style={{ background: oBg, backdropFilter: "blur(14px)", borderColor: oBorder }}
       >
-        {/* Overall ring — centered top */}
-        <div className="flex flex-col items-center gap-1">
-          <div className="relative flex items-center justify-center" style={{ width: 80, height: 80 }}>
-            <svg width={80} height={80} viewBox="0 0 80 80" className="-rotate-90">
-              <circle cx="40" cy="40" r={rV} fill="none" stroke={oTrack} strokeWidth="8" />
+        {/* Left: compact overall ring + label */}
+        <div className="flex flex-col items-center gap-1 shrink-0">
+          <div className="relative flex items-center justify-center" style={{ width: 52, height: 52 }}>
+            <svg width={52} height={52} viewBox="0 0 52 52" className="-rotate-90">
+              <circle cx="26" cy="26" r={rC} fill="none" stroke={oTrack} strokeWidth="5" />
               <circle
-                cx="40" cy="40" r={rV} fill="none"
-                stroke={ringColor(overall)} strokeWidth="8"
-                strokeDasharray={circV}
-                strokeDashoffset={circV - (overall / 100) * circV}
+                cx="26" cy="26" r={rC} fill="none"
+                stroke={ringColor(overall)} strokeWidth="5"
+                strokeLinecap="round"
+                strokeDasharray={circC}
+                strokeDashoffset={circC - (overall / 100) * circC}
               />
             </svg>
-            <span className="absolute text-sm font-bold" style={{ color: pctCol }}>{overall}%</span>
+            <span className="absolute text-[11px] font-black" style={{ color: pctCol }}>{overall}%</span>
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: titleCol }}>M365 Health</p>
-          <p className="text-[9px]" style={{ color: subCol }}>Tenant Posture</p>
+          <p className="text-[8px] font-bold uppercase tracking-wider text-center leading-tight" style={{ color: titleCol }}>M365<br/>Health</p>
         </div>
 
-        {/* Divider */}
-        <div className="w-full h-px" style={{ background: oDiv }} />
+        {/* Vertical divider */}
+        <div className="self-stretch w-px" style={{ background: oDiv }} />
 
-        {/* Category rings — row of 5 */}
-        <div className="flex items-end justify-between w-full">
+        {/* Right: 5 category progress bars */}
+        <div className="flex-1 flex flex-col gap-[7px]">
           {SCORE_CATEGORIES.map(({ label, key }) => {
             const pct = scores[key] ?? 0;
             return (
-              <div key={key} className="flex flex-col items-center gap-1">
-                <ScoreRing score={pct} size={40} strokeWidth={4} dark={dark} />
-                <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: catCol }}>{label}</span>
+              <div key={key} className="flex items-center gap-2">
+                <span className="text-[8px] font-bold uppercase tracking-wider shrink-0 w-[58px]" style={{ color: catCol }}>{label}</span>
+                <div className="flex-1 rounded-full overflow-hidden" style={{ height: 5, background: oTrack }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{ width: `${pct}%`, background: ringColor(pct), transition: "width 0.1s linear" }}
+                  />
+                </div>
+                <span className="text-[9px] font-bold w-6 text-right shrink-0" style={{ color: pctCol }}>{pct}</span>
               </div>
             );
           })}
