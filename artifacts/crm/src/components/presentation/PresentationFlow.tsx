@@ -203,7 +203,7 @@ export default function PresentationFlow({
     // Docs hidden from the left nav: SOW documents (shown in the Scope step) and
     // task execution guides (internal-only; never surfaced to clients).
     const isNavHidden = (d: PresentationDoc) =>
-      d.docType === "consolidated_sow" || d.docType === "sow" || d.docType === "task_execution_guide";
+      d.docType === "consolidated_sow" || d.docType === "sow" || d.docType === "scoped_sow" || d.docType === "task_execution_guide";
     if (startAtPayment) {
       const steps = buildSteps(initialData.documents.filter(d => !isNavHidden(d)), readOnly);
       // New flow: Payment Options → Agreement → Checkout → Confirmation
@@ -304,7 +304,7 @@ export default function PresentationFlow({
   // SOW-gating checks and document-content lookups keep using sortedDocs.
   const navDocs = useMemo(
     () => sortedDocs.filter(
-      d => d.docType !== "consolidated_sow" && d.docType !== "sow" && d.docType !== "task_execution_guide"
+      d => d.docType !== "consolidated_sow" && d.docType !== "sow" && d.docType !== "scoped_sow" && d.docType !== "task_execution_guide"
     ),
     [sortedDocs],
   );
@@ -627,7 +627,7 @@ export default function PresentationFlow({
         // Recompute the step list from fresh docs to get the new count before clamping
         const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
         const isNavHiddenDoc = (d: PresentationDoc) =>
-          isSowDoc(d) || d.docType === "task_execution_guide";
+          isSowDoc(d) || d.docType === "scoped_sow" || d.docType === "task_execution_guide";
         const freshSortedDocs = [...(fresh.documents ?? [])].sort((a, b) => {
           if (isSowDoc(a) && !isSowDoc(b)) return 1;
           if (!isSowDoc(a) && isSowDoc(b)) return -1;
