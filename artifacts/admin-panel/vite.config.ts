@@ -63,9 +63,6 @@ export default defineConfig({
     strictPort: true,
     host: "0.0.0.0",
     allowedHosts: true,
-    headers: process.env.NODE_ENV !== "production" ? {
-      "Cache-Control": "no-store",
-    } : undefined,
     fs: {
       strict: true,
     },
