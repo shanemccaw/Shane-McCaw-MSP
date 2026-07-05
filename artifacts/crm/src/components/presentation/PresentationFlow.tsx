@@ -824,7 +824,7 @@ export default function PresentationFlow({
   };
 
   const handlePhaseGenComplete = (phases: PhaseGenPhase[]) => {
-    // Update sowPhases in local state so PaymentOptionsPanel sees the new AI-generated phases
+    // Apply phases optimistically so Scope & Pricing renders immediately.
     if (phases.length > 0) {
       setData(prev => ({
         ...prev,
@@ -838,20 +838,43 @@ export default function PresentationFlow({
         })),
         selectedPhaseIds: phases.map(p => p.id),
       }));
+      setPhaseGenScopeIds(phases.map(p => p.id));
     }
-    // Record the generated phase IDs as the "scope" baseline.
-    // After setData runs, data.selectedPhaseIds will equal phases.map(p => p.id), so
-    // we use the same value here to keep phaseGenScopeIds in sync with selectedPhaseIds.
-    // This lets hasSavedPhasesForCurrentScope correctly evaluate to true immediately
-    // after a successful generation, and to false when the client later changes their selection.
-    setPhaseGenScopeIds(phases.map(p => p.id));
-    // Advance to payment options
+
+    // Navigate to payment immediately — don't wait for the re-fetch.
     const pmtIdx = steps.findIndex(s => s.kind === "payment");
     if (pmtIdx >= 0) {
       directionRef.current = "forward";
       setMaxVisitedStep(m => Math.max(m, pmtIdx));
       applyStepChange(pmtIdx);
     }
+
+    // Background re-sync: fetch ground-truth phases from the server so Scope &
+    // Pricing always reflects what save_presentation_phases actually wrote, even
+    // if the SSE/poll payload was stale (e.g. came from the browser/proxy cache).
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    void fetchFn(
+      `/api/portal/presentations/${presentationId}${tokenParam}?_t=${Date.now()}`,
+      { cache: "no-store" },
+    ).then(async (res) => {
+      if (!res.ok) return;
+      const fresh = await res.json() as PresentationData;
+      const freshPhases: SowPhase[] = Array.isArray(fresh.sowPhases) ? fresh.sowPhases : [];
+      if (freshPhases.length > 0) {
+        setData(prev => ({
+          ...prev,
+          sowPhases: freshPhases,
+          selectedPhaseIds: Array.isArray(fresh.selectedPhaseIds) && fresh.selectedPhaseIds.length > 0
+            ? fresh.selectedPhaseIds
+            : freshPhases.map(p => p.id),
+        }));
+        setPhaseGenScopeIds(
+          Array.isArray(fresh.selectedPhaseIds) && fresh.selectedPhaseIds.length > 0
+            ? fresh.selectedPhaseIds
+            : freshPhases.map(p => p.id),
+        );
+      }
+    }).catch(() => { /* non-fatal */ });
   };
 
   const handlePhaseGenError = () => {
