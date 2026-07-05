@@ -713,9 +713,7 @@ export default function WorkflowListPage() {
   const prevCenterViewRef = useRef<CenterView>({ kind: "empty" });
   const [contextMenu, setContextMenu] = useState<{ def: WfDefinition; x: number; y: number } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{ def: WfDefinition; name: string } | null>(null);
-  const [categoryDialog, setCategoryDialog] = useState<{ def: WfDefinition; cat: string } | null>(null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryDialog, setCategoryDialog] = useState<{ def: WfDefinition; cat: string; adding: boolean; newName: string } | null>(null);
 
   // Helper: open run-history while preserving the previous center view for the back action
   const openRunHistory = useCallback((defId?: number) => {
@@ -924,8 +922,6 @@ export default function WorkflowListPage() {
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       toast({ title: "Category updated" });
       setCategoryDialog(null);
-      setAddingCategory(false);
-      setNewCategoryName("");
     },
     onError: (err: Error) => {
       toast({ title: "Update failed", description: err.message, variant: "destructive" });
@@ -1769,7 +1765,7 @@ export default function WorkflowListPage() {
           onRunNow={() => { handlePlayClick(contextMenu.def); setContextMenu(null); }}
           onViewRunHistory={() => { openRunHistory(contextMenu.def.id); setContextMenu(null); }}
           onRename={() => { setRenameDialog({ def: contextMenu.def, name: contextMenu.def.name }); setContextMenu(null); }}
-          onAssignCategory={() => { setCategoryDialog({ def: contextMenu.def, cat: (contextMenu.def.metadata?.category as string | undefined) ?? "" }); setContextMenu(null); }}
+          onAssignCategory={() => { setCategoryDialog({ def: contextMenu.def, cat: (contextMenu.def.metadata?.category as string | undefined) ?? "", adding: false, newName: "" }); setContextMenu(null); }}
           onDuplicate={() => { duplicateMut.mutate(contextMenu.def); setContextMenu(null); }}
           onDelete={() => { if (!contextMenu.def.metadata?.system) { setDeleteId(contextMenu.def.id); } setContextMenu(null); }}
         />,
@@ -1810,18 +1806,10 @@ export default function WorkflowListPage() {
         )].sort();
         const currentCat = (categoryDialog.def.metadata?.category as string | undefined) ?? deriveCategory(categoryDialog.def.name);
 
-        const handleClose = () => {
-          setCategoryDialog(null);
-          setAddingCategory(false);
-          setNewCategoryName("");
-        };
-
-        const handleSelect = (cat: string) => {
-          patchCategoryMut.mutate({ id: categoryDialog.def.id, category: cat });
-        };
-
+        const handleClose = () => setCategoryDialog(null);
+        const handleSelect = (cat: string) => patchCategoryMut.mutate({ id: categoryDialog.def.id, category: cat });
         const handleAddNew = () => {
-          const trimmed = newCategoryName.trim();
+          const trimmed = categoryDialog.newName.trim();
           if (!trimmed) return;
           patchCategoryMut.mutate({ id: categoryDialog.def.id, category: trimmed });
         };
@@ -1885,28 +1873,28 @@ export default function WorkflowListPage() {
 
               {/* Divider + Add New */}
               <div className="border-t border-[#21262D]">
-                {addingCategory ? (
+                {categoryDialog.adding ? (
                   <div className="flex items-center gap-2 p-3">
                     <input
                       autoFocus
-                      value={newCategoryName}
-                      onChange={e => setNewCategoryName(e.target.value)}
+                      value={categoryDialog.newName}
+                      onChange={e => setCategoryDialog(d => d ? { ...d, newName: e.target.value } : d)}
                       onKeyDown={e => {
                         if (e.key === "Enter") handleAddNew();
-                        if (e.key === "Escape") { setAddingCategory(false); setNewCategoryName(""); }
+                        if (e.key === "Escape") setCategoryDialog(d => d ? { ...d, adding: false, newName: "" } : d);
                       }}
                       placeholder="Category name…"
                       className="flex-1 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-md px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none transition-colors"
                     />
                     <button
                       onClick={handleAddNew}
-                      disabled={!newCategoryName.trim() || patchCategoryMut.isPending}
+                      disabled={!categoryDialog.newName.trim() || patchCategoryMut.isPending}
                       className="px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-xs font-medium rounded-md transition-colors flex-shrink-0"
                     >
                       {patchCategoryMut.isPending ? "…" : "Add"}
                     </button>
                     <button
-                      onClick={() => { setAddingCategory(false); setNewCategoryName(""); }}
+                      onClick={() => setCategoryDialog(d => d ? { ...d, adding: false, newName: "" } : d)}
                       className="p-1.5 text-[#484F58] hover:text-[#7D8590] transition-colors flex-shrink-0"
                     >
                       <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1916,7 +1904,7 @@ export default function WorkflowListPage() {
                   </div>
                 ) : (
                   <button
-                    onClick={() => setAddingCategory(true)}
+                    onClick={() => setCategoryDialog(d => d ? { ...d, adding: true } : d)}
                     className="flex items-center gap-2 w-full px-4 py-3 text-left text-[#0078D4] hover:bg-[#0078D4]/5 transition-colors"
                   >
                     <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
