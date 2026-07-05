@@ -1212,11 +1212,18 @@ async function executeNode(
             let htmlContent: string;
             try {
               const docStylePrefix = await getDocumentStylePrefix();
-              const aiResp = await anthropic.messages.create({
+              // Use streaming + finalMessage() for all doc generation.
+              // task_execution_guide is a comprehensive step-by-step guide that can
+              // easily exceed 8 k tokens, so we give it 16 k.  Other doc types keep
+              // a 8 k ceiling but also benefit from streaming avoiding the hard
+              // 10-min messages.create() timeout on slow completions.
+              const docMaxTokens = docType === "task_execution_guide" ? 16384 : 8192;
+              const stream = anthropic.messages.stream({
                 model: "claude-haiku-4-5",
-                max_tokens: 8192,
+                max_tokens: docMaxTokens,
                 messages: [{ role: "user", content: docStylePrefix + prompt }],
               });
+              const aiResp = await stream.finalMessage();
               const rawText = aiResp.content.map(b => ("text" in b ? b.text : "")).join("");
               htmlContent = igExtractHtml(rawText);
             } catch (aiErr) {
