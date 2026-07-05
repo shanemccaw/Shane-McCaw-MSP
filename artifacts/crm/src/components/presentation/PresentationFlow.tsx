@@ -773,8 +773,14 @@ export default function PresentationFlow({
     // Fire the workflow. If the POST fails (network error or non-2xx), immediately
     // inject a phase_gen_error event so the locked screen shows the escape-hatch card.
     const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    // Priority: scoped SOW from state (newly generated this session) → scoped SOW
+    // document persisted in DB → full consolidated/base SOW document.
+    // scopedSowDoc state is initialised from data.scopedSowHtml (column on the
+    // presentation row). The scoped SOW may also be stored as a separate document
+    // with docType "scoped_sow" — check both so the AI always sees the right scope.
+    const scopedDocHtml = sortedDocs.find(d => d.docType === "scoped_sow")?.htmlContent ?? null;
     const sowDoc = sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow");
-    const sowHtmlSnippet = (scopedSowDoc ?? sowDoc?.htmlContent ?? "").slice(0, 8000);
+    const sowHtmlSnippet = (scopedSowDoc ?? scopedDocHtml ?? sowDoc?.htmlContent ?? "").slice(0, 8000);
     try {
       const resp = await fetchFn(`/api/portal/presentations/${presentationId}/generate-phases${tokenParam}`, {
         method: "POST",
