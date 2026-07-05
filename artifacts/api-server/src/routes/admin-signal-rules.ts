@@ -5,6 +5,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
   TENANT_SIGNALS,
+  ADJUSTMENT_SIGNALS,
   computeTenantSignals,
   projectMatchesSignals,
   type SignalDerivationRule,
@@ -70,6 +71,63 @@ async function saveSnapshot(name: string, adminId?: number | null): Promise<numb
   `);
   return (result.rows[0] as { id: number }).id;
 }
+
+// ── Seed default adjustment signal rules ──────────────────────────────────────
+// Called once at module init. Uses ON CONFLICT DO NOTHING so it is idempotent.
+// Each adj:* signal gets one OR-group with its recommended rules seeded.
+
+async function seedAdjustmentSignalRules(): Promise<void> {
+  try {
+    for (const sig of ADJUSTMENT_SIGNALS) {
+      // Skip if any rule already exists for this signal key
+      const existing = await db.execute(sql`
+        SELECT id FROM signal_derivation_rules WHERE signal_key = ${sig.key} LIMIT 1
+      `);
+      if ((existing.rows as unknown[]).length > 0) continue;
+
+      if (sig.recommendedRules.length === 0) continue;
+
+      // Create an OR-group for the signal
+      const groupResult = await db.execute(sql`
+        INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
+        VALUES (${sig.key}, 'OR', ${`${sig.label} Conditions`}, 0)
+        RETURNING id
+      `);
+      const groupId = (groupResult.rows[0] as { id: number }).id;
+
+      // Seed each recommended rule into that group
+      for (let i = 0; i < sig.recommendedRules.length; i++) {
+        const rule = sig.recommendedRules[i]!;
+        await db.execute(sql`
+          INSERT INTO signal_derivation_rules
+            (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+          VALUES (
+            ${sig.key}, ${groupId}, ${rule.ruleType}, ${rule.sourceKey},
+            ${rule.compareValue ?? null}, ${rule.rationale}, ${i}
+          )
+        `);
+      }
+
+      logger.info({ signalKey: sig.key }, "admin-signal-rules: seeded default adjustment signal rules");
+    }
+  } catch (err) {
+    logger.warn({ err }, "admin-signal-rules: adjustment signal seeder failed (non-fatal)");
+  }
+}
+
+// Run seeder at module load — safe because it no-ops for any signal that already has rules.
+void seedAdjustmentSignalRules();
+
+// ── GET /api/admin/signal-rules/adjustment-signals ───────────────────────────
+
+router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    res.json(ADJUSTMENT_SIGNALS);
+  } catch (err) {
+    logger.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
+    res.status(500).json({ error: "Failed to fetch adjustment signals" });
+  }
+});
 
 // ── GET /api/admin/signal-rules ────────────────────────────────────────────────
 

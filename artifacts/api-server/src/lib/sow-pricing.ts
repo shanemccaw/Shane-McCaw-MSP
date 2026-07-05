@@ -439,6 +439,20 @@ export function parseSowAllPricing(html: string): {
  *   ws      — regex that matches the workstream phase title
  *   allowed — regexes that match permitted adjustment titles for that workstream
  */
+/**
+ * Maps each adjustment signal key to the regex pattern that matches its title
+ * in a generated SOW Pricing Adjustments table.  Used by `validateSowPricing`
+ * and `purgeSowAdjustments` when the signal engine has evaluated which
+ * adjustments are active — replacing the workstream-scoped WORKSTREAM_ADJ_MAP
+ * with a deterministic, telemetry-driven allowlist.
+ */
+export const ADJ_SIGNAL_PATTERNS: Record<string, { label: string; pattern: RegExp }> = {
+  "adj:governance-complexity": { label: "Governance Complexity", pattern: /governance[\s-]?complexity/i },
+  "adj:tenant-size":           { label: "Tenant Size",            pattern: /tenant[\s-]?size/i },
+  "adj:security-compliance":   { label: "Security/Compliance",    pattern: /security[\s/&]+compliance/i },
+  "adj:copilot-readiness":     { label: "Copilot Readiness",      pattern: /copilot[\s-]?readiness/i },
+};
+
 export const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
   { ws: /governance/i,                allowed: [/governance[\s-]?complexity/i] },
   { ws: /security/i,                  allowed: [/tenant[\s-]?size/i, /security[\s/&]+compliance/i] },
@@ -496,6 +510,16 @@ export function validateSowPricing(
   workstreamLines: SowPricingLine[],
   adjustmentLines: SowPricingLine[],
   rawHtml: string,
+  /**
+   * When the signal engine has evaluated which pricing adjustments are active,
+   * pass the fired `adj:*` signal keys here.  When provided and non-empty, the
+   * check uses `ADJ_SIGNAL_PATTERNS` (signal-gated allowlist) instead of the
+   * workstream-scoped `WORKSTREAM_ADJ_MAP` — making validation deterministic
+   * and aligned with what the prompt constraint told the AI to produce.
+   *
+   * Pass an empty set or omit the parameter to fall back to `WORKSTREAM_ADJ_MAP`.
+   */
+  signalFiredAdjKeys?: Set<string>,
 ): SowValidationResult {
   const issues: string[] = [];
 
@@ -536,28 +560,49 @@ export function validateSowPricing(
   }
 
   // ── 3. Unpermitted adjustments ───────────────────────────────────────────────
-  if (workstreamLines.length > 0 && adjustmentLines.length > 0) {
-    const workstreamTitles = workstreamLines.map(l => l.title);
-    const allowedPatterns: RegExp[] = [];
-    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
-      if (workstreamTitles.some(t => ws.test(t))) {
-        allowedPatterns.push(...allowed);
+  if (adjustmentLines.length > 0) {
+    // Signal-gated path: use fired adj:* keys as the allowlist.
+    const useSignalGating = signalFiredAdjKeys !== undefined && signalFiredAdjKeys.size > 0;
+    if (useSignalGating) {
+      const signalAllowedPatterns = [...signalFiredAdjKeys]
+        .map(k => ADJ_SIGNAL_PATTERNS[k]?.pattern)
+        .filter((p): p is RegExp => p !== undefined);
+      if (signalAllowedPatterns.length > 0) {
+        const seen = new Set<string>();
+        for (const line of adjustmentLines) {
+          const key = line.title.toLowerCase().trim();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (!signalAllowedPatterns.some(p => p.test(line.title))) {
+            issues.push(
+              `Signal-gated check: adjustment "${line.title}" ($${line.priceUsd.toLocaleString("en-US")}) ` +
+              `was not activated by any fired adjustment signal — remove it or add a rule for it`,
+            );
+          }
+        }
       }
-    }
-
-    // Only enforce when at least one workstream matched a canonical pattern.
-    if (allowedPatterns.length > 0) {
-      // Check each unique adjustment title (duplicates already reported above).
-      const seen = new Set<string>();
-      for (const line of adjustmentLines) {
-        const key = line.title.toLowerCase().trim();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        if (!allowedPatterns.some(p => p.test(line.title))) {
-          issues.push(
-            `Unpermitted adjustment "${line.title}" ($${line.priceUsd.toLocaleString("en-US")}) ` +
-            `is not in the allowed set for workstreams: [${workstreamTitles.join(", ")}]`,
-          );
+    } else if (workstreamLines.length > 0) {
+      // Fallback: workstream-scoped WORKSTREAM_ADJ_MAP check.
+      const workstreamTitles = workstreamLines.map(l => l.title);
+      const allowedPatterns: RegExp[] = [];
+      for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+        if (workstreamTitles.some(t => ws.test(t))) {
+          allowedPatterns.push(...allowed);
+        }
+      }
+      // Only enforce when at least one workstream matched a canonical pattern.
+      if (allowedPatterns.length > 0) {
+        const seen = new Set<string>();
+        for (const line of adjustmentLines) {
+          const key = line.title.toLowerCase().trim();
+          if (seen.has(key)) continue;
+          seen.add(key);
+          if (!allowedPatterns.some(p => p.test(line.title))) {
+            issues.push(
+              `Unpermitted adjustment "${line.title}" ($${line.priceUsd.toLocaleString("en-US")}) ` +
+              `is not in the allowed set for workstreams: [${workstreamTitles.join(", ")}]`,
+            );
+          }
         }
       }
     }
@@ -596,12 +641,29 @@ export function purgeSowAdjustments(
    * corresponding workstream row when business rules prohibit it.
    */
   serverForcedExclude: string[] = [],
+  /**
+   * When the signal engine has evaluated which pricing adjustments are active,
+   * pass the fired `adj:*` signal keys here.  When provided and non-empty, the
+   * purge uses `ADJ_SIGNAL_PATTERNS` as the allowlist instead of the
+   * workstream-scoped `WORKSTREAM_ADJ_MAP`.
+   */
+  signalFiredAdjKeys?: Set<string>,
 ): { html: string; removedTitles: string[] } {
-  // Build the union of permitted patterns from every matched workstream
-  const allowedPatterns: RegExp[] = [];
-  for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
-    if (workstreamTitles.some(t => ws.test(t))) {
-      allowedPatterns.push(...allowed);
+  // ── Determine allowed adjustment patterns ────────────────────────────────────
+  let allowedPatterns: RegExp[] = [];
+  const useSignalGating = signalFiredAdjKeys !== undefined && signalFiredAdjKeys.size > 0;
+
+  if (useSignalGating) {
+    // Signal-gated path: only fired adj:* signals are permitted
+    allowedPatterns = [...signalFiredAdjKeys]
+      .map(k => ADJ_SIGNAL_PATTERNS[k]?.pattern)
+      .filter((p): p is RegExp => p !== undefined);
+  } else {
+    // Fallback: workstream-scoped WORKSTREAM_ADJ_MAP
+    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+      if (workstreamTitles.some(t => ws.test(t))) {
+        allowedPatterns.push(...allowed);
+      }
     }
   }
 
@@ -609,8 +671,14 @@ export function purgeSowAdjustments(
   // are always removed, overriding the AI's own workstream table.
   const forcedExcludePatterns: RegExp[] = [];
   for (const excludeKey of serverForcedExclude) {
-    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
-      if (ws.test(excludeKey)) forcedExcludePatterns.push(...allowed);
+    if (useSignalGating) {
+      // In signal-gated mode, forced exclusions are adj:* keys — look up directly
+      const pat = ADJ_SIGNAL_PATTERNS[excludeKey]?.pattern;
+      if (pat) forcedExcludePatterns.push(pat);
+    } else {
+      for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+        if (ws.test(excludeKey)) forcedExcludePatterns.push(...allowed);
+      }
     }
   }
 

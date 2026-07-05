@@ -10,7 +10,7 @@ import {
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
-import { computeTenantSignals, TENANT_SIGNALS, projectMatchesSignals } from "./tenant-signals";
+import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
@@ -24,6 +24,7 @@ import {
   validateSowPricing,
   nextBusinessMonday,
   assignDeliveryDates,
+  ADJ_SIGNAL_PATTERNS,
   SowPricingLineSchema,
   type SowPricingLine,
 } from "./sow-pricing";
@@ -314,6 +315,11 @@ export async function generateConsolidatedSowDocument(
 
   let signalFilteredProjects = allEngagementProjects;
   let signalFilterMeta: { clean: boolean; conflictCount: number; conflicts?: Array<{ ruleIds: number[]; description: string }> } = { clean: true, conflictCount: 0 };
+  // Adjustment signal keys that fired for this tenant — populated inside the try block.
+  // When non-empty, used to inject a hard constraint into the SOW prompt and to gate
+  // the validate/purge pass.  Stays empty if no adj:* rules are configured in the DB.
+  let firedAdjSignalKeys = new Set<string>();
+  let hasAdjSignalRules = false;
   try {
     const signalRules = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
@@ -349,6 +355,18 @@ export async function generateConsolidatedSowDocument(
       typedSignalRules,
       signalGroups.rows as unknown as Parameters<typeof computeTenantSignals>[3],
     );
+
+    // Extract adj:* keys — these drive pricing adjustment gating, not project inclusion.
+    hasAdjSignalRules = typedSignalRules.some(r => r.signalKey.startsWith("adj:"));
+    if (hasAdjSignalRules) {
+      for (const key of firedSignals) {
+        if (key.startsWith("adj:")) firedAdjSignalKeys.add(key);
+      }
+      logger.info(
+        { ...logCtx, firedAdjSignalKeys: [...firedAdjSignalKeys] },
+        "consolidated-sow-generator: adjustment signal evaluation complete",
+      );
+    }
 
     const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
 
@@ -510,6 +528,33 @@ export async function generateConsolidatedSowDocument(
     CONSOLIDATED_SOW_FALLBACK,
     ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"],
   );
+  // ── Adjustment signal constraint block ────────────────────────────────────────
+  // When adj:* rules are configured, inject a hard constraint that overrides the
+  // ADJUSTMENT MAP's workstream-scoped logic with telemetry-derived results.
+  let adjConstraintBlock = "";
+  if (hasAdjSignalRules) {
+    const allAdjSignals = ADJUSTMENT_SIGNALS;
+    const activeAdj = allAdjSignals.filter(s => firedAdjSignalKeys.has(s.key));
+    const inactiveAdj = allAdjSignals.filter(s => !firedAdjSignalKeys.has(s.key));
+    const activeList = activeAdj.length > 0
+      ? activeAdj.map(s => `  • ${s.label}`).join("\n")
+      : "  (none — tenant telemetry did not trigger any adjustment)";
+    const inactiveList = inactiveAdj.length > 0
+      ? inactiveAdj.map(s => `  • ${s.label} — NOT triggered, do NOT include`).join("\n")
+      : "  (none)";
+    adjConstraintBlock = [
+      "SIGNAL-GATED PRICING ADJUSTMENTS — HARD CONSTRAINT (supersedes the ADJUSTMENT MAP above):",
+      "The signal engine evaluated this tenant's real telemetry and determined EXACTLY which adjustments apply.",
+      "You MUST follow this list precisely — do NOT override it, add to it, or remove from it based on your own analysis.",
+      "",
+      "ACTIVE — include these adjustment rows in the Pricing Adjustments table:",
+      activeList,
+      "",
+      "INACTIVE — do NOT include these rows under any circumstances:",
+      inactiveList,
+    ].join("\n");
+  }
+
   const prompt = rawTemplate
     .replace(/\{\{clientName\}\}/g, clientName)
     .replace(/\{\{title\}\}/g, title)
@@ -518,7 +563,8 @@ export async function generateConsolidatedSowDocument(
     .replace(/\{\{existingDocs\}\}/g, docsBlock)
     .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
     .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-    + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+    + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`
+    + (adjConstraintBlock ? `\n\n${adjConstraintBlock}` : "");
 
   // Find prior completed doc to replace on success
   let priorSowId: number | null = null;
@@ -569,6 +615,7 @@ export async function generateConsolidatedSowDocument(
 
   const { html: purgedHtml, removedTitles } = purgeSowAdjustments(
     rawHtmlContent, rawAdj, rawWs.map(l => l.title), consolidatedSowForcedExclude,
+    hasAdjSignalRules ? firedAdjSignalKeys : undefined,
   );
   if (removedTitles.length > 0) {
     logger.warn({ ...logCtx, docId, removedTitles }, "consolidated-sow-generator: purged non-permitted adjustments");
@@ -590,7 +637,10 @@ export async function generateConsolidatedSowDocument(
         computedTotal: rawWs.reduce((s, l) => s + l.priceUsd, 0) + rawAdj.reduce((s, l) => s + l.priceUsd, 0),
       };
 
-  const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, purgedHtmlFinal);
+  const sowValidation = validateSowPricing(
+    workstreamLines, adjustmentLines, purgedHtmlFinal,
+    hasAdjSignalRules ? firedAdjSignalKeys : undefined,
+  );
   if (!sowValidation.ok) {
     logger.warn({ ...logCtx, docId, issues: sowValidation.issues }, "consolidated-sow-generator: pricing validation warnings");
   }

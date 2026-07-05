@@ -145,6 +145,8 @@ export default function TenantSignalsPage() {
   const { toast } = useToast();
 
   const [signals, setSignals] = useState<TenantSignal[]>([]);
+  const [adjustmentSignals, setAdjustmentSignals] = useState<TenantSignal[]>([]);
+  const [signalSection, setSignalSection] = useState<"project" | "adjustment">("project");
   const [rules, setRules] = useState<SignalRule[]>([]);
   const [groups, setGroups] = useState<SignalGroup[]>([]);
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -220,8 +222,9 @@ export default function TenantSignalsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [signalsRes, rulesRes, conflictsRes, healthRes, versionsRes] = await Promise.all([
+      const [signalsRes, adjSignalsRes, rulesRes, conflictsRes, healthRes, versionsRes] = await Promise.all([
         fetchWithAuth("/api/admin/engagement-projects/signals"),
+        fetchWithAuth("/api/admin/signal-rules/adjustment-signals"),
         fetchWithAuth("/api/admin/signal-rules"),
         fetchWithAuth("/api/admin/signal-rules/conflicts"),
         fetchWithAuth("/api/admin/signal-rules/health"),
@@ -229,6 +232,7 @@ export default function TenantSignalsPage() {
       ]);
 
       if (signalsRes.ok) setSignals(await signalsRes.json() as TenantSignal[]);
+      if (adjSignalsRes.ok) setAdjustmentSignals(await adjSignalsRes.json() as TenantSignal[]);
       if (rulesRes.ok) {
         const data = await rulesRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
         setRules(data.rules ?? []);
@@ -338,7 +342,8 @@ export default function TenantSignalsPage() {
     c.ruleIds.some(id => rules.find(r => r.id === id && r.signalKey === key))
   ).length;
 
-  const selectedSignalData = signals.find(s => s.key === selectedSignal);
+  const selectedSignalData = signals.find(s => s.key === selectedSignal)
+    ?? adjustmentSignals.find(s => s.key === selectedSignal);
   const selectedRules = selectedSignal ? signalRules(selectedSignal) : [];
   const selectedGroups = selectedSignal ? signalGroups(selectedSignal) : [];
 
@@ -1069,7 +1074,7 @@ export default function TenantSignalsPage() {
         <div className="w-72 flex-shrink-0 border-r border-[#30363D] flex flex-col overflow-hidden bg-[#0D1117]">
           {/* Header */}
           <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
-            <span className="text-sm font-bold text-[#E6EDF3]">Tenant Signals</span>
+            <span className="text-sm font-bold text-[#E6EDF3]">Signals</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={handleExport}
@@ -1095,9 +1100,33 @@ export default function TenantSignalsPage() {
             </div>
           </div>
 
+          {/* Section switcher */}
+          <div className="flex-shrink-0 flex border-b border-[#30363D]">
+            <button
+              onClick={() => { setSignalSection("project"); if (selectedSignal?.startsWith("adj:")) setSelectedSignal(null); }}
+              className={`flex-1 py-2 text-xs font-semibold transition-colors border-b-2 ${
+                signalSection === "project"
+                  ? "border-[#0078D4] text-[#0078D4] bg-[#0078D4]/5"
+                  : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+              }`}
+            >
+              Project Signals
+            </button>
+            <button
+              onClick={() => { setSignalSection("adjustment"); if (selectedSignal && !selectedSignal.startsWith("adj:")) setSelectedSignal(null); }}
+              className={`flex-1 py-2 text-xs font-semibold transition-colors border-b-2 ${
+                signalSection === "adjustment"
+                  ? "border-[#00B4D8] text-[#00B4D8] bg-[#00B4D8]/5"
+                  : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
+              }`}
+            >
+              Pricing Adjustments
+            </button>
+          </div>
+
           {/* Signal list */}
           <div className="flex-1 overflow-y-auto">
-            {signals.map(sig => {
+            {(signalSection === "project" ? signals : adjustmentSignals).map(sig => {
               const sr = signalRules(sig.key);
               const conflictsForSig = signalConflictCount(sig.key);
               const hasRules = sr.length > 0;
@@ -1107,13 +1136,18 @@ export default function TenantSignalsPage() {
               let dotColor = "bg-[#484F58]";
               if (conflictsForSig > 0) dotColor = "bg-amber-400";
               else if (hasRules || sig.key === "alwaysInclude") dotColor = "bg-green-500";
+              else if (signalSection === "adjustment") dotColor = "bg-[#00B4D8]/40";
 
               return (
                 <button
                   key={sig.key}
                   onClick={() => { setSelectedSignal(sig.key); setActiveTab("rules"); }}
                   className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors border-b border-[#30363D]/50 ${
-                    isSelected ? "bg-[#0078D4]/10 border-l-2 border-l-[#0078D4]" : "hover:bg-[#1C2128]"
+                    isSelected
+                      ? signalSection === "adjustment"
+                        ? "bg-[#00B4D8]/10 border-l-2 border-l-[#00B4D8]"
+                        : "bg-[#0078D4]/10 border-l-2 border-l-[#0078D4]"
+                      : "hover:bg-[#1C2128]"
                   }`}
                 >
                   <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
@@ -1131,10 +1165,15 @@ export default function TenantSignalsPage() {
                       <p className="text-xs text-[#484F58] mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
                     )}
                   </div>
-                  <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? "text-[#0078D4] rotate-90" : "text-[#484F58]"}`} />
+                  <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-[#0078D4]") + " rotate-90" : "text-[#484F58]"}`} />
                 </button>
               );
             })}
+            {signalSection === "adjustment" && adjustmentSignals.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <p className="text-xs text-[#484F58]">No adjustment signals loaded.</p>
+              </div>
+            )}
           </div>
 
           {/* Footer: Script Field Explorer */}

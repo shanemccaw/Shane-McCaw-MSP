@@ -129,6 +129,67 @@ export const TENANT_SIGNALS: TenantSignal[] = [
   },
 ];
 
+/**
+ * Adjustment signals drive which pricing adjustment rows appear in the SOW.
+ * They use the `adj:` key prefix to distinguish them from project signals.
+ * The signal engine evaluates them exactly the same way as project signals —
+ * any rule rows in `signal_derivation_rules` with these keys are evaluated
+ * automatically without any engine changes.
+ */
+export const ADJUSTMENT_SIGNALS: TenantSignal[] = [
+  {
+    key: "adj:governance-complexity",
+    label: "Governance Complexity",
+    description:
+      "Fires when the tenant has governance gaps significant enough to warrant a Governance Complexity pricing adjustment in the SOW.",
+    expectedImpact:
+      "Activates the Governance Complexity line in the Pricing Adjustments table. This adjustment reflects the extra effort required when a tenant has immature lifecycle policies, guest access sprawl, or Teams/Group governance gaps that compound the remediation workstream.",
+    recommendedRules: [
+      { ruleType: "profile_key_lt",    sourceKey: "governanceScore",  compareValue: "60", rationale: "Governance score below 60 indicates material complexity." },
+      { ruleType: "profile_key_truthy", sourceKey: "hasGovernanceGaps", rationale: "Script explicitly flags governance gaps when critical controls are absent." },
+    ],
+    exampleProfileKey: "governanceScore",
+  },
+  {
+    key: "adj:tenant-size",
+    label: "Tenant Size",
+    description:
+      "Fires when the tenant is large enough (typically 250+ users) that scale significantly increases project effort.",
+    expectedImpact:
+      "Activates the Tenant Size pricing adjustment. Larger tenants require more discovery, more policy rollout effort, and more stakeholder management — this adjustment accounts for that overhead.",
+    recommendedRules: [
+      { ruleType: "profile_key_gt", sourceKey: "totalUserCount", compareValue: "250", rationale: "Tenants with more than 250 users have materially higher project overhead." },
+    ],
+    exampleProfileKey: "totalUserCount",
+  },
+  {
+    key: "adj:security-compliance",
+    label: "Security/Compliance",
+    description:
+      "Fires when the tenant has security or compliance gaps that require additional hardening effort beyond the base Security workstream.",
+    expectedImpact:
+      "Activates the Security/Compliance pricing adjustment. Tenants missing MFA enforcement, Conditional Access policies, or DLP coverage require deeper remediation work — Zero Trust architecture, policy design, and Purview configuration — that commands a premium adjustment.",
+    recommendedRules: [
+      { ruleType: "profile_key_falsy", sourceKey: "mfaEnforced",                  rationale: "MFA not enforced is a critical gap that substantially increases security work." },
+      { ruleType: "profile_key_eq",    sourceKey: "conditionalAccessPolicyCount", compareValue: "0", rationale: "Zero Conditional Access policies means no identity perimeter controls." },
+      { ruleType: "profile_key_eq",    sourceKey: "dlpPoliciesCount",             compareValue: "0", rationale: "Zero DLP policies means data loss prevention is absent." },
+    ],
+    exampleProfileKey: "mfaEnforced",
+  },
+  {
+    key: "adj:copilot-readiness",
+    label: "Copilot Readiness",
+    description:
+      "Fires when the tenant has active Copilot for Microsoft 365 licenses that require readiness and deployment work.",
+    expectedImpact:
+      "Activates the Copilot Readiness pricing adjustment. When a tenant has Copilot licenses, delivering the Copilot workstream requires additional content architecture cleanup, sensitivity label coverage, and adoption planning that justifies this adjustment.",
+    recommendedRules: [
+      { ruleType: "profile_key_gt", sourceKey: "copilotLicenseCount", compareValue: "0", rationale: "Any Copilot licenses present means readiness overhead is required." },
+    ],
+    exampleProfileKey: "copilotLicenseCount",
+  },
+];
+
 export interface SignalDerivationRule {
   id: number;
   signalKey: string;
