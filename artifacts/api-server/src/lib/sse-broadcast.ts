@@ -86,3 +86,51 @@ export function broadcastAdminWorkflowEvent(event: Record<string, unknown>): voi
 export function getAdminWorkflowEventClientCount(): number {
   return adminWorkflowEventClients.size;
 }
+
+// ── Presentation phase-generation SSE ─────────────────────────────────────────
+// Keyed by presentationId on the same presentationSSEClients map.
+// Delivers live AI phase generation progress to the client's locked screen.
+
+export interface PhaseGenPhase {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  subtasks: string[];
+}
+
+export function broadcastPresentationPhaseGenProgress(
+  presentationId: number,
+  data: { message: string; current: number; total: number },
+): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "phase_gen_progress", ...data })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function broadcastPresentationPhaseGenComplete(
+  presentationId: number,
+  phases: PhaseGenPhase[],
+): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "phase_gen_complete", phases })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function broadcastPresentationPhaseGenError(
+  presentationId: number,
+  message: string,
+): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "phase_gen_error", message })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}

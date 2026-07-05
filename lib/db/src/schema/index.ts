@@ -1612,6 +1612,7 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
   scopedPhaseIds: jsonb("scoped_phase_ids").$type<string[]>(),
   scopedSowVersion: text("scoped_sow_version"),
   firstVisitedAt: timestamp("first_visited_at"),
+  phaseGenRequestedAt: timestamp("phase_gen_requested_at"),
   payTodayDiscountApplied: boolean("pay_today_discount_applied").default(false),
   discountedTotalCents: integer("discounted_total_cents"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

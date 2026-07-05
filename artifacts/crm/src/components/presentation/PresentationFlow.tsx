@@ -12,6 +12,7 @@ import CopilotAura from "../wizard/CopilotAura";
 import { computeOverviewStats } from "@/lib/doc-stat-extractors";
 import ConfirmationStep from "./ConfirmationStep";
 import SowGeneratingCard from "./SowGeneratingCard";
+import PhaseGeneratingCard, { type PhaseGenPhase } from "./PhaseGeneratingCard";
 
 interface PresentationDoc {
   id: number;
@@ -77,6 +78,7 @@ type Step =
   | { kind: "welcome" }
   | { kind: "doc"; index: number }
   | { kind: "sow" }
+  | { kind: "phase_gen" }
   | { kind: "payment" }
   | { kind: "contract" }
   | { kind: "checkout" }
@@ -87,7 +89,8 @@ function buildSteps(docs: PresentationDoc[], readOnly: boolean): Step[] {
   for (let i = 0; i < docs.length; i++) steps.push({ kind: "doc", index: i });
   steps.push({ kind: "sow" });
   if (!readOnly) {
-    // New flow: Scope & Pricing → Payment Options (select plan) → Agreement (sign) → Stripe Checkout → Confirmation
+    // New flow: Scope & Pricing → AI Phase Gen (transient) → Payment Options → Agreement → Stripe Checkout → Confirmation
+    steps.push({ kind: "phase_gen" });
     steps.push({ kind: "payment" });
     steps.push({ kind: "contract" });
     steps.push({ kind: "checkout" });
@@ -100,6 +103,7 @@ function stepLabel(step: Step, docs: PresentationDoc[]): string {
   if (step.kind === "welcome") return "Overview";
   if (step.kind === "doc") return docs[step.index]?.title ?? `Document ${step.index + 1}`;
   if (step.kind === "sow") return "Scope & Pricing";
+  if (step.kind === "phase_gen") return "Building Plan";
   if (step.kind === "payment") return "Payment Options";
   if (step.kind === "contract") return "Agreement";
   if (step.kind === "checkout") return "Complete Payment";
@@ -126,6 +130,13 @@ function stepIcon(step: Step) {
     return (
       <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+      </svg>
+    );
+  }
+  if (step.kind === "phase_gen") {
+    return (
+      <svg className="w-3.5 h-3.5 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
       </svg>
     );
   }
@@ -292,7 +303,7 @@ export default function PresentationFlow({
   );
 
   // The set of step kinds that require an SOW document to be unlocked.
-  const sowGatedKinds = new Set<Step["kind"]>(["payment", "contract", "checkout", "confirmation"]);
+  const sowGatedKinds = new Set<Step["kind"]>(["phase_gen", "payment", "contract", "checkout", "confirmation"]);
 
   const steps = buildSteps(navDocs, readOnly);
   const currentStep = steps[stepIndex];
@@ -375,6 +386,17 @@ export default function PresentationFlow({
   // Only re-run when the active step or plan changes — not on every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep?.kind, selectedPlan]);
+
+  // ── Phase generation state ─────────────────────────────────────────────────
+  // Tracks the latest SSE event from the phase-gen workflow so PhaseGeneratingCard
+  // can react to progress, complete, and error events without its own EventSource.
+  const [phaseGenEvent, setPhaseGenEvent] = useState<{
+    type: string;
+    message?: string;
+    current?: number;
+    total?: number;
+    phases?: PhaseGenPhase[];
+  } | null>(null);
 
   // ── Scoped SOW regeneration state ─────────────────────────────────────────
   const [scopedSowDoc, setScopedSowDoc] = useState<string | null>(initialData.scopedSowHtml ?? null);
@@ -530,9 +552,28 @@ export default function PresentationFlow({
       es = new EventSource(url);
       es.onmessage = (event: MessageEvent) => {
         try {
-          const payload = JSON.parse(event.data as string) as { type?: string; sowVersion?: string };
+          const payload = JSON.parse(event.data as string) as {
+            type?: string;
+            sowVersion?: string;
+            message?: string;
+            current?: number;
+            total?: number;
+            phases?: PhaseGenPhase[];
+          };
           if (payload.type === "scope_changed" || payload.type === "docs_changed") {
             void checkScopeVersion();
+          } else if (
+            payload.type === "phase_gen_progress" ||
+            payload.type === "phase_gen_complete" ||
+            payload.type === "phase_gen_error"
+          ) {
+            setPhaseGenEvent({
+              type: payload.type,
+              message: payload.message,
+              current: payload.current,
+              total: payload.total,
+              phases: payload.phases,
+            });
           }
         } catch { /* ignore malformed events */ }
       };
@@ -675,6 +716,83 @@ export default function PresentationFlow({
       setRegenerateError("Connection error — please check your internet and try again.");
     } finally {
       setRegeneratingSow(false);
+    }
+  };
+
+  // ── Phase generation handlers ──────────────────────────────────────────────
+
+  const handleStartPhaseGen = async () => {
+    if (!hasSowDocument || readOnly) return;
+    // Reset any previous phase-gen event so the card starts fresh
+    setPhaseGenEvent(null);
+
+    // Advance to the phase_gen step
+    const pgIdx = steps.findIndex(s => s.kind === "phase_gen");
+    if (pgIdx >= 0) {
+      directionRef.current = "forward";
+      setMaxVisitedStep(m => Math.max(m, pgIdx));
+      applyStepChange(pgIdx);
+    }
+
+    // Fire the workflow. If the POST fails (network error or non-2xx), immediately
+    // inject a phase_gen_error event so the locked screen shows the escape-hatch card.
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    const sowDoc = sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow");
+    const sowHtmlSnippet = (scopedSowDoc ?? sowDoc?.htmlContent ?? "").slice(0, 8000);
+    try {
+      const resp = await fetchFn(`/api/portal/presentations/${presentationId}/generate-phases${tokenParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          totalPrice: effectivePrice,
+          sowHtml: sowHtmlSnippet,
+          projectTitle: data.projectTitle ?? "",
+          adjustmentsTotal: data.adjustmentsTotal ?? 0,
+          adjustmentLines: (data.adjustmentLines ?? []).map(a => ({ title: a.title, price: a.price })),
+          selectedPhases: selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price })),
+        }),
+      });
+      if (!resp.ok) {
+        // Server returned an error before any workflow run started — no SSE event will arrive.
+        setPhaseGenEvent({ type: "phase_gen_error", message: "Couldn't start plan generation. You can continue to Payment Options." });
+      }
+    } catch {
+      // Network failure — no SSE event will arrive, so surface the escape-hatch card immediately.
+      setPhaseGenEvent({ type: "phase_gen_error", message: "Couldn't reach the server. You can continue to Payment Options." });
+    }
+  };
+
+  const handlePhaseGenComplete = (phases: PhaseGenPhase[]) => {
+    // Update sowPhases in local state so PaymentOptionsPanel sees the new AI-generated phases
+    if (phases.length > 0) {
+      setData(prev => ({
+        ...prev,
+        sowPhases: phases.map(p => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          price: p.price,
+          selected: true,
+        })),
+        selectedPhaseIds: phases.map(p => p.id),
+      }));
+    }
+    // Advance to payment options
+    const pmtIdx = steps.findIndex(s => s.kind === "payment");
+    if (pmtIdx >= 0) {
+      directionRef.current = "forward";
+      setMaxVisitedStep(m => Math.max(m, pmtIdx));
+      applyStepChange(pmtIdx);
+    }
+  };
+
+  const handlePhaseGenError = () => {
+    // Skip phase gen — go straight to payment options even without AI phases
+    const pmtIdx = steps.findIndex(s => s.kind === "payment");
+    if (pmtIdx >= 0) {
+      directionRef.current = "forward";
+      setMaxVisitedStep(m => Math.max(m, pmtIdx));
+      applyStepChange(pmtIdx);
     }
   };
 
@@ -1787,8 +1905,21 @@ export default function PresentationFlow({
           </div>
         </div>
 
+        {/* Phase generation — full-screen overlay (no chrome) */}
+        {currentStep?.kind === "phase_gen" && (
+          <PhaseGeneratingCard
+            presentationId={presentationId}
+            shareToken={shareToken}
+            clientName={data.clientName}
+            projectTitle={data.projectTitle}
+            phaseGenEvent={phaseGenEvent}
+            onComplete={handlePhaseGenComplete}
+            onError={handlePhaseGenError}
+          />
+        )}
+
         {/* Footer navigation */}
-        {!isConfirmation && (
+        {!isConfirmation && currentStep?.kind !== "phase_gen" && (
           <div className="flex-shrink-0 bg-white border-t border-border">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
               <button
@@ -1893,6 +2024,16 @@ export default function PresentationFlow({
                   </span>
                   <span>Your Statement of Work is being prepared</span>
                 </div>
+              ) : currentStep?.kind === "sow" && hasSowDocument && !sowResetBlocked && !needsRegeneration && !readOnly ? (
+                <button
+                  onClick={() => void handleStartPhaseGen()}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20"
+                >
+                  <span>Build Your Project Plan</span>
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
               ) : !isLast ? (
                 <button
                   onClick={goNext}

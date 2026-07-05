@@ -54,7 +54,7 @@ import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent } from "./sse-broadcast";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -1188,9 +1188,51 @@ async function executeNode(
               catch { /* ignore bad JSON */ }
             }
             const currentChainDepth = (payload._chainDepth as number | undefined) ?? 0;
-            await emitWorkflowEvent(emitEventType, { ...payload, ...extraPayload }, definitionId, currentChainDepth);
+            const mergedPayload = { ...payload, ...extraPayload };
+            await emitWorkflowEvent(emitEventType, mergedPayload, definitionId, currentChainDepth);
             output = { emitted: true, eventType: emitEventType };
             logger.info({ runId, definitionId, eventType: emitEventType, chainDepth: currentChainDepth }, "wf-executor: emit_event node fired");
+
+            // ── Route presentation.phase_gen.* events to the SSE channel ──────
+            if (emitEventType.startsWith("presentation.phase_gen.")) {
+              const rawPresId = mergedPayload.presentationId;
+              const presId = typeof rawPresId === "number"
+                ? rawPresId
+                : typeof rawPresId === "string"
+                ? parseInt(rawPresId, 10)
+                : NaN;
+              if (!isNaN(presId)) {
+                if (emitEventType === "presentation.phase_gen.progress") {
+                  broadcastPresentationPhaseGenProgress(presId, {
+                    message: String(mergedPayload.message ?? ""),
+                    current: Number(mergedPayload.current ?? 0),
+                    total: Number(mergedPayload.total ?? 0),
+                  });
+                } else if (emitEventType === "presentation.phase_gen.complete") {
+                  // Prefer mergedPayload.phases (extra payload), then fall back to
+                  // payload.resolvedPhases (set by save_presentation_phases system action).
+                  // The fallback avoids JSON-in-JSON quoting issues when emit_event uses
+                  // {{resolvedPhases}} as a template token inside extraPayload.
+                  let phases: unknown[] = [];
+                  const rawMergedPhases = mergedPayload.phases;
+                  if (Array.isArray(rawMergedPhases) && rawMergedPhases.length > 0) {
+                    phases = rawMergedPhases;
+                  } else if (typeof rawMergedPhases === "string" && rawMergedPhases.trim().startsWith("[")) {
+                    try { phases = JSON.parse(rawMergedPhases) as unknown[]; } catch { /* ignore */ }
+                  }
+                  // Fall back to resolvedPhases written directly into payload by save_presentation_phases
+                  if (phases.length === 0) {
+                    const rawPayloadPhases = payload.resolvedPhases;
+                    if (Array.isArray(rawPayloadPhases) && rawPayloadPhases.length > 0) {
+                      phases = rawPayloadPhases;
+                    }
+                  }
+                  broadcastPresentationPhaseGenComplete(presId, phases as Parameters<typeof broadcastPresentationPhaseGenComplete>[1]);
+                } else if (emitEventType === "presentation.phase_gen.error") {
+                  broadcastPresentationPhaseGenError(presId, String(mergedPayload.message ?? "An error occurred"));
+                }
+              }
+            }
           }
         } else if (actionType === "sql_query") {
           // Execute a read-only SQL query and spread first-row fields into the step output
@@ -4301,6 +4343,12 @@ export async function executeWorkflowRun(
         if (errorEdge) {
           for (const e of outEdges) resolveEdge(e.target, e.target === errorEdge.target);
         } else {
+          // Broadcast phase_gen error to the client SSE channel so the UI can show the escape hatch
+          const rawPresId = payload.presentationId;
+          const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
+          if (!isNaN(presId)) {
+            broadcastPresentationPhaseGenError(presId, (output.error as string) ?? `Step failed: ${nodeId}`);
+          }
           await db.update(wfRunsTable).set({
             status: "failed", finishedAt: new Date(),
             errorMessage: (output.error as string) ?? `Node ${nodeId} failed`,
@@ -4492,6 +4540,12 @@ export async function executeWorkflowRun(
     logger.info({ runId, steps: branchPath.length }, "wf-executor: run completed");
   } catch (err) {
     const errMsg = String(err);
+    // Broadcast phase_gen error to client SSE channel so the UI can show the escape hatch
+    const rawPresId = payload.presentationId;
+    const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
+    if (!isNaN(presId)) {
+      broadcastPresentationPhaseGenError(presId, errMsg);
+    }
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
     logger.warn({ runId, err }, "wf-executor: run failed");

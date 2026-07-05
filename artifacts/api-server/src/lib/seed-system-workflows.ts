@@ -31,6 +31,117 @@ interface SystemWorkflowSeed {
 
 const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   {
+    name: "Presentation Phase Generator",
+    description: "Triggered when a client advances past the SOW step. Reads the scoped SOW HTML, asks AI to propose project phases with price weights, and saves them back to the presentation. Pushes SSE progress to the client's browser in real time.",
+    triggerType: "event",
+    eventName: "presentation.phases_requested",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 40 },
+          data: { nodeType: "start", label: "Phases Requested" },
+        },
+        {
+          id: "emit1",
+          type: "emit_event",
+          position: { x: 300, y: 160 },
+          data: {
+            nodeType: "emit_event",
+            label: "Progress: Reading SOW",
+            eventName: "presentation.phase_gen.progress",
+            extraPayload: JSON.stringify({ message: "Reading your Statement of Work", current: 1, total: 4 }),
+          },
+        },
+        {
+          id: "ask",
+          type: "ask_ai",
+          position: { x: 300, y: 300 },
+          data: {
+            nodeType: "ask_ai",
+            label: "Generate Phases",
+            model: "claude-haiku-4-5",
+            systemExpr: "You are a project planning assistant for a Microsoft 365 consulting business. Return ONLY valid JSON — no preamble, no markdown, no code blocks. The JSON must be a flat array of phase objects.",
+            promptExpr: "You are planning a Microsoft 365 consulting project called \"{{projectTitle}}\" with a total value of ${{totalPrice}} USD.\n\nThe client has selected the following scope items:\n{{selectedPhases}}\n\nSOW content excerpt (use this to understand the project scope):\n{{sowHtml}}\n\nGenerate 3\u20135 distinct project phases for this engagement. Each phase should represent a logical milestone (e.g. Discovery & Assessment, Environment Configuration, Migration, Training, Hypercare).\n\nRules:\n- priceWeight values must sum to exactly 1.0\n- Each phase gets 2\u20134 concise subtasks (strings, no numbering)\n- Keep titles short (3\u20136 words)\n- Descriptions: 1\u20132 sentences, professional tone\n- Return ONLY a JSON array, no markdown, no preamble\n\nReturn this exact shape (an array, nothing else):\n[\n  {\n    \"title\": \"Phase title\",\n    \"description\": \"What this phase accomplishes.\",\n    \"priceWeight\": 0.25,\n    \"subtasks\": [\"Subtask one\", \"Subtask two\", \"Subtask three\"]\n  }\n]",
+          },
+        },
+        {
+          id: "emit2",
+          type: "emit_event",
+          position: { x: 300, y: 440 },
+          data: {
+            nodeType: "emit_event",
+            label: "Progress: Identifying Phases",
+            eventName: "presentation.phase_gen.progress",
+            extraPayload: JSON.stringify({ message: "Identifying project phases", current: 2, total: 4 }),
+          },
+        },
+        {
+          id: "comp",
+          type: "compose",
+          position: { x: 300, y: 580 },
+          data: {
+            nodeType: "compose",
+            label: "Extract JSON",
+            inputs: "{{aiResponse}}",
+            parseAsJson: true,
+          },
+        },
+        {
+          id: "emit3",
+          type: "emit_event",
+          position: { x: 300, y: 720 },
+          data: {
+            nodeType: "emit_event",
+            label: "Progress: Calculating Pricing",
+            eventName: "presentation.phase_gen.progress",
+            extraPayload: JSON.stringify({ message: "Calculating phase pricing", current: 3, total: 4 }),
+          },
+        },
+        {
+          id: "save",
+          type: "system_action",
+          position: { x: 300, y: 860 },
+          data: {
+            nodeType: "system_action",
+            label: "Save Phases",
+            task: "save_presentation_phases",
+          },
+        },
+        {
+          id: "emit4",
+          type: "emit_event",
+          position: { x: 300, y: 1000 },
+          data: {
+            nodeType: "emit_event",
+            label: "Complete",
+            eventName: "presentation.phase_gen.complete",
+            // phases are read directly from payload.resolvedPhases in the executor
+            // (set by save_presentation_phases) to avoid JSON-in-JSON quoting issues
+            extraPayload: JSON.stringify({ done: true }),
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 1140 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "emit1" },
+        { id: "e2", source: "emit1", target: "ask" },
+        { id: "e3", source: "ask",   target: "emit2" },
+        { id: "e4", source: "emit2", target: "comp" },
+        { id: "e5", source: "comp",  target: "emit3" },
+        { id: "e6", source: "emit3", target: "save" },
+        { id: "e7", source: "save",  target: "emit4" },
+        { id: "e8", source: "emit4", target: "end" },
+      ],
+    },
+  },
+  {
     name: "Weekly Article Generator",
     description: "Generates a new Microsoft 365 article every Monday at 09:00 UTC and publishes it to the consulting site. Edit the topic in the generate_article node to customise what gets written.",
     triggerType: "schedule",

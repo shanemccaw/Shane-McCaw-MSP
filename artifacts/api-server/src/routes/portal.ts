@@ -10327,6 +10327,94 @@ router.post("/portal/presentations/:id/sow-stall-check", async (req: Request, re
   }
 });
 
+// POST /portal/presentations/:id/generate-phases
+// Fires a workflow that AI-generates project phases from SOW content.
+// Accessible by authenticated owner OR valid share token.
+router.post("/portal/presentations/:id/generate-phases", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+
+    const [pres] = await db
+      .select({
+        id: quickWinPresentationsTable.id,
+        clientUserId: quickWinPresentationsTable.clientUserId,
+        projectId: quickWinPresentationsTable.projectId,
+        shareToken: quickWinPresentationsTable.shareToken,
+        totalPrice: quickWinPresentationsTable.totalPrice,
+        sowPhases: quickWinPresentationsTable.sowPhases,
+        selectedPhaseIds: quickWinPresentationsTable.selectedPhaseIds,
+      })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isValidToken) { res.status(403).json({ error: "Access denied" }); return; }
+
+    // Validate request body
+    const body = req.body as Record<string, unknown>;
+    const totalPriceRaw = body.totalPrice;
+    if (totalPriceRaw !== undefined && (typeof totalPriceRaw !== "number" || !isFinite(totalPriceRaw) || totalPriceRaw < 0)) {
+      res.status(400).json({ error: "totalPrice must be a non-negative number" }); return;
+    }
+    const adjustmentsTotalRaw = body.adjustmentsTotal;
+    if (adjustmentsTotalRaw !== undefined && (typeof adjustmentsTotalRaw !== "number" || !isFinite(adjustmentsTotalRaw))) {
+      res.status(400).json({ error: "adjustmentsTotal must be a number" }); return;
+    }
+    const selectedPhasesRaw = body.selectedPhases;
+    if (selectedPhasesRaw !== undefined && !Array.isArray(selectedPhasesRaw)) {
+      res.status(400).json({ error: "selectedPhases must be an array" }); return;
+    }
+    if (Array.isArray(selectedPhasesRaw)) {
+      for (const p of selectedPhasesRaw as unknown[]) {
+        if (typeof p !== "object" || p === null || typeof (p as Record<string, unknown>).id !== "string" || typeof (p as Record<string, unknown>).title !== "string") {
+          res.status(400).json({ error: "Each selectedPhase must have id (string) and title (string)" }); return;
+        }
+      }
+    }
+
+    const effectiveTotal = typeof totalPriceRaw === "number" ? totalPriceRaw : parseFloat(String(pres.totalPrice ?? "0"));
+
+    // Record when phase generation was requested
+    await db.update(quickWinPresentationsTable)
+      .set({ phaseGenRequestedAt: new Date(), updatedAt: new Date() })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    void emitWorkflowEvent("presentation.phases_requested", {
+      presentationId: id,
+      totalPrice: effectiveTotal,
+      sowHtml: typeof body.sowHtml === "string" ? body.sowHtml : "",
+      projectTitle: typeof body.projectTitle === "string" ? body.projectTitle : "",
+      adjustmentsTotal: typeof adjustmentsTotalRaw === "number" ? adjustmentsTotalRaw : 0,
+      adjustmentLines: Array.isArray(body.adjustmentLines) ? body.adjustmentLines : [],
+      selectedPhases: Array.isArray(selectedPhasesRaw)
+        ? selectedPhasesRaw
+        : (pres.sowPhases ?? []).filter(p => (pres.selectedPhaseIds ?? []).includes(p.id)),
+    });
+
+    req.log.info({ presentationId: id }, "portal: generate-phases workflow fired");
+    res.json({ status: "queued" });
+  } catch (err) {
+    req.log.error(err, "portal: generate-phases failed");
+    res.status(500).json({ error: "Failed to start phase generation" });
+  }
+});
+
 // GET /portal/presentations/:id/offer — PAY-TODAY limited-time offer state
 // Returns discount parameters tied to a 72-hour window anchored at first visit.
 router.get("/portal/presentations/:id/offer", async (req: Request, res: Response) => {

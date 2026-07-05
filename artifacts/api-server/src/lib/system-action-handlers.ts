@@ -7,8 +7,9 @@
  */
 
 import { pool, db } from "@workspace/db";
-import { insightsAutomationsTable } from "@workspace/db";
+import { insightsAutomationsTable, quickWinPresentationsTable, workflowStepsTable } from "@workspace/db";
 import { eq, and, isNotNull, sql } from "drizzle-orm";
+import { randomUUID } from "crypto";
 import { logger } from "./logger.ts";
 import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard } from "./kanban-auto-fire.ts";
 import { executeAutomation, nextRunFromCron } from "../routes/admin-insights.ts";
@@ -100,6 +101,93 @@ export async function handleSystemAction(
       }
 
       return { fired: true, clientUserId, action };
+    }
+
+    case "save_presentation_phases": {
+      const presId = typeof payload.presentationId === "number"
+        ? payload.presentationId
+        : typeof payload.presentationId === "string"
+        ? parseInt(payload.presentationId, 10)
+        : NaN;
+      if (isNaN(presId)) {
+        logger.warn({ payload }, "save_presentation_phases: missing or invalid presentationId");
+        return { saved: false, error: "missing presentationId" };
+      }
+
+      const totalPrice = typeof payload.totalPrice === "number"
+        ? payload.totalPrice
+        : typeof payload.totalPrice === "string"
+        ? parseFloat(payload.totalPrice)
+        : 0;
+
+      let rawPhases: unknown = payload.value;
+      if (typeof rawPhases === "string") {
+        try { rawPhases = JSON.parse(rawPhases); } catch { rawPhases = []; }
+      }
+      if (!Array.isArray(rawPhases) || rawPhases.length === 0) {
+        logger.warn({ presId, rawPhases }, "save_presentation_phases: no phases in payload.value");
+        return { saved: false, error: "no phases array in payload" };
+      }
+
+      const rawArr = rawPhases as Array<{ title?: string; description?: string; priceWeight?: number; subtasks?: string[] }>;
+
+      const totalWeight = rawArr.reduce((sum, p) => sum + (typeof p.priceWeight === "number" ? p.priceWeight : 0), 0) || 1;
+      let remaining = totalPrice;
+      const resolvedPhases = rawArr.map((p, i) => {
+        const weight = typeof p.priceWeight === "number" ? p.priceWeight : 1 / rawArr.length;
+        let price: number;
+        if (i === rawArr.length - 1) {
+          price = Math.round(remaining * 100) / 100;
+        } else {
+          price = Math.round((totalPrice * (weight / totalWeight)) * 100) / 100;
+          remaining -= price;
+        }
+        return {
+          id: randomUUID(),
+          title: String(p.title ?? `Phase ${i + 1}`),
+          description: String(p.description ?? ""),
+          price,
+          selected: true,
+          subtasks: Array.isArray(p.subtasks) ? p.subtasks.map(String) : [],
+        };
+      });
+
+      await db.update(quickWinPresentationsTable)
+        .set({
+          sowPhases: resolvedPhases,
+          selectedPhaseIds: resolvedPhases.map(p => p.id),
+          updatedAt: new Date(),
+        })
+        .where(eq(quickWinPresentationsTable.id, presId));
+
+      // Also persist phases as rows in the project phases (workflow_steps) table if projectId is linked
+      try {
+        const [presRow] = await db
+          .select({ projectId: quickWinPresentationsTable.projectId })
+          .from(quickWinPresentationsTable)
+          .where(eq(quickWinPresentationsTable.id, presId))
+          .limit(1);
+        if (presRow?.projectId) {
+          const projId = presRow.projectId;
+          await db.delete(workflowStepsTable).where(eq(workflowStepsTable.projectId, projId));
+          for (let i = 0; i < resolvedPhases.length; i++) {
+            const phase = resolvedPhases[i]!;
+            await db.insert(workflowStepsTable).values({
+              projectId: projId,
+              title: phase.title,
+              description: phase.description,
+              status: "pending",
+              order: i,
+            });
+          }
+          logger.info({ presId, projId, phaseCount: resolvedPhases.length }, "save_presentation_phases: workflow_steps upserted");
+        }
+      } catch (stepErr) {
+        logger.warn({ presId, stepErr }, "save_presentation_phases: workflow_steps upsert failed — non-fatal");
+      }
+
+      logger.info({ presId, phaseCount: resolvedPhases.length }, "save_presentation_phases: phases saved");
+      return { saved: true, phaseCount: resolvedPhases.length, resolvedPhases };
     }
 
     default:
