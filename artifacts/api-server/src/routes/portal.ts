@@ -5444,6 +5444,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       scriptRunRows,
       azureCredRows,
       quizLeadRows,
+      generatedDocRows,
     ] = await Promise.all([
       db.select({ id: projectsTable.id }).from(projectsTable).where(eq(projectsTable.clientUserId, id)),
       db.select({ id: invoicesTable.id, status: invoicesTable.status }).from(invoicesTable).where(eq(invoicesTable.clientUserId, id)),
@@ -5456,6 +5457,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       db.select({ id: scriptRunResultsTable.id }).from(scriptRunResultsTable).where(eq(scriptRunResultsTable.customerId, id)),
       db.select({ id: azureTenantCredentialsTable.id }).from(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id)),
       db.select({ id: quizLeadsTable.id }).from(quizLeadsTable).where(eq(quizLeadsTable.email, client.email)),
+      db.select({ id: insightsGeneratedDocumentsTable.id }).from(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.customerId, id)),
     ]);
 
     const unpaidInvoices = invoiceRows.filter(inv => inv.status === "due" || inv.status === "overdue").length;
@@ -5474,6 +5476,7 @@ router.get("/admin/clients/:id/delete-preview", requireAdmin, async (req: Reques
       scriptRunResults: scriptRunRows.length,
       azureCredentials: azureCredRows.length,
       quizLeads: quizLeadRows.length,
+      generatedDocuments: generatedDocRows.length,
     });
   } catch (err) {
     req.log.error(err, "Failed to fetch client delete preview");
@@ -5522,6 +5525,7 @@ router.delete("/admin/clients/:id", requireAdmin, async (req: Request, res: Resp
       await db.delete(projectsTable).where(inArray(projectsTable.id, projectIds));
     }
     await db.delete(scriptRunResultsTable).where(eq(scriptRunResultsTable.customerId, id));
+    await db.delete(insightsGeneratedDocumentsTable).where(eq(insightsGeneratedDocumentsTable.customerId, id));
     await db.delete(clientDocumentsTable).where(eq(clientDocumentsTable.clientUserId, id));
     await db.delete(azureTenantCredentialsTable).where(eq(azureTenantCredentialsTable.clientUserId, id));
     if (client.email) {
