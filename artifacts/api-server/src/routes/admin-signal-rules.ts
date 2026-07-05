@@ -824,7 +824,28 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
     let newGroupId!: number;
     let imported = 0;
 
+    // Derive a human-readable label for the signal itself from the group label
+    // (strip the group-specific suffix heuristic: take up to the first comma/dash)
+    const signalLabel = label
+      ? label.replace(/\s+(Conditions?|Rules?|Signals?|Factors?|Group)$/i, "").trim() || label
+      : signalKey.replace(/^adj:/, "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+    const isAdj = signalKey.startsWith("adj:");
+
     await db.transaction(async (tx) => {
+      // Auto-register in custom_signals if not already known (hardcoded signals
+      // don't live in this table so the insert is always safe to attempt).
+      await tx.execute(sql`
+        INSERT INTO custom_signals (key, label, description, expected_impact, is_adjustment)
+        VALUES (
+          ${signalKey},
+          ${signalLabel},
+          ${(grp.description as string | undefined) ?? null},
+          ${(grp.expectedImpact as string | undefined) ?? null},
+          ${isAdj}
+        )
+        ON CONFLICT (key) DO NOTHING
+      `);
+
       const grpRes = await tx.execute(sql`
         INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
         VALUES (${signalKey}, ${logic}, ${label}, ${groupSortOrder})
