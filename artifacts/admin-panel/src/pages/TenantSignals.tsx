@@ -160,6 +160,8 @@ export default function TenantSignalsPage() {
 
   const [signals, setSignals] = useState<TenantSignal[]>([]);
   const [adjustmentSignals, setAdjustmentSignals] = useState<TenantSignal[]>([]);
+  const [customSignalKeys, setCustomSignalKeys] = useState<Set<string>>(new Set());
+  const [deletingSignalKey, setDeletingSignalKey] = useState<string | null>(null);
   const [signalSection, setSignalSection] = useState<"project" | "adjustment">("project");
   const [rules, setRules] = useState<SignalRule[]>([]);
   const [groups, setGroups] = useState<SignalGroup[]>([]);
@@ -250,17 +252,22 @@ export default function TenantSignalsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [signalsRes, adjSignalsRes, rulesRes, conflictsRes, healthRes, versionsRes] = await Promise.all([
+      const [signalsRes, adjSignalsRes, rulesRes, conflictsRes, healthRes, versionsRes, customRes] = await Promise.all([
         fetchWithAuth("/api/admin/engagement-projects/signals"),
         fetchWithAuth("/api/admin/signal-rules/adjustment-signals"),
         fetchWithAuth("/api/admin/signal-rules"),
         fetchWithAuth("/api/admin/signal-rules/conflicts"),
         fetchWithAuth("/api/admin/signal-rules/health"),
         fetchWithAuth("/api/admin/signal-rules/versions"),
+        fetchWithAuth("/api/admin/custom-signals"),
       ]);
 
       if (signalsRes.ok) setSignals(await signalsRes.json() as TenantSignal[]);
       if (adjSignalsRes.ok) setAdjustmentSignals(await adjSignalsRes.json() as TenantSignal[]);
+      if (customRes.ok) {
+        const custom = await customRes.json() as Array<{ key: string }>;
+        setCustomSignalKeys(new Set(custom.map(c => c.key)));
+      }
       if (rulesRes.ok) {
         const data = await rulesRes.json() as { rules: SignalRule[]; groups: SignalGroup[] };
         setRules(data.rules ?? []);
@@ -530,6 +537,20 @@ export default function TenantSignalsPage() {
         setNewSignalError(body.error ?? "Failed to create signal");
       }
     } finally { setSavingNewSignal(false); }
+  }
+
+  async function handleDeleteSignal(key: string) {
+    const res = await fetchWithAuth(`/api/admin/custom-signals/${encodeURIComponent(key)}`, { method: "DELETE" });
+    const body = await res.json() as { deleted?: string; error?: string };
+    if (res.ok) {
+      toast({ title: `Signal "${key}" deleted` });
+      if (selectedSignal === key) setSelectedSignal(null);
+      setDeletingSignalKey(null);
+      await loadAll();
+    } else {
+      toast({ title: body.error ?? "Delete failed", variant: "destructive" });
+      setDeletingSignalKey(null);
+    }
   }
 
   async function handleBundleImport() {
@@ -1289,11 +1310,13 @@ export default function TenantSignalsPage() {
               else if (hasRules || sig.key === "alwaysInclude") dotColor = "bg-green-500";
               else if (signalSection === "adjustment") dotColor = "bg-[#00B4D8]/40";
 
+              const isCustom = customSignalKeys.has(sig.key);
+              const isConfirmingDelete = deletingSignalKey === sig.key;
+
               return (
-                <button
+                <div
                   key={sig.key}
-                  onClick={() => { setSelectedSignal(sig.key); setActiveTab("rules"); }}
-                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-left transition-colors border-b border-[#30363D]/50 ${
+                  className={`group relative flex items-center border-b border-[#30363D]/50 transition-colors ${
                     isSelected
                       ? signalSection === "adjustment"
                         ? "bg-[#00B4D8]/10 border-l-2 border-l-[#00B4D8]"
@@ -1301,23 +1324,53 @@ export default function TenantSignalsPage() {
                       : "hover:bg-[#1C2128]"
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-semibold text-[#E6EDF3] truncate">{sig.label}</span>
-                      {sr.length > 0 && (
-                        <span className="text-xs text-[#484F58] bg-[#1C2128] px-1.5 py-0.5 rounded font-mono">{sr.length}</span>
-                      )}
-                      {conflictsForSig > 0 && (
-                        <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
-                      )}
+                  {isConfirmingDelete ? (
+                    <div className="flex-1 flex items-center gap-2 px-4 py-3">
+                      <span className="text-xs text-red-400 flex-1">Delete "{sig.label}"?</span>
+                      <button
+                        onClick={() => void handleDeleteSignal(sig.key)}
+                        className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors"
+                      >Yes</button>
+                      <button
+                        onClick={() => setDeletingSignalKey(null)}
+                        className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+                      >No</button>
                     </div>
-                    {hp && (
-                      <p className="text-xs text-[#484F58] mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
-                    )}
-                  </div>
-                  <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-[#0078D4]") + " rotate-90" : "text-[#484F58]"}`} />
-                </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setSelectedSignal(sig.key); setActiveTab("rules"); }}
+                        className="flex-1 flex items-center gap-2.5 px-4 py-3 text-left"
+                      >
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-[#E6EDF3] truncate">{sig.label}</span>
+                            {sr.length > 0 && (
+                              <span className="text-xs text-[#484F58] bg-[#1C2128] px-1.5 py-0.5 rounded font-mono">{sr.length}</span>
+                            )}
+                            {conflictsForSig > 0 && (
+                              <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                            )}
+                          </div>
+                          {hp && (
+                            <p className="text-xs text-[#484F58] mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
+                          )}
+                        </div>
+                        <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-[#0078D4]") + " rotate-90" : "text-[#484F58]"}`} />
+                      </button>
+                      {isCustom && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setDeletingSignalKey(sig.key); }}
+                          className="opacity-0 group-hover:opacity-100 mr-2 p-1 text-[#484F58] hover:text-red-400 transition-all rounded"
+                          title="Delete signal"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               );
             })}
             {signalSection === "adjustment" && adjustmentSignals.length === 0 && (

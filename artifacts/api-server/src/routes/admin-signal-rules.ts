@@ -128,6 +128,48 @@ async function getCustomSignals(): Promise<Array<{ key: string; label: string; d
   return rows.rows as Array<{ key: string; label: string; description: string; expectedImpact: string; isAdjustment: boolean }>;
 }
 
+// ── GET /api/admin/custom-signals ──────────────────────────────────────────────
+
+router.get("/admin/custom-signals", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const custom = await getCustomSignals();
+    res.json(custom);
+  } catch (err) {
+    logger.error({ err }, "GET /admin/custom-signals failed");
+    res.status(500).json({ error: "Failed to fetch custom signals" });
+  }
+});
+
+// ── DELETE /api/admin/custom-signals/:key ──────────────────────────────────────
+
+router.delete("/admin/custom-signals/:key", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const key = String(req.params.key);
+    const allBuiltin = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key);
+    if (allBuiltin.includes(key)) {
+      res.status(403).json({ error: "Built-in signals cannot be deleted" });
+      return;
+    }
+    const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
+
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE signal_key = ${key}`);
+      await tx.execute(sql`DELETE FROM signal_rule_groups WHERE signal_key = ${key}`);
+      await tx.execute(sql`DELETE FROM custom_signals WHERE key = ${key}`);
+      await tx.execute(sql`
+        INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
+        VALUES ('delete_signal', ${key}, null, null, null, ${adminId}, ${`Deleted custom signal "${key}" and all its groups/rules`})
+      `);
+    });
+
+    logger.info({ key }, "admin-signal-rules: custom signal deleted");
+    res.json({ deleted: key });
+  } catch (err) {
+    logger.error({ err }, "DELETE /admin/custom-signals/:key failed");
+    res.status(500).json({ error: "Failed to delete signal" });
+  }
+});
+
 // ── POST /api/admin/custom-signals ─────────────────────────────────────────────
 
 router.post("/admin/custom-signals", requireAdmin, async (req: Request, res: Response) => {
