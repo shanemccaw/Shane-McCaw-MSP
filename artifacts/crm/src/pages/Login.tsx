@@ -272,67 +272,111 @@ const COMP_BADGES = ["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR"];
 function LeftPanel() {
   return (
     <div
-      className="hidden md:flex flex-col px-10 py-12 overflow-y-auto"
+      className="hidden md:flex flex-col px-9 py-9 overflow-hidden relative"
       style={{
-        background: "linear-gradient(155deg, rgba(10,37,64,0.94) 0%, rgba(0,8,28,0.90) 100%)",
-        backdropFilter: "blur(24px)",
+        background: "linear-gradient(155deg, #061a2e 0%, #030f1d 55%, #020c19 100%)",
       }}
     >
-      {/* Wordmark */}
-      <div className="flex items-center gap-2.5 mb-10 shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/30 flex-shrink-0">
-          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
-          </svg>
-        </div>
-        <div>
-          <p className="text-white font-bold text-sm leading-tight">Shane McCaw Consulting</p>
-          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#0078D4" }}>
-            Microsoft 365 Architecture
-          </p>
-        </div>
-      </div>
+      {/* Dot-grid depth pattern */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: "radial-gradient(circle, rgba(0,120,212,0.09) 1px, transparent 1px)",
+          backgroundSize: "30px 30px",
+        }}
+      />
+      {/* Glow blob — top-right */}
+      <div
+        className="absolute -top-28 -right-20 w-96 h-96 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(0,120,212,0.24) 0%, transparent 68%)" }}
+      />
+      {/* Glow blob — bottom-left */}
+      <div
+        className="absolute -bottom-24 -left-20 w-80 h-80 rounded-full pointer-events-none"
+        style={{ background: "radial-gradient(circle, rgba(0,180,216,0.14) 0%, transparent 68%)" }}
+      />
 
-      {/* Headline — spans full panel width */}
-      <div className="shrink-0 mb-6">
-        <h1 className="font-black text-white leading-tight mb-2" style={{ fontSize: "clamp(1.75rem,3vw,2.75rem)" }}>
-          Your M365<br />
-          <span style={{ color: "#00B4D8" }}>Command Center</span>
-        </h1>
-        <p className="text-white/55 text-sm leading-relaxed">
-          A secure, unified portal for assessments, reports, insights, and project delivery.
-        </p>
-      </div>
+      {/* All content above decorators */}
+      <div className="relative z-10 flex flex-col h-full">
 
-      {/* Two-column: bullets left | health panel right */}
-      <div className="flex-1 flex items-start gap-8 min-h-0 overflow-hidden">
-
-        {/* Left: value bullets */}
-        <div className="flex-1 min-w-0">
-          <ul className="space-y-3">
-            {VALUE_BULLETS.map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3">
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: "rgba(0,120,212,0.18)", border: "1px solid rgba(0,120,212,0.30)" }}
-                >
-                  <Icon className="w-3.5 h-3.5 text-[#0078D4]" />
-                </div>
-                <span className="text-white/72 text-sm font-medium">{text}</span>
-              </li>
+        {/* ── Top bar: wordmark + trust badges ── */}
+        <div className="flex items-center justify-between shrink-0 mb-8">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/35 flex-shrink-0">
+              <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-white font-bold text-sm leading-tight">Shane McCaw Consulting</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#0078D4" }}>
+                Microsoft 365 Architecture
+              </p>
+            </div>
+          </div>
+          {/* Trust badges — small, clean, top-right */}
+          <div className="flex items-center gap-1.5">
+            {[
+              { e: "🔒", t: "Encrypted" },
+              { e: "🛡️", t: "MFA" },
+              { e: "⚡", t: "Zero Trust" },
+            ].map(({ e, t }) => (
+              <div
+                key={t}
+                className="flex items-center gap-1 rounded-full px-2.5 py-1"
+                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)" }}
+              >
+                <span className="text-[10px] leading-none">{e}</span>
+                <span className="text-[10px] font-bold" style={{ color: "rgba(255,255,255,0.62)" }}>{t}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
 
-        {/* Right: tenant health snapshot */}
-        <div className="shrink-0" style={{ width: "clamp(250px,42%,300px)" }}>
-          <p
-            className="text-[9px] font-bold uppercase tracking-widest mb-2"
-            style={{ color: "rgba(255,255,255,0.28)" }}
-          >
-            Tenant Health Snapshot
+        {/* ── Headline — compact, one line ── */}
+        <div className="shrink-0 mb-6">
+          <h1 className="font-black text-white leading-tight mb-1.5" style={{ fontSize: "clamp(1.5rem,2.6vw,2.2rem)" }}>
+            Your M365 <span style={{ color: "#00B4D8" }}>Command Center</span>
+          </h1>
+          <p className="text-xs" style={{ color: "rgba(255,255,255,0.40)" }}>
+            Real-time tenant health · Copilot readiness · Governance posture
           </p>
-          <M365HealthPanel dark vertical />
+        </div>
+
+        {/* ── Health snapshot — HERO ── */}
+        <div className="flex-1 flex flex-col justify-center min-h-0">
+          {/* "Preview" caption */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.10)" }} />
+            <span className="text-[9px] font-black uppercase tracking-[0.14em]" style={{ color: "rgba(255,255,255,0.30)" }}>
+              Preview of your dashboard
+            </span>
+            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.10)" }} />
+          </div>
+          {/* Glowing wrapper to make it feel like a real product card */}
+          <div
+            className="rounded-2xl p-[1px]"
+            style={{
+              background: "linear-gradient(135deg, rgba(0,120,212,0.45) 0%, rgba(0,180,216,0.20) 100%)",
+              boxShadow: "0 0 48px rgba(0,120,212,0.22), 0 20px 40px rgba(0,0,0,0.35)",
+            }}
+          >
+            <div className="rounded-2xl overflow-hidden">
+              <M365HealthPanel dark vertical />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Value bullets — compact 2-col grid, bottom ── */}
+        <div className="shrink-0 mt-6">
+          <div className="grid grid-cols-2 gap-x-5 gap-y-2">
+            {VALUE_BULLETS.map(({ icon: Icon, text }) => (
+              <div key={text} className="flex items-center gap-2">
+                <Icon className="w-3 h-3 flex-shrink-0" style={{ color: "rgba(0,120,212,0.75)" }} />
+                <span className="text-xs" style={{ color: "rgba(255,255,255,0.48)" }}>{text}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -646,10 +690,16 @@ export default function LoginPage() {
                 )}
 
                 {/* ── Login card ── */}
-                <div className="bg-white border border-[#0A2540]/10 rounded-3xl shadow-xl px-8 py-10">
+                <div
+                  className="bg-white rounded-3xl px-8 py-10"
+                  style={{
+                    border: "1px solid rgba(10,37,64,0.08)",
+                    boxShadow: "0 4px 6px -1px rgba(10,37,64,0.04), 0 20px 60px -8px rgba(10,37,64,0.14), 0 0 0 1px rgba(10,37,64,0.04)",
+                  }}
+                >
 
                   {/* Wordmark — desktop only (mobile has it above the card) */}
-                  <div className="hidden md:flex flex-col items-center mb-7 text-center">
+                  <div className="hidden md:flex flex-col items-center mb-5 text-center">
                     <div className="inline-flex items-center gap-2.5 mb-2">
                       <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
                         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
@@ -661,6 +711,22 @@ export default function LoginPage() {
                     <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
                       M365 Client Portal
                     </span>
+                  </div>
+
+                  {/* Secure Login badge — between wordmark and form */}
+                  <div className="hidden md:flex justify-center mb-6">
+                    <div
+                      className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5"
+                      style={{
+                        background: "rgba(0,120,212,0.06)",
+                        border: "1px solid rgba(0,120,212,0.18)",
+                      }}
+                    >
+                      <Lock className="w-3 h-3 text-[#0078D4]" />
+                      <span className="text-[11px] font-bold uppercase tracking-widest text-[#0078D4]/80">
+                        Secure Login
+                      </span>
+                    </div>
                   </div>
 
                   {/* ── Auth flows ── */}
@@ -817,51 +883,8 @@ export default function LoginPage() {
                         {loading ? "Signing in…" : "Sign In"}
                       </button>
 
-                      <div className="flex items-center justify-center gap-1.5 -mt-1">
-                        <Lock className="w-3 h-3 text-[#0A2540]/45 flex-shrink-0" />
-                        <span className="text-[11px] text-[#0A2540]/50 font-medium">
-                          Secure access to your M365 Command Center
-                        </span>
-                      </div>
                     </form>
                   )}
-                </div>
-              </div>
-
-              {/* ── Security & Compliance badges — bold, below the login card ── */}
-              <div className="w-full max-w-md mt-5">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="h-px flex-1" style={{ background: "rgba(10,37,64,0.10)" }} />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-[#0A2540]/45">
-                    Security &amp; Compliance
-                  </span>
-                  <div className="h-px flex-1" style={{ background: "rgba(10,37,64,0.10)" }} />
-                </div>
-
-                {/* Security badges */}
-                <div className="flex justify-center flex-wrap gap-1.5 mb-2.5">
-                  {SEC_BADGES.map(({ emoji, label }) => (
-                    <div
-                      key={label}
-                      className="flex items-center gap-1 rounded-full px-2.5 py-1 bg-[#0A2540]"
-                    >
-                      <span className="text-xs leading-none">{emoji}</span>
-                      <span className="text-white text-[11px] font-bold">{label}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Compliance badges */}
-                <div className="flex justify-center flex-wrap gap-2">
-                  {COMP_BADGES.map(badge => (
-                    <span
-                      key={badge}
-                      className="text-xs font-bold rounded-full px-3.5 py-1 border-2 border-[#0078D4] text-[#0078D4]"
-                      style={{ background: "rgba(0,120,212,0.06)" }}
-                    >
-                      {badge}
-                    </span>
-                  ))}
                 </div>
               </div>
             </div>
