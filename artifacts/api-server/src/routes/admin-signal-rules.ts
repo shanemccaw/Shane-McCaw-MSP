@@ -830,13 +830,19 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const profileResult = await db.execute(sql`
-      SELECT profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings"
+      SELECT profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings",
+             last_run_result AS "lastRunResult", last_run_project_diff AS "lastRunProjectDiff"
       FROM signal_simulation_profiles WHERE id = ${id}
     `);
     if (profileResult.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
-    const { profileUpdates, parsedFindings } = profileResult.rows[0] as {
+    const { profileUpdates, parsedFindings, lastRunResult, lastRunProjectDiff } = profileResult.rows[0] as {
       profileUpdates: Record<string, unknown>;
       parsedFindings: string[];
+      lastRunResult: Array<{ key: string; label: string; expectedImpact: string }> | null;
+      lastRunProjectDiff: {
+        includedProjects: Array<{ id: number; title: string; priceRange: string | null }>;
+        excludedProjects: Array<{ project: { id: number; title: string }; reason: string }>;
+      } | null;
     };
 
     const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
@@ -876,6 +882,40 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
 
     const projectDiff = { includedProjects, excludedProjects };
 
+    // ── Compute delta vs previous run ──────────────────────────────────────────
+    let previousRunDiff: {
+      newlyIncluded: Array<{ id: number; title: string }>;
+      movedToExcluded: Array<{ id: number; title: string }>;
+      newlyFired: Array<{ key: string; label: string }>;
+      stoppedFiring: Array<{ key: string; label: string }>;
+    } | null = null;
+
+    if (lastRunResult && lastRunProjectDiff) {
+      const prevIncludedIds = new Set((lastRunProjectDiff.includedProjects ?? []).map(p => p.id));
+      const currIncludedIds = new Set(includedProjects.map(p => p.id));
+
+      const newlyIncluded = includedProjects
+        .filter(p => !prevIncludedIds.has(p.id))
+        .map(p => ({ id: p.id, title: p.title }));
+
+      const movedToExcluded = (lastRunProjectDiff.includedProjects ?? [])
+        .filter(p => !currIncludedIds.has(p.id))
+        .map(p => ({ id: p.id, title: p.title }));
+
+      const prevFiredKeys = new Set((lastRunResult ?? []).map(s => s.key));
+      const currFiredKeys = new Set(firedArr.map(s => s.key));
+
+      const newlyFired = firedArr
+        .filter(s => !prevFiredKeys.has(s.key))
+        .map(s => ({ key: s.key, label: s.label }));
+
+      const stoppedFiring = (lastRunResult ?? [])
+        .filter(s => !currFiredKeys.has(s.key))
+        .map(s => ({ key: s.key, label: s.label }));
+
+      previousRunDiff = { newlyIncluded, movedToExcluded, newlyFired, stoppedFiring };
+    }
+
     await db.execute(sql`
       UPDATE signal_simulation_profiles
       SET last_run_at = now(),
@@ -885,7 +925,7 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       WHERE id = ${id}
     `);
 
-    res.json({ firedSignals: firedArr, ruleTrace: trace, includedProjects, excludedProjects });
+    res.json({ firedSignals: firedArr, ruleTrace: trace, includedProjects, excludedProjects, previousRunDiff });
   } catch (err) {
     logger.error({ err }, "POST /admin/signal-rules/simulation-profiles/:id/run failed");
     res.status(500).json({ error: "Failed to run simulation profile" });
