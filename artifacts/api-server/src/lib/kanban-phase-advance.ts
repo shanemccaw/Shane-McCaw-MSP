@@ -26,7 +26,7 @@ import {
   deliverableSetsTable,
   projectsTable,
 } from "@workspace/db";
-import { eq, asc, count, inArray, sql } from "drizzle-orm";
+import { eq, asc, and, count, inArray, sql } from "drizzle-orm";
 import { logger } from "./logger";
 import { broadcastKanbanChange } from "./sse-broadcast";
 
@@ -187,9 +187,15 @@ export async function advancePhaseIfComplete(
     const allDone = allStepTasks.length > 0 && allStepTasks.every(t => t.column === "completed");
     if (!allDone) return empty;
 
+    // Atomic guard: only mark completed if still in_progress.
+    // If 0 rows returned, a concurrent advancePhaseIfComplete call already
+    // handled this step — bail out to avoid seeding duplicate tasks.
     const [completedStep] = await db.update(workflowStepsTable)
       .set({ status: "completed", completedAt: new Date() })
-      .where(eq(workflowStepsTable.id, workflowStepId))
+      .where(and(
+        eq(workflowStepsTable.id, workflowStepId),
+        eq(workflowStepsTable.status, "in_progress"),
+      ))
       .returning();
 
     if (!completedStep?.projectId) return empty;
@@ -202,9 +208,14 @@ export async function advancePhaseIfComplete(
 
     if (!nextStep || nextStep.status === "completed") return empty;
 
+    // Guard: only activate if still pending — prevents a second concurrent
+    // caller that also passed the allDone check from double-seeding tasks.
     const [activatedStep] = await db.update(workflowStepsTable)
       .set({ status: "in_progress" })
-      .where(eq(workflowStepsTable.id, nextStep.id))
+      .where(and(
+        eq(workflowStepsTable.id, nextStep.id),
+        eq(workflowStepsTable.status, "pending"),
+      ))
       .returning();
 
     if (!activatedStep?.workflowTemplateStepId || !activatedStep.projectId) return empty;
