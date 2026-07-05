@@ -1981,13 +1981,8 @@ Client: {{clientName}}
 Document title: {{title}}
 Date: {{date}}
 
-M365 Environment Health Scores:
-{{scores}}
-
-SOW / SCOPE DOCUMENT (use this as the primary source of truth for tasks and deliverables):
+SOW / SCOPE DOCUMENT (the ONLY source of truth — derive all tasks, phases, and deliverables exclusively from this document):
 {{sowHtml}}
-
-Key Findings from assessments: {{findings}}
 
 INSTRUCTIONS:
 - For EACH deliverable or work item in the SOW above, produce a clearly formatted section:
@@ -2010,9 +2005,7 @@ INSTRUCTIONS:
         clientName,
         title,
         date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
-        scores: scoresBlock,
         sowHtml: sowHtmlForGuide,
-        findings: findingsInline,
       });
     }
 

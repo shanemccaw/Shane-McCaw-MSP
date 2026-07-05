@@ -106,17 +106,12 @@ const CONSULTING_SECTION_HINTS: Record<string, string> = {
 
 const TASK_EXECUTION_GUIDE_WF_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional SOW Task Execution Guide in HTML format.
 
-Client: {{clientName}}{{projectLine}}
+Client: {{clientName}}
 Document title: {{title}}
 Date: {{date}}
 
-M365 Environment Health Scores:
-{{scores}}
-
-SOW / SCOPE DOCUMENT (use this as the primary source of truth for tasks and deliverables):
+SOW / SCOPE DOCUMENT (the ONLY source of truth — derive all tasks, phases, and deliverables exclusively from this document):
 {{sowHtml}}
-
-Key Findings from assessments: {{findings}}
 
 INSTRUCTIONS:
 - For EACH deliverable or work item in the SOW above, produce a clearly formatted section:
@@ -1104,17 +1099,13 @@ async function executeNode(
                 if (sowDocRow?.htmlContent) sowHtmlForDoc = sowDocRow.htmlContent;
               }
 
-              // task_execution_guide uses the SOW as its primary source — dedicated prompt.
-              const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+              // task_execution_guide uses ONLY the SOW HTML — no scores, findings, or telemetry.
               const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT);
               prompt = igSubstituteTokens(rawTemplate, {
                 clientName,
-                projectLine,
                 title: docTitle,
                 date: dateStr,
-                scores: scoresBlock,
                 sowHtml: sowHtmlForDoc || "(No SOW provided — generate based on available context)",
-                findings: findingsInline,
               });
             } else if (docCategory === "consulting") {
               const typeLabel    = CONSULTING_TYPE_LABELS[docType] ?? docType;
