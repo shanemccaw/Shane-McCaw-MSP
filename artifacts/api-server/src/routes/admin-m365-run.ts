@@ -18,7 +18,6 @@ import {
   scriptModulesTable,
   clientScoresTable,
   clientM365ProfilesTable,
-  clientHealthHistoryTable,
   azureTenantCredentialsTable,
   clientAppRegistrationsTable,
   clientAutomationRunsTable,
@@ -33,10 +32,10 @@ import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase
 import { broadcastKanbanChange } from "../lib/sse-broadcast";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
-import { parseM365ScriptOutput, normaliseProfileUpdates } from "../lib/parse-m365-script-output";
+import { parseM365ScriptOutput } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
-import { computeM365Scores, type M365ScoreCategory } from "../lib/m365-scores";
 import { createAuditLog } from "../lib/audit";
+import { applyProfileUpdates as applyProfileUpdatesShared, snapshotHealthFromProfile as snapshotHealthFromProfileShared } from "../lib/m365-profile-update";
 
 const router: IRouter = Router();
 
@@ -174,66 +173,11 @@ async function applyScoreImpact(
 
 }
 
-/** Merge profileUpdates into client_m365_profiles. */
-async function applyProfileUpdates(
-  clientId: number,
-  profileUpdates: Record<string, unknown>,
-): Promise<void> {
-  if (Object.keys(profileUpdates).length === 0) return;
+/** Merge profileUpdates into client_m365_profiles. Delegates to shared lib. */
+const applyProfileUpdates = applyProfileUpdatesShared;
 
-  // Normalise: convert legacy authMethod string → authMethods array
-  const normalised = normaliseProfileUpdates(profileUpdates);
-
-  const [existing] = await db
-    .select()
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientId))
-    .limit(1);
-
-  const existingProfile = (existing?.profile as Record<string, unknown>) ?? {};
-  // Also normalise the existing stored profile (backward compat)
-  const normalisedExisting = normaliseProfileUpdates(existingProfile);
-
-  const merged = { ...normalisedExisting, ...normalised };
-
-  if (existing) {
-    await db
-      .update(clientM365ProfilesTable)
-      .set({ profile: merged, updatedAt: new Date() })
-      .where(eq(clientM365ProfilesTable.clientId, clientId));
-  } else {
-    await db
-      .insert(clientM365ProfilesTable)
-      .values({ clientId, profile: merged });
-  }
-}
-
-/**
- * Snapshot the client's current M365 health scores derived from their profile
- * into clientHealthHistoryTable. Called after every profile update so both the
- * Health page and the Insights page always reflect the same source of truth.
- */
-async function snapshotHealthFromProfile(clientId: number): Promise<void> {
-  const [row] = await db
-    .select({ profile: clientM365ProfilesTable.profile })
-    .from(clientM365ProfilesTable)
-    .where(eq(clientM365ProfilesTable.clientId, clientId))
-    .limit(1);
-
-  if (!row?.profile) return;
-
-  const scores = computeM365Scores(row.profile as Record<string, unknown>);
-  const now = new Date();
-
-  await db.insert(clientHealthHistoryTable).values(
-    (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
-      clientId,
-      category,
-      score,
-      recordedAt: now,
-    }))
-  );
-}
+/** Snapshot health scores from profile into clientHealthHistoryTable. Delegates to shared lib. */
+const snapshotHealthFromProfile = snapshotHealthFromProfileShared;
 
 // ── Sibling task resolution ───────────────────────────────────────────────────
 

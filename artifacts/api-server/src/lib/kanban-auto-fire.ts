@@ -41,6 +41,8 @@ import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./doc
 import { sendWebPushToAdmins } from "./web-push";
 import { sendEmailOrThrow, brandedEmail } from "./mailer";
 import { MAX_AUTO_FIRE_FAILURES, computeNextFailureState } from "./kanban-auto-fire-retry-utils";
+import { parseM365ScriptOutput } from "./parse-m365-script-output";
+import { applyProfileUpdates, snapshotHealthFromProfile } from "./m365-profile-update";
 
 // Re-export so callers that previously imported these from this module continue to work.
 export { MAX_AUTO_FIRE_FAILURES, computeNextFailureState };
@@ -460,6 +462,10 @@ async function runInBackground(
       }
     }
 
+    // Merge deterministic + AI profile updates (deterministic fields take precedence)
+    const deterministicUpdates = parseM365ScriptOutput(output);
+    const mergedProfileUpdates = { ...(aiResult?.profileUpdates ?? {}), ...deterministicUpdates };
+
     // WRITE 1: persist raw output + AI findings to the script_run_results row
     if (runResultId != null) {
       try {
@@ -470,11 +476,27 @@ async function runInBackground(
             parsedFindings: aiResult?.findings ?? [],
             recommendations: aiResult?.recommendations ?? [],
             scoreImpact:    aiResult?.scoreImpact ?? {},
-            profileUpdates: aiResult?.profileUpdates ?? {},
+            profileUpdates: mergedProfileUpdates,
           })
           .where(eq(scriptRunResultsTable.id, runResultId));
       } catch (updateErr) {
         logger.warn({ updateErr, runResultId, jobId }, "kanban-auto-fire: could not update script_run_results (non-fatal)");
+      }
+    }
+
+    // WRITE 1b: apply profile updates to client_m365_profiles and snapshot health scores.
+    // This is intentionally separate from WRITE 1 so a DB error here doesn't block the
+    // script_run_results update above.
+    try {
+      await applyProfileUpdates(clientUserId, mergedProfileUpdates);
+    } catch (profileErr) {
+      logger.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: failed to apply profile updates (non-fatal)");
+    }
+    if (success) {
+      try {
+        await snapshotHealthFromProfile(clientUserId);
+      } catch (snapErr) {
+        logger.warn({ snapErr, clientUserId, jobId }, "kanban-auto-fire: failed to snapshot health scores (non-fatal)");
       }
     }
 
