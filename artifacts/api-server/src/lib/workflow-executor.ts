@@ -1089,9 +1089,21 @@ async function executeNode(
 
             // Build the AI prompt — consulting and report use different templates and token shapes
             let prompt: string;
-            // sowHtml is required for task_execution_guide; optional on other consulting types.
-            const sowHtmlForDoc = interp(node.data.sowHtml as string | undefined, payload) ?? "";
             if (docCategory === "consulting" && docType === "task_execution_guide") {
+              // Resolve the SOW HTML: prefer sowDocumentId (look up from DB) over
+              // inline sowHtml, so the builder only needs a document ID reference.
+              let sowHtmlForDoc = interp(node.data.sowHtml as string | undefined, payload) ?? "";
+              const sowDocumentIdRaw = interp(node.data.sowDocumentId as string | undefined, payload) ?? "";
+              const sowDocumentId = sowDocumentIdRaw ? parseInt(sowDocumentIdRaw, 10) : NaN;
+              if (!isNaN(sowDocumentId)) {
+                const [sowDocRow] = await db
+                  .select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+                  .from(insightsGeneratedDocumentsTable)
+                  .where(eq(insightsGeneratedDocumentsTable.id, sowDocumentId))
+                  .limit(1);
+                if (sowDocRow?.htmlContent) sowHtmlForDoc = sowDocRow.htmlContent;
+              }
+
               // task_execution_guide uses the SOW as its primary source — dedicated prompt.
               const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
               const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT);
