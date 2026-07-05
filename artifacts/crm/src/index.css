@@ -305,3 +305,34 @@ html {
 .copilot-aura-corner-br   { animation: copilot-aura-pulse      5.5s ease-in-out infinite 0.9s; }
 .copilot-aura-corner-bl   { animation: copilot-aura-pulse-slow  4.2s ease-in-out infinite 2.0s; }
 
+/* ── Login page animations ──────────────────────────────────────────────── */
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.login-badge-stagger > * {
+  opacity: 0;
+  animation: login-fade-in 0.4s ease-out forwards;
+}
+.login-badge-stagger > *:nth-child(1) { animation-delay: 0.1s; }
+.login-badge-stagger > *:nth-child(2) { animation-delay: 0.2s; }
+.login-badge-stagger > *:nth-child(3) { animation-delay: 0.3s; }
+.login-badge-stagger > *:nth-child(4) { animation-delay: 0.4s; }
+.login-badge-stagger > *:nth-child(5) { animation-delay: 0.5s; }
+.login-badge-stagger > *:nth-child(6) { animation-delay: 0.6s; }
+.login-badge-stagger > *:nth-child(7) { animation-delay: 0.7s; }
+.login-badge-stagger > *:nth-child(8) { animation-delay: 0.8s; }
+.login-badge-stagger > *:nth-child(9) { animation-delay: 0.9s; }
+
+@keyframes motion-blob {
+  0%   { transform: translate(0px, 0px) scale(1); }
+  33%  { transform: translate(20px, -15px) scale(1.05); }
+  66%  { transform: translate(-10px, 10px) scale(0.97); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.login-motion-blob {
+  animation: motion-blob 12s ease-in-out infinite;
+}
+

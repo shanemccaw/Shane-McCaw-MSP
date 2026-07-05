@@ -4,11 +4,12 @@ import { useLocation, useSearch } from "wouter";
 import { startAuthentication } from "@simplewebauthn/browser";
 import {
   Loader2, Eye, EyeOff, Mail,
-  ShieldCheck, Sparkles, ClipboardCheck, Zap, Lock, FileText,
+  ShieldCheck, Sparkles, ClipboardCheck, Zap, Lock,
 } from "lucide-react";
 import AnimatedBackground from "@/components/quickwin/AnimatedBackground";
 import CopilotAura from "@/components/wizard/CopilotAura";
 import ScoreRing from "@/components/ScoreRing";
+import ProductCarousel from "@/components/ProductCarousel";
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
@@ -250,23 +251,6 @@ function FloatingChips() {
   );
 }
 
-// ─── Left value panel ─────────────────────────────────────────────────────────
-const VALUE_BULLETS = [
-  { icon: ShieldCheck,    text: "Real-time tenant health" },
-  { icon: Sparkles,       text: "Copilot readiness scoring" },
-  { icon: Lock,           text: "Governance & security posture" },
-  { icon: ClipboardCheck, text: "Project tracking & deliverables" },
-  { icon: FileText,       text: "Secure document exchange" },
-  { icon: Zap,            text: "Zero Trust architecture" },
-];
-
-const SEC_BADGES = [
-  { emoji: "🔒", label: "Encrypted" },
-  { emoji: "🛡️", label: "MFA Protected" },
-  { emoji: "⚡", label: "Zero Trust" },
-  { emoji: "🏛️", label: "NASA-grade" },
-];
-
 const COMP_BADGES = ["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR"];
 
 function LeftPanel() {
@@ -285,24 +269,34 @@ function LeftPanel() {
           backgroundSize: "30px 30px",
         }}
       />
-      {/* Glow blob — top-right */}
+
+      {/* Motion accent blob — behind hero text, Fluent-inspired */}
+      <div
+        className="login-motion-blob absolute top-12 left-8 w-72 h-72 rounded-full pointer-events-none"
+        style={{
+          background: "radial-gradient(circle at 40% 40%, rgba(0,120,212,0.18) 0%, rgba(0,180,216,0.08) 50%, transparent 70%)",
+          filter: "blur(40px)",
+          zIndex: 1,
+        }}
+      />
+      {/* Static glow blob — top-right */}
       <div
         className="absolute -top-28 -right-20 w-96 h-96 rounded-full pointer-events-none"
-        style={{ background: "radial-gradient(circle, rgba(0,120,212,0.24) 0%, transparent 68%)" }}
+        style={{ background: "radial-gradient(circle, rgba(0,120,212,0.22) 0%, transparent 68%)", zIndex: 1 }}
       />
-      {/* Glow blob — bottom-left */}
+      {/* Static glow blob — bottom-left */}
       <div
         className="absolute -bottom-24 -left-20 w-80 h-80 rounded-full pointer-events-none"
-        style={{ background: "radial-gradient(circle, rgba(0,180,216,0.14) 0%, transparent 68%)" }}
+        style={{ background: "radial-gradient(circle, rgba(0,180,216,0.12) 0%, transparent 68%)", zIndex: 1 }}
       />
 
       {/* All content above decorators */}
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="relative flex flex-col h-full" style={{ zIndex: 2 }}>
 
         {/* ── Hero: wordmark + headline + tagline (TOP) ── */}
-        <div className="shrink-0 mb-8">
+        <div className="shrink-0 mb-6">
           {/* Wordmark */}
-          <div className="flex items-center gap-2.5 mb-7">
+          <div className="flex items-center gap-2.5 mb-6">
             <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/35 flex-shrink-0">
               <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 text-white" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
@@ -315,40 +309,42 @@ function LeftPanel() {
               </p>
             </div>
           </div>
-          {/* Headline */}
-          <h1 className="font-black text-white leading-tight mb-2" style={{ fontSize: "clamp(1.5rem,2.6vw,2.2rem)" }}>
-            Your M365 <span style={{ color: "#00B4D8" }}>Command Center</span>
+          {/* Updated headline */}
+          <h1 className="font-black text-white leading-tight mb-2" style={{ fontSize: "clamp(1.35rem,2.4vw,2rem)" }}>
+            Your M365 <span style={{ color: "#00B4D8" }}>Command Center</span>{" "}
+            <span style={{ color: "rgba(255,255,255,0.85)" }}>— Built for Real-Time Insight.</span>
           </h1>
-          <p className="text-sm" style={{ color: "rgba(255,255,255,0.40)" }}>
-            Real-time M365 visibility for every engagement
+          <p className="text-sm leading-relaxed" style={{ color: "rgba(255,255,255,0.42)" }}>
+            See your tenant. Fix your gaps. Track your projects. All in one place.
           </p>
         </div>
 
-        {/* ── Health snapshot — compact, middle ── */}
-        <div className="shrink-0 my-auto">
-          {/* Caption */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.10)" }} />
-            <span className="text-[9px] font-black uppercase tracking-[0.14em]" style={{ color: "rgba(255,255,255,0.30)" }}>
-              Preview of your dashboard
-            </span>
-            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.10)" }} />
-          </div>
-          {/* Compact card — subtle border, no glow wrapper */}
-          <div
-            className="rounded-xl overflow-hidden"
-            style={{
-              border: "1px solid rgba(0,120,212,0.30)",
-              boxShadow: "0 4px 24px rgba(0,0,0,0.28)",
-            }}
-          >
-            <M365HealthPanel dark />
-          </div>
+        {/* ── Product preview carousel ── */}
+        <div className="shrink-0">
+          <ProductCarousel />
         </div>
 
-        {/* ── Trust / security badges — bottom ── */}
-        <div className="shrink-0 mt-8">
-          <div className="flex items-center gap-2 flex-wrap">
+        {/* ── Floating health snapshot card ── */}
+        <div className="shrink-0 mt-5">
+          <div
+            className="rounded-2xl overflow-hidden transition-transform duration-200 cursor-default"
+            style={{
+              background: "rgba(255,255,255,0.07)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(0,120,212,0.28)",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.32)",
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(-3px)"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = "translateY(0)"; }}
+          >
+            <M365HealthPanel dark vertical />
+          </div>
+          <ActivityTicker dark />
+        </div>
+
+        {/* ── Trust / security badge strip — bottom, staggered fade-in ── */}
+        <div className="shrink-0 mt-5">
+          <div className="login-badge-stagger flex items-center gap-2 flex-wrap">
             {[
               { e: "🔒", t: "Encrypted" },
               { e: "🛡️", t: "MFA Protected" },
@@ -357,20 +353,20 @@ function LeftPanel() {
             ].map(({ e, t }) => (
               <div
                 key={t}
-                className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.11)" }}
+                className="flex items-center gap-1 rounded-full px-2 py-0.5"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)" }}
               >
-                <span className="text-[10px] leading-none">{e}</span>
-                <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.52)" }}>{t}</span>
+                <span className="text-[9px] leading-none">{e}</span>
+                <span className="text-[9px] font-semibold" style={{ color: "rgba(255,255,255,0.48)" }}>{t}</span>
               </div>
             ))}
             {COMP_BADGES.map(b => (
               <div
                 key={b}
-                className="flex items-center rounded-full px-2.5 py-1"
-                style={{ background: "rgba(0,120,212,0.10)", border: "1px solid rgba(0,120,212,0.22)" }}
+                className="flex items-center rounded-full px-2 py-0.5"
+                style={{ background: "rgba(0,120,212,0.10)", border: "1px solid rgba(0,120,212,0.20)" }}
               >
-                <span className="text-[10px] font-bold" style={{ color: "rgba(0,180,216,0.80)" }}>{b}</span>
+                <span className="text-[9px] font-bold" style={{ color: "rgba(0,180,216,0.78)" }}>{b}</span>
               </div>
             ))}
           </div>
@@ -647,7 +643,7 @@ export default function LoginPage() {
             <LeftPanel />
 
             {/* RIGHT panel — login form (always visible) */}
-            <div className="flex flex-col items-center justify-center overflow-y-auto px-6 py-12 bg-white/[0.97]">
+            <div className="flex flex-col items-center justify-center overflow-y-auto px-6 py-12 pb-16 bg-white/[0.97]">
 
               {/* Mobile-only compact wordmark (left panel is hidden on mobile) */}
               <div className="md:hidden flex flex-col items-center mb-6 text-center">
@@ -875,6 +871,10 @@ export default function LoginPage() {
                         {loading ? "Signing in…" : "Sign In"}
                       </button>
 
+                      <p className="text-xs text-center text-muted-foreground pt-1">
+                        🔐 Protected by Zero Trust + MFA.
+                      </p>
+
                     </form>
                   )}
                 </div>
@@ -882,13 +882,13 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* ── Full-width footer ─────────────────────────────────────────── */}
+          {/* ── Pinned footer ─────────────────────────────────────────────── */}
           <footer
-            className="relative shrink-0 py-3 px-6 text-center border-t"
+            className="fixed bottom-0 left-0 right-0 py-3 px-6 text-center border-t z-50"
             style={{
-              background: "rgba(10,37,64,0.96)",
-              borderColor: "rgba(255,255,255,0.07)",
-              backdropFilter: "blur(8px)",
+              background: "rgba(10,37,64,0.97)",
+              borderColor: "rgba(255,255,255,0.08)",
+              backdropFilter: "blur(10px)",
             }}
           >
             <p className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.38)" }}>
