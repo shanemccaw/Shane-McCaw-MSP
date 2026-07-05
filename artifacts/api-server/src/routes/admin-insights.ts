@@ -65,7 +65,7 @@ import {
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
-import { computeTenantSignals, projectMatchesSignals } from "../lib/tenant-signals";
+import { computeTenantSignals, projectMatchesSignals, TENANT_SIGNALS } from "../lib/tenant-signals";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1873,17 +1873,18 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         const { firedSignals } = computeTenantSignals(
           mergedSowProfile,
           allFindings,
-          signalRulesRes.rows as Parameters<typeof computeTenantSignals>[2],
-          signalGroupsRes.rows as Parameters<typeof computeTenantSignals>[3],
+          signalRulesRes.rows as unknown as Parameters<typeof computeTenantSignals>[2],
+          signalGroupsRes.rows as unknown as Parameters<typeof computeTenantSignals>[3],
         );
+        const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
         signalFilteredProjects = allEngagementProjects.filter(p => {
           const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy : [];
           if (triggers.length === 0) return true;
-          const { included } = projectMatchesSignals({ title: p.title, triggeredBy: triggers }, firedSignals);
+          const { included } = projectMatchesSignals({ title: p.title, triggeredBy: triggers }, knownSignalKeys, firedSignals);
           return included;
         });
         signalFilterInfo = {
-          firedSignals: firedSignals.map(s => s.key),
+          firedSignals: Array.from(firedSignals),
           totalProjects: allEngagementProjects.length,
           includedCount: signalFilteredProjects.length,
           excludedCount: allEngagementProjects.length - signalFilteredProjects.length,
