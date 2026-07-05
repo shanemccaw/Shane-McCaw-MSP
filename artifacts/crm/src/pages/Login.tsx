@@ -225,7 +225,11 @@ function MfaChallengeScreen({
         body: JSON.stringify({ mfaToken: challenge.mfaToken }),
       });
       if (res.ok) setSmsSent(true);
-      else { const d = await res.json() as { error?: string }; setError(d.error ?? "Failed to send SMS"); }
+      else {
+        let msg = "Failed to send SMS";
+        try { const d = await res.json() as { error?: string }; if (d.error) msg = d.error; } catch { /* empty body */ }
+        setError(msg);
+      }
     } catch { setError("Failed to send SMS"); }
     finally { setLoading(false); }
   };
@@ -240,8 +244,13 @@ function MfaChallengeScreen({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mfaToken: challenge.mfaToken, method: activeMethod, code }),
       });
+      if (!res.ok) {
+        let msg = "Verification failed";
+        try { const d = await res.json() as { error?: string }; if (d.error) msg = d.error; } catch { /* empty body */ }
+        throw new Error(msg);
+      }
       const data = await res.json() as { accessToken?: string; user?: import("@/contexts/AuthContext").AuthUser; error?: string };
-      if (!res.ok || !data.accessToken || !data.user) throw new Error(data.error ?? "Verification failed");
+      if (!data.accessToken || !data.user) throw new Error(data.error ?? "Verification failed");
       onSuccess(data.accessToken, data.user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Verification failed");

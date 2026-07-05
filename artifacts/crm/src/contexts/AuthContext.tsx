@@ -143,8 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password }),
     });
     if (!res.ok) {
-      const err = await res.json() as { error: string };
-      throw new Error(err.error ?? "Login failed");
+      let msg = "Login failed";
+      try { const e = await res.json() as { error?: string }; if (e.error) msg = e.error; } catch { /* empty body */ }
+      throw new Error(msg);
     }
     const data = await res.json() as { accessToken?: string; user?: AuthUser; mfaRequired?: boolean; mfaToken?: string; methods?: string[] };
 
@@ -175,8 +176,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ email, password, name }),
     });
     if (!res.ok) {
-      const err = await res.json() as { error: string };
-      throw new Error(err.error ?? "Registration failed");
+      let msg = "Registration failed";
+      try { const e = await res.json() as { error?: string }; if (e.error) msg = e.error; } catch { /* empty body */ }
+      throw new Error(msg);
     }
     const data = await res.json() as { accessToken: string; user: AuthUser };
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
@@ -192,8 +194,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ token, password }),
     });
     if (!res.ok) {
-      const err = await res.json() as { error: string };
-      throw new Error(err.error ?? "Password setup failed");
+      let msg = "Password setup failed";
+      try { const e = await res.json() as { error?: string }; if (e.error) msg = e.error; } catch { /* empty body */ }
+      throw new Error(msg);
     }
     const data = await res.json() as { accessToken: string; user: AuthUser };
     setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
