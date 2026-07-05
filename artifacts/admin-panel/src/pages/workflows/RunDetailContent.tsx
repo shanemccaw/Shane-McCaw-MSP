@@ -84,6 +84,40 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
 };
 
+// ── HtmlContentPreview ─────────────────────────────────────────────────────────
+
+/**
+ * Renders an `htmlContent` string value as a collapsible "Preview HTML" toggle.
+ * Collapsed by default — expanded view shows the HTML in a sandboxed iframe.
+ */
+export function HtmlContentPreview({ html }: { html: string }) {
+  const [open, setOpen] = useState(false);
+  const toggle = useCallback((e: React.MouseEvent) => { e.stopPropagation(); setOpen(x => !x); }, []);
+
+  return (
+    <div className="mt-1 space-y-1">
+      <button
+        onClick={toggle}
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 hover:bg-purple-500/25 transition-colors font-mono text-[10px]"
+        title={open ? "Collapse HTML preview" : "Preview rendered HTML"}
+      >
+        <span>{open ? "▾" : "▸"}</span>
+        <span>Preview HTML</span>
+        <span className="text-purple-400/60">({html.length.toLocaleString()} chars)</span>
+      </button>
+      {open && (
+        <iframe
+          srcDoc={html}
+          sandbox="allow-same-origin"
+          className="w-full rounded-lg border border-[#30363D] bg-white"
+          style={{ height: 320 }}
+          title="HTML preview"
+        />
+      )}
+    </div>
+  );
+}
+
 // ── ExpandableJson ─────────────────────────────────────────────────────────────
 
 /** Try to parse `s` as JSON. Returns the parsed value or null if it's not JSON. */
@@ -359,44 +393,72 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
   if (allKeys.length === 0) {
     return <p className="text-[10px] text-[#484F58] font-mono italic">empty</p>;
   }
+
+  // Split htmlContent out of the diff so it renders as a preview, not raw text
+  const regularKeys = allKeys.filter(k => k !== "htmlContent");
+  const htmlAfter  = typeof after.htmlContent  === "string" ? after.htmlContent  : null;
+  const htmlBefore = typeof before.htmlContent === "string" ? before.htmlContent : null;
+  const htmlContentKey = allKeys.includes("htmlContent");
+
   return (
-    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-72 space-y-0.5">
-      {allKeys.map(key => {
-        const bVal = JSON.stringify(before[key] ?? undefined);
-        const aVal = JSON.stringify(after[key] ?? undefined);
-        const added   = !(key in before);
-        const removed = !(key in after);
-        const changed = !added && !removed && bVal !== aVal;
-        const rowCls  = added ? "bg-emerald-500/10" : removed ? "bg-red-500/10" : changed ? "bg-amber-500/8" : "";
-        const keyCls  = added ? "text-emerald-400" : removed ? "text-red-400" : changed ? "text-amber-300" : "text-[#7D8590]";
-        const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-[#E6EDF3]" : "text-[#E6EDF3]";
-        const prefix  = added ? "+ " : removed ? "- " : changed ? "~ " : "  ";
-        return (
-          <div key={key} className={`flex flex-wrap gap-1 px-1 py-0.5 rounded ${rowCls}`}>
-            <span className="text-[#484F58] w-4 shrink-0">{prefix}</span>
-            <span className={`${keyCls} shrink-0`}>{key}:</span>
-            {changed ? (
-              <span className={`${valCls} flex flex-wrap items-start gap-1`}>
-                <span className="line-through text-red-400"><DiffValue raw={bVal} /></span>
-                <DiffValue raw={aVal} />
-              </span>
-            ) : (
-              <span className={valCls}><DiffValue raw={removed ? bVal : aVal} /></span>
-            )}
+    <div className="space-y-2">
+      <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 font-mono text-[10px] overflow-auto max-h-72 space-y-0.5">
+        {regularKeys.map(key => {
+          const bVal = JSON.stringify(before[key] ?? undefined);
+          const aVal = JSON.stringify(after[key] ?? undefined);
+          const added   = !(key in before);
+          const removed = !(key in after);
+          const changed = !added && !removed && bVal !== aVal;
+          const rowCls  = added ? "bg-emerald-500/10" : removed ? "bg-red-500/10" : changed ? "bg-amber-500/8" : "";
+          const keyCls  = added ? "text-emerald-400" : removed ? "text-red-400" : changed ? "text-amber-300" : "text-[#7D8590]";
+          const valCls  = added ? "text-emerald-300" : removed ? "text-red-300" : changed ? "text-[#E6EDF3]" : "text-[#E6EDF3]";
+          const prefix  = added ? "+ " : removed ? "- " : changed ? "~ " : "  ";
+          return (
+            <div key={key} className={`flex flex-wrap gap-1 px-1 py-0.5 rounded ${rowCls}`}>
+              <span className="text-[#484F58] w-4 shrink-0">{prefix}</span>
+              <span className={`${keyCls} shrink-0`}>{key}:</span>
+              {changed ? (
+                <span className={`${valCls} flex flex-wrap items-start gap-1`}>
+                  <span className="line-through text-red-400"><DiffValue raw={bVal} /></span>
+                  <DiffValue raw={aVal} />
+                </span>
+              ) : (
+                <span className={valCls}><DiffValue raw={removed ? bVal : aVal} /></span>
+              )}
+            </div>
+          );
+        })}
+        {regularKeys.length === 0 && !htmlContentKey && (
+          <p className="text-[#484F58] italic">empty</p>
+        )}
+        {htmlContentKey && (
+          <div className="flex flex-wrap gap-1 px-1 py-0.5 rounded">
+            <span className="text-[#484F58] w-4 shrink-0">{htmlAfter && !htmlBefore ? "+ " : !htmlAfter && htmlBefore ? "- " : htmlAfter !== htmlBefore ? "~ " : "  "}</span>
+            <span className="text-purple-300 shrink-0">htmlContent:</span>
+            <span className="text-[#484F58] italic text-[9px] self-center">see preview below</span>
           </div>
-        );
-      })}
+        )}
+      </div>
+      {htmlContentKey && (htmlAfter ?? htmlBefore) && (
+        <HtmlContentPreview html={(htmlAfter ?? htmlBefore)!} />
+      )}
     </div>
   );
 }
 
 export function JsonBlock({ data, label }: { data: Record<string, unknown>; label: string }) {
+  const htmlContent = typeof data.htmlContent === "string" ? data.htmlContent : null;
+  const displayData = htmlContent !== null
+    ? Object.fromEntries(Object.entries(data).filter(([k]) => k !== "htmlContent"))
+    : data;
+
   return (
     <div className="space-y-1">
       <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
       <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-40 whitespace-pre-wrap">
-        {JSON.stringify(data, null, 2)}
+        {JSON.stringify(displayData, null, 2)}
       </pre>
+      {htmlContent !== null && <HtmlContentPreview html={htmlContent} />}
     </div>
   );
 }
