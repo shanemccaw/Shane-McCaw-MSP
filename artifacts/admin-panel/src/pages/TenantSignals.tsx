@@ -182,6 +182,9 @@ export default function TenantSignalsPage() {
   const [showSnapshotsPanel, setShowSnapshotsPanel] = useState(false);
   const [showScriptExplorer, setShowScriptExplorer] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showSignalImportModal, setShowSignalImportModal] = useState(false);
+  const [signalImportJson, setSignalImportJson] = useState("");
+  const [signalImportRunning, setSignalImportRunning] = useState(false);
 
   const [testJson, setTestJson] = useState(JSON.stringify({ profileUpdates: {}, parsedFindings: [] }, null, 2));
   const [testRunning, setTestRunning] = useState(false);
@@ -232,6 +235,7 @@ export default function TenantSignalsPage() {
   const [expandedProfileIds, setExpandedProfileIds] = useState<Set<number>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const signalFileInputRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -556,6 +560,31 @@ export default function TenantSignalsPage() {
         toast({ title: "Import failed", variant: "destructive" });
       }
     } finally { setImportRunning(false); }
+  }
+
+  async function handleSignalImport() {
+    if (!selectedSignal) return;
+    setSignalImportRunning(true);
+    try {
+      let parsed: unknown;
+      try { parsed = JSON.parse(signalImportJson); }
+      catch { toast({ title: "Invalid JSON", variant: "destructive" }); return; }
+      const res = await fetchWithAuth(`/api/admin/signal-rules/${encodeURIComponent(selectedSignal)}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      if (res.ok) {
+        const data = await res.json() as { imported: number; signalKey: string };
+        toast({ title: `Imported ${data.imported} rule${data.imported === 1 ? "" : "s"} for ${data.signalKey}.` });
+        setShowSignalImportModal(false);
+        setSignalImportJson("");
+        await loadAll();
+      } else {
+        const err = await res.json().catch(() => ({ error: "Import failed" })) as { error: string };
+        toast({ title: err.error ?? "Import failed", variant: "destructive" });
+      }
+    } finally { setSignalImportRunning(false); }
   }
 
   async function handleSaveSnapshot() {
@@ -1237,6 +1266,13 @@ export default function TenantSignalsPage() {
                 <div className="flex items-center gap-3 flex-wrap">
                   <h2 className="text-lg font-bold text-[#E6EDF3]">{selectedSignalData?.label}</h2>
                   <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-2 py-0.5 rounded font-mono border border-[#30363D]">{selectedSignal}</code>
+                  <button
+                    onClick={() => { setSignalImportJson(""); setShowSignalImportModal(true); }}
+                    className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 bg-[#1C2128] text-[#7D8590] text-xs font-semibold rounded-lg border border-[#30363D] hover:text-[#E6EDF3] hover:border-[#0078D4]/40 transition-colors"
+                    title="Import JSON rules for this signal"
+                  >
+                    <Upload className="w-3.5 h-3.5" /> Import Rules
+                  </button>
                 </div>
                 {selectedSignalData?.description && (
                   <p className="text-sm text-[#7D8590] mt-1">{selectedSignalData.description}</p>
@@ -2031,6 +2067,67 @@ export default function TenantSignalsPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {importRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Per-signal Import Modal */}
+      {showSignalImportModal && selectedSignal && (
+        <Modal title={`Import Rules — ${selectedSignal}`} onClose={() => { setShowSignalImportModal(false); setSignalImportJson(""); }}>
+          <div className="space-y-4">
+            <p className="text-sm text-[#7D8590]">
+              Paste a JSON array of rules for <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1.5 py-0.5 rounded font-mono border border-[#30363D]">{selectedSignal}</code>.
+              Existing rules for this signal will be replaced. Other signals are unaffected.
+            </p>
+            <input
+              ref={signalFileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => setSignalImportJson(ev.target?.result as string);
+                reader.readAsText(file);
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => signalFileInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-sm rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+            >
+              <Upload className="w-4 h-4" /> Upload JSON File
+            </button>
+            <textarea
+              value={signalImportJson}
+              onChange={e => setSignalImportJson(e.target.value)}
+              rows={12}
+              placeholder={`[
+  {
+    "signalKey": "${selectedSignal}",
+    "ruleType": "profile_key_truthy",
+    "sourceKey": "someField",
+    "description": "Description here"
+  }
+]`}
+              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowSignalImportModal(false); setSignalImportJson(""); }}
+                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleSignalImport()}
+                disabled={signalImportRunning || !signalImportJson.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
+              >
+                {signalImportRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
               </button>
             </div>
           </div>

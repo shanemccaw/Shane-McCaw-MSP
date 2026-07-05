@@ -660,6 +660,84 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
   }
 });
 
+// ── POST /api/admin/signal-rules/:signalKey/import ────────────────────────────
+// Replaces all rules (and orphaned groups) for one signal key only.
+// Accepts a flat array of rule objects — the format exported per-signal from the UI.
+
+router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { signalKey } = req.params as { signalKey: string };
+    if (!signalKey) { res.status(400).json({ error: "Missing signalKey" }); return; }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    // Accept either a flat array OR `{ rules: [...] }` wrapper
+    let rawRules: unknown[];
+    if (Array.isArray(body)) {
+      rawRules = body;
+    } else if (Array.isArray(body.rules)) {
+      rawRules = body.rules as unknown[];
+    } else {
+      res.status(400).json({ error: "Body must be a rules array or { rules: [...] }" }); return;
+    }
+
+    const importedRules = rawRules as Array<Record<string, unknown>>;
+
+    // Validate — all rules must belong to this signal (or have no key specified)
+    const mismatch = importedRules.find(r => {
+      const rk = r.signalKey ?? r.signal_key;
+      return rk !== undefined && rk !== signalKey;
+    });
+    if (mismatch) {
+      res.status(400).json({
+        error: `signalKey mismatch: expected "${signalKey}", got "${mismatch.signalKey ?? mismatch.signal_key}"`,
+      }); return;
+    }
+
+    const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
+
+    await db.transaction(async (tx) => {
+      // Remove existing rules for this signal
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE signal_key = ${signalKey}`);
+      // Remove orphaned groups (no remaining rules reference them) for this signal
+      await tx.execute(sql`
+        DELETE FROM signal_rule_groups
+        WHERE signal_key = ${signalKey}
+          AND id NOT IN (SELECT COALESCE(group_id, -1) FROM signal_derivation_rules WHERE group_id IS NOT NULL)
+      `);
+
+      // Insert new rules — groupId from JSON is ignored (flat import, no group re-creation)
+      for (let i = 0; i < importedRules.length; i++) {
+        const r = importedRules[i]!;
+        await tx.execute(sql`
+          INSERT INTO signal_derivation_rules
+            (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+          VALUES (
+            ${signalKey}, null,
+            ${(r.ruleType ?? r.rule_type) as string},
+            ${(r.sourceKey ?? r.source_key) as string},
+            ${(r.compareValue ?? r.compare_value ?? null) as string | null},
+            ${(r.description ?? null) as string | null},
+            ${((r.sortOrder ?? r.sort_order ?? i) as number)}
+          )
+        `);
+      }
+
+      await tx.execute(sql`
+        INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
+        VALUES ('import', ${signalKey}, null, null, null, ${adminId},
+                ${`Per-signal import: replaced rules for ${signalKey} with ${importedRules.length} rule(s).`})
+      `);
+    });
+
+    logger.info({ signalKey, count: importedRules.length }, "admin-signal-rules: per-signal import complete");
+    res.json({ imported: importedRules.length, signalKey });
+  } catch (err) {
+    logger.error({ err }, "POST /admin/signal-rules/:signalKey/import failed");
+    res.status(500).json({ error: "Import failed" });
+  }
+});
+
 // ── GET /api/admin/signal-rules/versions ──────────────────────────────────────
 
 router.get("/admin/signal-rules/versions", requireAdmin, async (_req: Request, res: Response) => {
