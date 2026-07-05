@@ -17,10 +17,11 @@ interface Props {
   projectTitle: string | null | undefined;
   presentationId: number;
   shareToken?: string | null;
+  fetchFn: (url: string, opts?: RequestInit) => Promise<Response>;
   onClose: () => void;
 }
 
-export default function SowGeneratingCard({ clientName, projectTitle, presentationId, shareToken, onClose }: Props) {
+export default function SowGeneratingCard({ clientName, projectTitle, presentationId, shareToken, fetchFn, onClose }: Props) {
   const [activeStage, setActiveStage] = useState(0);
   const [isStalled, setIsStalled] = useState(false);
   const stalledFired = useRef(false);
@@ -43,13 +44,13 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
       stalledFired.current = true;
       setIsStalled(true);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
-      void fetch(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
+      void fetchFn(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }).catch(() => {});
     }, STALL_DELAY_MS);
     return () => clearTimeout(t);
-  }, [presentationId, shareToken]);
+  }, [presentationId, shareToken, fetchFn]);
 
   const progressPct =
     activeStage === STAGES.length - 1

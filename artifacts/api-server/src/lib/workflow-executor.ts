@@ -54,7 +54,7 @@ import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError } from "./sse-broadcast";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -1206,6 +1206,20 @@ async function executeNode(
                 await persistSowPricing(reportDocId, htmlContent);
               } catch (pricingErr) {
                 logger.warn({ runId, reportDocId, err: pricingErr }, "wf-executor: generate_document — persistSowPricing failed (non-fatal)");
+              }
+
+              // Notify any open presentation SSE channels so the client's
+              // SowGeneratingCard transitions to the document view immediately
+              // rather than waiting for the next poll cycle.
+              const rawPresId = payload.presentationId;
+              const presId = typeof rawPresId === "number"
+                ? rawPresId
+                : typeof rawPresId === "string"
+                ? parseInt(rawPresId, 10)
+                : NaN;
+              if (!isNaN(presId)) {
+                broadcastPresentationDocsChange(presId);
+                logger.info({ runId, presId, reportDocId }, "wf-executor: generate_document — broadcast docs_changed for presentation");
               }
             }
 

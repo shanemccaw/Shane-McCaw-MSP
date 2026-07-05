@@ -1866,6 +1866,7 @@ export default function PresentationFlow({
                     projectTitle={data.projectTitle}
                     presentationId={presentationId}
                     shareToken={shareToken}
+                    fetchFn={fetchFn}
                     onClose={onClose}
                   />
                 </div>
