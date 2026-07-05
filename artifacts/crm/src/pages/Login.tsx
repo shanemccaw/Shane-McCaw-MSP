@@ -5,7 +5,6 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { Loader2, Eye, EyeOff, Mail, ShieldCheck, Sparkles, ClipboardCheck, Zap } from "lucide-react";
 import AnimatedBackground from "@/components/quickwin/AnimatedBackground";
 import CopilotAura from "@/components/wizard/CopilotAura";
-import ScoreRing from "@/components/ScoreRing";
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
@@ -22,72 +21,121 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
   }
 }
 
-// ─── Animated score rings ──────────────────────────────────────────────────────
-const RINGS = [
-  { key: "security",    label: "Security",    target: 84, pos: "top-[8%]  left-[6%]"  },
-  { key: "copilot",     label: "Copilot",     target: 91, pos: "top-[8%]  right-[6%]" },
-  { key: "governance",  label: "Governance",  target: 76, pos: "top-[42%] left-[3%]"  },
-  { key: "compliance",  label: "Compliance",  target: 88, pos: "bottom-[10%] left-[8%]" },
-  { key: "productivity",label: "Productivity",target: 73, pos: "bottom-[10%] right-[8%]" },
+// ─── Score helpers ─────────────────────────────────────────────────────────────
+function scoreColor(pct: number): { bar: string; text: string } {
+  if (pct < 40) return { bar: "#ef4444", text: "text-red-600" };
+  if (pct < 70) return { bar: "#f59e0b", text: "text-amber-600" };
+  return { bar: "#10b981", text: "text-emerald-600" };
+}
+
+// ─── M365 Health Score Panel ───────────────────────────────────────────────────
+const SCORE_CATEGORIES = [
+  { label: "Compliance",  key: "compliance",  target: 88 },
+  { label: "Copilot",     key: "copilot",     target: 91 },
+  { label: "Governance",  key: "governance",  target: 76 },
+  { label: "Adoption",    key: "productivity",target: 73 },
+  { label: "Security",    key: "security",    target: 84 },
 ] as const;
 
-function AnimatedScoreRings() {
+const OVERALL_TARGET = Math.round(
+  (88 + 91 + 76 + 73 + 84) / 5
+);
+
+function M365HealthPanel() {
   const [scores, setScores] = useState<Record<string, number>>({
-    security: 0, copilot: 0, governance: 0, compliance: 0, productivity: 0,
+    compliance: 0, copilot: 0, governance: 0, productivity: 0, security: 0,
   });
-  const [done, setDone] = useState(false);
+  const [overall, setOverall] = useState(0);
   const startRef = useRef<number | null>(null);
   const rafRef   = useRef<number | null>(null);
-  const DURATION = 1200;
+  const DURATION = 1400;
 
   useEffect(() => {
     function easeOut(t: number) { return 1 - Math.pow(1 - t, 3); }
-
     function tick(now: number) {
       if (startRef.current === null) startRef.current = now;
-      const elapsed = now - startRef.current;
-      const t = Math.min(elapsed / DURATION, 1);
-      const ease = easeOut(t);
+      const t = Math.min((now - startRef.current) / DURATION, 1);
+      const e = easeOut(t);
       setScores({
-        security:     Math.round(84 * ease),
-        copilot:      Math.round(91 * ease),
-        governance:   Math.round(76 * ease),
-        compliance:   Math.round(88 * ease),
-        productivity: Math.round(73 * ease),
+        compliance:  Math.round(88 * e),
+        copilot:     Math.round(91 * e),
+        governance:  Math.round(76 * e),
+        productivity:Math.round(73 * e),
+        security:    Math.round(84 * e),
       });
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(tick);
-      } else {
-        setDone(true);
-      }
+      setOverall(Math.round(OVERALL_TARGET * e));
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
     }
-
     rafRef.current = requestAnimationFrame(tick);
     return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
   }, []);
 
+  // Overall ring SVG
+  const r = 45;
+  const circ = 2 * Math.PI * r;
+  const { bar: overallBar, text: overallText } = scoreColor(overall);
+
   return (
-    <>
-      {RINGS.map(({ key, label, pos }) => (
-        <div
-          key={key}
-          className={`absolute ${pos} hidden md:flex flex-col items-center gap-1.5 pointer-events-none opacity-30 z-20`}
-          style={done ? { animation: "ringPulse 4s ease-in-out infinite" } : undefined}
-        >
-          <ScoreRing score={scores[key]} size={80} strokeWidth={6} />
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]">{label}</span>
+    <div
+      className="w-full max-w-2xl rounded-xl border border-black/5 shadow-sm hidden md:flex flex-wrap lg:flex-nowrap items-center gap-6 p-4 mb-4"
+      style={{ backgroundColor: "rgba(255,255,255,0.72)", backdropFilter: "blur(14px)" }}
+    >
+      {/* Overall ring */}
+      <div className="flex items-center gap-4 pr-6 border-r border-black/10 shrink-0">
+        <div className="relative w-14 h-14 flex items-center justify-center">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="10" className="text-black/5" />
+            <circle
+              cx="50" cy="50" r={r} fill="none"
+              stroke={overallBar} strokeWidth="10"
+              strokeDasharray={circ}
+              strokeDashoffset={circ - (overall / 100) * circ}
+              style={{ transition: "stroke-dashoffset 80ms linear" }}
+            />
+          </svg>
+          <span className={`absolute text-sm font-bold ${overallText}`}>{overall}%</span>
         </div>
-      ))}
-    </>
+        <div className="space-y-0.5">
+          <h3 className="text-[11px] font-bold text-black/60 uppercase tracking-wider">M365 Health</h3>
+          <p className="text-[10px] text-black/40">Tenant Posture</p>
+        </div>
+      </div>
+
+      {/* Category bars */}
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 w-full">
+        {SCORE_CATEGORIES.map(({ label, key }) => {
+          const pct = scores[key] ?? 0;
+          const { bar, text } = scoreColor(pct);
+          return (
+            <div key={key} className="space-y-1.5">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-semibold text-black/50">{label}</span>
+                <span className={`text-xs font-bold ${text}`}>{pct}%</span>
+              </div>
+              <div className="h-1 w-full bg-black/5 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    backgroundColor: bar,
+                    transition: "width 80ms linear",
+                  }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
 // ─── Floating M365 health chips ────────────────────────────────────────────────
 const CHIPS = [
-  { icon: ShieldCheck,    label: "Security Posture", pos: "top-[18%] left-[18%]",    delay: "0s",   dur: "6s"  },
-  { icon: Sparkles,       label: "Copilot Ready",    pos: "top-[22%] right-[15%]",   delay: "1.5s", dur: "7s"  },
-  { icon: ClipboardCheck, label: "Compliance 88%",   pos: "bottom-[28%] left-[14%]", delay: "3s",   dur: "8s"  },
-  { icon: Zap,            label: "Automation Active",pos: "bottom-[25%] right-[12%]",delay: "4.5s", dur: "6.5s"},
+  { icon: ShieldCheck,    label: "Security Posture", pos: "top-[15%] left-[8%]",     delay: "0s",   dur: "6s"  },
+  { icon: Sparkles,       label: "Copilot Ready",    pos: "top-[15%] right-[8%]",    delay: "1.5s", dur: "7s"  },
+  { icon: ClipboardCheck, label: "Compliance 88%",   pos: "bottom-[20%] left-[6%]",  delay: "3s",   dur: "8s"  },
+  { icon: Zap,            label: "Automation Active",pos: "bottom-[20%] right-[6%]", delay: "4.5s", dur: "6.5s"},
 ] as const;
 
 function FloatingChips() {
@@ -96,7 +144,7 @@ function FloatingChips() {
       {CHIPS.map(({ icon: Icon, label, pos, delay, dur }) => (
         <div
           key={label}
-          className={`absolute ${pos} hidden md:flex items-center gap-1.5 pointer-events-none z-20 opacity-30`}
+          className={`absolute ${pos} hidden md:flex items-center gap-1.5 pointer-events-none z-20 opacity-25`}
           style={{ animation: `chipFloat ${dur} ease-in-out infinite`, animationDelay: delay }}
         >
           <div className="flex items-center gap-1.5 bg-white/80 border border-[#0078D4]/20 backdrop-blur-sm rounded-full px-3 py-1.5">
@@ -123,28 +171,29 @@ const TICKER_MESSAGES = [
 function ActivityTicker() {
   const [index,   setIndex]   = useState(0);
   const [visible, setVisible] = useState(true);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
       setVisible(false);
-      setTimeout(() => {
+      timerRef.current = setTimeout(() => {
         setIndex(i => (i + 1) % TICKER_MESSAGES.length);
         setVisible(true);
       }, 400);
     }, 3000);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    };
   }, []);
 
   return (
-    <div className="hidden md:flex absolute bottom-6 left-1/2 -translate-x-1/2 z-30 items-center gap-2.5 pointer-events-none">
+    <div className="hidden md:flex items-center gap-2.5 w-full max-w-md mb-3">
       <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
       <div className="w-1 h-5 rounded-full bg-[#0078D4] flex-shrink-0" />
       <span
         className="text-xs text-[#0A2540]/60 font-medium whitespace-nowrap"
-        style={{
-          opacity: visible ? 1 : 0,
-          transition: "opacity 400ms ease",
-        }}
+        style={{ opacity: visible ? 1 : 0, transition: "opacity 400ms ease" }}
       >
         {TICKER_MESSAGES[index]}
       </span>
@@ -383,10 +432,6 @@ export default function LoginPage() {
   return (
     <>
       <style>{`
-        @keyframes ringPulse {
-          0%, 100% { transform: scale(1);    opacity: 0.30; }
-          50%       { transform: scale(1.03); opacity: 0.22; }
-        }
         @keyframes chipFloat {
           0%, 100% { transform: translateY(0px);  }
           50%       { transform: translateY(-8px); }
@@ -401,14 +446,18 @@ export default function LoginPage() {
         {/* CopilotAura edge glow — z-10 */}
         <CopilotAura />
 
-        {/* Animated score rings — z-20, hidden on mobile */}
-        <AnimatedScoreRings />
-
         {/* Floating M365 health chips — z-20, hidden on mobile */}
         <FloatingChips />
 
-        {/* ── Centered login card — z-40 ────────────────────────────────── */}
+        {/* ── Centered column — z-40 ────────────────────────────────────── */}
         <div className="relative z-40 flex flex-col items-center justify-center min-h-screen px-5 py-10">
+
+          {/* M365 Health Score panel — above login card, desktop only */}
+          <M365HealthPanel />
+
+          {/* Activity ticker — just above the login card, desktop only */}
+          <ActivityTicker />
+
           <div className="w-full max-w-md">
 
             {/* Purchase context hint */}
@@ -606,10 +655,10 @@ export default function LoginPage() {
               <div className="mt-6 pt-5 border-t border-[#F0F4F8]">
                 <div className="grid grid-cols-4 gap-1 mb-3">
                   {[
-                    { emoji: "🔒", label: "Encrypted"   },
+                    { emoji: "🔒", label: "Encrypted"    },
                     { emoji: "🛡️", label: "MFA Protected" },
-                    { emoji: "⚡", label: "Zero Trust"   },
-                    { emoji: "🏛️", label: "NASA-grade"   },
+                    { emoji: "⚡", label: "Zero Trust"    },
+                    { emoji: "🏛️", label: "NASA-grade"    },
                   ].map(({ emoji, label }) => (
                     <div key={label} className="flex flex-col items-center gap-0.5">
                       <span className="text-sm leading-none">{emoji}</span>
@@ -629,23 +678,8 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
-
-            {/* Access note */}
-            <p className="text-center text-xs text-muted-foreground mt-5 leading-relaxed">
-              Access is by invitation.{" "}
-              <a
-                href="mailto:support@shanemccaw.com"
-                className="text-[#0078D4] hover:underline font-medium"
-              >
-                Contact support
-              </a>{" "}
-              if you need help.
-            </p>
           </div>
         </div>
-
-        {/* Activity ticker — z-30, hidden on mobile */}
-        <ActivityTicker />
       </div>
     </>
   );
