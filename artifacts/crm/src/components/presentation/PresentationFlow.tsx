@@ -415,9 +415,32 @@ export default function PresentationFlow({
   const effectivePrice = hasScopeReduction && scopedDocMatchesSelection && scopedTotalPriceDollars !== null
     ? scopedTotalPriceDollars
     : grandTotal;
-  // Contract step shows the actual price paid (discounted if PAY-TODAY was applied)
+
+  // Whether the PAY-TODAY offer is currently live (active flag set and countdown not expired).
+  // Computed inline so the Agreement step always reflects the real-time offer state without
+  // needing an extra hook — mirrors useIsOfferLive inside PaymentOptionsPanel.
+  const offerIsLive = !!(
+    offer?.active &&
+    offer.expiresAt &&
+    new Date(offer.expiresAt).getTime() > Date.now()
+  );
+  // Pre-checkout: the offer discount applies when the client has actively selected "Pay in Full"
+  // and the offer window is still open. This lets the Agreement page mirror exactly what the
+  // Payment Options page showed, so there is no jarring price jump between the two steps.
+  const preCheckoutOfferApplies =
+    offerIsLive &&
+    selectedPlan === "full" &&
+    (data.adjustmentsTotal ?? 0) > 0 &&
+    offer?.discountedTotal != null;
+
+  // Contract step shows the actual price paid:
+  //  1. Post-checkout: use server-confirmed discountedTotalCents
+  //  2. Pre-checkout with live offer + full payment selected: use offer.discountedTotal
+  //  3. Otherwise: use the list price (effectivePrice)
   const contractPrice = data.discountedTotalCents != null
     ? Math.round(data.discountedTotalCents) / 100
+    : preCheckoutOfferApplies
+    ? offer!.discountedTotal
     : effectivePrice;
 
   // Per-phase billing amounts for the 20% upfront + per-phase plan.
@@ -443,8 +466,11 @@ export default function PresentationFlow({
   // to ContractSignPanel would cause it to subtract them again ("Workstream Subtotal" =
   // contractPrice - adjustmentsTotal = effectivePrice - 2*adjustmentsTotal — wrong).
   // Zero the adjustment props so the breakdown stays internally consistent.
+  // This covers both the post-checkout case (discountedTotalCents set by server after Stripe)
+  // and the pre-checkout case (offer live + client selected full payment).
   const contractAdjustmentsWaived =
-    data.discountedTotalCents != null && (data.adjustmentsTotal ?? 0) > 0;
+    (data.discountedTotalCents != null && (data.adjustmentsTotal ?? 0) > 0) ||
+    preCheckoutOfferApplies;
   const contractAdjustmentsTotal = contractAdjustmentsWaived ? 0 : (data.adjustmentsTotal ?? 0);
   const contractAdjustmentLines  = contractAdjustmentsWaived ? [] : (data.adjustmentLines ?? []);
 
