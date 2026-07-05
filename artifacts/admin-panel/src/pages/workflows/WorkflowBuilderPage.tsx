@@ -959,6 +959,99 @@ function StartNodeTriggers({ defId }: { defId: number }) {
   );
 }
 
+// ── Start node: declared payload variables ────────────────────────────────────
+
+interface StartPayloadField {
+  id: string;
+  key: string;
+  label: string;
+}
+
+function StartNodePayloadFields({
+  node,
+  onChange,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+}) {
+  const fields = ((node.data.payloadFields as StartPayloadField[] | undefined) ?? []);
+
+  function update(next: StartPayloadField[]) {
+    onChange(node.id, { ...node.data, payloadFields: next });
+  }
+
+  function addField() {
+    update([...fields, { id: crypto.randomUUID(), key: "", label: "" }]);
+  }
+
+  function removeField(id: string) {
+    update(fields.filter(f => f.id !== id));
+  }
+
+  const inputCls = "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60";
+
+  return (
+    <div className="space-y-2 pt-1">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Payload Variables</label>
+          <FieldHint text="Declare the variables this workflow receives at runtime (e.g. clientId, projectId). These appear in the {{token}} picker for every downstream node. For event triggers the fields are auto-detected; use this for manual, schedule, webhook, or chain-triggered runs where the fields aren't automatically known." />
+        </div>
+        <button
+          onClick={addField}
+          className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+        >
+          + Add variable
+        </button>
+      </div>
+
+      {fields.length === 0 ? (
+        <p className="text-[10px] text-[#484F58] text-center py-2 border border-dashed border-[#30363D] rounded-lg">
+          {/* hint changes based on whether there's an event trigger */}
+          Declare variables here to see them in the token picker below
+        </p>
+      ) : (
+        <div className="space-y-1.5">
+          {fields.map(f => (
+            <div key={f.id} className="rounded-lg border border-[#30363D] bg-[#0D1117] p-2 space-y-1.5">
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-[9px] font-bold text-[#0078D4] uppercase tracking-wider">Variable</span>
+                <button
+                  onClick={() => removeField(f.id)}
+                  className="text-[#484F58] hover:text-red-400 transition-colors text-xs"
+                  title="Remove"
+                >✕</button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[#7D8590]">Key <span className="text-[#484F58]">(no spaces)</span></label>
+                  <input
+                    type="text"
+                    value={f.key}
+                    onChange={e => update(fields.map(x => x.id === f.id ? { ...x, key: e.target.value.replace(/\s/g, "") } : x))}
+                    placeholder="clientId"
+                    className={inputCls}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-[#7D8590]">Description</label>
+                  <input
+                    type="text"
+                    value={f.label}
+                    onChange={e => update(fields.map(x => x.id === f.id ? { ...x, label: e.target.value } : x))}
+                    placeholder="Client user ID"
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Ancestor output resolver + variable picker ───────────────────────────────
 
 interface AncestorGroup {
@@ -988,14 +1081,43 @@ function getAncestorOutputs(
     const actionType = node.data.actionType as string | undefined;
     let outputs: Array<{ key: string; label: string }> = [];
     if (type === "start") {
-      // Look up the configured event trigger and surface its exact payload fields
-      const evTrigger = eventTriggers.find(t => t.type === "event" && t.enabled);
-      const eventName = evTrigger ? (evTrigger.config.eventName as string | undefined) : undefined;
-      const knownEv = eventName ? KNOWN_EVENTS.find(e => e.name === eventName) : undefined;
-      outputs = [
-        ...(knownEv ? knownEv.payloadFields : [{ key: "payload", label: "Full trigger payload (object)" }]),
-        { key: "triggeredAt", label: "ISO timestamp when this run started" },
-      ];
+      // Merge: trigger-inferred fields + user-declared fields from node.data.payloadFields
+      const declaredFields = (node.data.payloadFields as Array<{ key: string; label: string }> | undefined) ?? [];
+      const enabledTriggers = eventTriggers.filter(t => t.enabled);
+      const fieldMap = new Map<string, { key: string; label: string }>();
+
+      if (enabledTriggers.length === 0) {
+        // No triggers yet — show generic hint
+        fieldMap.set("payload", { key: "payload", label: "Trigger payload (fields depend on trigger type)" });
+      } else {
+        for (const trigger of enabledTriggers) {
+          if (trigger.type === "event") {
+            const eventName = trigger.config.eventName as string | undefined;
+            const knownEv = eventName ? KNOWN_EVENTS.find(e => e.name === eventName) : undefined;
+            if (knownEv) {
+              for (const f of knownEv.payloadFields) fieldMap.set(f.key, f);
+            } else {
+              fieldMap.set("payload", {
+                key: "payload",
+                label: eventName ? `Event payload from "${eventName}"` : "Event payload object",
+              });
+            }
+          } else if (trigger.type === "schedule") {
+            // Schedule runs inject only triggeredAt — no extra fields
+          } else if (trigger.type === "manual") {
+            fieldMap.set("payload", { key: "payload", label: "Manually supplied payload (any fields)" });
+          } else if (trigger.type === "webhook") {
+            fieldMap.set("payload", { key: "payload", label: "Webhook request body" });
+          }
+        }
+      }
+
+      // User-declared payload variables override inferred ones
+      for (const f of declaredFields) if (f.key) fieldMap.set(f.key, { key: f.key, label: f.label || f.key });
+      // triggeredAt is always available
+      fieldMap.set("triggeredAt", { key: "triggeredAt", label: "ISO timestamp when this run started" });
+
+      outputs = Array.from(fieldMap.values());
     } else if (type === "action" && actionType) {
       outputs = NODE_OUTPUTS[actionType] ?? [];
     } else if (type === "ask_for_input") {
@@ -1653,7 +1775,10 @@ function NodeConfigPanel({
         />
 
         {nodeType === "start" && (
-          <StartNodeTriggers defId={defId} />
+          <>
+            <StartNodeTriggers defId={defId} />
+            <StartNodePayloadFields node={node} onChange={onChange} />
+          </>
         )}
 
         {nodeType === "action" && (
