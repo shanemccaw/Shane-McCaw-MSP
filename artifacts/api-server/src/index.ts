@@ -9,8 +9,8 @@ import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 import { db } from "@workspace/db";
-import { insightsGeneratedDocumentsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -88,6 +88,16 @@ app.listen(port, (err) => {
     .where(eq(insightsGeneratedDocumentsTable.status, "generating"))
     .then((res) => { if (res.rowCount) logger.warn({ count: res.rowCount }, "Marked orphaned generating docs as failed on startup"); })
     .catch((err) => logger.warn({ err }, "Orphaned-doc cleanup failed (non-fatal)"));
+
+  // Any wf_run left in "running" or "pending" when the previous process exited
+  // is a zombie — the executor thread is gone and the run will never finish.
+  // Mark them failed immediately so the CRM waiting screen can show an error
+  // and the user can re-trigger rather than waiting forever.
+  db.update(wfRunsTable)
+    .set({ status: "failed", errorMessage: "Server restarted while run was in progress", finishedAt: new Date() })
+    .where(inArray(wfRunsTable.status, ["running", "pending"]))
+    .then((res) => { if (res.rowCount) logger.warn({ count: res.rowCount }, "wf-engine: marked zombie runs as failed on startup"); })
+    .catch((err) => logger.warn({ err }, "wf-engine: zombie run cleanup failed (non-fatal)"));
 
   seedArticles().catch((err) => {
     logger.warn({ err }, "Article seed failed (non-fatal)");
