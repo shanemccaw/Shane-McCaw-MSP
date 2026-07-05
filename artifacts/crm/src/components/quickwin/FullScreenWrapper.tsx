@@ -370,9 +370,11 @@ export default function FullScreenWrapper() {
     const secs = timerStartRef.current
       ? Math.floor((Date.now() - timerStartRef.current) / 1000)
       : elapsedSeconds;
-    // Clear the persisted start so a future visit to the same project doesn't
-    // inherit the old timer.
+    // Clear the persisted start and health scores so a future visit to the
+    // same project doesn't inherit stale data.
     sessionStorage.removeItem(`qw-timer-start-${kanbanProjectId}`);
+    sessionStorage.removeItem(`qw-scores-${kanbanProjectId}`);
+    sessionStorage.removeItem(`qw-target-scores-${kanbanProjectId}`);
     void fetchWithAuth(`/api/portal/projects/${kanbanProjectId}/timing`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -427,9 +429,15 @@ export default function FullScreenWrapper() {
       if (sc?.scores && Object.keys(sc.scores).length > 0 && Object.keys(targetScoresRef.current).length === 0) {
         targetScoresRef.current = { ...sc.scores };
         scoreAnimStartRef.current = Date.now();
+        // Persist so the restore effect can seed displayScores immediately on refresh,
+        // even when scorecardHistory React Query hasn't resolved yet. This covers the
+        // common path where fetchScorecard() resolves first (before the 30 s poll).
+        if (kanbanProjectId) {
+          sessionStorage.setItem(`qw-target-scores-${kanbanProjectId}`, JSON.stringify(sc.scores));
+        }
       }
     });
-  }, [mode, fetchScorecard]);
+  }, [mode, fetchScorecard, kanbanProjectId]);
 
   // Reset step state whenever a new quick win starts
   useEffect(() => {
@@ -548,8 +556,68 @@ export default function FullScreenWrapper() {
     if (Object.keys(targets).length > 0) {
       targetScoresRef.current = targets;
       scoreAnimStartRef.current = Date.now();
+      // Persist so a mid-session page refresh can restore bars immediately.
+      if (kanbanProjectId) {
+        sessionStorage.setItem(`qw-target-scores-${kanbanProjectId}`, JSON.stringify(targets));
+      }
     }
-  }, [mode, effectiveScorecardHistory]);
+  }, [mode, effectiveScorecardHistory, kanbanProjectId]);
+
+  // ── Restore health scores from sessionStorage when entering ProjectTasksView ─
+  // Runs immediately when the projectId is known so bars appear within ~100 ms
+  // instead of waiting for the full API round-trip (mirrors qw-timer-start pattern).
+  useEffect(() => {
+    if (mode !== "ProjectTasksView" || !kanbanProjectId) return;
+
+    const scoresKey  = `qw-scores-${kanbanProjectId}`;
+    const targetKey  = `qw-target-scores-${kanbanProjectId}`;
+    const timerKey   = `qw-timer-start-${kanbanProjectId}`;
+
+    // Restore raw category scores so the non-animated path (quick-win steps) is
+    // also immediately populated.
+    const storedScores = sessionStorage.getItem(scoresKey);
+    if (storedScores) {
+      try {
+        const parsed = JSON.parse(storedScores) as Record<string, number>;
+        if (Object.keys(parsed).length > 0) {
+          setCategoryScores(prev => (Object.keys(prev).length === 0 ? parsed : prev));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Restore target scores and seed displayScores from elapsed time so the
+    // animated bars appear at their last-seen position, not at 0.
+    if (Object.keys(targetScoresRef.current).length > 0) return; // already locked by live data
+    const storedTargets = sessionStorage.getItem(targetKey);
+    if (!storedTargets) return;
+    try {
+      const targets = JSON.parse(storedTargets) as Record<string, number>;
+      if (Object.keys(targets).length === 0) return;
+      targetScoresRef.current = targets;
+      // Reuse the persisted timer start so the animation fraction is consistent
+      // with how long the session has actually been running.
+      const storedTimer = sessionStorage.getItem(timerKey);
+      const timerStart  = storedTimer ? parseInt(storedTimer, 10) : NaN;
+      const animStart   = !isNaN(timerStart) ? timerStart : Date.now() - 2 * 60 * 1000;
+      scoreAnimStartRef.current = animStart;
+      // Pre-compute displayScores at the restored fraction so bars don't flash 0.
+      const elapsed   = Date.now() - animStart;
+      const timeFrac  = Math.min(1, elapsed / (4 * 60 * 1000));
+      const initial: Record<string, number> = {};
+      for (const [k, target] of Object.entries(targets)) {
+        initial[k] = Math.round(target * timeFrac);
+      }
+      setDisplayScores(prev => (Object.keys(prev).length === 0 ? initial : prev));
+    } catch { /* non-fatal */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, kanbanProjectId]); // intentionally omit refs — run only on entry
+
+  // ── Persist categoryScores to sessionStorage whenever they change ──────────
+  useEffect(() => {
+    if (mode !== "ProjectTasksView" || !kanbanProjectId) return;
+    if (Object.keys(categoryScores).length === 0) return;
+    sessionStorage.setItem(`qw-scores-${kanbanProjectId}`, JSON.stringify(categoryScores));
+  }, [categoryScores, mode, kanbanProjectId]);
 
   // No simulated baseline — scores only animate to real values from client_health_history.
   // If no M365 audit has run yet, bars stay at 0 rather than showing misleading estimates.
