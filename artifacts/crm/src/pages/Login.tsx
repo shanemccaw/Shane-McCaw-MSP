@@ -582,7 +582,7 @@ export default function LoginPage() {
         <div className="relative z-40 min-h-screen flex flex-col">
 
           {/* ── Two-column main area ─────────────────────────────────────── */}
-          <div className="flex-1 flex flex-col md:grid md:grid-cols-[3fr_2fr] min-h-0">
+          <div className="flex-1 flex flex-col md:grid md:grid-cols-[55fr_45fr] min-h-0">
 
             {/* LEFT panel — value + trust + health (desktop only) */}
             <LeftPanel />
@@ -635,13 +635,6 @@ export default function LoginPage() {
                       </div>
                       <span className="text-[#0A2540] font-bold text-base leading-tight">Shane McCaw Consulting</span>
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
-                      M365 Client Portal
-                    </span>
-                  </div>
-
-                  {/* Mobile wordmark inside card */}
-                  <div className="md:hidden flex flex-col items-center mb-7 text-center">
                     <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
                       M365 Client Portal
                     </span>
