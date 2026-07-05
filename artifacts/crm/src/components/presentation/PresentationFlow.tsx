@@ -2055,8 +2055,12 @@ export default function PresentationFlow({
           <PhaseGeneratingCard
             presentationId={presentationId}
             shareToken={shareToken}
+            accessToken={accessToken}
             clientName={data.clientName}
             projectTitle={data.projectTitle}
+            sowPhases={data.sowPhases as PhaseGenPhase[]}
+            totalPrice={data.totalPrice}
+            documentCount={data.documents.length}
             phaseGenEvent={phaseGenEvent}
             onComplete={handlePhaseGenComplete}
             onError={handlePhaseGenError}
