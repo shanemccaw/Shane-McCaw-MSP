@@ -37,6 +37,8 @@ export interface DocumentGenerationConfig {
   category: "report" | "consulting";
   docType: string;
   title: string;
+  /** HTML content of the SOW/scoped SOW to generate from. Required for task_execution_guide. */
+  sowHtml?: string;
 }
 
 export interface GenerateAndDeliverResult {
@@ -210,7 +212,10 @@ Date: {{date}}
 M365 Environment Health Scores (current):
 {{scores}}
 
-PROJECT TASK LIST (these are the SOW work items — use these as the source of truth):
+SOW / SCOPE DOCUMENT (use this as the primary source of truth for tasks and deliverables):
+{{sowHtml}}
+
+PROJECT TASK LIST (supplementary — use alongside the SOW above):
 {{taskList}}
 
 Key Findings from assessments: {{findings}}
@@ -569,6 +574,7 @@ export async function generateAndDeliverDocument(
       title,
       date,
       scores: scoresBlock,
+      sowHtml: config.sowHtml ?? "(No SOW provided — generate from the project task list below)",
       taskList,
       findings: findingsInline,
       priorDocsSummary,

@@ -104,6 +104,37 @@ const CONSULTING_SECTION_HINTS: Record<string, string> = {
   copilot_readiness:           "Include: Executive Readiness Summary, Identity & MFA Posture, Licensing & Entitlement Gaps, Data Governance Readiness, Security Score vs Copilot Minimum Bar, Blockers & Remediation Recommendations, Overall Readiness Rating (Red / Amber / Green)",
 };
 
+const TASK_EXECUTION_GUIDE_WF_PROMPT = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional SOW Task Execution Guide in HTML format.
+
+Client: {{clientName}}{{projectLine}}
+Document title: {{title}}
+Date: {{date}}
+
+M365 Environment Health Scores:
+{{scores}}
+
+SOW / SCOPE DOCUMENT (use this as the primary source of truth for tasks and deliverables):
+{{sowHtml}}
+
+Key Findings from assessments: {{findings}}
+
+INSTRUCTIONS:
+- For EACH deliverable or work item in the SOW above, produce a clearly formatted section:
+    - Task name as a styled heading
+    - Purpose: one sentence — why this task matters for this client
+    - Prerequisites: what must already be done before starting
+    - Step-by-step instructions: numbered list, technically specific for Microsoft 365 Admin Center / Entra ID / PowerShell / SharePoint — use actual UI paths and cmdlet names
+    - Expected outcome: what success looks like
+    - How to validate: a specific check (UI screenshot, PowerShell command, or report) that confirms completion
+    - Common pitfalls: 1-3 things that commonly go wrong and how to avoid them
+- Group task sections by their phase/section from the SOW
+- Add an intro section and a completion checklist at the end
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — white background, #0078D4 accent (#0A2540 for headers), professional enterprise typography
+- Write in first person as Shane McCaw
+- Be technically precise — this is an engineer's execution guide, not a marketing document
+- Total length: produce complete content for every task — do not truncate`;
+
 const INSIGHTS_CONSULTING_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional consulting {{typeLabel}} in HTML format.
 
 Client: {{clientName}}{{projectLine}}
@@ -1058,7 +1089,22 @@ async function executeNode(
 
             // Build the AI prompt — consulting and report use different templates and token shapes
             let prompt: string;
-            if (docCategory === "consulting") {
+            // sowHtml is required for task_execution_guide; optional on other consulting types.
+            const sowHtmlForDoc = interp(node.data.sowHtml as string | undefined, payload) ?? "";
+            if (docCategory === "consulting" && docType === "task_execution_guide") {
+              // task_execution_guide uses the SOW as its primary source — dedicated prompt.
+              const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
+              const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT);
+              prompt = igSubstituteTokens(rawTemplate, {
+                clientName,
+                projectLine,
+                title: docTitle,
+                date: dateStr,
+                scores: scoresBlock,
+                sowHtml: sowHtmlForDoc || "(No SOW provided — generate based on available context)",
+                findings: findingsInline,
+              });
+            } else if (docCategory === "consulting") {
               const typeLabel    = CONSULTING_TYPE_LABELS[docType] ?? docType;
               const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include all relevant sections for this consulting deliverable";
               const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";

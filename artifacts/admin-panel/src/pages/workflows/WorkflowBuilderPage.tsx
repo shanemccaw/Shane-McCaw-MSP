@@ -1935,6 +1935,21 @@ function NodeConfigPanel({
                 </div>
                 <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
+                {(node.data.docType as string) === "task_execution_guide" && (
+                  <>
+                    <PayloadField
+                      label="SOW to generate from (required)"
+                      value={(node.data.sowHtml as string) ?? ""}
+                      onChange={v => onChange(node.id, { ...node.data, sowHtml: v })}
+                      placeholder="{{payload.sowHtml}} or {{upstream.htmlContent}}"
+                      multiline
+                      ancestorOutputs={ancestorOutputs}
+                    />
+                    <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 p-2.5">
+                      <p className="text-[10px] text-amber-400/80">The SOW HTML is used as the primary source of work items for the execution guide. Pipe it from an upstream <span className="font-mono">find_object</span> or <span className="font-mono">generate_document</span> node using <span className="font-mono">{"{{htmlContent}}"}</span>.</p>
+                    </div>
+                  </>
+                )}
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
                   <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
                 </div>
