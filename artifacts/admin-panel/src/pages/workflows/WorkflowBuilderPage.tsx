@@ -161,7 +161,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   create_project:         [{ key: "projectId", label: "Created project ID" }, { key: "projectTitle", label: "Project title" }],
   execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }, { key: "runbookName", label: "Runbook name" }],
   update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
-  generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }],
+  generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }, { key: "htmlContent", label: "Full HTML of the generated document (task_execution_guide only)" }],
   calculate_pricing:      [{ key: "documentId", label: "Document ID (echoed)" }, { key: "totalPrice", label: "Computed total price (USD)" }, { key: "lineCount", label: "Number of pricing lines written" }],
   http_request:           [{ key: "status", label: "HTTP response status code" }, { key: "ok", label: "true if 2xx response" }],
   sql_query:              [{ key: "queryRows", label: "Array of result rows" }],
@@ -1950,7 +1950,7 @@ function NodeConfigPanel({
                   </>
                 )}
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
                 </div>
               </>
             )}
@@ -2224,8 +2224,22 @@ function NodeConfigPanel({
             </div>
             <PayloadField label="Project ID" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Document Name" value={(node.data.docTitle as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, docTitle: v })} placeholder="{{item.name}} — Security Report" ancestorOutputs={ancestorOutputs} />
+            {(node.data.docType as string) === "task_execution_guide" && (
+              <>
+                <PayloadField
+                  label="SOW Document ID (required)"
+                  value={(node.data.sowDocumentId as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, sowDocumentId: v })}
+                  placeholder="{{documentId}}"
+                  ancestorOutputs={ancestorOutputs}
+                />
+                <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 p-2.5">
+                  <p className="text-[10px] text-amber-400/80">The ID of the SOW document to generate from (e.g. a <span className="font-mono">consolidated_sow</span>). Pipe it from an upstream <span className="font-mono">generate_document</span> or <span className="font-mono">find_object</span> node using <span className="font-mono">{"{{documentId}}"}</span>. The executor fetches the HTML automatically.</p>
+                </div>
+              </>
+            )}
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Output: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>.</p>
+              <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
             </div>
           </>
         )}

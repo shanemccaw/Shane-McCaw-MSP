@@ -1270,7 +1270,9 @@ async function executeNode(
               .where(eq(insightsGeneratedDocumentsTable.id, reportDocId));
 
             logger.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
-            output = { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
+            output = docType === "task_execution_guide"
+              ? { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId, htmlContent }
+              : { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
             } // end if (!sowHandled)
           }
         } else if (actionType === "emit_event") {
