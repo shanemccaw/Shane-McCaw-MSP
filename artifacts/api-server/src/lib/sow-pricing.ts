@@ -562,12 +562,14 @@ export function validateSowPricing(
   // ── 3. Unpermitted adjustments ───────────────────────────────────────────────
   if (adjustmentLines.length > 0) {
     // Signal-gated path: use fired adj:* keys as the allowlist.
-    const useSignalGating = signalFiredAdjKeys !== undefined && signalFiredAdjKeys.size > 0;
+    // An empty set is authoritative: no signals fired → no adjustments allowed.
+    const useSignalGating = signalFiredAdjKeys !== undefined;
     if (useSignalGating) {
       const signalAllowedPatterns = [...signalFiredAdjKeys]
         .map(k => ADJ_SIGNAL_PATTERNS[k]?.pattern)
         .filter((p): p is RegExp => p !== undefined);
-      if (signalAllowedPatterns.length > 0) {
+      // Always iterate — an empty allowlist means every adjustment is forbidden.
+      {
         const seen = new Set<string>();
         for (const line of adjustmentLines) {
           const key = line.title.toLowerCase().trim();
@@ -650,14 +652,18 @@ export function purgeSowAdjustments(
   signalFiredAdjKeys?: Set<string>,
 ): { html: string; removedTitles: string[] } {
   // ── Determine allowed adjustment patterns ────────────────────────────────────
+  // Signal-gated: signalFiredAdjKeys provided (even if empty) → only fired keys
+  // are permitted. Empty set means no adjustments are allowed. When undefined,
+  // fall back to workstream-scoped WORKSTREAM_ADJ_MAP (legacy/no-rules path).
   let allowedPatterns: RegExp[] = [];
-  const useSignalGating = signalFiredAdjKeys !== undefined && signalFiredAdjKeys.size > 0;
+  const useSignalGating = signalFiredAdjKeys !== undefined;
 
   if (useSignalGating) {
     // Signal-gated path: only fired adj:* signals are permitted
     allowedPatterns = [...signalFiredAdjKeys]
       .map(k => ADJ_SIGNAL_PATTERNS[k]?.pattern)
       .filter((p): p is RegExp => p !== undefined);
+    // allowedPatterns may be empty — that means ALL adjustments get purged.
   } else {
     // Fallback: workstream-scoped WORKSTREAM_ADJ_MAP
     for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
