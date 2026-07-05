@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth, isMfaChallenge, type MfaChallenge } from "@/contexts/AuthContext";
 import { useLocation, useSearch } from "wouter";
 import { startAuthentication } from "@simplewebauthn/browser";
-import { Loader2, Eye, EyeOff, Mail, ShieldCheck, Sparkles, ClipboardCheck, Zap } from "lucide-react";
+import {
+  Loader2, Eye, EyeOff, Mail,
+  ShieldCheck, Sparkles, ClipboardCheck, Zap, Lock, FileText,
+} from "lucide-react";
 import AnimatedBackground from "@/components/quickwin/AnimatedBackground";
 import CopilotAura from "@/components/wizard/CopilotAura";
 import ScoreRing from "@/components/ScoreRing";
@@ -22,56 +25,46 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
   }
 }
 
-// ─── Score helpers ─────────────────────────────────────────────────────────────
-function scoreColor(pct: number): { bar: string; text: string } {
-  if (pct < 40) return { bar: "#ef4444", text: "text-red-600" };
-  if (pct < 70) return { bar: "#f59e0b", text: "text-amber-600" };
-  return { bar: "#10b981", text: "text-emerald-600" };
-}
-
 // ─── M365 Health Score Panel ───────────────────────────────────────────────────
 const SCORE_CATEGORIES = [
-  { label: "Compliance",  key: "compliance",  target: 88 },
-  { label: "Copilot",     key: "copilot",     target: 91 },
-  { label: "Governance",  key: "governance",  target: 76 },
-  { label: "Adoption",    key: "productivity",target: 73 },
-  { label: "Security",    key: "security",    target: 84 },
+  { label: "Compliance",  key: "compliance",   target: 88 },
+  { label: "Copilot",     key: "copilot",      target: 91 },
+  { label: "Governance",  key: "governance",   target: 76 },
+  { label: "Adoption",    key: "productivity", target: 73 },
+  { label: "Security",    key: "security",     target: 84 },
 ] as const;
 
-const OVERALL_TARGET = Math.round(
-  (88 + 91 + 76 + 73 + 84) / 5
-);
-
-// Starting values (~20% of target so the count-up is clearly visible)
+const OVERALL_TARGET = Math.round((88 + 91 + 76 + 73 + 84) / 5);
 const START_PCT = 0.20;
 
-function M365HealthPanel() {
+function ringColor(s: number) {
+  return s >= 70 ? "#22c55e" : s >= 40 ? "#f59e0b" : "#ef4444";
+}
+
+function M365HealthPanel({ dark = false }: { dark?: boolean }) {
   const startVals = {
-    compliance:  Math.round(88 * START_PCT),
-    copilot:     Math.round(91 * START_PCT),
-    governance:  Math.round(76 * START_PCT),
-    productivity:Math.round(73 * START_PCT),
-    security:    Math.round(84 * START_PCT),
+    compliance:   Math.round(88 * START_PCT),
+    copilot:      Math.round(91 * START_PCT),
+    governance:   Math.round(76 * START_PCT),
+    productivity: Math.round(73 * START_PCT),
+    security:     Math.round(84 * START_PCT),
   };
   const [scores, setScores] = useState<Record<string, number>>(startVals);
   const [overall, setOverall] = useState(Math.round(OVERALL_TARGET * START_PCT));
   const startRef = useRef<number | null>(null);
   const rafRef   = useRef<number | null>(null);
-  const DURATION = 8000; // 8 s slow count-up
 
   useEffect(() => {
-    // Linear ease so numbers tick steadily upward
     function tick(now: number) {
       if (startRef.current === null) startRef.current = now;
-      const t = Math.min((now - startRef.current) / DURATION, 1);
-      // interpolate from START_PCT → 1.0
+      const t    = Math.min((now - startRef.current) / 8000, 1);
       const frac = START_PCT + (1 - START_PCT) * t;
       setScores({
-        compliance:  Math.round(88 * frac),
-        copilot:     Math.round(91 * frac),
-        governance:  Math.round(76 * frac),
-        productivity:Math.round(73 * frac),
-        security:    Math.round(84 * frac),
+        compliance:   Math.round(88 * frac),
+        copilot:      Math.round(91 * frac),
+        governance:   Math.round(76 * frac),
+        productivity: Math.round(73 * frac),
+        security:     Math.round(84 * frac),
       });
       setOverall(Math.round(OVERALL_TARGET * frac));
       if (t < 1) rafRef.current = requestAnimationFrame(tick);
@@ -80,44 +73,58 @@ function M365HealthPanel() {
     return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
   }, []);
 
-  // Overall ring SVG
-  const r = 45;
-  const circ = 2 * Math.PI * r;
-  const { bar: overallBar, text: overallText } = scoreColor(overall);
+  const r         = 30;
+  const circ      = 2 * Math.PI * r;
+  const oBg       = dark ? "rgba(255,255,255,0.07)" : "rgba(255,255,255,0.8)";
+  const oBorder   = dark ? "rgba(255,255,255,0.12)" : "rgba(10,37,64,0.06)";
+  const oTrack    = dark ? "rgba(255,255,255,0.10)" : "rgba(10,37,64,0.06)";
+  const oDiv      = dark ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)";
+  const titleCol  = dark ? "rgba(255,255,255,0.65)" : "rgba(10,37,64,0.6)";
+  const subCol    = dark ? "rgba(255,255,255,0.35)" : "rgba(10,37,64,0.4)";
+  const pctCol    = dark ? "#ffffff"                : ringColor(overall);
+  const catCol    = dark ? "rgba(255,255,255,0.45)" : "rgba(10,37,64,0.45)";
 
   return (
     <div
-      className="w-full max-w-3xl rounded-xl border border-black/5 shadow-sm hidden md:flex items-center gap-6 p-5 mb-3"
-      style={{ backgroundColor: "rgba(255,255,255,0.72)", backdropFilter: "blur(14px)" }}
+      className="w-full rounded-xl border flex items-center gap-3 p-4"
+      style={{ background: oBg, backdropFilter: "blur(14px)", borderColor: oBorder }}
     >
       {/* Overall ring */}
-      <div className="flex items-center gap-4 pr-6 border-r border-black/10 shrink-0">
-        <div className="relative w-16 h-16 flex items-center justify-center">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="10" className="text-black/5" />
+      <div
+        className="flex items-center gap-3 pr-4 border-r shrink-0"
+        style={{ borderColor: oDiv }}
+      >
+        <div className="relative flex items-center justify-center" style={{ width: 64, height: 64 }}>
+          <svg width={64} height={64} viewBox="0 0 72 72" className="-rotate-90">
+            <circle cx="36" cy="36" r={r} fill="none" stroke={oTrack} strokeWidth="8" />
             <circle
-              cx="50" cy="50" r={r} fill="none"
-              stroke={overallBar} strokeWidth="10"
+              cx="36" cy="36" r={r} fill="none"
+              stroke={ringColor(overall)} strokeWidth="8"
               strokeDasharray={circ}
               strokeDashoffset={circ - (overall / 100) * circ}
             />
           </svg>
-          <span className={`absolute text-sm font-bold ${overallText}`}>{overall}%</span>
+          <span className="absolute text-xs font-bold" style={{ color: pctCol }}>{overall}%</span>
         </div>
-        <div className="space-y-0.5">
-          <h3 className="text-[11px] font-bold text-black/60 uppercase tracking-wider">M365 Health</h3>
-          <p className="text-[10px] text-black/40">Tenant Posture</p>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: titleCol }}>M365 Health</p>
+          <p className="text-[9px]" style={{ color: subCol }}>Tenant Posture</p>
         </div>
       </div>
 
-      {/* Category score rings */}
-      <div className="flex-1 flex items-center justify-around gap-2">
+      {/* Category rings */}
+      <div className="flex-1 flex items-center justify-around gap-1">
         {SCORE_CATEGORIES.map(({ label, key }) => {
           const pct = scores[key] ?? 0;
           return (
-            <div key={key} className="flex flex-col items-center gap-1.5">
-              <ScoreRing score={pct} size={72} strokeWidth={5} />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#0A2540]/50">{label}</span>
+            <div key={key} className="flex flex-col items-center gap-1">
+              <ScoreRing score={pct} size={52} strokeWidth={4} dark={dark} />
+              <span
+                className="text-[9px] font-bold uppercase tracking-wider"
+                style={{ color: catCol }}
+              >
+                {label}
+              </span>
             </div>
           );
         })}
@@ -126,34 +133,7 @@ function M365HealthPanel() {
   );
 }
 
-// ─── Floating M365 health chips ────────────────────────────────────────────────
-const CHIPS = [
-  { icon: ShieldCheck,    label: "Security Posture", pos: "top-[15%] left-[8%]",     delay: "0s",   dur: "6s"  },
-  { icon: Sparkles,       label: "Copilot Ready",    pos: "top-[15%] right-[8%]",    delay: "1.5s", dur: "7s"  },
-  { icon: ClipboardCheck, label: "Compliance 88%",   pos: "bottom-[20%] left-[6%]",  delay: "3s",   dur: "8s"  },
-  { icon: Zap,            label: "Automation Active",pos: "bottom-[20%] right-[6%]", delay: "4.5s", dur: "6.5s"},
-] as const;
-
-function FloatingChips() {
-  return (
-    <>
-      {CHIPS.map(({ icon: Icon, label, pos, delay, dur }) => (
-        <div
-          key={label}
-          className={`absolute ${pos} hidden md:flex items-center gap-1.5 pointer-events-none z-20 opacity-25`}
-          style={{ animation: `chipFloat ${dur} ease-in-out infinite`, animationDelay: delay }}
-        >
-          <div className="flex items-center gap-1.5 bg-white/80 border border-[#0078D4]/20 backdrop-blur-sm rounded-full px-3 py-1.5">
-            <Icon className="w-3 h-3 text-[#0078D4]" />
-            <span className="text-[10px] font-semibold text-[#0A2540]/60">{label}</span>
-          </div>
-        </div>
-      ))}
-    </>
-  );
-}
-
-// ─── Activity ticker ───────────────────────────────────────────────────────────
+// ─── Activity Ticker ───────────────────────────────────────────────────────────
 const TICKER_MESSAGES = [
   "✓ MFA enforced across 214 identities",
   "↑ Secure Score +7 pts this week",
@@ -164,8 +144,8 @@ const TICKER_MESSAGES = [
   "✦ Governance audit 88% complete",
 ];
 
-function ActivityTicker() {
-  const [index,   setIndex]   = useState(0);
+function ActivityTicker({ dark = false }: { dark?: boolean }) {
+  const [index, setIndex]   = useState(0);
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -184,11 +164,11 @@ function ActivityTicker() {
   }, []);
 
   return (
-    <div className="hidden md:flex items-center gap-2.5 w-full max-w-md mb-3">
+    <div className="flex items-center gap-2 mt-2.5">
       <span className="w-1.5 h-1.5 rounded-full bg-[#0078D4] animate-pulse flex-shrink-0" />
-      <div className="w-1 h-5 rounded-full bg-[#0078D4] flex-shrink-0" />
+      <div className="w-0.5 h-4 rounded-full bg-[#0078D4] flex-shrink-0" />
       <span
-        className="text-xs text-[#0A2540]/60 font-medium whitespace-nowrap"
+        className={`text-xs font-medium ${dark ? "text-white/55" : "text-[#0A2540]/55"}`}
         style={{ opacity: visible ? 1 : 0, transition: "opacity 400ms ease" }}
       >
         {TICKER_MESSAGES[index]}
@@ -197,7 +177,151 @@ function ActivityTicker() {
   );
 }
 
-// ─── MFA challenge screen ─────────────────────────────────────────────────────
+// ─── Floating chips (decorative, z-20) ────────────────────────────────────────
+const CHIPS = [
+  { icon: ShieldCheck,    label: "Security Posture", pos: "top-[18%] left-[3%]",     delay: "0s",   dur: "6s"   },
+  { icon: Sparkles,       label: "Copilot Ready",    pos: "top-[22%] right-[2%]",    delay: "1.5s", dur: "7s"   },
+  { icon: ClipboardCheck, label: "Compliance 88%",   pos: "bottom-[22%] left-[2%]",  delay: "3s",   dur: "8s"   },
+  { icon: Zap,            label: "Automation Active",pos: "bottom-[18%] right-[2%]", delay: "4.5s", dur: "6.5s" },
+] as const;
+
+function FloatingChips() {
+  return (
+    <>
+      {CHIPS.map(({ icon: Icon, label, pos, delay, dur }) => (
+        <div
+          key={label}
+          className={`absolute ${pos} hidden md:flex items-center gap-1.5 pointer-events-none z-20 opacity-20`}
+          style={{ animation: `chipFloat ${dur} ease-in-out infinite`, animationDelay: delay }}
+        >
+          <div className="flex items-center gap-1.5 bg-white/80 border border-[#0078D4]/20 backdrop-blur-sm rounded-full px-3 py-1.5">
+            <Icon className="w-3 h-3 text-[#0078D4]" />
+            <span className="text-[10px] font-semibold text-[#0A2540]/60">{label}</span>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ─── Left value panel ─────────────────────────────────────────────────────────
+const VALUE_BULLETS = [
+  { icon: ShieldCheck,    text: "Real-time tenant health" },
+  { icon: Sparkles,       text: "Copilot readiness scoring" },
+  { icon: Lock,           text: "Governance & security posture" },
+  { icon: ClipboardCheck, text: "Project tracking & deliverables" },
+  { icon: FileText,       text: "Secure document exchange" },
+  { icon: Zap,            text: "Zero Trust architecture" },
+];
+
+const SEC_BADGES = [
+  { emoji: "🔒", label: "Encrypted" },
+  { emoji: "🛡️", label: "MFA Protected" },
+  { emoji: "⚡", label: "Zero Trust" },
+  { emoji: "🏛️", label: "NASA-grade" },
+];
+
+const COMP_BADGES = ["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR"];
+
+function LeftPanel() {
+  return (
+    <div
+      className="hidden md:flex flex-col px-10 py-12 overflow-y-auto"
+      style={{
+        background: "linear-gradient(155deg, rgba(10,37,64,0.94) 0%, rgba(0,8,28,0.90) 100%)",
+        backdropFilter: "blur(24px)",
+      }}
+    >
+      {/* Wordmark */}
+      <div className="flex items-center gap-2.5 mb-10 shrink-0">
+        <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/30 flex-shrink-0">
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+          </svg>
+        </div>
+        <div>
+          <p className="text-white font-bold text-sm leading-tight">Shane McCaw Consulting</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#0078D4" }}>
+            Microsoft 365 Architecture
+          </p>
+        </div>
+      </div>
+
+      {/* Hero */}
+      <div className="flex-1 flex flex-col justify-center">
+        <h1 className="font-black text-white leading-tight mb-4" style={{ fontSize: "clamp(2rem,3.5vw,3rem)" }}>
+          Your M365<br />
+          <span style={{ color: "#00B4D8" }}>Command Center</span>
+        </h1>
+        <p className="text-white/58 text-base leading-relaxed mb-8 max-w-sm">
+          A secure, unified portal for assessments, reports, insights, and project delivery.
+        </p>
+
+        {/* Value bullets */}
+        <ul className="space-y-3 mb-8">
+          {VALUE_BULLETS.map(({ icon: Icon, text }) => (
+            <li key={text} className="flex items-center gap-3">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(0,120,212,0.18)", border: "1px solid rgba(0,120,212,0.30)" }}
+              >
+                <Icon className="w-3.5 h-3.5 text-[#0078D4]" />
+              </div>
+              <span className="text-white/72 text-sm font-medium">{text}</span>
+            </li>
+          ))}
+        </ul>
+
+        {/* Trust & compliance badges */}
+        <div className="mb-8">
+          <p
+            className="text-[9px] font-bold uppercase tracking-widest mb-3"
+            style={{ color: "rgba(255,255,255,0.28)" }}
+          >
+            Security &amp; Compliance
+          </p>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {SEC_BADGES.map(({ emoji, label }) => (
+              <div
+                key={label}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
+                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)" }}
+              >
+                <span className="text-xs leading-none">{emoji}</span>
+                <span className="text-white/68 text-xs font-medium">{label}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {COMP_BADGES.map(badge => (
+              <span
+                key={badge}
+                className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
+                style={{ color: "rgba(255,255,255,0.48)", border: "1px solid rgba(255,255,255,0.16)" }}
+              >
+                {badge}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Tenant health snapshot */}
+      <div className="shrink-0">
+        <p
+          className="text-[9px] font-bold uppercase tracking-widest mb-2"
+          style={{ color: "rgba(255,255,255,0.28)" }}
+        >
+          Tenant Health Snapshot
+        </p>
+        <M365HealthPanel dark />
+        <ActivityTicker dark />
+      </div>
+    </div>
+  );
+}
+
+// ─── MFA challenge screen ──────────────────────────────────────────────────────
 function MfaChallengeScreen({
   challenge,
   onSuccess,
@@ -208,11 +332,11 @@ function MfaChallengeScreen({
   onBack: () => void;
 }) {
   const [activeMethod, setActiveMethod] = useState<string>(
-    challenge.methods.includes("passkey") ? "passkey" : challenge.methods[0] ?? "totp"
+    challenge.methods.includes("passkey") ? "passkey" : (challenge.methods[0] ?? "totp")
   );
-  const [code, setCode] = useState("");
+  const [code, setCode]       = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]     = useState("");
   const [smsSent, setSmsSent] = useState(false);
 
   const sendSms = async () => {
@@ -438,12 +562,12 @@ export default function LoginPage() {
     <>
       <style>{`
         @keyframes chipFloat {
-          0%, 100% { transform: translateY(0px);  }
+          0%, 100% { transform: translateY(0px); }
           50%       { transform: translateY(-8px); }
         }
       `}</style>
 
-      <div className="relative w-full min-h-screen overflow-hidden bg-[#F7F9FC]">
+      <div className="relative w-full min-h-screen overflow-hidden bg-[#0A2540]">
 
         {/* Three.js torus knot — z-1 */}
         <AnimatedBackground fullScreen />
@@ -451,40 +575,23 @@ export default function LoginPage() {
         {/* CopilotAura edge glow — z-10 */}
         <CopilotAura />
 
-        {/* Floating M365 health chips — z-20, hidden on mobile */}
+        {/* Decorative floating chips — z-20, desktop only */}
         <FloatingChips />
 
-        {/* ── Centered column — z-40 ────────────────────────────────────── */}
-        <div className="relative z-40 flex flex-col items-center justify-center min-h-screen px-5 py-10">
+        {/* ── Page content — z-40 ───────────────────────────────────────── */}
+        <div className="relative z-40 min-h-screen flex flex-col">
 
-          {/* Activity ticker — above the health panel, desktop only */}
-          <ActivityTicker />
+          {/* ── Two-column main area ─────────────────────────────────────── */}
+          <div className="flex-1 flex flex-col md:grid md:grid-cols-[3fr_2fr] min-h-0">
 
-          {/* M365 Health Score panel — desktop only */}
-          <M365HealthPanel />
+            {/* LEFT panel — value + trust + health (desktop only) */}
+            <LeftPanel />
 
-          <div className="w-full max-w-md">
+            {/* RIGHT panel — login form (always visible) */}
+            <div className="flex flex-col items-center justify-center min-h-screen md:min-h-0 px-6 py-12 bg-white/[0.97]">
 
-            {/* Purchase context hint */}
-            {fromPurchase && (
-              <div className="bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-2xl px-4 py-3.5 mb-5 flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Mail className="w-3.5 h-3.5 text-[#0078D4]" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-[#0A2540] leading-snug mb-0.5">Check your email first</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    We sent a password-setup link to your inbox. Click that link to activate your account, then sign in here.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* White card */}
-            <div className="bg-white border border-[#0A2540]/10 rounded-3xl shadow-xl px-8 py-10">
-
-              {/* Wordmark */}
-              <div className="flex flex-col items-center mb-7 text-center">
+              {/* Mobile-only compact wordmark (left panel is hidden on mobile) */}
+              <div className="md:hidden flex flex-col items-center mb-6 text-center">
                 <div className="inline-flex items-center gap-2.5 mb-2">
                   <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
                     <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
@@ -498,45 +605,133 @@ export default function LoginPage() {
                 </span>
               </div>
 
-              {mfaChallenge ? (
-                /* ── MFA challenge step ── */
-                <MfaChallengeScreen
-                  challenge={mfaChallenge}
-                  onSuccess={handleMfaSuccess}
-                  onBack={() => { setMfaChallenge(null); setPassword(""); }}
-                />
+              <div className="w-full max-w-md">
 
-              ) : mode === "forgot" ? (
-                /* ── Forgot password flow ── */
-                <>
-                  {forgotSent ? (
-                    <div className="text-center py-3">
-                      <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
-                        <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                {/* Purchase context hint */}
+                {fromPurchase && (
+                  <div className="bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-2xl px-4 py-3.5 mb-5 flex items-start gap-3">
+                    <div className="w-7 h-7 rounded-lg bg-[#0078D4]/15 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Mail className="w-3.5 h-3.5 text-[#0078D4]" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-[#0A2540] leading-snug mb-0.5">Check your email first</p>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        We sent a password-setup link to your inbox. Click that link to activate your account, then sign in here.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Login card ── */}
+                <div className="bg-white border border-[#0A2540]/10 rounded-3xl shadow-xl px-8 py-10">
+
+                  {/* Wordmark — desktop only (mobile has it above the card) */}
+                  <div className="hidden md:flex flex-col items-center mb-7 text-center">
+                    <div className="inline-flex items-center gap-2.5 mb-2">
+                      <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
+                        <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
                         </svg>
                       </div>
-                      <p className="font-bold text-[#0A2540] mb-1">Check your inbox</p>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
-                        If an account exists for <span className="font-semibold text-[#0A2540]">{email}</span>, a reset link has been sent. It expires in 1 hour.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => switchMode("login")}
-                        className="mt-4 text-sm font-semibold text-[#0078D4] hover:underline"
-                        data-testid="link-back-to-signin"
-                      >
-                        ← Back to sign in
-                      </button>
+                      <span className="text-[#0A2540] font-bold text-base leading-tight">Shane McCaw Consulting</span>
                     </div>
+                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
+                      M365 Client Portal
+                    </span>
+                  </div>
+
+                  {/* Mobile wordmark inside card */}
+                  <div className="md:hidden flex flex-col items-center mb-7 text-center">
+                    <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
+                      M365 Client Portal
+                    </span>
+                  </div>
+
+                  {/* ── Auth flows ── */}
+                  {mfaChallenge ? (
+                    <MfaChallengeScreen
+                      challenge={mfaChallenge}
+                      onSuccess={handleMfaSuccess}
+                      onBack={() => { setMfaChallenge(null); setPassword(""); }}
+                    />
+
+                  ) : mode === "forgot" ? (
+                    <>
+                      {forgotSent ? (
+                        <div className="text-center py-3">
+                          <div className="w-11 h-11 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+                            <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <p className="font-bold text-[#0A2540] mb-1">Check your inbox</p>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            If an account exists for <span className="font-semibold text-[#0A2540]">{email}</span>, a reset link has been sent. It expires in 1 hour.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => switchMode("login")}
+                            className="mt-4 text-sm font-semibold text-[#0078D4] hover:underline"
+                            data-testid="link-back-to-signin"
+                          >
+                            ← Back to sign in
+                          </button>
+                        </div>
+                      ) : (
+                        <form onSubmit={handleSubmit} aria-label="Forgot password form" className="space-y-4">
+                          <div>
+                            <label htmlFor="forgot-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+                              Email address
+                            </label>
+                            <input
+                              id="forgot-email"
+                              type="email"
+                              value={email}
+                              onChange={e => setEmail(e.target.value)}
+                              required
+                              placeholder="you@organization.com"
+                              autoComplete="email"
+                              className="w-full border border-[#E0E6EF] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
+                              data-testid="input-forgot-email"
+                            />
+                          </div>
+
+                          {error && (
+                            <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                              {error}
+                            </p>
+                          )}
+
+                          <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#0078D4]/20 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                            data-testid="button-send-reset"
+                          >
+                            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                            Send Reset Link
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => switchMode("login")}
+                            className="w-full text-sm text-muted-foreground hover:text-[#0078D4] transition-colors"
+                            data-testid="link-back-to-signin"
+                          >
+                            ← Back to sign in
+                          </button>
+                        </form>
+                      )}
+                    </>
+
                   ) : (
-                    <form onSubmit={handleSubmit} aria-label="Forgot password form" className="space-y-4">
+                    <form onSubmit={handleSubmit} aria-label="Sign in form" className="space-y-4">
                       <div>
-                        <label htmlFor="forgot-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
+                        <label htmlFor="login-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
                           Email address
                         </label>
                         <input
-                          id="forgot-email"
+                          id="login-email"
                           type="email"
                           value={email}
                           onChange={e => setEmail(e.target.value)}
@@ -544,146 +739,91 @@ export default function LoginPage() {
                           placeholder="you@organization.com"
                           autoComplete="email"
                           className="w-full border border-[#E0E6EF] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
-                          data-testid="input-forgot-email"
+                          data-testid="input-email"
                         />
                       </div>
 
+                      <div>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label htmlFor="login-password" className="text-xs font-semibold text-[#0A2540]">
+                            Password
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => switchMode("forgot")}
+                            className="text-xs font-medium text-[#0078D4] hover:underline focus-visible:ring-1 focus-visible:ring-[#0078D4] focus-visible:outline-none rounded"
+                            data-testid="link-forgot-password"
+                          >
+                            Forgot password?
+                          </button>
+                        </div>
+                        <div className="relative">
+                          <input
+                            id="login-password"
+                            type={showPassword ? "text" : "password"}
+                            value={password}
+                            onChange={e => setPassword(e.target.value)}
+                            required
+                            placeholder="••••••••"
+                            autoComplete="current-password"
+                            className="w-full border border-[#E0E6EF] rounded-xl py-2.5 pl-3.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
+                            data-testid="input-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(v => !v)}
+                            tabIndex={-1}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0078D4] transition-colors focus-visible:outline-none"
+                          >
+                            {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
                       {error && (
-                        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                        <div
+                          className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
+                          data-testid="login-error"
+                          role="alert"
+                        >
                           {error}
-                        </p>
+                        </div>
                       )}
 
                       <button
                         type="submit"
                         disabled={loading}
-                        className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-md shadow-[#0078D4]/20 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
-                        data-testid="button-send-reset"
+                        className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors shadow-md shadow-[#0078D4]/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
+                        data-testid="button-login"
                       >
                         {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                        Send Reset Link
+                        {loading ? "Signing in…" : "Sign In"}
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => switchMode("login")}
-                        className="w-full text-sm text-muted-foreground hover:text-[#0078D4] transition-colors"
-                        data-testid="link-back-to-signin"
-                      >
-                        ← Back to sign in
-                      </button>
+                      <p className="text-center text-[11px] text-[#0A2540]/38 font-medium -mt-1">
+                        Secure access to your M365 Command Center
+                      </p>
                     </form>
                   )}
-                </>
-
-              ) : (
-                /* ── Login flow ── */
-                <form onSubmit={handleSubmit} aria-label="Sign in form" className="space-y-4">
-                  <div>
-                    <label htmlFor="login-email" className="block text-xs font-semibold text-[#0A2540] mb-1.5">
-                      Email address
-                    </label>
-                    <input
-                      id="login-email"
-                      type="email"
-                      value={email}
-                      onChange={e => setEmail(e.target.value)}
-                      required
-                      placeholder="you@organization.com"
-                      autoComplete="email"
-                      className="w-full border border-[#E0E6EF] rounded-xl py-2.5 px-3.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
-                      data-testid="input-email"
-                    />
-                  </div>
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label htmlFor="login-password" className="text-xs font-semibold text-[#0A2540]">
-                        Password
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => switchMode("forgot")}
-                        className="text-xs font-medium text-[#0078D4] hover:underline focus-visible:ring-1 focus-visible:ring-[#0078D4] focus-visible:outline-none rounded"
-                        data-testid="link-forgot-password"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <input
-                        id="login-password"
-                        type={showPassword ? "text" : "password"}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                        placeholder="••••••••"
-                        autoComplete="current-password"
-                        className="w-full border border-[#E0E6EF] rounded-xl py-2.5 pl-3.5 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition-all placeholder:text-muted-foreground"
-                        data-testid="input-password"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(v => !v)}
-                        tabIndex={-1}
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-[#0078D4] transition-colors focus-visible:outline-none"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  {error && (
-                    <div
-                      className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
-                      data-testid="login-error"
-                      role="alert"
-                    >
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full bg-[#0078D4] hover:bg-[#005A9E] disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors shadow-md shadow-[#0078D4]/20 flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0078D4] focus-visible:outline-none"
-                    data-testid="button-login"
-                  >
-                    {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                    {loading ? "Signing in…" : "Sign In"}
-                  </button>
-                </form>
-              )}
-
-              {/* Trust badges */}
-              <div className="mt-6 pt-5 border-t border-[#F0F4F8]">
-                <div className="grid grid-cols-4 gap-1 mb-3">
-                  {[
-                    { emoji: "🔒", label: "Encrypted"    },
-                    { emoji: "🛡️", label: "MFA Protected" },
-                    { emoji: "⚡", label: "Zero Trust"    },
-                    { emoji: "🏛️", label: "NASA-grade"    },
-                  ].map(({ emoji, label }) => (
-                    <div key={label} className="flex flex-col items-center gap-0.5">
-                      <span className="text-sm leading-none">{emoji}</span>
-                      <span className="text-[9px] text-muted-foreground font-medium text-center leading-tight">{label}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {["HIPAA", "SOC 2", "FINRA", "CMMC", "ITAR", "Zero Trust"].map(badge => (
-                    <span
-                      key={badge}
-                      className="text-[9px] text-muted-foreground border border-[#E8EDF2] rounded-full px-2 py-0.5 font-medium bg-[#F7F9FC]"
-                    >
-                      {badge}
-                    </span>
-                  ))}
                 </div>
               </div>
             </div>
           </div>
+
+          {/* ── Full-width footer ─────────────────────────────────────────── */}
+          <footer
+            className="relative shrink-0 py-3 px-6 text-center border-t"
+            style={{
+              background: "rgba(10,37,64,0.96)",
+              borderColor: "rgba(255,255,255,0.07)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <p className="text-xs font-medium" style={{ color: "rgba(255,255,255,0.38)" }}>
+              Shane McCaw Consulting — Microsoft 365 Architecture &amp; Automation
+            </p>
+          </footer>
         </div>
       </div>
     </>
