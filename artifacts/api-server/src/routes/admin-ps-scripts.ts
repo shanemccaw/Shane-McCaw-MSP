@@ -3390,20 +3390,29 @@ function stripHtml(html: string): string {
     .trim();
 }
 
-const GENERATE_FROM_DOCUMENT_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer. You will receive the text of a consulting deliverable (assessment report, statement of work, remediation plan, or similar). Your job is to extract every actionable technical task from the document and write complete, production-ready PowerShell scripts to automate them.
+const GENERATE_FROM_DOCUMENT_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer. You will receive the text of a consulting deliverable (assessment report, statement of work, remediation plan, or similar). Your job is to extract every actionable technical task from the document and write complete, production-ready PowerShell scripts to execute them.
 
-RULES:
-- Only automate tasks that can run UNATTENDED as an Azure Automation Runbook (service principal / app-only auth).
-- Skip tasks that require human decisions, approvals, client calls, or delegated/interactive auth — briefly note them as comments.
-- Each script must include [CmdletBinding()] + typed param() block, try/catch/finally, $ErrorActionPreference = "Stop", and Write-Output (never Write-Host).
-- Authenticate via service principal: Connect-MgGraph -ClientId -TenantId -ClientSecret (or certificate).
-- After all PowerShell code, append a \`\`\`json block with this shape:
+EXECUTION CONTEXT — LOCAL ADMIN SESSION:
+- Scripts run locally under a licensed Microsoft 365 admin user account with the necessary admin roles already assigned.
+- Use interactive / delegated authentication: Connect-MgGraph -Scopes, Connect-ExchangeOnline, Connect-PnPOnline -Interactive, Connect-MicrosoftTeams, Connect-AzAccount, etc.
+- You MAY use any cmdlet including those that require a real user account (New-MigrationBatch, Connect-MicrosoftTeams, Set-MailboxAutoReplyConfiguration, Add-MailboxPermission, etc.).
+- Write-Host, Export-Csv, Out-File are all fine — the script runs in a local PowerShell session.
+- DO NOT use service-principal / app-only patterns (-ClientSecret, -ClientId, -CertificateThumbprint for unattended auth).
+
+CODING STANDARDS:
+- [CmdletBinding()] attribute + typed param() block with documented parameters.
+- $ErrorActionPreference = "Stop" at the top.
+- try/catch/finally blocks with descriptive Write-Error messages.
+- Connect statements at the top of each script; Disconnect in the finally block.
+- Skip tasks that are purely human (meetings, approvals, document review, client calls) — add a brief # HUMAN TASK comment instead.
+
+After all PowerShell code, append a \`\`\`json block with this shape:
 {
-  "appPermissions": [{"scope": "...", "reason": "..."}],
-  "delegatedPermissions": [],
-  "notes": "..."
+  "appPermissions": [],
+  "delegatedPermissions": ["scope1", "scope2"],
+  "notes": "Run as a licensed M365 admin. Required admin roles: ..."
 }
-List every Microsoft Graph Application permission the scripts require.`;
+List every delegated Microsoft Graph scope and any admin role (Global Admin, Exchange Admin, etc.) needed.`;
 
 router.post("/admin/ps-scripts/generate-from-document", requireAdmin, async (req: Request, res: Response) => {
   const { documentId, baseInstructions, detailedInstructions } = req.body as {
