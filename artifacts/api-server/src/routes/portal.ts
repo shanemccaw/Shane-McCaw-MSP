@@ -9939,7 +9939,11 @@ async function deriveEffectiveSowData(
     // that were generated before the workstream-scoped rules were introduced.
     // If no workstream titles match a canonical pattern, skip filtering to be safe.
     // WORKSTREAM_ADJ_MAP is imported from sow-pricing.ts — single source of truth.
-    const workstreamTitles = allPhases.map(p => p.title);
+    //
+    // IMPORTANT: use only SELECTED phase titles. Using allPhases would allow
+    // adjustments for deselected workstreams (e.g. Copilot Readiness appearing when
+    // the Copilot workstream is unchecked by the client).
+    const workstreamTitles = effectiveSowPhases.filter(p => p.selected).map(p => p.title);
     const allowedAdjPatterns: RegExp[] = [];
     for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
       if (workstreamTitles.some(t => ws.test(t))) {
