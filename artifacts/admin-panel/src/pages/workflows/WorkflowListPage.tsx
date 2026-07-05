@@ -691,13 +691,43 @@ type CenterView =
   | { kind: "editor"; defId: number }
   | { kind: "run-history"; defId?: number };
 
+// ── URL helpers ───────────────────────────────────────────────────────────────
+
+function viewToUrl(cv: CenterView): string {
+  if (cv.kind === "editor") return `/workflows/list?id=${cv.defId}`;
+  if (cv.kind === "run-history") {
+    const p = new URLSearchParams();
+    if (cv.defId !== undefined) p.set("id", String(cv.defId));
+    p.set("view", "run-history");
+    return `/workflows/list?${p.toString()}`;
+  }
+  return "/workflows/list";
+}
+
+function parseCenterViewFromSearch(search: string): { cv: CenterView; id: number | null } {
+  const params = new URLSearchParams(search);
+  const idParam = params.get("id");
+  const id = idParam ? parseInt(idParam, 10) : null;
+  const view = params.get("view");
+  if (view === "run-history") return { cv: { kind: "run-history", defId: id ?? undefined }, id };
+  if (id !== null) return { cv: { kind: "editor", defId: id }, id };
+  return { cv: { kind: "empty" }, id: null };
+}
+
+function isSameCenterView(a: CenterView, b: CenterView): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "editor" && b.kind === "editor") return a.defId === b.defId;
+  if (a.kind === "run-history" && b.kind === "run-history") return a.defId === b.defId;
+  return true;
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function WorkflowListPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   // ── Modal / interaction state ──
   const [showCreate, setShowCreate] = useState(false);
@@ -708,8 +738,11 @@ export default function WorkflowListPage() {
   const [activeRun, setActiveRun] = useState<{ defId: number; runId: number } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ defId: number; fields: AskForInputField[] } | null>(null);
 
-  // ── IDE state ──
-  const [centerView, setCenterView] = useState<CenterView>({ kind: "empty" });
+  // ── IDE state — initialised from URL query params ──
+  const [centerView, setCenterView] = useState<CenterView>(() => {
+    const search = location.split("?")[1] ?? "";
+    return parseCenterViewFromSearch(search).cv;
+  });
   const prevCenterViewRef = useRef<CenterView>({ kind: "empty" });
   const [contextMenu, setContextMenu] = useState<{ def: WfDefinition; x: number; y: number } | null>(null);
   const [renameDialog, setRenameDialog] = useState<{ def: WfDefinition; name: string } | null>(null);
@@ -718,11 +751,16 @@ export default function WorkflowListPage() {
   // Helper: open run-history while preserving the previous center view for the back action
   const openRunHistory = useCallback((defId?: number) => {
     prevCenterViewRef.current = centerView;
-    setCenterView({ kind: "run-history", defId });
-  }, [centerView]);
+    const cv: CenterView = { kind: "run-history", defId };
+    setCenterView(cv);
+    navigate(viewToUrl(cv));
+  }, [centerView, navigate]);
 
   // Sidebar highlight (keyboard nav + activity feed) — tracks last sidebar selection
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const search = location.split("?")[1] ?? "";
+    return parseCenterViewFromSearch(search).id;
+  });
   const [search, setSearch] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set(["⚙ System"]));
   const sidebarRef = useRef<HTMLDivElement>(null);
@@ -740,6 +778,13 @@ export default function WorkflowListPage() {
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // ── Sync URL → state (Back/Forward button support) ──
+  useEffect(() => {
+    const { cv, id } = parseCenterViewFromSearch(location.split("?")[1] ?? "");
+    setCenterView(prev => (isSameCenterView(prev, cv) ? prev : cv));
+    setSelectedId(prev => (prev === id ? prev : id));
+  }, [location]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Data queries ──
   const { data: defs = [], isLoading } = useQuery<WfDefinition[]>({
@@ -959,8 +1004,10 @@ export default function WorkflowListPage() {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       toast({ title: "Workflow duplicated", description: "Opening copy in editor…" });
-      setCenterView({ kind: "editor", defId: data.id });
+      const cv: CenterView = { kind: "editor", defId: data.id };
+      setCenterView(cv);
       setSelectedId(data.id);
+      navigate(viewToUrl(cv));
     },
     onError: (err: Error) => {
       toast({ title: "Duplicate failed", description: err.message, variant: "destructive" });
@@ -1041,7 +1088,9 @@ export default function WorkflowListPage() {
       if (prev !== undefined) setSelectedId(prev);
     } else if (e.key === "Enter" && selectedId !== null) {
       e.preventDefault();
-      setCenterView({ kind: "editor", defId: selectedId });
+      const cv: CenterView = { kind: "editor", defId: selectedId };
+      setCenterView(cv);
+      navigate(viewToUrl(cv));
     } else if (e.key === "F5" && selectedId !== null) {
       e.preventDefault();
       const def = defs.find(d => d.id === selectedId);
@@ -1083,7 +1132,9 @@ export default function WorkflowListPage() {
 
     function handleClick() {
       setSelectedId(def.id);
-      setCenterView({ kind: "editor", defId: def.id });
+      const cv: CenterView = { kind: "editor", defId: def.id };
+      setCenterView(cv);
+      navigate(viewToUrl(cv));
     }
 
     function handleContextMenu(e: React.MouseEvent) {
@@ -1579,14 +1630,22 @@ export default function WorkflowListPage() {
             <WorkflowBuilderPage
               key={centerView.defId}
               defId={centerView.defId}
-              onClose={() => setCenterView({ kind: "empty" })}
+              onClose={() => {
+                const cv: CenterView = { kind: "empty" };
+                setCenterView(cv);
+                navigate(viewToUrl(cv), { replace: true });
+              }}
               onViewRuns={() => openRunHistory(centerView.kind === "editor" ? centerView.defId : undefined)}
             />
           ) : centerView.kind === "run-history" ? (
             <RunHistoryPage
               key={`rh-${centerView.defId ?? "all"}`}
               initialDefinitionId={centerView.defId}
-              onClose={() => setCenterView(prevCenterViewRef.current)}
+              onClose={() => {
+                const prev = prevCenterViewRef.current;
+                setCenterView(prev);
+                navigate(viewToUrl(prev), { replace: true });
+              }}
             />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -1765,7 +1824,7 @@ export default function WorkflowListPage() {
           x={contextMenu.x}
           y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          onOpenEditor={() => { setSelectedId(contextMenu.def.id); setCenterView({ kind: "editor", defId: contextMenu.def.id }); setContextMenu(null); }}
+          onOpenEditor={() => { setSelectedId(contextMenu.def.id); const _cv: CenterView = { kind: "editor", defId: contextMenu.def.id }; setCenterView(_cv); navigate(viewToUrl(_cv)); setContextMenu(null); }}
           onRunNow={() => { handlePlayClick(contextMenu.def); setContextMenu(null); }}
           onViewRunHistory={() => { openRunHistory(contextMenu.def.id); setContextMenu(null); }}
           onRename={() => { setRenameDialog({ def: contextMenu.def, name: contextMenu.def.name }); setContextMenu(null); }}
