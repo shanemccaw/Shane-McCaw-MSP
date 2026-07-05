@@ -122,7 +122,9 @@ export async function handleSystemAction(
 
       let rawPhases: unknown = payload.value;
       if (typeof rawPhases === "string") {
-        try { rawPhases = JSON.parse(rawPhases); } catch { rawPhases = []; }
+        // Strip markdown code fences before parsing — AI often wraps JSON in ```json … ``` blocks.
+        const fenceStripped = rawPhases.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+        try { rawPhases = JSON.parse(fenceStripped || rawPhases); } catch { rawPhases = []; }
       }
       if (!Array.isArray(rawPhases) || rawPhases.length === 0) {
         logger.warn({ presId, rawPhases }, "save_presentation_phases: no phases in payload.value");

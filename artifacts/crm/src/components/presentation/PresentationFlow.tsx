@@ -578,8 +578,10 @@ export default function PresentationFlow({
         } catch { /* ignore malformed events */ }
       };
       es.onerror = () => {
-        es?.close();
-        es = null;
+        // Do NOT close() here — let the browser's built-in EventSource reconnection
+        // fire automatically. Calling close() prevents any reconnect attempt and
+        // causes phase_gen.complete events to be permanently missed if the
+        // connection drops during the ~30-second AI generation window.
       };
     } catch { /* EventSource not available in this context */ }
     return () => { es?.close(); };
@@ -795,6 +797,30 @@ export default function PresentationFlow({
       applyStepChange(pmtIdx);
     }
   };
+
+  // Polling fallback for phase gen completion.
+  // If the SSE event fires during a connection gap (e.g. EventSource is
+  // reconnecting after an error), the client will miss the phase_gen.complete
+  // push. Poll the presentation endpoint every 6 s while on the phase_gen
+  // step; if the server already persisted phases, synthesise the complete
+  // event locally so the UI transitions normally.
+  useEffect(() => {
+    if (currentStep?.kind !== "phase_gen") return;
+    if (phaseGenEvent?.type === "phase_gen_complete" || phaseGenEvent?.type === "phase_gen_error") return;
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    const id = setInterval(async () => {
+      try {
+        const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
+        if (!res.ok) return;
+        const fresh = await res.json() as { sowPhases?: PhaseGenPhase[] };
+        const phases = fresh.sowPhases ?? [];
+        if (phases.length > 0) {
+          setPhaseGenEvent({ type: "phase_gen_complete", phases });
+        }
+      } catch { /* non-fatal */ }
+    }, 6000);
+    return () => clearInterval(id);
+  }, [currentStep?.kind, phaseGenEvent?.type, presentationId, shareToken, fetchFn]);
 
   const handleSign = async (signatureData: string, name: string) => {
     // Hard-block signing when the scoped SOW was reset mid-session and scope reduction is active.

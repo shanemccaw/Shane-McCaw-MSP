@@ -2691,8 +2691,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
         if (node.data.parseAsJson) {
           let parsed: unknown;
+          // Strip markdown code fences before parsing — AI often wraps JSON in ```json … ``` blocks.
+          // Try the fence-stripped version first; fall back to the raw string so we have the best
+          // chance of a successful parse without silently changing non-fenced values.
+          const fenceStripped = resolvedValue.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+          const valueToParse = fenceStripped || resolvedValue;
           try {
-            parsed = JSON.parse(resolvedValue);
+            parsed = JSON.parse(valueToParse);
           } catch {
             logger.warn({ nodeId: node.id, resolvedValue }, "compose: JSON.parse failed — falling back to raw string");
             output = { value: resolvedValue, parseError: true };
