@@ -92,6 +92,12 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 **Redeploy checklist:** Before going live, ensure `STRIPE_SECRET_KEY_PROD` is set in Replit Secrets. Without it the deployed API will throw on startup and payments will be broken.
 
+**After every deploy, run the migrate-prod pipeline** to apply DDL migrations AND data migrations (including the engagement project signal-key backfill) to the production database:
+```
+pnpm --filter @workspace/scripts run migrate-prod
+```
+This is idempotent — safe to run repeatedly. Legacy migration `0012_engagement_project_signal_keys` updates any `engagement_projects.triggered_by` values that still contain legacy plan-name strings to use canonical signal keys, ensuring all projects appear correctly in SOW generation.
+
 **Syncing webhook endpoints:** After every deploy (or if the payment webhook stops firing), run:
 ```
 pnpm --filter @workspace/scripts run sync-webhooks          # check only

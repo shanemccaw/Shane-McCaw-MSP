@@ -230,6 +230,66 @@ const legacyMigrations = [
       ALTER TABLE "client_app_registrations" ADD COLUMN IF NOT EXISTS "permission_check" jsonb;
     `,
   },
+  {
+    name: "0012_engagement_project_signal_keys",
+    sql: `
+      -- Migrate engagement_projects.triggered_by from legacy plan-name strings to
+      -- canonical TENANT_SIGNALS keys.  Idempotent: rows already containing only
+      -- known signal keys are left untouched.
+      DO $$
+      DECLARE
+        known_keys text[] := ARRAY[
+          'hasExchangeOnPrem', 'hasPowerPlatformUsage', 'hasGovernanceGaps',
+          'hasSecurityGaps', 'hasCopilotLicenses', 'hasSharePointIssues',
+          'hasLicensingWaste', 'hasDLPGaps', 'alwaysInclude'
+        ];
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'engagement_projects'
+        ) THEN
+          UPDATE engagement_projects
+          SET
+            triggered_by = CASE
+              WHEN lower(title) LIKE '%migration%'
+                THEN '["hasExchangeOnPrem"]'::jsonb
+              WHEN lower(title) LIKE '%power platform%'
+                OR lower(title) LIKE '%power automate%'
+                THEN '["hasPowerPlatformUsage"]'::jsonb
+              WHEN lower(title) LIKE '%copilot%'
+                THEN '["hasCopilotLicenses"]'::jsonb
+              WHEN lower(title) LIKE '%governance remediation%'
+                OR lower(title) LIKE '%governance foundations%'
+                THEN '["hasGovernanceGaps"]'::jsonb
+              WHEN lower(title) LIKE '%sharepoint%'
+                OR lower(title) LIKE '%information architecture%'
+                THEN '["hasSharePointIssues"]'::jsonb
+              WHEN lower(title) LIKE '%security%'
+                AND lower(title) LIKE '%compliance%'
+                THEN '["hasSecurityGaps","hasDLPGaps"]'::jsonb
+              WHEN lower(title) LIKE '%security%'
+                THEN '["hasSecurityGaps"]'::jsonb
+              WHEN lower(title) LIKE '%licensing%'
+                OR lower(title) LIKE '%license optim%'
+                THEN '["hasLicensingWaste"]'::jsonb
+              WHEN lower(title) LIKE '%data protection%'
+                OR lower(title) LIKE '%dlp%'
+                THEN '["hasDLPGaps"]'::jsonb
+              ELSE triggered_by
+            END,
+            updated_at = now()
+          WHERE
+            triggered_by IS NULL
+            OR jsonb_array_length(triggered_by) = 0
+            OR EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements_text(triggered_by) AS key
+              WHERE key != ALL(known_keys)
+            );
+        END IF;
+      END $$;
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------
