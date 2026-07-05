@@ -432,14 +432,14 @@ export function parseSowAllPricing(html: string): {
  *   Licensing Optimization  → Tenant Size (only)
  *
  * Generic Complexity, Data Sprawl, and Timeline are NOT permitted for any workstream.
- * This mirrors the WORKSTREAM_ADJ_MAP used in portal.ts `deriveEffectiveSowData`.
- * Any change to the permitted set MUST be applied in both places.
+ * This is the single source of truth — exported and imported by portal.ts so the
+ * two callers always use identical rules and can never drift.
  *
  * Keys:
  *   ws      — regex that matches the workstream phase title
  *   allowed — regexes that match permitted adjustment titles for that workstream
  */
-const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
+export const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
   { ws: /governance/i,           allowed: [/governance[\s-]?complexity/i] },
   { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /security|compliance/i] },
   { ws: /dlp|data[\s-]?prot/i,   allowed: [/security|compliance/i] },

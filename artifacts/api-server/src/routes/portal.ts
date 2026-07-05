@@ -13,7 +13,7 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, type SowPricingLine } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, type SowPricingLine } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
@@ -9938,13 +9938,7 @@ async function deriveEffectiveSowData(
     // regardless of how old the stored sowPricingLines are and fixes any adjustments
     // that were generated before the workstream-scoped rules were introduced.
     // If no workstream titles match a canonical pattern, skip filtering to be safe.
-    const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
-      { ws: /governance/i,           allowed: [/complexity/i, /timeline/i] },
-      { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /complexity/i, /data[\s-]?sprawl/i, /security|compliance/i, /timeline/i] },
-      { ws: /dlp|data[\s-]?prot/i,   allowed: [/data[\s-]?sprawl/i, /complexity/i, /security|compliance/i, /timeline/i] },
-      { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i, /data[\s-]?sprawl/i, /complexity/i, /timeline/i] },
-      { ws: /licens/i,               allowed: [/tenant[\s-]?size/i, /complexity/i, /timeline/i] },
-    ];
+    // WORKSTREAM_ADJ_MAP is imported from sow-pricing.ts — single source of truth.
     const workstreamTitles = allPhases.map(p => p.title);
     const allowedAdjPatterns: RegExp[] = [];
     for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
