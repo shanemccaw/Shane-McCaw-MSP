@@ -689,14 +689,17 @@ export function purgeSowAdjustments(
   }
 
   // If no workstream matched AND no forced exclusions, skip purging.
-  if (allowedPatterns.length === 0 && forcedExcludePatterns.length === 0) {
+  // Signal-gated mode never skips — empty allowedPatterns means deny-all.
+  if (!useSignalGating && allowedPatterns.length === 0 && forcedExcludePatterns.length === 0) {
     return { html, removedTitles: [] };
   }
 
   const unpermitted = adjustmentLines.filter(l => {
     // Forced exclusion always wins — server overrides AI's workstream table
     if (forcedExcludePatterns.some(p => p.test(l.title))) return true;
-    // Allowlist check (only when we have workstream context)
+    // Signal-gated: empty allowedPatterns = deny all; non-empty = allowlist
+    if (useSignalGating) return !allowedPatterns.some(p => p.test(l.title));
+    // Legacy: allowlist check (only when we have workstream context)
     if (allowedPatterns.length > 0 && !allowedPatterns.some(p => p.test(l.title))) return true;
     return false;
   });
