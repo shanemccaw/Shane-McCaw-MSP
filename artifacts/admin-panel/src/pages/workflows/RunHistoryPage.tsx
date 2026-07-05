@@ -284,6 +284,7 @@ export default function RunHistoryPage({ initialDefinitionId, onClose }: { initi
       if (!res.ok) throw new Error("Failed to load runs");
       return res.json();
     },
+    staleTime: 30_000,
   });
 
   const { data: defs = [] } = useQuery<Array<{ id: number; name: string }>>({
@@ -292,6 +293,7 @@ export default function RunHistoryPage({ initialDefinitionId, onClose }: { initi
       const res = await fetchWithAuth("/api/admin/workflows/definitions");
       return res.json();
     },
+    staleTime: 60_000,
   });
 
   // Fetch pending approvals when any visible run is awaiting_approval

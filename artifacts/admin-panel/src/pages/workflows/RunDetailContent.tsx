@@ -514,17 +514,21 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   const branchPath = run.branchPath ?? [];
   const maxStep = branchPath.length - 1;
   const currentNodeId = branchPath[replayStep] ?? null;
-  const currentOutput = run.nodeOutputs.find(o => o.nodeId === currentNodeId);
+
+  // Build O(1) lookups — avoids O(n²) .find() inside render loops
+  const nodeOutputMap = new Map(run.nodeOutputs.map(o => [o.nodeId, o]));
+  const currentOutput = currentNodeId != null ? nodeOutputMap.get(currentNodeId) : undefined;
 
   // Build a lookup: nodeId → graph node data
   const graphNodeMap = new Map(
     (run.graph?.nodes ?? []).map(n => [n.id, n])
   );
 
-  // Nodes not in branchPath (skipped/not executed)
+  // Nodes not in branchPath (skipped/not executed) — use Set for O(1) membership test
+  const branchSet = new Set(branchPath);
   const skippedNodeIds = (run.graph?.nodes ?? [])
     .map(n => n.id)
-    .filter(id => !branchPath.includes(id));
+    .filter(id => !branchSet.has(id));
 
   return (
     <div className="h-full flex flex-col overflow-hidden">

@@ -720,25 +720,28 @@ router.get("/admin/workflows/runs", requireAdmin, async (req: Request, res: Resp
       conditions.push(inArray(wfRunsTable.triggerRef, triggerRefs));
     }
 
-    const runs = await db
-      .select({
-        run: wfRunsTable,
-        defName: wfDefinitionsTable.name,
-        defMetadata: wfDefinitionsTable.metadata,
-        versionLabel: wfVersionsTable.label,
-      })
-      .from(wfRunsTable)
-      .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
-      .leftJoin(wfVersionsTable, eq(wfRunsTable.versionId, wfVersionsTable.id))
-      .where(conditions.length > 0 ? and(...conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]]) : undefined)
-      .orderBy(desc(wfRunsTable.createdAt))
-      .limit(limit)
-      .offset(offset);
+    const whereClause = conditions.length > 0 ? and(...conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]]) : undefined;
 
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(wfRunsTable)
-      .where(conditions.length > 0 ? and(...conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]]) : undefined);
+    const [runs, [{ total }]] = await Promise.all([
+      db
+        .select({
+          run: wfRunsTable,
+          defName: wfDefinitionsTable.name,
+          defMetadata: wfDefinitionsTable.metadata,
+          versionLabel: wfVersionsTable.label,
+        })
+        .from(wfRunsTable)
+        .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+        .leftJoin(wfVersionsTable, eq(wfRunsTable.versionId, wfVersionsTable.id))
+        .where(whereClause)
+        .orderBy(desc(wfRunsTable.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db
+        .select({ total: count() })
+        .from(wfRunsTable)
+        .where(whereClause),
+    ]);
 
     res.json({
       runs: runs.map(r => ({
