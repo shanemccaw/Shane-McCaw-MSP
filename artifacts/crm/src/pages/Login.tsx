@@ -26,6 +26,129 @@ function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
   }
 }
 
+// ─── Mobile hero strip (tagline + 2 animated metric chips) ────────────────────
+const MOBILE_METRICS = [
+  { label: "Secure Score", key: "security", target: 84, color: "#22c55e" },
+  { label: "Copilot Ready", key: "copilot", target: 91, color: "#0078D4" },
+  { label: "Compliance", key: "compliance", target: 88, color: "#00B4D8" },
+] as const;
+
+function MobileHeroStrip() {
+  const [scores, setScores] = useState<Record<string, number>>({
+    security: Math.round(84 * 0.2),
+    copilot: Math.round(91 * 0.2),
+    compliance: Math.round(88 * 0.2),
+  });
+  const startRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    function tick(now: number) {
+      if (startRef.current === null) startRef.current = now;
+      const t = Math.min((now - startRef.current) / 8000, 1);
+      const frac = 0.2 + 0.8 * t;
+      setScores({
+        security: Math.round(84 * frac),
+        copilot: Math.round(91 * frac),
+        compliance: Math.round(88 * frac),
+      });
+      if (t < 1) rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+  }, []);
+
+  return (
+    <div className="md:hidden w-full mb-5">
+      {/* Wordmark */}
+      <div className="flex flex-col items-center mb-3 text-center">
+        <div className="inline-flex items-center gap-2.5 mb-1.5">
+          <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
+            <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+            </svg>
+          </div>
+          <span className="text-[#0A2540] font-bold text-base leading-tight">Shane McCaw Consulting</span>
+        </div>
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
+          M365 Client Portal
+        </span>
+      </div>
+
+      {/* Hero tagline */}
+      <p className="text-center text-sm font-semibold mb-4 px-2 leading-snug" style={{ color: "rgba(10,37,64,0.65)" }}>
+        Your M365 <span style={{ color: "#0078D4" }}>Command Center</span> — built for real-time insight.
+      </p>
+
+      {/* Animated metric chips — light card style */}
+      <div className="flex items-stretch gap-2">
+        {MOBILE_METRICS.map(({ label, key, color }) => {
+          const val = scores[key] ?? 0;
+          const circ = 2 * Math.PI * 14;
+          return (
+            <div
+              key={key}
+              className="flex-1 flex flex-col items-center gap-1.5 rounded-xl py-3 px-2"
+              style={{
+                background: "rgba(10,37,64,0.04)",
+                border: "1px solid rgba(10,37,64,0.08)",
+              }}
+            >
+              <div className="relative flex items-center justify-center" style={{ width: 38, height: 38 }}>
+                <svg width={38} height={38} viewBox="0 0 38 38" className="-rotate-90">
+                  <circle cx="19" cy="19" r={14} fill="none" stroke="rgba(10,37,64,0.08)" strokeWidth="4" />
+                  <circle
+                    cx="19" cy="19" r={14} fill="none"
+                    stroke={color} strokeWidth="4"
+                    strokeLinecap="round"
+                    strokeDasharray={circ}
+                    strokeDashoffset={circ - (val / 100) * circ}
+                    style={{ transition: "stroke-dashoffset 0.1s linear" }}
+                  />
+                </svg>
+                <span className="absolute text-[10px] font-black" style={{ color }}>{val}%</span>
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-center leading-tight" style={{ color: "rgba(10,37,64,0.45)" }}>{label}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Mobile trust badge strip ──────────────────────────────────────────────────
+function MobileTrustBadges() {
+  return (
+    <div className="md:hidden mt-5 flex flex-wrap items-center justify-center gap-2">
+      {[
+        { e: "🔒", t: "Encrypted" },
+        { e: "🛡️", t: "MFA Protected" },
+        { e: "⚡", t: "Zero Trust" },
+        { e: "🏛️", t: "NASA-grade" },
+      ].map(({ e, t }) => (
+        <div
+          key={t}
+          className="flex items-center gap-1 rounded-full px-2.5 py-1"
+          style={{ background: "rgba(10,37,64,0.05)", border: "1px solid rgba(10,37,64,0.10)" }}
+        >
+          <span className="text-[10px] leading-none">{e}</span>
+          <span className="text-[10px] font-semibold" style={{ color: "rgba(10,37,64,0.50)" }}>{t}</span>
+        </div>
+      ))}
+      {["HIPAA", "SOC 2", "CMMC"].map(b => (
+        <div
+          key={b}
+          className="flex items-center rounded-full px-2.5 py-1"
+          style={{ background: "rgba(0,120,212,0.08)", border: "1px solid rgba(0,120,212,0.18)" }}
+        >
+          <span className="text-[10px] font-bold" style={{ color: "#0078D4" }}>{b}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── M365 Health Score Panel ───────────────────────────────────────────────────
 const SCORE_CATEGORIES = [
   { label: "Compliance",  key: "compliance",   target: 88 },
@@ -654,20 +777,8 @@ export default function LoginPage() {
             {/* RIGHT panel — login form (always visible) */}
             <div className="flex flex-col items-center justify-center overflow-y-auto px-6 py-12 pb-16 bg-white/[0.97]">
 
-              {/* Mobile-only compact wordmark (left panel is hidden on mobile) */}
-              <div className="md:hidden flex flex-col items-center mb-6 text-center">
-                <div className="inline-flex items-center gap-2.5 mb-2">
-                  <div className="w-9 h-9 rounded-xl bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/25 flex-shrink-0">
-                    <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
-                    </svg>
-                  </div>
-                  <span className="text-[#0A2540] font-bold text-base leading-tight">Shane McCaw Consulting</span>
-                </div>
-                <span className="text-xs font-bold uppercase tracking-widest" style={{ color: "#00B4D8" }}>
-                  M365 Client Portal
-                </span>
-              </div>
+              {/* Mobile-only hero strip: wordmark + tagline + animated metric chips */}
+              <MobileHeroStrip />
 
               <div className="login-enter-card w-full max-w-md">
 
@@ -888,6 +999,10 @@ export default function LoginPage() {
                   )}
                 </div>
               </div>
+
+              {/* Mobile-only trust badges — below the card */}
+              <MobileTrustBadges />
+
             </div>
           </div>
 
