@@ -1,0 +1,323 @@
+export interface RecommendedRule {
+  ruleType: string;
+  sourceKey: string;
+  compareValue?: string;
+  rationale: string;
+}
+
+export interface TenantSignal {
+  key: string;
+  label: string;
+  description: string;
+  expectedImpact: string;
+  recommendedRules: RecommendedRule[];
+  exampleProfileKey?: string;
+  exampleFindingKeyword?: string;
+}
+
+export const TENANT_SIGNALS: TenantSignal[] = [
+  {
+    key: "hasExchangeOnPrem",
+    label: "Exchange On-Premises",
+    description: "Detects on-premises Exchange mailboxes that require migration to Exchange Online.",
+    expectedImpact:
+      "Unlocks the M365 Migration package in the SOW. When this signal fires, the client has on-premises mailboxes that need a full migration workstream — including cutover planning, coexistence configuration, and post-migration validation. This is typically one of the highest-value workstreams and significantly increases SOW scope and pricing.",
+    recommendedRules: [
+      { ruleType: "findings_keyword", sourceKey: "Exchange On-Premises", rationale: "Script findings explicitly report an on-prem Exchange environment." },
+      { ruleType: "findings_keyword", sourceKey: "hybrid connector", rationale: "Hybrid connectors indicate Exchange coexistence is configured — a clear on-prem signal." },
+      { ruleType: "findings_keyword", sourceKey: "mailbox migration", rationale: "Finding mentions mailbox migration needs directly." },
+      { ruleType: "profile_key_truthy", sourceKey: "hasExchangeOnPrem", rationale: "Script sets this boolean flag when Exchange On-Premises is detected." },
+    ],
+    exampleProfileKey: "hasExchangeOnPrem",
+    exampleFindingKeyword: "Exchange On-Premises",
+  },
+  {
+    key: "hasPowerPlatformUsage",
+    label: "Power Platform Usage",
+    description: "Detects active Power Automate flows or Power Apps usage in the tenant.",
+    expectedImpact:
+      "Unlocks Power Platform-related projects in the SOW. Active flows or apps indicate the client is invested in low-code automation and needs governance, ALM (Application Lifecycle Management), or modernization work. This workstream covers environment strategy, DLP policy design, and adoption governance.",
+    recommendedRules: [
+      { ruleType: "findings_keyword", sourceKey: "Power Automate", rationale: "Script findings report Power Automate activity." },
+      { ruleType: "findings_keyword", sourceKey: "Power Apps", rationale: "Script findings report Power Apps usage." },
+      { ruleType: "profile_key_truthy", sourceKey: "hasPowerPlatformUsage", rationale: "Script sets this flag when Power Platform activity is detected." },
+    ],
+    exampleProfileKey: "hasPowerPlatformUsage",
+    exampleFindingKeyword: "Power Automate",
+  },
+  {
+    key: "hasGovernanceGaps",
+    label: "Governance Gaps",
+    description: "Detects missing or immature Microsoft 365 governance policies that expose the tenant to sprawl and compliance risk.",
+    expectedImpact:
+      "Unlocks the Governance Remediation workstream and the Governance Complexity pricing adjustment. Critical governance gaps require a full policy framework design covering Teams lifecycle, guest access, data classification, and enforcement automation. This is often paired with the Security workstream and can substantially increase the SOW value.",
+    recommendedRules: [
+      { ruleType: "profile_key_lt", sourceKey: "governanceScore", compareValue: "60", rationale: "A governance score below 60 indicates material gaps requiring remediation work." },
+      { ruleType: "profile_key_truthy", sourceKey: "hasGovernanceGaps", rationale: "Script explicitly flags governance gaps when critical controls are absent." },
+    ],
+    exampleProfileKey: "governanceScore",
+  },
+  {
+    key: "hasSecurityGaps",
+    label: "Security Gaps",
+    description: "Detects exploitable security vulnerabilities including missing MFA, zero Conditional Access policies, or a low security score.",
+    expectedImpact:
+      "Unlocks the Security Remediation workstream and the Security/Compliance pricing adjustment. Tenants with security gaps have exploitable vulnerabilities that require Zero Trust architecture design, Conditional Access policy deployment, MFA enforcement, and Defender for Microsoft 365 configuration. This is frequently the highest-priority workstream and commands premium pricing.",
+    recommendedRules: [
+      { ruleType: "profile_key_falsy", sourceKey: "mfaEnforced", rationale: "MFA not enforced is a critical security gap — always include this rule." },
+      { ruleType: "profile_key_eq", sourceKey: "conditionalAccessPolicyCount", compareValue: "0", rationale: "Zero Conditional Access policies means the tenant has no identity perimeter controls." },
+      { ruleType: "profile_key_lt", sourceKey: "securityScore", compareValue: "60", rationale: "A security score below 60 indicates multiple exploitable gaps." },
+    ],
+    exampleProfileKey: "mfaEnforced",
+  },
+  {
+    key: "hasCopilotLicenses",
+    label: "Copilot Licenses",
+    description: "Detects active Microsoft 365 Copilot licenses that require deployment readiness and adoption support.",
+    expectedImpact:
+      "Unlocks the Copilot Readiness workstream and the Copilot Readiness pricing adjustment. When the client has Copilot licenses, they need a structured deployment readiness assessment, SharePoint content architecture cleanup, sensitivity label coverage, and an adoption plan to realize ROI. This workstream is growing rapidly in demand and commands strong project pricing.",
+    recommendedRules: [
+      { ruleType: "profile_key_gt", sourceKey: "copilotLicenseCount", compareValue: "0", rationale: "Any Copilot license count greater than zero means readiness and adoption work is needed." },
+    ],
+    exampleProfileKey: "copilotLicenseCount",
+  },
+  {
+    key: "hasSharePointIssues",
+    label: "SharePoint Issues",
+    description: "Detects site sprawl, oversharing, or governance gaps in SharePoint Online.",
+    expectedImpact:
+      "Unlocks the Information Architecture / SharePoint workstream. Large site counts or oversharing findings indicate structural redesign work is required — including metadata framework design, hub site architecture, permissions cleanup, and external sharing governance. This workstream is often bundled with Governance Remediation.",
+    recommendedRules: [
+      { ruleType: "profile_key_gt", sourceKey: "sharepointSiteCount", compareValue: "0", rationale: "Any SharePoint site presence warrants an IA review, especially at scale." },
+      { ruleType: "findings_keyword", sourceKey: "SharePoint", rationale: "Script findings flagging SharePoint issues directly trigger this workstream." },
+    ],
+    exampleProfileKey: "sharepointSiteCount",
+    exampleFindingKeyword: "SharePoint",
+  },
+  {
+    key: "hasLicensingWaste",
+    label: "Licensing Waste",
+    description: "Detects unlicensed users, over-provisioned SKUs, or significant license optimization opportunities.",
+    expectedImpact:
+      "Unlocks the Licensing Optimization workstream and the Tenant Size pricing adjustment for larger tenants. License waste represents a direct cost recovery opportunity — typical engagements recover 15–35% of the annual Microsoft 365 spend through right-sizing, SKU consolidation, and inactive user cleanup. This workstream is high-value for the client and easy to justify.",
+    recommendedRules: [
+      { ruleType: "findings_keyword", sourceKey: "unlicensed", rationale: "Findings mentioning unlicensed users directly indicate licensing waste." },
+      { ruleType: "profile_key_truthy", sourceKey: "hasLicensingWaste", rationale: "Script sets this flag when significant license optimization opportunities are detected." },
+    ],
+    exampleProfileKey: "hasLicensingWaste",
+    exampleFindingKeyword: "unlicensed",
+  },
+  {
+    key: "hasDLPGaps",
+    label: "DLP Gaps",
+    description: "Detects missing Data Loss Prevention policies or unconfigured sensitivity labels.",
+    expectedImpact:
+      "Unlocks the Data Protection / DLP workstream and the Security/Compliance pricing adjustment. Missing DLP policies and sensitivity labels expose the client to data exfiltration, regulatory non-compliance, and accidental oversharing. This workstream covers Microsoft Purview DLP policy design, sensitivity label taxonomy, auto-labeling configuration, and insider risk management.",
+    recommendedRules: [
+      { ruleType: "profile_key_eq", sourceKey: "dlpPoliciesCount", compareValue: "0", rationale: "Zero DLP policies means no data loss prevention controls are in place." },
+      { ruleType: "profile_key_falsy", sourceKey: "sensitivityLabelsConfigured", rationale: "Sensitivity labels not configured means data classification is absent." },
+    ],
+    exampleProfileKey: "dlpPoliciesCount",
+  },
+  {
+    key: "alwaysInclude",
+    label: "Always Include",
+    description: "Virtual signal — projects tagged with this always appear in every SOW regardless of tenant telemetry.",
+    expectedImpact:
+      "Any engagement project carrying this trigger will always be included in every SOW, regardless of tenant telemetry or other signal states. Use this for core baseline offerings that apply to every client — such as an M365 Health Assessment or a Kickoff & Discovery workstream. No rules are needed for this signal; it fires automatically on every SOW generation.",
+    recommendedRules: [],
+  },
+];
+
+export interface SignalDerivationRule {
+  id: number;
+  signalKey: string;
+  groupId: number | null;
+  ruleType: string;
+  sourceKey: string;
+  compareValue: string | null;
+  description: string | null;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SignalRuleGroup {
+  id: number;
+  signalKey: string;
+  logic: "AND" | "OR";
+  label: string | null;
+  sortOrder: number;
+  createdAt: Date;
+}
+
+export interface RuleTraceEntry {
+  signalKey: string;
+  groupId: number | null;
+  ruleId: number;
+  result: boolean;
+  reason: string;
+}
+
+function evaluateRule(
+  rule: SignalDerivationRule,
+  mergedProfile: Record<string, unknown>,
+  parsedFindings: string[],
+): { result: boolean; reason: string } {
+  const { ruleType, sourceKey, compareValue } = rule;
+
+  switch (ruleType) {
+    case "profile_key_truthy": {
+      const val = mergedProfile[sourceKey];
+      const result = Boolean(val) && val !== 0 && val !== "" && val !== "false";
+      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "truthy" : "falsy"}` };
+    }
+    case "profile_key_falsy": {
+      const val = mergedProfile[sourceKey];
+      const result = !val || val === 0 || val === "" || val === "false" || val === false;
+      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "falsy" : "truthy"}` };
+    }
+    case "profile_key_eq": {
+      const val = mergedProfile[sourceKey];
+      const result = String(val) === String(compareValue ?? "");
+      return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} ${result ? "==" : "!="} ${compareValue}` };
+    }
+    case "profile_key_gt": {
+      const val = Number(mergedProfile[sourceKey]);
+      const threshold = Number(compareValue ?? 0);
+      const result = !isNaN(val) && val > threshold;
+      return { result, reason: `profile[${sourceKey}] = ${val} ${result ? ">" : "<="} ${threshold}` };
+    }
+    case "profile_key_lt": {
+      const val = Number(mergedProfile[sourceKey]);
+      const threshold = Number(compareValue ?? 0);
+      const result = !isNaN(val) && val < threshold;
+      return { result, reason: `profile[${sourceKey}] = ${val} ${result ? "<" : ">="} ${threshold}` };
+    }
+    case "findings_keyword": {
+      const keyword = (sourceKey ?? "").toLowerCase();
+      const result = parsedFindings.some(f => f.toLowerCase().includes(keyword));
+      return { result, reason: `findings ${result ? "contain" : "do not contain"} keyword "${sourceKey}"` };
+    }
+    default:
+      return { result: false, reason: `unknown ruleType: ${ruleType}` };
+  }
+}
+
+export function computeTenantSignals(
+  mergedProfile: Record<string, unknown>,
+  parsedFindings: string[],
+  rules: SignalDerivationRule[],
+  groups: SignalRuleGroup[],
+): { firedSignals: Set<string>; trace: RuleTraceEntry[] } {
+  const trace: RuleTraceEntry[] = [];
+  const firedSignals = new Set<string>(["alwaysInclude"]);
+
+  const groupMap = new Map<number, SignalRuleGroup>();
+  for (const g of groups) groupMap.set(g.id, g);
+
+  const rulesByGroup = new Map<string, SignalDerivationRule[]>();
+  const ungroupedRules: SignalDerivationRule[] = [];
+
+  for (const rule of rules) {
+    if (rule.groupId === null || rule.groupId === undefined) {
+      ungroupedRules.push(rule);
+    } else {
+      const key = String(rule.groupId);
+      if (!rulesByGroup.has(key)) rulesByGroup.set(key, []);
+      rulesByGroup.get(key)!.push(rule);
+    }
+  }
+
+  const signalKeys = [...new Set(rules.map(r => r.signalKey))];
+
+  for (const signalKey of signalKeys) {
+    let signalFired = false;
+
+    const signalGroups = groups.filter(g => g.signalKey === signalKey);
+    for (const group of signalGroups) {
+      const groupRules = rulesByGroup.get(String(group.id)) ?? [];
+      if (groupRules.length === 0) continue;
+
+      let groupResult: boolean;
+      if (group.logic === "AND") {
+        groupResult = groupRules.every(rule => {
+          const { result, reason } = evaluateRule(rule, mergedProfile, parsedFindings);
+          trace.push({ signalKey, groupId: group.id, ruleId: rule.id, result, reason });
+          return result;
+        });
+      } else {
+        groupResult = groupRules.some(rule => {
+          const { result, reason } = evaluateRule(rule, mergedProfile, parsedFindings);
+          trace.push({ signalKey, groupId: group.id, ruleId: rule.id, result, reason });
+          return result;
+        });
+      }
+
+      if (groupResult) {
+        signalFired = true;
+        break;
+      }
+    }
+
+    const signalUngrouped = ungroupedRules.filter(r => r.signalKey === signalKey);
+    for (const rule of signalUngrouped) {
+      const { result, reason } = evaluateRule(rule, mergedProfile, parsedFindings);
+      trace.push({ signalKey, groupId: null, ruleId: rule.id, result, reason });
+      if (result) {
+        signalFired = true;
+        break;
+      }
+    }
+
+    if (signalFired) firedSignals.add(signalKey);
+  }
+
+  return { firedSignals, trace };
+}
+
+/**
+ * Single source of truth for project inclusion logic — used by the SOW generator,
+ * dry-run, and preview endpoints so they all agree on the same semantics.
+ *
+ * Rules (applied in order):
+ * 1. No triggeredBy values → always include
+ * 2. All triggeredBy values are unrecognized legacy strings (old plan names) →
+ *    always include; caller should log a WARN and prompt migration to signal keys
+ * 3. At least one recognized signal key present → include only if ≥1 of those
+ *    recognized keys appears in firedSignals
+ */
+export function projectMatchesSignals(
+  project: { title: string; triggeredBy: string[] },
+  knownSignalKeys: Set<string>,
+  firedSignals: Set<string>,
+): { included: boolean; legacyFallback: boolean; reason?: string } {
+  const triggers = Array.isArray(project.triggeredBy) ? project.triggeredBy : [];
+
+  if (triggers.length === 0) {
+    return { included: true, legacyFallback: false };
+  }
+
+  const recognizedTriggers = triggers.filter(t => knownSignalKeys.has(t));
+  if (recognizedTriggers.length === 0) {
+    // All triggeredBy strings are unrecognized (old plan-name style or typos).
+    // EXCLUDE deterministically rather than silently including — the SOW
+    // should only contain projects whose signal gate has been satisfied.
+    // Migrate trigger strings to canonical signal keys to re-enable the project.
+    return {
+      included: false,
+      legacyFallback: false,
+      reason: `Unrecognized trigger(s): ${triggers.join(", ")} — excluded until migrated to canonical signal keys`,
+    };
+  }
+
+  const matched = recognizedTriggers.find(t => firedSignals.has(t));
+  if (matched) {
+    return { included: true, legacyFallback: false };
+  }
+  return {
+    included: false,
+    legacyFallback: false,
+    reason: `Requires signal(s): ${recognizedTriggers.join(", ")} — none fired for this tenant`,
+  };
+}

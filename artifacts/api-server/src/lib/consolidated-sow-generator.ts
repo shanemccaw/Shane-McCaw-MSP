@@ -9,7 +9,8 @@ import {
   engagementProjectsTable,
   quickWinPresentationsTable,
 } from "@workspace/db";
-import { eq, desc, and, inArray } from "drizzle-orm";
+import { eq, desc, and, inArray, sql } from "drizzle-orm";
+import { computeTenantSignals, TENANT_SIGNALS, projectMatchesSignals } from "./tenant-signals";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
@@ -240,15 +241,11 @@ export async function generateConsolidatedSowDocument(
     ))
     .orderBy(desc(insightsGeneratedDocumentsTable.createdAt)),
 
-    db.select({
-      title:       engagementProjectsTable.title,
-      priceRange:  engagementProjectsTable.priceRange,
-      description: engagementProjectsTable.description,
-      sowItems:    engagementProjectsTable.sowItems,
-    })
-    .from(engagementProjectsTable)
-    .where(eq(engagementProjectsTable.isVisible, true))
-    .orderBy(engagementProjectsTable.sortOrder),
+    db.execute(sql`
+      SELECT title, price_range AS "priceRange", description, sow_items AS "sowItems",
+             triggered_by AS "triggeredBy", meaning
+      FROM engagement_projects WHERE is_visible = true ORDER BY sort_order
+    `),
 
     db.select({ name: usersTable.name, company: usersTable.company })
       .from(usersTable).where(eq(usersTable.id, clientUserId)).limit(1),
@@ -284,6 +281,17 @@ export async function generateConsolidatedSowDocument(
     .limit(50),
   ]);
 
+  type EngagementProjectRow = {
+    title: string;
+    priceRange: string;
+    description: string | null;
+    sowItems: string[] | null;
+    triggeredBy: string[];
+    meaning: string | null;
+  };
+
+  const allEngagementProjects = (engagementProjects as unknown as { rows: EngagementProjectRow[] }).rows;
+
   const clientName = customerRow[0]?.company ?? customerRow[0]?.name ?? "Client";
 
   const docsBlock = existingDocs.length > 0
@@ -294,13 +302,71 @@ export async function generateConsolidatedSowDocument(
       }).join("\n\n---\n\n")
     : "No prior documents found for this client — generate from scratch using best practices.";
 
-  const projectsBlock = engagementProjects.length > 0
-    ? engagementProjects.map(p =>
-        `• ${p.title} — ${p.priceRange}${p.description ? `\n  ${p.description}` : ""}${(p.sowItems as string[] | null)?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`
+  // ── Signal-based project filtering ──────────────────────────────────────────
+  const mergedSowProfileForSignals: Record<string, unknown> = {};
+  type RunRow = { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null };
+  const typedRunsForSignals = scriptRuns as RunRow[];
+  for (const run of [...typedRunsForSignals].reverse()) {
+    Object.assign(mergedSowProfileForSignals, run.profileUpdates ?? {});
+  }
+  const allFindingsForSignals = [...new Set(typedRunsForSignals.flatMap(r => r.parsedFindings ?? []))];
+
+  let signalFilteredProjects = allEngagementProjects;
+  try {
+    const signalRules = await db.execute(sql`
+      SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
+             source_key AS "sourceKey", compare_value AS "compareValue", description,
+             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+      FROM signal_derivation_rules ORDER BY signal_key, sort_order, id
+    `);
+    const signalGroups = await db.execute(sql`
+      SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt"
+      FROM signal_rule_groups ORDER BY signal_key, sort_order, id
+    `);
+
+    // Always evaluate signals — empty rules means no signals fire, which is the correct
+    // deterministic baseline. Projects with signal-key triggers require a matching fired
+    // signal to be included; the legacy guard allows old plan-name strings through.
+    const { firedSignals } = computeTenantSignals(
+      mergedSowProfileForSignals,
+      allFindingsForSignals,
+      signalRules.rows as unknown as Parameters<typeof computeTenantSignals>[2],
+      signalGroups.rows as unknown as Parameters<typeof computeTenantSignals>[3],
+    );
+
+    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+
+    signalFilteredProjects = allEngagementProjects.filter(p => {
+      const { included, reason } = projectMatchesSignals(
+        { title: p.title, triggeredBy: Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [] },
+        knownSignalKeys,
+        firedSignals,
+      );
+      if (!included && reason) {
+        logger.debug({ ...logCtx, projectTitle: p.title, reason },
+          "consolidated-sow-generator: project excluded by signal gate");
+      }
+      return included;
+    });
+
+    const excludedTitles = allEngagementProjects
+      .filter(p => !signalFilteredProjects.includes(p))
+      .map(p => p.title);
+    if (excludedTitles.length > 0) {
+      logger.info({ ...logCtx, excludedTitles, firedSignals: [...firedSignals] },
+        "consolidated-sow-generator: signal filter excluded projects");
+    }
+  } catch (signalErr) {
+    logger.warn({ ...logCtx, signalErr }, "consolidated-sow-generator: signal evaluation failed — using all projects");
+  }
+
+  const projectsBlock = signalFilteredProjects.length > 0
+    ? signalFilteredProjects.map(p =>
+        `• ${p.title} — ${p.priceRange}${p.meaning ? `\n  ${p.meaning}` : ""}${p.description ? `\n  ${p.description}` : ""}${(p.sowItems as string[] | null)?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`
       ).join("\n\n")
     : "No engagement project pricing configured.";
 
-  const rawProjectTitles = engagementProjects.map(p => p.title);
+  const rawProjectTitles = signalFilteredProjects.map(p => p.title);
   const { resolvedKeys, unresolvedTitles } = resolveWorkstreamKeys(rawProjectTitles);
   const workstreamContextBlock = buildWorkstreamContextBlock(rawProjectTitles, resolvedKeys, unresolvedTitles);
 
@@ -330,7 +396,6 @@ export async function generateConsolidatedSowDocument(
     }
   }
 
-  type RunRow = { scriptName: string | null; parsedFindings: string[] | null; recommendations: string[] | null; profileUpdates: Record<string, unknown> | null };
   const typedRuns = scriptRuns as RunRow[];
   const allFindings = [...new Set(typedRuns.flatMap(r => r.parsedFindings ?? []))].slice(0, 40);
   const allRecs     = [...new Set(typedRuns.flatMap(r => r.recommendations ?? []))].slice(0, 30);

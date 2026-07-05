@@ -908,3 +908,388 @@ export const InsightsConsultingPayloadPreviewResponse = zod.object({
 })
 
 
+/**
+ * @summary List all signal derivation rules and groups (admin only)
+ */
+export const ListSignalRulesResponse = zod.object({
+  "bySignal": zod.record(zod.string(), zod.object({
+  "rules": zod.array(zod.object({
+  "id": zod.number(),
+  "signalKey": zod.string(),
+  "groupId": zod.number().nullish(),
+  "ruleType": zod.string(),
+  "sourceKey": zod.string(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})).optional(),
+  "groups": zod.array(zod.object({
+  "id": zod.number(),
+  "signalKey": zod.string(),
+  "logic": zod.enum(['AND', 'OR']),
+  "label": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date().optional()
+})).optional()
+})).optional(),
+  "rules": zod.array(zod.object({
+  "id": zod.number(),
+  "signalKey": zod.string(),
+  "groupId": zod.number().nullish(),
+  "ruleType": zod.string(),
+  "sourceKey": zod.string(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})).optional(),
+  "groups": zod.array(zod.object({
+  "id": zod.number(),
+  "signalKey": zod.string(),
+  "logic": zod.enum(['AND', 'OR']),
+  "label": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Create a signal derivation rule (admin only)
+ */
+export const CreateSignalRuleBody = zod.object({
+  "signalKey": zod.string(),
+  "groupId": zod.number().nullish(),
+  "ruleType": zod.string(),
+  "sourceKey": zod.string(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number().optional()
+})
+
+
+/**
+ * @summary Update a signal derivation rule (admin only)
+ */
+export const UpdateSignalRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateSignalRuleBody = zod.object({
+  "ruleType": zod.string().optional(),
+  "sourceKey": zod.string().optional(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number().optional(),
+  "groupId": zod.number().nullish()
+})
+
+export const UpdateSignalRuleResponse = zod.object({
+  "id": zod.number(),
+  "signalKey": zod.string(),
+  "groupId": zod.number().nullish(),
+  "ruleType": zod.string(),
+  "sourceKey": zod.string(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete a signal derivation rule (admin only)
+ */
+export const DeleteSignalRuleParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSignalRuleResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Detect logic conflicts in current signal rules (admin only)
+ */
+export const GetSignalRuleConflictsResponse = zod.object({
+  "conflicts": zod.array(zod.object({
+  "signalKey": zod.string().optional(),
+  "type": zod.string().optional(),
+  "description": zod.string().optional(),
+  "ruleIds": zod.array(zod.number()).optional()
+})).optional(),
+  "hasConflicts": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List available script output fields for building rules (admin only)
+ */
+export const ListSignalScriptFieldsResponse = zod.record(zod.string(), zod.unknown())
+
+
+/**
+ * @summary Preview which projects would be included for a given signal set (admin only)
+ */
+export const PreviewSignalProjectsBody = zod.object({
+  "firedSignals": zod.array(zod.string()).optional().describe('Explicit list of fired signal keys (overrides evaluation)'),
+  "profileUpdates": zod.record(zod.string(), zod.unknown()).optional().describe('Script profile data to evaluate rules against'),
+  "parsedFindings": zod.array(zod.string()).optional()
+})
+
+export const PreviewSignalProjectsResponse = zod.object({
+  "firedSignals": zod.array(zod.object({
+  "key": zod.string().optional(),
+  "label": zod.string().optional(),
+  "expectedImpact": zod.string().optional()
+})).optional(),
+  "included": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "excluded": zod.array(zod.object({
+  "project": zod.record(zod.string(), zod.unknown()).optional(),
+  "reason": zod.string().optional(),
+  "legacyFallback": zod.boolean().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Simulate SOW project selection for a client without generating a document (admin only)
+ */
+export const DryRunSowBody = zod.object({
+  "clientUserId": zod.number()
+})
+
+export const DryRunSowResponse = zod.object({
+  "firedSignals": zod.array(zod.object({
+  "key": zod.string().optional(),
+  "label": zod.string().optional(),
+  "expectedImpact": zod.string().optional()
+})).optional(),
+  "ruleTrace": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "includedProjects": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "excludedProjects": zod.array(zod.object({
+  "project": zod.record(zod.string(), zod.unknown()).optional(),
+  "reason": zod.string().optional(),
+  "legacyFallback": zod.boolean().optional()
+})).optional(),
+  "note": zod.string().optional()
+})
+
+
+/**
+ * @summary Replace all signal rules atomically from an export payload (admin only)
+ */
+export const ImportSignalRulesBody = zod.object({
+  "rules": zod.array(zod.object({
+  "signalKey": zod.string(),
+  "groupId": zod.number().nullish(),
+  "ruleType": zod.string(),
+  "sourceKey": zod.string(),
+  "compareValue": zod.string().nullish(),
+  "description": zod.string().nullish(),
+  "sortOrder": zod.number().optional()
+})),
+  "groups": zod.array(zod.object({
+  "signalKey": zod.string().optional(),
+  "logic": zod.enum(['AND', 'OR']).optional(),
+  "label": zod.string().optional(),
+  "sortOrder": zod.number().optional()
+})).optional()
+})
+
+export const ImportSignalRulesResponse = zod.object({
+  "imported": zod.number().optional(),
+  "snapshotId": zod.number().optional()
+})
+
+
+/**
+ * @summary List saved signal rule version snapshots (admin only)
+ */
+export const ListSignalRuleVersionsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "ruleCount": zod.number(),
+  "createdByAdminId": zod.number().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListSignalRuleVersionsResponse = zod.array(ListSignalRuleVersionsResponseItem)
+
+
+/**
+ * @summary Save current rules as a named version snapshot (admin only)
+ */
+export const SaveSignalRuleVersionBody = zod.object({
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Atomically restore rules from a saved version (admin only)
+ */
+export const RestoreSignalRuleVersionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RestoreSignalRuleVersionResponse = zod.object({
+  "restored": zod.number().optional(),
+  "backupSnapshotId": zod.number().optional()
+})
+
+
+/**
+ * @summary Fetch paginated audit log of signal rule changes (admin only)
+ */
+export const GetSignalRuleAuditLogQueryParams = zod.object({
+  "limit": zod.coerce.number().optional(),
+  "offset": zod.coerce.number().optional(),
+  "signalKey": zod.coerce.string().optional()
+})
+
+export const GetSignalRuleAuditLogResponse = zod.object({
+  "rows": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "total": zod.number().optional(),
+  "limit": zod.number().optional(),
+  "offset": zod.number().optional()
+})
+
+
+/**
+ * @summary List simulation profiles (admin only)
+ */
+export const ListSignalSimulationProfilesResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "profileUpdates": zod.record(zod.string(), zod.unknown()).optional(),
+  "parsedFindings": zod.array(zod.string()).optional(),
+  "tags": zod.array(zod.string()).optional(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunResult": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const ListSignalSimulationProfilesResponse = zod.array(ListSignalSimulationProfilesResponseItem)
+
+
+/**
+ * @summary Create a simulation profile (admin only)
+ */
+export const CreateSignalSimulationProfileBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "profileUpdates": zod.record(zod.string(), zod.unknown()).optional(),
+  "parsedFindings": zod.array(zod.string()).optional(),
+  "tags": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Update a simulation profile (admin only)
+ */
+export const UpdateSignalSimulationProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateSignalSimulationProfileBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "profileUpdates": zod.record(zod.string(), zod.unknown()).optional(),
+  "parsedFindings": zod.array(zod.string()).optional(),
+  "tags": zod.array(zod.string()).optional()
+})
+
+export const UpdateSignalSimulationProfileResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "profileUpdates": zod.record(zod.string(), zod.unknown()).optional(),
+  "parsedFindings": zod.array(zod.string()).optional(),
+  "tags": zod.array(zod.string()).optional(),
+  "lastRunAt": zod.coerce.date().nullish(),
+  "lastRunResult": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete a simulation profile (admin only)
+ */
+export const DeleteSignalSimulationProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSignalSimulationProfileResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Evaluate signals for a simulation profile (admin only)
+ */
+export const RunSignalSimulationProfileParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const RunSignalSimulationProfileResponse = zod.object({
+  "firedSignals": zod.array(zod.object({
+  "key": zod.string().optional(),
+  "label": zod.string().optional(),
+  "expectedImpact": zod.string().optional()
+})).optional(),
+  "ruleTrace": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "includedProjects": zod.array(zod.record(zod.string(), zod.unknown())).optional(),
+  "excludedProjects": zod.array(zod.object({
+  "project": zod.record(zod.string(), zod.unknown()).optional(),
+  "reason": zod.string().optional(),
+  "legacyFallback": zod.boolean().optional()
+})).optional()
+})
+
+
+/**
+ * @summary List engagement projects with their signal trigger assignments (admin only)
+ */
+export const ListEngagementProjectSignalsResponseItem = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "priceRange": zod.string(),
+  "description": zod.string().nullish(),
+  "meaning": zod.string().nullish(),
+  "triggeredBy": zod.array(zod.string()),
+  "sortOrder": zod.number().optional(),
+  "isVisible": zod.boolean().optional()
+})
+export const ListEngagementProjectSignalsResponse = zod.array(ListEngagementProjectSignalsResponseItem)
+
+
+/**
+ * @summary Update triggeredBy signal keys and meaning for an engagement project (admin only)
+ */
+export const UpdateEngagementProjectTriggersParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UpdateEngagementProjectTriggersBody = zod.object({
+  "triggeredBy": zod.array(zod.string()).optional(),
+  "meaning": zod.string().optional()
+})
+
+export const UpdateEngagementProjectTriggersResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "priceRange": zod.string(),
+  "description": zod.string().nullish(),
+  "meaning": zod.string().nullish(),
+  "triggeredBy": zod.array(zod.string()),
+  "sortOrder": zod.number().optional(),
+  "isVisible": zod.boolean().optional()
+})
+
+

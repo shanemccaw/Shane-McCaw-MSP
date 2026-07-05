@@ -18,6 +18,8 @@ tags:
     description: Public service catalog operations
   - name: insights
     description: Insights document generation operations
+  - name: signal-rules
+    description: Tenant signal rule engine (admin only)
 paths:
   /healthz:
     get:
@@ -1169,6 +1171,385 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/signal-rules:
+    get:
+      operationId: listSignalRules
+      tags: [signal-rules]
+      summary: List all signal derivation rules and groups (admin only)
+      responses:
+        "200":
+          description: Rules and groups keyed by signal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalRuleListResponse"
+    post:
+      operationId: createSignalRule
+      tags: [signal-rules]
+      summary: Create a signal derivation rule (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalRuleInput"
+      responses:
+        "201":
+          description: Created rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDerivationRule"
+
+  /admin/signal-rules/{id}:
+    patch:
+      operationId: updateSignalRule
+      tags: [signal-rules]
+      summary: Update a signal derivation rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSignalRuleInput"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalDerivationRule"
+    delete:
+      operationId: deleteSignalRule
+      tags: [signal-rules]
+      summary: Delete a signal derivation rule (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/signal-rules/conflicts:
+    get:
+      operationId: getSignalRuleConflicts
+      tags: [signal-rules]
+      summary: Detect logic conflicts in current signal rules (admin only)
+      responses:
+        "200":
+          description: Conflict report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalConflictReport"
+
+  /admin/signal-rules/script-fields:
+    get:
+      operationId: listSignalScriptFields
+      tags: [signal-rules]
+      summary: List available script output fields for building rules (admin only)
+      responses:
+        "200":
+          description: Available field keys grouped by script
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /admin/signal-rules/preview-projects:
+    post:
+      operationId: previewSignalProjects
+      tags: [signal-rules]
+      summary: Preview which projects would be included for a given signal set (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewSignalProjectsInput"
+      responses:
+        "200":
+          description: Included and excluded project lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalProjectsPreviewPayload"
+
+  /admin/signal-rules/dry-run-sow:
+    post:
+      operationId: dryRunSow
+      tags: [signal-rules]
+      summary: Simulate SOW project selection for a client without generating a document (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunSowInput"
+      responses:
+        "200":
+          description: Dry-run result showing which projects would be included
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SowDryRunPayload"
+
+  /admin/signal-rules/import:
+    post:
+      operationId: importSignalRules
+      tags: [signal-rules]
+      summary: Replace all signal rules atomically from an export payload (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalRuleImportInput"
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imported:
+                    type: integer
+                  snapshotId:
+                    type: integer
+
+  /admin/signal-rules/versions:
+    get:
+      operationId: listSignalRuleVersions
+      tags: [signal-rules]
+      summary: List saved signal rule version snapshots (admin only)
+      responses:
+        "200":
+          description: List of saved versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalRuleVersion"
+    post:
+      operationId: saveSignalRuleVersion
+      tags: [signal-rules]
+      summary: Save current rules as a named version snapshot (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalVersionSaveInput"
+      responses:
+        "201":
+          description: Saved version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+
+  /admin/signal-rules/versions/{id}/restore:
+    post:
+      operationId: restoreSignalRuleVersion
+      tags: [signal-rules]
+      summary: Atomically restore rules from a saved version (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Restore summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  restored:
+                    type: integer
+                  backupSnapshotId:
+                    type: integer
+
+  /admin/signal-rules/audit-log:
+    get:
+      operationId: getSignalRuleAuditLog
+      tags: [signal-rules]
+      summary: Fetch paginated audit log of signal rule changes (admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+        - name: signalKey
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalRuleAuditLogResponse"
+
+  /admin/signal-rules/simulation-profiles:
+    get:
+      operationId: listSignalSimulationProfiles
+      tags: [signal-rules]
+      summary: List simulation profiles (admin only)
+      responses:
+        "200":
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalSimulationProfile"
+    post:
+      operationId: createSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Create a simulation profile (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalSimulationProfileInput"
+      responses:
+        "201":
+          description: Created profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationProfile"
+
+  /admin/signal-rules/simulation-profiles/{id}:
+    patch:
+      operationId: updateSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Update a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSignalSimulationProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationProfile"
+    delete:
+      operationId: deleteSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Delete a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /admin/signal-rules/simulation-profiles/{id}/run:
+    post:
+      operationId: runSignalSimulationProfile
+      tags: [signal-rules]
+      summary: Evaluate signals for a simulation profile (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Simulation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalSimulationRunResult"
+
+  /admin/engagement-projects/signals:
+    get:
+      operationId: listEngagementProjectSignals
+      tags: [signal-rules]
+      summary: List engagement projects with their signal trigger assignments (admin only)
+      responses:
+        "200":
+          description: Projects with signal keys and meaning
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EngagementProjectWithSignals"
+
+  /admin/engagement-projects/{id}/triggers:
+    patch:
+      operationId: updateEngagementProjectTriggers
+      tags: [signal-rules]
+      summary: Update triggeredBy signal keys and meaning for an engagement project (admin only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectTriggersUpdateInput"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EngagementProjectWithSignals"
+
 components:
   schemas:
     InsightsPayloadPreviewInput:
@@ -1874,4 +2255,428 @@ components:
           items:
             $ref: "#/components/schemas/RunbookOutputLine"
         kanbanMetaUpdated:
+          type: boolean
+
+    SignalDerivationRule:
+      type: object
+      required: [id, signalKey, ruleType, sourceKey, sortOrder]
+      properties:
+        id:
+          type: integer
+        signalKey:
+          type: string
+        groupId:
+          type: integer
+          nullable: true
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SignalRuleGroup:
+      type: object
+      required: [id, signalKey, logic, sortOrder]
+      properties:
+        id:
+          type: integer
+        signalKey:
+          type: string
+        logic:
+          type: string
+          enum: [AND, OR]
+        label:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    SignalRuleListResponse:
+      type: object
+      properties:
+        bySignal:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              rules:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalDerivationRule"
+              groups:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalRuleGroup"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalDerivationRule"
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalRuleGroup"
+
+    CreateSignalRuleInput:
+      type: object
+      required: [signalKey, ruleType, sourceKey]
+      properties:
+        signalKey:
+          type: string
+        groupId:
+          type: integer
+          nullable: true
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+
+    UpdateSignalRuleInput:
+      type: object
+      properties:
+        ruleType:
+          type: string
+        sourceKey:
+          type: string
+        compareValue:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        sortOrder:
+          type: integer
+        groupId:
+          type: integer
+          nullable: true
+
+    SignalConflictReport:
+      type: object
+      properties:
+        conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              signalKey:
+                type: string
+              type:
+                type: string
+              description:
+                type: string
+              ruleIds:
+                type: array
+                items:
+                  type: integer
+        hasConflicts:
+          type: boolean
+
+    PreviewSignalProjectsInput:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: string
+          description: Explicit list of fired signal keys (overrides evaluation)
+        profileUpdates:
+          type: object
+          additionalProperties: true
+          description: Script profile data to evaluate rules against
+        parsedFindings:
+          type: array
+          items:
+            type: string
+
+    SignalProjectsPreviewPayload:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        included:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excluded:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+
+    DryRunSowInput:
+      type: object
+      required: [clientUserId]
+      properties:
+        clientUserId:
+          type: integer
+
+    SowDryRunPayload:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        ruleTrace:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        includedProjects:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excludedProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+        note:
+          type: string
+
+    SignalVersionSaveInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    ProjectTriggersUpdateInput:
+      type: object
+      properties:
+        triggeredBy:
+          type: array
+          items:
+            type: string
+        meaning:
+          type: string
+
+    SignalRuleImportInput:
+      type: object
+      required: [rules]
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/CreateSignalRuleInput"
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              signalKey:
+                type: string
+              logic:
+                type: string
+                enum: [AND, OR]
+              label:
+                type: string
+              sortOrder:
+                type: integer
+
+    SignalRuleVersion:
+      type: object
+      required: [id, name, ruleCount, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        ruleCount:
+          type: integer
+        createdByAdminId:
+          type: integer
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    SignalRuleAuditLogResponse:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    SignalSimulationProfile:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        profileUpdates:
+          type: object
+          additionalProperties: true
+        parsedFindings:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        lastRunAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastRunResult:
+          type: object
+          nullable: true
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateSignalSimulationProfileInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        profileUpdates:
+          type: object
+          additionalProperties: true
+        parsedFindings:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    SignalSimulationRunResult:
+      type: object
+      properties:
+        firedSignals:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              expectedImpact:
+                type: string
+        ruleTrace:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        includedProjects:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        excludedProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              project:
+                type: object
+                additionalProperties: true
+              reason:
+                type: string
+              legacyFallback:
+                type: boolean
+
+    EngagementProjectWithSignals:
+      type: object
+      required: [id, title, priceRange, triggeredBy]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        priceRange:
+          type: string
+        description:
+          type: string
+          nullable: true
+        meaning:
+          type: string
+          nullable: true
+        triggeredBy:
+          type: array
+          items:
+            type: string
+        sortOrder:
+          type: integer
+        isVisible:
           type: boolean

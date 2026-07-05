@@ -11,3 +11,4 @@
 - [AI prompt seeder is insert-only](ai-prompt-seeder.md) — seedAiPrompts() uses ON CONFLICT DO NOTHING; changing the code constant has zero effect if the row exists. Use executeSql UPDATE to change a live prompt.
 - [Anthropic streaming for long requests](anthropic-streaming-long-requests.md) — messages.create() hard-times out at 10 min; any high-token generation (Opus, 32k+ output) must use messages.stream() + finalMessage() instead.
 - [kanban-auto-fire vs processRunInBackground](kanban-auto-fire-profile-update.md) — automated runbooks (app-reg verified, kanban card firing) go through kanban-auto-fire.ts NOT processRunInBackground; any post-run side-effects must exist in BOTH code paths
+- [Manual migration when drizzle-kit generate fails](manual-migration-workflow.md) — drizzle-kit generate crashes on corrupted snapshots; bypass by writing SQL manually, updating _journal.json, schema-hash.txt, and inserting into __drizzle_migrations (columns: tag, applied_at)

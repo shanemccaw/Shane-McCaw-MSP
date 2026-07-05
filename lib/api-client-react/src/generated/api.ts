@@ -35,13 +35,19 @@ import type {
   ClientM365ProfileResponse,
   CreateDomainRuleInput,
   CreateRunbookJobInput,
+  CreateSignalRuleInput,
+  CreateSignalSimulationProfileInput,
   DeliverableSet,
   DeliverableSetInput,
+  DryRunSowInput,
   EmailDomainRule,
   EmailDomainRuleRow,
+  EngagementProjectWithSignals,
   ErrorResponse,
   GetRunbookJobOutputParams,
+  GetSignalRuleAuditLogParams,
   HealthStatus,
+  ImportSignalRules200,
   IngestedEmail,
   IngestedEmailList,
   InsightsConsultingPayloadPreviewInput,
@@ -61,12 +67,29 @@ import type {
   ListInstructionSetsParams,
   ListLeadsParams,
   ListPublicServicesParams,
+  ListSignalScriptFields200,
   LoginInput,
+  PreviewSignalProjectsInput,
+  ProjectTriggersUpdateInput,
   PublicService,
+  RestoreSignalRuleVersion200,
   RunbookJobCreated,
   RunbookJobOutput,
   RunbooksResult,
-  SuccessResponse
+  SaveSignalRuleVersion201,
+  SignalConflictReport,
+  SignalDerivationRule,
+  SignalProjectsPreviewPayload,
+  SignalRuleAuditLogResponse,
+  SignalRuleImportInput,
+  SignalRuleListResponse,
+  SignalRuleVersion,
+  SignalSimulationProfile,
+  SignalSimulationRunResult,
+  SignalVersionSaveInput,
+  SowDryRunPayload,
+  SuccessResponse,
+  UpdateSignalRuleInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -3871,5 +3894,1473 @@ export const useInsightsConsultingPayloadPreview = <TError = ErrorType<ErrorResp
         TContext
       > => {
       return useMutation(getInsightsConsultingPayloadPreviewMutationOptions(options));
+    }
+
+export const getListSignalRulesUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules`
+}
+
+/**
+ * @summary List all signal derivation rules and groups (admin only)
+ */
+export const listSignalRules = async ( options?: RequestInit): Promise<SignalRuleListResponse> => {
+
+  return customFetch<SignalRuleListResponse>(getListSignalRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalRulesQueryKey = () => {
+    return [
+    `/api/admin/signal-rules`
+    ] as const;
+    }
+
+
+export const getListSignalRulesQueryOptions = <TData = Awaited<ReturnType<typeof listSignalRules>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalRules>>> = ({ signal }) => listSignalRules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalRules>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalRulesQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalRules>>>
+export type ListSignalRulesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all signal derivation rules and groups (admin only)
+ */
+
+export function useListSignalRules<TData = Awaited<ReturnType<typeof listSignalRules>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalRules>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalRulesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSignalRuleUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules`
+}
+
+/**
+ * @summary Create a signal derivation rule (admin only)
+ */
+export const createSignalRule = async (createSignalRuleInput: CreateSignalRuleInput, options?: RequestInit): Promise<SignalDerivationRule> => {
+
+  return customFetch<SignalDerivationRule>(getCreateSignalRuleUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSignalRuleInput,)
+  }
+);}
+
+
+
+
+export const getCreateSignalRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalRule>>, TError,{data: BodyType<CreateSignalRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSignalRule>>, TError,{data: BodyType<CreateSignalRuleInput>}, TContext> => {
+
+const mutationKey = ['createSignalRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSignalRule>>, {data: BodyType<CreateSignalRuleInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSignalRule(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSignalRuleMutationResult = NonNullable<Awaited<ReturnType<typeof createSignalRule>>>
+    export type CreateSignalRuleMutationBody = BodyType<CreateSignalRuleInput>
+    export type CreateSignalRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a signal derivation rule (admin only)
+ */
+export const useCreateSignalRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalRule>>, TError,{data: BodyType<CreateSignalRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSignalRule>>,
+        TError,
+        {data: BodyType<CreateSignalRuleInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSignalRuleMutationOptions(options));
+    }
+
+export const getUpdateSignalRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/${id}`
+}
+
+/**
+ * @summary Update a signal derivation rule (admin only)
+ */
+export const updateSignalRule = async (id: number,
+    updateSignalRuleInput: UpdateSignalRuleInput, options?: RequestInit): Promise<SignalDerivationRule> => {
+
+  return customFetch<SignalDerivationRule>(getUpdateSignalRuleUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSignalRuleInput,)
+  }
+);}
+
+
+
+
+export const getUpdateSignalRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignalRule>>, TError,{id: number;data: BodyType<UpdateSignalRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSignalRule>>, TError,{id: number;data: BodyType<UpdateSignalRuleInput>}, TContext> => {
+
+const mutationKey = ['updateSignalRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSignalRule>>, {id: number;data: BodyType<UpdateSignalRuleInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSignalRule(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSignalRuleMutationResult = NonNullable<Awaited<ReturnType<typeof updateSignalRule>>>
+    export type UpdateSignalRuleMutationBody = BodyType<UpdateSignalRuleInput>
+    export type UpdateSignalRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a signal derivation rule (admin only)
+ */
+export const useUpdateSignalRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignalRule>>, TError,{id: number;data: BodyType<UpdateSignalRuleInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSignalRule>>,
+        TError,
+        {id: number;data: BodyType<UpdateSignalRuleInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSignalRuleMutationOptions(options));
+    }
+
+export const getDeleteSignalRuleUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/${id}`
+}
+
+/**
+ * @summary Delete a signal derivation rule (admin only)
+ */
+export const deleteSignalRule = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteSignalRuleUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSignalRuleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSignalRule>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSignalRule'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSignalRule>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSignalRule(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSignalRuleMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSignalRule>>>
+
+    export type DeleteSignalRuleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a signal derivation rule (admin only)
+ */
+export const useDeleteSignalRule = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalRule>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSignalRule>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSignalRuleMutationOptions(options));
+    }
+
+export const getGetSignalRuleConflictsUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/conflicts`
+}
+
+/**
+ * @summary Detect logic conflicts in current signal rules (admin only)
+ */
+export const getSignalRuleConflicts = async ( options?: RequestInit): Promise<SignalConflictReport> => {
+
+  return customFetch<SignalConflictReport>(getGetSignalRuleConflictsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignalRuleConflictsQueryKey = () => {
+    return [
+    `/api/admin/signal-rules/conflicts`
+    ] as const;
+    }
+
+
+export const getGetSignalRuleConflictsQueryOptions = <TData = Awaited<ReturnType<typeof getSignalRuleConflicts>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleConflicts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignalRuleConflictsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignalRuleConflicts>>> = ({ signal }) => getSignalRuleConflicts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleConflicts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignalRuleConflictsQueryResult = NonNullable<Awaited<ReturnType<typeof getSignalRuleConflicts>>>
+export type GetSignalRuleConflictsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Detect logic conflicts in current signal rules (admin only)
+ */
+
+export function useGetSignalRuleConflicts<TData = Awaited<ReturnType<typeof getSignalRuleConflicts>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleConflicts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignalRuleConflictsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListSignalScriptFieldsUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/script-fields`
+}
+
+/**
+ * @summary List available script output fields for building rules (admin only)
+ */
+export const listSignalScriptFields = async ( options?: RequestInit): Promise<ListSignalScriptFields200> => {
+
+  return customFetch<ListSignalScriptFields200>(getListSignalScriptFieldsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalScriptFieldsQueryKey = () => {
+    return [
+    `/api/admin/signal-rules/script-fields`
+    ] as const;
+    }
+
+
+export const getListSignalScriptFieldsQueryOptions = <TData = Awaited<ReturnType<typeof listSignalScriptFields>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalScriptFields>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalScriptFieldsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalScriptFields>>> = ({ signal }) => listSignalScriptFields({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalScriptFields>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalScriptFieldsQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalScriptFields>>>
+export type ListSignalScriptFieldsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List available script output fields for building rules (admin only)
+ */
+
+export function useListSignalScriptFields<TData = Awaited<ReturnType<typeof listSignalScriptFields>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalScriptFields>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalScriptFieldsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getPreviewSignalProjectsUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/preview-projects`
+}
+
+/**
+ * @summary Preview which projects would be included for a given signal set (admin only)
+ */
+export const previewSignalProjects = async (previewSignalProjectsInput: PreviewSignalProjectsInput, options?: RequestInit): Promise<SignalProjectsPreviewPayload> => {
+
+  return customFetch<SignalProjectsPreviewPayload>(getPreviewSignalProjectsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      previewSignalProjectsInput,)
+  }
+);}
+
+
+
+
+export const getPreviewSignalProjectsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewSignalProjects>>, TError,{data: BodyType<PreviewSignalProjectsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof previewSignalProjects>>, TError,{data: BodyType<PreviewSignalProjectsInput>}, TContext> => {
+
+const mutationKey = ['previewSignalProjects'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewSignalProjects>>, {data: BodyType<PreviewSignalProjectsInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  previewSignalProjects(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PreviewSignalProjectsMutationResult = NonNullable<Awaited<ReturnType<typeof previewSignalProjects>>>
+    export type PreviewSignalProjectsMutationBody = BodyType<PreviewSignalProjectsInput>
+    export type PreviewSignalProjectsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Preview which projects would be included for a given signal set (admin only)
+ */
+export const usePreviewSignalProjects = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewSignalProjects>>, TError,{data: BodyType<PreviewSignalProjectsInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof previewSignalProjects>>,
+        TError,
+        {data: BodyType<PreviewSignalProjectsInput>},
+        TContext
+      > => {
+      return useMutation(getPreviewSignalProjectsMutationOptions(options));
+    }
+
+export const getDryRunSowUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/dry-run-sow`
+}
+
+/**
+ * @summary Simulate SOW project selection for a client without generating a document (admin only)
+ */
+export const dryRunSow = async (dryRunSowInput: DryRunSowInput, options?: RequestInit): Promise<SowDryRunPayload> => {
+
+  return customFetch<SowDryRunPayload>(getDryRunSowUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      dryRunSowInput,)
+  }
+);}
+
+
+
+
+export const getDryRunSowMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dryRunSow>>, TError,{data: BodyType<DryRunSowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dryRunSow>>, TError,{data: BodyType<DryRunSowInput>}, TContext> => {
+
+const mutationKey = ['dryRunSow'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dryRunSow>>, {data: BodyType<DryRunSowInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  dryRunSow(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DryRunSowMutationResult = NonNullable<Awaited<ReturnType<typeof dryRunSow>>>
+    export type DryRunSowMutationBody = BodyType<DryRunSowInput>
+    export type DryRunSowMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Simulate SOW project selection for a client without generating a document (admin only)
+ */
+export const useDryRunSow = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dryRunSow>>, TError,{data: BodyType<DryRunSowInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dryRunSow>>,
+        TError,
+        {data: BodyType<DryRunSowInput>},
+        TContext
+      > => {
+      return useMutation(getDryRunSowMutationOptions(options));
+    }
+
+export const getImportSignalRulesUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/import`
+}
+
+/**
+ * @summary Replace all signal rules atomically from an export payload (admin only)
+ */
+export const importSignalRules = async (signalRuleImportInput: SignalRuleImportInput, options?: RequestInit): Promise<ImportSignalRules200> => {
+
+  return customFetch<ImportSignalRules200>(getImportSignalRulesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      signalRuleImportInput,)
+  }
+);}
+
+
+
+
+export const getImportSignalRulesMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importSignalRules>>, TError,{data: BodyType<SignalRuleImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importSignalRules>>, TError,{data: BodyType<SignalRuleImportInput>}, TContext> => {
+
+const mutationKey = ['importSignalRules'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importSignalRules>>, {data: BodyType<SignalRuleImportInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  importSignalRules(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportSignalRulesMutationResult = NonNullable<Awaited<ReturnType<typeof importSignalRules>>>
+    export type ImportSignalRulesMutationBody = BodyType<SignalRuleImportInput>
+    export type ImportSignalRulesMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Replace all signal rules atomically from an export payload (admin only)
+ */
+export const useImportSignalRules = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importSignalRules>>, TError,{data: BodyType<SignalRuleImportInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importSignalRules>>,
+        TError,
+        {data: BodyType<SignalRuleImportInput>},
+        TContext
+      > => {
+      return useMutation(getImportSignalRulesMutationOptions(options));
+    }
+
+export const getListSignalRuleVersionsUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/versions`
+}
+
+/**
+ * @summary List saved signal rule version snapshots (admin only)
+ */
+export const listSignalRuleVersions = async ( options?: RequestInit): Promise<SignalRuleVersion[]> => {
+
+  return customFetch<SignalRuleVersion[]>(getListSignalRuleVersionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalRuleVersionsQueryKey = () => {
+    return [
+    `/api/admin/signal-rules/versions`
+    ] as const;
+    }
+
+
+export const getListSignalRuleVersionsQueryOptions = <TData = Awaited<ReturnType<typeof listSignalRuleVersions>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalRuleVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalRuleVersionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalRuleVersions>>> = ({ signal }) => listSignalRuleVersions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalRuleVersions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalRuleVersionsQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalRuleVersions>>>
+export type ListSignalRuleVersionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List saved signal rule version snapshots (admin only)
+ */
+
+export function useListSignalRuleVersions<TData = Awaited<ReturnType<typeof listSignalRuleVersions>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalRuleVersions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalRuleVersionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSaveSignalRuleVersionUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/versions`
+}
+
+/**
+ * @summary Save current rules as a named version snapshot (admin only)
+ */
+export const saveSignalRuleVersion = async (signalVersionSaveInput: SignalVersionSaveInput, options?: RequestInit): Promise<SaveSignalRuleVersion201> => {
+
+  return customFetch<SaveSignalRuleVersion201>(getSaveSignalRuleVersionUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      signalVersionSaveInput,)
+  }
+);}
+
+
+
+
+export const getSaveSignalRuleVersionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSignalRuleVersion>>, TError,{data: BodyType<SignalVersionSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveSignalRuleVersion>>, TError,{data: BodyType<SignalVersionSaveInput>}, TContext> => {
+
+const mutationKey = ['saveSignalRuleVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveSignalRuleVersion>>, {data: BodyType<SignalVersionSaveInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveSignalRuleVersion(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveSignalRuleVersionMutationResult = NonNullable<Awaited<ReturnType<typeof saveSignalRuleVersion>>>
+    export type SaveSignalRuleVersionMutationBody = BodyType<SignalVersionSaveInput>
+    export type SaveSignalRuleVersionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Save current rules as a named version snapshot (admin only)
+ */
+export const useSaveSignalRuleVersion = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveSignalRuleVersion>>, TError,{data: BodyType<SignalVersionSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveSignalRuleVersion>>,
+        TError,
+        {data: BodyType<SignalVersionSaveInput>},
+        TContext
+      > => {
+      return useMutation(getSaveSignalRuleVersionMutationOptions(options));
+    }
+
+export const getRestoreSignalRuleVersionUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/versions/${id}/restore`
+}
+
+/**
+ * @summary Atomically restore rules from a saved version (admin only)
+ */
+export const restoreSignalRuleVersion = async (id: number, options?: RequestInit): Promise<RestoreSignalRuleVersion200> => {
+
+  return customFetch<RestoreSignalRuleVersion200>(getRestoreSignalRuleVersionUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRestoreSignalRuleVersionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreSignalRuleVersion>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restoreSignalRuleVersion>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['restoreSignalRuleVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restoreSignalRuleVersion>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  restoreSignalRuleVersion(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestoreSignalRuleVersionMutationResult = NonNullable<Awaited<ReturnType<typeof restoreSignalRuleVersion>>>
+
+    export type RestoreSignalRuleVersionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Atomically restore rules from a saved version (admin only)
+ */
+export const useRestoreSignalRuleVersion = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restoreSignalRuleVersion>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restoreSignalRuleVersion>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRestoreSignalRuleVersionMutationOptions(options));
+    }
+
+export const getGetSignalRuleAuditLogUrl = (params?: GetSignalRuleAuditLogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/signal-rules/audit-log?${stringifiedParams}` : `/api/admin/signal-rules/audit-log`
+}
+
+/**
+ * @summary Fetch paginated audit log of signal rule changes (admin only)
+ */
+export const getSignalRuleAuditLog = async (params?: GetSignalRuleAuditLogParams, options?: RequestInit): Promise<SignalRuleAuditLogResponse> => {
+
+  return customFetch<SignalRuleAuditLogResponse>(getGetSignalRuleAuditLogUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSignalRuleAuditLogQueryKey = (params?: GetSignalRuleAuditLogParams,) => {
+    return [
+    `/api/admin/signal-rules/audit-log`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSignalRuleAuditLogQueryOptions = <TData = Awaited<ReturnType<typeof getSignalRuleAuditLog>>, TError = ErrorType<unknown>>(params?: GetSignalRuleAuditLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSignalRuleAuditLogQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSignalRuleAuditLog>>> = ({ signal }) => getSignalRuleAuditLog(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleAuditLog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSignalRuleAuditLogQueryResult = NonNullable<Awaited<ReturnType<typeof getSignalRuleAuditLog>>>
+export type GetSignalRuleAuditLogQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Fetch paginated audit log of signal rule changes (admin only)
+ */
+
+export function useGetSignalRuleAuditLog<TData = Awaited<ReturnType<typeof getSignalRuleAuditLog>>, TError = ErrorType<unknown>>(
+ params?: GetSignalRuleAuditLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSignalRuleAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSignalRuleAuditLogQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListSignalSimulationProfilesUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/simulation-profiles`
+}
+
+/**
+ * @summary List simulation profiles (admin only)
+ */
+export const listSignalSimulationProfiles = async ( options?: RequestInit): Promise<SignalSimulationProfile[]> => {
+
+  return customFetch<SignalSimulationProfile[]>(getListSignalSimulationProfilesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSignalSimulationProfilesQueryKey = () => {
+    return [
+    `/api/admin/signal-rules/simulation-profiles`
+    ] as const;
+    }
+
+
+export const getListSignalSimulationProfilesQueryOptions = <TData = Awaited<ReturnType<typeof listSignalSimulationProfiles>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalSimulationProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSignalSimulationProfilesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSignalSimulationProfiles>>> = ({ signal }) => listSignalSimulationProfiles({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSignalSimulationProfiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSignalSimulationProfilesQueryResult = NonNullable<Awaited<ReturnType<typeof listSignalSimulationProfiles>>>
+export type ListSignalSimulationProfilesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List simulation profiles (admin only)
+ */
+
+export function useListSignalSimulationProfiles<TData = Awaited<ReturnType<typeof listSignalSimulationProfiles>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSignalSimulationProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSignalSimulationProfilesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSignalSimulationProfileUrl = () => {
+
+
+
+
+  return `/api/admin/signal-rules/simulation-profiles`
+}
+
+/**
+ * @summary Create a simulation profile (admin only)
+ */
+export const createSignalSimulationProfile = async (createSignalSimulationProfileInput: CreateSignalSimulationProfileInput, options?: RequestInit): Promise<SignalSimulationProfile> => {
+
+  return customFetch<SignalSimulationProfile>(getCreateSignalSimulationProfileUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSignalSimulationProfileInput,)
+  }
+);}
+
+
+
+
+export const getCreateSignalSimulationProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalSimulationProfile>>, TError,{data: BodyType<CreateSignalSimulationProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSignalSimulationProfile>>, TError,{data: BodyType<CreateSignalSimulationProfileInput>}, TContext> => {
+
+const mutationKey = ['createSignalSimulationProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSignalSimulationProfile>>, {data: BodyType<CreateSignalSimulationProfileInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSignalSimulationProfile(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSignalSimulationProfileMutationResult = NonNullable<Awaited<ReturnType<typeof createSignalSimulationProfile>>>
+    export type CreateSignalSimulationProfileMutationBody = BodyType<CreateSignalSimulationProfileInput>
+    export type CreateSignalSimulationProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create a simulation profile (admin only)
+ */
+export const useCreateSignalSimulationProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSignalSimulationProfile>>, TError,{data: BodyType<CreateSignalSimulationProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSignalSimulationProfile>>,
+        TError,
+        {data: BodyType<CreateSignalSimulationProfileInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSignalSimulationProfileMutationOptions(options));
+    }
+
+export const getUpdateSignalSimulationProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/simulation-profiles/${id}`
+}
+
+/**
+ * @summary Update a simulation profile (admin only)
+ */
+export const updateSignalSimulationProfile = async (id: number,
+    createSignalSimulationProfileInput: CreateSignalSimulationProfileInput, options?: RequestInit): Promise<SignalSimulationProfile> => {
+
+  return customFetch<SignalSimulationProfile>(getUpdateSignalSimulationProfileUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSignalSimulationProfileInput,)
+  }
+);}
+
+
+
+
+export const getUpdateSignalSimulationProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignalSimulationProfile>>, TError,{id: number;data: BodyType<CreateSignalSimulationProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSignalSimulationProfile>>, TError,{id: number;data: BodyType<CreateSignalSimulationProfileInput>}, TContext> => {
+
+const mutationKey = ['updateSignalSimulationProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSignalSimulationProfile>>, {id: number;data: BodyType<CreateSignalSimulationProfileInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSignalSimulationProfile(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSignalSimulationProfileMutationResult = NonNullable<Awaited<ReturnType<typeof updateSignalSimulationProfile>>>
+    export type UpdateSignalSimulationProfileMutationBody = BodyType<CreateSignalSimulationProfileInput>
+    export type UpdateSignalSimulationProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a simulation profile (admin only)
+ */
+export const useUpdateSignalSimulationProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSignalSimulationProfile>>, TError,{id: number;data: BodyType<CreateSignalSimulationProfileInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSignalSimulationProfile>>,
+        TError,
+        {id: number;data: BodyType<CreateSignalSimulationProfileInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateSignalSimulationProfileMutationOptions(options));
+    }
+
+export const getDeleteSignalSimulationProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/simulation-profiles/${id}`
+}
+
+/**
+ * @summary Delete a simulation profile (admin only)
+ */
+export const deleteSignalSimulationProfile = async (id: number, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDeleteSignalSimulationProfileUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSignalSimulationProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalSimulationProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSignalSimulationProfile>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['deleteSignalSimulationProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSignalSimulationProfile>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSignalSimulationProfile(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSignalSimulationProfileMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSignalSimulationProfile>>>
+
+    export type DeleteSignalSimulationProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a simulation profile (admin only)
+ */
+export const useDeleteSignalSimulationProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSignalSimulationProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSignalSimulationProfile>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSignalSimulationProfileMutationOptions(options));
+    }
+
+export const getRunSignalSimulationProfileUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/signal-rules/simulation-profiles/${id}/run`
+}
+
+/**
+ * @summary Evaluate signals for a simulation profile (admin only)
+ */
+export const runSignalSimulationProfile = async (id: number, options?: RequestInit): Promise<SignalSimulationRunResult> => {
+
+  return customFetch<SignalSimulationRunResult>(getRunSignalSimulationProfileUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRunSignalSimulationProfileMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runSignalSimulationProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runSignalSimulationProfile>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['runSignalSimulationProfile'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runSignalSimulationProfile>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  runSignalSimulationProfile(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunSignalSimulationProfileMutationResult = NonNullable<Awaited<ReturnType<typeof runSignalSimulationProfile>>>
+
+    export type RunSignalSimulationProfileMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Evaluate signals for a simulation profile (admin only)
+ */
+export const useRunSignalSimulationProfile = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runSignalSimulationProfile>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runSignalSimulationProfile>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getRunSignalSimulationProfileMutationOptions(options));
+    }
+
+export const getListEngagementProjectSignalsUrl = () => {
+
+
+
+
+  return `/api/admin/engagement-projects/signals`
+}
+
+/**
+ * @summary List engagement projects with their signal trigger assignments (admin only)
+ */
+export const listEngagementProjectSignals = async ( options?: RequestInit): Promise<EngagementProjectWithSignals[]> => {
+
+  return customFetch<EngagementProjectWithSignals[]>(getListEngagementProjectSignalsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEngagementProjectSignalsQueryKey = () => {
+    return [
+    `/api/admin/engagement-projects/signals`
+    ] as const;
+    }
+
+
+export const getListEngagementProjectSignalsQueryOptions = <TData = Awaited<ReturnType<typeof listEngagementProjectSignals>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEngagementProjectSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEngagementProjectSignalsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEngagementProjectSignals>>> = ({ signal }) => listEngagementProjectSignals({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEngagementProjectSignals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEngagementProjectSignalsQueryResult = NonNullable<Awaited<ReturnType<typeof listEngagementProjectSignals>>>
+export type ListEngagementProjectSignalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List engagement projects with their signal trigger assignments (admin only)
+ */
+
+export function useListEngagementProjectSignals<TData = Awaited<ReturnType<typeof listEngagementProjectSignals>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEngagementProjectSignals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEngagementProjectSignalsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateEngagementProjectTriggersUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/engagement-projects/${id}/triggers`
+}
+
+/**
+ * @summary Update triggeredBy signal keys and meaning for an engagement project (admin only)
+ */
+export const updateEngagementProjectTriggers = async (id: number,
+    projectTriggersUpdateInput: ProjectTriggersUpdateInput, options?: RequestInit): Promise<EngagementProjectWithSignals> => {
+
+  return customFetch<EngagementProjectWithSignals>(getUpdateEngagementProjectTriggersUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      projectTriggersUpdateInput,)
+  }
+);}
+
+
+
+
+export const getUpdateEngagementProjectTriggersMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEngagementProjectTriggers>>, TError,{id: number;data: BodyType<ProjectTriggersUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEngagementProjectTriggers>>, TError,{id: number;data: BodyType<ProjectTriggersUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateEngagementProjectTriggers'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEngagementProjectTriggers>>, {id: number;data: BodyType<ProjectTriggersUpdateInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateEngagementProjectTriggers(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEngagementProjectTriggersMutationResult = NonNullable<Awaited<ReturnType<typeof updateEngagementProjectTriggers>>>
+    export type UpdateEngagementProjectTriggersMutationBody = BodyType<ProjectTriggersUpdateInput>
+    export type UpdateEngagementProjectTriggersMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update triggeredBy signal keys and meaning for an engagement project (admin only)
+ */
+export const useUpdateEngagementProjectTriggers = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEngagementProjectTriggers>>, TError,{id: number;data: BodyType<ProjectTriggersUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateEngagementProjectTriggers>>,
+        TError,
+        {id: number;data: BodyType<ProjectTriggersUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateEngagementProjectTriggersMutationOptions(options));
     }
 

@@ -3,6 +3,7 @@ import WorkspaceLayout, { type WorkspaceNavItem } from "@/components/WorkspaceLa
 import ProjectsPage from "@/pages/crm/Projects";
 import ClientsPage from "@/pages/crm/Clients";
 import EngagementProjectsPage from "@/pages/EngagementProjects";
+import TenantSignalsPage from "@/pages/TenantSignals";
 import WorkflowsPage from "@/pages/Workflows";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
@@ -62,12 +63,22 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Tenant Signals",
+    path: "/delivery/tenant-signals",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+      </svg>
+    ),
+  },
 ];
 
 function getContent(section: string): ReactNode {
   switch (section) {
     case "clients":              return <ClientsPage />;
     case "engagement-projects":  return <EngagementProjectsPage />;
+    case "tenant-signals":       return <TenantSignalsPage />;
     case "workflows":            return <WorkflowsPage />;
     case "activity-logs":        return <ActivityLogPage />;
     case "hub-storage":          return <SharePointPage />;

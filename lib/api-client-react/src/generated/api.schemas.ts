@@ -447,6 +447,252 @@ export interface RunbookJobOutput {
   kanbanMetaUpdated?: boolean;
 }
 
+export interface SignalDerivationRule {
+  id: number;
+  signalKey: string;
+  groupId?: number | null;
+  ruleType: string;
+  sourceKey: string;
+  compareValue?: string | null;
+  description?: string | null;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type SignalRuleGroupLogic = typeof SignalRuleGroupLogic[keyof typeof SignalRuleGroupLogic];
+
+
+export const SignalRuleGroupLogic = {
+  AND: 'AND',
+  OR: 'OR',
+} as const;
+
+export interface SignalRuleGroup {
+  id: number;
+  signalKey: string;
+  logic: SignalRuleGroupLogic;
+  label?: string | null;
+  sortOrder: number;
+  createdAt?: string;
+}
+
+export type SignalRuleListResponseBySignal = {[key: string]: {
+  rules?: SignalDerivationRule[];
+  groups?: SignalRuleGroup[];
+}};
+
+export interface SignalRuleListResponse {
+  bySignal?: SignalRuleListResponseBySignal;
+  rules?: SignalDerivationRule[];
+  groups?: SignalRuleGroup[];
+}
+
+export interface CreateSignalRuleInput {
+  signalKey: string;
+  groupId?: number | null;
+  ruleType: string;
+  sourceKey: string;
+  compareValue?: string | null;
+  description?: string | null;
+  sortOrder?: number;
+}
+
+export interface UpdateSignalRuleInput {
+  ruleType?: string;
+  sourceKey?: string;
+  compareValue?: string | null;
+  description?: string | null;
+  sortOrder?: number;
+  groupId?: number | null;
+}
+
+export type SignalConflictReportConflictsItem = {
+  signalKey?: string;
+  type?: string;
+  description?: string;
+  ruleIds?: number[];
+};
+
+export interface SignalConflictReport {
+  conflicts?: SignalConflictReportConflictsItem[];
+  hasConflicts?: boolean;
+}
+
+/**
+ * Script profile data to evaluate rules against
+ */
+export type PreviewSignalProjectsInputProfileUpdates = { [key: string]: unknown };
+
+export interface PreviewSignalProjectsInput {
+  /** Explicit list of fired signal keys (overrides evaluation) */
+  firedSignals?: string[];
+  /** Script profile data to evaluate rules against */
+  profileUpdates?: PreviewSignalProjectsInputProfileUpdates;
+  parsedFindings?: string[];
+}
+
+export type SignalProjectsPreviewPayloadFiredSignalsItem = {
+  key?: string;
+  label?: string;
+  expectedImpact?: string;
+};
+
+export type SignalProjectsPreviewPayloadIncludedItem = { [key: string]: unknown };
+
+export type SignalProjectsPreviewPayloadExcludedItemProject = { [key: string]: unknown };
+
+export type SignalProjectsPreviewPayloadExcludedItem = {
+  project?: SignalProjectsPreviewPayloadExcludedItemProject;
+  reason?: string;
+  legacyFallback?: boolean;
+};
+
+export interface SignalProjectsPreviewPayload {
+  firedSignals?: SignalProjectsPreviewPayloadFiredSignalsItem[];
+  included?: SignalProjectsPreviewPayloadIncludedItem[];
+  excluded?: SignalProjectsPreviewPayloadExcludedItem[];
+}
+
+export interface DryRunSowInput {
+  clientUserId: number;
+}
+
+export type SowDryRunPayloadFiredSignalsItem = {
+  key?: string;
+  label?: string;
+  expectedImpact?: string;
+};
+
+export type SowDryRunPayloadRuleTraceItem = { [key: string]: unknown };
+
+export type SowDryRunPayloadIncludedProjectsItem = { [key: string]: unknown };
+
+export type SowDryRunPayloadExcludedProjectsItemProject = { [key: string]: unknown };
+
+export type SowDryRunPayloadExcludedProjectsItem = {
+  project?: SowDryRunPayloadExcludedProjectsItemProject;
+  reason?: string;
+  legacyFallback?: boolean;
+};
+
+export interface SowDryRunPayload {
+  firedSignals?: SowDryRunPayloadFiredSignalsItem[];
+  ruleTrace?: SowDryRunPayloadRuleTraceItem[];
+  includedProjects?: SowDryRunPayloadIncludedProjectsItem[];
+  excludedProjects?: SowDryRunPayloadExcludedProjectsItem[];
+  note?: string;
+}
+
+export interface SignalVersionSaveInput {
+  name: string;
+}
+
+export interface ProjectTriggersUpdateInput {
+  triggeredBy?: string[];
+  meaning?: string;
+}
+
+export type SignalRuleImportInputGroupsItemLogic = typeof SignalRuleImportInputGroupsItemLogic[keyof typeof SignalRuleImportInputGroupsItemLogic];
+
+
+export const SignalRuleImportInputGroupsItemLogic = {
+  AND: 'AND',
+  OR: 'OR',
+} as const;
+
+export type SignalRuleImportInputGroupsItem = {
+  signalKey?: string;
+  logic?: SignalRuleImportInputGroupsItemLogic;
+  label?: string;
+  sortOrder?: number;
+};
+
+export interface SignalRuleImportInput {
+  rules: CreateSignalRuleInput[];
+  groups?: SignalRuleImportInputGroupsItem[];
+}
+
+export interface SignalRuleVersion {
+  id: number;
+  name: string;
+  ruleCount: number;
+  createdByAdminId?: number | null;
+  createdAt: string;
+}
+
+export type SignalRuleAuditLogResponseRowsItem = { [key: string]: unknown };
+
+export interface SignalRuleAuditLogResponse {
+  rows?: SignalRuleAuditLogResponseRowsItem[];
+  total?: number;
+  limit?: number;
+  offset?: number;
+}
+
+export type SignalSimulationProfileProfileUpdates = { [key: string]: unknown };
+
+export type SignalSimulationProfileLastRunResult = { [key: string]: unknown } | null;
+
+export interface SignalSimulationProfile {
+  id: number;
+  name: string;
+  description?: string | null;
+  profileUpdates?: SignalSimulationProfileProfileUpdates;
+  parsedFindings?: string[];
+  tags?: string[];
+  lastRunAt?: string | null;
+  lastRunResult?: SignalSimulationProfileLastRunResult;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CreateSignalSimulationProfileInputProfileUpdates = { [key: string]: unknown };
+
+export interface CreateSignalSimulationProfileInput {
+  name: string;
+  description?: string | null;
+  profileUpdates?: CreateSignalSimulationProfileInputProfileUpdates;
+  parsedFindings?: string[];
+  tags?: string[];
+}
+
+export type SignalSimulationRunResultFiredSignalsItem = {
+  key?: string;
+  label?: string;
+  expectedImpact?: string;
+};
+
+export type SignalSimulationRunResultRuleTraceItem = { [key: string]: unknown };
+
+export type SignalSimulationRunResultIncludedProjectsItem = { [key: string]: unknown };
+
+export type SignalSimulationRunResultExcludedProjectsItemProject = { [key: string]: unknown };
+
+export type SignalSimulationRunResultExcludedProjectsItem = {
+  project?: SignalSimulationRunResultExcludedProjectsItemProject;
+  reason?: string;
+  legacyFallback?: boolean;
+};
+
+export interface SignalSimulationRunResult {
+  firedSignals?: SignalSimulationRunResultFiredSignalsItem[];
+  ruleTrace?: SignalSimulationRunResultRuleTraceItem[];
+  includedProjects?: SignalSimulationRunResultIncludedProjectsItem[];
+  excludedProjects?: SignalSimulationRunResultExcludedProjectsItem[];
+}
+
+export interface EngagementProjectWithSignals {
+  id: number;
+  title: string;
+  priceRange: string;
+  description?: string | null;
+  meaning?: string | null;
+  triggeredBy: string[];
+  sortOrder?: number;
+  isVisible?: boolean;
+}
+
 export type ListInstructionSetsParams = {
 q?: string;
 category?: string;
@@ -508,5 +754,27 @@ since?: number;
  * If set, updates kanban task metadata on terminal status
  */
 kanbanTaskId?: number;
+};
+
+export type ListSignalScriptFields200 = { [key: string]: unknown };
+
+export type ImportSignalRules200 = {
+  imported?: number;
+  snapshotId?: number;
+};
+
+export type SaveSignalRuleVersion201 = {
+  id?: number;
+};
+
+export type RestoreSignalRuleVersion200 = {
+  restored?: number;
+  backupSnapshotId?: number;
+};
+
+export type GetSignalRuleAuditLogParams = {
+limit?: number;
+offset?: number;
+signalKey?: string;
 };
 

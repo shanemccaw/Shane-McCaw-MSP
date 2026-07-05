@@ -62,6 +62,7 @@ import adminStalledScriptsRouter from "./admin-stalled-scripts";
 import adminGeneratedImagesRouter from "./admin-generated-images";
 import adminMediaLibraryRouter from "./admin-media-library";
 import presentationsRouter from "./presentations";
+import adminSignalRulesRouter from "./admin-signal-rules";
 
 const router: IRouter = Router();
 
@@ -136,5 +137,6 @@ router.use(adminStalledScriptsRouter);
 router.use(adminGeneratedImagesRouter);
 router.use(adminMediaLibraryRouter);
 router.use(presentationsRouter);
+router.use(adminSignalRulesRouter);
 
 export default router;

@@ -404,6 +404,7 @@ export const engagementProjectsTable = pgTable("engagement_projects", {
   title: text("title").notNull(),
   priceRange: text("price_range").notNull(),
   description: text("description"),
+  meaning: text("meaning"),
   triggeredBy: jsonb("triggered_by").$type<string[]>().notNull().default([]),
   sowItems: jsonb("sow_items").$type<string[]>().notNull().default([]),
   pages: jsonb("pages").$type<string[]>().notNull().default([]),
@@ -416,6 +417,77 @@ export const engagementProjectsTable = pgTable("engagement_projects", {
 export const insertEngagementProjectSchema = createInsertSchema(engagementProjectsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertEngagementProject = typeof engagementProjectsTable.$inferInsert;
 export type EngagementProject = typeof engagementProjectsTable.$inferSelect;
+
+// ── Signal Rule Engine ────────────────────────────────────────────────────────
+
+export const signalRuleGroupsTable = pgTable("signal_rule_groups", {
+  id: serial("id").primaryKey(),
+  signalKey: text("signal_key").notNull(),
+  logic: text("logic", { enum: ["AND", "OR"] }).notNull().default("OR"),
+  label: text("label"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SignalRuleGroup = typeof signalRuleGroupsTable.$inferSelect;
+export type InsertSignalRuleGroup = typeof signalRuleGroupsTable.$inferInsert;
+
+export const signalDerivationRulesTable = pgTable("signal_derivation_rules", {
+  id: serial("id").primaryKey(),
+  signalKey: text("signal_key").notNull(),
+  groupId: integer("group_id").references(() => signalRuleGroupsTable.id, { onDelete: "set null" }),
+  ruleType: text("rule_type").notNull(),
+  sourceKey: text("source_key").notNull(),
+  compareValue: text("compare_value"),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SignalDerivationRule = typeof signalDerivationRulesTable.$inferSelect;
+export type InsertSignalDerivationRule = typeof signalDerivationRulesTable.$inferInsert;
+
+export const signalRuleAuditLogTable = pgTable("signal_rule_audit_log", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  signalKey: text("signal_key"),
+  ruleId: integer("rule_id"),
+  before: jsonb("before"),
+  after: jsonb("after"),
+  adminUserId: integer("admin_user_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SignalRuleAuditLog = typeof signalRuleAuditLogTable.$inferSelect;
+
+export const signalRuleVersionsTable = pgTable("signal_rule_versions", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  snapshot: jsonb("snapshot").notNull(),
+  ruleCount: integer("rule_count").notNull(),
+  createdByAdminId: integer("created_by_admin_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SignalRuleVersion = typeof signalRuleVersionsTable.$inferSelect;
+
+export const signalSimulationProfilesTable = pgTable("signal_simulation_profiles", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  profileUpdates: jsonb("profile_updates").$type<Record<string, unknown>>().notNull().default({}),
+  parsedFindings: jsonb("parsed_findings").$type<string[]>().notNull().default([]),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  lastRunAt: timestamp("last_run_at"),
+  lastRunResult: jsonb("last_run_result"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SignalSimulationProfile = typeof signalSimulationProfilesTable.$inferSelect;
+export type InsertSignalSimulationProfile = typeof signalSimulationProfilesTable.$inferInsert;
 
 export const shareEventsTable = pgTable("share_events", {
   id: serial("id").primaryKey(),

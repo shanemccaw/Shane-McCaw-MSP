@@ -7,11 +7,18 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+interface TenantSignalMeta {
+  key: string;
+  label: string;
+  description: string;
+}
+
 interface EngagementProject {
   id: number;
   title: string;
   priceRange: string;
   description: string | null;
+  meaning: string | null;
   triggeredBy: string[];
   sowItems: string[];
   pages: string[];
@@ -36,6 +43,7 @@ const EMPTY_FORM = {
   title: "",
   priceRange: "",
   description: "",
+  meaning: "",
   triggeredBy: [] as string[],
   sowItems: [] as string[],
   pages: [] as string[],
@@ -84,10 +92,10 @@ function ArrayEditor({
         {items.map((item, i) => (
           <div key={i} className="flex items-start gap-2">
             <div className="flex flex-col gap-0.5 pt-1.5">
-              <button type="button" onClick={() => moveUp(i)} className="text-[#7D8590] hover:text-[#7D8590]" disabled={i === 0}>
+              <button type="button" onClick={() => moveUp(i)} className="text-[#7D8590]" disabled={i === 0}>
                 <ChevronUp className="w-3 h-3" />
               </button>
-              <button type="button" onClick={() => moveDown(i)} className="text-[#7D8590] hover:text-[#7D8590]" disabled={i === items.length - 1}>
+              <button type="button" onClick={() => moveDown(i)} className="text-[#7D8590]" disabled={i === items.length - 1}>
                 <ChevronDown className="w-3 h-3" />
               </button>
             </div>
@@ -118,6 +126,59 @@ function ArrayEditor({
         >
           Add
         </button>
+      </div>
+    </div>
+  );
+}
+
+function SignalChecklist({
+  selected,
+  signals,
+  onChange,
+}: {
+  selected: string[];
+  signals: TenantSignalMeta[];
+  onChange: (keys: string[]) => void;
+}) {
+  const toggle = (key: string) => {
+    if (selected.includes(key)) {
+      onChange(selected.filter(k => k !== key));
+    } else {
+      onChange([...selected, key]);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-2">
+        Trigger Conditions
+      </label>
+      <p className="text-xs text-[#7D8590] mb-3">
+        Select which tenant signals must fire for this project to appear in a SOW. <strong className="text-[#C9D1D9]">No signals selected = always include in every SOW.</strong>
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {signals.filter(s => s.key !== "alwaysInclude").map(({ key, label, description }) => (
+          <label
+            key={key}
+            title={description}
+            className={`flex items-start gap-2.5 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors select-none ${
+              selected.includes(key)
+                ? "border-[#0078D4] bg-[#0078D4]/5 text-[#0078D4]"
+                : "border-[#30363D] bg-[#161B22] text-[#C9D1D9] hover:border-[#30363D]"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={selected.includes(key)}
+              onChange={() => toggle(key)}
+              className="w-3.5 h-3.5 accent-[#0078D4] flex-shrink-0 mt-0.5"
+            />
+            <div>
+              <span className="text-sm font-medium">{label}</span>
+              <p className="text-xs text-[#7D8590] mt-0.5 leading-relaxed">{description}</p>
+            </div>
+          </label>
+        ))}
       </div>
     </div>
   );
@@ -175,6 +236,7 @@ export default function EngagementProjectsPage() {
   const { toast } = useToast();
 
   const [projects, setProjects] = useState<EngagementProject[]>([]);
+  const [signals, setSignals] = useState<TenantSignalMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -189,10 +251,17 @@ export default function EngagementProjectsPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth("/api/admin/engagement-projects");
-      if (!res.ok) throw new Error("fetch failed");
-      const data = await res.json() as EngagementProject[];
+      const [projectsRes, signalsRes] = await Promise.all([
+        fetchWithAuth("/api/admin/engagement-projects"),
+        fetchWithAuth("/api/admin/engagement-projects/signals"),
+      ]);
+      if (!projectsRes.ok) throw new Error("fetch failed");
+      const data = await projectsRes.json() as EngagementProject[];
       setProjects(data);
+      if (signalsRes.ok) {
+        const signalData = await signalsRes.json() as TenantSignalMeta[];
+        setSignals(signalData);
+      }
     } catch {
       toast({ title: "Error", description: "Failed to load engagement projects", variant: "destructive" });
     } finally {
@@ -214,6 +283,7 @@ export default function EngagementProjectsPage() {
       title: p.title,
       priceRange: p.priceRange,
       description: p.description ?? "",
+      meaning: p.meaning ?? "",
       triggeredBy: p.triggeredBy ?? [],
       sowItems: p.sowItems ?? [],
       pages: p.pages ?? [],
@@ -240,6 +310,7 @@ export default function EngagementProjectsPage() {
         title: form.title.trim(),
         priceRange: form.priceRange.trim(),
         description: form.description.trim() || null,
+        meaning: form.meaning.trim() || null,
         triggeredBy: form.triggeredBy,
         sowItems: form.sowItems,
         pages: form.pages,
@@ -280,6 +351,8 @@ export default function EngagementProjectsPage() {
       setDeleting(null);
     }
   }
+
+  const getSignalLabel = (key: string) => signals.find(s => s.key === key)?.label ?? key;
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
@@ -331,11 +404,18 @@ export default function EngagementProjectsPage() {
                       </div>
                     )}
                   </div>
+                  {p.meaning && (
+                    <p className="text-xs text-[#C9D1D9] mt-0.5 line-clamp-1 italic">{p.meaning}</p>
+                  )}
                   {p.description && (
                     <p className="text-xs text-[#7D8590] mt-0.5 line-clamp-1">{p.description}</p>
                   )}
                   <div className="flex items-center gap-3 mt-1">
-                    <span className="text-xs text-[#7D8590]">{p.triggeredBy.length} trigger{p.triggeredBy.length !== 1 ? "s" : ""}</span>
+                    {p.triggeredBy.length === 0 ? (
+                      <span className="text-xs text-green-400 font-medium">Always included</span>
+                    ) : (
+                      <span className="text-xs text-[#7D8590]">{p.triggeredBy.length} signal trigger{p.triggeredBy.length !== 1 ? "s" : ""}</span>
+                    )}
                     <span className="text-gray-200">·</span>
                     <span className="text-xs text-[#7D8590]">{p.sowItems.length} SOW item{p.sowItems.length !== 1 ? "s" : ""}</span>
                     <span className="text-gray-200">·</span>
@@ -372,15 +452,15 @@ export default function EngagementProjectsPage() {
                 <div className="border-t border-[#30363D] px-5 py-4 space-y-5">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Triggered By</p>
+                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Trigger Conditions</p>
                       {p.triggeredBy.length === 0 ? (
-                        <p className="text-xs text-[#7D8590] italic">None defined</p>
+                        <p className="text-xs text-green-400 font-medium">Always included in every SOW</p>
                       ) : (
                         <ul className="space-y-1">
                           {p.triggeredBy.map((t, i) => (
                             <li key={i} className="text-xs text-[#C9D1D9] flex items-start gap-1.5">
                               <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#0078D4] flex-shrink-0" />
-                              {t}
+                              {getSignalLabel(t)}
                             </li>
                           ))}
                         </ul>
@@ -405,7 +485,7 @@ export default function EngagementProjectsPage() {
                   <div>
                     <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Shown on Service Pages</p>
                     {(p.pages ?? []).length === 0 ? (
-                      <p className="text-xs text-[#7D8590] italic">Not tagged to any service page — will not appear on service pages</p>
+                      <p className="text-xs text-[#7D8590] italic">Not tagged to any service page</p>
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
                         {(p.pages ?? []).map((slug) => {
@@ -480,19 +560,43 @@ export default function EngagementProjectsPage() {
                 />
               </div>
 
+              {/* Meaning */}
+              <div>
+                <label className="block text-xs font-semibold text-[#C9D1D9] uppercase tracking-wide mb-1.5">
+                  Project Meaning
+                </label>
+                <textarea
+                  value={form.meaning}
+                  onChange={e => setForm(f => ({ ...f, meaning: e.target.value }))}
+                  rows={2}
+                  placeholder="One sentence describing what this project is and what problem it solves…"
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+                />
+                <p className="text-xs text-[#7D8590] mt-1">Injected into the AI prompt as context for why this project is included.</p>
+              </div>
+
               {/* Service Pages */}
               <PageTagsChecklist
                 selected={form.pages}
                 onChange={pages => setForm(f => ({ ...f, pages }))}
               />
 
-              {/* Triggered By */}
-              <ArrayEditor
-                label="Triggered By"
-                items={form.triggeredBy}
-                onChange={items => setForm(f => ({ ...f, triggeredBy: items }))}
-                placeholder="What situation triggers this engagement type…"
-              />
+              {/* Signal Trigger Conditions */}
+              {signals.length > 0 && (
+                <SignalChecklist
+                  selected={form.triggeredBy}
+                  signals={signals}
+                  onChange={keys => setForm(f => ({ ...f, triggeredBy: keys }))}
+                />
+              )}
+              {signals.length === 0 && (
+                <ArrayEditor
+                  label="Triggered By"
+                  items={form.triggeredBy}
+                  onChange={items => setForm(f => ({ ...f, triggeredBy: items }))}
+                  placeholder="Signal key that triggers this engagement…"
+                />
+              )}
 
               {/* SOW Items */}
               <ArrayEditor
@@ -512,7 +616,7 @@ export default function EngagementProjectsPage() {
                     onChange={e => setForm(f => ({ ...f, sortOrder: Number(e.target.value) }))}
                     className="w-full border border-[#30363D] rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
                   />
-                  <p className="text-xs text-[#7D8590] mt-1">Lower numbers appear first on the page.</p>
+                  <p className="text-xs text-[#7D8590] mt-1">Lower numbers appear first.</p>
                 </div>
                 <div className="flex items-end pb-1 gap-2">
                   <label className="flex items-center gap-2 cursor-pointer">
