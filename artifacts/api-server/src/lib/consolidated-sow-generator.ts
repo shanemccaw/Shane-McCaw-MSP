@@ -111,7 +111,7 @@ ENGAGEMENT START DATE: {{engagementStart}} (the first Monday that is at least on
 EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
 {{existingDocs}}
 
-ENGAGEMENT PROJECT PRICING CATALOGUE (use these titles, price ranges, and deliverables to populate real pricing in the SOW — select only the projects relevant to this client's needs):
+ENGAGEMENT PROJECT PRICING CATALOGUE (MANDATORY — every project listed below IS the defined scope for this engagement. You MUST include EVERY project in the pricing table. Do not omit any project, even if tenant telemetry does not specifically call it out — the catalogue defines the full agreed scope):
 {{engagementProjects}}
 
 TENANT TELEMETRY (live M365 health profile flags, scores, and script findings — use this data to scope the work accurately and to justify pricing decisions):
@@ -124,6 +124,7 @@ INSTRUCTIONS:
 - Do NOT include a Resource Requirements section — Shane McCaw is the sole consultant on this engagement
 - Do NOT include a Payment Terms section — payment is managed separately through the client portal
 - Do NOT include a Signature Block — document execution is handled through the portal
+- MANDATORY PRICING RULE: Every single project listed in the ENGAGEMENT PROJECT PRICING CATALOGUE above MUST appear as its own row in the per-workstream pricing table — including Licensing Optimization and any Copilot-related project. Never omit a catalogue project. If telemetry does not mention a project specifically, price it using the computed tenant tier and its base ceiling.
 - The Pricing section MUST contain two parts: (1) a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning — populated from the engagement projects catalogue and the telemetry above; (2) a "Pricing Adjustments" summary section below it that lists ONLY the adjustments permitted for the workstreams present in this SOW (per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below), each appearing once, followed by a Grand Total row — do NOT list adjustments that are not permitted for the workstreams present
 - For the Duration (Weeks) column: assign a realistic integer number of weeks to each workstream phase based on the scope of work (e.g. 2–16 weeks). Format as "N weeks" (e.g. "4 weeks")
 - For the Delivery Date column: compute dates cumulatively starting from the ENGAGEMENT START DATE. Phase 1 delivery = ENGAGEMENT START DATE + Phase 1 weeks. Phase 2 delivery = Phase 1 delivery date + Phase 2 weeks. Continue this pattern for all subsequent phases. Format as "Mon DD, YYYY" (e.g. "Aug 4, 2026"). These MUST be real calendar dates, not relative estimates
@@ -383,15 +384,31 @@ export async function generateConsolidatedSowDocument(
   ].join("\n");
 
   const copilotLicenseCountRaw = sp.copilotLicenseCount ?? (sp.hasCopilotLicenses === false ? 0 : -1);
-  const copilotExcluded = Number(copilotLicenseCountRaw) === 0;
+  const hasZeroCopilotLicenses = Number(copilotLicenseCountRaw) === 0;
+  // If Copilot is explicitly in the engagement project scope, keep it in the SOW regardless
+  // of current license count — add a procurement callout instead of excluding it.
+  const copilotInScope = resolvedKeys.includes("Copilot Readiness");
+  const copilotExcluded = hasZeroCopilotLicenses && !copilotInScope;
   const consolidatedSowForcedExclude: string[] = copilotExcluded ? ["Copilot Readiness"] : [];
-  const sowTenantFactsWithExclusions = sowTenantFacts + (copilotExcluded
-    ? "\n⛔ WORKSTREAM EXCLUSION — Copilot / Copilot Deployment / AI Readiness: EXCLUDED." +
-      " This client has 0 Copilot licenses. Do NOT include any Copilot-related workstream" +
-      " in the per-workstream pricing table. Do NOT include 'Copilot Readiness' in the" +
-      " Pricing Adjustments table. Mention Copilot only as a future-state recommendation" +
-      " in the narrative — never as a billable workstream or adjustment in this engagement."
-    : "");
+  const sowTenantFactsWithExclusions = sowTenantFacts + (
+    copilotExcluded
+      ? "\n⛔ WORKSTREAM EXCLUSION — Copilot / Copilot Deployment / AI Readiness: EXCLUDED." +
+        " This client has 0 Copilot licenses and Copilot is not in the engagement project scope." +
+        " Do NOT include any Copilot-related workstream in the per-workstream pricing table." +
+        " Do NOT include 'Copilot Readiness' in the Pricing Adjustments table." +
+        " Mention Copilot only as a future-state recommendation in the narrative — never as a billable workstream."
+      : hasZeroCopilotLicenses && copilotInScope
+        ? "\n⚠️ COPILOT LICENSE PROCUREMENT REQUIRED — This client currently has 0 Copilot for Microsoft 365" +
+          " licenses. However, Copilot for Microsoft 365 Deployment IS in scope for this engagement." +
+          " You MUST include the Copilot workstream in the per-workstream pricing table." +
+          " In the Scope of Work section AND within the Copilot phase deliverables, include a prominent" +
+          " callout box or NOTE paragraph stating exactly:" +
+          ' "NOTE: Microsoft 365 Copilot licenses must be procured by the client at their own expense' +
+          " prior to the commencement of the Copilot Deployment phase. License procurement is not included" +
+          " in this Statement of Work. Shane McCaw Consulting will advise on licensing requirements and" +
+          ' optimal SKU selection but will not purchase or manage licenses on behalf of the client."'
+        : ""
+  );
 
   const engagementStart = nextBusinessMonday(new Date());
   const engagementStartLabel = engagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
