@@ -10391,9 +10391,16 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
 
     const effectiveTotal = typeof totalPriceRaw === "number" ? totalPriceRaw : parseFloat(String(pres.totalPrice ?? "0"));
 
-    // Record when phase generation was requested
+    // Record when phase generation was requested.
+    // When force=true, also wipe stale phases so the polling fallback on the
+    // client cannot fire phase_gen_complete with the old data before the new
+    // workflow run has written fresh phases.
     await db.update(quickWinPresentationsTable)
-      .set({ phaseGenRequestedAt: new Date(), updatedAt: new Date() })
+      .set({
+        phaseGenRequestedAt: new Date(),
+        updatedAt: new Date(),
+        ...(force ? { sowPhases: [], selectedPhaseIds: [] } : {}),
+      })
       .where(eq(quickWinPresentationsTable.id, id));
 
     void emitWorkflowEvent("presentation.phases_requested", {

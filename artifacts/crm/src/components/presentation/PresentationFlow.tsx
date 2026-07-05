@@ -762,6 +762,14 @@ export default function PresentationFlow({
     // Reset any previous phase-gen event so the card starts fresh
     setPhaseGenEvent(null);
 
+    // When forcing a regeneration, optimistically clear local phase data so the
+    // polling fallback cannot fire phase_gen_complete with stale phases while the
+    // new workflow run is still in progress. The server also clears the DB rows
+    // when force=true, so both the local state and the poll target are clean.
+    if (force) {
+      setData(prev => ({ ...prev, sowPhases: [], selectedPhaseIds: [] }));
+    }
+
     // Advance to the phase_gen step
     const pgIdx = steps.findIndex(s => s.kind === "phase_gen");
     if (pgIdx >= 0) {
