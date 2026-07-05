@@ -52,6 +52,7 @@ export interface FlowCanvasProps {
   edges: StoredEdge[];
   selectedNodeId: string | null;
   isArchived: boolean;
+  isLoading?: boolean;
   nodeStyles: Record<string, NodeStyle>;
   libraryCategories: LibraryCategory[];
   allLibraryNodes: LibraryNode[];
@@ -1042,6 +1043,7 @@ export default function FlowCanvas({
   edges,
   selectedNodeId,
   isArchived,
+  isLoading = false,
   nodeStyles,
   libraryCategories,
   allLibraryNodes,
@@ -1162,10 +1164,20 @@ export default function FlowCanvas({
           className="flex-1 overflow-auto bg-[#0D1117] flex items-center justify-center"
           onClick={handleCanvasClick}
         >
-          <div className="text-center text-[#484F58] pointer-events-none">
-            <p className="font-medium text-[#7D8590] text-sm">Canvas is empty</p>
-            <p className="mt-1 text-xs">Add steps from the library on the left, or use Build with AI.</p>
-          </div>
+          {isLoading ? (
+            <div className="flex flex-col items-center gap-3 pointer-events-none">
+              <svg className="w-6 h-6 text-[#0078D4] animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+              <p className="text-xs text-[#484F58]">Loading workflow…</p>
+            </div>
+          ) : (
+            <div className="text-center text-[#484F58] pointer-events-none">
+              <p className="font-medium text-[#7D8590] text-sm">Canvas is empty</p>
+              <p className="mt-1 text-xs">Add steps from the library on the left, or use Build with AI.</p>
+            </div>
+          )}
         </div>
       </FlowCanvasContext.Provider>
     );

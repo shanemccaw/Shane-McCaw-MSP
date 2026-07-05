@@ -6733,7 +6733,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
   const hasPublishedVersion = versions.some(v => v.status === "published");
 
-  const { data: currentVersion } = useQuery({
+  const { data: currentVersion, isPending: currentVersionPending } = useQuery({
     queryKey: ["wf-version", currentVersionId],
     enabled: currentVersionId != null,
     queryFn: async () => {
@@ -7438,6 +7438,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           edges={edges}
           selectedNodeId={selectedNodeId}
           isArchived={isArchived}
+          isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
           nodeStyles={NODE_STYLES}
           libraryCategories={LIBRARY_CATEGORIES}
           allLibraryNodes={ALL_LIBRARY_NODES}
