@@ -889,6 +889,7 @@ INSTRUCTIONS:
 - You MUST calculate pricing using the telemetry and pricing rules provided; each workstream row shows only its Base Ceiling and Final Price; only the adjustments permitted for the workstreams present (per the ADJUSTMENT MAP) are listed in the "Pricing Adjustments" summary section below the workstream table, each appearing once and never on individual rows
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
+- In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style="margin:6px 0">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons
 - Professional consulting tone as Shane McCaw, first person where appropriate
 
 - Total length: 2000-3500 words`,
@@ -923,6 +924,7 @@ INSTRUCTIONS:
 - Output ONLY valid HTML (no markdown, no code fences)
 - Use inline CSS — professional white background, #0078D4 (Azure Blue) accent, Inter/system-font typography, responsive tables
 - Each major section as <h2> with a horizontal rule separator
+- In the Acceptance Criteria section, render EACH criterion on its own line as a block element: <div style="margin:6px 0">&#9744; [criterion text]</div> — never put multiple criteria inline on one line or separate them with commas or semicolons
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate

@@ -93,8 +93,8 @@ const CONSULTING_TYPE_LABELS: Record<string, string> = {
 };
 
 const CONSULTING_SECTION_HINTS: Record<string, string> = {
-  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria, Terms & Conditions",
-  consolidated_sow:            "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria, Terms & Conditions",
+  sow:                         "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria (each criterion on its own line as <div style='margin:6px 0'>&#9744; criterion</div>), Terms & Conditions",
+  consolidated_sow:            "Include: Scope of Work, Objectives, Deliverables, Timeline (phased), Resource Requirements, Acceptance Criteria (each criterion on its own line as <div style='margin:6px 0'>&#9744; criterion</div>), Terms & Conditions",
   remediation_plan:            "Include: Executive Summary, Current State Assessment, Critical Findings, Remediation Steps by Domain (Priority 1/2/3), Implementation Timeline, Success Metrics, Risk Mitigation",
   deployment_plan:             "Include: Deployment Overview, Pre-deployment Checklist, Environment Readiness, Phased Rollout Plan, Rollback Procedure, Testing & Validation, Go-live Criteria, Post-deployment Support",
   governance_framework:        "Include: Governance Principles, Roles & Responsibilities Matrix, Policy Framework, Compliance Requirements, Enforcement Mechanisms, Review Cadence, Exception Process",
