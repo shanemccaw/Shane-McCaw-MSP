@@ -180,7 +180,7 @@ export default function PresentationFlow({
   startAtPayment = false,
   onClose,
 }: PresentationFlowProps) {
-  const { fetchWithAuth, user } = useAuth();
+  const { fetchWithAuth, user, getAuthHeader } = useAuth();
   const search = useSearch();
 
   const [data, setData] = useState<PresentationData>(initialData);
@@ -564,8 +564,14 @@ export default function PresentationFlow({
   // SSE subscription — receives immediate push when Shane regenerates the SOW
   useEffect(() => {
     if (readOnly && !shareToken) return;
-    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
-    const url = `/api/portal/presentations/${presentationId}/scope-events${tokenParam}`;
+    // EventSource cannot send custom headers, so pass JWT as ?jwt= for logged-in users
+    // and share token as ?token= for public share links.
+    const params = new URLSearchParams();
+    if (shareToken) params.set("token", shareToken);
+    const jwtToken = getAuthHeader()["Authorization"]?.replace(/^Bearer\s+/i, "");
+    if (jwtToken) params.set("jwt", jwtToken);
+    const qs = params.toString();
+    const url = `/api/portal/presentations/${presentationId}/scope-events${qs ? `?${qs}` : ""}`;
     let es: EventSource | null = null;
     try {
       es = new EventSource(url);
@@ -605,7 +611,7 @@ export default function PresentationFlow({
     } catch { /* EventSource not available in this context */ }
     return () => { es?.close(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presentationId, shareToken]);
+  }, [presentationId, shareToken, getAuthHeader]);
 
   // Polling fallback — checks every 30 seconds regardless of SSE
   useEffect(() => {

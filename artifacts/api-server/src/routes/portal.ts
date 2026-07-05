@@ -11090,17 +11090,21 @@ router.get("/portal/presentations/:id/scope-events", async (req: Request, res: R
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).end(); return; }
 
+  // EventSource cannot send custom headers, so JWT may arrive as ?jwt=<token>
+  // in addition to the standard Authorization header.
   const token = String(req.query.token ?? "");
+  const jwtQp  = String(req.query.jwt ?? "");
   const authHeader = req.headers.authorization;
   const jwtSecret = process.env.JWT_SECRET;
   let authed = false;
 
-  if (authHeader && jwtSecret) {
-    const tok = authHeader.replace(/^Bearer\s+/i, "");
-    try {
-      jwt.verify(tok, jwtSecret);
-      authed = true;
-    } catch { /* invalid token */ }
+  if (jwtSecret) {
+    const candidates: string[] = [];
+    if (authHeader) candidates.push(authHeader.replace(/^Bearer\s+/i, ""));
+    if (jwtQp)     candidates.push(jwtQp);
+    for (const tok of candidates) {
+      try { jwt.verify(tok, jwtSecret); authed = true; break; } catch { /* try next */ }
+    }
   }
 
   if (!authed) {
