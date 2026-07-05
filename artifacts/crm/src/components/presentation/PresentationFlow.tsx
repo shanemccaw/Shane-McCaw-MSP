@@ -876,9 +876,14 @@ export default function PresentationFlow({
     const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
     const id = setInterval(async () => {
       try {
-        // cache: 'no-store' bypasses the browser cache so a stale 304 never
-        // makes the poll think phases exist when the server just cleared them.
-        const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`, { cache: "no-store" });
+        // _t=timestamp makes every URL unique so neither the browser cache nor
+        // any intermediate proxy can serve a stale 304 with old phases while the
+        // workflow is still running.
+        const sep = tokenParam ? "&" : "?";
+        const res = await fetchFn(
+          `/api/portal/presentations/${presentationId}${tokenParam}${sep}_t=${Date.now()}`,
+          { cache: "no-store" },
+        );
         if (!res.ok) return;
         const fresh = await res.json() as { sowPhases?: PhaseGenPhase[] };
         const phases = fresh.sowPhases ?? [];
