@@ -196,7 +196,7 @@ function RunRow({
   );
 }
 
-export default function RunHistoryPage({ initialDefinitionId }: { initialDefinitionId?: number }) {
+export default function RunHistoryPage({ initialDefinitionId, onClose }: { initialDefinitionId?: number; onClose?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [location, navigate] = useLocation();
   const searchStr = useSearch();
@@ -223,6 +223,16 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Escape closes inline run history panel
+  useEffect(() => {
+    if (!onClose) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose!();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
 
   // ── Helper: update one or more params, always reset offset unless explicitly set
   function setFilters(patch: Record<string, string | number | null>, resetOffset = true) {
@@ -337,13 +347,13 @@ export default function RunHistoryPage({ initialDefinitionId }: { initialDefinit
             <p className="text-sm text-[#7D8590] mt-0.5">{total} total runs</p>
           </div>
           <button
-            onClick={() => navigate("/workflows/list")}
+            onClick={() => onClose ? onClose() : navigate("/workflows/list")}
             className="text-xs text-[#7D8590] hover:text-[#E6EDF3] flex items-center gap-1.5 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            All Workflows
+            {onClose ? "Back" : "All Workflows"}
           </button>
         </div>
 

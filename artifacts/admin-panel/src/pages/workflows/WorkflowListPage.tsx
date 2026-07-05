@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
+import WorkflowBuilderPage from "./WorkflowBuilderPage";
+import RunHistoryPage from "./RunHistoryPage";
 
 // ── Ask-for-Input types & constants ──────────────────────────────────────────
 
@@ -558,6 +561,136 @@ function IconSpinner({ className }: { className?: string }) {
   );
 }
 
+// ── Right-click context menu ──────────────────────────────────────────────────
+
+function ContextMenuPortal({
+  def,
+  x,
+  y,
+  onClose,
+  onOpenEditor,
+  onRunNow,
+  onViewRunHistory,
+  onRename,
+  onAssignCategory,
+  onDuplicate,
+  onDelete,
+}: {
+  def: WfDefinition;
+  x: number;
+  y: number;
+  onClose: () => void;
+  onOpenEditor: () => void;
+  onRunNow: () => void;
+  onViewRunHistory: () => void;
+  onRename: () => void;
+  onAssignCategory: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}) {
+  const canRun = def.triggerTypes.includes("manual") || def.triggerTypes.includes("schedule");
+  const isSystem = !!def.metadata?.system;
+
+  // Clamp position so menu never bleeds off screen
+  const menuW = 200;
+  const menuH = 260;
+  const left = Math.min(x, window.innerWidth - menuW - 8);
+  const top = Math.min(y, window.innerHeight - menuH - 8);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  const itemCls = "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-[#C9D1D9] hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors text-left rounded-md";
+  const dangerCls = "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left rounded-md";
+
+  return (
+    <>
+      {/* Dismiss backdrop */}
+      <div className="fixed inset-0 z-[998]" onMouseDown={onClose} onContextMenu={e => { e.preventDefault(); onClose(); }} />
+      {/* Menu */}
+      <div
+        className="fixed z-[999] bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl p-1 min-w-[180px]"
+        style={{ left, top }}
+        onMouseDown={e => e.stopPropagation()}
+      >
+        <button className={itemCls} onClick={onOpenEditor}>
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+          Open in Editor
+        </button>
+
+        {canRun && (
+          <button className={itemCls} onClick={onRunNow}>
+            <svg className="w-3.5 h-3.5 flex-shrink-0 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            Run Now
+          </button>
+        )}
+
+        <button className={itemCls} onClick={onViewRunHistory}>
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          View Run History
+        </button>
+
+        <div className="my-1 border-t border-[#30363D]" />
+
+        {!isSystem && (
+          <button className={itemCls} onClick={onRename}>
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            Rename
+          </button>
+        )}
+
+        {!isSystem && (
+          <button className={itemCls} onClick={onAssignCategory}>
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+            </svg>
+            Assign Category
+          </button>
+        )}
+
+        <button className={itemCls} onClick={onDuplicate}>
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Duplicate
+        </button>
+
+        {!isSystem && (
+          <>
+            <div className="my-1 border-t border-[#30363D]" />
+            <button className={dangerCls} onClick={onDelete}>
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+              Delete
+            </button>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── CenterView type ───────────────────────────────────────────────────────────
+
+type CenterView =
+  | { kind: "empty" }
+  | { kind: "editor"; defId: number }
+  | { kind: "run-history"; defId?: number };
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function WorkflowListPage() {
@@ -576,6 +709,19 @@ export default function WorkflowListPage() {
   const [inputDialog, setInputDialog] = useState<{ defId: number; fields: AskForInputField[] } | null>(null);
 
   // ── IDE state ──
+  const [centerView, setCenterView] = useState<CenterView>({ kind: "empty" });
+  const prevCenterViewRef = useRef<CenterView>({ kind: "empty" });
+  const [contextMenu, setContextMenu] = useState<{ def: WfDefinition; x: number; y: number } | null>(null);
+  const [renameDialog, setRenameDialog] = useState<{ def: WfDefinition; name: string } | null>(null);
+  const [categoryDialog, setCategoryDialog] = useState<{ def: WfDefinition; cat: string } | null>(null);
+
+  // Helper: open run-history while preserving the previous center view for the back action
+  const openRunHistory = useCallback((defId?: number) => {
+    prevCenterViewRef.current = centerView;
+    setCenterView({ kind: "run-history", defId });
+  }, [centerView]);
+
+  // Sidebar highlight (keyboard nav + activity feed) — tracks last sidebar selection
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set(["⚙ System"]));
@@ -775,9 +921,49 @@ export default function WorkflowListPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       toast({ title: "Category updated" });
+      setCategoryDialog(null);
     },
     onError: (err: Error) => {
       toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const renameMut = useMutation({
+    mutationFn: async ({ id, name }: { id: number; name: string }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error("Failed to rename");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      setRenameDialog(null);
+      toast({ title: "Workflow renamed" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Rename failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const duplicateMut = useMutation({
+    mutationFn: async (def: WfDefinition) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${def.id}/duplicate`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error("Failed to duplicate");
+      return res.json() as Promise<{ id: number; draftVersionId: number }>;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+      toast({ title: "Workflow duplicated", description: "Opening copy in editor…" });
+      setCenterView({ kind: "editor", defId: data.id });
+      setSelectedId(data.id);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Duplicate failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -855,7 +1041,7 @@ export default function WorkflowListPage() {
       if (prev !== undefined) setSelectedId(prev);
     } else if (e.key === "Enter" && selectedId !== null) {
       e.preventDefault();
-      navigate(`/workflows/builder/${selectedId}`);
+      setCenterView({ kind: "editor", defId: selectedId });
     } else if (e.key === "F5" && selectedId !== null) {
       e.preventDefault();
       const def = defs.find(d => d.id === selectedId);
@@ -882,16 +1068,27 @@ export default function WorkflowListPage() {
 
   // ── Sidebar leaf row ──
   function SidebarLeaf({ def, isSystem }: { def: WfDefinition; isSystem: boolean }) {
-    const isSelected = selectedId === def.id;
+    const isSelected = centerView.kind === "editor" && centerView.defId === def.id;
     const isRunning = runningId === def.id;
     const isActiveRunDef = activeRun?.defId === def.id;
     const canRun = def.triggerTypes.includes("manual") || def.triggerTypes.includes("schedule");
     const dotColor = STATUS_DOT_COLORS[def.lastRunStatus ?? ""] ?? "bg-[#30363D]";
     const isLiveRunForThis = isActiveRunDef || (def.lastRunStatus === "running" || def.lastRunStatus === "pending");
 
+    function handleClick() {
+      setSelectedId(def.id);
+      setCenterView({ kind: "editor", defId: def.id });
+    }
+
+    function handleContextMenu(e: React.MouseEvent) {
+      e.preventDefault();
+      setContextMenu({ def, x: e.clientX, y: e.clientY });
+    }
+
     return (
       <div
-        onClick={() => setSelectedId(def.id)}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
         className={`group flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none transition-colors ${
           isSelected
             ? "bg-[#0078D4]/20 border-l-2 border-[#0078D4]"
@@ -1280,15 +1477,26 @@ export default function WorkflowListPage() {
           {/* Sidebar header */}
           <div className="flex items-center justify-between px-3 py-2 border-b border-[#21262D] flex-shrink-0">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-[#484F58]">Explorer</span>
-            <button
-              onClick={() => setShowCreate(true)}
-              className="p-1 rounded text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
-              title="New Workflow"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={() => openRunHistory()}
+                className={`p-1 rounded transition-colors ${centerView.kind === "run-history" ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128]"}`}
+                title="Run History"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="p-1 rounded text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
+                title="New Workflow"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Search */}
@@ -1361,10 +1569,21 @@ export default function WorkflowListPage() {
         {/* Left resize divider */}
         <ResizeDivider onDrag={delta => sidebar.persist(sidebar.size + delta)} />
 
-        {/* ── Center panel — Workflow Detail ── */}
+        {/* ── Center panel — editor / run-history / empty ── */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#0D1117] overflow-hidden">
-          {selectedDef ? (
-            <DetailPanel key={selectedDef.id} def={selectedDef} />
+          {centerView.kind === "editor" ? (
+            <WorkflowBuilderPage
+              key={centerView.defId}
+              defId={centerView.defId}
+              onClose={() => setCenterView({ kind: "empty" })}
+              onViewRuns={() => openRunHistory(centerView.kind === "editor" ? centerView.defId : undefined)}
+            />
+          ) : centerView.kind === "run-history" ? (
+            <RunHistoryPage
+              key={`rh-${centerView.defId ?? "all"}`}
+              initialDefinitionId={centerView.defId}
+              onClose={() => setCenterView(prevCenterViewRef.current)}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-16 h-16 bg-[#1C2128] border border-[#30363D] rounded-2xl flex items-center justify-center mb-4">
@@ -1374,7 +1593,7 @@ export default function WorkflowListPage() {
               </div>
               <p className="text-[#E6EDF3] font-medium text-sm">Select a workflow</p>
               <p className="text-xs text-[#7D8590] mt-1 max-w-xs">
-                Choose a workflow from the explorer to view details and manage it here.
+                Click a workflow in the explorer to open it in the editor, or right-click for more options.
               </p>
               <button
                 onClick={() => setShowCreate(true)}
@@ -1534,6 +1753,91 @@ export default function WorkflowListPage() {
           }}
         />
       )}
+
+      {/* ── Right-click context menu portal ── */}
+      {contextMenu && createPortal(
+        <ContextMenuPortal
+          def={contextMenu.def}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onOpenEditor={() => { setSelectedId(contextMenu.def.id); setCenterView({ kind: "editor", defId: contextMenu.def.id }); setContextMenu(null); }}
+          onRunNow={() => { handlePlayClick(contextMenu.def); setContextMenu(null); }}
+          onViewRunHistory={() => { openRunHistory(contextMenu.def.id); setContextMenu(null); }}
+          onRename={() => { setRenameDialog({ def: contextMenu.def, name: contextMenu.def.name }); setContextMenu(null); }}
+          onAssignCategory={() => { setCategoryDialog({ def: contextMenu.def, cat: (contextMenu.def.metadata?.category as string | undefined) ?? "" }); setContextMenu(null); }}
+          onDuplicate={() => { duplicateMut.mutate(contextMenu.def); setContextMenu(null); }}
+          onDelete={() => { if (!contextMenu.def.metadata?.system) { setDeleteId(contextMenu.def.id); } setContextMenu(null); }}
+        />,
+        document.body,
+      )}
+
+      {/* ── Rename dialog ── */}
+      {renameDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setRenameDialog(null)}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-[#E6EDF3]">Rename Workflow</h3>
+            <input
+              autoFocus
+              value={renameDialog.name}
+              onChange={e => setRenameDialog(d => d ? { ...d, name: e.target.value } : d)}
+              onKeyDown={e => { if (e.key === "Enter" && renameDialog.name.trim()) renameMut.mutate({ id: renameDialog.def.id, name: renameDialog.name.trim() }); if (e.key === "Escape") setRenameDialog(null); }}
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+              placeholder="Workflow name"
+            />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setRenameDialog(null)} className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button
+                onClick={() => renameDialog.name.trim() && renameMut.mutate({ id: renameDialog.def.id, name: renameDialog.name.trim() })}
+                disabled={!renameDialog.name.trim() || renameMut.isPending}
+                className="px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {renameMut.isPending ? "Saving…" : "Rename"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Assign Category dialog ── */}
+      {categoryDialog && (() => {
+        const existingCategories = [...new Set(
+          defs.filter(d => !d.metadata?.system).map(d => (d.metadata?.category as string | undefined) ?? deriveCategory(d.name))
+        )].sort();
+        const datalistId = "cat-suggestions-dialog";
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setCategoryDialog(null)}>
+            <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5 space-y-4" onClick={e => e.stopPropagation()}>
+              <h3 className="text-sm font-semibold text-[#E6EDF3]">Assign Category</h3>
+              <p className="text-xs text-[#7D8590]">Category for <span className="text-[#E6EDF3] font-medium">{categoryDialog.def.name}</span></p>
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  list={datalistId}
+                  value={categoryDialog.cat}
+                  onChange={e => setCategoryDialog(d => d ? { ...d, cat: e.target.value } : d)}
+                  onKeyDown={e => { if (e.key === "Enter") patchCategoryMut.mutate({ id: categoryDialog.def.id, category: categoryDialog.cat || null }); if (e.key === "Escape") setCategoryDialog(null); }}
+                  placeholder={deriveCategory(categoryDialog.def.name)}
+                  className="flex-1 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                />
+                <datalist id={datalistId}>
+                  {existingCategories.map(c => <option key={c} value={c} />)}
+                </datalist>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setCategoryDialog(null)} className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+                <button
+                  onClick={() => patchCategoryMut.mutate({ id: categoryDialog.def.id, category: categoryDialog.cat || null })}
+                  disabled={patchCategoryMut.isPending}
+                  className="px-4 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  {patchCategoryMut.isPending ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

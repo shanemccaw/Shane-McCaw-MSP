@@ -6440,7 +6440,7 @@ function AiRefineModal({
 
 // ── Main builder ──────────────────────────────────────────────────────────────
 
-export default function WorkflowBuilderPage({ defId, versionId }: { defId: number; versionId?: number }) {
+export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const qc = useQueryClient();
@@ -6924,7 +6924,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-[#30363D] gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <button
-            onClick={() => isDirty ? setShowUnsavedDialog(true) : navigate("/workflows/list")}
+            onClick={() => isDirty ? setShowUnsavedDialog(true) : (onClose ? onClose() : navigate("/workflows/list"))}
             className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
             title={isDirty ? "You have unsaved changes" : "Back to workflows"}
           >
@@ -6973,6 +6973,17 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
               </svg>
             </button>
           </div>
+
+          <button
+            onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
+            title="View run history for this workflow"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            View Runs
+          </button>
 
           <button
             onClick={() => setShowVersionHistory(v => !v)}
@@ -7426,7 +7437,7 @@ export default function WorkflowBuilderPage({ defId, versionId }: { defId: numbe
                 Stay and keep editing
               </button>
               <button
-                onClick={() => navigate("/workflows/list")}
+                onClick={() => onClose ? onClose() : navigate("/workflows/list")}
                 className="px-4 py-2 bg-red-600/80 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
               >
                 Discard &amp; go back

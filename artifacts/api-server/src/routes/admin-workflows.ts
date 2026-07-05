@@ -208,9 +208,11 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
 
   const body = z.object({
-    category: z.string().max(100).nullable(),
+    category: z.string().max(100).nullable().optional(),
+    name: z.string().min(1).max(200).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
+  if (body.data.category === undefined && !body.data.name) return sendError(res, 400, "Nothing to update");
 
   try {
     const [existing] = await db
@@ -220,22 +222,97 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
       .limit(1);
     if (!existing) return sendError(res, 404, "Not found");
 
-    const merged: Record<string, unknown> = { ...(existing.metadata ?? {}) };
-    if (body.data.category === null || body.data.category === "") {
-      delete merged.category;
-    } else {
-      merged.category = body.data.category;
+    type UpdateFields = {
+      updatedAt: Date;
+      metadata?: Record<string, unknown>;
+      name?: string;
+    };
+    const updateFields: UpdateFields = { updatedAt: new Date() };
+
+    if (body.data.category !== undefined) {
+      const merged: Record<string, unknown> = { ...(existing.metadata ?? {}) };
+      if (body.data.category === null || body.data.category === "") {
+        delete merged.category;
+      } else {
+        merged.category = body.data.category;
+      }
+      updateFields.metadata = merged;
+    }
+
+    if (body.data.name) {
+      updateFields.name = body.data.name;
     }
 
     const [updated] = await db
       .update(wfDefinitionsTable)
-      .set({ metadata: merged, updatedAt: new Date() })
+      .set(updateFields)
       .where(eq(wfDefinitionsTable.id, id))
       .returning();
     res.json(updated);
   } catch (err) {
-    logger.error({ err }, "Failed to patch definition category");
-    sendError(res, 500, "Failed to update category");
+    logger.error({ err }, "Failed to patch definition");
+    sendError(res, 500, "Failed to update workflow");
+  }
+});
+
+// ── Duplicate a workflow definition (clones latest version graph + triggers) ──
+router.post("/admin/workflows/definitions/:id/duplicate", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  try {
+    // Load source definition
+    const [src] = await db.select().from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, id)).limit(1);
+    if (!src) return sendError(res, 404, "Not found");
+
+    // Load latest draft version (fall back to any version)
+    const versions = await db
+      .select()
+      .from(wfVersionsTable)
+      .where(eq(wfVersionsTable.definitionId, id))
+      .orderBy(desc(wfVersionsTable.versionNumber));
+    const srcVersion = versions.find(v => v.status === "draft") ?? versions[0];
+
+    // Load triggers
+    const srcTriggers = await db
+      .select()
+      .from(wfTriggersTable)
+      .where(eq(wfTriggersTable.definitionId, id));
+
+    // Create new definition
+    const [newDef] = await db.insert(wfDefinitionsTable).values({
+      name: `Copy of ${src.name}`,
+      description: src.description ?? undefined,
+      concurrencyLimit: src.concurrencyLimit,
+      metadata: { ...((src.metadata ?? {}) as Record<string, unknown>), system: false },
+    }).returning();
+
+    // Clone the version graph
+    const [newVersion] = await db.insert(wfVersionsTable).values({
+      definitionId: newDef.id,
+      versionNumber: 1,
+      label: "v1 — Initial draft",
+      status: "draft",
+      graph: srcVersion?.graph ?? { nodes: [], edges: [] },
+    }).returning();
+
+    // Clone triggers (exclude webhook tokens — those must be unique)
+    if (srcTriggers.length > 0) {
+      await db.insert(wfTriggersTable).values(
+        srcTriggers.map(t => ({
+          definitionId: newDef.id,
+          type: t.type,
+          config: t.config,
+          enabled: t.enabled,
+          nextRunAt: t.type === "schedule" ? t.nextRunAt : undefined,
+        })),
+      );
+    }
+
+    res.status(201).json({ ...newDef, draftVersionId: newVersion.id });
+  } catch (err) {
+    req.log.error({ err }, "workflows: duplicate definition failed");
+    sendError(res, 500, "Failed to duplicate workflow");
   }
 });
 
