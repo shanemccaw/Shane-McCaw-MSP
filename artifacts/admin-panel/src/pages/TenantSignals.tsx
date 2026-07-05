@@ -76,6 +76,19 @@ interface HealthData {
   [signalKey: string]: { clientCount: number; totalClients: number };
 }
 
+interface EngagementProject {
+  id: number;
+  title: string;
+  priceRange: string;
+  description: string | null;
+  meaning: string | null;
+  triggeredBy: string[];
+  sowItems: unknown[];
+  pages: unknown[];
+  sortOrder: number;
+  isVisible: boolean;
+}
+
 interface ClientWithRuns {
   id: number;
   name: string | null;
@@ -128,7 +141,9 @@ export default function TenantSignalsPage() {
   const [simProfiles, setSimProfiles] = useState<SimulationProfile[]>([]);
 
   const [selectedSignal, setSelectedSignal] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"rules" | "docs" | "audit">("rules");
+  const [activeTab, setActiveTab] = useState<"rules" | "projects" | "docs" | "audit">("rules");
+  const [allEngagementProjects, setAllEngagementProjects] = useState<EngagementProject[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [showTestModal, setShowTestModal] = useState(false);
@@ -240,6 +255,16 @@ export default function TenantSignalsPage() {
     }
   }, [fetchWithAuth]);
 
+  const loadEngagementProjects = useCallback(async () => {
+    setProjectsLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/engagement-projects");
+      if (res.ok) setAllEngagementProjects(await res.json() as EngagementProject[]);
+    } finally {
+      setProjectsLoading(false);
+    }
+  }, [fetchWithAuth]);
+
   const loadAuditLog = useCallback(async (signalKey?: string) => {
     setAuditLoading(true);
     try {
@@ -262,6 +287,10 @@ export default function TenantSignalsPage() {
     if (activeTab === "audit" && selectedSignal) void loadAuditLog(selectedSignal);
   }, [activeTab, selectedSignal, loadAuditLog]);
 
+  useEffect(() => {
+    if (activeTab === "projects") void loadEngagementProjects();
+  }, [activeTab, loadEngagementProjects]);
+
   const signalRules = (key: string) => rules.filter(r => r.signalKey === key);
   const signalGroups = (key: string) => groups.filter(g => g.signalKey === key);
   const conflictRuleIds = new Set(conflicts.flatMap(c => c.ruleIds));
@@ -272,6 +301,13 @@ export default function TenantSignalsPage() {
   const selectedSignalData = signals.find(s => s.key === selectedSignal);
   const selectedRules = selectedSignal ? signalRules(selectedSignal) : [];
   const selectedGroups = selectedSignal ? signalGroups(selectedSignal) : [];
+
+  const associatedProjects = allEngagementProjects.filter(p =>
+    Array.isArray(p.triggeredBy) && p.triggeredBy.includes(selectedSignal ?? "")
+  );
+  const availableProjects = allEngagementProjects.filter(p =>
+    !Array.isArray(p.triggeredBy) || !p.triggeredBy.includes(selectedSignal ?? "")
+  );
 
   async function handleRunTest() {
     setTestRunning(true);
@@ -570,6 +606,33 @@ export default function TenantSignalsPage() {
     const res = await fetchWithAuth(`/api/admin/signal-rules/simulation-profiles/${id}`, { method: "DELETE" });
     if (res.ok) { toast({ title: "Profile deleted" }); await loadSimProfiles(); }
     else toast({ title: "Failed to delete profile", variant: "destructive" });
+  }
+
+  async function handleToggleProject(project: EngagementProject, add: boolean) {
+    const newTriggeredBy = add
+      ? [...project.triggeredBy, selectedSignal!]
+      : project.triggeredBy.filter(k => k !== selectedSignal!);
+    const res = await fetchWithAuth(`/api/admin/engagement-projects/${project.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: project.title,
+        priceRange: project.priceRange,
+        description: project.description,
+        meaning: project.meaning,
+        triggeredBy: newTriggeredBy,
+        sowItems: project.sowItems,
+        pages: project.pages,
+        sortOrder: project.sortOrder,
+        isVisible: project.isVisible,
+      }),
+    });
+    if (res.ok) {
+      toast({ title: add ? "Project linked to signal" : "Project unlinked from signal" });
+      await Promise.all([loadAll(), loadEngagementProjects()]);
+    } else {
+      toast({ title: "Failed to update project", variant: "destructive" });
+    }
   }
 
   function preloadProfile(profile: SimulationProfile) {
@@ -972,17 +1035,17 @@ export default function TenantSignalsPage() {
 
               {/* Tabs */}
               <div className="flex-shrink-0 flex gap-0 border-b border-[#30363D]">
-                {(["rules", "docs", "audit"] as const).map(tab => (
+                {(["rules", "projects", "docs", "audit"] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-5 py-2.5 text-sm font-semibold capitalize transition-colors border-b-2 ${
+                    className={`px-5 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
                       activeTab === tab
                         ? "border-[#0078D4] text-[#0078D4]"
                         : "border-transparent text-[#7D8590] hover:text-[#E6EDF3]"
                     }`}
                   >
-                    {tab === "docs" ? "Documentation" : tab === "audit" ? "Audit Log" : "Rules"}
+                    {tab === "docs" ? "Documentation" : tab === "audit" ? "Audit Log" : tab === "projects" ? "Projects" : "Rules"}
                   </button>
                 ))}
               </div>
@@ -1235,6 +1298,68 @@ export default function TenantSignalsPage() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {/* ── Projects tab ───────────────────────────────────────────── */}
+                {activeTab === "projects" && (
+                  <div className="space-y-6">
+                    <div>
+                      <p className="text-xs font-bold text-[#E6EDF3] uppercase tracking-wide mb-3">
+                        Linked to this signal
+                        <span className="ml-2 text-[#484F58] font-normal normal-case">({associatedProjects.length})</span>
+                      </p>
+                      {projectsLoading ? (
+                        <div className="flex items-center gap-2 text-[#7D8590] text-sm"><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+                      ) : associatedProjects.length === 0 ? (
+                        <p className="text-sm text-[#484F58] italic">No engagement projects linked yet — add one from the list below.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {associatedProjects.map(p => (
+                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-[#0078D4]/5 rounded-xl border border-[#0078D4]/20">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-[#E6EDF3] truncate">{p.title}</p>
+                                <p className="text-xs text-[#7D8590]">{p.priceRange}</p>
+                              </div>
+                              <button
+                                onClick={() => void handleToggleProject(p, false)}
+                                className="ml-4 flex-shrink-0 text-xs text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-400/50 px-2.5 py-1 rounded-lg transition-colors"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-3">
+                        Available to link
+                        <span className="ml-2 font-normal normal-case">({availableProjects.length})</span>
+                      </p>
+                      {!projectsLoading && availableProjects.length === 0 && (
+                        <p className="text-sm text-[#484F58] italic">All engagement projects are already linked to this signal.</p>
+                      )}
+                      {!projectsLoading && (
+                        <div className="space-y-2">
+                          {availableProjects.map(p => (
+                            <div key={p.id} className="flex items-center justify-between px-4 py-3 bg-[#0D1117] rounded-xl border border-[#30363D] hover:border-[#0078D4]/30 transition-colors">
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-[#C9D1D9] truncate">{p.title}</p>
+                                <p className="text-xs text-[#484F58]">{p.priceRange}</p>
+                              </div>
+                              <button
+                                onClick={() => void handleToggleProject(p, true)}
+                                className="ml-4 flex-shrink-0 inline-flex items-center gap-1 text-xs text-[#0078D4] hover:text-[#1A91E8] border border-[#0078D4]/30 hover:border-[#0078D4]/60 px-2.5 py-1 rounded-lg transition-colors"
+                              >
+                                <Plus className="w-3 h-3" /> Add
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
