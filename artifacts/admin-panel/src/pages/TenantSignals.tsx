@@ -51,6 +51,10 @@ interface SimulationProfile {
   tags: string[];
   lastRunAt: string | null;
   lastRunResult: Array<{ key: string; label: string }> | null;
+  lastRunProjectDiff: {
+    includedProjects: Array<{ id: number; title: string; priceRange: string | null }>;
+    excludedProjects: Array<{ project: { id: number; title: string }; reason: string }>;
+  } | null;
 }
 
 interface Conflict {
@@ -198,7 +202,7 @@ export default function TenantSignalsPage() {
   const [importingFromClient, setImportingFromClient] = useState(false);
   const [profileRunResults, setProfileRunResults] = useState<Record<number, SimProfileRunResult>>({});
   const [runningProfileId, setRunningProfileId] = useState<number | null>(null);
-  const [expandedProfileId, setExpandedProfileId] = useState<number | null>(null);
+  const [expandedProfileIds, setExpandedProfileIds] = useState<Set<number>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -234,7 +238,31 @@ export default function TenantSignalsPage() {
 
   const loadSimProfiles = useCallback(async () => {
     const res = await fetchWithAuth("/api/admin/signal-rules/simulation-profiles");
-    if (res.ok) setSimProfiles(await res.json() as SimulationProfile[]);
+    if (res.ok) {
+      const profiles = await res.json() as SimulationProfile[];
+      setSimProfiles(profiles);
+      setProfileRunResults(prev => {
+        const seeded: Record<number, SimProfileRunResult> = { ...prev };
+        for (const p of profiles) {
+          if (p.lastRunResult && p.lastRunProjectDiff && !(p.id in seeded)) {
+            seeded[p.id] = {
+              firedSignals: p.lastRunResult as Array<{ key: string; label: string; expectedImpact: string }>,
+              ruleTrace: [],
+              includedProjects: p.lastRunProjectDiff.includedProjects,
+              excludedProjects: p.lastRunProjectDiff.excludedProjects,
+            };
+          }
+        }
+        return seeded;
+      });
+      setExpandedProfileIds(prev => {
+        const ids = new Set(prev);
+        for (const p of profiles) {
+          if (p.lastRunResult && p.lastRunProjectDiff) ids.add(p.id);
+        }
+        return ids;
+      });
+    }
   }, [fetchWithAuth]);
 
   const loadScriptFields = useCallback(async () => {
@@ -558,7 +586,7 @@ export default function TenantSignalsPage() {
       if (res.ok) {
         const result = await res.json() as SimProfileRunResult;
         setProfileRunResults(prev => ({ ...prev, [id]: result }));
-        setExpandedProfileId(id);
+        setExpandedProfileIds(prev => new Set([...prev, id]));
         setTestResult({ firedSignals: result.firedSignals, ruleTrace: result.ruleTrace });
         const profile = simProfiles.find(p => p.id === id);
         if (profile) {
@@ -782,7 +810,7 @@ export default function TenantSignalsPage() {
             <div className="space-y-4">
               {filteredSimProfiles.map(profile => {
                 const result = profileRunResults[profile.id];
-                const isExpanded = expandedProfileId === profile.id;
+                const isExpanded = expandedProfileIds.has(profile.id);
                 const isRunning = runningProfileId === profile.id;
                 return (
                   <div key={profile.id} className="border border-[#30363D] rounded-xl overflow-hidden bg-[#161B22]">
@@ -790,7 +818,7 @@ export default function TenantSignalsPage() {
                     <div className="flex items-center justify-between px-5 py-3.5 gap-3">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <button
-                          onClick={() => setExpandedProfileId(isExpanded ? null : profile.id)}
+                          onClick={() => setExpandedProfileIds(prev => { const s = new Set(prev); isExpanded ? s.delete(profile.id) : s.add(profile.id); return s; })}
                           className="flex items-center gap-2 min-w-0 flex-1 text-left"
                         >
                           <ChevronRight className={`w-4 h-4 text-[#7D8590] flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />

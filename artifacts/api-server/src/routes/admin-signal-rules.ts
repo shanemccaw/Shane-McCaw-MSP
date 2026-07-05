@@ -657,6 +657,7 @@ router.get("/admin/signal-rules/simulation-profiles", requireAdmin, async (_req:
     const result = await db.execute(sql`
       SELECT id, name, description, profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings",
              tags, last_run_at AS "lastRunAt", last_run_result AS "lastRunResult",
+             last_run_project_diff AS "lastRunProjectDiff",
              created_at AS "createdAt", updated_at AS "updatedAt"
       FROM signal_simulation_profiles ORDER BY updated_at DESC
     `);
@@ -873,9 +874,14 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       }
     }
 
+    const projectDiff = { includedProjects, excludedProjects };
+
     await db.execute(sql`
       UPDATE signal_simulation_profiles
-      SET last_run_at = now(), last_run_result = ${JSON.stringify(firedArr)}::jsonb, updated_at = now()
+      SET last_run_at = now(),
+          last_run_result = ${JSON.stringify(firedArr)}::jsonb,
+          last_run_project_diff = ${JSON.stringify(projectDiff)}::jsonb,
+          updated_at = now()
       WHERE id = ${id}
     `);
 

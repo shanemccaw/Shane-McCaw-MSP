@@ -482,6 +482,7 @@ export const signalSimulationProfilesTable = pgTable("signal_simulation_profiles
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
   lastRunAt: timestamp("last_run_at"),
   lastRunResult: jsonb("last_run_result"),
+  lastRunProjectDiff: jsonb("last_run_project_diff"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
