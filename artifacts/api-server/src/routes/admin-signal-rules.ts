@@ -839,8 +839,8 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
         VALUES (
           ${signalKey},
           ${signalLabel},
-          ${(grp.description as string | undefined) ?? null},
-          ${(grp.expectedImpact as string | undefined) ?? null},
+          ${(grp.description as string | undefined) ?? ""},
+          ${(grp.expectedImpact as string | undefined) ?? ""},
           ${isAdj}
         )
         ON CONFLICT (key) DO NOTHING
