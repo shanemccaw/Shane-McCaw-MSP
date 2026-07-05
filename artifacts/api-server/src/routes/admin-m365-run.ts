@@ -132,7 +132,7 @@ function clampScore(current: number, delta: number): number {
   return Math.max(0, Math.min(100, current + delta));
 }
 
-/** Apply score deltas to existing client_scores row. */
+/** Apply score deltas (additive) to existing client_scores row. */
 async function applyScoreImpact(
   clientId: number,
   scoreImpact: Record<string, number>,
@@ -171,7 +171,49 @@ async function applyScoreImpact(
       .insert(clientScoresTable)
       .values({ clientId, ...updated });
   }
+}
 
+/** Overwrite client_scores with exact values (clamped 0–100). Used by manual Apply Scores. */
+async function overwriteScores(
+  clientId: number,
+  scoreImpact: Record<string, number>,
+): Promise<void> {
+  if (Object.keys(scoreImpact).length === 0) return;
+
+  const [existing] = await db
+    .select()
+    .from(clientScoresTable)
+    .where(eq(clientScoresTable.clientId, clientId))
+    .limit(1);
+
+  const clamp = (v: number) => Math.max(0, Math.min(100, v));
+
+  const base = {
+    identity: existing?.identity ?? 0,
+    security: existing?.security ?? 0,
+    collaboration: existing?.collaboration ?? 0,
+    compliance: existing?.compliance ?? 0,
+    copilotReadiness: existing?.copilotReadiness ?? 0,
+  };
+
+  const updated = {
+    identity: scoreImpact.identity !== undefined ? clamp(scoreImpact.identity) : base.identity,
+    security: scoreImpact.security !== undefined ? clamp(scoreImpact.security) : base.security,
+    collaboration: scoreImpact.collaboration !== undefined ? clamp(scoreImpact.collaboration) : base.collaboration,
+    compliance: scoreImpact.compliance !== undefined ? clamp(scoreImpact.compliance) : base.compliance,
+    copilotReadiness: scoreImpact.copilotReadiness !== undefined ? clamp(scoreImpact.copilotReadiness) : base.copilotReadiness,
+  };
+
+  if (existing) {
+    await db
+      .update(clientScoresTable)
+      .set({ ...updated, updatedAt: new Date() })
+      .where(eq(clientScoresTable.clientId, clientId));
+  } else {
+    await db
+      .insert(clientScoresTable)
+      .values({ clientId, ...updated });
+  }
 }
 
 /** Merge profileUpdates into client_m365_profiles. Delegates to shared lib. */
@@ -913,7 +955,7 @@ router.post("/admin/script-run-results/:id/apply-to-client", requireAdmin, async
     const scoreImpact = (row.scoreImpact ?? {}) as Record<string, number>;
     const profileUpdates = (row.profileUpdates ?? {}) as Record<string, unknown>;
 
-    await applyScoreImpact(row.customerId, scoreImpact);
+    await overwriteScores(row.customerId, scoreImpact);
     await applyProfileUpdates(row.customerId, profileUpdates);
 
     res.json({
