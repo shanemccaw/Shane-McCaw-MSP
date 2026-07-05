@@ -169,6 +169,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const newToken = await refresh();
     if (!newToken) {
       setState({ user: null, accessToken: null, isLoading: false });
+      accessTokenRef.current = null;
+      // Session is unrecoverable — hard-redirect to login so the page never stalls.
+      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const rel = window.location.pathname.replace(base, "") + window.location.search;
+      if (rel && rel !== "/" && !rel.startsWith("/login")) {
+        sessionStorage.setItem("adminReturnTo", rel);
+      }
+      window.location.replace(`${base}/login`);
       return res;
     }
 
