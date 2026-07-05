@@ -10387,6 +10387,7 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
         }
       }
     }
+    const force = body.force === true;
 
     const effectiveTotal = typeof totalPriceRaw === "number" ? totalPriceRaw : parseFloat(String(pres.totalPrice ?? "0"));
 
@@ -10405,9 +10406,10 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
       selectedPhases: Array.isArray(selectedPhasesRaw)
         ? selectedPhasesRaw
         : (pres.sowPhases ?? []).filter(p => (pres.selectedPhaseIds ?? []).includes(p.id)),
+      force,
     });
 
-    req.log.info({ presentationId: id }, "portal: generate-phases workflow fired");
+    req.log.info({ presentationId: id, force }, "portal: generate-phases workflow fired");
     res.json({ status: "queued" });
   } catch (err) {
     req.log.error(err, "portal: generate-phases failed");

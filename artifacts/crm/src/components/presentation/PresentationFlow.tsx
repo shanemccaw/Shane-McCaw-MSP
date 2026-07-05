@@ -398,6 +398,12 @@ export default function PresentationFlow({
     phases?: PhaseGenPhase[];
   } | null>(null);
 
+  // Track which selectedPhaseIds were active when phase gen last ran.
+  // On mount, if sowPhases are already saved, assume they were generated for the current selection.
+  const [phaseGenScopeIds, setPhaseGenScopeIds] = useState<string[] | null>(
+    initialData.sowPhases.length > 0 ? (initialData.selectedPhaseIds ?? []) : null
+  );
+
   // ── Scoped SOW regeneration state ─────────────────────────────────────────
   const [scopedSowDoc, setScopedSowDoc] = useState<string | null>(initialData.scopedSowHtml ?? null);
   const [scopedTotalPriceDollars, setScopedTotalPriceDollars] = useState<number | null>(initialData.scopedTotalPrice ?? null);
@@ -426,6 +432,12 @@ export default function PresentationFlow({
   // True when the last regeneration exactly matches the current selection
   const arraysMatch = (a: string[], b: string[]) =>
     a.length === b.length && a.every(id => b.includes(id));
+  // True when sowPhases are already saved and were generated for the current scope selection.
+  // When true, the "Build Your Project Plan" step can be skipped entirely.
+  const hasSavedPhasesForCurrentScope =
+    data.sowPhases.length > 0 &&
+    phaseGenScopeIds !== null &&
+    arraysMatch(selectedPhaseIds, phaseGenScopeIds);
   const scopedDocMatchesSelection = hasScopeReduction && scopedSowDoc !== null && lastRegenPhaseIds !== null && arraysMatch(lastRegenPhaseIds, selectedPhaseIds);
   // True when we need a (re)generation before the client can proceed
   const needsRegeneration = hasScopeReduction && !scopedDocMatchesSelection;
@@ -723,8 +735,21 @@ export default function PresentationFlow({
 
   // ── Phase generation handlers ──────────────────────────────────────────────
 
-  const handleStartPhaseGen = async () => {
+  const handleStartPhaseGen = async (force = false) => {
     if (!hasSowDocument || readOnly) return;
+
+    // If phases are already saved for the current scope selection, skip phase gen entirely
+    // and advance straight to Payment Options — unless a forced regeneration was requested.
+    if (!force && hasSavedPhasesForCurrentScope) {
+      const pmtIdx = steps.findIndex(s => s.kind === "payment");
+      if (pmtIdx >= 0) {
+        directionRef.current = "forward";
+        setMaxVisitedStep(m => Math.max(m, pmtIdx));
+        applyStepChange(pmtIdx);
+      }
+      return;
+    }
+
     // Reset any previous phase-gen event so the card starts fresh
     setPhaseGenEvent(null);
 
@@ -752,6 +777,7 @@ export default function PresentationFlow({
           adjustmentsTotal: data.adjustmentsTotal ?? 0,
           adjustmentLines: (data.adjustmentLines ?? []).map(a => ({ title: a.title, price: a.price })),
           selectedPhases: selectedPhases.map(p => ({ id: p.id, title: p.title, price: p.price })),
+          force,
         }),
       });
       if (!resp.ok) {
@@ -779,6 +805,12 @@ export default function PresentationFlow({
         selectedPhaseIds: phases.map(p => p.id),
       }));
     }
+    // Record the generated phase IDs as the "scope" baseline.
+    // After setData runs, data.selectedPhaseIds will equal phases.map(p => p.id), so
+    // we use the same value here to keep phaseGenScopeIds in sync with selectedPhaseIds.
+    // This lets hasSavedPhasesForCurrentScope correctly evaluate to true immediately
+    // after a successful generation, and to false when the client later changes their selection.
+    setPhaseGenScopeIds(phases.map(p => p.id));
     // Advance to payment options
     const pmtIdx = steps.findIndex(s => s.kind === "payment");
     if (pmtIdx >= 0) {
@@ -2055,7 +2087,7 @@ export default function PresentationFlow({
                   onClick={() => void handleStartPhaseGen()}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20"
                 >
-                  <span>Build Your Project Plan</span>
+                  <span>{hasSavedPhasesForCurrentScope ? "Continue to Payment Options" : "Build Your Project Plan"}</span>
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
