@@ -199,9 +199,12 @@ export default function PresentationFlow({
   const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
 
   const computeInitialStep = () => {
-    const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
+    // Docs hidden from the left nav: SOW documents (shown in the Scope step) and
+    // task execution guides (internal-only; never surfaced to clients).
+    const isNavHidden = (d: PresentationDoc) =>
+      d.docType === "consolidated_sow" || d.docType === "sow" || d.docType === "task_execution_guide";
     if (startAtPayment) {
-      const steps = buildSteps(initialData.documents.filter(d => !isSowDoc(d)), readOnly);
+      const steps = buildSteps(initialData.documents.filter(d => !isNavHidden(d)), readOnly);
       // New flow: Payment Options → Agreement → Checkout → Confirmation
       // After Stripe redirect (startAtPayment=true):
       //   paid               → confirmation (payment complete)
@@ -220,7 +223,7 @@ export default function PresentationFlow({
     }
     const urlStep = parseInt(new URLSearchParams(search).get("step") ?? "", 10);
     if (!isNaN(urlStep) && urlStep >= 0) {
-      const steps = buildSteps(initialData.documents.filter(d => !isSowDoc(d)), readOnly);
+      const steps = buildSteps(initialData.documents.filter(d => !isNavHidden(d)), readOnly);
       const clamped = Math.min(urlStep, steps.length - 1);
       // If there's no SOW document, hard-lock all sow-gated steps — deep-links land on step 0.
       const hasSOW = initialData.documents.some(
@@ -295,10 +298,13 @@ export default function PresentationFlow({
   // Navigation docs — sortedDocs minus SOW documents. SOW content is already
   // surfaced by the dedicated "Scope & Pricing" step, so a separate nav entry
   // for each SOW document would be redundant and confusing for clients.
+  // task_execution_guide docs are internal-only and must never be shown to clients.
   // All step-index arithmetic (buildSteps, stepLabel, doc panel) uses navDocs;
   // SOW-gating checks and document-content lookups keep using sortedDocs.
   const navDocs = useMemo(
-    () => sortedDocs.filter(d => d.docType !== "consolidated_sow" && d.docType !== "sow"),
+    () => sortedDocs.filter(
+      d => d.docType !== "consolidated_sow" && d.docType !== "sow" && d.docType !== "task_execution_guide"
+    ),
     [sortedDocs],
   );
 
@@ -619,12 +625,14 @@ export default function PresentationFlow({
         initialDocFingerprintRef.current = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
         // Recompute the step list from fresh docs to get the new count before clamping
         const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
+        const isNavHiddenDoc = (d: PresentationDoc) =>
+          isSowDoc(d) || d.docType === "task_execution_guide";
         const freshSortedDocs = [...(fresh.documents ?? [])].sort((a, b) => {
           if (isSowDoc(a) && !isSowDoc(b)) return 1;
           if (!isSowDoc(a) && isSowDoc(b)) return -1;
           return 0;
         });
-        const freshNavDocs = freshSortedDocs.filter(d => !isSowDoc(d));
+        const freshNavDocs = freshSortedDocs.filter(d => !isNavHiddenDoc(d));
         const freshStepCount = buildSteps(freshNavDocs, readOnly).length;
         // Clamp current position and max-visited to the new step list size
         setStepIndex(prev => Math.min(prev, freshStepCount - 1));
