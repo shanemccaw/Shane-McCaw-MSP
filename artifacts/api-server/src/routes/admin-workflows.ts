@@ -64,63 +64,100 @@ router.get("/admin/workflows/definitions", requireAdmin, async (req: Request, re
       .from(wfDefinitionsTable)
       .orderBy(desc(wfDefinitionsTable.createdAt));
 
-    const enriched = await Promise.all(defs.map(async def => {
-      const [published] = await db
-        .select({ label: wfVersionsTable.label, versionNumber: wfVersionsTable.versionNumber })
-        .from(wfVersionsTable)
-        .where(and(eq(wfVersionsTable.definitionId, def.id), eq(wfVersionsTable.status, "published")))
-        .orderBy(desc(wfVersionsTable.versionNumber))
-        .limit(1);
+    if (defs.length === 0) { res.json([]); return; }
 
-      const triggerRows = await db
-        .select({ type: wfTriggersTable.type, config: wfTriggersTable.config })
-        .from(wfTriggersTable)
-        .where(eq(wfTriggersTable.definitionId, def.id));
+    const defIds = defs.map(d => d.id);
 
-      const triggerTypes = [...new Set(triggerRows.map(t => t.type))];
+    // Batch query 1 — latest published version per definition
+    // DISTINCT ON keeps only the first row per definition_id when ordered by version_number DESC
+    const publishedRows = await db.execute<{
+      definition_id: number;
+      label: string | null;
+      version_number: number;
+    }>(sql`
+      SELECT DISTINCT ON (definition_id) definition_id, label, version_number
+      FROM   wf_versions
+      WHERE  definition_id = ANY(${sql.raw(`ARRAY[${defIds.join(",")}]::int[]`)})
+        AND  status = 'published'
+      ORDER  BY definition_id, version_number DESC
+    `);
+
+    // Batch query 2 — all triggers for all definitions
+    const allTriggers = defIds.length > 0
+      ? await db
+          .select({ definitionId: wfTriggersTable.definitionId, type: wfTriggersTable.type, config: wfTriggersTable.config })
+          .from(wfTriggersTable)
+          .where(inArray(wfTriggersTable.definitionId, defIds))
+      : [];
+
+    // Batch query 3 — last run per definition
+    const lastRunRows = await db.execute<{
+      definition_id: number;
+      status: string;
+      created_at: string;
+    }>(sql`
+      SELECT DISTINCT ON (definition_id) definition_id, status, created_at
+      FROM   wf_runs
+      WHERE  definition_id = ANY(${sql.raw(`ARRAY[${defIds.join(",")}]::int[]`)})
+      ORDER  BY definition_id, created_at DESC
+    `);
+
+    // Batch query 4 — latest version graph per definition (for ask_for_input fields)
+    const latestVersionRows = await db.execute<{
+      definition_id: number;
+      graph: unknown;
+    }>(sql`
+      SELECT DISTINCT ON (definition_id) definition_id, graph
+      FROM   wf_versions
+      WHERE  definition_id = ANY(${sql.raw(`ARRAY[${defIds.join(",")}]::int[]`)})
+      ORDER  BY definition_id, version_number DESC
+    `);
+
+    // Index the batch results by definition_id for O(1) lookup
+    const publishedByDef = new Map(publishedRows.rows.map(r => [r.definition_id, r]));
+    const lastRunByDef   = new Map(lastRunRows.rows.map(r => [r.definition_id, r]));
+    const latestVerByDef = new Map(latestVersionRows.rows.map(r => [r.definition_id, r]));
+
+    const triggersByDef = new Map<number, typeof allTriggers>();
+    for (const t of allTriggers) {
+      const arr = triggersByDef.get(t.definitionId) ?? [];
+      arr.push(t);
+      triggersByDef.set(t.definitionId, arr);
+    }
+
+    type GraphNode = { type: string; data?: Record<string, unknown> };
+
+    const enriched = defs.map(def => {
+      const published   = publishedByDef.get(def.id);
+      const lastRun     = lastRunByDef.get(def.id);
+      const latestVer   = latestVerByDef.get(def.id);
+      const triggerRows = triggersByDef.get(def.id) ?? [];
+
+      const triggerTypes      = [...new Set(triggerRows.map(t => t.type))];
       const triggerEventNames = triggerRows
         .filter(t => t.type === "event")
         .map(t => (t.config as Record<string, unknown>).eventName as string | undefined)
         .filter((n): n is string => typeof n === "string" && n.length > 0);
 
-      const [lastRun] = await db
-        .select({ status: wfRunsTable.status, createdAt: wfRunsTable.createdAt })
-        .from(wfRunsTable)
-        .where(eq(wfRunsTable.definitionId, def.id))
-        .orderBy(desc(wfRunsTable.createdAt))
-        .limit(1);
-
-      const [latestVersion] = await db
-        .select({ graph: wfVersionsTable.graph })
-        .from(wfVersionsTable)
-        .where(eq(wfVersionsTable.definitionId, def.id))
-        .orderBy(desc(wfVersionsTable.versionNumber))
-        .limit(1);
-
-      type GraphNode = { type: string; data?: Record<string, unknown> };
-      const graphNodes = (latestVersion?.graph as { nodes?: GraphNode[] } | undefined)?.nodes ?? [];
-      const askForInputNode = graphNodes.find(n => n.type === "ask_for_input");
+      const graphNodes = (latestVer?.graph as { nodes?: GraphNode[] } | undefined)?.nodes ?? [];
+      const askForInputNode   = graphNodes.find(n => n.type === "ask_for_input");
       const askForInputFields = (askForInputNode?.data?.fields as Array<{
-        variableName: string;
-        label: string;
-        type: string;
-        required?: boolean;
-        options?: string;
-        multi?: boolean;
+        variableName: string; label: string; type: string;
+        required?: boolean; options?: string; multi?: boolean;
       }> | undefined) ?? null;
 
       return {
         ...def,
-        publishedVersionLabel: published?.label ?? null,
-        publishedVersionNumber: published?.versionNumber ?? null,
-        triggerCount: triggerRows.length,
+        publishedVersionLabel:  published?.label ?? null,
+        publishedVersionNumber: published?.version_number ?? null,
+        triggerCount:      triggerRows.length,
         triggerTypes,
         triggerEventNames,
         lastRunStatus: lastRun?.status ?? null,
-        lastRunAt: lastRun?.createdAt ?? null,
+        lastRunAt:     lastRun?.created_at ? new Date(lastRun.created_at) : null,
         askForInputFields,
       };
-    }));
+    });
 
     res.json(enriched);
   } catch (err) {
