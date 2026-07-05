@@ -1063,6 +1063,13 @@ export default function PresentationFlow({
     // Hard-block all SOW-gated steps when no SOW document is present.
     const blockedByNoSow = !hasSowDocument && !!targetStep && sowGatedKinds.has(targetStep.kind);
     if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan && !blockedByNoSow) {
+      // Navigating to phase_gen must fire the workflow — delegate to handleStartPhaseGen
+      // which handles advancing the step itself.
+      if (targetStep?.kind === "phase_gen") {
+        void handleStartPhaseGen();
+        setSidebarOpen(false);
+        return;
+      }
       directionRef.current = i > stepIndex ? "forward" : "back";
       applyStepChange(i);
       setSidebarOpen(false);
@@ -1108,10 +1115,15 @@ export default function PresentationFlow({
         body: JSON.stringify({ eventType: "card_click", cardName }),
       }).catch(() => { /* fire-and-forget */ });
     }
+    // Navigating to phase_gen must fire the workflow — delegate to handleStartPhaseGen.
+    if (targetStep?.kind === "phase_gen") {
+      void handleStartPhaseGen();
+      return;
+    }
     directionRef.current = idx > stepIndex ? "forward" : "back";
     setMaxVisitedStep(m => Math.max(m, idx));
     applyStepChange(idx);
-  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, needsRegeneration, data.signedAt, steps, selectedPlan, hasSowDocument]);
+  }, [steps.length, applyStepChange, stepIndex, fetchFn, presentationId, shareToken, sowResetBlocked, needsRegeneration, data.signedAt, steps, selectedPlan, hasSowDocument, handleStartPhaseGen]);
 
   const firstDocStepIndex    = steps.findIndex(s => s.kind === "doc");
   const sowStepIndex         = steps.findIndex(s => s.kind === "sow");
