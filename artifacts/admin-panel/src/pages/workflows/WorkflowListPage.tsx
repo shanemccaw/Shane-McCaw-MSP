@@ -7,6 +7,7 @@ import { useLocation } from "wouter";
 import { format } from "date-fns";
 import WorkflowBuilderPage from "./WorkflowBuilderPage";
 import RunHistoryPage from "./RunHistoryPage";
+import RunDetailContent from "./RunDetailContent";
 
 // ── Ask-for-Input types & constants ──────────────────────────────────────────
 
@@ -736,6 +737,7 @@ export default function WorkflowListPage() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [activeRun, setActiveRun] = useState<{ defId: number; runId: number } | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<number | null>(null);
   const [inputDialog, setInputDialog] = useState<{ defId: number; fields: AskForInputField[] } | null>(null);
 
   // ── IDE state — initialised from URL query params ──
@@ -820,7 +822,7 @@ export default function WorkflowListPage() {
       return Array.isArray(body) ? body : (body.runs ?? []);
     },
     enabled: selectedId !== null,
-    refetchInterval: isLiveRun ? 5000 : false,
+    refetchInterval: selectedId !== null ? 5000 : false,
   });
 
   // ── Active run status polling ──
@@ -1487,14 +1489,54 @@ export default function WorkflowListPage() {
                   : null);
                 const durStr = durMs !== null ? `${(durMs / 1000).toFixed(1)}s` : null;
                 const ts = run.startedAt ?? run.createdAt;
+                const isExpanded = expandedRunId === run.id;
                 return (
-                  <div key={run.id} className="px-4 py-2.5 hover:bg-[#1C2128] transition-colors">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotCls}`} />
-                      <span className="text-[11px] text-[#C9D1D9] flex-1 font-medium capitalize">{run.status}</span>
-                      {durStr && <span className="text-[10px] text-[#484F58]">{durStr}</span>}
-                    </div>
-                    <p className="text-[10px] text-[#484F58] mt-0.5 pl-4">{formatRelative(ts)}</p>
+                  <div key={run.id} className="border-b border-[#21262D] last:border-b-0">
+                    {/* Clickable run row — toggles inline expansion */}
+                    <button
+                      className="w-full text-left px-4 py-2.5 hover:bg-[#1C2128] transition-colors flex items-start gap-2 group"
+                      onClick={() => setExpandedRunId(isExpanded ? null : run.id)}
+                    >
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1 ${dotCls}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-[#C9D1D9] font-medium capitalize flex-1">{run.status}</span>
+                          {durStr && <span className="text-[10px] text-[#484F58]">{durStr}</span>}
+                          <span className="text-[10px] text-[#484F58] group-hover:text-[#7D8590] transition-colors">
+                            {isExpanded ? "▾" : "▸"}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[#484F58] mt-0.5">{formatRelative(ts)}</p>
+                      </div>
+                    </button>
+
+                    {/* Inline expanded run detail */}
+                    {isExpanded && (
+                      <div className="border-t border-[#21262D] bg-[#0D1117]">
+                        {/* Mini header: open-full-view link + close button */}
+                        <div className="flex items-center justify-between px-4 py-2 border-b border-[#21262D]">
+                          <button
+                            onClick={() => navigate(`/workflows/runs/${run.id}`)}
+                            className="text-[11px] text-[#0078D4] hover:text-[#58A6FF] transition-colors"
+                          >
+                            Open full view →
+                          </button>
+                          <button
+                            onClick={() => setExpandedRunId(null)}
+                            className="text-[#484F58] hover:text-[#C9D1D9] transition-colors p-0.5"
+                            title="Collapse"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                        {/* RunDetailContent handles its own data fetching and polling */}
+                        <div style={{ maxHeight: 520, overflowY: "auto" }}>
+                          <RunDetailContent runId={run.id} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
