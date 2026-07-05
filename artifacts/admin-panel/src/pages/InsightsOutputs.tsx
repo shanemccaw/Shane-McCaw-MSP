@@ -1017,6 +1017,8 @@ function ConsultingTab({
   const [dialogProjects,   setDialogProjects]   = useState<Project[]>([]);
   const [promptDialogKey,  setPromptDialogKey]  = useState<string>("");
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [wizardSowDocumentId, setWizardSowDocumentId] = useState<number | null>(null);
+  const [sowDocs, setSowDocs] = useState<{ id: number; title: string; docType: string }[]>([]);
   const [wizardMode, setWizardMode] = useState<"generate" | "preview">("generate");
   const [payloadOpen, setPayloadOpen] = useState(false);
   const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
@@ -1041,6 +1043,24 @@ function ConsultingTab({
       .then((d: unknown) => setDialogProjects((d as { projects: Project[] }).projects ?? []))
       .catch(() => setDialogProjects([]));
   }, [dialogCustomerId, fetchWithAuth]);
+
+  // Load available SOW documents when generating a task_execution_guide
+  useEffect(() => {
+    if (wizardType !== "task_execution_guide" || !dialogCustomerId) { setSowDocs([]); return; }
+    const qs = new URLSearchParams({ category: "consulting" });
+    qs.set("customerId", String(dialogCustomerId));
+    if (dialogProjectId) qs.set("projectId", String(dialogProjectId));
+    fetchWithAuth(`${API}/admin/insights/documents?${qs}`)
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const all = (d as { documents: InsightsDoc[] }).documents ?? [];
+        setSowDocs(all.filter(doc =>
+          ["consolidated_sow", "sow", "scoped_sow"].includes(doc.docType) &&
+          ["draft", "approved", "delivered"].includes(doc.status)
+        ).map(doc => ({ id: doc.id, title: doc.title, docType: doc.docType })));
+      })
+      .catch(() => setSowDocs([]));
+  }, [wizardType, dialogCustomerId, dialogProjectId, fetchWithAuth]);
 
   const buildQs = useCallback(() => {
     const p = new URLSearchParams({ category: "consulting" });
@@ -1087,6 +1107,7 @@ function ConsultingTab({
     setWizardStep("confirm"); setError(null);
     setDialogCustomerId(customerId);
     setDialogProjectId(projectId);
+    setWizardSowDocumentId(null);
     setWizardMode(mode);
     setWizardOpen(true);
   };
@@ -1112,17 +1133,24 @@ function ConsultingTab({
 
   const generate = async () => {
     if (!dialogCustomerId || !dialogProjectId) return;
+    if (wizardType === "task_execution_guide" && !wizardSowDocumentId) {
+      setError("Please select a SOW document to generate from."); return;
+    }
     setWizardStep("generating"); setError(null);
     // Server returns { id, status: "generating" } immediately (fire-and-forget).
     // Close the wizard right away — the table auto-polls every 3 s and will show
     // the row flip from "generating" → "approved" naturally.
     try {
+      const body: Record<string, unknown> = {
+        customerId: dialogCustomerId, projectId: dialogProjectId,
+        deliverableType: wizardType, title: wizardTitle,
+      };
+      if (wizardType === "task_execution_guide" && wizardSowDocumentId) {
+        body.sowDocumentId = wizardSowDocumentId;
+      }
       const r = await fetchWithAuth(`${API}/admin/insights/consulting/generate`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerId: dialogCustomerId, projectId: dialogProjectId,
-          deliverableType: wizardType, title: wizardTitle,
-        }),
+        body: JSON.stringify(body),
       });
       const d = await r.json() as { id?: number; status?: string; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
@@ -1389,6 +1417,24 @@ function ConsultingTab({
                 </select>
                 {dialogProjects.length === 0 && (
                   <p className="text-yellow-400 text-xs mt-1">No projects found for this customer.</p>
+                )}
+              </div>
+            )}
+            {wizardType === "task_execution_guide" && (
+              <div>
+                <label className="text-gray-400 text-xs mb-1.5 block">SOW to generate from <span className="text-red-400">*</span></label>
+                <select
+                  value={wizardSowDocumentId ?? ""}
+                  onChange={e => setWizardSowDocumentId(e.target.value ? parseInt(e.target.value, 10) : null)}
+                  className="w-full bg-[#0D1117] border border-amber-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                >
+                  <option value="">Select a SOW document…</option>
+                  {sowDocs.map(d => (
+                    <option key={d.id} value={d.id}>{d.title}</option>
+                  ))}
+                </select>
+                {sowDocs.length === 0 && (
+                  <p className="text-amber-400/80 text-xs mt-1">No SOW documents found for this customer. Generate a Consolidated SOW first.</p>
                 )}
               </div>
             )}

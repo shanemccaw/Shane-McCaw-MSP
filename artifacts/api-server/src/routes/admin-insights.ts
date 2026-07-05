@@ -1407,13 +1407,14 @@ const generateConsultingSchema = z.object({
   projectId:       z.number().int().positive({ message: "A project must be selected" }),
   deliverableType: z.string().min(1),
   title:           z.string().min(1).max(200),
+  sowDocumentId:   z.number().int().positive().optional(),
 });
 
 router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = generateConsultingSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
-    const { customerId, projectId, deliverableType, title } = body.data;
+    const { customerId, projectId, deliverableType, title, sowDocumentId } = body.data;
 
     // ── Special path: Consolidated SOW ──────────────────────────────────────────
     if (deliverableType === "consolidated_sow") {
@@ -1965,6 +1966,55 @@ INSTRUCTIONS:
       priorDocsSummary,
     });
     if (pricingAppendix) prompt += pricingAppendix;
+
+    // ── task_execution_guide: fetch SOW HTML and override with dedicated prompt ──
+    if (deliverableType === "task_execution_guide" && sowDocumentId) {
+      const [sowDocRow] = await db
+        .select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+        .from(insightsGeneratedDocumentsTable)
+        .where(eq(insightsGeneratedDocumentsTable.id, sowDocumentId))
+        .limit(1);
+      const sowHtmlForGuide = sowDocRow?.htmlContent ?? "(No SOW provided — generate based on available context)";
+      const TASK_EXEC_GUIDE_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a professional SOW Task Execution Guide in HTML format.
+
+Client: {{clientName}}
+Document title: {{title}}
+Date: {{date}}
+
+M365 Environment Health Scores:
+{{scores}}
+
+SOW / SCOPE DOCUMENT (use this as the primary source of truth for tasks and deliverables):
+{{sowHtml}}
+
+Key Findings from assessments: {{findings}}
+
+INSTRUCTIONS:
+- For EACH deliverable or work item in the SOW above, produce a clearly formatted section:
+    - Task name as a styled heading
+    - Purpose: one sentence — why this task matters for this client
+    - Prerequisites: what must already be done before starting
+    - Step-by-step instructions: numbered list, technically specific for Microsoft 365 Admin Center / Entra ID / PowerShell / SharePoint — use actual UI paths and cmdlet names
+    - Expected outcome: what success looks like
+    - How to validate: a specific check (UI screenshot, PowerShell command, or report) that confirms completion
+    - Common pitfalls: 1-3 things that commonly go wrong and how to avoid them
+- Group task sections by their phase/section from the SOW
+- Add an intro section and a completion checklist at the end
+- Output ONLY valid HTML (no markdown, no code fences)
+- Use inline CSS — white background, #0078D4 accent (#0A2540 for headers), professional enterprise typography
+- Write in first person as Shane McCaw
+- Be technically precise — this is an engineer's execution guide, not a marketing document
+- Total length: produce complete content for every task — do not truncate`;
+      const rawGuideTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXEC_GUIDE_FALLBACK);
+      prompt = substituteTokens(rawGuideTemplate, {
+        clientName,
+        title,
+        date: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+        scores: scoresBlock,
+        sowHtml: sowHtmlForGuide,
+        findings: findingsInline,
+      });
+    }
 
     // Find any prior completed doc for same customer+project+deliverableType (to replace on success)
     let priorConsultingId: number | null = null;
