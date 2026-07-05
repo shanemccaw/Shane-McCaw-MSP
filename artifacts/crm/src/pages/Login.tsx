@@ -5,6 +5,7 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { Loader2, Eye, EyeOff, Mail, ShieldCheck, Sparkles, ClipboardCheck, Zap } from "lucide-react";
 import AnimatedBackground from "@/components/quickwin/AnimatedBackground";
 import CopilotAura from "@/components/wizard/CopilotAura";
+import ScoreRing from "@/components/ScoreRing";
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 function redirectAfterAuth(role: string, setLocation: (path: string) => void) {
@@ -109,23 +110,14 @@ function M365HealthPanel() {
         </div>
       </div>
 
-      {/* Category bars — equal flex columns, no wrapping */}
-      <div className="flex-1 flex items-stretch gap-5 min-w-0">
+      {/* Category score rings */}
+      <div className="flex-1 flex items-center justify-around gap-2">
         {SCORE_CATEGORIES.map(({ label, key }) => {
           const pct = scores[key] ?? 0;
-          const { bar, text } = scoreColor(pct);
           return (
-            <div key={key} className="flex-1 flex flex-col justify-between gap-1.5 min-w-0">
-              <div className="flex items-baseline gap-1.5">
-                <span className="text-[11px] font-semibold text-black/50">{label}</span>
-                <span className={`text-xs font-bold shrink-0 ${text}`}>{pct}%</span>
-              </div>
-              <div className="h-1.5 w-full bg-black/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${pct}%`, backgroundColor: bar }}
-                />
-              </div>
+            <div key={key} className="flex flex-col items-center gap-1.5">
+              <ScoreRing score={pct} size={72} strokeWidth={5} />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#0A2540]/50">{label}</span>
             </div>
           );
         })}
