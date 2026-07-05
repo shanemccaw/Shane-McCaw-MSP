@@ -337,8 +337,19 @@ export async function generateConsolidatedSowDocument(
     const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
 
     signalFilteredProjects = allEngagementProjects.filter(p => {
+      const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [];
+      const legacyTriggers = triggers.filter(t => !knownSignalKeys.has(t));
+      if (legacyTriggers.length > 0) {
+        logger.warn(
+          { ...logCtx, projectTitle: p.title, legacyTriggers, allTriggers: triggers },
+          "consolidated-sow-generator: [DEPRECATION] project has non-signal triggeredBy string(s) — " +
+          "migrate all entries to canonical signal keys (e.g. hasGovernanceGaps, hasSecurityGaps). " +
+          "Unrecognized entries are ignored; if ALL entries are unrecognized the project is excluded. " +
+          "Update triggeredBy via the Admin Panel → Engagement Projects or run seed-engagement-project-triggers.",
+        );
+      }
       const { included, reason } = projectMatchesSignals(
-        { title: p.title, triggeredBy: Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [] },
+        { title: p.title, triggeredBy: triggers },
         knownSignalKeys,
         firedSignals,
       );
