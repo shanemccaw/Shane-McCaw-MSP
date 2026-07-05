@@ -25,6 +25,7 @@ interface SignalRule {
   compareValue: string | null;
   description: string | null;
   sortOrder: number;
+  updatedAt?: string | null;
 }
 
 interface SignalGroup {
@@ -116,6 +117,19 @@ interface SimProfileRunResult {
   includedProjects: Array<{ id: number; title: string; priceRange: string | null }>;
   excludedProjects: Array<{ project: { id: number; title: string }; reason: string }>;
   previousRunDiff: SimProfileRunDiff | null;
+}
+
+function timeAgo(isoString: string): string {
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
 }
 
 const RULE_TYPE_OPTIONS = [
@@ -986,7 +1000,30 @@ export default function TenantSignalsPage() {
 
                         {/* Fired signals */}
                         <div>
-                          <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Signals Fired ({result.firedSignals.length})</p>
+                          {(() => {
+                            const latestRuleUpdatedAt = rules.reduce<string | null>((max, r) => {
+                              if (!r.updatedAt) return max;
+                              return !max || r.updatedAt > max ? r.updatedAt : max;
+                            }, null);
+                            const isStale = !!(profile.lastRunAt && latestRuleUpdatedAt && latestRuleUpdatedAt > profile.lastRunAt);
+                            return (
+                              <div className="flex items-center flex-wrap gap-2 mb-2">
+                                <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide">Signals Fired ({result.firedSignals.length})</p>
+                                {profile.lastRunAt && (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                                    <Clock className="w-2.5 h-2.5 flex-shrink-0" />
+                                    Run {timeAgo(profile.lastRunAt)}
+                                  </span>
+                                )}
+                                {isStale && (
+                                  <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-900/30 border border-amber-500/30 text-amber-400" title={`Rules last updated ${timeAgo(latestRuleUpdatedAt!)}`}>
+                                    <AlertTriangle className="w-2.5 h-2.5 flex-shrink-0" />
+                                    Rules changed since last run
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                           <div className="flex flex-wrap gap-2">
                             {result.firedSignals.map(s => (
                               <div key={s.key} className="group relative">
