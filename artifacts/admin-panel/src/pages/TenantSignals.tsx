@@ -233,10 +233,10 @@ export default function TenantSignalsPage() {
   }, [fetchWithAuth]);
 
   const loadClients = useCallback(async () => {
-    const res = await fetchWithAuth("/api/admin/clients?limit=200");
+    const res = await fetchWithAuth("/api/admin/clients/enriched");
     if (res.ok) {
-      const data = await res.json() as { clients?: Array<{ id: number; name: string | null; email: string; company: string | null }> };
-      setClients(data.clients ?? []);
+      const data = await res.json() as Array<{ id: number; name: string | null; email: string; company: string | null }>;
+      setClients(Array.isArray(data) ? data : []);
     }
   }, [fetchWithAuth]);
 
