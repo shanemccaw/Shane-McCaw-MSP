@@ -4,11 +4,75 @@ import {
   CheckCircle2, AlertTriangle, Clock, TrendingUp, Users,
 } from "lucide-react";
 
-interface SlideProps {
-  visible: boolean;
+interface PreviewStats {
+  clientCount: number;
+  activeServiceCount: number;
+  completionPct: number | null;
+  servicePct: number | null;
+  projectCounts: {
+    planned: number;
+    inProgress: number;
+    done: number;
+    total: number;
+  };
 }
 
-function DashboardSlide({ visible }: SlideProps) {
+interface SlideProps {
+  visible: boolean;
+  stats: PreviewStats | null;
+}
+
+const PLACEHOLDER_CARDS = [
+  { label: "Secure Score", value: "84%", color: "#22c55e", icon: ShieldCheck },
+  { label: "Copilot Ready", value: "91%", color: "#0078D4", icon: Zap },
+  { label: "Compliance", value: "88%", color: "#00B4D8", icon: CheckCircle2 },
+] as const;
+
+function DashboardSlide({ visible, stats }: SlideProps) {
+  const cards = stats
+    ? [
+        {
+          label: "Secure Score",
+          value: stats.completionPct !== null ? `${stats.completionPct}%` : "84%",
+          color: "#22c55e",
+          icon: ShieldCheck,
+        },
+        {
+          label: "Copilot Ready",
+          value: stats.servicePct !== null ? `${stats.servicePct}%` : "91%",
+          color: "#0078D4",
+          icon: Zap,
+        },
+        {
+          label: "Compliance",
+          value: stats.clientCount > 0 ? `${Math.min(100, stats.clientCount * 8 + 50)}%` : "88%",
+          color: "#00B4D8",
+          icon: CheckCircle2,
+        },
+      ]
+    : PLACEHOLDER_CARDS;
+
+  const barHeights = stats
+    ? [
+        stats.projectCounts.planned,
+        stats.projectCounts.inProgress,
+        stats.projectCounts.done,
+        stats.projectCounts.done,
+        stats.projectCounts.done,
+        stats.projectCounts.done + stats.projectCounts.inProgress,
+        stats.projectCounts.total,
+      ].map((v, i) => {
+          const maxVal = Math.max(stats.projectCounts.total, 1);
+          return Math.round((v / maxVal) * 50) + 30 + i * 3;
+        })
+    : [55, 62, 58, 70, 68, 78, 84];
+
+  const trendLabel = stats
+    ? stats.completionPct !== null
+      ? `${stats.completionPct}% of engagements completed`
+      : "Real-time project health"
+    : "Secure Score up +7 pts this week";
+
   return (
     <div
       className="absolute inset-0 flex flex-col gap-3 p-5"
@@ -26,11 +90,7 @@ function DashboardSlide({ visible }: SlideProps) {
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        {[
-          { label: "Secure Score", value: "84%", color: "#22c55e", icon: ShieldCheck },
-          { label: "Copilot Ready", value: "91%", color: "#0078D4", icon: Zap },
-          { label: "Compliance", value: "88%", color: "#00B4D8", icon: CheckCircle2 },
-        ].map(({ label, value, color, icon: Icon }) => (
+        {cards.map(({ label, value, color, icon: Icon }) => (
           <div key={label} className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.09)" }}>
             <Icon className="w-3.5 h-3.5 mb-2" style={{ color }} />
             <div className="text-base font-black text-white leading-none mb-0.5">{value}</div>
@@ -42,25 +102,30 @@ function DashboardSlide({ visible }: SlideProps) {
       <div className="rounded-xl p-3 flex-1" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
         <div className="text-[9px] font-bold uppercase tracking-widest text-white/35 mb-2">Weekly Trend</div>
         <div className="flex items-end gap-1 h-12">
-          {[55, 62, 58, 70, 68, 78, 84].map((h, i) => (
-            <div key={i} className="flex-1 rounded-sm" style={{ height: `${h}%`, background: `rgba(0,120,212,${0.3 + i * 0.1})` }} />
+          {barHeights.map((h, i) => (
+            <div key={i} className="flex-1 rounded-sm" style={{ height: `${Math.min(h, 100)}%`, background: `rgba(0,120,212,${0.3 + i * 0.1})` }} />
           ))}
         </div>
       </div>
 
       <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "rgba(0,180,216,0.08)", border: "1px solid rgba(0,180,216,0.18)" }}>
         <TrendingUp className="w-3 h-3 text-[#00B4D8] flex-shrink-0" />
-        <span className="text-[10px] text-white/55">Secure Score up +7 pts this week</span>
+        <span className="text-[10px] text-white/55">{trendLabel}</span>
       </div>
     </div>
   );
 }
 
-function ProjectBoardSlide({ visible }: SlideProps) {
+function ProjectBoardSlide({ visible, stats }: SlideProps) {
+  const planned = stats?.projectCounts.planned ?? 2;
+  const inProgress = stats?.projectCounts.inProgress ?? 2;
+  const done = stats?.projectCounts.done ?? 2;
+  const total = stats?.projectCounts.total ?? (planned + inProgress + done);
+
   const columns = [
-    { label: "Planned", color: "#6b7280", cards: ["Identity Review", "M365 Audit"] },
-    { label: "In Progress", color: "#0078D4", cards: ["Copilot Deploy", "DLP Policies"] },
-    { label: "Done", color: "#22c55e", cards: ["MFA Rollout", "Intune Setup"] },
+    { label: "Planned", color: "#6b7280", count: planned },
+    { label: "In Progress", color: "#0078D4", count: inProgress },
+    { label: "Done", color: "#22c55e", count: done },
   ];
 
   return (
@@ -74,34 +139,40 @@ function ProjectBoardSlide({ visible }: SlideProps) {
       </div>
 
       <div className="grid grid-cols-3 gap-2 flex-1">
-        {columns.map(({ label, color, cards }) => (
+        {columns.map(({ label, color, count }) => (
           <div key={label} className="flex flex-col gap-2">
             <div className="flex items-center gap-1.5 mb-1">
               <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
               <span className="text-[9px] font-bold uppercase tracking-widest" style={{ color: "rgba(255,255,255,0.40)" }}>{label}</span>
             </div>
-            {cards.map(c => (
-              <div key={c} className="rounded-lg p-2.5" style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div className="text-[10px] font-semibold text-white/70 leading-snug">{c}</div>
-                <div className="mt-1.5 flex gap-1">
-                  <div className="h-1 rounded-full flex-1" style={{ background: color, opacity: 0.5 }} />
-                  <div className="h-1 rounded-full w-3" style={{ background: "rgba(255,255,255,0.1)" }} />
-                </div>
+            <div
+              className="rounded-xl flex items-center justify-center flex-1"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                minHeight: 60,
+              }}
+            >
+              <div className="text-center">
+                <div className="text-2xl font-black leading-none" style={{ color }}>{count}</div>
+                <div className="text-[9px] text-white/35 mt-1">project{count !== 1 ? "s" : ""}</div>
               </div>
-            ))}
+            </div>
           </div>
         ))}
       </div>
 
       <div className="flex items-center gap-2">
         <Users className="w-3 h-3 text-white/30" />
-        <span className="text-[10px] text-white/35">6 tasks active across 3 workstreams</span>
+        <span className="text-[10px] text-white/35">
+          {total} project{total !== 1 ? "s" : ""} active across 3 workstreams
+        </span>
       </div>
     </div>
   );
 }
 
-function SowGeneratorSlide({ visible }: SlideProps) {
+function SowGeneratorSlide({ visible }: { visible: boolean }) {
   return (
     <div
       className="absolute inset-0 flex flex-col gap-3 p-5"
@@ -145,7 +216,7 @@ function SowGeneratorSlide({ visible }: SlideProps) {
   );
 }
 
-function ReportsSlide({ visible }: SlideProps) {
+function ReportsSlide({ visible }: { visible: boolean }) {
   return (
     <div
       className="absolute inset-0 flex flex-col gap-3 p-5"
@@ -184,7 +255,7 @@ function ReportsSlide({ visible }: SlideProps) {
   );
 }
 
-function GanttSlide({ visible }: SlideProps) {
+function GanttSlide({ visible }: { visible: boolean }) {
   const tasks = [
     { name: "Discovery", start: 0, width: 25, color: "#0078D4" },
     { name: "M365 Config", start: 20, width: 35, color: "#00B4D8" },
@@ -227,21 +298,29 @@ function GanttSlide({ visible }: SlideProps) {
 }
 
 const SLIDES = [
-  { id: "dashboard", label: "Dashboard", component: DashboardSlide },
-  { id: "projects", label: "Projects", component: ProjectBoardSlide },
-  { id: "sow", label: "SOW Generator", component: SowGeneratorSlide },
-  { id: "reports", label: "Reports", component: ReportsSlide },
-  { id: "timeline", label: "Timeline", component: GanttSlide },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "projects", label: "Projects" },
+  { id: "sow", label: "SOW Generator" },
+  { id: "reports", label: "Reports" },
+  { id: "timeline", label: "Timeline" },
 ];
 
 export default function ProductCarousel() {
   const [active, setActive] = useState(0);
+  const [stats, setStats] = useState<PreviewStats | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
       setActive(i => (i + 1) % SLIDES.length);
     }, 3500);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/crm/preview-stats")
+      .then(r => r.ok ? r.json() as Promise<PreviewStats> : Promise.reject())
+      .then(data => setStats(data))
+      .catch(() => {});
   }, []);
 
   return (
@@ -264,9 +343,11 @@ export default function ProductCarousel() {
           boxShadow: "0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.06)",
         }}
       >
-        {SLIDES.map(({ id, component: Slide }, i) => (
-          <Slide key={id} visible={i === active} />
-        ))}
+        <DashboardSlide visible={active === 0} stats={stats} />
+        <ProjectBoardSlide visible={active === 1} stats={stats} />
+        <SowGeneratorSlide visible={active === 2} />
+        <ReportsSlide visible={active === 3} />
+        <GanttSlide visible={active === 4} />
       </div>
 
       <div className="flex items-center justify-center gap-2">

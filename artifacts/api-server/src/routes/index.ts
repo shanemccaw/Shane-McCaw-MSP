@@ -63,6 +63,7 @@ import adminGeneratedImagesRouter from "./admin-generated-images";
 import adminMediaLibraryRouter from "./admin-media-library";
 import presentationsRouter from "./presentations";
 import adminSignalRulesRouter from "./admin-signal-rules";
+import crmPreviewStatsRouter from "./crm-preview-stats";
 
 const router: IRouter = Router();
 
@@ -138,5 +139,6 @@ router.use(adminGeneratedImagesRouter);
 router.use(adminMediaLibraryRouter);
 router.use(presentationsRouter);
 router.use(adminSignalRulesRouter);
+router.use(crmPreviewStatsRouter);
 
 export default router;
