@@ -107,6 +107,33 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
       res.status(400).json({ error: "signalKey, ruleType, sourceKey are required" });
       return;
     }
+
+    // Pre-check: simulate the post-insert rule list and detect conflicts before writing
+    const existingRules = await getAllRules();
+    const now = new Date();
+    const proposedRule: SignalDerivationRule = {
+      id: -1,
+      signalKey: signalKey as string,
+      groupId: groupId != null ? Number(groupId) : null,
+      ruleType: ruleType as SignalDerivationRule["ruleType"],
+      sourceKey: sourceKey as string,
+      compareValue: (compareValue as string | null) ?? null,
+      description: (description as string | null) ?? null,
+      sortOrder: (sortOrder as number) ?? 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const simulatedRules = [...existingRules, proposedRule];
+    const conflicts = detectRuleConflicts(simulatedRules);
+    const introducedConflicts = conflicts.filter(c => c.ruleIds.includes(-1));
+    if (introducedConflicts.length > 0) {
+      res.status(422).json({
+        error: "This rule introduces a conflict with existing rules and was not saved.",
+        conflicts: introducedConflicts.map(c => ({ ...c, ruleIds: c.ruleIds.filter(id => id !== -1) })),
+      });
+      return;
+    }
+
     const result = await db.execute(sql`
       INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
       VALUES (${signalKey as string}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
@@ -149,6 +176,28 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
     const sortOrderInt = sortOrder !== undefined && sortOrder !== null
       ? Number(sortOrder)
       : null;
+
+    // Pre-check: simulate the post-update rule list and detect conflicts before writing
+    const existingRules = await getAllRules();
+    const proposedRule: SignalDerivationRule = {
+      ...prior,
+      groupId: groupIdInt,
+      ruleType: (ruleType as SignalDerivationRule["ruleType"]) ?? prior.ruleType,
+      sourceKey: (sourceKey as string) ?? prior.sourceKey,
+      compareValue: compareValue !== undefined ? (compareValue as string | null) ?? null : prior.compareValue,
+      description: description !== undefined ? (description as string | null) ?? null : prior.description,
+      sortOrder: sortOrderInt ?? prior.sortOrder,
+    };
+    const simulatedRules = existingRules.map(r => r.id === id ? proposedRule : r);
+    const conflicts = detectRuleConflicts(simulatedRules);
+    const introducedConflicts = conflicts.filter(c => c.ruleIds.includes(id));
+    if (introducedConflicts.length > 0) {
+      res.status(422).json({
+        error: "This change introduces a conflict with existing rules and was not saved.",
+        conflicts: introducedConflicts,
+      });
+      return;
+    }
 
     const result = await db.execute(sql`
       UPDATE signal_derivation_rules

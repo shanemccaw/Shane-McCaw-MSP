@@ -183,9 +183,11 @@ export default function TenantSignalsPage() {
   const [auditLoading, setAuditLoading] = useState(false);
 
   const [addRuleForm, setAddRuleForm] = useState({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "" });
+  const [addRuleConflictError, setAddRuleConflictError] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [editRuleForm, setEditRuleForm] = useState({ ruleType: "", sourceKey: "", compareValue: "", description: "" });
+  const [editRuleConflictError, setEditRuleConflictError] = useState<string | null>(null);
   const [deletingRuleId, setDeletingRuleId] = useState<number | null>(null);
 
   const [addGroupForm, setAddGroupForm] = useState({ logic: "OR" as "AND" | "OR", label: "" });
@@ -400,6 +402,7 @@ export default function TenantSignalsPage() {
     if (!selectedSignal || !addRuleForm.sourceKey.trim()) {
       toast({ title: "Signal key and source key are required", variant: "destructive" }); return;
     }
+    setAddRuleConflictError(null);
     setSavingRule(true);
     try {
       const res = await fetchWithAuth("/api/admin/signal-rules", {
@@ -418,6 +421,10 @@ export default function TenantSignalsPage() {
         toast({ title: "Rule added" });
         setAddRuleForm({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "" });
         await loadAll();
+      } else if (res.status === 422) {
+        const body = await res.json() as { error: string; conflicts: Array<{ ruleIds: number[]; description: string }> };
+        const descriptions = (body.conflicts ?? []).map(c => c.description).join(" | ");
+        setAddRuleConflictError(descriptions || body.error);
       } else {
         toast({ title: "Failed to add rule", variant: "destructive" });
       }
@@ -434,6 +441,7 @@ export default function TenantSignalsPage() {
   }
 
   async function handleSaveEditRule(id: number) {
+    setEditRuleConflictError(null);
     setSavingRule(true);
     try {
       const res = await fetchWithAuth(`/api/admin/signal-rules/${id}`, {
@@ -449,7 +457,12 @@ export default function TenantSignalsPage() {
       if (res.ok) {
         toast({ title: "Rule updated" });
         setEditingRuleId(null);
+        setEditRuleConflictError(null);
         await loadAll();
+      } else if (res.status === 422) {
+        const body = await res.json() as { error: string; conflicts: Array<{ ruleIds: number[]; description: string }> };
+        const descriptions = (body.conflicts ?? []).map(c => c.description).join(" | ");
+        setEditRuleConflictError(descriptions || body.error);
       } else {
         toast({ title: "Failed to update rule", variant: "destructive" });
       }
@@ -1213,9 +1226,10 @@ export default function TenantSignalsPage() {
                                 setEditingRuleId={setEditingRuleId}
                                 deletingRuleId={deletingRuleId}
                                 savingRule={savingRule}
-                                onEdit={r => { setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
+                                onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
                                 onSave={() => void handleSaveEditRule(rule.id)}
                                 onDelete={() => void handleDeleteRule(rule.id)}
+                                editRuleConflictError={editingRuleId === rule.id ? editRuleConflictError : null}
                               />
                             ))}
                             {groupRules.length === 0 && (
@@ -1243,9 +1257,10 @@ export default function TenantSignalsPage() {
                               setEditingRuleId={setEditingRuleId}
                               deletingRuleId={deletingRuleId}
                               savingRule={savingRule}
-                              onEdit={r => { setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
+                              onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
                               onSave={() => void handleSaveEditRule(rule.id)}
                               onDelete={() => void handleDeleteRule(rule.id)}
+                              editRuleConflictError={editingRuleId === rule.id ? editRuleConflictError : null}
                             />
                           ))}
                         </div>
@@ -1317,6 +1332,15 @@ export default function TenantSignalsPage() {
                           className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
                         />
                       </div>
+                      {addRuleConflictError && (
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+                          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-semibold text-amber-300 mb-0.5">Rule not saved — conflict detected</p>
+                            <p className="text-xs text-amber-300/80 leading-snug">{addRuleConflictError}</p>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center gap-3 pt-1">
                         <button
                           onClick={() => void handleAddRule()}
@@ -2059,7 +2083,7 @@ function Modal({ title, onClose, children, wide }: { title: string; onClose: () 
 
 function RuleRow({
   rule, conflictRuleIds, conflicts, editingRuleId, editRuleForm, setEditRuleForm, setEditingRuleId,
-  deletingRuleId, savingRule, onEdit, onSave, onDelete,
+  deletingRuleId, savingRule, onEdit, onSave, onDelete, editRuleConflictError,
 }: {
   rule: SignalRule;
   conflictRuleIds: Set<number>;
@@ -2073,6 +2097,7 @@ function RuleRow({
   onEdit: (r: SignalRule) => void;
   onSave: () => void;
   onDelete: () => void;
+  editRuleConflictError: string | null;
 }) {
   const isConflict = conflictRuleIds.has(rule.id);
   const conflictText = conflicts.find(c => c.ruleIds.includes(rule.id))?.description;
@@ -2110,11 +2135,17 @@ function RuleRow({
           className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
           placeholder="Description"
         />
+        {editRuleConflictError && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300 leading-snug">{editRuleConflictError}</p>
+          </div>
+        )}
         <div className="flex gap-2">
           <button onClick={onSave} disabled={savingRule} className="px-3 py-1 bg-[#0078D4] text-white text-xs rounded hover:bg-[#0078D4]/90 disabled:opacity-50">
             {savingRule ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save"}
           </button>
-          <button onClick={() => setEditingRuleId(null)} className="px-3 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:text-[#E6EDF3]">Cancel</button>
+          <button onClick={() => { setEditingRuleId(null); }} className="px-3 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:text-[#E6EDF3]">Cancel</button>
         </div>
       </div>
     );
