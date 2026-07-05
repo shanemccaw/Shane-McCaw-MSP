@@ -9944,15 +9944,25 @@ async function deriveEffectiveSowData(
     // adjustments for deselected workstreams (e.g. Copilot Readiness appearing when
     // the Copilot workstream is unchecked by the client).
     const workstreamTitles = effectiveSowPhases.filter(p => p.selected).map(p => p.title);
+    let anyWorkstreamMatched = false;
     const allowedAdjPatterns: RegExp[] = [];
     for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
       if (workstreamTitles.some(t => ws.test(t))) {
         allowedAdjPatterns.push(...allowed);
+        anyWorkstreamMatched = true;
       }
     }
-    const scopedAdjustmentLines = allowedAdjPatterns.length > 0
-      ? realAdjustmentLines.filter(l => allowedAdjPatterns.some(p => p.test(l.title)))
-      : realAdjustmentLines;
+    // Three-way decision:
+    //  • No workstream matched any canonical pattern → truly unknown engagement type;
+    //    pass all adjustments through to avoid silently breaking unrecognised SOWs.
+    //  • At least one matched AND there are allowed patterns → filter to permitted only.
+    //  • At least one matched BUT allowedAdjPatterns is empty → recognised workstream(s)
+    //    that permit NO adjustments (e.g. Information Architecture alone); return zero.
+    const scopedAdjustmentLines = !anyWorkstreamMatched
+      ? realAdjustmentLines
+      : allowedAdjPatterns.length > 0
+        ? realAdjustmentLines.filter(l => allowedAdjPatterns.some(p => p.test(l.title)))
+        : [];
 
     // Adjustments are mandatory for the selected scope — always applied regardless of
     // which phases are toggled on/off (phase selection only removes workstream rows,

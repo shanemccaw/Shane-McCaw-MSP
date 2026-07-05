@@ -440,11 +440,14 @@ export function parseSowAllPricing(html: string): {
  *   allowed — regexes that match permitted adjustment titles for that workstream
  */
 export const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
-  { ws: /governance/i,           allowed: [/governance[\s-]?complexity/i] },
-  { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /security|compliance/i] },
-  { ws: /dlp|data[\s-]?prot/i,   allowed: [/security|compliance/i] },
-  { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i] },
-  { ws: /licens/i,               allowed: [/tenant[\s-]?size/i] },
+  { ws: /governance/i,                allowed: [/governance[\s-]?complexity/i] },
+  { ws: /security/i,                  allowed: [/tenant[\s-]?size/i, /security[\s/&]+compliance/i] },
+  { ws: /dlp|data[\s-]?prot/i,        allowed: [/security[\s/&]+compliance/i] },
+  { ws: /copilot/i,                   allowed: [/copilot[\s-]?readiness/i] },
+  { ws: /licens/i,                    allowed: [/tenant[\s-]?size/i] },
+  // Information Architecture is a known workstream with NO permitted adjustments.
+  // Listing it explicitly prevents the "unrecognised → pass-all" fallback from firing.
+  { ws: /info(?:rmation)?[\s-]?arch/i, allowed: [] },
 ];
 
 /**
