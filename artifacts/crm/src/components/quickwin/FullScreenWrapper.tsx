@@ -531,6 +531,30 @@ export default function FullScreenWrapper() {
     }
   }, [mode, effectiveScorecardHistory]);
 
+  // ── Fallback: seed simulated baseline targets when no real scorecard data ──
+  // When client_health_history is empty (no M365 audit run yet) the scorecard
+  // returns hasData:false and targetScoresRef stays {}, so scores would sit at
+  // zero forever.  Use realistic "pre-optimisation baseline" values so the
+  // bars animate upward from the moment tasks start running.  Real scorecard
+  // data (if it arrives on a later refetch) won't overwrite because the first
+  // useEffect checks `Object.keys(targetScoresRef.current).length > 0`.
+  const SIM_BASELINE: Record<string, number> = {
+    security: 62,
+    compliance: 55,
+    governance: 70,
+    copilot: 48,
+    productivity: 65,
+  };
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") return;
+    if (effectiveScorecardHistory?.hasData) return; // real data handled above
+    if (Object.keys(targetScoresRef.current).length > 0) return; // already set
+    if (kanbanTasks.length === 0) return; // wait for tasks to load
+    targetScoresRef.current = SIM_BASELINE;
+    scoreAnimStartRef.current = Date.now();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, effectiveScorecardHistory, kanbanTasks.length]);
+
   // ── Animate display scores every 2 s toward target ────────────────────────
   // Ramp duration: scores reach their full target over ~4 minutes from when the
   // scorecard data first arrives. Task completion can jump ahead of the timer.
