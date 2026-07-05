@@ -32,7 +32,9 @@ import { aiPromptsTable } from "@workspace/db/schema";
 
 const { Pool } = pg;
 
-const SENTINEL = "ADJUSTMENT MAP";
+// Updated sentinel forces re-apply when the prompt contained the old "ADJUSTMENT MAP"
+// (from the previous patch) but now needs to be updated with the corrected, tighter rules.
+const SENTINEL = "WORKSTREAM_ADJ_MAP_v2";
 const PROMPT_KEY = "insights-consulting-consolidated_sow";
 
 const NEW_PROMPT_BODY = `You are Shane McCaw, a senior Microsoft 365 Architect with 30 years of experience. Generate a comprehensive, client-ready Consolidated Statement of Work in HTML format.
@@ -67,7 +69,8 @@ INSTRUCTIONS:
 - Synthesise all findings and remediation themes across the provided documents into a coherent, unified scope
 - Each major section as <h2> with a horizontal rule separator
 - Professional consulting tone as Shane McCaw, first person where appropriate
-- Total length: 2000-3500 words`;
+- Total length: 2000-3500 words
+- PROHIBITED adjustment types (never include in the Pricing Adjustments table): Complexity, Data Sprawl, Timeline [WORKSTREAM_ADJ_MAP_v2]`;
 
 async function main() {
   const dbUrl = process.env["DATABASE_URL"];

@@ -16,7 +16,7 @@
  * matching the intent of the integration path tests.
  */
 import { describe, it, expect } from "vitest";
-import { stripMarkdownFence, extractAiHtml, validateSowPricing, type SowPricingLine } from "./sow-pricing.ts";
+import { stripMarkdownFence, extractAiHtml, validateSowPricing, parseSowAllPricing, purgeAdjustmentsByTitle, type SowPricingLine } from "./sow-pricing.ts";
 
 // ---------------------------------------------------------------------------
 // Unit tests — stripMarkdownFence()
@@ -240,12 +240,12 @@ describe("validateSowPricing() — clean SOW (no violations)", () => {
       ws("Governance Foundations", 18000),
       ws("Security Remediation", 22000),
     ];
-    // Complexity and Timeline are permitted for both Governance and Security.
+    // Governance permits Governance Complexity; Security permits Tenant Size and Security/Compliance.
     const adjustments = [
-      ws("Complexity Adjustment", 2000),
-      ws("Timeline Adjustment", 1000),
+      ws("Governance Complexity", 15000),
+      ws("Tenant Size", 5000),
     ];
-    const total = 18000 + 22000 + 2000 + 1000; // 43000
+    const total = 18000 + 22000 + 15000 + 5000; // 60000
     const html = htmlWithGrandTotal(total);
 
     const result = validateSowPricing(workstreams, adjustments, html);
@@ -398,11 +398,13 @@ describe("validateSowPricing() — check 3: permitted adjustments for detected w
       ws("Governance Foundations Package", 18000),
       ws("Copilot Adoption & Enablement", 12000),
     ];
+    // Governance permits Governance Complexity; Copilot permits Copilot Readiness.
     const adjustments = [
-      ws("Complexity Adjustment", 2000),
-      ws("Copilot Readiness Assessment", 3000),
+      ws("Governance Complexity", 15000),
+      ws("Copilot Readiness Assessment", 10000),
     ];
-    const html = htmlWithGrandTotal(35000);
+    const total = 18000 + 12000 + 15000 + 10000; // 55000
+    const html = htmlWithGrandTotal(total);
 
     const result = validateSowPricing(workstreams, adjustments, html);
 
@@ -411,7 +413,7 @@ describe("validateSowPricing() — check 3: permitted adjustments for detected w
   });
 
   it("flags Data Sprawl Adjustment for a Licensing-only engagement", () => {
-    // Licensing only permits Tenant Size, Complexity, and Timeline.
+    // Licensing only permits Tenant Size — Data Sprawl is never permitted.
     const workstreams = [ws("Licensing Optimization", 10000)];
     const adjustments = [ws("Data Sprawl Adjustment", 2000)];
     const html = htmlWithGrandTotal(12000);
@@ -455,5 +457,191 @@ describe("validateSowPricing() — compound scenarios", () => {
     expect(result.issues.length).toBeGreaterThanOrEqual(2);
     expect(result.issues.some(i => i.includes("duplicate") || i.includes("Duplicate"))).toBe(true);
     expect(result.issues.some(i => i.toLowerCase().includes("unpermitted") || i.toLowerCase().includes("not in the allowed"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateSowPricing() — corrected adjustment map (tighter rules)
+// ---------------------------------------------------------------------------
+
+describe("validateSowPricing() — corrected adjustment map", () => {
+  it("flags Complexity Adjustment as unpermitted for a Security-only SOW", () => {
+    const workstreams = [ws("Security Remediation", 28000)];
+    // Generic Complexity is no longer permitted for any workstream.
+    const adjustments = [ws("Complexity Adjustment", 15000)];
+    const html = htmlWithGrandTotal(43000);
+
+    const result = validateSowPricing(workstreams, adjustments, html);
+
+    expect(result.ok).toBe(false);
+    const issue = result.issues.find(i => i.toLowerCase().includes("unpermitted"));
+    expect(issue).toBeTruthy();
+    expect(issue?.toLowerCase()).toContain("complexity adjustment");
+  });
+
+  it("flags Tenant Size as unpermitted for a DLP-only SOW", () => {
+    // DLP only permits Security/Compliance — Tenant Size is not allowed.
+    const workstreams = [ws("Data Protection / DLP", 22000)];
+    const adjustments = [ws("Tenant Size", 5000)];
+    const html = htmlWithGrandTotal(27000);
+
+    const result = validateSowPricing(workstreams, adjustments, html);
+
+    expect(result.ok).toBe(false);
+    const issue = result.issues.find(i => i.toLowerCase().includes("unpermitted"));
+    expect(issue).toBeTruthy();
+    expect(issue?.toLowerCase()).toContain("tenant size");
+  });
+
+  it("allows Security/Compliance for both Security and DLP workstreams", () => {
+    const workstreams = [
+      ws("Security Remediation", 28000),
+      ws("DLP Data Protection", 22000),
+    ];
+    const adjustments = [ws("Security/Compliance", 10000)];
+    const total = 28000 + 22000 + 10000; // 60000
+    const html = htmlWithGrandTotal(total);
+
+    const result = validateSowPricing(workstreams, adjustments, html);
+
+    const permIssues = result.issues.filter(i => i.toLowerCase().includes("unpermitted"));
+    expect(permIssues).toHaveLength(0);
+  });
+
+  it("flags Timeline Adjustment as unpermitted for a Governance SOW", () => {
+    // Governance only permits Governance Complexity — Timeline is prohibited.
+    const workstreams = [ws("Governance Remediation", 25000)];
+    const adjustments = [ws("Timeline Adjustment", 8000)];
+    const html = htmlWithGrandTotal(33000);
+
+    const result = validateSowPricing(workstreams, adjustments, html);
+
+    expect(result.ok).toBe(false);
+    const issue = result.issues.find(i => i.toLowerCase().includes("unpermitted"));
+    expect(issue).toBeTruthy();
+    expect(issue?.toLowerCase()).toContain("timeline adjustment");
+  });
+
+  it("allows Governance Complexity for Governance SOW", () => {
+    const workstreams = [ws("Governance Remediation", 25000)];
+    const adjustments = [ws("Governance Complexity", 15000)];
+    const total = 25000 + 15000; // 40000
+    const html = htmlWithGrandTotal(total);
+
+    const result = validateSowPricing(workstreams, adjustments, html);
+
+    const permIssues = result.issues.filter(i => i.toLowerCase().includes("unpermitted"));
+    expect(permIssues).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseSowAllPricing() — combined single-table format
+// ---------------------------------------------------------------------------
+
+describe("parseSowAllPricing() — combined single-table format", () => {
+  it("correctly classifies workstream and adjustment rows from a single combined table", () => {
+    const html = `
+      <table>
+        <thead>
+          <tr><th>Project/Workstream</th><th>Price (USD)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Governance Remediation</td><td>$25,000</td></tr>
+          <tr><td>Security Remediation</td><td>$28,000</td></tr>
+          <tr><td>Tenant Size</td><td>$5,000</td></tr>
+          <tr><td>Security/Compliance</td><td>$10,000</td></tr>
+          <tr><td>Grand Total</td><td>$68,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(html);
+
+    // parseSowAllPricing stores titles in original display-casing — use case-insensitive comparison
+    const wsLower = workstreamLines.map(l => l.title.toLowerCase());
+    const adjLower = adjustmentLines.map(l => l.title.toLowerCase());
+    expect(wsLower).toContain("governance remediation");
+    expect(wsLower).toContain("security remediation");
+    expect(adjLower).toContain("tenant size");
+    expect(adjLower.some(t => /security.*compliance/i.test(t))).toBe(true);
+    expect(computedTotal).toBe(68000);
+  });
+
+  it("keeps deprecated adjustment types in adjustmentLines so they can be purged", () => {
+    const html = `
+      <table>
+        <thead>
+          <tr><th>Project/Workstream</th><th>Amount (USD)</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Licensing Optimization</td><td>$8,000</td></tr>
+          <tr><td>Complexity Adjustment</td><td>$15,000</td></tr>
+          <tr><td>Timeline Adjustment</td><td>$8,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    const { workstreamLines, adjustmentLines } = parseSowAllPricing(html);
+
+    expect(workstreamLines.map(l => l.title.toLowerCase())).toContain("licensing optimization");
+    // Deprecated types are classified as adjustment rows so purgeSowAdjustments
+    // can identify and excise them.
+    const adjTitles = adjustmentLines.map(l => l.title.toLowerCase());
+    expect(adjTitles.some(t => t.includes("complexity"))).toBe(true);
+    expect(adjTitles.some(t => t.includes("timeline"))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// purgeAdjustmentsByTitle()
+// ---------------------------------------------------------------------------
+
+describe("purgeAdjustmentsByTitle()", () => {
+  it("removes a non-permitted adjustment row from the HTML by title", () => {
+    const html = `
+      <table>
+        <thead><tr><th>Adjustment Factor</th><th>Amount (USD)</th></tr></thead>
+        <tbody>
+          <tr><td>Governance Complexity</td><td>$15,000</td></tr>
+          <tr><td>Tenant Size</td><td>$5,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    // Governance SOW — only Governance Complexity is permitted; Tenant Size is not.
+    const { html: result, removedTitles } = purgeAdjustmentsByTitle(html, ["Governance Remediation"]);
+
+    expect(removedTitles.some(t => /tenant\s+size/i.test(t))).toBe(true);
+    expect(removedTitles.some(t => /governance.*complexity/i.test(t))).toBe(false);
+    expect(result).not.toMatch(/tenant size/i);
+    expect(result).toMatch(/governance complexity/i);
+  });
+
+  it("is a no-op when no workstream title matches a canonical pattern", () => {
+    const html = `<table><tr><td>Complexity</td><td>$5,000</td></tr></table>`;
+
+    const { html: result, removedTitles } = purgeAdjustmentsByTitle(html, ["Unknown Bespoke Engagement"]);
+
+    expect(removedTitles).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+
+  it("leaves permitted adjustments in place and removes unpermitted ones for Security SOW", () => {
+    const html = `
+      <table>
+        <tbody>
+          <tr><td>Tenant Size</td><td>$5,000</td></tr>
+          <tr><td>Security/Compliance</td><td>$10,000</td></tr>
+          <tr><td>Data Sprawl</td><td>$10,000</td></tr>
+          <tr><td>Copilot Readiness</td><td>$10,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    const { removedTitles } = purgeAdjustmentsByTitle(html, ["Security Remediation"]);
+
+    // Tenant Size and Security/Compliance are permitted for Security — kept
+    expect(removedTitles.some(t => /tenant\s+size/i.test(t))).toBe(false);
+    expect(removedTitles.some(t => /security.*compliance/i.test(t))).toBe(false);
+    // Data Sprawl and Copilot Readiness are not permitted — removed
+    expect(removedTitles.some(t => /data\s+sprawl/i.test(t))).toBe(true);
+    expect(removedTitles.some(t => /copilot\s+readiness/i.test(t))).toBe(true);
   });
 });

@@ -276,7 +276,16 @@ export function parseSowAllPricing(html: string): {
       headerText.includes("adjustment") &&
       (headerText.includes("amount") || headerText.includes("value") || headerText.includes("usd") || headerText.includes("price") || headerText.includes("cost"));
 
-    if (!isWorkstreamTable && !isAdjustmentTable) continue;
+    // Third classification: combined table containing both workstream and adjustment rows
+    // in a single table. The AI sometimes collapses both pricing sections into one table.
+    // Identified by a "workstream" / "project" header column with a price column but
+    // without the explicit workstream-table or adjustment-table keyword combinations.
+    const isCombinedTable =
+      !isWorkstreamTable && !isAdjustmentTable &&
+      (headerText.includes("workstream") || headerText.includes("project")) &&
+      (headerText.includes("price") || headerText.includes("amount") || headerText.includes("cost") || headerText.includes("usd"));
+
+    if (!isWorkstreamTable && !isAdjustmentTable && !isCombinedTable) continue;
 
     const headerCells = [...headerHtml.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
       .map(m => stripTags(m[1]).toLowerCase());
@@ -353,8 +362,17 @@ export function parseSowAllPricing(html: string): {
 
       if (isWorkstreamTable) {
         workstreamLines.push(line);
-      } else {
+      } else if (isAdjustmentTable) {
         adjustmentLines.push(line);
+      } else {
+        // Combined table: classify each row by testing against known canonical
+        // adjustment-name patterns. Matched rows go to adjustmentLines; all
+        // others go to workstreamLines so purgeSowAdjustments can act on them.
+        if (ALL_KNOWN_ADJ_TITLE_PATTERNS.some(p => p.test(titleCell))) {
+          adjustmentLines.push(line);
+        } else {
+          workstreamLines.push(line);
+        }
       }
     }
   }
@@ -406,6 +424,14 @@ export function parseSowAllPricing(html: string): {
 /**
  * Workstream → permitted adjustment patterns.
  *
+ * Authoritative adjustment rules per Shane McCaw Consulting engagement model:
+ *   Governance Remediation  → Governance Complexity (only)
+ *   Security Remediation    → Tenant Size, Security/Compliance
+ *   Data Protection / DLP   → Security/Compliance (only)
+ *   Copilot Readiness       → Copilot Readiness (only)
+ *   Licensing Optimization  → Tenant Size (only)
+ *
+ * Generic Complexity, Data Sprawl, and Timeline are NOT permitted for any workstream.
  * This mirrors the WORKSTREAM_ADJ_MAP used in portal.ts `deriveEffectiveSowData`.
  * Any change to the permitted set MUST be applied in both places.
  *
@@ -414,11 +440,27 @@ export function parseSowAllPricing(html: string): {
  *   allowed — regexes that match permitted adjustment titles for that workstream
  */
 const WORKSTREAM_ADJ_MAP: Array<{ ws: RegExp; allowed: RegExp[] }> = [
-  { ws: /governance/i,           allowed: [/complexity/i, /timeline/i] },
-  { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /complexity/i, /data[\s-]?sprawl/i, /security|compliance/i, /timeline/i] },
-  { ws: /dlp|data[\s-]?prot/i,   allowed: [/data[\s-]?sprawl/i, /complexity/i, /security|compliance/i, /timeline/i] },
-  { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i, /data[\s-]?sprawl/i, /complexity/i, /timeline/i] },
-  { ws: /licens/i,               allowed: [/tenant[\s-]?size/i, /complexity/i, /timeline/i] },
+  { ws: /governance/i,           allowed: [/governance[\s-]?complexity/i] },
+  { ws: /security/i,             allowed: [/tenant[\s-]?size/i, /security|compliance/i] },
+  { ws: /dlp|data[\s-]?prot/i,   allowed: [/security|compliance/i] },
+  { ws: /copilot/i,              allowed: [/copilot[\s-]?readiness/i] },
+  { ws: /licens/i,               allowed: [/tenant[\s-]?size/i] },
+];
+
+/**
+ * All canonical adjustment-title patterns the AI may ever produce in a SOW.
+ * Used to:
+ *  1. Classify rows in a combined single-table SOW (parseSowAllPricing)
+ *  2. Detect adjustment rows for the title-driven HTML purge (purgeAdjustmentsByTitle)
+ */
+const ALL_KNOWN_ADJ_TITLE_PATTERNS: RegExp[] = [
+  /governance[\s-]?complexity/i,  // Governance Complexity — permitted for Governance only
+  /tenant[\s-]?size/i,            // Tenant Size — permitted for Security, Licensing
+  /security[^\w]+compliance/i,    // Security/Compliance, Security & Compliance
+  /copilot[\s-]?readiness/i,      // Copilot Readiness — permitted for Copilot only
+  /data[\s-]?sprawl/i,            // Data Sprawl — deprecated, not permitted for any workstream
+  /^complexity\b/i,               // Complexity — deprecated, not permitted
+  /^timeline\b/i,                 // Timeline — deprecated, not permitted
 ];
 
 export interface SowValidationResult {
@@ -620,6 +662,67 @@ export function purgeSowAdjustments(
       },
     );
   }
+
+  return { html: result, removedTitles };
+}
+
+/**
+ * Title-driven HTML-level purge fallback.
+ *
+ * Scans every <tr> in the HTML directly and removes any row whose first cell
+ * matches a known canonical adjustment name but is NOT in the permitted set
+ * for the detected workstreams. This is a second safety net that runs after
+ * purgeSowAdjustments — it catches the single-combined-table case where
+ * parseSowAllPricing had no separate adjustmentLines so purgeSowAdjustments
+ * was a no-op.
+ *
+ * Call this AFTER purgeSowAdjustments. If it removes rows, re-run
+ * parseSowAllPricing on the result before calling patchSowGrandTotal.
+ *
+ * @param html              Raw (or already-purged) SOW HTML
+ * @param workstreamTitles  Workstream titles from the AI-generated workstream
+ *                          table or server-resolved canonical keys — drives the
+ *                          permitted adjustment set.
+ */
+export function purgeAdjustmentsByTitle(
+  html: string,
+  workstreamTitles: string[],
+): { html: string; removedTitles: string[] } {
+  // Build the union of permitted adjustment patterns for the detected workstreams
+  const allowedPatterns: RegExp[] = [];
+  for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+    if (workstreamTitles.some(t => ws.test(t))) {
+      allowedPatterns.push(...allowed);
+    }
+  }
+
+  // No workstream matched any canonical pattern — cannot determine the permitted
+  // set so skip purge to avoid incorrectly removing rows in unknown engagements.
+  if (allowedPatterns.length === 0) return { html, removedTitles: [] };
+
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  const removedTitles: string[] = [];
+
+  const result = html.replace(
+    /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/gi,
+    (match, _open, inner) => {
+      const cells = [...inner.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+        .map(m => stripTags(m[1]));
+      const rowTitle = cells[0] ?? "";
+
+      // Only act on rows whose title matches a known canonical adjustment type
+      if (!ALL_KNOWN_ADJ_TITLE_PATTERNS.some(p => p.test(rowTitle))) return match;
+
+      // Adjustment IS permitted for one of the active workstreams — keep it
+      if (allowedPatterns.some(p => p.test(rowTitle))) return match;
+
+      // Unpermitted adjustment row — excise it
+      removedTitles.push(rowTitle);
+      return "";
+    },
+  );
 
   return { html: result, removedTitles };
 }

@@ -62,7 +62,7 @@ import {
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
+import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
@@ -880,21 +880,22 @@ STEP 2 — BASE CEILINGS (select the row matching the detected tier):
 
 STEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):
 
-  Adjustment amounts by tier:
-  Adjustment        | Tier01  | Tier02   | Tier03   | Tier04
-  Tenant Size       | $2,000  |  $5,000  | $10,000  | $15,000
-  Complexity        | $5,000  | $15,000  | $25,000  | $35,000
-  Data Sprawl       | $5,000  | $10,000  | $20,000  | $25,000
-  Security/Compli.  | $5,000  | $10,000  | $20,000  | $25,000
-  Copilot Readiness | $5,000  | $10,000  | $20,000  | $25,000
-  Timeline          | $3,000  |  $8,000  | $15,000  | $20,000
+  Adjustment amounts by tier (ONLY these four adjustment types exist — no others):
+  Adjustment             | Tier01  | Tier02   | Tier03   | Tier04
+  Tenant Size            | $2,000  |  $5,000  | $10,000  | $15,000
+  Governance Complexity  | $5,000  | $15,000  | $25,000  | $35,000
+  Security/Compliance    | $5,000  | $10,000  | $20,000  | $25,000
+  Copilot Readiness      | $5,000  | $10,000  | $20,000  | $25,000
 
-  ADJUSTMENT MAP — permitted adjustments per workstream (only these may appear in the SOW):
-    Governance Remediation  → Complexity (label as "Governance Complexity" when it is the only workstream), Timeline
-    Security Remediation    → Tenant Size, Complexity, Data Sprawl, Security/Compliance, Timeline
-    Data Protection / DLP   → Data Sprawl, Complexity, Security/Compliance, Timeline
-    Copilot Readiness       → Copilot Readiness, Data Sprawl, Complexity, Timeline
-    Licensing Optimization  → Tenant Size, Complexity, Timeline
+  ADJUSTMENT MAP — permitted adjustments per workstream (STRICT — only these may appear):
+    Governance Remediation  → Governance Complexity (only; always label it exactly "Governance Complexity")
+    Security Remediation    → Tenant Size, Security/Compliance
+    Data Protection / DLP   → Security/Compliance (only)
+    Copilot Readiness       → Copilot Readiness (only)
+    Licensing Optimization  → Tenant Size (only)
+
+  PROHIBITED adjustment types — NEVER include in any SOW regardless of workstreams:
+    Complexity, Data Sprawl, Timeline — these are not valid adjustment types in this model.
 
   Rules — strictly enforced:
   1. Only include an adjustment if its workstream is present in this SOW AND findings support it.
@@ -903,12 +904,10 @@ STEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):
   Adjustment Total = sum of all applicable permitted adjustments at the tier-correct dollar amount.
 
   Criteria for applying each adjustment (only when the relevant workstream is present and findings justify it):
-  - Tenant Size: apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.
-  - Complexity: apply if findings show multiple critical gaps or ≥ 3 remediation domains.
-  - Data Sprawl: apply if DLP policies = 0, sensitivity labels unconfigured, or ≥ 50 SharePoint sites with no governance.
-  - Security/Compliance: apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
-  - Copilot Readiness: apply ONLY when Copilot-related workstreams are in scope; base on Copilot score and blocker count.
-  - Timeline: apply if the client requires accelerated or compressed delivery relative to standard schedule.
+  - Tenant Size (Security, Licensing): apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.
+  - Governance Complexity (Governance only): apply if governance findings show multiple critical gaps or ≥ 3 remediation domains requiring coordinated remediation.
+  - Security/Compliance (Security, DLP): apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
+  - Copilot Readiness (Copilot only): apply based on Copilot score and blocker count; use ONLY when the Copilot workstream is in scope.
 
 STEP 4 — TOTALS:
   Engagement Total = Workstream Total + Adjustment Total.
@@ -919,7 +918,7 @@ Output requirements for the Pricing section:
 - Show a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning
   - Each row shows ONLY the workstream's own Base Ceiling and Final Price — NO per-row adjustment breakdown.
   - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).
-- After the per-workstream table, render a second HTML <table> for the Pricing Adjustments section. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row with title "Adjustments Subtotal" showing the sum.
+- After the per-workstream table, render a second HTML <table> for the Pricing Adjustments section. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. CRITICAL for server parsing: the workstream table header MUST contain the exact text "Base Ceiling" and "Final Price (USD)"; the adjustments table header MUST contain "Adjustment Factor" and "Amount (USD)" — these keywords are required for server-side pricing validation. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row with title "Adjustments Subtotal" showing the sum.
 - End with a Grand Total row after both tables. Show the calculation as plain text: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[grand total]. Double-check the arithmetic before outputting.
 - Always explain the reasoning for each adjustment applied in the Pricing Adjustments table.
 - Never invent new pricing models. Never use TBD.
@@ -1740,18 +1739,29 @@ INSTRUCTIONS:
             logger.warn({ docId, removedTitles }, "consolidated_sow: purged non-permitted adjustments from HTML");
           }
 
+          // Second-pass title-driven purge: catches non-permitted adjustment rows that
+          // slipped through purgeSowAdjustments (e.g. single-combined-table format where
+          // parseSowAllPricing returned empty adjustmentLines so the first pass was a no-op).
+          const { html: purgedHtmlFinal, removedTitles: removedByTitle } = purgeAdjustmentsByTitle(
+            purgedHtml, rawWs.map(l => l.title),
+          );
+          if (removedByTitle.length > 0) {
+            logger.warn({ docId, removedTitles: removedByTitle }, "consolidated_sow: title-purge removed additional non-permitted adjustments");
+          }
+          const anyPurged = removedTitles.length > 0 || removedByTitle.length > 0;
+
           // Re-parse after purge so workstreamLines / adjustmentLines / computedTotal
           // reflect the cleaned document (skip re-parse when nothing was removed).
           const { workstreamLines, adjustmentLines, computedTotal } =
-            removedTitles.length > 0 ? parseSowAllPricing(purgedHtml) : { workstreamLines: rawWs, adjustmentLines: rawAdj, computedTotal: rawWs.reduce((s, l) => s + l.priceUsd, 0) + rawAdj.reduce((s, l) => s + l.priceUsd, 0) };
+            anyPurged ? parseSowAllPricing(purgedHtmlFinal) : { workstreamLines: rawWs, adjustmentLines: rawAdj, computedTotal: rawWs.reduce((s, l) => s + l.priceUsd, 0) + rawAdj.reduce((s, l) => s + l.priceUsd, 0) };
 
-          // Validate the cleaned pricing against the purged HTML
-          const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, purgedHtml);
+          // Validate the cleaned pricing against the final purged HTML
+          const sowValidation = validateSowPricing(workstreamLines, adjustmentLines, purgedHtmlFinal);
           if (!sowValidation.ok) {
             logger.warn({ docId, issues: sowValidation.issues }, "consolidated_sow: pricing validation warnings");
           }
 
-          const htmlContent = computedTotal > 0 ? patchSowGrandTotal(purgedHtml, computedTotal) : purgedHtml;
+          const htmlContent = computedTotal > 0 ? patchSowGrandTotal(purgedHtmlFinal, computedTotal) : purgedHtmlFinal;
           const engagementStart = nextBusinessMonday();
           const sowLines = [
             ...assignDeliveryDates(
@@ -2015,16 +2025,26 @@ INSTRUCTIONS:
             logger.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");
           }
 
+          // Second-pass title-driven purge: catches non-permitted adjustment rows that
+          // slipped through purgeSowAdjustments (e.g. single-combined-table format).
+          const { html: purgedHtml2Final, removedTitles: removedByTitle2 } = purgeAdjustmentsByTitle(
+            purgedHtml2, rawWs2.map(l => l.title),
+          );
+          if (removedByTitle2.length > 0) {
+            logger.warn({ consultingDocId, removedTitles: removedByTitle2 }, "consulting_sow: title-purge removed additional non-permitted adjustments");
+          }
+          const anyPurged2 = removed2.length > 0 || removedByTitle2.length > 0;
+
           const { workstreamLines: ws2, adjustmentLines: adj2, computedTotal: ct2 } =
-            removed2.length > 0 ? parseSowAllPricing(purgedHtml2) : { workstreamLines: rawWs2, adjustmentLines: rawAdj2, computedTotal: rawWs2.reduce((s, l) => s + l.priceUsd, 0) + rawAdj2.reduce((s, l) => s + l.priceUsd, 0) };
+            anyPurged2 ? parseSowAllPricing(purgedHtml2Final) : { workstreamLines: rawWs2, adjustmentLines: rawAdj2, computedTotal: rawWs2.reduce((s, l) => s + l.priceUsd, 0) + rawAdj2.reduce((s, l) => s + l.priceUsd, 0) };
 
           // Validate the cleaned pricing
-          const sowValidation2 = validateSowPricing(ws2, adj2, purgedHtml2);
+          const sowValidation2 = validateSowPricing(ws2, adj2, purgedHtml2Final);
           if (!sowValidation2.ok) {
             logger.warn({ consultingDocId, issues: sowValidation2.issues }, "consulting: pricing validation warnings");
           }
 
-          htmlContent = ct2 > 0 ? patchSowGrandTotal(purgedHtml2, ct2) : purgedHtml2;
+          htmlContent = ct2 > 0 ? patchSowGrandTotal(purgedHtml2Final, ct2) : purgedHtml2Final;
           const engagementStart2 = nextBusinessMonday();
           sowLines2 = [
             ...assignDeliveryDates(
