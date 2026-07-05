@@ -724,6 +724,96 @@ router.delete("/admin/signal-rules/simulation-profiles/:id", requireAdmin, async
   }
 });
 
+// ── GET /api/admin/signal-rules/clients-with-runs ─────────────────────────────
+
+router.get("/admin/signal-rules/clients-with-runs", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT u.id, u.name, u.email, u.company,
+             COUNT(srr.id)::int AS run_count,
+             MAX(srr.created_at) AS last_run_at
+      FROM users u
+      INNER JOIN script_run_results srr ON srr.customer_id = u.id AND srr.status = 'completed'
+      WHERE u.role = 'client'
+      GROUP BY u.id, u.name, u.email, u.company
+      ORDER BY MAX(srr.created_at) DESC
+    `);
+    res.json(result.rows.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      company: r.company,
+      runCount: r.run_count,
+      lastRunAt: r.last_run_at,
+    })));
+  } catch (err) {
+    logger.error({ err }, "GET /admin/signal-rules/clients-with-runs failed");
+    res.status(500).json({ error: "Failed to fetch clients" });
+  }
+});
+
+// ── POST /api/admin/signal-rules/simulation-profiles/from-client ──────────────
+
+router.post("/admin/signal-rules/simulation-profiles/from-client", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { clientUserId, name, tags } = (req.body ?? {}) as Record<string, unknown>;
+    if (!clientUserId) { res.status(400).json({ error: "clientUserId is required" }); return; }
+    const cid = Number(clientUserId);
+    if (isNaN(cid)) { res.status(400).json({ error: "Invalid clientUserId" }); return; }
+
+    const clientResult = await db.execute(sql`
+      SELECT id, name, email, company FROM users WHERE id = ${cid} AND role = 'client'
+    `);
+    if (clientResult.rows.length === 0) { res.status(404).json({ error: "Client not found" }); return; }
+    const client = clientResult.rows[0] as { id: number; name: string | null; email: string; company: string | null };
+
+    const scriptRuns = await db.execute(sql`
+      SELECT profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings", created_at AS "createdAt"
+      FROM script_run_results
+      WHERE customer_id = ${cid} AND status = 'completed'
+      ORDER BY created_at DESC LIMIT 50
+    `);
+
+    if (scriptRuns.rows.length === 0) {
+      res.status(422).json({ error: "This client has no completed script runs to import" });
+      return;
+    }
+
+    const mergedProfile: Record<string, unknown> = {};
+    const allFindings = new Set<string>();
+
+    for (const run of [...(scriptRuns.rows as Array<{ profileUpdates: Record<string, unknown>; parsedFindings: string[] }>)].reverse()) {
+      Object.assign(mergedProfile, run.profileUpdates ?? {});
+      for (const f of run.parsedFindings ?? []) allFindings.add(f);
+    }
+
+    const profileName = typeof name === "string" && name.trim()
+      ? name.trim()
+      : `${client.name ?? client.email}${client.company ? ` (${client.company})` : ""} — ${new Date().toLocaleDateString()}`;
+
+    const parsedTags = Array.isArray(tags) ? tags as string[] : ["tenant-import"];
+
+    const result = await db.execute(sql`
+      INSERT INTO signal_simulation_profiles (name, description, profile_updates, parsed_findings, tags)
+      VALUES (
+        ${profileName},
+        ${`Imported from client ID ${cid}: ${client.email} · ${scriptRuns.rows.length} script run(s)`},
+        ${JSON.stringify(mergedProfile)}::jsonb,
+        ${JSON.stringify([...allFindings])}::jsonb,
+        ${JSON.stringify(parsedTags)}::jsonb
+      )
+      RETURNING id, name, description, profile_updates AS "profileUpdates", parsed_findings AS "parsedFindings",
+                tags, last_run_at AS "lastRunAt", last_run_result AS "lastRunResult",
+                created_at AS "createdAt", updated_at AS "updatedAt"
+    `);
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    logger.error({ err }, "POST /admin/signal-rules/simulation-profiles/from-client failed");
+    res.status(500).json({ error: "Failed to create simulation profile from client data" });
+  }
+});
+
 // ── POST /api/admin/signal-rules/simulation-profiles/:id/run ─────────────────
 
 router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, async (req: Request, res: Response) => {
@@ -754,13 +844,34 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       return { key, label: meta?.label ?? key, expectedImpact: meta?.expectedImpact ?? "" };
     });
 
+    // Compute project inclusion diff
+    const allProjects = await db.execute(sql`
+      SELECT id, title, price_range AS "priceRange", description, triggered_by AS "triggeredBy",
+             sort_order AS "sortOrder", is_visible AS "isVisible"
+      FROM engagement_projects WHERE is_visible = true ORDER BY sort_order
+    `);
+
+    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    const firedSet = new Set([...firedSignals]);
+    const includedProjects: Array<{ id: number; title: string; priceRange: string | null }> = [];
+    const excludedProjects: Array<{ project: { id: number; title: string }; reason: string }> = [];
+
+    for (const p of allProjects.rows as Array<{ id: number; title: string; priceRange: string | null; triggeredBy: string[] }>) {
+      const { included, reason } = projectMatchesSignals(p, knownSignalKeys, firedSet);
+      if (included) {
+        includedProjects.push({ id: p.id, title: p.title, priceRange: p.priceRange });
+      } else {
+        excludedProjects.push({ project: { id: p.id, title: p.title }, reason: reason ?? "Not matched" });
+      }
+    }
+
     await db.execute(sql`
       UPDATE signal_simulation_profiles
       SET last_run_at = now(), last_run_result = ${JSON.stringify(firedArr)}::jsonb, updated_at = now()
       WHERE id = ${id}
     `);
 
-    res.json({ firedSignals: firedArr, ruleTrace: trace });
+    res.json({ firedSignals: firedArr, ruleTrace: trace, includedProjects, excludedProjects });
   } catch (err) {
     logger.error({ err }, "POST /admin/signal-rules/simulation-profiles/:id/run failed");
     res.status(500).json({ error: "Failed to run simulation profile" });

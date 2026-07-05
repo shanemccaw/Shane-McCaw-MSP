@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Check, Circle, Plus, Trash2, Pencil, X, ChevronRight, Download,
-  Upload, Save, RotateCcw, Loader2, Play, Eye, Zap, Search, Tag, Clock,
+  Upload, Save, RotateCcw, Loader2, Play, Eye, Zap, Search, Tag, Clock, FlaskConical, Database,
 } from "lucide-react";
 
 interface TenantSignal {
@@ -74,6 +74,22 @@ interface Version {
 
 interface HealthData {
   [signalKey: string]: { clientCount: number; totalClients: number };
+}
+
+interface ClientWithRuns {
+  id: number;
+  name: string | null;
+  email: string;
+  company: string | null;
+  runCount: number;
+  lastRunAt: string;
+}
+
+interface SimProfileRunResult {
+  firedSignals: Array<{ key: string; label: string; expectedImpact: string }>;
+  ruleTrace: RuleTraceEntry[];
+  includedProjects: Array<{ id: number; title: string; priceRange: string | null }>;
+  excludedProjects: Array<{ project: { id: number; title: string }; reason: string }>;
 }
 
 const RULE_TYPE_OPTIONS = [
@@ -158,6 +174,17 @@ export default function TenantSignalsPage() {
   const [newProfileForm, setNewProfileForm] = useState({ name: "", description: "", tags: "" });
   const [savingProfile, setSavingProfile] = useState(false);
 
+  const [pageView, setPageView] = useState<"rules" | "simulate">("rules");
+  const [clientsWithRuns, setClientsWithRuns] = useState<ClientWithRuns[]>([]);
+  const [showFromClientModal, setShowFromClientModal] = useState(false);
+  const [fromClientSearch, setFromClientSearch] = useState("");
+  const [fromClientId, setFromClientId] = useState("");
+  const [fromClientName, setFromClientName] = useState("");
+  const [importingFromClient, setImportingFromClient] = useState(false);
+  const [profileRunResults, setProfileRunResults] = useState<Record<number, SimProfileRunResult>>({});
+  const [runningProfileId, setRunningProfileId] = useState<number | null>(null);
+  const [expandedProfileId, setExpandedProfileId] = useState<number | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadAll = useCallback(async () => {
@@ -198,6 +225,11 @@ export default function TenantSignalsPage() {
   const loadScriptFields = useCallback(async () => {
     const res = await fetchWithAuth("/api/admin/signal-rules/script-fields");
     if (res.ok) setScriptFields(await res.json() as ScriptField[]);
+  }, [fetchWithAuth]);
+
+  const loadClientsWithRuns = useCallback(async () => {
+    const res = await fetchWithAuth("/api/admin/signal-rules/clients-with-runs");
+    if (res.ok) setClientsWithRuns(await res.json() as ClientWithRuns[]);
   }, [fetchWithAuth]);
 
   const loadClients = useCallback(async () => {
@@ -484,18 +516,53 @@ export default function TenantSignalsPage() {
   }
 
   async function handleRunSimProfile(id: number) {
-    const res = await fetchWithAuth(`/api/admin/signal-rules/simulation-profiles/${id}/run`, { method: "POST" });
-    if (res.ok) {
-      const result = await res.json() as { firedSignals: Array<{ key: string; label: string; expectedImpact: string }>; ruleTrace: RuleTraceEntry[] };
-      setTestResult(result);
-      setTestJson(JSON.stringify(simProfiles.find(p => p.id === id) ? {
-        profileUpdates: simProfiles.find(p => p.id === id)!.profileUpdates,
-        parsedFindings: simProfiles.find(p => p.id === id)!.parsedFindings,
-      } : { profileUpdates: {}, parsedFindings: [] }, null, 2));
-      toast({ title: "Profile evaluated" });
-      await loadSimProfiles();
-    } else {
-      toast({ title: "Failed to run profile", variant: "destructive" });
+    setRunningProfileId(id);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rules/simulation-profiles/${id}/run`, { method: "POST" });
+      if (res.ok) {
+        const result = await res.json() as SimProfileRunResult;
+        setProfileRunResults(prev => ({ ...prev, [id]: result }));
+        setExpandedProfileId(id);
+        setTestResult({ firedSignals: result.firedSignals, ruleTrace: result.ruleTrace });
+        const profile = simProfiles.find(p => p.id === id);
+        if (profile) {
+          setTestJson(JSON.stringify({ profileUpdates: profile.profileUpdates, parsedFindings: profile.parsedFindings }, null, 2));
+        }
+        toast({ title: "Profile evaluated" });
+        await loadSimProfiles();
+      } else {
+        toast({ title: "Failed to run profile", variant: "destructive" });
+      }
+    } finally {
+      setRunningProfileId(null);
+    }
+  }
+
+  async function handleImportFromClient() {
+    if (!fromClientId) { toast({ title: "Select a client first", variant: "destructive" }); return; }
+    setImportingFromClient(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/signal-rules/simulation-profiles/from-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientUserId: Number(fromClientId), tags: ["tenant-import"] }),
+      });
+      if (res.ok) {
+        const profile = await res.json() as SimulationProfile;
+        toast({ title: `Profile created: "${profile.name}"` });
+        setShowFromClientModal(false);
+        setFromClientId("");
+        setFromClientName("");
+        setFromClientSearch("");
+        await loadSimProfiles();
+        // Auto-run the newly imported profile
+        await handleRunSimProfile(profile.id);
+      } else {
+        const err = await res.json() as { error?: string };
+        toast({ title: err.error ?? "Failed to import tenant data", variant: "destructive" });
+      }
+    } finally {
+      setImportingFromClient(false);
     }
   }
 
@@ -555,24 +622,43 @@ export default function TenantSignalsPage() {
       {/* ── Top toolbar ───────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-b border-[#30363D] bg-[#0D1117] gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => { setShowTestModal(true); void loadSimProfiles(); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded-lg border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
-          >
-            <Play className="w-3.5 h-3.5" /> Test Evaluation
-          </button>
-          <button
-            onClick={() => { setShowPreviewModal(true); void handlePreviewProjects(); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
-          >
-            <Eye className="w-3.5 h-3.5" /> Preview Projects
-          </button>
-          <button
-            onClick={() => { setShowDryRunModal(true); void loadClients(); }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
-          >
-            <Zap className="w-3.5 h-3.5" /> Dry-Run SOW
-          </button>
+          {/* View switcher */}
+          <div className="flex items-center border border-[#30363D] rounded-lg overflow-hidden">
+            <button
+              onClick={() => setPageView("rules")}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors ${pageView === "rules" ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+            >
+              Signal Rules
+            </button>
+            <button
+              onClick={() => { setPageView("simulate"); void loadSimProfiles(); void loadClientsWithRuns(); }}
+              className={`px-3 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 ${pageView === "simulate" ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+            >
+              <FlaskConical className="w-3 h-3" /> Simulate
+            </button>
+          </div>
+          {pageView === "rules" && (
+            <>
+              <button
+                onClick={() => { setShowTestModal(true); void loadSimProfiles(); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded-lg border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+              >
+                <Play className="w-3.5 h-3.5" /> Test Evaluation
+              </button>
+              <button
+                onClick={() => { setShowPreviewModal(true); void handlePreviewProjects(); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+              >
+                <Eye className="w-3.5 h-3.5" /> Preview Projects
+              </button>
+              <button
+                onClick={() => { setShowDryRunModal(true); void loadClients(); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+              >
+                <Zap className="w-3.5 h-3.5" /> Dry-Run SOW
+              </button>
+            </>
+          )}
         </div>
         <button
           onClick={() => setShowConflictsPanel(true)}
@@ -587,7 +673,200 @@ export default function TenantSignalsPage() {
         </button>
       </div>
 
+      {/* ── Simulate view ─────────────────────────────────────────────────────── */}
+      {pageView === "simulate" && (
+        <div className="flex-1 overflow-y-auto bg-[#0D1117] p-6 space-y-6">
+          {/* Header row */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h2 className="text-base font-bold text-[#E6EDF3]">Simulation Profiles</h2>
+              <p className="text-xs text-[#7D8590] mt-0.5">
+                Test rule changes against saved tenant data snapshots before publishing. Profiles can be created manually or imported directly from a real client's script run history.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { setShowFromClientModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4]/10 text-[#0078D4] text-xs font-semibold rounded-lg border border-[#0078D4]/30 hover:bg-[#0078D4]/20 transition-colors"
+              >
+                <Database className="w-3.5 h-3.5" /> Import from Tenant
+              </button>
+              <button
+                onClick={() => { setShowTestModal(true); }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" /> New Manual Profile
+              </button>
+            </div>
+          </div>
+
+          {/* Search */}
+          <input
+            value={simProfileSearch}
+            onChange={e => setSimProfileSearch(e.target.value)}
+            placeholder="Search profiles by name or tag…"
+            className="w-full max-w-sm border border-[#30363D] bg-[#1C2128] text-[#C9D1D9] rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+          />
+
+          {/* Profile cards */}
+          {filteredSimProfiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <FlaskConical className="w-10 h-10 text-[#30363D] mb-3" />
+              <p className="text-sm font-semibold text-[#7D8590]">No simulation profiles yet</p>
+              <p className="text-xs text-[#484F58] mt-1 max-w-sm">Import real tenant data or create a manual profile to test signal rules before they affect live SOW generation.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredSimProfiles.map(profile => {
+                const result = profileRunResults[profile.id];
+                const isExpanded = expandedProfileId === profile.id;
+                const isRunning = runningProfileId === profile.id;
+                return (
+                  <div key={profile.id} className="border border-[#30363D] rounded-xl overflow-hidden bg-[#161B22]">
+                    {/* Profile header */}
+                    <div className="flex items-center justify-between px-5 py-3.5 gap-3">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <button
+                          onClick={() => setExpandedProfileId(isExpanded ? null : profile.id)}
+                          className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                        >
+                          <ChevronRight className={`w-4 h-4 text-[#7D8590] flex-shrink-0 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#E6EDF3] truncate">{profile.name}</p>
+                            {profile.description && (
+                              <p className="text-xs text-[#484F58] truncate">{profile.description}</p>
+                            )}
+                          </div>
+                        </button>
+                        <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+                          {profile.tags.map(t => (
+                            <span key={t} className={`text-xs px-2 py-0.5 rounded-full font-medium ${t === "tenant-import" ? "bg-[#0078D4]/15 text-[#0078D4] border border-[#0078D4]/20" : "bg-[#30363D] text-[#7D8590]"}`}>
+                              {t === "tenant-import" ? <><Database className="w-2.5 h-2.5 inline mr-1" />{t}</> : t}
+                            </span>
+                          ))}
+                          {profile.lastRunAt && (
+                            <span className="text-xs text-[#484F58] flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5" />
+                              {new Date(profile.lastRunAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <button
+                          onClick={() => void handleRunSimProfile(profile.id)}
+                          disabled={isRunning}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                          title="Run simulation"
+                        >
+                          {isRunning ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+                          {isRunning ? "Running…" : "Run"}
+                        </button>
+                        <button
+                          onClick={() => { preloadProfile(profile); setShowTestModal(true); }}
+                          className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]/50 rounded transition-colors"
+                          title="Edit in test modal"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => void handleDeleteSimProfile(profile.id)}
+                          className="p-1.5 text-[#7D8590] hover:text-red-500 hover:bg-red-900/10 rounded transition-colors"
+                          title="Delete profile"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Expanded result */}
+                    {isExpanded && result && (
+                      <div className="border-t border-[#30363D] px-5 py-4 space-y-4">
+                        {/* Fired signals */}
+                        <div>
+                          <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wide mb-2">Signals Fired ({result.firedSignals.length})</p>
+                          <div className="flex flex-wrap gap-2">
+                            {result.firedSignals.map(s => (
+                              <div key={s.key} className="group relative">
+                                <span className="text-xs bg-green-900/30 text-green-400 px-2.5 py-1 rounded-full border border-green-500/20 font-medium cursor-help">
+                                  <Check className="w-3 h-3 inline mr-1" />{s.label}
+                                </span>
+                                {s.expectedImpact && (
+                                  <div className="hidden group-hover:block absolute bottom-full left-0 mb-2 w-72 bg-[#1C2128] border border-[#30363D] rounded-xl p-3 text-xs text-[#C9D1D9] z-50 shadow-xl">
+                                    <p className="font-semibold text-[#E6EDF3] mb-1">Why this matters</p>
+                                    {s.expectedImpact}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                            {result.firedSignals.length === 0 && (
+                              <p className="text-xs text-[#484F58] italic">No signals fired</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Project diff */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="text-xs font-bold text-green-400 uppercase tracking-wide mb-2">
+                              Included Projects ({result.includedProjects.length})
+                            </p>
+                            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                              {result.includedProjects.map(p => (
+                                <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2 bg-green-950/20 border border-green-500/10 rounded-lg">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <Check className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />
+                                    <span className="text-xs text-[#C9D1D9] truncate">{p.title}</span>
+                                  </div>
+                                  {p.priceRange && (
+                                    <span className="text-xs text-[#484F58] flex-shrink-0">{p.priceRange}</span>
+                                  )}
+                                </div>
+                              ))}
+                              {result.includedProjects.length === 0 && (
+                                <p className="text-xs text-[#7D8590] italic px-2">No projects would be included.</p>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-[#484F58] uppercase tracking-wide mb-2">
+                              Excluded Projects ({result.excludedProjects.length})
+                            </p>
+                            <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                              {result.excludedProjects.map((e, i) => (
+                                <div key={i} className="px-3 py-2 bg-[#1C2128] rounded-lg">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <X className="w-3.5 h-3.5 text-[#484F58] flex-shrink-0" />
+                                    <span className="text-xs text-[#7D8590] truncate">{e.project.title}</span>
+                                  </div>
+                                  <p className="text-xs text-[#30363D] ml-5 mt-0.5 truncate" title={e.reason}>{e.reason}</p>
+                                </div>
+                              ))}
+                              {result.excludedProjects.length === 0 && (
+                                <p className="text-xs text-[#7D8590] italic px-2">No projects excluded.</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Expanded but no result yet */}
+                    {isExpanded && !result && (
+                      <div className="border-t border-[#30363D] px-5 py-6 text-center">
+                        <p className="text-xs text-[#7D8590]">Click <strong className="text-[#C9D1D9]">Run</strong> to see which projects would be included or excluded for this profile.</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Main split panel ──────────────────────────────────────────────────── */}
+      {pageView === "rules" && (
       <div className="flex flex-1 overflow-hidden">
         {/* ── Left panel ──────────────────────────────────────────────────────── */}
         <div className="w-72 flex-shrink-0 border-r border-[#30363D] flex flex-col overflow-hidden bg-[#0D1117]">
@@ -993,6 +1272,7 @@ export default function TenantSignalsPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* ── Modals ────────────────────────────────────────────────────────────── */}
 
@@ -1405,6 +1685,105 @@ export default function TenantSignalsPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {importRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Import from Tenant Modal */}
+      {showFromClientModal && (
+        <Modal title="Import from Tenant" onClose={() => { setShowFromClientModal(false); setFromClientSearch(""); setFromClientId(""); setFromClientName(""); }} wide>
+          <div className="space-y-4">
+            <p className="text-sm text-[#7D8590]">
+              Select a client to pull their most recent script run results. A simulation profile will be created from the merged <code className="text-xs bg-[#1C2128] px-1 rounded">profileUpdates</code> and <code className="text-xs bg-[#1C2128] px-1 rounded">parsedFindings</code> across all completed runs.
+            </p>
+
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1.5">Search client</label>
+              <input
+                value={fromClientSearch}
+                onChange={e => { setFromClientSearch(e.target.value); setFromClientId(""); setFromClientName(""); }}
+                placeholder="Name, email, or company…"
+                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+            </div>
+
+            {fromClientSearch && (
+              <div className="border border-[#30363D] rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                {clientsWithRuns
+                  .filter(c =>
+                    c.email.toLowerCase().includes(fromClientSearch.toLowerCase()) ||
+                    (c.name ?? "").toLowerCase().includes(fromClientSearch.toLowerCase()) ||
+                    (c.company ?? "").toLowerCase().includes(fromClientSearch.toLowerCase())
+                  )
+                  .slice(0, 20)
+                  .map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm border-b border-[#30363D]/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+                    >
+                      <span className="font-medium">{c.name ?? "—"}</span>
+                      <span className="text-[#7D8590] ml-2">{c.email}</span>
+                      {c.company && <span className="text-[#484F58] ml-1">· {c.company}</span>}
+                      <span className="ml-2 text-xs text-[#484F58]">{c.runCount} run{c.runCount !== 1 ? "s" : ""}</span>
+                    </button>
+                  ))}
+                {clientsWithRuns.filter(c =>
+                  c.email.toLowerCase().includes(fromClientSearch.toLowerCase()) ||
+                  (c.name ?? "").toLowerCase().includes(fromClientSearch.toLowerCase()) ||
+                  (c.company ?? "").toLowerCase().includes(fromClientSearch.toLowerCase())
+                ).length === 0 && (
+                  <p className="px-4 py-3 text-sm text-[#7D8590]">No clients with completed script runs found.</p>
+                )}
+              </div>
+            )}
+
+            {!fromClientSearch && clientsWithRuns.length > 0 && (
+              <div className="border border-[#30363D] rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+                {clientsWithRuns.slice(0, 10).map(c => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setFromClientId(String(c.id)); setFromClientName(c.name ?? c.email); setFromClientSearch(`${c.name ?? c.email}${c.company ? ` (${c.company})` : ""}`); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm border-b border-[#30363D]/50 last:border-0 transition-colors ${fromClientId === String(c.id) ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
+                  >
+                    <span className="font-medium">{c.name ?? "—"}</span>
+                    <span className="text-[#7D8590] ml-2">{c.email}</span>
+                    {c.company && <span className="text-[#484F58] ml-1">· {c.company}</span>}
+                    <span className="ml-2 text-xs text-[#484F58]">{c.runCount} run{c.runCount !== 1 ? "s" : ""} · last {new Date(c.lastRunAt).toLocaleDateString()}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {!fromClientSearch && clientsWithRuns.length === 0 && (
+              <p className="text-sm text-[#7D8590] italic">No clients with completed script runs found. Run some assessment scripts first.</p>
+            )}
+
+            {fromClientId && (
+              <div className="flex items-center gap-2 p-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg">
+                <Check className="w-4 h-4 text-[#0078D4] flex-shrink-0" />
+                <p className="text-sm text-[#C9D1D9]">
+                  Will create a simulation profile from <strong className="text-[#E6EDF3]">{fromClientName}</strong>'s script run history.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => { setShowFromClientModal(false); setFromClientSearch(""); setFromClientId(""); setFromClientName(""); }}
+                className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleImportFromClient()}
+                disabled={importingFromClient || !fromClientId}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {importingFromClient ? <Loader2 className="w-4 h-4 animate-spin" /> : <Database className="w-4 h-4" />}
+                {importingFromClient ? "Importing…" : "Create Profile"}
               </button>
             </div>
           </div>
