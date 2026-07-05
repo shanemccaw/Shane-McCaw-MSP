@@ -10398,6 +10398,7 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
 
     void emitWorkflowEvent("presentation.phases_requested", {
       presentationId: id,
+      projectId: pres.projectId ?? null,
       totalPrice: effectiveTotal,
       sowDocId: typeof body.sowDocId === "number" ? body.sowDocId : null,
       projectTitle: typeof body.projectTitle === "string" ? body.projectTitle : "",
