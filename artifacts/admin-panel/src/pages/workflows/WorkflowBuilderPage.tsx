@@ -1797,8 +1797,8 @@ function NodeConfigPanel({
                 />
                 <PayloadField
                   label="Payload (JSON)"
-                  value={(node.data.eventPayload as string) ?? ""}
-                  onChange={v => onChange(node.id, { ...node.data, eventPayload: v })}
+                  value={(node.data.extraPayload as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, extraPayload: v })}
                   placeholder='{"clientId": "{{payload.clientId}}"}'
                   multiline
                   ancestorOutputs={ancestorOutputs}
@@ -1974,7 +1974,7 @@ function NodeConfigPanel({
         {nodeType === "emit_event" && (
           <>
             <PayloadField label="Event Name" value={(node.data.eventName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, eventName: v })} placeholder="onboarding.completed" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Payload (JSON)" value={(node.data.eventPayload as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, eventPayload: v })} placeholder='{"clientId": "{{payload.clientId}}"}' multiline ancestorOutputs={ancestorOutputs} />
+            <PayloadField label="Payload (JSON)" value={(node.data.extraPayload as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, extraPayload: v })} placeholder='{"clientId": "{{payload.clientId}}"}' multiline ancestorOutputs={ancestorOutputs} />
           </>
         )}
 
