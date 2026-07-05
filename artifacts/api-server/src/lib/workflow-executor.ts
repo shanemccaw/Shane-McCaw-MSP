@@ -55,6 +55,7 @@ import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange } from "./sse-broadcast";
+import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -1050,6 +1051,40 @@ async function executeNode(
             const docTitle    = interp(node.data.docTitle as string | undefined, payload)
               ?? (CONSULTING_TYPE_LABELS[docType] ?? REPORT_DOC_TYPE_LABELS[docType] ?? docType);
 
+            // ── Consolidated SOW: delegate to the shared generator ───────────────
+            // The generic consulting path below uses scores/findings and invents
+            // phases from scratch. consolidated_sow MUST use the real engagement
+            // projects catalogue from the DB, which the shared lib handles.
+            let sowHandled = false;
+            if (docType === "consolidated_sow" && docCategory === "consulting") {
+              sowHandled = true;
+              try {
+                const rawPresId = payload.presentationId;
+                const presId = typeof rawPresId === "number" ? rawPresId
+                  : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
+                const sowResult = await generateConsolidatedSowDocument({
+                  clientUserId,
+                  projectId: !isNaN(projectId) ? projectId : null,
+                  title: docTitle,
+                  runId: runId != null ? String(runId) : undefined,
+                });
+                if (!isNaN(presId)) {
+                  broadcastPresentationDocsChange(presId);
+                  logger.info({ runId, presId, docId: sowResult.docId }, "wf-executor: consolidated_sow broadcast docs_changed for presentation");
+                }
+                if (!isNaN(projectId)) {
+                  void broadcastSowChangeForProject(projectId);
+                  void broadcastDocsChangeForProject(projectId);
+                }
+                output = { documentId: sowResult.docId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
+              } catch (sowErr) {
+                nodeError = true;
+                output = { error: sowErr instanceof Error ? sowErr.message : String(sowErr) };
+                logger.error({ runId, err: sowErr }, "wf-executor: consolidated_sow generation failed");
+              }
+            }
+
+            if (!sowHandled) {
             // Fetch supporting data in parallel (common to both report and consulting paths)
             const [runs, customerRow, projectRow] = await Promise.all([
               igFetchRuns(clientUserId, 50),
@@ -1236,6 +1271,7 @@ async function executeNode(
 
             logger.info({ runId, reportDocId, docType, docCategory, clientUserId }, "wf-executor: generate_document completed");
             output = { documentId: reportDocId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
+            } // end if (!sowHandled)
           }
         } else if (actionType === "emit_event") {
           const emitEventType = interp(node.data.eventType as string | undefined, payload)
