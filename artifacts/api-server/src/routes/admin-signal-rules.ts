@@ -142,14 +142,22 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
 
     const { groupId, ruleType, sourceKey, compareValue, description, sortOrder } =
       (req.body ?? {}) as Record<string, unknown>;
+
+    const groupIdInt = groupId !== undefined
+      ? (groupId === null || groupId === "" ? null : Number(groupId))
+      : prior.groupId;
+    const sortOrderInt = sortOrder !== undefined && sortOrder !== null
+      ? Number(sortOrder)
+      : null;
+
     const result = await db.execute(sql`
       UPDATE signal_derivation_rules
-      SET group_id = COALESCE(${groupId !== undefined ? (groupId ?? null) : prior.groupId}, NULL),
+      SET group_id = ${groupIdInt}::integer,
           rule_type = COALESCE(${ruleType ?? null}, rule_type),
           source_key = COALESCE(${sourceKey ?? null}, source_key),
           compare_value = ${compareValue !== undefined ? (compareValue ?? null) : prior.compareValue},
           description = ${description !== undefined ? (description ?? null) : prior.description},
-          sort_order = COALESCE(${sortOrder ?? null}, sort_order),
+          sort_order = COALESCE(${sortOrderInt}, sort_order),
           updated_at = now()
       WHERE id = ${id}
       RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
