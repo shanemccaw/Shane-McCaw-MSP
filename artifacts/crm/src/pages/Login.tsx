@@ -115,13 +115,13 @@ function M365HealthPanel({ dark = false, vertical = false }: { dark?: boolean; v
         <div className="w-full h-px" style={{ background: oDiv }} />
 
         {/* Category rings — row of 5 */}
-        <div className="flex items-end justify-around w-full gap-1">
+        <div className="flex items-end justify-between w-full">
           {SCORE_CATEGORIES.map(({ label, key }) => {
             const pct = scores[key] ?? 0;
             return (
               <div key={key} className="flex flex-col items-center gap-1">
-                <ScoreRing score={pct} size={46} strokeWidth={4} dark={dark} />
-                <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: catCol }}>{label}</span>
+                <ScoreRing score={pct} size={40} strokeWidth={4} dark={dark} />
+                <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: catCol }}>{label}</span>
               </div>
             );
           })}
@@ -293,21 +293,23 @@ function LeftPanel() {
         </div>
       </div>
 
-      {/* Hero — text left, health panel right */}
-      <div className="flex-1 flex items-center gap-8 min-h-0">
+      {/* Headline — spans full panel width */}
+      <div className="shrink-0 mb-6">
+        <h1 className="font-black text-white leading-tight mb-2" style={{ fontSize: "clamp(1.75rem,3vw,2.75rem)" }}>
+          Your M365<br />
+          <span style={{ color: "#00B4D8" }}>Command Center</span>
+        </h1>
+        <p className="text-white/55 text-sm leading-relaxed">
+          A secure, unified portal for assessments, reports, insights, and project delivery.
+        </p>
+      </div>
 
-        {/* Left column: headline + bullets + badges */}
-        <div className="flex-1 min-w-0 flex flex-col justify-center">
-          <h1 className="font-black text-white leading-tight mb-3" style={{ fontSize: "clamp(1.75rem,3vw,2.75rem)" }}>
-            Your M365<br />
-            <span style={{ color: "#00B4D8" }}>Command Center</span>
-          </h1>
-          <p className="text-white/58 text-sm leading-relaxed mb-6 max-w-xs">
-            A secure, unified portal for assessments, reports, insights, and project delivery.
-          </p>
+      {/* Two-column: bullets left | health panel right */}
+      <div className="flex-1 flex items-start gap-8 min-h-0 overflow-hidden">
 
-          {/* Value bullets */}
-          <ul className="space-y-2.5 mb-6">
+        {/* Left: value bullets */}
+        <div className="flex-1 min-w-0">
+          <ul className="space-y-3">
             {VALUE_BULLETS.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3">
                 <div
@@ -320,11 +322,10 @@ function LeftPanel() {
               </li>
             ))}
           </ul>
-
         </div>
 
-        {/* Right column: tenant health snapshot */}
-        <div className="shrink-0 flex flex-col justify-center" style={{ width: "clamp(200px,30%,260px)" }}>
+        {/* Right: tenant health snapshot */}
+        <div className="shrink-0" style={{ width: "clamp(250px,42%,300px)" }}>
           <p
             className="text-[9px] font-bold uppercase tracking-widest mb-2"
             style={{ color: "rgba(255,255,255,0.28)" }}
@@ -838,14 +839,14 @@ export default function LoginPage() {
                 </div>
 
                 {/* Security badges */}
-                <div className="flex justify-center flex-wrap gap-2 mb-2.5">
+                <div className="flex justify-center flex-wrap gap-1.5 mb-2.5">
                   {SEC_BADGES.map(({ emoji, label }) => (
                     <div
                       key={label}
-                      className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 bg-[#0A2540]"
+                      className="flex items-center gap-1 rounded-full px-2.5 py-1 bg-[#0A2540]"
                     >
-                      <span className="text-sm leading-none">{emoji}</span>
-                      <span className="text-white text-xs font-bold tracking-wide">{label}</span>
+                      <span className="text-xs leading-none">{emoji}</span>
+                      <span className="text-white text-[11px] font-bold">{label}</span>
                     </div>
                   ))}
                 </div>
