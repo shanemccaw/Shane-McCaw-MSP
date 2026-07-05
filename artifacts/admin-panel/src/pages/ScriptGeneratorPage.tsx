@@ -119,6 +119,15 @@ interface WorkflowTemplateStep {
   tasks: Array<{ id: number; title: string; description: string | null }>;
 }
 
+interface InsightsDocumentListItem {
+  id: number;
+  title: string | null;
+  docType: string;
+  category: string;
+  status: string;
+  createdAt: string;
+}
+
 interface WorkflowTemplateDetail {
   id: number;
   name: string;
@@ -3690,6 +3699,7 @@ function BottomPanel({
   activeTab,
   onActiveTabChange,
   onOpenGenerateFromService,
+  onOpenGenerateFromDocument,
 }: {
   category: string;
   onCategoryChange: (v: string) => void;
@@ -3707,6 +3717,7 @@ function BottomPanel({
   activeTab: BottomTab;
   onActiveTabChange: (t: BottomTab) => void;
   onOpenGenerateFromService: () => void;
+  onOpenGenerateFromDocument: () => void;
 }) {
   const setActiveTab = onActiveTabChange;
 
@@ -3770,6 +3781,17 @@ function BottomPanel({
                 </svg>
                 From Service
               </button>
+              <button
+                onClick={onOpenGenerateFromDocument}
+                disabled={generating}
+                title="Generate from an insights document — AI extracts tasks and writes PowerShell automation"
+                className="flex items-center gap-1.5 bg-violet-600/20 border border-violet-500/40 text-violet-400 hover:bg-violet-600/30 disabled:opacity-50 text-xs font-semibold py-1.5 px-3 rounded transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                From Document
+              </button>
             </div>
           </>
         )}
@@ -3805,6 +3827,200 @@ function BottomPanel({
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Generate from Document dialog ───────────────────────────────────────────
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  tenant_health: "Tenant Health",
+  remediation_plan: "Remediation Plan",
+  scoped_sow: "Scoped SOW",
+  consolidated_sow: "Consolidated SOW",
+  other: "Report",
+};
+
+function GenerateFromDocumentDialog({
+  token,
+  baseInstructions,
+  detailedInstructions,
+  onClose,
+  onScriptGenerated,
+}: {
+  token: string;
+  baseInstructions: string;
+  detailedInstructions: string;
+  onClose: () => void;
+  onScriptGenerated: (title: string, script: string, perms: PsScriptPermissions) => void;
+}) {
+  const { fetchWithAuth } = useAuth();
+  const { toast } = useToast();
+  const [docs, setDocs] = useState<InsightsDocumentListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genPct, setGenPct] = useState(5);
+  const [genPhaseLabel, setGenPhaseLabel] = useState("Sending document to Claude…");
+
+  useEffect(() => {
+    fetchWithAuth("/api/admin/insights/documents")
+      .then(r => r.json())
+      .then((data: InsightsDocumentListItem[]) => setDocs(Array.isArray(data) ? data : []))
+      .catch(() => toast({ title: "Failed to load documents", variant: "destructive" }))
+      .finally(() => setLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const filtered = docs.filter(d =>
+    !search.trim() ||
+    (d.title ?? "").toLowerCase().includes(search.toLowerCase()) ||
+    (DOC_TYPE_LABELS[d.docType] ?? d.docType).toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedDoc = docs.find(d => d.id === selectedId) ?? null;
+
+  const handleGenerate = async () => {
+    if (!selectedId) return;
+    setGenerating(true);
+    setGenPct(5);
+    setGenPhaseLabel("Sending document to Claude…");
+    try {
+      const result = await consumeGenerationSSE<{ script: string; permissions: PsScriptPermissions }>(
+        "/admin/ps-scripts/generate-from-document",
+        fetchWithAuth,
+        {
+          documentId: selectedId,
+          baseInstructions: baseInstructions.trim() || undefined,
+          detailedInstructions: detailedInstructions.trim() || undefined,
+        },
+        (pct, label) => { setGenPct(pct); if (label) setGenPhaseLabel(label); },
+      );
+      const docTitle = selectedDoc?.title ?? "Document Script";
+      onScriptGenerated(docTitle, result.script, result.permissions);
+      onClose();
+      toast({ title: "Script generated", description: docTitle });
+    } catch (e) {
+      toast({ title: "Generation failed", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-full max-w-2xl mx-4 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#21262D] flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-violet-500/15 border border-violet-500/30 flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-[#E6EDF3]">Generate from Document</h2>
+              <p className="text-[10px] text-[#7D8590]">Select an insights document — AI extracts actionable tasks and writes PowerShell scripts to automate them</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-3 pb-2 flex-shrink-0">
+          <div className="relative">
+            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8" /><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35" /></svg>
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search documents…"
+              className="w-full bg-[#0D1117] border border-[#30363D] rounded pl-8 pr-3 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Document list */}
+        <div className="flex-1 overflow-y-auto px-5 pb-3 space-y-1.5 min-h-0">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="w-5 h-5 border-2 border-[#30363D] border-t-[#0078D4] rounded-full animate-spin" />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-2">
+              <svg className="w-8 h-8 text-[#30363D]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              <p className="text-xs text-[#484F58]">{search ? "No documents match your search" : "No documents in the insights library yet"}</p>
+            </div>
+          ) : (
+            filtered.map(doc => (
+              <button
+                key={doc.id}
+                onClick={() => setSelectedId(doc.id === selectedId ? null : doc.id)}
+                className={`w-full text-left px-3 py-2.5 rounded-lg border transition-all ${
+                  selectedId === doc.id
+                    ? "bg-violet-500/10 border-violet-500/40 ring-1 ring-violet-500/30"
+                    : "bg-[#0D1117] border-[#21262D] hover:border-[#30363D] hover:bg-[#161B22]"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  <div className={`mt-0.5 w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${selectedId === doc.id ? "bg-violet-500/20 border border-violet-500/50" : "bg-[#21262D] border border-[#30363D]"}`}>
+                    {selectedId === doc.id ? (
+                      <svg className="w-3 h-3 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                    ) : (
+                      <svg className="w-3 h-3 text-[#484F58]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-[#E6EDF3] truncate">{doc.title ?? "Untitled Document"}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-[#7D8590]">{DOC_TYPE_LABELS[doc.docType] ?? doc.docType}</span>
+                      <span className="text-[10px] text-[#484F58]">·</span>
+                      <span className="text-[10px] text-[#484F58]">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                      {doc.status && doc.status !== "approved" && (
+                        <>
+                          <span className="text-[10px] text-[#484F58]">·</span>
+                          <span className="text-[10px] text-[#484F58] capitalize">{doc.status}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-3 border-t border-[#21262D] flex-shrink-0 bg-[#0D1117]/50">
+          <p className="text-[10px] text-[#484F58]">
+            {selectedDoc ? `Selected: ${selectedDoc.title ?? "Untitled"}` : `${filtered.length} document${filtered.length !== 1 ? "s" : ""} available`}
+          </p>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] rounded border border-[#30363D] hover:bg-[#21262D] transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={handleGenerate}
+              disabled={!selectedId || generating}
+              className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-violet-600/20 border border-violet-500/40 text-violet-400 hover:bg-violet-600/30 disabled:opacity-50 disabled:cursor-not-allowed rounded transition-colors"
+            >
+              {generating ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-violet-400/40 border-t-violet-400 rounded-full animate-spin" />
+                  {genPhaseLabel.length > 30 ? "Generating…" : genPhaseLabel}
+                </>
+              ) : (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                  Generate Script
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+      <GeneratingProgressDialog open={generating} pct={genPct} phaseLabel={genPhaseLabel} />
     </div>
   );
 }
@@ -3855,6 +4071,7 @@ export default function ScriptGeneratorPage() {
   const [modules, setModules] = useState<ScriptModuleItem[]>([]);
   const [editorScript, setEditorScript] = useState<PsScriptDetail | null>(null);
   const [generateFromServiceOpen, setGenerateFromServiceOpen] = useState(false);
+  const [generateFromDocumentOpen, setGenerateFromDocumentOpen] = useState(false);
 
   // ── Library state ───────────────────────────────────────────────────────────
   const [scripts, setScripts] = useState<PsScriptListItem[]>([]);
@@ -4824,6 +5041,7 @@ export default function ScriptGeneratorPage() {
                 activeTab={bottomActiveTab}
                 onActiveTabChange={setBottomActiveTab}
                 onOpenGenerateFromService={() => setGenerateFromServiceOpen(true)}
+                onOpenGenerateFromDocument={() => setGenerateFromDocumentOpen(true)}
               />
             </div>
           )}
@@ -4928,6 +5146,30 @@ export default function ScriptGeneratorPage() {
           onManualScriptGenerated={(detail) => {
             setScripts((prev) => [detail, ...prev.filter((s) => s.id !== detail.id)]);
             handleLoadInEditor(detail);
+          }}
+        />
+      )}
+
+      {generateFromDocumentOpen && (
+        <GenerateFromDocumentDialog
+          token={token}
+          baseInstructions={baseInstructions}
+          detailedInstructions={detailedInstructions}
+          onClose={() => setGenerateFromDocumentOpen(false)}
+          onScriptGenerated={(title, script, perms) => {
+            setScriptBody(script);
+            cleanBodyRef.current = script;
+            setPermissions(perms);
+            setEditorScript(null);
+            setEditingModuleId(null);
+            setEditingPackageId(null);
+            setModules([]);
+            setLoadedPackage(null);
+            setLoadedPackageTitle(null);
+            setFixSummary("");
+            setSummaryError(null);
+            setSelectedResult(null);
+            toast({ title: "Script generated", description: title });
           }}
         />
       )}

@@ -15,6 +15,7 @@ import {
   clientServicesTable,
   scriptRunResultsTable,
   projectsTable,
+  insightsGeneratedDocumentsTable,
   type PsScriptPermissions,
   type ScriptModule,
 } from "@workspace/db";
@@ -3367,6 +3368,175 @@ router.delete("/admin/services/:id/script-sets/:packageId", requireAdmin, async 
   } catch (err) {
     logger.error({ err, serviceId, scriptPackageId }, "admin-ps-scripts: failed to remove service script set");
     res.status(500).json({ error: "Failed to unlink script package from service" });
+  }
+});
+
+// ─── POST /api/admin/ps-scripts/generate-from-document ───────────────────────
+// Fetches an insights document by ID, strips HTML, and generates a PowerShell
+// script from its contents using the same SSE streaming protocol as /generate.
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+const GENERATE_FROM_DOCUMENT_SYSTEM = `You are an expert Microsoft 365 PowerShell script engineer. You will receive the text of a consulting deliverable (assessment report, statement of work, remediation plan, or similar). Your job is to extract every actionable technical task from the document and write complete, production-ready PowerShell scripts to automate them.
+
+RULES:
+- Only automate tasks that can run UNATTENDED as an Azure Automation Runbook (service principal / app-only auth).
+- Skip tasks that require human decisions, approvals, client calls, or delegated/interactive auth — briefly note them as comments.
+- Each script must include [CmdletBinding()] + typed param() block, try/catch/finally, $ErrorActionPreference = "Stop", and Write-Output (never Write-Host).
+- Authenticate via service principal: Connect-MgGraph -ClientId -TenantId -ClientSecret (or certificate).
+- After all PowerShell code, append a \`\`\`json block with this shape:
+{
+  "appPermissions": [{"scope": "...", "reason": "..."}],
+  "delegatedPermissions": [],
+  "notes": "..."
+}
+List every Microsoft Graph Application permission the scripts require.`;
+
+router.post("/admin/ps-scripts/generate-from-document", requireAdmin, async (req: Request, res: Response) => {
+  const { documentId, baseInstructions, detailedInstructions } = req.body as {
+    documentId?: number;
+    baseInstructions?: string;
+    detailedInstructions?: string;
+  };
+
+  if (!documentId || typeof documentId !== "number") {
+    res.status(400).json({ error: "documentId is required" });
+    return;
+  }
+
+  const [doc] = await db
+    .select({ id: insightsGeneratedDocumentsTable.id, title: insightsGeneratedDocumentsTable.title, htmlContent: insightsGeneratedDocumentsTable.htmlContent })
+    .from(insightsGeneratedDocumentsTable)
+    .where(eq(insightsGeneratedDocumentsTable.id, documentId))
+    .limit(1);
+
+  if (!doc) {
+    res.status(404).json({ error: "Document not found" });
+    return;
+  }
+
+  const plainText = stripHtml(doc.htmlContent);
+  if (plainText.length < 50) {
+    res.status(400).json({ error: "Document has no readable content" });
+    return;
+  }
+
+  const baseBlock = baseInstructions?.trim()
+    ? `\n\nBase instructions (always apply):\n${baseInstructions.trim()}`
+    : "";
+  const detailedBlock = detailedInstructions?.trim()
+    ? `\n\nAdditional instructions for this generation:\n${detailedInstructions.trim()}`
+    : "";
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders();
+
+  const sendSSE = (event: Record<string, unknown>): void => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+  const sendError = (message: string): void => {
+    sendSSE({ type: "error", message });
+    res.end();
+  };
+
+  sendSSE({ type: "phase", label: "Sending document to Claude…", pct: 5 });
+
+  try {
+    const stream = anthropic.messages.stream({
+      model: "claude-haiku-4-5",
+      max_tokens: 8192,
+      messages: [
+        {
+          role: "user",
+          content: `${GENERATE_FROM_DOCUMENT_SYSTEM}${baseBlock}${detailedBlock}
+
+Document title: ${doc.title ?? "Untitled"}
+
+Document content:
+${plainText.slice(0, 24000)}
+
+Write complete PowerShell scripts for every automatable task in this document, followed by the permissions JSON block.`,
+        },
+      ],
+    });
+
+    let accumulated = "";
+    const EXPECTED_CHARS = 28_000;
+    let lastEmittedPct = 5;
+    let firstChunk = true;
+
+    stream.on("text", (text: string) => {
+      if (firstChunk) {
+        firstChunk = false;
+        sendSSE({ type: "phase", label: "Claude is analysing the document and writing scripts…", pct: 20 });
+        lastEmittedPct = 20;
+      }
+      accumulated += text;
+      const rawPct = 20 + (accumulated.length / EXPECTED_CHARS) * 60;
+      const pct = Math.min(80, Math.round(rawPct));
+      if (pct >= lastEmittedPct + 3) {
+        lastEmittedPct = pct;
+        sendSSE({ type: "progress", pct });
+      }
+    });
+
+    await stream.finalMessage();
+
+    sendSSE({ type: "phase", label: "Parsing permissions and metadata…", pct: 90 });
+
+    const fullText = accumulated;
+
+    const jsonFenceIdx = fullText.search(/```json/i);
+    let scriptBody = jsonFenceIdx > 0
+      ? fullText.slice(0, jsonFenceIdx).replace(/```powershell\s*/i, "").replace(/```\s*$/, "").trim()
+      : fullText.replace(/```(?:powershell)?\s*/gi, "").replace(/```\s*/g, "").trim();
+
+    if (scriptBody.length < 20) {
+      const jsonBlockRe = /```json[\s\S]*?```/gi;
+      scriptBody = fullText
+        .replace(jsonBlockRe, "")
+        .replace(/```powershell\s*/gi, "")
+        .replace(/```\s*$/gm, "")
+        .trim();
+    }
+
+    if (!hasPsKeywordsFullText(scriptBody)) {
+      logger.error({ scriptBodyPrefix: scriptBody.slice(0, 300) }, "generate-from-document: no PS keywords found — refusing to send");
+      sendError("AI returned a summary instead of a script. Please try again.");
+      return;
+    }
+
+    const rawPermissions = extractJson(fullText);
+    let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
+    if (rawPermissions && typeof rawPermissions === "object" && !Array.isArray(rawPermissions)) {
+      const p = rawPermissions as Record<string, unknown>;
+      permissions = {
+        appPermissions: Array.isArray(p["appPermissions"]) ? normalizeAppPerms(p["appPermissions"] as unknown[]) : [],
+        delegatedPermissions: Array.isArray(p["delegatedPermissions"]) ? (p["delegatedPermissions"] as string[]) : [],
+        notes: typeof p["notes"] === "string" ? p["notes"] : "",
+      };
+    }
+
+    sendSSE({ type: "done", payload: { script: scriptBody, permissions } });
+    res.end();
+  } catch (err) {
+    logger.error({ err }, "generate-from-document: generation failed");
+    sendError(err instanceof Error ? err.message : "AI generation failed");
   }
 });
 
