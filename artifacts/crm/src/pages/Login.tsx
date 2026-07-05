@@ -303,7 +303,7 @@ function LeftPanel() {
       <div className="relative flex flex-col h-full" style={{ zIndex: 2 }}>
 
         {/* ── Hero: wordmark + headline + tagline (TOP) ── */}
-        <div className="shrink-0 mb-6">
+        <div className="login-enter-hero shrink-0 mb-6">
           {/* Wordmark */}
           <div className="flex items-center gap-2.5 mb-6">
             <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center shadow-lg shadow-[#0078D4]/35 flex-shrink-0">
@@ -329,7 +329,7 @@ function LeftPanel() {
         </div>
 
         {/* ── Floating health snapshot card ── */}
-        <div className="shrink-0 mb-5">
+        <div className="login-enter-health shrink-0 mb-5">
           <div
             className="rounded-2xl overflow-hidden transition-transform duration-200 cursor-default"
             style={{
@@ -347,7 +347,7 @@ function LeftPanel() {
         </div>
 
         {/* ── Product preview carousel ── */}
-        <div className="shrink-0">
+        <div className="login-enter-carousel shrink-0">
           <ProductCarousel />
         </div>
 
@@ -669,7 +669,7 @@ export default function LoginPage() {
                 </span>
               </div>
 
-              <div className="w-full max-w-md">
+              <div className="login-enter-card w-full max-w-md">
 
                 {/* Purchase context hint */}
                 {fromPurchase && (

@@ -311,6 +311,40 @@ html {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes login-entrance-fade {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes login-entrance-slide {
+  from { opacity: 0; transform: translateY(26px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.login-enter-hero {
+  opacity: 0;
+  animation: login-entrance-fade 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 0ms;
+}
+
+.login-enter-carousel {
+  opacity: 0;
+  animation: login-entrance-slide 0.60s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 150ms;
+}
+
+.login-enter-health {
+  opacity: 0;
+  animation: login-entrance-slide 0.60s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 300ms;
+}
+
+.login-enter-card {
+  opacity: 0;
+  animation: login-entrance-fade 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: 60ms;
+}
+
 .login-badge-stagger > * {
   opacity: 0;
   animation: login-fade-in 0.4s ease-out forwards;
