@@ -1035,9 +1035,10 @@ export default function FullScreenWrapper() {
                 )}
               </div>
 
-              {/* Manual script panel when applicable */}
-              {showScriptPanel && (
-                <div className="flex-1 min-h-0 overflow-y-auto">
+              {/* Active column body — script panel (when applicable) above task cards */}
+              <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3">
+
+                {showScriptPanel && (
                   <DiagnosticScriptPanel
                     scripts={overlayManualScripts}
                     waitingManualScriptCount={waitingManualScriptCount}
@@ -1045,11 +1046,9 @@ export default function FullScreenWrapper() {
                     onCompleted={() => void refetchManualScripts()}
                     onAllDismissed={() => setAllScriptsDismissed(true)}
                   />
-                </div>
-              )}
+                )}
 
-              {!showScriptPanel && (
-                <div className="grid grid-cols-2 gap-2 flex-1 content-start overflow-y-auto">
+                <div className="grid grid-cols-2 gap-2 content-start">
                   {/* Loading state */}
                   {kanbanTasks.length === 0 && (
                     <div className="col-span-2 flex items-center gap-3 py-10 justify-center">
@@ -1207,7 +1206,7 @@ export default function FullScreenWrapper() {
                     </div>
                   )}
                 </div>
-              )}
+              </div>
             </div>
 
             {/* ── RIGHT: Next-up tasks (small, muted, from the first not_started step) ── */}
