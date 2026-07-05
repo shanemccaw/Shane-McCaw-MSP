@@ -180,7 +180,7 @@ export default function PresentationFlow({
   startAtPayment = false,
   onClose,
 }: PresentationFlowProps) {
-  const { fetchWithAuth, user, getAuthHeader } = useAuth();
+  const { fetchWithAuth, user, getAuthHeader, accessToken } = useAuth();
   const search = useSearch();
 
   const [data, setData] = useState<PresentationData>(initialData);
@@ -562,14 +562,17 @@ export default function PresentationFlow({
   }, [fetchFn, presentationId, shareToken]);
 
   // SSE subscription — receives immediate push when Shane regenerates the SOW
+  // Re-runs when accessToken changes (null → value after auth loads) so the JWT
+  // is always baked into the URL before the connection is opened.
   useEffect(() => {
-    if (readOnly && !shareToken) return;
+    if (readOnly && !shareToken && !accessToken) return;
     // EventSource cannot send custom headers, so pass JWT as ?jwt= for logged-in users
     // and share token as ?token= for public share links.
     const params = new URLSearchParams();
     if (shareToken) params.set("token", shareToken);
-    const jwtToken = getAuthHeader()["Authorization"]?.replace(/^Bearer\s+/i, "");
-    if (jwtToken) params.set("jwt", jwtToken);
+    // Read token directly from state (not accessTokenRef) so this effect re-runs
+    // when the token changes and always uses the freshest value.
+    if (accessToken) params.set("jwt", accessToken);
     const qs = params.toString();
     const url = `/api/portal/presentations/${presentationId}/scope-events${qs ? `?${qs}` : ""}`;
     let es: EventSource | null = null;
@@ -611,7 +614,7 @@ export default function PresentationFlow({
     } catch { /* EventSource not available in this context */ }
     return () => { es?.close(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presentationId, shareToken, getAuthHeader]);
+  }, [presentationId, shareToken, accessToken]);
 
   // Polling fallback — checks every 30 seconds regardless of SSE
   useEffect(() => {
