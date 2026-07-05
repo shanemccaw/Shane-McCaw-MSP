@@ -321,38 +321,6 @@ function LeftPanel() {
             ))}
           </ul>
 
-          {/* Trust & compliance badges */}
-          <div>
-            <p
-              className="text-[9px] font-bold uppercase tracking-widest mb-2.5"
-              style={{ color: "rgba(255,255,255,0.28)" }}
-            >
-              Security &amp; Compliance
-            </p>
-            <div className="flex flex-wrap gap-2 mb-2">
-              {SEC_BADGES.map(({ emoji, label }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5"
-                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.13)" }}
-                >
-                  <span className="text-xs leading-none">{emoji}</span>
-                  <span className="text-white/68 text-xs font-medium">{label}</span>
-                </div>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {COMP_BADGES.map(badge => (
-                <span
-                  key={badge}
-                  className="text-[10px] font-semibold rounded-full px-2.5 py-0.5"
-                  style={{ color: "rgba(255,255,255,0.48)", border: "1px solid rgba(255,255,255,0.16)" }}
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Right column: tenant health snapshot */}
@@ -848,11 +816,51 @@ export default function LoginPage() {
                         {loading ? "Signing in…" : "Sign In"}
                       </button>
 
-                      <p className="text-center text-[11px] text-[#0A2540]/38 font-medium -mt-1">
-                        Secure access to your M365 Command Center
-                      </p>
+                      <div className="flex items-center justify-center gap-1.5 -mt-1">
+                        <Lock className="w-3 h-3 text-[#0A2540]/45 flex-shrink-0" />
+                        <span className="text-[11px] text-[#0A2540]/50 font-medium">
+                          Secure access to your M365 Command Center
+                        </span>
+                      </div>
                     </form>
                   )}
+                </div>
+              </div>
+
+              {/* ── Security & Compliance badges — bold, below the login card ── */}
+              <div className="w-full max-w-md mt-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="h-px flex-1" style={{ background: "rgba(10,37,64,0.10)" }} />
+                  <span className="text-[10px] font-black uppercase tracking-widest text-[#0A2540]/45">
+                    Security &amp; Compliance
+                  </span>
+                  <div className="h-px flex-1" style={{ background: "rgba(10,37,64,0.10)" }} />
+                </div>
+
+                {/* Security badges */}
+                <div className="flex justify-center flex-wrap gap-2 mb-2.5">
+                  {SEC_BADGES.map(({ emoji, label }) => (
+                    <div
+                      key={label}
+                      className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 bg-[#0A2540]"
+                    >
+                      <span className="text-sm leading-none">{emoji}</span>
+                      <span className="text-white text-xs font-bold tracking-wide">{label}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Compliance badges */}
+                <div className="flex justify-center flex-wrap gap-2">
+                  {COMP_BADGES.map(badge => (
+                    <span
+                      key={badge}
+                      className="text-xs font-bold rounded-full px-3.5 py-1 border-2 border-[#0078D4] text-[#0078D4]"
+                      style={{ background: "rgba(0,120,212,0.06)" }}
+                    >
+                      {badge}
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
