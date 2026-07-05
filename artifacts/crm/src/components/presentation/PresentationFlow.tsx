@@ -1030,6 +1030,13 @@ export default function PresentationFlow({
       if (nextStep?.kind === "checkout" && !data.signedAt) {
         return;
       }
+      // When advancing from Scope & Pricing into phase generation (via the generic
+      // Next button rather than the dedicated "Build Your Project Plan" button),
+      // delegate to handleStartPhaseGen so the workflow actually fires.
+      if (currentStep?.kind === "sow" && nextStep?.kind === "phase_gen") {
+        void handleStartPhaseGen();
+        return;
+      }
       directionRef.current = "forward";
       setMaxVisitedStep(m => Math.max(m, next));
       applyStepChange(next);
