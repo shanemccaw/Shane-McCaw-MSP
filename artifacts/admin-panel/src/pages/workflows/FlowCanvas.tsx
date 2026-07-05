@@ -1068,6 +1068,27 @@ export default function FlowCanvas({
     setDropPosition(pos);
   }, []);
 
+  /**
+   * Compute the set of edges that exist in `edges` but are NOT produced by
+   * `treeToGraph(tree)` — these are "non-tree" edges such as retry back-edges
+   * that have no representation in the FlowStep tree.
+   *
+   * We call treeToGraph(tree) here (the *current* tree, before any drag mutation)
+   * to establish the canonical baseline.  Any edge in `edges` not in that
+   * baseline is a non-tree edge.  We then re-apply only those non-tree edges
+   * after a drag mutation so they survive the treeToGraph rewrite without
+   * resurrecting stale canonical edges that the reorder intentionally replaced.
+   */
+  const nonTreeEdges = React.useMemo(() => {
+    const { edges: canonical } = treeToGraph(tree);
+    const canonicalKeys = new Set(
+      canonical.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+    );
+    return edges.filter(
+      ed => !canonicalKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+    );
+  }, [tree, edges]);
+
   const handleDrop = useCallback((targetId: string, pos: "before" | "after") => {
     if (!draggedId || draggedId === targetId) {
       setDraggedId(null);
@@ -1077,11 +1098,20 @@ export default function FlowCanvas({
     const newTree = treeReorderStep(tree, draggedId, targetId, pos);
     if (newTree !== tree) {
       const { nodes: n, edges: e } = treeToGraph(newTree);
-      onGraphChange(n, e);
+      // Carry non-tree edges (e.g. retry back-edges) into the new graph.
+      // Only include ones whose endpoints still exist and aren't already present.
+      const newNodeIds = new Set(n.map(nd => nd.id));
+      const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+      const extra = nonTreeEdges.filter(
+        ed => newNodeIds.has(ed.source) &&
+              newNodeIds.has(ed.target) &&
+              !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+      );
+      onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
     }
     setDraggedId(null);
     setDropTargetId(null);
-  }, [draggedId, tree, onGraphChange]);
+  }, [draggedId, tree, nonTreeEdges, onGraphChange]);
 
   const handleDragEnd = useCallback(() => {
     setDraggedId(null);
@@ -1093,11 +1123,19 @@ export default function FlowCanvas({
     const newTree = treeMoveStepIntoBranch(tree, draggedId, containerId, branchKey);
     if (newTree !== tree) {
       const { nodes: n, edges: e } = treeToGraph(newTree);
-      onGraphChange(n, e);
+      // Carry non-tree edges (e.g. retry back-edges) into the new graph.
+      const newNodeIds = new Set(n.map(nd => nd.id));
+      const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+      const extra = nonTreeEdges.filter(
+        ed => newNodeIds.has(ed.source) &&
+              newNodeIds.has(ed.target) &&
+              !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+      );
+      onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
     }
     setDraggedId(null);
     setDropTargetId(null);
-  }, [draggedId, tree, onGraphChange]);
+  }, [draggedId, tree, nonTreeEdges, onGraphChange]);
 
   const ctx: FlowCanvasCtx = React.useMemo(() => ({
     selectedNodeId,

@@ -494,3 +494,235 @@ describe("treeReorderStep", () => {
     expect(result).toBe(steps);
   });
 });
+
+// ── Retry back-edge topology ───────────────────────────────────────────────────
+
+describe("graphToTree — retry back-edge (SOW auto-retry pattern)", () => {
+  /**
+   * Canonical retry topology (two variants tested below):
+   *
+   * Variant A — simple retry (back-edge only, no shared continuation):
+   *   start → retryPoint → cond(yes: yesStep → retryPoint [back-edge], no: noStep) → (no top-level cont)
+   *
+   *   retryPoint has inEdgeCount = 2 (from start and from yesStep back-edge).
+   *   yesStep must stay inside the condition's yes-branch and NOT float to the
+   *   top-level sequence or be treated as an orphan.
+   *
+   * Variant B — retry with shared continuation (both branches converge):
+   *   start → retryPoint → cond(yes: yesStep → retryPoint [back-edge] AND yesStep → cont,
+   *                              no: noStep → cont) → cont
+   *
+   *   cont has inEdgeCount = 2 (from yesStep and noStep).  retryPoint must NOT
+   *   be misidentified as the post-condition continuation.
+   */
+
+  // Variant A: yesStep only has a back-edge; no shared continuation.
+  function makeSimpleRetryGraph(): { nodes: StoredNode[]; edges: StoredEdge[] } {
+    const nodes: StoredNode[] = [
+      node("start",      "start"),
+      node("retryPoint", "action"),
+      node("cond",       "condition"),
+      node("yesStep",    "action"),
+      node("noStep",     "action"),
+    ];
+    const edges: StoredEdge[] = [
+      edge("e1", "start",      "retryPoint"),
+      edge("e2", "retryPoint", "cond"),
+      edge("e3", "cond",       "yesStep",    "yes"),
+      edge("e4", "cond",       "noStep",     "no"),
+      // retry back-edge: yes-branch terminal → node before the condition
+      edge("e5", "yesStep",    "retryPoint"),
+    ];
+    return { nodes, edges };
+  }
+
+  // Variant B: yesStep has a back-edge AND both branches share a continuation.
+  function makeRetryWithContinuationGraph(): { nodes: StoredNode[]; edges: StoredEdge[] } {
+    const nodes: StoredNode[] = [
+      node("start",      "start"),
+      node("retryPoint", "action"),
+      node("cond",       "condition"),
+      node("yesStep",    "action"),
+      node("noStep",     "action"),
+      node("cont",       "action"),
+    ];
+    const edges: StoredEdge[] = [
+      edge("e1", "start",      "retryPoint"),
+      edge("e2", "retryPoint", "cond"),
+      edge("e3", "cond",       "yesStep",    "yes"),
+      edge("e4", "cond",       "noStep",     "no"),
+      // retry back-edge AND forward to shared continuation
+      edge("e5", "yesStep",    "retryPoint"),
+      edge("e6", "yesStep",    "cont"),
+      edge("e7", "noStep",     "cont"),
+    ];
+    return { nodes, edges };
+  }
+
+  // ── Variant A tests ──────────────────────────────────────────────────────────
+
+  it("[A] places yesStep inside the condition yes-branch", () => {
+    const { nodes, edges } = makeSimpleRetryGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const condStep = findStep(tree, "cond");
+    expect(condStep).toBeDefined();
+    expect(condStep!.branches?.["yes"].map(s => s.id)).toContain("yesStep");
+  });
+
+  it("[A] does NOT include yesStep in the top-level sequence", () => {
+    const { nodes, edges } = makeSimpleRetryGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const topLevelIds = tree.map(s => s.id);
+    expect(topLevelIds).not.toContain("yesStep");
+  });
+
+  it("[A] does NOT misidentify retryPoint as a post-condition continuation", () => {
+    const { nodes, edges } = makeSimpleRetryGraph();
+    const tree = graphToTree(nodes, edges);
+
+    // retryPoint is before the condition; it must not re-appear after it
+    const topLevelIds = tree.map(s => s.id);
+    const condIdx = topLevelIds.indexOf("cond");
+    expect(condIdx).toBeGreaterThanOrEqual(0);
+    // retryPoint is in the main sequence BEFORE cond
+    expect(topLevelIds.indexOf("retryPoint")).toBeLessThan(condIdx);
+    // retryPoint does not appear again after cond
+    const afterCondIds = topLevelIds.slice(condIdx + 1);
+    expect(afterCondIds).not.toContain("retryPoint");
+  });
+
+  // ── Variant B tests ──────────────────────────────────────────────────────────
+
+  it("[B] places yesStep inside the condition yes-branch", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const condStep = findStep(tree, "cond");
+    expect(condStep).toBeDefined();
+    expect(condStep!.branches?.["yes"].map(s => s.id)).toContain("yesStep");
+  });
+
+  it("[B] does NOT include yesStep in the top-level sequence", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const topLevelIds = tree.map(s => s.id);
+    expect(topLevelIds).not.toContain("yesStep");
+  });
+
+  it("[B] correctly identifies cont as the post-condition continuation", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const topLevelIds = tree.map(s => s.id);
+    const condIdx = topLevelIds.indexOf("cond");
+    expect(condIdx).toBeGreaterThanOrEqual(0);
+    // cont comes after cond at the top level
+    expect(topLevelIds.indexOf("cont")).toBeGreaterThan(condIdx);
+    // retryPoint comes BEFORE cond in the main sequence
+    expect(topLevelIds.indexOf("retryPoint")).toBeLessThan(condIdx);
+  });
+
+  it("[B] does NOT misidentify retryPoint as the post-condition continuation", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const topLevelIds = tree.map(s => s.id);
+    const condIdx = topLevelIds.indexOf("cond");
+    // retryPoint must not re-appear after the condition
+    expect(topLevelIds.slice(condIdx + 1)).not.toContain("retryPoint");
+  });
+
+  // ── Round-trip tests (Fix 1: extra edges preserved across treeToGraph) ───────
+
+  /**
+   * Simulate the non-tree-edge preservation logic in FlowCanvas handleDrop /
+   * handleDropIntoBranch.
+   *
+   * Step 1: identify non-tree edges by diffing `originalEdges` against the
+   *         canonical edges that treeToGraph(currentTree) would produce.
+   * Step 2: carry only those non-tree edges into the new graph (n, e),
+   *         filtering to endpoints that still exist and triples not already present.
+   */
+  function preserveExtraEdges(
+    originalEdges: StoredEdge[],
+    currentTree: FlowStep[],
+    n: StoredNode[],
+    e: StoredEdge[],
+  ): StoredEdge[] {
+    // Step 1: non-tree edges = original - canonical(currentTree)
+    const { edges: canonical } = treeToGraph(currentTree);
+    const canonicalKeys = new Set(
+      canonical.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+    );
+    const nonTree = originalEdges.filter(
+      ed => !canonicalKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+    );
+
+    // Step 2: apply surviving non-tree edges to the new graph
+    const newNodeIds = new Set(n.map(nd => nd.id));
+    const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+    const extra = nonTree.filter(
+      ed => newNodeIds.has(ed.source) &&
+            newNodeIds.has(ed.target) &&
+            !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+    );
+    return extra.length > 0 ? [...e, ...extra] : e;
+  }
+
+  it("[A] preserves the retry back-edge after treeToGraph round-trip", () => {
+    const { nodes, edges } = makeSimpleRetryGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const { nodes: n, edges: e } = treeToGraph(tree);
+    const merged = preserveExtraEdges(edges, tree, n, e);
+
+    const backEdge = merged.find(ed => ed.source === "yesStep" && ed.target === "retryPoint");
+    expect(backEdge).toBeDefined();
+  });
+
+  it("[A] graphToTree still correct after treeToGraph + back-edge preservation", () => {
+    const { nodes, edges } = makeSimpleRetryGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const { nodes: n, edges: e } = treeToGraph(tree);
+    const merged = preserveExtraEdges(edges, tree, n, e);
+    const tree2 = graphToTree(n, merged);
+
+    const condStep2 = findStep(tree2, "cond");
+    expect(condStep2).toBeDefined();
+    expect(condStep2!.branches?.["yes"].map(s => s.id)).toContain("yesStep");
+    expect(tree2.map(s => s.id)).not.toContain("yesStep");
+  });
+
+  it("[B] preserves the retry back-edge after treeToGraph round-trip", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const { nodes: n, edges: e } = treeToGraph(tree);
+    const merged = preserveExtraEdges(edges, tree, n, e);
+
+    const backEdge = merged.find(ed => ed.source === "yesStep" && ed.target === "retryPoint");
+    expect(backEdge).toBeDefined();
+  });
+
+  it("[B] graphToTree still correct after treeToGraph + back-edge preservation", () => {
+    const { nodes, edges } = makeRetryWithContinuationGraph();
+    const tree = graphToTree(nodes, edges);
+
+    const { nodes: n, edges: e } = treeToGraph(tree);
+    const merged = preserveExtraEdges(edges, tree, n, e);
+    const tree2 = graphToTree(n, merged);
+
+    const condStep2 = findStep(tree2, "cond");
+    expect(condStep2).toBeDefined();
+    expect(condStep2!.branches?.["yes"].map(s => s.id)).toContain("yesStep");
+
+    const topLevelIds = tree2.map(s => s.id);
+    expect(topLevelIds).not.toContain("yesStep");
+    expect(topLevelIds.indexOf("cont")).toBeGreaterThan(topLevelIds.indexOf("cond"));
+    expect(topLevelIds.slice(topLevelIds.indexOf("cond") + 1)).not.toContain("retryPoint");
+  });
+});

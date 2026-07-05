@@ -104,12 +104,27 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
    * Given the node sets reachable from each branch, find the first node that
    * any branch terminal points to but that is NOT inside any branch.
    * This is the post-branch continuation.
+   *
+   * Retry back-edges point from a branch terminal back to a node that was
+   * already visited (it lives before the condition in the main sequence) or
+   * that is the target of edges from visited nodes outside the branch set.
+   * Either case means the candidate is NOT the post-branch continuation and
+   * must be skipped; otherwise graphToTree would mis-classify branch nodes as
+   * part of the main sequence on reload.
    */
   function findContinuation(branchSets: Set<string>[]): string | null {
     const allBranch = new Set<string>(branchSets.flatMap(s => [...s]));
     for (const id of allBranch) {
       for (const e of outEdges.get(id) ?? []) {
         if (!allBranch.has(e.target) && !visited.has(e.target) && nodeMap.has(e.target)) {
+          // Skip if the candidate is also the target of an edge from a visited
+          // node outside allBranch — that signals a retry back-edge (a branch
+          // terminal pointing back to a node earlier in the main sequence that
+          // has since been visited).
+          const isBackEdgeTarget = rawEdges.some(
+            re => re.target === e.target && visited.has(re.source) && !allBranch.has(re.source)
+          );
+          if (isBackEdgeTarget) continue;
           return e.target;
         }
       }
