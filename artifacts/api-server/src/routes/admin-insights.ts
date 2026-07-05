@@ -16,6 +16,7 @@
  * POST /api/admin/insights/documents/generate      — AI-generate a report document
  * PUT  /api/admin/insights/documents/:id           — update status / approve / archive
  * DELETE /api/admin/insights/documents/:id         — delete document
+ * GET  /api/admin/insights/consulting/workstream-check — resolved/unresolved workstream status for all visible engagement projects
  * POST /api/admin/insights/consulting/generate     — AI-generate a consulting deliverable
  * POST /api/admin/insights/consulting/:id/send     — email + SharePoint upload (approved only)
  * GET  /api/admin/insights/automations             — list automations
@@ -1356,6 +1357,37 @@ router.post("/admin/insights/documents/:id/send", requireAdmin, async (req: Requ
 // Extracts structured pricing lines from AI-generated SOW HTML so we can store
 // them in the DB and use them in the presentation scope step and overview total.
 
+
+// ── GET /api/admin/insights/consulting/workstream-check ───────────────────────
+// Returns resolved/unresolved workstream status for every visible engagement
+// project so the Admin Panel can surface a warning badge before SOW generation.
+
+router.get("/admin/insights/consulting/workstream-check", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const projects = await db
+      .select({ id: engagementProjectsTable.id, title: engagementProjectsTable.title })
+      .from(engagementProjectsTable)
+      .where(eq(engagementProjectsTable.isVisible, true))
+      .orderBy(engagementProjectsTable.sortOrder);
+
+    const entries = projects.map(p => ({
+      id: p.id,
+      title: p.title,
+      resolved: resolveWorkstreamKeys([p.title]).unresolvedTitles.length === 0,
+    }));
+
+    const unresolvedTitles = entries.filter(e => !e.resolved).map(e => e.title);
+
+    return res.json({
+      projects: entries,
+      unresolvedTitles,
+      hasWarnings: unresolvedTitles.length > 0,
+    });
+  } catch (err) {
+    logger.warn({ err }, "workstream-check: failed");
+    return res.status(500).json({ error: "Failed to run workstream check" });
+  }
+});
 
 // ── POST /api/admin/insights/consulting/generate ──────────────────────────────
 

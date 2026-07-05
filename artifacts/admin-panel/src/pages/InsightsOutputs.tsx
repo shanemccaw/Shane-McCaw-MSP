@@ -1022,6 +1022,18 @@ function ConsultingTab({
   const [payloadData, setPayloadData] = useState<PayloadPreview | null>(null);
   const [payloadLoading, setPayloadLoading] = useState(false);
 
+  const [workstreamWarnings, setWorkstreamWarnings] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/insights/consulting/workstream-check`)
+      .then(r => r.json())
+      .then((d: unknown) => {
+        const data = d as { unresolvedTitles?: string[] };
+        setWorkstreamWarnings(data.unresolvedTitles ?? []);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, [fetchWithAuth]);
+
   useEffect(() => {
     if (!dialogCustomerId) { setDialogProjects([]); return; }
     fetchWithAuth(`${API}/admin/insights/projects?customerId=${dialogCustomerId}`)
@@ -1186,13 +1198,38 @@ function ConsultingTab({
     <div className="flex gap-5">
       {/* Left: type cards + list */}
       <div className="flex-1 flex flex-col gap-5 min-w-0">
+        {workstreamWarnings.length > 0 && (
+          <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+            <AlertTriangle className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-yellow-300 text-xs font-medium">
+                {workstreamWarnings.length === 1
+                  ? "1 engagement project title doesn't match a known workstream"
+                  : `${workstreamWarnings.length} engagement project titles don't match any known workstream`}
+                {" — SOW adjustments may be incomplete."}
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {workstreamWarnings.map(t => (
+                  <li key={t} className="text-yellow-400/80 text-xs font-mono">"{t}"</li>
+                ))}
+              </ul>
+              <a
+                href="/admin-panel/#/delivery/engagement-projects"
+                className="inline-flex items-center gap-1 mt-1.5 text-yellow-300 hover:text-yellow-100 text-xs underline underline-offset-2"
+              >
+                Fix project titles in Engagement Projects →
+              </a>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           {CONSULTING_TYPES.map(ct => {
             const Icon = ct.icon;
             const count = docs.filter(d => d.docType === ct.key).length;
             const isViewOnly = ct.key === "scoped_sow";
+            const showWarningBadge = workstreamWarnings.length > 0 && !isViewOnly && (ct.key === "sow" || ct.key === "consolidated_sow");
             return (
-              <div key={ct.key} className="bg-[#161B22] border border-gray-700/50 rounded-xl p-4 flex flex-col gap-3">
+              <div key={ct.key} className={`bg-[#161B22] border rounded-xl p-4 flex flex-col gap-3 ${showWarningBadge ? "border-yellow-500/40" : "border-gray-700/50"}`}>
                 <div className="flex items-start gap-3">
                   <div className="p-2 bg-purple-500/10 rounded-lg shrink-0"><Icon className="w-4 h-4 text-purple-400" /></div>
                   <div className="flex-1 min-w-0">
@@ -1212,7 +1249,18 @@ function ConsultingTab({
                 <div className="flex items-center justify-between gap-2">
                   {count > 0 && <span className="text-xs text-gray-500 shrink-0">{count} {isViewOnly ? "generated" : "staged"}</span>}
                   {!isViewOnly && (
-                    <div className="flex gap-1.5 ml-auto">
+                    <div className="flex gap-1.5 ml-auto items-center">
+                      {showWarningBadge && (
+                        <a
+                          href="/admin-panel/#/delivery/engagement-projects"
+                          title={`Unresolved workstream titles: ${workstreamWarnings.join(", ")}`}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-[10px] font-medium hover:bg-yellow-500/20 transition-colors"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <AlertTriangle className="w-3 h-3" />
+                          {workstreamWarnings.length} unresolved
+                        </a>
+                      )}
                       <button
                         onClick={() => openWizard(ct.key, "preview")}
                         title="Preview the AI payload before generating"
