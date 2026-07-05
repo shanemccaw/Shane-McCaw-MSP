@@ -1578,6 +1578,21 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
         `Intune Enabled:              ${sp.intuneEnabled ?? "unknown"}`,
         `MFA Enforced:                ${sp.mfaEnforced ?? "unknown"}`,
       ].join("\n");
+
+      // ── Server-side workstream exclusions based on tenant data ─────────────
+      // These override whatever the AI writes in its own workstream table so
+      // the AI cannot self-justify an adjustment by adding the corresponding
+      // workstream row when business rules prohibit that workstream.
+      const copilotLicenseCountRaw = sp.copilotLicenseCount ?? (sp.hasCopilotLicenses === false ? 0 : -1);
+      const copilotExcluded = Number(copilotLicenseCountRaw) === 0;
+      const consolidatedSowForcedExclude: string[] = copilotExcluded ? ["Copilot Readiness"] : [];
+      const sowTenantFactsWithExclusions = sowTenantFacts + (copilotExcluded
+        ? "\n⛔ WORKSTREAM EXCLUSION — Copilot / Copilot Deployment / AI Readiness: EXCLUDED." +
+          " This client has 0 Copilot licenses. Do NOT include any Copilot-related workstream" +
+          " in the per-workstream pricing table. Do NOT include 'Copilot Readiness' in the" +
+          " Pricing Adjustments table. Mention Copilot only as a future-state recommendation" +
+          " in the narrative — never as a billable workstream or adjustment in this engagement."
+        : "");
       // ── End tenant telemetry block ─────────────────────────────────────────
 
       const consolidatedSowEngagementStart = nextBusinessMonday(new Date());
@@ -1626,7 +1641,7 @@ INSTRUCTIONS:
         .replace(/\{\{existingDocs\}\}/g, docsBlock)
         .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`;
 
       // Find any prior completed consolidated_sow for this customer+project (to replace on success)
       let priorSowId: number | null = null;
@@ -1680,11 +1695,14 @@ INSTRUCTIONS:
           // workstreams present in this SOW (e.g. Copilot Readiness in a
           // Governance-only engagement). Happens before validation and storage so
           // clients never see hallucinated adjustments in the document.
-          // Use the canonical resolved keys from the engagement project catalogue
-          // (not the AI's own generated workstream rows) so hallucinated workstream
-          // rows (e.g. "Copilot AI Pre-work") cannot unlock extra adjustments.
+          // workstreamTitles is taken from the AI's own workstream table (rawWs)
+          // so only workstreams the AI actually selected drive adjustment eligibility.
+          // consolidatedSowForcedExclude adds server-authoritative overrides (e.g.
+          // Copilot when 0 licenses) that win even if the AI added a matching row.
           const { html: purgedHtml, removedTitles } = purgeSowAdjustments(
-            rawHtmlContent, rawAdj, resolvedWorkstreamKeys,
+            rawHtmlContent, rawAdj,
+            rawWs.map(l => l.title),
+            consolidatedSowForcedExclude,
           );
           if (removedTitles.length > 0) {
             logger.warn({ docId, removedTitles }, "consolidated_sow: purged non-permitted adjustments from HTML");
@@ -1838,8 +1856,9 @@ INSTRUCTIONS:
 
     // For SOW types embed Tier 02 pricing formula + catalogue + pre-computed tenant tier
     let pricingAppendix = "";
-    // Hoisted so the IIFE can use it to drive purgeSowAdjustments
+    // Hoisted so the IIFE can use them to drive purgeSowAdjustments
     let sowResolvedKeys: WorkstreamKey[] = [];
+    let sowServerForcedExclude: string[] = [];
     if (isSowType) {
       const engProjects = await db.select({
         title:       engagementProjectsTable.title,
@@ -1868,7 +1887,19 @@ INSTRUCTIONS:
         Object.assign(mergedForSow, run.profileUpdates ?? {});
       }
       const sowTier = computeTenantTier(mergedForSow.totalUserCount);
-      const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
+      const sowBaseFacts = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}\nCopilot Licenses:            ${mergedForSow.copilotLicenseCount ?? (mergedForSow.hasCopilotLicenses === false ? 0 : "unknown")}`;
+
+      // Server-side workstream exclusions based on tenant data
+      const sowCopilotRaw = mergedForSow.copilotLicenseCount ?? (mergedForSow.hasCopilotLicenses === false ? 0 : -1);
+      const sowCopilotExcluded = Number(sowCopilotRaw) === 0;
+      sowServerForcedExclude = sowCopilotExcluded ? ["Copilot Readiness"] : [];
+      const sowTenantFactsForSow = sowBaseFacts + (sowCopilotExcluded
+        ? "\n⛔ WORKSTREAM EXCLUSION — Copilot / Copilot Deployment / AI Readiness: EXCLUDED." +
+          " This client has 0 Copilot licenses. Do NOT include any Copilot-related workstream" +
+          " in the per-workstream pricing table. Do NOT include 'Copilot Readiness' in the" +
+          " Pricing Adjustments table. Mention Copilot only as a future-state recommendation" +
+          " in the narrative — never as a billable workstream or adjustment in this engagement."
+        : "");
       pricingAppendix = `\n\n${sowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
     }
 
@@ -1938,12 +1969,15 @@ INSTRUCTIONS:
         if (isSowType) {
           const { workstreamLines: rawWs2, adjustmentLines: rawAdj2 } = parseSowAllPricing(rawHtmlContent2);
 
-          // Purge non-permitted adjustments from the AI-generated HTML
-          // Use canonical resolved keys from the engagement catalogue, not the
-          // AI's own generated workstream rows, to prevent hallucinated rows
-          // from unlocking extra adjustments.
+          // Purge non-permitted adjustments from the AI-generated HTML.
+          // workstreamTitles is taken from the AI's own workstream table (rawWs2)
+          // so only workstreams the AI actually selected unlock adjustments.
+          // sowServerForcedExclude adds authoritative server overrides (e.g.
+          // Copilot when 0 licenses) that win even if the AI added a matching row.
           const { html: purgedHtml2, removedTitles: removed2 } = purgeSowAdjustments(
-            rawHtmlContent2, rawAdj2, sowResolvedKeys,
+            rawHtmlContent2, rawAdj2,
+            rawWs2.map(l => l.title),
+            sowServerForcedExclude,
           );
           if (removed2.length > 0) {
             logger.warn({ consultingDocId, removedTitles: removed2 }, "consulting_sow: purged non-permitted adjustments from HTML");

@@ -542,6 +542,15 @@ export function purgeSowAdjustments(
   html: string,
   adjustmentLines: SowPricingLine[],
   workstreamTitles: string[],
+  /**
+   * Server-forced exclusions (canonical workstream key strings, e.g.
+   * "Copilot Readiness").  Any adjustment whose title matches an allowed
+   * pattern for an excluded key is ALWAYS removed — even if the AI wrote a
+   * matching workstream row in its own generated workstream table.  This
+   * prevents the AI from self-justifying an adjustment by adding the
+   * corresponding workstream row when business rules prohibit it.
+   */
+  serverForcedExclude: string[] = [],
 ): { html: string; removedTitles: string[] } {
   // Build the union of permitted patterns from every matched workstream
   const allowedPatterns: RegExp[] = [];
@@ -551,13 +560,27 @@ export function purgeSowAdjustments(
     }
   }
 
-  // If no workstream matched a canonical pattern we cannot safely decide
-  // what is or isn't allowed — skip purging to avoid false positives.
-  if (allowedPatterns.length === 0) return { html, removedTitles: [] };
+  // Build forced-exclusion patterns — adjustments from these workstream keys
+  // are always removed, overriding the AI's own workstream table.
+  const forcedExcludePatterns: RegExp[] = [];
+  for (const excludeKey of serverForcedExclude) {
+    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+      if (ws.test(excludeKey)) forcedExcludePatterns.push(...allowed);
+    }
+  }
 
-  const unpermitted = adjustmentLines.filter(
-    l => !allowedPatterns.some(p => p.test(l.title)),
-  );
+  // If no workstream matched AND no forced exclusions, skip purging.
+  if (allowedPatterns.length === 0 && forcedExcludePatterns.length === 0) {
+    return { html, removedTitles: [] };
+  }
+
+  const unpermitted = adjustmentLines.filter(l => {
+    // Forced exclusion always wins — server overrides AI's workstream table
+    if (forcedExcludePatterns.some(p => p.test(l.title))) return true;
+    // Allowlist check (only when we have workstream context)
+    if (allowedPatterns.length > 0 && !allowedPatterns.some(p => p.test(l.title))) return true;
+    return false;
+  });
   if (unpermitted.length === 0) return { html, removedTitles: [] };
 
   const removedTitles: string[] = unpermitted.map(l => l.title);
