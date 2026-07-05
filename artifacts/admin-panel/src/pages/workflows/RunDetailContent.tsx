@@ -238,6 +238,8 @@ function ReplayStepCard({
   isSkipped,
   hasError,
   isMutated,
+  pricingTotal,
+  pricingLines,
   onClick,
 }: {
   nodeId: string;
@@ -248,6 +250,8 @@ function ReplayStepCard({
   isSkipped: boolean;
   hasError: boolean;
   isMutated: boolean;
+  pricingTotal?: number;
+  pricingLines?: number;
   onClick: () => void;
 }) {
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? {
@@ -299,6 +303,18 @@ function ReplayStepCard({
             {nodeType.replace(/_/g, " ")}
           </p>
           <p className="text-[9px] text-[#484F58] font-mono truncate mt-0.5">{nodeId}</p>
+          {pricingTotal != null && (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#00B4D8]/15 border border-[#00B4D8]/35 text-[#00B4D8]">
+                💲 {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(pricingTotal)}
+              </span>
+              {pricingLines != null && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                  {pricingLines} line{pricingLines !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* State badges */}
@@ -507,6 +523,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           && Object.keys(nodeOutput.output).length > 0
                           && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
 
+                        const pricingTotal = nodeType === "calculate_pricing"
+                          ? (nodeOutput?.output?.totalPrice as number | undefined)
+                          : undefined;
+                        const pricingLines = nodeType === "calculate_pricing"
+                          ? (nodeOutput?.output?.lineCount as number | undefined)
+                          : undefined;
+
                         return (
                           <div key={`${nodeId}-${idx}`}>
                             <ReplayStepCard
@@ -518,6 +541,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               isSkipped={false}
                               hasError={hasError}
                               isMutated={isMutated}
+                              pricingTotal={pricingTotal}
+                              pricingLines={pricingLines}
                               onClick={() => setReplayStep(idx)}
                             />
                             {/* Connector line between cards */}
