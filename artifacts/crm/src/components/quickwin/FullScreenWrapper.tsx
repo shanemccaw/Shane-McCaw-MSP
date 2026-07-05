@@ -532,9 +532,9 @@ export default function FullScreenWrapper() {
   }, [mode, effectiveScorecardHistory]);
 
   // ── Animate display scores every 2 s toward target ────────────────────────
-  // Expected session duration — Copilot Quick Win ~30 min; used only as a
-  // secondary smoothing signal alongside task-completion fraction.
-  const EXPECTED_SESSION_MS = 30 * 60 * 1000;
+  // Ramp duration: scores reach their full target over ~4 minutes from when the
+  // scorecard data first arrives. Task completion can jump ahead of the timer.
+  const EXPECTED_SESSION_MS = 4 * 60 * 1000;
   useEffect(() => {
     if (mode !== "ProjectTasksView") return;
 
@@ -555,7 +555,9 @@ export default function FullScreenWrapper() {
         clearFn?.();
         return;
       }
-      const fraction = Math.min(taskFrac, timeFrac);
+      // Use whichever is larger — time OR task completion — so the timer alone
+      // drives the animation even when no tasks have completed yet.
+      const fraction = Math.max(taskFrac, timeFrac);
       const next: Record<string, number> = {};
       for (const [k, target] of Object.entries(targets)) {
         next[k] = Math.round(target * fraction);
