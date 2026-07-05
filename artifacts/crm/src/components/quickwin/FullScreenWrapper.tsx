@@ -49,6 +49,7 @@ interface WorkflowStep {
 interface ProjectData {
   tasks: KanbanTask[];
   steps: WorkflowStep[];
+  previewTaskCount: number;
 }
 
 type M365ScoreKey = "security" | "compliance" | "copilot" | "governance" | "productivity";
@@ -188,9 +189,9 @@ export default function FullScreenWrapper() {
     queryKey: ["qw-overlay-kanban", kanbanProjectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/portal/projects/${kanbanProjectId}`);
-      if (!res.ok) return { tasks: [], steps: [] };
-      const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[] };
-      return { tasks: body.tasks ?? [], steps: body.steps ?? [] };
+      if (!res.ok) return { tasks: [], steps: [], previewTaskCount: 0 };
+      const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[]; previewTasks?: unknown[] };
+      return { tasks: body.tasks ?? [], steps: body.steps ?? [], previewTaskCount: body.previewTasks?.length ?? 0 };
     },
     enabled: !!kanbanProjectId && isVisible,
     refetchInterval: 5_000,
@@ -235,6 +236,8 @@ export default function FullScreenWrapper() {
   const kanbanTasks = IS_SIM ? SIM_TASKS : (projectData?.tasks ?? []);
   const workflowSteps = IS_SIM ? SIM_STEPS : (projectData?.steps ?? []);
   const effectiveScorecardHistory = IS_SIM ? SIM_SCORECARD : scorecardHistory;
+  // Total tasks across ALL phases: seeded kanban tasks + template preview tasks for future phases
+  const totalAllTasksCount = IS_SIM ? SIM_TASKS.length : (kanbanTasks.length + (projectData?.previewTaskCount ?? 0));
 
   // ── Manual scripts for the current project ───────────────────────────────────
   // Fetched whenever we're in ProjectTasksView with a known project. Only
@@ -776,9 +779,9 @@ export default function FullScreenWrapper() {
     inProgressTasks.length === 0 &&
     waitingTasks.length === 0;
 
-  // Progress derived from real kanban completion
-  const kanbanProgress = kanbanTasks.length > 0
-    ? Math.round((completedKanbanTasks.length / kanbanTasks.length) * 100)
+  // Progress derived from real kanban completion (denominator = all phases)
+  const kanbanProgress = totalAllTasksCount > 0
+    ? Math.round((completedKanbanTasks.length / totalAllTasksCount) * 100)
     : progressPct;
 
   // True only during the initial fetch window — before the first response
@@ -938,7 +941,7 @@ export default function FullScreenWrapper() {
                   <span className="text-[11px] font-bold text-[#0078D4] uppercase tracking-widest">Project Completion</span>
                   <span className="text-lg font-semibold text-[#0078D4]">
                     {completedKanbanTasks.length}
-                    <span className="text-sm font-medium text-black/40 ml-1">/ {kanbanTasks.length} tasks</span>
+                    <span className="text-sm font-medium text-black/40 ml-1">/ {totalAllTasksCount} tasks</span>
                   </span>
                 </div>
                 <div className="h-3 w-full bg-[#0078D4]/10 rounded-full overflow-hidden relative border border-[#0078D4]/5">
@@ -1376,7 +1379,7 @@ export default function FullScreenWrapper() {
                       <span className="text-xl font-semibold text-[#0078D4]">
                         {completedKanbanTasks.length}
                         <span className="text-sm font-medium text-black/40 ml-1">
-                          / {kanbanTasks.length} tasks
+                          / {totalAllTasksCount} tasks
                         </span>
                       </span>
                     </div>
@@ -1606,7 +1609,7 @@ export default function FullScreenWrapper() {
         <QuickWinFooter
           progressPct={kanbanProgress}
           completedCount={completedKanbanTasks.length}
-          totalCount={isProjectView && kanbanTasks.length > 0 ? kanbanTasks.length : undefined}
+          totalCount={isProjectView && totalAllTasksCount > 0 ? totalAllTasksCount : undefined}
           clientName={clientName}
           clientAvatarUrl={undefined}
           label={isProjectView ? "PROJECT PROGRESS" : "QUICK WIN PROGRESS"}
