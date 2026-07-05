@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Pencil, Trash2, Loader2, X, GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, X, GripVertical, ChevronDown, ChevronUp, Download } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -354,6 +354,30 @@ export default function EngagementProjectsPage() {
 
   const getSignalLabel = (key: string) => signals.find(s => s.key === key)?.label ?? key;
 
+  function handleExport() {
+    const payload = projects.map(p => ({
+      id: p.id,
+      title: p.title,
+      priceRange: p.priceRange,
+      description: p.description,
+      meaning: p.meaning,
+      triggeredBy: p.triggeredBy,
+      sowItems: p.sowItems,
+      pages: p.pages,
+      sortOrder: p.sortOrder,
+      isVisible: p.isVisible,
+      createdAt: p.createdAt,
+      updatedAt: p.updatedAt,
+    }));
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `engagement-projects-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
@@ -363,12 +387,21 @@ export default function EngagementProjectsPage() {
             Project types shown on the Pricing page (Track 02). Each record drives SOW generation.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
-        >
-          <Plus className="w-4 h-4" /> New Project Type
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            disabled={projects.length === 0}
+            className="inline-flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
+          >
+            <Download className="w-4 h-4" /> Export JSON
+          </button>
+          <button
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/90 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> New Project Type
+          </button>
+        </div>
       </div>
 
       {loading ? (
