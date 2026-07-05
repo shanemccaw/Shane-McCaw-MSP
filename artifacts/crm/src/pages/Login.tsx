@@ -567,7 +567,7 @@ export default function LoginPage() {
         }
       `}</style>
 
-      <div className="relative w-full min-h-screen overflow-hidden bg-[#0A2540]">
+      <div className="relative w-full h-screen overflow-hidden bg-[#0A2540]">
 
         {/* Three.js torus knot — z-1 */}
         <AnimatedBackground fullScreen />
@@ -579,7 +579,7 @@ export default function LoginPage() {
         <FloatingChips />
 
         {/* ── Page content — z-40 ───────────────────────────────────────── */}
-        <div className="relative z-40 min-h-screen flex flex-col">
+        <div className="relative z-40 h-full flex flex-col">
 
           {/* ── Two-column main area ─────────────────────────────────────── */}
           <div className="flex-1 flex flex-col md:grid md:grid-cols-[55fr_45fr] min-h-0">
@@ -588,7 +588,7 @@ export default function LoginPage() {
             <LeftPanel />
 
             {/* RIGHT panel — login form (always visible) */}
-            <div className="flex flex-col items-center justify-center min-h-screen md:min-h-0 px-6 py-12 bg-white/[0.97]">
+            <div className="flex flex-col items-center justify-center overflow-y-auto px-6 py-12 bg-white/[0.97]">
 
               {/* Mobile-only compact wordmark (left panel is hidden on mobile) */}
               <div className="md:hidden flex flex-col items-center mb-6 text-center">
