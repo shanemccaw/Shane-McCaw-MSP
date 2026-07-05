@@ -155,6 +155,67 @@ function BuildProgressBar({ current, total }: { current: number | null; total: n
   );
 }
 
+/* ── Engagement summary fallback (no diagnostic profile yet) ── */
+const DELIVERABLES = [
+  { color: "#0078D4", text: "Phase-by-phase project roadmap" },
+  { color: "#4f46e5", text: "Fixed-price deliverables & milestones" },
+  { color: "#7c3aed", text: "Governance & compliance framework" },
+  { color: "#00B4D8", text: "Microsoft Copilot readiness steps" },
+  { color: "#059669", text: "Success criteria & acceptance tests" },
+];
+
+function EngagementSummary({
+  sowPhases,
+  projectTitle,
+}: {
+  sowPhases: PhaseGenPhase[];
+  projectTitle?: string | null;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      {/* What's included */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-black/35 mb-2.5">What's Included</p>
+        <ul className="flex flex-col gap-2">
+          {DELIVERABLES.map((d, i) => (
+            <li key={i} className="flex items-center gap-2.5">
+              <span className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: `${d.color}18` }}>
+                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke={d.color} strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <span className="text-[11px] font-semibold text-[#0A2540]/75">{d.text}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Focus areas pill strip */}
+      <div>
+        <p className="text-[10px] font-bold uppercase tracking-widest text-black/35 mb-2">Focus Areas</p>
+        <div className="flex flex-wrap gap-1.5">
+          {PILLARS.map(p => (
+            <span
+              key={p.key}
+              className="px-2 py-0.5 rounded-full text-[10px] font-bold"
+              style={{ background: `${p.color}12`, color: p.color }}
+            >
+              {p.label}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Shane credential note */}
+      <div className="rounded-xl px-3 py-2.5 mt-1" style={{ background: "rgba(0,120,212,0.05)", border: "1px solid rgba(0,120,212,0.10)" }}>
+        <p className="text-[11px] leading-relaxed text-[#0A2540]/65">
+          <span className="font-bold text-[#0078D4]">30 years</span> of Microsoft ecosystem expertise applied directly to {projectTitle ? `"${projectTitle}"` : "your engagement"}.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ── Props ──────────────────────────────────────────────────── */
 interface Props {
   presentationId: number;
@@ -192,24 +253,35 @@ export default function PhaseGeneratingCard({
   // Scorecard state
   const [scores, setScores] = useState<Scores | null>(null);
   const [scoresReady, setScoresReady] = useState(false);
+  // True once the fetch has resolved (success, no-profile, or error)
+  const [scorecardSettled, setScorecardSettled] = useState(false);
+  const [hasProfileData, setHasProfileData] = useState(false);
 
   // Fetch scorecard when accessToken is available
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      // Guest (share-token) — no fetch possible, go straight to fallback
+      setScorecardSettled(true);
+      return;
+    }
     let cancelled = false;
     fetch("/api/portal/quick-win/scorecard", {
       headers: { Authorization: `Bearer ${accessToken}` },
     })
       .then(r => r.ok ? r.json() as Promise<{ hasProfile: boolean; scores: Scores }> : null)
       .then(d => {
-        if (cancelled || !d) return;
-        if (d.hasProfile && d.scores) {
+        if (cancelled) return;
+        setScorecardSettled(true);
+        if (d && d.hasProfile && d.scores) {
           setScores(d.scores);
-          // Delay animate start slightly so the layout has settled
+          setHasProfileData(true);
+          // Delay animate start slightly so layout has settled
           setTimeout(() => setScoresReady(true), 120);
         }
       })
-      .catch(() => { /* non-fatal */ });
+      .catch(() => {
+        if (!cancelled) setScorecardSettled(true);
+      });
     return () => { cancelled = true; };
   }, [accessToken]);
 
@@ -325,7 +397,21 @@ export default function PhaseGeneratingCard({
                 </div>
               </div>
 
-              {scores ? (
+              {!scorecardSettled ? (
+                /* Brief skeleton — only shown for the ~10ms fetch round-trip */
+                <div className="flex flex-col items-center gap-3 py-4">
+                  <div className="w-28 h-28 rounded-full bg-black/[0.05] animate-pulse" />
+                  <div className="w-full flex flex-col gap-2 mt-2">
+                    {PILLARS.map(p => (
+                      <div key={p.key} className="flex items-center gap-2">
+                        <div className="w-[80px] h-2 rounded bg-black/[0.05] animate-pulse" />
+                        <div className="flex-1 h-1.5 rounded-full bg-black/[0.05] animate-pulse" />
+                        <div className="w-5 h-2 rounded bg-black/[0.05] animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : hasProfileData && scores ? (
                 <>
                   {/* Score ring */}
                   <div className="flex flex-col items-center mb-4">
@@ -341,7 +427,6 @@ export default function PhaseGeneratingCard({
                       {scoreLabel(overallScore)}
                     </span>
                   </div>
-
                   {/* Pillar bars */}
                   <div className="flex flex-col gap-2.5">
                     {PILLARS.map((p, i) => (
@@ -357,20 +442,8 @@ export default function PhaseGeneratingCard({
                   </div>
                 </>
               ) : (
-                /* Skeleton / loading state */
-                <div className="flex flex-col items-center gap-3 py-4">
-                  <div className="w-28 h-28 rounded-full bg-black/[0.06] animate-pulse" />
-                  <div className="w-full flex flex-col gap-2 mt-2">
-                    {PILLARS.map(p => (
-                      <div key={p.key} className="flex items-center gap-2">
-                        <div className="w-[80px] h-2 rounded bg-black/[0.06] animate-pulse" />
-                        <div className="flex-1 h-1.5 rounded-full bg-black/[0.06] animate-pulse" />
-                        <div className="w-5 h-2 rounded bg-black/[0.06] animate-pulse" />
-                      </div>
-                    ))}
-                  </div>
-                  <p className="text-[10px] font-semibold text-black/30 uppercase tracking-widest">Loading your scores…</p>
-                </div>
+                /* Fallback: no diagnostic profile — show engagement summary */
+                <EngagementSummary sowPhases={sowPhases} projectTitle={projectTitle} />
               )}
             </div>
 
