@@ -1568,6 +1568,17 @@ export const insightsGeneratedDocumentsTable = pgTable("insights_generated_docum
   }>>(),
   sowTotalPrice: numeric("sow_total_price", { precision: 12, scale: 2 }),
   errorMessage: text("error_message"),
+  /**
+   * Populated at SOW generation time by the signal conflict detector.
+   * Indicates whether signal filtering ran cleanly or had conflicting rules
+   * that may have caused an incorrect project list.
+   * Shape: { clean: boolean; conflictCount: number; conflicts?: Array<{ ruleIds: number[]; description: string }> }
+   */
+  signalFilterMeta: jsonb("signal_filter_meta").$type<{
+    clean: boolean;
+    conflictCount: number;
+    conflicts?: Array<{ ruleIds: number[]; description: string }>;
+  }>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (t) => [

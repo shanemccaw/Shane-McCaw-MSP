@@ -43,7 +43,16 @@ interface InsightsDoc {
   projectTitle?: string | null;
 }
 
-interface InsightsDocFull extends InsightsDoc { htmlContent: string; }
+interface SignalFilterMeta {
+  clean: boolean;
+  conflictCount: number;
+  conflicts?: Array<{ ruleIds: number[]; description: string }>;
+}
+
+interface InsightsDocFull extends InsightsDoc {
+  htmlContent: string;
+  signalFilterMeta?: SignalFilterMeta | null;
+}
 
 interface RunLogEntry {
   ts: string;
@@ -854,6 +863,14 @@ function DocumentsTab({
               <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
             </div>
           </div>
+          {selectedDoc.docType === "consolidated_sow" && selectedDoc.signalFilterMeta && !selectedDoc.signalFilterMeta.clean && (
+            <div className="mx-3 mt-2 mb-0 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2 text-xs text-yellow-300">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-semibold">Signal rule conflict detected</span> — {selectedDoc.signalFilterMeta.conflictCount} conflict{selectedDoc.signalFilterMeta.conflictCount !== 1 ? "s" : ""} existed when this SOW was generated. The project list may be incorrect. Resolve conflicts in Signal Rules settings and regenerate.
+              </div>
+            </div>
+          )}
           <iframe srcDoc={selectedDoc.htmlContent} className="flex-1 w-full rounded-b-xl min-h-96" sandbox="allow-same-origin" title="Document Preview" />
         </div>
       )}
@@ -1391,6 +1408,14 @@ function ConsultingTab({
                 <button onClick={() => setSelectedDoc(null)} className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-gray-700"><X className="w-3.5 h-3.5" /></button>
               </div>
             </div>
+            {selectedDoc.docType === "consolidated_sow" && selectedDoc.signalFilterMeta && !selectedDoc.signalFilterMeta.clean && (
+              <div className="mx-3 mt-2 mb-0 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2 text-xs text-yellow-300">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold">Signal rule conflict detected</span> — {selectedDoc.signalFilterMeta.conflictCount} conflict{selectedDoc.signalFilterMeta.conflictCount !== 1 ? "s" : ""} existed when this SOW was generated. The project list may be incorrect. Resolve conflicts in Signal Rules settings and regenerate.
+                </div>
+              </div>
+            )}
             <iframe srcDoc={selectedDoc.htmlContent} className="flex-1 w-full rounded-b-xl min-h-96" sandbox="allow-same-origin" title="Deliverable Preview" />
           </>
         ) : (

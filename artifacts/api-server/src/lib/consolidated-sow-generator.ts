@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
 import { computeTenantSignals, TENANT_SIGNALS, projectMatchesSignals } from "./tenant-signals";
+import { detectRuleConflicts } from "./signal-conflict-detector";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
@@ -312,6 +313,7 @@ export async function generateConsolidatedSowDocument(
   const allFindingsForSignals = [...new Set(typedRunsForSignals.flatMap(r => r.parsedFindings ?? []))];
 
   let signalFilteredProjects = allEngagementProjects;
+  let signalFilterMeta: { clean: boolean; conflictCount: number; conflicts?: Array<{ ruleIds: number[]; description: string }> } = { clean: true, conflictCount: 0 };
   try {
     const signalRules = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
@@ -324,13 +326,27 @@ export async function generateConsolidatedSowDocument(
       FROM signal_rule_groups ORDER BY signal_key, sort_order, id
     `);
 
+    // ── Conflict detection ───────────────────────────────────────────────────
+    type RuleRow = Parameters<typeof computeTenantSignals>[2][number];
+    const typedSignalRules = signalRules.rows as unknown as RuleRow[];
+    const conflicts = detectRuleConflicts(typedSignalRules);
+    if (conflicts.length > 0) {
+      signalFilterMeta = { clean: false, conflictCount: conflicts.length, conflicts };
+      for (const conflict of conflicts) {
+        logger.warn(
+          { ...logCtx, ruleIds: conflict.ruleIds, conflictDescription: conflict.description },
+          "consolidated-sow-generator: signal rule conflict detected — project list may be incorrect",
+        );
+      }
+    }
+
     // Always evaluate signals — empty rules means no signals fire, which is the correct
     // deterministic baseline. Projects with signal-key triggers require a matching fired
     // signal to be included; the legacy guard allows old plan-name strings through.
     const { firedSignals } = computeTenantSignals(
       mergedSowProfileForSignals,
       allFindingsForSignals,
-      signalRules.rows as unknown as Parameters<typeof computeTenantSignals>[2],
+      typedSignalRules,
       signalGroups.rows as unknown as Parameters<typeof computeTenantSignals>[3],
     );
 
@@ -602,6 +618,7 @@ export async function generateConsolidatedSowDocument(
       pdfUrl:      null,
       sowPricingLines: sowLines.length > 0 ? sowLines : null,
       sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+      signalFilterMeta,
       updatedAt:   new Date(),
     })
     .where(eq(insightsGeneratedDocumentsTable.id, docId));

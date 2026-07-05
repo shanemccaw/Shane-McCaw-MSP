@@ -1023,6 +1023,13 @@
       "when": 1783281000000,
       "tag": "0142_add_signal_rule_fk",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "7",
+      "when": 1783300000000,
+      "tag": "0143_add_signal_filter_meta",
+      "breakpoints": true
     }
   ]
 }
