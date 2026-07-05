@@ -30,6 +30,7 @@ interface SowPhase {
   price: number;
   selected: boolean;
   deliveryDate?: string | null;
+  subtasks?: string[];
 }
 
 interface AdjustmentLine {
@@ -809,6 +810,7 @@ export default function PresentationFlow({
           description: p.description,
           price: p.price,
           selected: true,
+          subtasks: p.subtasks,
         })),
         selectedPhaseIds: phases.map(p => p.id),
       }));
@@ -1919,7 +1921,7 @@ export default function PresentationFlow({
                     offer={offer}
                     freeClaimError={freeClaimError}
                     onDismissFreeClaimError={() => setFreeClaimError(null)}
-                    sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate })) : undefined}
+                    sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, description: p.description, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate, subtasks: p.subtasks })) : undefined}
                     selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
                     adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                   />
@@ -1951,7 +1953,7 @@ export default function PresentationFlow({
                       offer={offer}
                       freeClaimError={freeClaimError}
                       onDismissFreeClaimError={() => setFreeClaimError(null)}
-                      sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate })) : undefined}
+                      sowPhases={selectedPhases.length > 0 ? selectedPhases.map((p, i) => ({ id: p.id, title: p.title, description: p.description, price: phasedPhaseAmounts[i] ?? 0, deliveryDate: p.deliveryDate, subtasks: p.subtasks })) : undefined}
                       selectedPhases={selectedPhases.length > 0 ? selectedPhases.map(p => ({ title: p.title, price: p.price })) : undefined}
                       adjustmentLines={data.adjustmentLines?.map(a => ({ title: a.title, price: a.price }))}
                     />

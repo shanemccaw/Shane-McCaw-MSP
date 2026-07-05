@@ -19,8 +19,10 @@ function useIsOfferLive(expiresAt: string | null | undefined): boolean {
 interface SowPhaseForPayment {
   id: string;
   title: string;
+  description?: string;
   price: number;
   deliveryDate?: string | null;
+  subtasks?: string[];
 }
 
 interface PriceLineItem {
@@ -53,6 +55,93 @@ interface PaymentOptionsPanelProps {
 
 function formatCurrency(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function PhaseBreakdownSection({ phases }: { phases: SowPhaseForPayment[] }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  const toggle = (id: string) =>
+    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const hasDetail = phases.some(p => (p.description && p.description.trim()) || (p.subtasks && p.subtasks.length > 0));
+  if (!hasDetail) return null;
+
+  return (
+    <div className="mb-6 flex-shrink-0">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="h-px flex-1 bg-border/60" />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+          Project phases
+        </span>
+        <div className="h-px flex-1 bg-border/60" />
+      </div>
+      <div className="flex flex-col gap-2">
+        {phases.map((phase, idx) => {
+          const isOpen = !!expanded[phase.id];
+          const hasSubtasks = phase.subtasks && phase.subtasks.length > 0;
+          const hasDescription = phase.description && phase.description.trim();
+          const isExpandable = hasSubtasks || hasDescription;
+          return (
+            <div
+              key={phase.id}
+              className="rounded-xl border border-border bg-white overflow-hidden"
+            >
+              <button
+                type="button"
+                onClick={() => isExpandable && toggle(phase.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${isExpandable ? "hover:bg-slate-50 cursor-pointer" : "cursor-default"}`}
+              >
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-[#0078D4]/10 flex items-center justify-center text-[10px] font-extrabold text-[#0078D4]">
+                  {idx + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-[#0A2540] truncate">{phase.title}</p>
+                  {phase.deliveryDate && (
+                    <p className="text-[10px] text-muted-foreground leading-tight">
+                      Est. {new Date(phase.deliveryDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  )}
+                </div>
+                <span className="flex-shrink-0 text-xs font-bold text-[#0078D4] bg-[#0078D4]/8 px-2.5 py-0.5 rounded-full">
+                  {formatCurrency(phase.price)}
+                </span>
+                {isExpandable && (
+                  <svg
+                    className={`flex-shrink-0 w-4 h-4 text-muted-foreground transition-transform ${isOpen ? "rotate-180" : ""}`}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                  </svg>
+                )}
+              </button>
+
+              {isExpandable && isOpen && (
+                <div className="px-4 pb-4 border-t border-border/50 bg-slate-50/60">
+                  {hasDescription && (
+                    <p className="text-xs text-muted-foreground leading-relaxed pt-3">
+                      {phase.description}
+                    </p>
+                  )}
+                  {hasSubtasks && phase.subtasks!.length > 0 && (
+                    <ul className={`flex flex-col gap-1.5 ${hasDescription ? "mt-3" : "mt-3"}`}>
+                      {phase.subtasks!.map((task, ti) => (
+                        <li key={ti} className="flex items-start gap-2">
+                          <svg className="flex-shrink-0 w-3.5 h-3.5 text-[#0078D4] mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span className="text-xs text-[#0A2540] leading-snug">{task}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function PaymentOptionsPanel({
@@ -312,6 +401,11 @@ export default function PaymentOptionsPanel({
           </div>
         </button>
       </div>
+
+      {/* Phase breakdown — shown when AI phases with descriptions/subtasks are present */}
+      {sowPhases && sowPhases.length > 0 && (
+        <PhaseBreakdownSection phases={sowPhases} />
+      )}
 
       {/* CTA — only shown when onCheckout is provided (checkout step, not plan-select step) */}
       {onCheckout && (
