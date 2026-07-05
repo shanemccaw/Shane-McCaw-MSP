@@ -29,6 +29,7 @@ import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { extractAiHtml, parseSowPricing } from "./sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream-normalizer";
 import { ensureOpportunityForSow } from "./crm-pipeline";
+import { emitWorkflowEvent } from "./workflow-executor";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -678,6 +679,15 @@ export async function generateAndDeliverDocument(
     pdfUrl:          null,
     sowPricingLines: sowLines.length > 0 ? sowLines : null,
     sowTotalPrice:   sowTotal > 0 ? String(sowTotal) : null,
+  });
+
+  void emitWorkflowEvent("document.generated", {
+    documentId:   doc.id,
+    documentType: docType,
+    clientId:     clientUserId,
+    clientName,
+    generatedAt:  new Date().toISOString(),
+    priceCents:   sowTotal > 0 ? Math.round(sowTotal * 100) : 0,
   });
 
   // When a SOW is auto-generated and delivered, promote client to Opportunities pipeline
