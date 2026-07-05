@@ -140,8 +140,7 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
           </p>
         ) : (
           <p className="text-[11px] text-gray-400 leading-relaxed">
-            This page will refresh automatically the moment it's ready to review and sign.
-            Typically takes 1–10 minutes.
+            This process can take 10–30 minutes. You will receive your full documentation when complete.
           </p>
         )}
       </div>

@@ -405,11 +405,31 @@ export default function FullScreenWrapper() {
       if (res.ok) {
         const sc = (await res.json()) as Scorecard;
         scorecardRef.current = sc;
-        // Intentionally NOT bulk-setting categoryScores here — scores are
-        // revealed progressively as each step completes via onScoreUpdate.
+        // Bulk-apply all category scores immediately so health bars fill in
+        // as soon as the scorecard data arrives — both during a live diagnostic
+        // run and when the overlay is in ProjectTasksView with no active step.
+        if (sc.scores && Object.keys(sc.scores).length > 0) {
+          setCategoryScores(sc.scores);
+        }
       }
     } catch { /* non-fatal */ }
   }, [fetchWithAuth]);
+
+  // Ensure scorecard is fetched (and scores bulk-applied) when entering ProjectTasksView
+  // so health bars are never stuck at 0% when there is no active diagnostic step running.
+  // After the fetch resolves we also seed targetScoresRef so the animated displayScores
+  // path (used by the ProjectTasksView HealthPanel) fills in without waiting for the
+  // next scorecardHistory React Query poll (which may be up to 30 s away).
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") return;
+    void fetchScorecard().then(() => {
+      const sc = scorecardRef.current;
+      if (sc?.scores && Object.keys(sc.scores).length > 0 && Object.keys(targetScoresRef.current).length === 0) {
+        targetScoresRef.current = { ...sc.scores };
+        scoreAnimStartRef.current = Date.now();
+      }
+    });
+  }, [mode, fetchScorecard]);
 
   // Reset step state whenever a new quick win starts
   useEffect(() => {
@@ -854,13 +874,24 @@ export default function FullScreenWrapper() {
     return 0;
   })();
 
-  // Right column "next up" tasks: tasks belonging to the first not_started workflow step.
-  // If workflow steps don't have matching groupNames on tasks, fall back to raw backlog slice.
+  // Right column "next up" tasks: tasks belonging to the phase AFTER the currently active one.
+  // Uses activePhaseIndex + 1 so the column shows the upcoming phase's work rather than the
+  // first not_started step (which can be the same phase when a step transitions mid-run).
   const nextStepTasks = (() => {
-    const nextStep = workflowSteps.find(s => s.status === "not_started");
-    if (nextStep) {
-      const matched = backlogTasks.filter(t => t.groupName === nextStep.title);
-      if (matched.length > 0) return matched;
+    if (workflowSteps.length > 0) {
+      // Primary: tasks in the phase directly after the active one
+      const nextIdx = activePhaseIndex + 1;
+      if (nextIdx < workflowSteps.length) {
+        const nextStep = workflowSteps[nextIdx];
+        const matched = kanbanTasks.filter(t => t.groupName === nextStep.title);
+        if (matched.length > 0) return matched;
+      }
+      // Fallback: any task belonging to the first not_started step
+      const notStarted = workflowSteps.find(s => s.status === "not_started");
+      if (notStarted) {
+        const matched = kanbanTasks.filter(t => t.groupName === notStarted.title);
+        if (matched.length > 0) return matched;
+      }
     }
     return backlogTasks.slice(0, 8);
   })();
@@ -883,7 +914,7 @@ export default function FullScreenWrapper() {
       {/* Screen-edge Copilot Aura — brand colour glow around the perimeter */}
       <CopilotAura />
 
-      {/* Top-right controls: sign-out + close */}
+      {/* Top-right controls: sign-out only */}
       <div className="fixed top-4 right-4 z-[10001] flex items-center gap-2">
         <button
           onClick={() => logout()}
@@ -895,16 +926,6 @@ export default function FullScreenWrapper() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
           </svg>
           Sign out
-        </button>
-        <button
-          onClick={() => dispatch({ type: "EXIT" })}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
-          style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
-          aria-label="Close"
-        >
-          <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
         </button>
       </div>
 
@@ -1187,8 +1208,11 @@ export default function FullScreenWrapper() {
                       </div>
                       <div className="text-center">
                         <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
-                        <p className="text-sm text-black/40 mt-1">Your M365 environment has been configured.</p>
+                        <p className="text-sm text-black/40 mt-1">Your M365 environment assessment is complete.</p>
                       </div>
+                      <p className="text-[11px] text-black/35 text-center max-w-xs leading-relaxed px-2">
+                        This process can take 10–30 minutes. You will receive your full documentation when complete.
+                      </p>
                       <div className="flex flex-col gap-2.5 w-full max-w-xs">
                         <button
                           onClick={() => void handleViewPresentation()}
@@ -1594,8 +1618,11 @@ export default function FullScreenWrapper() {
                       </div>
                       <div>
                         <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
-                        <p className="text-sm text-black/50 mt-1">Your M365 environment has been configured.</p>
+                        <p className="text-sm text-black/50 mt-1">Your M365 environment assessment is complete.</p>
                       </div>
+                      <p className="text-[11px] text-black/35 max-w-xs leading-relaxed">
+                        This process can take 10–30 minutes. You will receive your full documentation when complete.
+                      </p>
                     </div>
                   )}
                 </div>

@@ -581,13 +581,22 @@ function DocumentsTab({
   useEffect(() => { void loadDocs(); }, [loadDocs]);
   useEffect(() => { if (refreshKey) void loadDocs(); }, [refreshKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-poll while any doc is in generating state
+  // Fast auto-poll (3 s) while any doc is already known to be generating
   useEffect(() => {
     const hasGenerating = docs.some(d => d.status === "generating");
     if (!hasGenerating) return;
     const t = setTimeout(() => { void loadDocs(); }, 3000);
     return () => clearTimeout(t);
   }, [docs, loadDocs]);
+
+  // Background poll (15 s) regardless of current doc state so that rows created
+  // externally during a diagnostic run (server-side) appear without requiring a
+  // manual refresh — catches the case where docs list doesn't yet contain the
+  // generating row and the fast poll above never fires.
+  useEffect(() => {
+    const t = setInterval(() => { void loadDocs(); }, 15_000);
+    return () => clearInterval(t);
+  }, [loadDocs]);
 
   // Auto-dismiss failed rows after 60 seconds
   const scheduledReportDismissals = useRef<Set<number>>(new Set());
@@ -1079,13 +1088,20 @@ function ConsultingTab({
 
   useEffect(() => { void loadDocs(); }, [loadDocs]);
 
-  // Auto-poll while any doc is in generating state
+  // Fast auto-poll (3 s) while any doc is already known to be generating
   useEffect(() => {
     const hasGenerating = docs.some(d => d.status === "generating");
     if (!hasGenerating) return;
     const t = setTimeout(() => { void loadDocs(); }, 3000);
     return () => clearTimeout(t);
   }, [docs, loadDocs]);
+
+  // Background poll (15 s) to surface rows created externally (e.g. during
+  // a diagnostic run) that never appear via the fast poll above.
+  useEffect(() => {
+    const t = setInterval(() => { void loadDocs(); }, 15_000);
+    return () => clearInterval(t);
+  }, [loadDocs]);
 
   // Auto-dismiss failed rows after 60 seconds
   const scheduledConsultingDismissals = useRef<Set<number>>(new Set());

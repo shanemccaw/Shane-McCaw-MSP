@@ -37,7 +37,7 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
 
       container.appendChild(renderer.domElement);
 
-      geometry = new THREE.TorusKnotGeometry(2.2, 0.6, 200, 32, 2, 3);
+      geometry = new THREE.TorusKnotGeometry(3.5, 0.8, 200, 32, 2, 3);
 
       material = new THREE.ShaderMaterial({
         uniforms: { time: { value: 0 } },
