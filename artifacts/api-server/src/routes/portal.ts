@@ -26,7 +26,7 @@ import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
 import { buildHtmlDoc, htmlToPdf } from "../lib/insight-pdf.ts";
 import { logger } from "../lib/logger.ts";
-import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange } from "../lib/sse-broadcast.ts";
+import { broadcastKanbanChange, registerSSEClient, registerPresentationSSEClient, broadcastPresentationScopeChange, replayPhaseGenState } from "../lib/sse-broadcast.ts";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -11164,6 +11164,11 @@ router.get("/portal/presentations/:id/scope-events", async (req: Request, res: R
   res.flushHeaders();
 
   res.write(": connected\n\n");
+
+  // Replay the last known phase_gen state so late-joining clients (who connected
+  // after emit nodes already fired) immediately see current progress or the
+  // complete/error result without waiting for the next broadcast.
+  replayPhaseGenState(id, res);
 
   const keepAlive = setInterval(() => {
     try { res.write(": ping\n\n"); } catch { clearInterval(keepAlive); }

@@ -90,6 +90,12 @@ export function getAdminWorkflowEventClientCount(): number {
 // ── Presentation phase-generation SSE ─────────────────────────────────────────
 // Keyed by presentationId on the same presentationSSEClients map.
 // Delivers live AI phase generation progress to the client's locked screen.
+//
+// Late-join problem: emit nodes fire within milliseconds of workflow start.
+// By the time the browser navigates to step 8 and opens the SSE connection,
+// those events have already broadcast to zero clients and are lost.
+// Fix: cache the latest phase_gen state per presentation and replay it
+// immediately when a new client connects.
 
 export interface PhaseGenPhase {
   id: string;
@@ -99,13 +105,24 @@ export interface PhaseGenPhase {
   subtasks: string[];
 }
 
+type PhaseGenState =
+  | { type: "phase_gen_progress"; message: string; current: number; total: number }
+  | { type: "phase_gen_complete"; phases: PhaseGenPhase[] }
+  | { type: "phase_gen_error"; message: string };
+
+// In-memory cache of the latest phase_gen state per presentation.
+// Cleared when the run completes (complete or error) or the server restarts.
+const lastPhaseGenState = new Map<number, PhaseGenState>();
+
 export function broadcastPresentationPhaseGenProgress(
   presentationId: number,
   data: { message: string; current: number; total: number },
 ): void {
+  const state: PhaseGenState = { type: "phase_gen_progress", ...data };
+  lastPhaseGenState.set(presentationId, state);
   const clients = presentationSSEClients.get(presentationId);
   if (!clients?.size) return;
-  const line = `data: ${JSON.stringify({ type: "phase_gen_progress", ...data })}\n\n`;
+  const line = `data: ${JSON.stringify(state)}\n\n`;
   for (const res of clients) {
     try { res.write(line); } catch { }
   }
@@ -115,6 +132,8 @@ export function broadcastPresentationPhaseGenComplete(
   presentationId: number,
   phases: PhaseGenPhase[],
 ): void {
+  // Cache so late-joining clients also get the complete signal
+  lastPhaseGenState.set(presentationId, { type: "phase_gen_complete", phases });
   const clients = presentationSSEClients.get(presentationId);
   if (!clients?.size) return;
   const line = `data: ${JSON.stringify({ type: "phase_gen_complete", phases })}\n\n`;
@@ -127,10 +146,19 @@ export function broadcastPresentationPhaseGenError(
   presentationId: number,
   message: string,
 ): void {
+  // Cache so late-joining clients also get the error signal
+  lastPhaseGenState.set(presentationId, { type: "phase_gen_error", message });
   const clients = presentationSSEClients.get(presentationId);
   if (!clients?.size) return;
   const line = `data: ${JSON.stringify({ type: "phase_gen_error", message })}\n\n`;
   for (const res of clients) {
     try { res.write(line); } catch { }
   }
+}
+
+/** Replay the last known phase_gen state to a freshly connected client, if any. */
+export function replayPhaseGenState(presentationId: number, res: Response): void {
+  const state = lastPhaseGenState.get(presentationId);
+  if (!state) return;
+  try { res.write(`data: ${JSON.stringify(state)}\n\n`); } catch { }
 }
