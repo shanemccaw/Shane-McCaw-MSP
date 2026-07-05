@@ -112,8 +112,8 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
   }
 
   return (
-    <div className="w-full flex items-start justify-center p-3 sm:p-4 relative z-10">
-      <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md overflow-hidden">
+    <div className="w-full h-full flex items-start justify-center p-3 sm:p-4 relative z-10">
+      <div className="bg-white rounded-2xl shadow-2xl ring-1 ring-black/5 w-full max-w-md flex flex-col overflow-hidden max-h-full">
 
         {/* ── Header — matches left panel's Deep Navy top bar ── */}
         <div className={`px-6 py-4 flex items-center gap-3 ${allDone ? "bg-[#0A2540]" : "bg-[#0A2540]"}`}>
@@ -159,7 +159,7 @@ export default function DiagnosticScriptPanel({ scripts, waitingManualScriptCoun
         )}
 
         {/* ── Card body ── */}
-        <div className="px-6 py-4 space-y-4 max-h-[50vh] overflow-y-auto">
+        <div className="px-6 py-4 space-y-4 flex-1 min-h-0 overflow-y-auto">
 
           {/* No run records yet — show download buttons if tasks are ready, else waiting state */}
           {visible.length === 0 && waitingManualScriptCount > 0 && (
