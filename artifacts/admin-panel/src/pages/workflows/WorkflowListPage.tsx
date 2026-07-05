@@ -434,11 +434,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const STATUS_DOT_COLORS: Record<string, string> = {
-  running:   "bg-blue-400 animate-pulse",
-  pending:   "bg-amber-400 animate-pulse",
-  completed: "bg-emerald-500",
-  failed:    "bg-red-400",
-  cancelled: "bg-[#484F58]",
+  running:   "bg-emerald-400 animate-pulse",   // green throbbing = actively running
+  pending:   "bg-emerald-400 animate-pulse",   // green throbbing = about to run
+  completed: "bg-emerald-500",                  // solid green = last run OK
+  failed:    "bg-red-400 animate-pulse",        // red throbbing = last run error
+  cancelled: "bg-[#484F58]",                   // grey = cancelled
 };
 
 function StatusChip({ status }: { status: string | null }) {
@@ -1072,8 +1072,14 @@ export default function WorkflowListPage() {
     const isRunning = runningId === def.id;
     const isActiveRunDef = activeRun?.defId === def.id;
     const canRun = def.triggerTypes.includes("manual") || def.triggerTypes.includes("schedule");
-    const dotColor = STATUS_DOT_COLORS[def.lastRunStatus ?? ""] ?? "bg-[#30363D]";
-    const isLiveRunForThis = isActiveRunDef || (def.lastRunStatus === "running" || def.lastRunStatus === "pending");
+    const isLiveRunForThis = isActiveRunDef || def.lastRunStatus === "running" || def.lastRunStatus === "pending";
+    const hasLastRunError = !isLiveRunForThis && def.lastRunStatus === "failed";
+    const isPublished     = !isLiveRunForThis && !hasLastRunError && !!def.publishedVersionLabel;
+    // Priority: running (green pulse) → error (red pulse) → published (blue) → manual/draft (grey)
+    const dotColor = isLiveRunForThis  ? "bg-emerald-400 animate-pulse"
+                   : hasLastRunError   ? "bg-red-400 animate-pulse"
+                   : isPublished       ? "bg-blue-400"
+                   :                    "bg-[#484F58]";
 
     function handleClick() {
       setSelectedId(def.id);
@@ -1095,9 +1101,7 @@ export default function WorkflowListPage() {
             : "border-l-2 border-transparent hover:bg-[#1C2128]"
         }`}
       >
-        <span
-          className={`w-2 h-2 rounded-full flex-shrink-0 ${isLiveRunForThis ? (STATUS_DOT_COLORS["running"] ?? dotColor) : dotColor}`}
-        />
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
         <span className={`flex-1 text-xs truncate ${isSystem ? "text-[#8B949E]" : "text-[#C9D1D9]"} ${isSelected ? "text-[#E6EDF3] font-medium" : ""}`}>
           {def.name}
         </span>
@@ -1405,8 +1409,8 @@ export default function WorkflowListPage() {
         <div className="px-4 py-3 border-b border-[#21262D] flex-shrink-0 flex items-center justify-between">
           <span className="text-[11px] font-semibold text-[#7D8590] uppercase tracking-wider">Recent Runs</span>
           {isLiveRun && (
-            <span className="flex items-center gap-1 text-[10px] text-blue-400">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <span className="flex items-center gap-1 text-[10px] text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Live
             </span>
           )}
@@ -1626,7 +1630,7 @@ export default function WorkflowListPage() {
               </svg>
             </button>
             {isLiveRun && (
-              <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" title="Run in progress" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Run in progress" />
             )}
             {selectedId && recentRuns && recentRuns.length > 0 && (
               <span className="text-[9px] text-[#484F58] font-mono leading-none">{recentRuns.length}</span>
@@ -1663,8 +1667,8 @@ export default function WorkflowListPage() {
             {defs.length} workflow{defs.length !== 1 ? "s" : ""}
           </span>
           {runningCount > 0 && (
-            <span className="flex items-center gap-1.5 text-[10px] text-blue-300 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-[10px] text-emerald-300 font-mono">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               {runningCount} running
             </span>
           )}
