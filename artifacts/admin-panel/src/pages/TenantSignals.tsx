@@ -186,6 +186,11 @@ export default function TenantSignalsPage() {
   const [signalImportJson, setSignalImportJson] = useState("");
   const [signalImportRunning, setSignalImportRunning] = useState(false);
 
+  const [showNewSignalModal, setShowNewSignalModal] = useState(false);
+  const [newSignalForm, setNewSignalForm] = useState({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: false });
+  const [savingNewSignal, setSavingNewSignal] = useState(false);
+  const [newSignalError, setNewSignalError] = useState<string | null>(null);
+
   const [testJson, setTestJson] = useState(JSON.stringify({ profileUpdates: {}, parsedFindings: [] }, null, 2));
   const [testRunning, setTestRunning] = useState(false);
   const [testResult, setTestResult] = useState<{ firedSignals: Array<{ key: string; label: string; expectedImpact: string }>; ruleTrace: RuleTraceEntry[] } | null>(null);
@@ -490,6 +495,36 @@ export default function TenantSignalsPage() {
         toast({ title: "Failed to update rule", variant: "destructive" });
       }
     } finally { setSavingRule(false); }
+  }
+
+  async function handleCreateSignal() {
+    if (!newSignalForm.label.trim()) return;
+    setSavingNewSignal(true);
+    setNewSignalError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/custom-signals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: newSignalForm.key.trim() || newSignalForm.label.trim().toLowerCase().replace(/[^a-z0-9:_-]+/g, "-"),
+          label: newSignalForm.label.trim(),
+          description: newSignalForm.description.trim(),
+          expectedImpact: newSignalForm.expectedImpact.trim(),
+          isAdjustment: newSignalForm.isAdjustment,
+        }),
+      });
+      const body = await res.json() as { key?: string; error?: string };
+      if (res.ok && body.key) {
+        toast({ title: "Signal created" });
+        setShowNewSignalModal(false);
+        setNewSignalForm({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: false });
+        await loadAll();
+        setSignalSection(newSignalForm.isAdjustment ? "adjustment" : "project");
+        setSelectedSignal(body.key);
+      } else {
+        setNewSignalError(body.error ?? "Failed to create signal");
+      }
+    } finally { setSavingNewSignal(false); }
   }
 
   async function handleAddGroup() {
@@ -1142,6 +1177,13 @@ export default function TenantSignalsPage() {
           <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
             <span className="text-sm font-bold text-[#E6EDF3]">Signals</span>
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => { setNewSignalForm({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: signalSection === "adjustment" }); setNewSignalError(null); setShowNewSignalModal(true); }}
+                className="p-1.5 text-[#0078D4] hover:text-white hover:bg-[#0078D4] rounded transition-colors"
+                title="New Signal"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
               <button
                 onClick={handleExport}
                 className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
@@ -2067,6 +2109,104 @@ export default function TenantSignalsPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {importRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* New Signal Modal */}
+      {showNewSignalModal && (
+        <Modal title="New Signal" onClose={() => setShowNewSignalModal(false)}>
+          <div className="space-y-4">
+            <p className="text-sm text-[#7D8590]">
+              Create a custom signal. Once created, select it in the left panel to add rules to it.
+            </p>
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1">Label <span className="text-red-400">*</span></label>
+              <input
+                value={newSignalForm.label}
+                onChange={e => {
+                  const lbl = e.target.value;
+                  setNewSignalForm(f => ({
+                    ...f,
+                    label: lbl,
+                    key: f.key || lbl.toLowerCase().replace(/[^a-z0-9:_-]+/g, "-"),
+                  }));
+                }}
+                placeholder="e.g. Teams Rooms Deployment"
+                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1">Signal Key</label>
+              <input
+                value={newSignalForm.key}
+                onChange={e => setNewSignalForm(f => ({ ...f, key: e.target.value }))}
+                placeholder="auto-generated from label"
+                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+              <p className="text-[10px] text-[#484F58] mt-1">Lowercase letters, numbers, hyphens and colons only. Cannot match a built-in signal key.</p>
+            </div>
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1">Description</label>
+              <input
+                value={newSignalForm.description}
+                onChange={e => setNewSignalForm(f => ({ ...f, description: e.target.value }))}
+                placeholder="What does this signal detect?"
+                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1">Expected Impact</label>
+              <input
+                value={newSignalForm.expectedImpact}
+                onChange={e => setNewSignalForm(f => ({ ...f, expectedImpact: e.target.value }))}
+                placeholder="What happens in the SOW when this signal fires?"
+                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-[#7D8590] mb-1">Signal Type</label>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={!newSignalForm.isAdjustment}
+                    onChange={() => setNewSignalForm(f => ({ ...f, isAdjustment: false }))}
+                    className="accent-[#0078D4]"
+                  />
+                  <span className="text-sm text-[#C9D1D9]">Project Signal</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={newSignalForm.isAdjustment}
+                    onChange={() => setNewSignalForm(f => ({ ...f, isAdjustment: true }))}
+                    className="accent-[#00B4D8]"
+                  />
+                  <span className="text-sm text-[#C9D1D9]">Pricing Adjustment</span>
+                </label>
+              </div>
+            </div>
+            {newSignalError && (
+              <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+                <p className="text-xs text-red-300">{newSignalError}</p>
+              </div>
+            )}
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                onClick={() => setShowNewSignalModal(false)}
+                className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >Cancel</button>
+              <button
+                onClick={() => void handleCreateSignal()}
+                disabled={savingNewSignal || !newSignalForm.label.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+              >
+                {savingNewSignal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                Create Signal
               </button>
             </div>
           </div>

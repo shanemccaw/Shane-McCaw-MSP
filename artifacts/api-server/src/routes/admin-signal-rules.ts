@@ -118,11 +118,63 @@ async function seedAdjustmentSignalRules(): Promise<void> {
 // Run seeder at module load — safe because it no-ops for any signal that already has rules.
 void seedAdjustmentSignalRules();
 
+// ── Custom signals DB helper ────────────────────────────────────────────────────
+
+async function getCustomSignals(): Promise<Array<{ key: string; label: string; description: string; expectedImpact: string; isAdjustment: boolean }>> {
+  const rows = await db.execute(sql`
+    SELECT key, label, description, expected_impact AS "expectedImpact", is_adjustment AS "isAdjustment"
+    FROM custom_signals ORDER BY created_at ASC
+  `);
+  return rows.rows as Array<{ key: string; label: string; description: string; expectedImpact: string; isAdjustment: boolean }>;
+}
+
+// ── POST /api/admin/custom-signals ─────────────────────────────────────────────
+
+router.post("/admin/custom-signals", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { key, label, description, expectedImpact, isAdjustment } = (req.body ?? {}) as Record<string, unknown>;
+    if (!key || !label) {
+      res.status(400).json({ error: "key and label are required" });
+      return;
+    }
+    const slug = String(key).trim().toLowerCase().replace(/[^a-z0-9:_-]/g, "-");
+    const allBuiltin = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS].map(s => s.key);
+    if (allBuiltin.includes(slug)) {
+      res.status(409).json({ error: "A built-in signal with that key already exists" });
+      return;
+    }
+    await db.execute(sql`
+      INSERT INTO custom_signals (key, label, description, expected_impact, is_adjustment)
+      VALUES (
+        ${slug},
+        ${String(label).trim()},
+        ${String(description ?? "").trim()},
+        ${String(expectedImpact ?? "").trim()},
+        ${Boolean(isAdjustment)}
+      )
+      ON CONFLICT (key) DO UPDATE
+        SET label = EXCLUDED.label,
+            description = EXCLUDED.description,
+            expected_impact = EXCLUDED.expected_impact,
+            is_adjustment = EXCLUDED.is_adjustment
+    `);
+    await appendAuditLog({ action: "custom_signal_created", signalKey: slug });
+    res.status(201).json({ key: slug });
+  } catch (err) {
+    logger.error({ err }, "POST /admin/custom-signals failed");
+    res.status(500).json({ error: "Failed to create custom signal" });
+  }
+});
+
 // ── GET /api/admin/signal-rules/adjustment-signals ───────────────────────────
 
 router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    res.json(ADJUSTMENT_SIGNALS);
+    const custom = await getCustomSignals();
+    const customAdj = custom
+      .filter(c => c.isAdjustment)
+      .map(c => ({ key: c.key, label: c.label, description: c.description, expectedImpact: c.expectedImpact, recommendedRules: [] }));
+    res.json([...ADJUSTMENT_SIGNALS, ...customAdj]);
   } catch (err) {
     logger.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
     res.status(500).json({ error: "Failed to fetch adjustment signals" });
@@ -133,11 +185,14 @@ router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: 
 
 router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
+    const [rules, groups, custom] = await Promise.all([getAllRules(), getAllGroups(), getCustomSignals()]);
 
     const bySignal: Record<string, { rules: SignalDerivationRule[]; groups: SignalRuleGroup[] }> = {};
-    for (const sig of TENANT_SIGNALS) {
+    for (const sig of [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS]) {
       bySignal[sig.key] = { rules: [], groups: [] };
+    }
+    for (const c of custom) {
+      if (!bySignal[c.key]) bySignal[c.key] = { rules: [], groups: [] };
     }
     for (const r of rules) {
       if (!bySignal[r.signalKey]) bySignal[r.signalKey] = { rules: [], groups: [] };

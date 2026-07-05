@@ -28,7 +28,16 @@ router.get("/admin/engagement-projects/signals", requireAdmin, async (_req: Requ
       FROM engagement_projects WHERE is_visible = true
     `);
 
-    const result = TENANT_SIGNALS.map(signal => {
+    const customRows = await db.execute(sql`
+      SELECT key, label, description, expected_impact AS "expectedImpact"
+      FROM custom_signals WHERE is_adjustment = FALSE ORDER BY created_at ASC
+    `);
+    const customSignals = (customRows.rows as Array<{ key: string; label: string; description: string; expectedImpact: string }>)
+      .map(c => ({ key: c.key, label: c.label, description: c.description, expectedImpact: c.expectedImpact, recommendedRules: [] as never[] }));
+
+    const allSignals = [...TENANT_SIGNALS, ...customSignals];
+
+    const result = allSignals.map(signal => {
       const unlocksProjects = (projects.rows as Array<{ id: number; title: string; triggeredBy: string[] }>)
         .filter(p => Array.isArray(p.triggeredBy) && p.triggeredBy.includes(signal.key))
         .map(p => ({ id: p.id, title: p.title }));
