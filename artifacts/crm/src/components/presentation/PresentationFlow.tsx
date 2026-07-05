@@ -180,7 +180,7 @@ export default function PresentationFlow({
   startAtPayment = false,
   onClose,
 }: PresentationFlowProps) {
-  const { fetchWithAuth, user, getAuthHeader, accessToken } = useAuth();
+  const { fetchWithAuth, user, getAuthHeader, accessToken, logout } = useAuth();
   const search = useSearch();
 
   const [data, setData] = useState<PresentationData>(initialData);
@@ -1329,13 +1329,13 @@ export default function PresentationFlow({
         })}
       </nav>
 
-      {/* Sidebar footer: progress */}
+      {/* Sidebar footer: progress + sign out */}
       <div className="flex-shrink-0 px-4 py-4 border-t border-white/10">
         <div className="flex items-center justify-between mb-2">
           <span className="text-white/50 text-[11px]">Progress</span>
           <span className="text-white/70 text-[11px] font-semibold">Step {stepIndex + 1} of {steps.length}</span>
         </div>
-        <div className="flex gap-0.5">
+        <div className="flex gap-0.5 mb-3">
           {steps.map((_, i) => (
             <div
               key={i}
@@ -1349,6 +1349,17 @@ export default function PresentationFlow({
             />
           ))}
         </div>
+        {user && (
+          <button
+            onClick={() => logout()}
+            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-white/35 hover:text-white/65 hover:bg-white/5 transition-colors text-[11px] font-medium group"
+          >
+            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            <span className="truncate">Sign out · {user.email}</span>
+          </button>
+        )}
       </div>
     </div>
   );

@@ -66,7 +66,7 @@ interface ScorecardHistoryData {
 export default function FullScreenWrapper() {
   const { state, dispatch, runAutoStep, escalateToProject } = useQuickWinMode();
   const { mode, quickWin, currentStepIndex, score } = state;
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, logout } = useAuth();
   const [, navigate] = useLocation();
 
   const isVisible = mode !== "Idle";
@@ -875,17 +875,30 @@ export default function FullScreenWrapper() {
       {/* Screen-edge Copilot Aura — brand colour glow around the perimeter */}
       <CopilotAura />
 
-      {/* Close button — always visible */}
-      <button
-        onClick={() => dispatch({ type: "EXIT" })}
-        className="fixed top-10 right-10 z-[10001] w-10 h-10 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
-        style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
-        aria-label="Close"
-      >
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
+      {/* Top-right controls: sign-out + close */}
+      <div className="fixed top-4 right-4 z-[10001] flex items-center gap-2">
+        <button
+          onClick={() => logout()}
+          className="h-9 px-3 flex items-center gap-1.5 rounded-full bg-white/80 border border-black/5 text-black/45 hover:bg-white hover:text-black/70 shadow-sm text-[11px] font-semibold"
+          style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
+          aria-label="Sign out"
+        >
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+          </svg>
+          Sign out
+        </button>
+        <button
+          onClick={() => dispatch({ type: "EXIT" })}
+          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-black/5 text-black/50 hover:bg-white hover:text-black/80 shadow-sm"
+          style={{ backdropFilter: "blur(8px)", transition: "all 200ms" }}
+          aria-label="Close"
+        >
+          <svg className="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
 
       {/* ── Project Tasks View — full-screen three-column diagnostic layout ── */}
       {isProjectView && (
