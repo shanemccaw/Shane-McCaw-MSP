@@ -7168,7 +7168,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
           {isDraft && (
             <button
-              onClick={() => setShowPublish(true)}
+              onClick={() => {
+                const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
+                setPublishLabel(lastPublished?.label ?? "");
+                setShowPublish(true);
+              }}
               className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
             >
               Publish
