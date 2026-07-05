@@ -13,14 +13,41 @@ import { db, aiPromptsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger.ts";
 
-export async function getPrompt(key: string, fallback: string): Promise<string> {
+/**
+ * Fetch a prompt body from the DB, falling back to `fallback` if missing.
+ *
+ * Pass `deprecatedTokens` to guard against stale DB prompts that still
+ * contain tokens that are no longer substituted (e.g. "{{scores}}").  If
+ * the stored body contains ANY of those literal strings the row is deleted
+ * and the canonical `fallback` is returned instead, preventing silent
+ * corruption where un-substituted placeholders appear verbatim in AI output.
+ */
+export async function getPrompt(
+  key: string,
+  fallback: string,
+  deprecatedTokens?: string[],
+): Promise<string> {
   try {
     const [row] = await db
       .select({ promptBody: aiPromptsTable.promptBody })
       .from(aiPromptsTable)
       .where(eq(aiPromptsTable.key, key))
       .limit(1);
-    if (row) return row.promptBody;
+    if (row) {
+      if (deprecatedTokens?.some((token) => row.promptBody.includes(token))) {
+        logger.warn(
+          { key, deprecatedTokens },
+          "prompt-loader: DB prompt contains deprecated tokens — deleting stale row and using fallback",
+        );
+        try {
+          await db.delete(aiPromptsTable).where(eq(aiPromptsTable.key, key));
+        } catch (delErr) {
+          logger.warn({ delErr, key }, "prompt-loader: failed to delete stale prompt row");
+        }
+        return fallback;
+      }
+      return row.promptBody;
+    }
   } catch (err) {
     logger.warn({ err, key }, "prompt-loader: DB lookup failed, using fallback");
   }

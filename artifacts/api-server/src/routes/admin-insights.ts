@@ -2000,7 +2000,11 @@ INSTRUCTIONS:
 - Write in first person as Shane McCaw
 - Be technically precise — this is an engineer's execution guide, not a marketing document
 - Total length: produce complete content for every task — do not truncate`;
-      const rawGuideTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXEC_GUIDE_FALLBACK);
+      const rawGuideTemplate = await getPrompt(
+        "insights-consulting-task_execution_guide",
+        TASK_EXEC_GUIDE_FALLBACK,
+        ["{{scores}}", "{{findings}}"],
+      );
       prompt = substituteTokens(rawGuideTemplate, {
         clientName,
         title,
