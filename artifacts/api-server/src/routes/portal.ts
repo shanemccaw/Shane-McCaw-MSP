@@ -9854,6 +9854,37 @@ async function deriveEffectiveSowData(
   namedAdjustmentLines: Array<{ title: string; description: string; price: number }>;
   sowVersion: string;
 }> {
+  // ── Priority 1: AI-generated phases from save_presentation_phases ────────────
+  // When the Building Plan workflow has run, save_presentation_phases writes the
+  // AI phases (with pre-distributed prices) into pres.sowPhases.  These are the
+  // authoritative source — return them directly without touching the SOW document
+  // pricing lines, which represent the full-SOW workstream breakdown, not the
+  // execution phases shown on Scope & Pricing.
+  const aiPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
+  if (aiPhases.length > 0) {
+    const storedIds = ((storedSelectedIds ?? pres.selectedPhaseIds) ?? []) as string[];
+    const allAiIds  = aiPhases.map(p => p.id);
+    const intersection = storedIds.filter(id => allAiIds.includes(id));
+    // Default to all selected when stored IDs don't match (e.g. stale sow-0 pointer)
+    const effectiveSelectedPhaseIds = intersection.length > 0 ? intersection : allAiIds;
+    const effectiveSowPhases = aiPhases.map(p => ({
+      ...p,
+      selected: effectiveSelectedPhaseIds.includes(p.id),
+    }));
+    const selectedTotal = effectiveSowPhases
+      .filter(p => p.selected)
+      .reduce((s, p) => s + p.price, 0);
+    return {
+      effectiveSowPhases,
+      effectiveSelectedPhaseIds,
+      effectiveTotalPrice: selectedTotal,
+      adjustmentsTotal: 0,
+      namedAdjustmentLines: [],
+      sowVersion: computeSowVersion(effectiveSowPhases),
+    };
+  }
+
+  // ── Priority 2: SOW document pricing lines ────────────────────────────────────
   const docIds = (pres.documentsIncluded ?? []) as number[];
 
   const docsWithPricing = docIds.length > 0
