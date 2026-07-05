@@ -130,7 +130,6 @@ export default function TenantSignalsPage() {
   const [previewResult, setPreviewResult] = useState<{ firedSignals: Array<{ key: string; label: string; expectedImpact: string }>; included: Array<{ id: number; title: string }>; excluded: Array<{ project: { id: number; title: string }; reason: string }> } | null>(null);
   const [previewRunning, setPreviewRunning] = useState(false);
 
-  const [dryRunClientQuery, setDryRunClientQuery] = useState("");
   const [dryRunClientId, setDryRunClientId] = useState("");
   const [dryRunRunning, setDryRunRunning] = useState(false);
   const [dryRunResult, setDryRunResult] = useState<{ firedSignals: Array<{ key: string; label: string }>; includedProjects: Array<{ title: string }>; excludedProjects: Array<{ project: { title: string }; reason: string }>; note: string } | null>(null);
@@ -534,13 +533,6 @@ export default function TenantSignalsPage() {
     !simProfileSearch ||
     p.name.toLowerCase().includes(simProfileSearch.toLowerCase()) ||
     p.tags.some(t => t.toLowerCase().includes(simProfileSearch.toLowerCase()))
-  );
-
-  const filteredClients = clients.filter(c =>
-    !dryRunClientQuery ||
-    c.email.toLowerCase().includes(dryRunClientQuery.toLowerCase()) ||
-    (c.name ?? "").toLowerCase().includes(dryRunClientQuery.toLowerCase()) ||
-    (c.company ?? "").toLowerCase().includes(dryRunClientQuery.toLowerCase())
   );
 
   if (loading) {
@@ -1210,27 +1202,19 @@ export default function TenantSignalsPage() {
         <Modal title="Dry-Run SOW" onClose={() => setShowDryRunModal(false)} wide>
           <div className="space-y-4">
             <div>
-              <label className="block text-xs text-[#7D8590] mb-1.5">Search client by name or email</label>
-              <input
-                value={dryRunClientQuery}
-                onChange={e => setDryRunClientQuery(e.target.value)}
-                placeholder="e.g. acme@example.com"
+              <label className="block text-xs text-[#7D8590] mb-1.5">Select client</label>
+              <select
+                value={dryRunClientId}
+                onChange={e => setDryRunClientId(e.target.value)}
                 className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
-              />
-              {dryRunClientQuery && (
-                <div className="mt-2 border border-[#30363D] rounded-lg overflow-hidden max-h-40 overflow-y-auto">
-                  {filteredClients.slice(0, 20).map(c => (
-                    <button
-                      key={c.id}
-                      onClick={() => { setDryRunClientId(String(c.id)); setDryRunClientQuery(`${c.name ?? c.email} (${c.company ?? c.email})`); }}
-                      className={`w-full text-left px-3 py-2 text-sm border-b border-[#30363D]/50 last:border-0 transition-colors ${dryRunClientId === String(c.id) ? "bg-[#0078D4]/10 text-[#0078D4]" : "text-[#C9D1D9] hover:bg-[#1C2128]"}`}
-                    >
-                      {c.name ?? "—"} · {c.email} {c.company ? `· ${c.company}` : ""}
-                    </button>
-                  ))}
-                  {filteredClients.length === 0 && <p className="px-3 py-2 text-sm text-[#7D8590]">No clients found</p>}
-                </div>
-              )}
+              >
+                <option value="">— choose a client —</option>
+                {clients.map(c => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.name ?? c.email}{c.company ? ` · ${c.company}` : ""}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-center justify-between">
               <button
