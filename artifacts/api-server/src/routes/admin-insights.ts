@@ -967,7 +967,7 @@ router.post("/admin/insights/documents/generate", requireAdmin, async (req: Requ
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
-    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK, ["{{typeLabel}}", "{{sectionHints}}", "{{sowHtml}}"]);
     const prompt = substituteTokens(rawReportTemplate, {
       docLabel,
       clientName,
@@ -1105,7 +1105,7 @@ router.post("/admin/insights/documents/payload-preview", requireAdmin, async (re
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
-    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+    const rawReportTemplate = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK, ["{{typeLabel}}", "{{sectionHints}}", "{{sowHtml}}"]);
     const assembledPrompt = substituteTokens(rawReportTemplate, {
       docLabel,
       clientName,
@@ -1665,7 +1665,7 @@ INSTRUCTIONS:
 - Professional consulting tone as Shane McCaw, first person where appropriate
 - Total length: 2000-3500 words`;
 
-      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK);
+      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
       const prompt = rawTemplate
         .replace(/\{\{clientName\}\}/g, clientName)
         .replace(/\{\{title\}\}/g, title)
@@ -1951,7 +1951,7 @@ INSTRUCTIONS:
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
       sectionHints: sectionHints[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
     });
-    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback);
+    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback, ["{{sowHtml}}", "{{engagementStart}}", "{{existingDocs}}"]);
     let prompt = substituteTokens(rawConsultingTemplate, {
       typeLabel,
       clientName,
@@ -2003,7 +2003,7 @@ INSTRUCTIONS:
       const rawGuideTemplate = await getPrompt(
         "insights-consulting-task_execution_guide",
         TASK_EXEC_GUIDE_FALLBACK,
-        ["{{scores}}", "{{findings}}"],
+        ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"],
       );
       prompt = substituteTokens(rawGuideTemplate, {
         clientName,
@@ -2268,7 +2268,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       const previewEngagementStartLabel = previewEngagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
       const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"\n- Pricing Adjustments: list ONLY the adjustments permitted for the workstreams present per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below — each adjustment once only, never on individual workstream rows`;
-      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW);
+      const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
       const previewRawTitles = engagementProjects.map((p: { title: string }) => p.title);
       const { resolvedKeys: previewResolvedKeys, unresolvedTitles: previewUnresolvedTitles } =
         resolveWorkstreamKeys(previewRawTitles);
@@ -2389,7 +2389,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
       sectionHints: sectionHintsConsulting[deliverableType] ?? "Include relevant sections for this type of consulting deliverable",
     });
-    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback);
+    const rawConsultingTemplate = await getPrompt(`insights-consulting-${deliverableType}`, consultingFallback, ["{{sowHtml}}", "{{engagementStart}}", "{{existingDocs}}"]);
     let assembledPrompt = substituteTokens(rawConsultingTemplate, {
       typeLabel, clientName,
       projectDesc: projectDesc ? projectDesc + "\n" : "",

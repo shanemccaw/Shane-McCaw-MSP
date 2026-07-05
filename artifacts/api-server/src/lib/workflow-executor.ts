@@ -1100,7 +1100,7 @@ async function executeNode(
               }
 
               // task_execution_guide uses ONLY the SOW HTML — no scores, findings, or telemetry.
-              const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT);
+              const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_WF_PROMPT, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
               prompt = igSubstituteTokens(rawTemplate, {
                 clientName,
                 title: docTitle,
@@ -1112,7 +1112,7 @@ async function executeNode(
               const sectionHints = CONSULTING_SECTION_HINTS[docType] ?? "Include all relevant sections for this consulting deliverable";
               const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
               const recsInline     = recommendations.slice(0, 8).join("; ") || "Pending assessment runs";
-              const rawTemplate = await getPrompt(`insights-consulting-${docType}`, INSIGHTS_CONSULTING_PROMPT_FALLBACK);
+              const rawTemplate = await getPrompt(`insights-consulting-${docType}`, INSIGHTS_CONSULTING_PROMPT_FALLBACK, ["{{sowHtml}}", "{{engagementStart}}", "{{existingDocs}}"]);
               prompt = igSubstituteTokens(rawTemplate, {
                 typeLabel,
                 clientName,
@@ -1130,7 +1130,7 @@ async function executeNode(
               const docLabel      = REPORT_DOC_TYPE_LABELS[docType] ?? docType;
               const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet.";
               const recsBlock     = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
-              const rawTemplate   = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK);
+              const rawTemplate   = await getPrompt(`insights-report-${docType}`, INSIGHTS_REPORT_PROMPT_FALLBACK, ["{{typeLabel}}", "{{sectionHints}}", "{{sowHtml}}"]);
               prompt = igSubstituteTokens(rawTemplate, {
                 docLabel,
                 clientName,
