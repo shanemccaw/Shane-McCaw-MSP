@@ -901,6 +901,19 @@ async function executeNode(
   let conditionResult: boolean | undefined;
   let switchChosenHandle: string | undefined;
 
+  // Write a "started" log immediately so the live run viewer can show which node
+  // is currently executing — even during long-running operations (AI document
+  // generation, runbooks, etc.) that may take 30–120 seconds.
+  if (!dryRun) {
+    await db.insert(wfRunNodeLogsTable).values({
+      runId,
+      nodeId: node.id,
+      level: "info",
+      message: `Node ${node.type} (${node.id}) started`,
+      metadata: { started: true } as Record<string, unknown>,
+    }).catch(() => { /* non-fatal */ });
+  }
+
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
   const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case", "report_progress"]);
 

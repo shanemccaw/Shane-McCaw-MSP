@@ -794,6 +794,22 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
       .where(eq(wfRunNodeOutputsTable.runId, id))
       .orderBy(asc(wfRunNodeOutputsTable.timestamp));
 
+    // Derive which node is currently executing: the most recent node that has a
+    // "started" log entry but no completed output yet.  Lets the live viewer show
+    // a pulsing card for long-running nodes (AI doc gen, runbooks, etc.) that
+    // have been running for 30–120 s without writing any DB output.
+    const completedNodeIds = new Set(nodeOutputs.map(o => o.nodeId));
+    const activeNodeId =
+      row.run.status === "running" || row.run.status === "pending"
+        ? [...logs]
+            .reverse()
+            .find(
+              l =>
+                (l.metadata as Record<string, unknown> | null)?.started === true &&
+                !completedNodeIds.has(l.nodeId),
+            )?.nodeId ?? null
+        : null;
+
     res.json({
       ...row.run,
       definitionName: row.defName,
@@ -802,6 +818,7 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
       graph: row.graph,
       logs,
       nodeOutputs,
+      activeNodeId,
       durationMs: row.run.startedAt && row.run.finishedAt
         ? row.run.finishedAt.getTime() - row.run.startedAt.getTime()
         : null,

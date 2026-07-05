@@ -187,6 +187,8 @@ export interface WfRunDetail {
   graph: { nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }> } | null;
   logs: Array<{ id: number; nodeId: string; level: string; message: string; metadata?: Record<string, unknown> | null; timestamp: string }>;
   nodeOutputs: Array<{ id: number; nodeId: string; input: Record<string, unknown>; output: Record<string, unknown>; durationMs: number | null; status: string; errorMessage: string | null; timestamp: string }>;
+  /** The node currently executing (started but not yet completed). Null when idle. */
+  activeNodeId?: string | null;
 }
 
 export const STATUS_STYLES: Record<string, string> = {
@@ -620,6 +622,51 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           </div>
                         );
                       })}
+
+                      {/* Currently-executing node — shown while a long-running node
+                          (AI doc gen, runbook, etc.) is active but has not yet
+                          written its output to wf_run_node_outputs. */}
+                      {run.activeNodeId && (() => {
+                        const execId = run.activeNodeId;
+                        const graphNode = graphNodeMap.get(execId);
+                        const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
+                        const label = (graphNode?.data?.label as string) ?? nodeType;
+                        const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType };
+                        return (
+                          <>
+                            {/* connector from last completed node */}
+                            <div className="flex justify-center">
+                              <div className="w-px h-3 bg-[#30363D]" />
+                            </div>
+                            <div
+                              className="relative rounded-xl border-2"
+                              style={{
+                                borderColor: style.border,
+                                boxShadow: `0 0 0 1px ${style.border}40, 0 0 14px ${style.border}50`,
+                              }}
+                            >
+                              <div
+                                className="flex items-center gap-2.5 px-3 py-2.5 rounded-[10px]"
+                                style={{ background: style.bg }}
+                              >
+                                <span className="text-base flex-shrink-0 w-6 text-center animate-pulse">{style.icon}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs font-semibold text-[#E6EDF3] truncate leading-snug">{label}</p>
+                                  <p className="text-[10px] font-medium truncate mt-0.5" style={{ color: style.border }}>
+                                    {nodeType.replace(/_/g, " ")}
+                                  </p>
+                                  <p className="text-[9px] text-[#484F58] font-mono truncate mt-0.5">{execId}</p>
+                                </div>
+                                <span className="flex-shrink-0 flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full border"
+                                  style={{ color: style.border, borderColor: style.border + "50", background: style.bg }}>
+                                  <span className="inline-block w-1.5 h-1.5 rounded-full animate-ping" style={{ background: style.border }} />
+                                  running
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       {/* Skipped nodes (in graph but not in branchPath) */}
                       {skippedNodeIds.length > 0 && (
