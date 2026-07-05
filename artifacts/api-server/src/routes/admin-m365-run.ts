@@ -387,65 +387,37 @@ async function processRunInBackground(
     } catch (err) {
       logger.warn({ err, customerId }, "admin-m365-run: failed to apply profile updates (non-fatal)");
     }
-    // Only snapshot via the standard path when no kanban task explicitly triggers a health score
-    // update — that path will write its own snapshot, so we skip this one to avoid duplicates.
-    // Also skip entirely when the Azure job did not complete successfully: a failed or cancelled
-    // job may leave the tenant in an inconsistent state, so snapshotting at that point could log
-    // a misleading or inaccurate score.
-    if (!kanbanHealthScoreTrigger) {
-      if (finalStatus === "completed") {
-        try {
-          await snapshotHealthFromProfile(customerId);
-        } catch (err) {
-          logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
-        }
-      } else {
-        logger.warn({ customerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
+    // Always snapshot health scores after applying profile updates when the job completed
+    // successfully. Both standard and triggersHealthScore runs use the same path — the profile
+    // was just written by applyProfileUpdates so it will always be present here.
+    if (finalStatus === "completed") {
+      try {
+        await snapshotHealthFromProfile(customerId);
+      } catch (err) {
+        logger.warn({ err, customerId }, "admin-m365-run: failed to snapshot health scores (non-fatal)");
       }
+    } else {
+      logger.warn({ customerId, jobStatus }, "admin-m365-run: skipping health score snapshot — Azure job did not complete successfully");
     }
   }
 
   if (kanbanIds.length > 0) {
     try {
-      // Record explicit health score snapshot for triggered tasks (exactly once per run).
+      // Mark whether this run explicitly triggered a health score update (for completion notes).
       let healthScoreTriggered = false;
       if (kanbanHealthScoreTrigger && customerId) {
-        try {
-          const [profileRow] = await db
-            .select({ profile: clientM365ProfilesTable.profile })
-            .from(clientM365ProfilesTable)
-            .where(eq(clientM365ProfilesTable.clientId, customerId))
-            .limit(1);
-          if (profileRow?.profile) {
-            const scores = computeM365Scores(profileRow.profile as Record<string, unknown>);
-            const now = new Date();
-            await db.insert(clientHealthHistoryTable).values(
-              (Object.entries(scores) as [M365ScoreCategory, number][]).map(([category, score]) => ({
-                clientId: customerId,
-                category,
-                score,
-                recordedAt: now,
-                sourceKanbanTaskId: triggerKanbanTaskId,
-              }))
-            );
-            healthScoreTriggered = true;
-            logger.info({ customerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
-            void createAuditLog({
-              actorName: "System",
-              actorRole: "admin",
-              actionType: "health_score_updated",
-              entityType: "health_score",
-              entityId: String(customerId),
-              entityLabel: "M365 Health Score",
-              clientId: customerId,
-              metadata: { categories: Object.keys(scores), scores },
-            }).catch(() => {});
-          } else {
-            logger.warn({ customerId }, "admin-m365-run: triggersHealthScore=true but no M365 profile found — skipping health score update");
-          }
-        } catch (hsErr) {
-          logger.warn({ hsErr, customerId }, "admin-m365-run: health score snapshot failed (non-fatal)");
-        }
+        healthScoreTriggered = true;
+        logger.info({ customerId, kanbanIds }, "admin-m365-run: M365 health score snapshot recorded via triggersHealthScore");
+        void createAuditLog({
+          actorName: "System",
+          actorRole: "admin",
+          actionType: "health_score_updated",
+          entityType: "health_score",
+          entityId: String(customerId),
+          entityLabel: "M365 Health Score",
+          clientId: customerId,
+          metadata: { triggeredByKanbanTaskId: triggerKanbanTaskId },
+        }).catch(() => {});
       }
 
       // Build a consistent output summary so every sibling card gets identical completion notes.
