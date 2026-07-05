@@ -793,6 +793,82 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
   }
 });
 
+// ── POST /api/admin/signal-rules/import-bundle ────────────────────────────────
+// Imports a { group, rules } bundle atomically.
+// Creates the group on group.signalKey, then inserts all rules for that same
+// signal and assigns them to the new group.  Each rule's own "signalKey" field
+// in the JSON is treated as a descriptive sub-key reference and is NOT used as
+// the DB signal_key — all rules land on group.signalKey.
+
+router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const grp = body.group as Record<string, unknown> | undefined;
+    const rawRules = body.rules as unknown[] | undefined;
+
+    if (!grp || typeof grp.signalKey !== "string" || !Array.isArray(rawRules)) {
+      res.status(400).json({ error: 'Body must be { group: { signalKey, logic, label }, rules: [...] }' });
+      return;
+    }
+
+    const signalKey = grp.signalKey.trim();
+    if (!signalKey) { res.status(400).json({ error: "group.signalKey is required" }); return; }
+
+    const logic = (grp.logic as string | undefined) ?? "OR";
+    const label = (grp.label as string | undefined) ?? null;
+    const groupSortOrder = (grp.sortOrder as number | undefined) ?? 0;
+    const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
+
+    const rules = rawRules as Array<Record<string, unknown>>;
+
+    let newGroupId!: number;
+    let imported = 0;
+
+    await db.transaction(async (tx) => {
+      const grpRes = await tx.execute(sql`
+        INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
+        VALUES (${signalKey}, ${logic}, ${label}, ${groupSortOrder})
+        RETURNING id
+      `);
+      newGroupId = ((grpRes.rows as Array<{ id: number }>)[0]!).id;
+
+      for (let i = 0; i < rules.length; i++) {
+        const r = rules[i]!;
+        await tx.execute(sql`
+          INSERT INTO signal_derivation_rules
+            (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+          VALUES (
+            ${signalKey},
+            ${newGroupId},
+            ${(r.ruleType ?? r.rule_type) as string},
+            ${(r.sourceKey ?? r.source_key) as string},
+            ${(r.compareValue ?? r.compare_value ?? null) as string | null},
+            ${(r.description ?? null) as string | null},
+            ${((r.sortOrder ?? r.sort_order ?? i) as number)}
+          )
+        `);
+        imported++;
+      }
+
+      await tx.execute(sql`
+        INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
+        VALUES (
+          'import_bundle', ${signalKey}, null, null,
+          ${JSON.stringify({ groupId: newGroupId, ruleCount: imported })}::jsonb,
+          ${adminId},
+          ${`Bundle import: created group "${label ?? "unnamed"}" with ${imported} rule(s) for ${signalKey}`}
+        )
+      `);
+    });
+
+    logger.info({ signalKey, groupId: newGroupId, imported }, "admin-signal-rules: bundle import complete");
+    res.json({ signalKey, groupId: newGroupId, imported });
+  } catch (err) {
+    logger.error({ err }, "POST /admin/signal-rules/import-bundle failed");
+    res.status(500).json({ error: "Bundle import failed" });
+  }
+});
+
 // ── GET /api/admin/signal-rules/versions ──────────────────────────────────────
 
 router.get("/admin/signal-rules/versions", requireAdmin, async (_req: Request, res: Response) => {

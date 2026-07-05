@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   AlertTriangle, Check, Circle, Plus, Trash2, Pencil, X, ChevronRight, Download,
   Upload, Save, RotateCcw, Loader2, Play, Eye, Zap, Search, Tag, Clock, FlaskConical, Database,
-  TrendingUp, TrendingDown,
+  TrendingUp, TrendingDown, Package,
 } from "lucide-react";
 
 interface TenantSignal {
@@ -190,6 +190,11 @@ export default function TenantSignalsPage() {
   const [newSignalForm, setNewSignalForm] = useState({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: false });
   const [savingNewSignal, setSavingNewSignal] = useState(false);
   const [newSignalError, setNewSignalError] = useState<string | null>(null);
+
+  const [showBundleModal, setShowBundleModal] = useState(false);
+  const [bundleJson, setBundleJson] = useState("");
+  const [bundleRunning, setBundleRunning] = useState(false);
+  const bundleFileRef = useRef<HTMLInputElement>(null);
 
   const [testJson, setTestJson] = useState(JSON.stringify({ profileUpdates: {}, parsedFindings: [] }, null, 2));
   const [testRunning, setTestRunning] = useState(false);
@@ -525,6 +530,37 @@ export default function TenantSignalsPage() {
         setNewSignalError(body.error ?? "Failed to create signal");
       }
     } finally { setSavingNewSignal(false); }
+  }
+
+  async function handleBundleImport() {
+    let parsed: unknown;
+    try { parsed = JSON.parse(bundleJson); } catch {
+      toast({ title: "Invalid JSON", variant: "destructive" }); return;
+    }
+    const bundle = parsed as Record<string, unknown>;
+    if (!bundle.group || !Array.isArray(bundle.rules)) {
+      toast({ title: 'JSON must have "group" and "rules" keys', variant: "destructive" }); return;
+    }
+    setBundleRunning(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/signal-rules/import-bundle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bundle),
+      });
+      const body = await res.json() as { signalKey?: string; groupId?: number; imported?: number; error?: string };
+      if (res.ok && body.signalKey) {
+        toast({ title: `Bundle imported — ${body.imported} rule(s) added to "${(bundle.group as Record<string,unknown>).label ?? body.signalKey}"` });
+        setShowBundleModal(false);
+        setBundleJson("");
+        await loadAll();
+        const isAdj = (body.signalKey as string).startsWith("adj:");
+        setSignalSection(isAdj ? "adjustment" : "project");
+        setSelectedSignal(body.signalKey);
+      } else {
+        toast({ title: body.error ?? "Import failed", variant: "destructive" });
+      }
+    } finally { setBundleRunning(false); }
   }
 
   async function handleAddGroup() {
@@ -1190,6 +1226,13 @@ export default function TenantSignalsPage() {
                 title="Export JSON"
               >
                 <Download className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => { setBundleJson(""); setShowBundleModal(true); }}
+                className="p-1.5 text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] rounded transition-colors"
+                title="Import Bundle (group + rules)"
+              >
+                <Package className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={() => { setShowImportModal(true); }}
@@ -2109,6 +2152,86 @@ export default function TenantSignalsPage() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0078D4] text-white text-sm font-semibold rounded-lg disabled:opacity-50"
               >
                 {importRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Import
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Bundle Import Modal */}
+      {showBundleModal && (
+        <Modal title="Import Bundle" onClose={() => { setShowBundleModal(false); setBundleJson(""); }}>
+          <div className="space-y-4">
+            <p className="text-sm text-[#7D8590] leading-relaxed">
+              Paste a <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-[#30363D]">{"{ group, rules }"}</code> bundle.
+              A new group is created on <code className="text-xs bg-[#1C2128] text-[#00B4D8] px-1 py-0.5 rounded font-mono border border-[#30363D]">group.signalKey</code> and all rules are added into it.
+              Existing rules for that signal are <strong className="text-[#C9D1D9]">not</strong> removed — the bundle appends a new group.
+            </p>
+
+            {/* Live preview */}
+            {(() => {
+              try {
+                const p = JSON.parse(bundleJson) as Record<string, unknown>;
+                const g = p.group as Record<string, unknown> | undefined;
+                const r = p.rules as unknown[] | undefined;
+                if (g && Array.isArray(r)) {
+                  return (
+                    <div className="rounded-lg border border-[#0078D4]/30 bg-[#0078D4]/5 px-4 py-3 space-y-1">
+                      <p className="text-xs font-bold text-[#0078D4] uppercase tracking-wide">Preview</p>
+                      <p className="text-sm text-[#E6EDF3]">
+                        Signal: <code className="font-mono text-[#00B4D8]">{String(g.signalKey ?? "—")}</code>
+                      </p>
+                      <p className="text-sm text-[#C9D1D9]">
+                        Group: <span className="font-semibold">{String(g.label ?? "—")}</span> ({String(g.logic ?? "OR")})
+                      </p>
+                      <p className="text-sm text-[#7D8590]">{r.length} rule{r.length !== 1 ? "s" : ""} will be created</p>
+                    </div>
+                  );
+                }
+              } catch { /* not parseable yet */ }
+              return null;
+            })()}
+
+            <input
+              ref={bundleFileRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = ev => { setBundleJson(ev.target?.result as string ?? ""); };
+                reader.readAsText(file);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <label className="block text-xs text-[#7D8590]">JSON</label>
+              <button
+                onClick={() => bundleFileRef.current?.click()}
+                className="ml-auto text-xs text-[#7D8590] hover:text-[#E6EDF3] underline transition-colors"
+              >Upload file</button>
+            </div>
+            <textarea
+              value={bundleJson}
+              onChange={e => setBundleJson(e.target.value)}
+              rows={12}
+              placeholder={'{\n  "group": { "signalKey": "adj:my-signal", "logic": "OR", "label": "My Group" },\n  "rules": [ ... ]\n}'}
+              className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-3 py-2.5 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40 resize-none"
+            />
+            <div className="flex justify-end gap-3 pt-1">
+              <button
+                onClick={() => { setShowBundleModal(false); setBundleJson(""); }}
+                className="px-4 py-1.5 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
+              >Cancel</button>
+              <button
+                onClick={() => void handleBundleImport()}
+                disabled={bundleRunning || !bundleJson.trim()}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 bg-[#0078D4] text-white text-sm font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+              >
+                {bundleRunning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Package className="w-3.5 h-3.5" />}
+                Import Bundle
               </button>
             </div>
           </div>
