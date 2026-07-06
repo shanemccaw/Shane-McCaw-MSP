@@ -2973,7 +2973,7 @@ function NodeConfigPanel({
                   />
                   {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
                   {runbookNames.length > 0 && !runbooksLoading && (
-                    <button type="button" onClick={() => { setRunbookManualMode(false); onChange(node.id, { ...node.data, runbookName: "" }); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
                       choose from list
                     </button>
                   )}
@@ -3021,7 +3021,7 @@ function NodeConfigPanel({
                   />
                   {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
                   {runbookNames.length > 0 && !runbooksLoading && (
-                    <button type="button" onClick={() => { setRunbookManualMode(false); onChange(node.id, { ...node.data, runbookName: "" }); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
                       choose from list
                     </button>
                   )}
