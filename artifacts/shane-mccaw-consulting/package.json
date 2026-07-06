@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/kill-port.mjs",
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
     "postbuild": "node --input-type=module -e \"const [g, b] = await Promise.all([fetch('https://www.google.com/ping?sitemap=https://shanemccaw.com/sitemap.xml'), fetch('https://www.bing.com/ping?sitemap=https://shanemccaw.com/sitemap.xml')]); console.log('[sitemap ping] Google notified — status:', g.status, g.statusText); console.log('[sitemap ping] Bing notified — status:', b.status, b.statusText);\"",
