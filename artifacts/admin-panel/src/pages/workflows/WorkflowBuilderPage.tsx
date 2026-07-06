@@ -121,6 +121,9 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   get_phases:               { bg: "#0A1A10", border: "#34D399", icon: "🔍", label: "Get Phases"   },
   create_phase:             { bg: "#0A1A10", border: "#6EE7B7", icon: "📌", label: "Create Phase" },
   save_presentation_phases: { bg: "#0A1A10", border: "#10B981", icon: "💾", label: "Save Phases"  },
+  // ── Variables ──
+  set_variable:    { bg: "#0A1A10", border: "#34D399", icon: "📦", label: "Set Variable"    },
+  update_variable: { bg: "#1A0E00", border: "#F97316", icon: "✏️", label: "Update Variable" },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -312,6 +315,9 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "status",     label: "Invoice status after update (should be draft)" },
     { key: "dueDate",    label: "Updated due date as ISO string (or null if not set)" },
   ],
+  // Variables
+  set_variable:    [{ key: "value", label: "Variable value (coerced to declared type)" }],
+  update_variable: [{ key: "value", label: "Updated variable value" }],
   // Ask for Input — outputs are dynamic: each configured variableName becomes a payload key
   ask_for_input: [],
   // Switch/Case — no declared outputs; downstream nodes inherit the upstream payload unchanged
@@ -691,6 +697,13 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "create_phased_invoices",          label: "Create Phased Invoices",  description: "Create draft Stripe invoices for each SOW phase (20%+per-phase billing plan) and save the deposit payment method as customer default for future auto-charges", tags: ["stripe", "invoice", "phased", "payment", "billing", "draft", "auto-charge"] },
       { type: "charge_stripe_invoice",           label: "Charge Invoice",          description: "Finalize and immediately charge a Stripe draft invoice using the customer's default payment method", tags: ["stripe", "invoice", "charge", "payment", "auto-charge", "phased"] },
       { type: "edit_stripe_invoice",             label: "Edit Invoice",            description: "Update a Stripe draft invoice — set due date, description, or footer. Useful for shifting invoice dates when a phase delivery date changes.", tags: ["stripe", "invoice", "edit", "due-date", "update", "phased"] },
+    ],
+  },
+  {
+    name: "Variables",
+    nodes: [
+      { type: "set_variable",    label: "Set Variable",    description: "Create or overwrite a named variable in the run context — available downstream as {{nodeName.value}} or {{variableName}}",           tags: ["variable", "set", "store", "data", "context", "assign"] },
+      { type: "update_variable", label: "Update Variable", description: "Overwrite an existing run variable — amber accent makes mutations visually distinct from Set Variable for easier flow readability", tags: ["variable", "update", "mutate", "overwrite", "data", "assign"] },
     ],
   },
 ];
@@ -2929,6 +2942,101 @@ function NodeConfigPanel({
                 Requires <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ACCESS_TOKEN</span> and <span className="font-mono text-[#1877F2]">FACEBOOK_PAGE_ID</span> in Replit Secrets. Generate a permanent Page access token via Meta for Developers → Graph API Explorer. When an Image URL is provided the post is created via the <span className="font-mono text-[#1877F2]">/photos</span> endpoint with the image attached.
               </p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{facebookPostId}}"} · {"{{facebookPostUrl}}"}</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Set Variable / Update Variable ──────────────────── */}
+
+        {(nodeType === "set_variable" || nodeType === "update_variable") && (
+          <>
+            <div className="space-y-1">
+              <label className="text-[11px] text-[#C9D1D9] font-medium">Variable Name</label>
+              <input
+                type="text"
+                value={(node.data.variableName as string) ?? ""}
+                onChange={e => onChange(node.id, { ...node.data, variableName: e.target.value.replace(/\s+/g, "_") })}
+                placeholder="my_variable"
+                className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-1.5 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#34D399]/60"
+              />
+              <p className="text-[10px] text-[#7D8590]">
+                Used as a top-level payload key — accessible downstream as{" "}
+                <span className="font-mono text-[#34D399]">{"{{variableName}}"}</span> or{" "}
+                <span className="font-mono text-[#34D399]">{"{{steps.<thisNodeId>.value}}"}</span>.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-[#C9D1D9] font-medium">Type</label>
+              <select
+                value={(node.data.variableType as string) ?? "string"}
+                onChange={e => onChange(node.id, { ...node.data, variableType: e.target.value })}
+                className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-1.5 text-[11px] text-[#C9D1D9] focus:outline-none focus:border-[#34D399]/60"
+              >
+                <option value="string">String</option>
+                <option value="int">Integer</option>
+                <option value="float">Float</option>
+                <option value="boolean">Boolean</option>
+                <option value="array">Array (JSON)</option>
+                <option value="object">Object (JSON)</option>
+                <option value="json">JSON (auto-detect)</option>
+                <option value="null">Null</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] text-[#C9D1D9] font-medium">
+                Value
+                {["array", "object", "json"].includes((node.data.variableType as string) ?? "string") && (
+                  <span className="ml-1 text-[#7D8590] font-normal">— must be valid JSON</span>
+                )}
+              </label>
+              {["array", "object", "json"].includes((node.data.variableType as string) ?? "string") ? (
+                <textarea
+                  rows={4}
+                  value={(node.data.variableValue as string) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, variableValue: e.target.value })}
+                  placeholder={
+                    (node.data.variableType as string) === "array"
+                      ? '["item1", "item2"]'
+                      : (node.data.variableType as string) === "object"
+                        ? '{"key": "value"}'
+                        : "[]  or  {}  or  42  or  \"text\""
+                  }
+                  spellCheck={false}
+                  className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#34D399]/60 resize-y"
+                />
+              ) : (
+                <PayloadField
+                  label=""
+                  hint=""
+                  value={(node.data.variableValue as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, variableValue: v })}
+                  placeholder={
+                    (node.data.variableType as string) === "boolean"
+                      ? "true or false"
+                      : (node.data.variableType as string) === "null"
+                        ? "(always null — value ignored)"
+                        : (node.data.variableType as string) === "int" || (node.data.variableType as string) === "float"
+                          ? "42 or {{steps.nodeId.value}}"
+                          : "any text or {{steps.nodeId.value}}"
+                  }
+                  ancestorOutputs={ancestorOutputs}
+                />
+              )}
+            </div>
+
+            <div className={`rounded-lg p-3 space-y-1 border ${nodeType === "update_variable" ? "bg-[#1A0E00] border-[#F97316]/30" : "bg-[#0A1A10] border-[#34D399]/30"}`}>
+              <p className="text-[10px] text-[#7D8590] leading-relaxed">
+                The resolved value is coerced to the selected type at run-time.
+                For <span className="font-mono">array / object / json</span>, the executor JSON-parses the interpolated string.
+                If parsing fails the raw string is stored instead.
+                The{" "}
+                <span className={`font-mono ${nodeType === "update_variable" ? "text-[#F97316]" : "text-[#34D399]"}`}>
+                  Update Variable
+                </span>{" "}
+                node is identical in behaviour to Set Variable — the amber accent is purely visual so mutations stand out in long flows.
+              </p>
             </div>
           </>
         )}

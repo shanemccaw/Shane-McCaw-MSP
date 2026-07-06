@@ -413,6 +413,22 @@ function evalCondition(expression: string, payload: Record<string, unknown>): bo
   }
 }
 
+// ── Variable type coercion ────────────────────────────────────────────────────
+
+function coerceToType(raw: string, type: string): unknown {
+  switch (type) {
+    case "int":     return parseInt(raw, 10);
+    case "float":   return parseFloat(raw);
+    case "boolean": return raw === "true" || raw === "1";
+    case "null":    return null;
+    case "array":
+    case "object":
+    case "json":
+      try { return JSON.parse(raw); } catch { return raw; }
+    default:        return raw;
+  }
+}
+
 // ── Dry-run synthetic outputs ─────────────────────────────────────────────────
 // Returns a realistic-looking output for every DB-touching node type without
 // actually reading or writing the database.  Keys match real node outputs so
@@ -714,6 +730,12 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         arrayPath: (node.data.arrayPath as string | undefined) ?? "",
         collectedResults: [{ dryRun: true, element: 1 }, { dryRun: true, element: 2 }],
       };
+    }
+
+    case "set_variable":
+    case "update_variable": {
+      const svDryName = (node.data.variableName as string | undefined)?.trim() || "<variable_name>";
+      return { dryRun: true, value: svDryName };
     }
 
     case "check_exchange_calendar_availability":
@@ -3099,6 +3121,19 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           const val = inputValues[f.variableName];
           output[f.variableName] = f.type === "number" ? (val !== undefined ? Number(val) : null) : (val ?? null);
         }
+        break;
+      }
+
+      // ── Set Variable / Update Variable ────────────────────────────────────
+      case "set_variable":
+      case "update_variable": {
+        const svName   = (node.data.variableName as string | undefined)?.trim() ?? "";
+        const svType   = ((node.data.variableType as string | undefined)?.trim()) || "string";
+        const svRawTpl = (node.data.variableValue as string | undefined) ?? "";
+        const svRaw    = interp(svRawTpl, payload) ?? "";
+        const svValue  = coerceToType(svRaw, svType);
+        output = { value: svValue };
+        if (svName) output[svName] = svValue;
         break;
       }
 

@@ -1809,7 +1809,10 @@ export interface WfNode {
     | "generate_stripe_payment_link"
     | "create_phased_invoices"
     | "charge_stripe_invoice"
-    | "edit_stripe_invoice";
+    | "edit_stripe_invoice"
+    // Variables
+    | "set_variable"
+    | "update_variable";
   position: { x: number; y: number };
   data: WfNodeData;
 }
