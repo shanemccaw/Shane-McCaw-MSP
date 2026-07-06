@@ -16,11 +16,14 @@ import {
   graphMoveStepUp,
   graphMoveStepDown,
   treeInsertStepAfter,
+  treeInsertStepAtBranchStart,
   treeReorderStep,
   treeMoveStepIntoBranch,
   treeFindStepParent,
+  treeFindStep,
   treeToGraph,
   isContainerNode,
+  deepCloneStep,
 } from "./flowTree";
 import type { FlowStep, StoredNode, StoredEdge } from "./flowTree";
 
@@ -63,6 +66,10 @@ export interface FlowCanvasProps {
   onDuplicateNode: (id: string) => void;
   /** Distinct categories derived from all event triggers (e.g. ["CRM", "Payments"]). */
   triggerCategories?: string[];
+  /** Currently copied step (null when clipboard is empty). */
+  copiedStep?: FlowStep | null;
+  /** Called when the user copies a step (via menu or Ctrl+C). */
+  onCopyStep?: (step: FlowStep) => void;
 }
 
 // ── Node Picker Popover ────────────────────────────────────────────────────────
@@ -175,6 +182,7 @@ function AddButton({
   afterNodeId,
   sourceHandle,
   label,
+  branchKey,
   isArchived,
   nodeIdCounter,
   nodeStyles,
@@ -189,6 +197,12 @@ function AddButton({
   sourceHandle?: string;
   /** Optional badge shown beside the + connector (e.g. "After loop") */
   label?: string;
+  /**
+   * When this button inserts at the start of a container branch (not after an
+   * existing step), pass the tree-level branch key so paste can use
+   * treeInsertStepAtBranchStart instead of treeInsertStepAfter.
+   */
+  branchKey?: string;
   isArchived: boolean;
   nodeIdCounter: React.MutableRefObject<number>;
   nodeStyles: Record<string, NodeStyle>;
@@ -200,11 +214,24 @@ function AddButton({
   /** Optional override — if provided, called instead of graphInsertStep. */
   onInsert?: (newNode: StoredNode) => void;
 }) {
+  const ctx = React.useContext(FlowCanvasContext);
   const [open, setOpen] = useState(false);
   const [pickerPos, setPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [pasteMenuOpen, setPasteMenuOpen] = useState(false);
+  const [pasteMenuPos, setPasteMenuPos] = useState<{ top: number; left: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const pasteMenuRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
+
+  React.useEffect(() => {
+    if (!pasteMenuOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!pasteMenuRef.current?.contains(e.target as Node)) setPasteMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [pasteMenuOpen]);
 
   if (isArchived) return null;
 
@@ -290,6 +317,28 @@ function AddButton({
     }
   }
 
+  function handleContextMenu(e: React.MouseEvent) {
+    if (!ctx.copiedStep) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setPasteMenuPos({ top: e.clientY + 4, left: e.clientX });
+    setPasteMenuOpen(true);
+  }
+
+  function handlePaste() {
+    setPasteMenuOpen(false);
+    if (!ctx.copiedStep) return;
+    if (branchKey) {
+      ctx.onPasteAtBranchStart(afterNodeId, branchKey);
+    } else {
+      ctx.onPasteAfterNode(afterNodeId);
+    }
+  }
+
+  const pastedLabel = ctx.copiedStep
+    ? ((ctx.copiedStep.data.label as string | undefined) || ctx.copiedStep.nodeType)
+    : "";
+
   return (
     <div className="flex justify-center my-1">
       <div className="flex flex-col items-center">
@@ -302,6 +351,7 @@ function AddButton({
         <button
           ref={btnRef}
           onClick={handleOpen}
+          onContextMenu={handleContextMenu}
           className="w-6 h-6 rounded-full bg-[#1C2128] border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 text-[#484F58] hover:text-[#0078D4] flex items-center justify-center transition-colors text-sm font-bold leading-none"
           title={label ? `Add step after loop (runs once when all iterations finish)` : "Add step"}
         >
@@ -319,6 +369,24 @@ function AddButton({
           onPick={handlePick}
           onClose={close}
         />
+      )}
+
+      {pasteMenuOpen && pasteMenuPos && createPortal(
+        <div
+          ref={pasteMenuRef}
+          className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[180px] text-xs"
+          style={{ top: pasteMenuPos.top, left: pasteMenuPos.left }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            onClick={handlePaste}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+          >
+            <span className="opacity-60">⎘</span>
+            Paste "{pastedLabel}"
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -402,6 +470,8 @@ function StepCard({
     return () => document.removeEventListener("mousedown", onClick);
   }, [menuOpen]);
 
+  const ctx = React.useContext(FlowCanvasContext);
+
   function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
     if (step.nodeType === "start") return;
@@ -430,10 +500,21 @@ function StepCard({
     onDuplicateNode(step.id);
   }
 
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    setMenuOpen(false);
+    ctx.onCopyStep(step);
+  }
+
+  function handleContextMenu(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenuPos({ top: e.clientY + 4, right: Math.max(0, window.innerWidth - e.clientX) });
+    setMenuOpen(true);
+  }
+
   const storedNode: StoredNode = { id: step.id, position: { x: 0, y: 0 }, data: step.data };
   const isContainer = isContainerNode(storedNode);
-
-  const ctx = React.useContext(FlowCanvasContext);
   const isDragging = ctx.draggedId === step.id;
   const isDropTarget = ctx.dropTargetId === step.id && !isDragging;
 
@@ -483,6 +564,7 @@ function StepCard({
             : "0 2px 6px rgba(0,0,0,0.35)",
         }}
         onClick={e => { e.stopPropagation(); onSelect(); }}
+        onContextMenu={handleContextMenu}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onDragLeave={e => { e.stopPropagation(); }}
@@ -550,6 +632,7 @@ function StepCard({
                   <button onClick={handleMoveUp}   className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Up</button>
                   <button onClick={handleMoveDown} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Down</button>
                   <button onClick={handleDuplicate} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Duplicate</button>
+                  <button onClick={handleCopy}      className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Copy</button>
                   <div className="border-t border-[#30363D] my-1" />
                   <button onClick={handleDelete} className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-[#21262D] transition-colors">Delete</button>
                 </div>,
@@ -586,6 +669,7 @@ function StepCard({
       }`}
       style={{ borderColor: isSelected ? "#0078D4" : style.border }}
       onClick={e => { e.stopPropagation(); onSelect(); }}
+      onContextMenu={handleContextMenu}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onDragLeave={e => { e.stopPropagation(); }}
@@ -704,6 +788,12 @@ function StepCard({
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
                 >
                   ⧉ Duplicate
+                </button>
+                <button
+                  onClick={handleCopy}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  ⎘ Copy
                 </button>
                 {step.nodeType !== "start" && (
                   <>
@@ -1371,6 +1461,7 @@ function BranchStepList({
         <AddButton
           afterNodeId={containerId}
           sourceHandle={containerHandle}
+          branchKey={branchKey}
           isArchived={isArchived}
           nodeIdCounter={nodeIdCounter}
           nodeStyles={nodeStyles}
@@ -1390,6 +1481,7 @@ function BranchStepList({
       <AddButton
         afterNodeId={containerId}
         sourceHandle={containerHandle}
+        branchKey={branchKey}
         isArchived={isArchived}
         nodeIdCounter={nodeIdCounter}
         nodeStyles={nodeStyles}
@@ -1512,6 +1604,14 @@ interface FlowCanvasCtx {
   onDragLeaveBranchColumn: () => void;
   /** Distinct categories from all event triggers (e.g. ["CRM", "Payments"]). Empty when unknown. */
   triggerCategories: string[];
+  /** The step currently in the clipboard (null when empty). */
+  copiedStep: FlowStep | null;
+  /** Copy a step into the clipboard. */
+  onCopyStep: (step: FlowStep) => void;
+  /** Paste the clipboard step after the specified node in the sequence. */
+  onPasteAfterNode: (afterNodeId: string) => void;
+  /** Paste the clipboard step at the start of a container branch. */
+  onPasteAtBranchStart: (containerId: string, branchKey: string) => void;
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -1530,6 +1630,10 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   onDragOverBranchColumn: () => {},
   onDragLeaveBranchColumn: () => {},
   triggerCategories: [],
+  copiedStep: null,
+  onCopyStep: () => {},
+  onPasteAfterNode: () => {},
+  onPasteAtBranchStart: () => {},
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -1548,6 +1652,8 @@ export default function FlowCanvas({
   onGraphChange,
   onDuplicateNode,
   triggerCategories = [],
+  copiedStep = null,
+  onCopyStep,
 }: FlowCanvasProps) {
   const tree = React.useMemo(() => graphToTree(nodes, edges), [nodes, edges]);
 
@@ -1674,6 +1780,82 @@ export default function FlowCanvas({
     setDropBranchKey(null);
   }, []);
 
+  // ── Copy / Paste ─────────────────────────────────────────────────────────────
+
+  const handleCopyStep = useCallback((step: FlowStep) => {
+    onCopyStep?.(step);
+  }, [onCopyStep]);
+
+  /** Paste the clipboard step immediately after `afterNodeId` in tree sequence. */
+  const handlePasteAfterNode = useCallback((afterNodeId: string) => {
+    if (!copiedStep) return;
+    const cloned = deepCloneStep(copiedStep);
+    const newTree = treeInsertStepAfter(tree, afterNodeId, cloned);
+    if (newTree !== tree) {
+      const { nodes: n, edges: e } = treeToGraph(newTree);
+      const newNodeIds = new Set(n.map(nd => nd.id));
+      const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+      const extra = nonTreeEdges.filter(
+        ed => newNodeIds.has(ed.source) &&
+              newNodeIds.has(ed.target) &&
+              !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+      );
+      onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
+    }
+  }, [copiedStep, tree, nonTreeEdges, onGraphChange]);
+
+  /** Paste the clipboard step at the start of `containerId[branchKey]`. */
+  const handlePasteAtBranchStart = useCallback((containerId: string, branchKey: string) => {
+    if (!copiedStep) return;
+    const cloned = deepCloneStep(copiedStep);
+    const newTree = treeInsertStepAtBranchStart(tree, containerId, branchKey, cloned);
+    if (newTree !== tree) {
+      const { nodes: n, edges: e } = treeToGraph(newTree);
+      const newNodeIds = new Set(n.map(nd => nd.id));
+      const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+      const extra = nonTreeEdges.filter(
+        ed => newNodeIds.has(ed.source) &&
+              newNodeIds.has(ed.target) &&
+              !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+      );
+      onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
+    }
+  }, [copiedStep, tree, nonTreeEdges, onGraphChange]);
+
+  // ── Keyboard shortcuts (Ctrl/Cmd+C → copy selected; Ctrl/Cmd+V → paste after selected) ──
+  React.useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const target = e.target as HTMLElement;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target.isContentEditable
+      ) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      if (e.key === "c" || e.key === "C") {
+        if (!selectedNodeId) return;
+        const found = treeFindStep(tree, selectedNodeId);
+        if (found) {
+          e.preventDefault();
+          handleCopyStep(found);
+        }
+      }
+      if (e.key === "v" || e.key === "V") {
+        if (!copiedStep) return;
+        e.preventDefault();
+        if (selectedNodeId) {
+          handlePasteAfterNode(selectedNodeId);
+        } else if (tree.length > 0) {
+          // Paste after the last top-level step.
+          handlePasteAfterNode(tree[tree.length - 1].id);
+        }
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [tree, selectedNodeId, copiedStep, handleCopyStep, handlePasteAfterNode]);
+
   const ctx: FlowCanvasCtx = React.useMemo(() => ({
     selectedNodeId,
     onSelectNode,
@@ -1690,7 +1872,11 @@ export default function FlowCanvas({
     onDragOverBranchColumn: handleDragOverBranchColumn,
     onDragLeaveBranchColumn: handleDragLeaveBranchColumn,
     triggerCategories,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories]);
+    copiedStep,
+    onCopyStep: handleCopyStep,
+    onPasteAfterNode: handlePasteAfterNode,
+    onPasteAtBranchStart: handlePasteAtBranchStart,
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);

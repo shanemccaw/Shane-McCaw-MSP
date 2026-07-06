@@ -974,3 +974,77 @@ export function treeReorderStep(
 
   return changed ? newSteps : steps;
 }
+
+// ── Copy / Paste helpers ──────────────────────────────────────────────────────
+
+/**
+ * Deep-clone a FlowStep subtree, assigning fresh unique IDs to every node.
+ * For parallel nodes, the joinNodeId stored in data is also remapped to the
+ * new join-node ID so the fan-out/fan-in pair stays consistent.
+ */
+export function deepCloneStep(step: FlowStep): FlowStep {
+  const idMap = new Map<string, string>();
+
+  function freshId(old: string): string {
+    if (!idMap.has(old)) {
+      idMap.set(old, `node-c${Math.random().toString(36).slice(2, 9)}`);
+    }
+    return idMap.get(old)!;
+  }
+
+  function clone(s: FlowStep): FlowStep {
+    const newId = freshId(s.id);
+    const newData = JSON.parse(JSON.stringify(s.data)) as Record<string, unknown>;
+    if (s.nodeType === "parallel" && typeof newData.joinNodeId === "string") {
+      newData.joinNodeId = freshId(newData.joinNodeId as string);
+    }
+    const cloned: FlowStep = { id: newId, nodeType: s.nodeType, data: newData };
+    if (s.branches) {
+      cloned.branches = {};
+      for (const [key, children] of Object.entries(s.branches)) {
+        cloned.branches[key] = children.map(clone);
+      }
+    }
+    return cloned;
+  }
+
+  return clone(step);
+}
+
+/**
+ * Insert `newStep` at the START of a specific branch inside `containerId`.
+ * Searches recursively through all container branches.
+ * Returns the same reference when `containerId` is not found.
+ */
+export function treeInsertStepAtBranchStart(
+  steps: FlowStep[],
+  containerId: string,
+  branchKey: string,
+  newStep: FlowStep,
+): FlowStep[] {
+  function insertInto(seq: FlowStep[]): { result: FlowStep[]; changed: boolean } {
+    let seqChanged = false;
+    const mapped = seq.map(step => {
+      if (step.id === containerId && step.branches) {
+        seqChanged = true;
+        const existing = step.branches[branchKey] ?? [];
+        return { ...step, branches: { ...step.branches, [branchKey]: [newStep, ...existing] } };
+      }
+      if (step.branches) {
+        let bChanged = false;
+        const newBranches: Record<string, FlowStep[]> = {};
+        for (const [k, v] of Object.entries(step.branches)) {
+          const { result, changed } = insertInto(v);
+          newBranches[k] = result;
+          if (changed) bChanged = true;
+        }
+        if (bChanged) { seqChanged = true; return { ...step, branches: newBranches }; }
+      }
+      return step;
+    });
+    return { result: seqChanged ? mapped : seq, changed: seqChanged };
+  }
+
+  const { result, changed } = insertInto(steps);
+  return changed ? result : steps;
+}

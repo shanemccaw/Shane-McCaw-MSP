@@ -8512,6 +8512,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     setIsDirty(true);
   }
 
+  const [copiedStep, setCopiedStep] = useState<import("./flowTree").FlowStep | null>(null);
+
   // Handle graph changes emitted by FlowCanvas (add/remove/reorder steps)
   function handleGraphChange(newNodes: StoredNode[], newEdges: StoredEdge[]) {
     pushHistory();
@@ -9066,6 +9068,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           onGraphChange={handleGraphChange}
           onDuplicateNode={duplicateNode}
           triggerCategories={canvasTriggerCategories}
+          copiedStep={copiedStep}
+          onCopyStep={setCopiedStep}
         />
 
         {/* Node config panel */}
