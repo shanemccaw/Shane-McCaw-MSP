@@ -131,6 +131,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Parallel / Join ──
   parallel: { bg: "#0D1020", border: "#06B6D4", icon: "⇉",  label: "Parallel"           },
   join:     { bg: "#0D1020", border: "#06B6D4", icon: "⇊",  label: "Join"               },
+  // ── Scripts ──
+  generate_script: { bg: "#0D1A10", border: "#22C55E", icon: "📜", label: "Generate Script" },
   // ── Utilities ──
   comment:  { bg: "#1A1600", border: "#CA8A04", icon: "📝", label: "Comment"            },
 };
@@ -246,6 +248,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "campaignBrief",       label: "Marketing brief (audience, hook, 3 angles) — only when isHot is true" },
     { key: "campaignId",          label: "DB ID of auto-created campaign draft — only when Auto-build campaign is on and isHot" },
   ],
+  // Scripts
+  generate_script: [{ key: "scriptId", label: "Script ID — single script saved to the library" }, { key: "packageId", label: "Package ID — multi-module package saved to the library" }],
   // Social Media
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
@@ -773,6 +777,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "set_variable",    label: "Set Variable",    description: "Create or overwrite a named variable in the run context — available downstream as {{nodeName.value}} or {{variableName}}",           tags: ["variable", "set", "store", "data", "context", "assign"] },
       { type: "update_variable", label: "Update Variable", description: "Overwrite an existing run variable — amber accent makes mutations visually distinct from Set Variable for easier flow readability", tags: ["variable", "update", "mutate", "overwrite", "data", "assign"] },
+    ],
+  },
+  {
+    name: "Scripts",
+    nodes: [
+      { type: "generate_script", label: "Generate Script", description: "AI-generates a PowerShell script from a service or insights document and saves it to the Script Library under Workflow Generated", tags: ["script", "powershell", "ai", "generate", "library", "m365", "azure"] },
     ],
   },
   {
@@ -2253,6 +2263,34 @@ function NodeConfigPanel({
   });
   const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges, triggers);
 
+  // ── generate_script: service/document searchable lists ──────────────────
+  const gsSourceMode = ((node.data.sourceMode as string | undefined) ?? "service") as "service" | "document";
+  const [gsServices, setGsServices] = useState<{ id: number; name: string; category: string | null }[]>([]);
+  const [gsDocs, setGsDocs] = useState<{ id: number; title: string | null; docType: string }[]>([]);
+  const [gsSearch, setGsSearch] = useState("");
+  const [gsLoading, setGsLoading] = useState(false);
+
+  useEffect(() => {
+    if (nodeType !== "generate_script") return;
+    setGsLoading(true);
+    if (gsSourceMode === "service") {
+      fetchWithAuth("/api/admin/services")
+        .then(r => r.ok ? r.json() : [])
+        .then((data: { id: number; name: string; category: string | null }[]) => setGsServices(Array.isArray(data) ? data : []))
+        .catch(() => setGsServices([]))
+        .finally(() => setGsLoading(false));
+    } else {
+      fetchWithAuth("/api/admin/insights/documents")
+        .then(r => r.ok ? r.json() : { documents: [] })
+        .then((data: { documents?: { id: number; title: string | null; docType: string }[] } | { id: number; title: string | null; docType: string }[]) => {
+          const list = Array.isArray(data) ? data : ((data as { documents?: { id: number; title: string | null; docType: string }[] }).documents ?? []);
+          setGsDocs(list);
+        })
+        .catch(() => setGsDocs([]))
+        .finally(() => setGsLoading(false));
+    }
+  }, [nodeType, gsSourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="absolute right-4 top-4 bottom-4 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-y-auto z-10">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
@@ -2893,6 +2931,115 @@ function NodeConfigPanel({
             )}
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "generate_script" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Source Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                {(["service", "document"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    onClick={() => { onChange(node.id, { ...node.data, sourceMode: mode, targetId: "" }); setGsSearch(""); }}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${gsSourceMode === mode ? "bg-[#22C55E]/20 text-[#22C55E] border-r border-[#22C55E]/30" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                  >
+                    {mode === "service" ? "📋 From Service" : "📄 From Document"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Searchable selector for service or document */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">
+                {gsSourceMode === "service" ? "Select Service" : "Select Document"}
+              </label>
+              <input
+                type="text"
+                value={gsSearch}
+                onChange={e => setGsSearch(e.target.value)}
+                placeholder={gsSourceMode === "service" ? "Search services…" : "Search documents…"}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60 placeholder-[#484F58]"
+              />
+              <div className="rounded-lg border border-[#30363D] overflow-hidden max-h-40 overflow-y-auto bg-[#0D1117]">
+                {gsLoading ? (
+                  <p className="text-[10px] text-[#7D8590] px-3 py-2">Loading…</p>
+                ) : gsSourceMode === "service" ? (
+                  gsServices.filter(s => !gsSearch || s.name.toLowerCase().includes(gsSearch.toLowerCase())).length === 0 ? (
+                    <p className="text-[10px] text-[#484F58] px-3 py-2">
+                      {gsServices.length === 0 ? "No services found." : `No services match "${gsSearch}"`}
+                    </p>
+                  ) : (
+                    gsServices
+                      .filter(s => !gsSearch || s.name.toLowerCase().includes(gsSearch.toLowerCase()))
+                      .map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => { onChange(node.id, { ...node.data, targetId: String(s.id), targetName: s.name }); setGsSearch(""); }}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-[#21262D] last:border-0 ${(node.data.targetId as string) === String(s.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-[#E6EDF3]"}`}
+                        >
+                          <span className="font-medium truncate block">{s.name}</span>
+                          {s.category && <span className="text-[10px] text-[#484F58]">{s.category}</span>}
+                        </button>
+                      ))
+                  )
+                ) : (
+                  gsDocs.filter(d => !gsSearch || (d.title ?? "").toLowerCase().includes(gsSearch.toLowerCase()) || d.docType.toLowerCase().includes(gsSearch.toLowerCase())).length === 0 ? (
+                    <p className="text-[10px] text-[#484F58] px-3 py-2">
+                      {gsDocs.length === 0 ? "No documents found." : `No documents match "${gsSearch}"`}
+                    </p>
+                  ) : (
+                    gsDocs
+                      .filter(d => !gsSearch || (d.title ?? "").toLowerCase().includes(gsSearch.toLowerCase()) || d.docType.toLowerCase().includes(gsSearch.toLowerCase()))
+                      .map(d => (
+                        <button
+                          key={d.id}
+                          onClick={() => { onChange(node.id, { ...node.data, targetId: String(d.id), targetName: d.title ?? `Document #${d.id}` }); setGsSearch(""); }}
+                          className={`w-full text-left px-3 py-2 text-xs hover:bg-[#22C55E]/10 transition-colors border-b border-[#21262D] last:border-0 ${(node.data.targetId as string) === String(d.id) ? "bg-[#22C55E]/10 text-[#22C55E]" : "text-[#E6EDF3]"}`}
+                        >
+                          <span className="font-medium truncate block">{d.title ?? "(untitled)"}</span>
+                          <span className="text-[10px] text-[#484F58]">{d.docType}</span>
+                        </button>
+                      ))
+                  )
+                )}
+              </div>
+              {(node.data.targetId as string) && (
+                <div className="flex items-center gap-1.5 text-[10px] text-[#22C55E]">
+                  <span>✓</span>
+                  <span className="truncate">
+                    {gsSourceMode === "service"
+                      ? (gsServices.find(s => String(s.id) === (node.data.targetId as string))?.name ?? `Service #${node.data.targetId}`)
+                      : (gsDocs.find(d => String(d.id) === (node.data.targetId as string))?.title ?? `Document #${node.data.targetId}`)
+                    }
+                  </span>
+                  <button
+                    onClick={() => onChange(node.id, { ...node.data, targetId: "", targetName: "" })}
+                    className="ml-auto text-[#484F58] hover:text-[#EF4444] transition-colors flex-shrink-0"
+                    title="Clear selection"
+                  >✕</button>
+                </div>
+              )}
+            </div>
+
+            <PayloadField
+              label="Custom Instructions (optional)"
+              value={(node.data.customInstructions as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, customInstructions: v })}
+              placeholder="Focus on remediation scripts for security gaps…"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">
+                Generates a PowerShell script using AI and saves it to the Script Library under the <span className="font-mono text-[#22C55E]">Workflow Generated</span> category.
+              </p>
+              <p className="text-[10px] text-[#484F58]">
+                Outputs: <span className="font-mono text-[#7D8590]">{"{{scriptId}}"}</span> (single script) or <span className="font-mono text-[#7D8590]">{"{{packageId}}"}</span> (multi-module package).
+              </p>
             </div>
           </>
         )}

@@ -1813,8 +1813,11 @@ export interface WfNode {
     | "generate_invoice_stripe_payment"
     | "generate_stripe_payment_link"
     | "create_phased_invoices"
+    | "generate_phased_invoice"
     | "charge_stripe_invoice"
     | "edit_stripe_invoice"
+    // Scripts
+    | "generate_script"
     // Variables
     | "set_variable"
     | "update_variable"

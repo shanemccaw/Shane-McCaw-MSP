@@ -24,24 +24,14 @@ import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
 import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
-
-// ─── App-permission normalizer ────────────────────────────────────────────────
-// Old DB rows may store appPermissions as string[]; new rows use {scope,reason}[].
-// This helper normalises both so the rest of the code can always work with objects.
-function normalizeAppPerms(raw: unknown[]): { scope: string; reason: string }[] {
-  return raw
-    .map((entry): { scope: string; reason: string } | null => {
-      if (typeof entry === "string") return { scope: entry, reason: "" };
-      if (entry !== null && typeof entry === "object") {
-        const e = entry as Record<string, unknown>;
-        if (typeof e["scope"] === "string") {
-          return { scope: e["scope"], reason: typeof e["reason"] === "string" ? e["reason"] : "" };
-        }
-      }
-      return null;
-    })
-    .filter((x): x is { scope: string; reason: string } => x !== null);
-}
+import {
+  normalizeAppPerms,
+  jsonParse,
+  extractEnvelopeJson,
+  extractPowershellFences,
+  extractJson,
+  extractJsonArray,
+} from "../lib/ps-script-gen.js";
 
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
 
@@ -157,146 +147,7 @@ try {
   return { filename, description: `[STUB] ${taskTitle} — requires implementation`, content };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-// LLMs sometimes emit literal (unescaped) newlines / tabs inside JSON string
-// values, making the payload invalid JSON. Walk the raw text and escape any
-// control characters that appear inside a string token.
-function repairJsonStrings(raw: string): string {
-  let out = "";
-  let inStr = false;
-  let esc = false;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-    if (esc) { out += ch; esc = false; continue; }
-    if (ch === "\\") { out += ch; esc = true; continue; }
-    if (ch === '"') { out += ch; inStr = !inStr; continue; }
-    if (inStr) {
-      if (ch === "\n") { out += "\\n"; continue; }
-      if (ch === "\r") { out += "\\r"; continue; }
-      if (ch === "\t") { out += "\\t"; continue; }
-    }
-    out += ch;
-  }
-  return out;
-}
-
-// Try JSON.parse; if it fails, repair control-char escaping and retry.
-function jsonParse(candidate: string): unknown {
-  try { return JSON.parse(candidate); } catch { /* fall through */ }
-  try { return JSON.parse(repairJsonStrings(candidate)); } catch { /* fall through */ }
-  return null;
-}
-
-// Extract the first ```json fence only (envelope has no embedded code — no lastIndexOf needed).
-function extractEnvelopeJson(text: string): unknown {
-  const jsonTagPos = text.indexOf("```json");
-  if (jsonTagPos === -1) return null;
-  const bodyStart = jsonTagPos + 7;
-  const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
-  const closingPos = text.indexOf("```", afterNewline); // first close fence, not last
-  if (closingPos <= afterNewline) return null;
-  return jsonParse(text.slice(afterNewline, closingPos).trim());
-}
-
-// Extract all PowerShell code fences from text, keyed by the leading "# file: <filename>" comment.
-// Falls back to a numeric index key when the header is absent so callers can always use
-// [...psMap.values()][0] as a reliable fallback.
-// Recognises ```powershell, ```PowerShell, ```ps1, and ```ps (case-insensitive).
-function extractPowershellFences(text: string): Map<string, string> {
-  const scripts = new Map<string, string>();
-  const lowerText = text.toLowerCase();
-  let searchFrom = 0;
-  let fallbackIdx = 0;
-  while (true) {
-    // Find the earliest occurrence of any recognised fence marker
-    let openPos = -1;
-    for (const marker of ["```powershell", "```ps1", "```ps\n", "```ps\r"]) {
-      const pos = lowerText.indexOf(marker, searchFrom);
-      if (pos !== -1 && (openPos === -1 || pos < openPos)) openPos = pos;
-    }
-    if (openPos === -1) break;
-    const afterOpen = text.indexOf("\n", openPos);
-    if (afterOpen === -1) break;
-    const closePos = text.indexOf("```", afterOpen + 1);
-    if (closePos === -1) break;
-    const content = text.slice(afterOpen + 1, closePos).trimEnd();
-    if (content) {
-      const headerMatch = content.match(/^#\s*file:\s*(\S+\.ps1)/i);
-      // Always store — use the declared filename or a numeric fallback key
-      scripts.set(headerMatch ? headerMatch[1] : `_script_${fallbackIdx++}`, content);
-    }
-    searchFrom = closePos + 3;
-  }
-  return scripts;
-}
-
-function extractJson(text: string): unknown {
-  // 1. ```json … ``` — use indexOf/lastIndexOf so embedded backtick sequences
-  //    inside module content strings don't prematurely terminate the match.
-  const jsonTagPos = text.indexOf("```json");
-  if (jsonTagPos !== -1) {
-    const bodyStart = jsonTagPos + 7; // skip "```json"
-    const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
-    const closingPos = text.lastIndexOf("```");
-    if (closingPos > afterNewline) {
-      const v = jsonParse(text.slice(afterNewline, closingPos).trim());
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-    }
-  }
-
-  // 2. Any fenced block (no language tag): first opening to LAST closing.
-  const anyOpen = text.indexOf("```");
-  if (anyOpen !== -1) {
-    const afterTag = text.indexOf("\n", anyOpen);
-    const closingPos = text.lastIndexOf("```");
-    if (afterTag !== -1 && closingPos > afterTag) {
-      const v = jsonParse(text.slice(afterTag + 1, closingPos).trim());
-      if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-    }
-  }
-
-  // 3. Last-resort: first '{' to last '}'.
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start !== -1 && end > start) {
-    const v = jsonParse(text.slice(start, end + 1));
-    if (v !== null && typeof v === "object" && !Array.isArray(v)) return v;
-  }
-
-  return null;
-}
-
-function extractJsonArray(text: string): unknown[] | null {
-  // Use indexOf/lastIndexOf so embedded backtick sequences inside content strings
-  // don't prematurely terminate the fence match.
-  const jsonTagPos = text.indexOf("```json");
-  if (jsonTagPos !== -1) {
-    const bodyStart = jsonTagPos + 7;
-    const afterNewline = text[bodyStart] === "\n" ? bodyStart + 1 : bodyStart;
-    const closingPos = text.lastIndexOf("```");
-    if (closingPos > afterNewline) {
-      const v = jsonParse(text.slice(afterNewline, closingPos).trim());
-      if (Array.isArray(v)) return v;
-    }
-  }
-  const anyOpen = text.indexOf("```");
-  if (anyOpen !== -1) {
-    const afterTag = text.indexOf("\n", anyOpen);
-    const closingPos = text.lastIndexOf("```");
-    if (afterTag !== -1 && closingPos > afterTag) {
-      const v = jsonParse(text.slice(afterTag + 1, closingPos).trim());
-      if (Array.isArray(v)) return v;
-    }
-  }
-  const start = text.indexOf("[");
-  const end = text.lastIndexOf("]");
-  if (start !== -1 && end > start) {
-    const v = jsonParse(text.slice(start, end + 1));
-    if (Array.isArray(v)) return v;
-  }
-  return null;
-}
+// ─── Helpers (canonical implementations live in ps-script-gen.ts; imported above) ──
 
 const CATEGORY_LABELS: Record<string, string> = {
   "m365": "Microsoft 365 (General)",
@@ -317,6 +168,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   "power-apps": "Power Apps",
   "viva": "Viva",
   "security": "Security & Compliance",
+  "workflow-generated": "Workflow Generated",
   "other": "Other",
 };
 

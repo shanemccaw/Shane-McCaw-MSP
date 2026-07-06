@@ -46,11 +46,15 @@ import {
   deviceTokensTable,
   workflowStepsTable,
   quickWinPresentationsTable,
+  powershellScriptsTable,
+  servicesTable,
+  type PsScriptPermissions,
   type WfGraph,
   type WfNode,
 } from "@workspace/db";
 
 import { createRunbookJob, isAzureConfigured } from "./azure-automation";
+import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
@@ -606,6 +610,14 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         saved: true,
         phaseCount: 4,
         resolvedPhases: [],
+      };
+
+    case "generate_script":
+      return {
+        dryRun: true,
+        scriptId: "dry-run-script-id",
+        packageId: null,
+        title: `Dry-run script from ${(node.data.sourceMode as string | undefined) ?? "service"} ${interp((node.data.targetId as string | undefined) ?? "", p) || "<not configured>"}`,
       };
 
     case "generate_article":
@@ -2433,6 +2445,32 @@ async function executeNode(
           value: interp(node.data.value as string | undefined, payload),
         };
         output = await handleSystemAction("save_presentation_phases", spPayload);
+        break;
+      }
+
+      // ── Generate Script ───────────────────────────────────────────────────
+
+      case "generate_script": {
+        const gsSourceMode = (node.data.sourceMode as string | undefined) ?? "service";
+        const gsTargetRaw  = interp(node.data.targetId as string | undefined, payload) ?? "";
+        const gsCustom     = interp(node.data.customInstructions as string | undefined, payload) ?? "";
+        const gsTargetId   = parseInt(gsTargetRaw, 10);
+
+        if (!gsTargetRaw || isNaN(gsTargetId)) {
+          nodeError = true;
+          output = { error: `generate_script: ${gsSourceMode === "service" ? "serviceId" : "documentId"} is required and must be a number (got "${gsTargetRaw}")` };
+          break;
+        }
+
+        try {
+          const gsResult = gsSourceMode === "service"
+            ? await generateScriptFromService(gsTargetId, { customInstructions: gsCustom || undefined })
+            : await generateScriptFromDocument(gsTargetId, { customInstructions: gsCustom || undefined });
+          output = { ...gsResult, category: "workflow-generated" };
+        } catch (gsErr) {
+          nodeError = true;
+          output = { error: String(gsErr instanceof Error ? gsErr.message : gsErr) };
+        }
         break;
       }
 

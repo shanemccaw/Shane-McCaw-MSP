@@ -610,6 +610,19 @@ function StepCard({
         )}
       </div>
 
+      {/* generate_script: show source mode + target summary */}
+      {step.nodeType === "generate_script" && (
+        <div className="px-3 py-1.5 border-t border-[#30363D] text-[10px] text-[#7D8590] flex items-center gap-1.5 truncate">
+          <span className="flex-shrink-0">
+            {(step.data.sourceMode as string | undefined) === "document" ? "📄 Document" : "⚙️ Service"}
+          </span>
+          <span className="text-[#484F58]">→</span>
+          <span className="truncate">
+            {(step.data.targetName as string | undefined)?.trim() || (step.data.targetId as string | undefined)?.trim() || "Not configured"}
+          </span>
+        </div>
+      )}
+
       {/* Container body — hidden when collapsed */}
       {isContainer && !collapsed && step.branches && (
         <ContainerBody
