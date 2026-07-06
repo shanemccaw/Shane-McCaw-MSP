@@ -103,6 +103,35 @@ export default function ContractSignPanel({
   const [isEmpty, setIsEmpty] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Dynamic canvas width — measured from the container so the canvas coordinate
+  // space always matches the CSS display width. Without this, a hard-coded width
+  // (e.g. 560 px) differs from the CSS-scaled width on narrower screens, causing
+  // drawn strokes to land at the wrong position relative to where the user clicked.
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const [canvasWidth, setCanvasWidth] = useState(560);
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    // Seed with the current width on mount
+    const initial = el.offsetWidth;
+    if (initial > 0) setCanvasWidth(initial);
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        const w = Math.round(entry.contentRect.width);
+        if (w > 0 && w !== canvasWidth) {
+          setCanvasWidth(w);
+          // Clear any in-progress stroke — it would be distorted at the new scale
+          sigPad.current?.clear();
+          setIsEmpty(true);
+        }
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  // canvasWidth intentionally excluded — we only want to run on mount/unmount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const raf = requestAnimationFrame(() => { onReady?.(); });
     return () => cancelAnimationFrame(raf);
@@ -388,15 +417,17 @@ export default function ContractSignPanel({
                 Clear
               </button>
             </div>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 hover:border-[#0078D4]/50 transition-colors">
+            <div
+              ref={canvasContainerRef}
+              className="border-2 border-dashed border-gray-300 rounded-lg overflow-hidden bg-gray-50 hover:border-[#0078D4]/50 transition-colors"
+            >
               <SignatureCanvas
                 ref={sigPad}
                 penColor="#0A2540"
                 canvasProps={{
-                  width: 560,
+                  width: canvasWidth,
                   height: 120,
-                  className: "signature-canvas w-full",
-                  style: { width: "100%", height: "120px" },
+                  style: { height: "120px", display: "block" },
                 }}
                 onBegin={() => setIsEmpty(false)}
               />

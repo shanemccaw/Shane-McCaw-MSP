@@ -1765,7 +1765,12 @@ INSTRUCTIONS:
           void broadcastDocsChangeForProject(projectId);
         } else if (projectId) {
           void syncPresentationDocIds(projectId, consultingDocId, deliverableType);
-          void broadcastDocsChangeForProject(projectId);
+          // task_execution_guide is an internal admin document — never surface it
+          // to the client as a docs_changed event (would show a misleading "New
+          // document ready — Refresh" amber banner in the client presentation session).
+          if (deliverableType !== "task_execution_guide") {
+            void broadcastDocsChangeForProject(projectId);
+          }
         }
 
         void emitWorkflowEvent("document.generated", {

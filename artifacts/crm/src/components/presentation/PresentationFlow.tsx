@@ -190,7 +190,9 @@ export default function PresentationFlow({
   // If a poll or SSE push reveals a different version the stale-scope banner appears.
   const initialSowVersionRef = useRef<string | undefined>(initialData.sowVersion);
   const initialDocFingerprintRef = useRef<string>(
-    [...initialData.documents].map(d => d.id).sort((a, b) => a - b).join(","),
+    [...initialData.documents]
+      .filter(d => d.docType !== "task_execution_guide")
+      .map(d => d.id).sort((a, b) => a - b).join(","),
   );
   const [scopeStale, setScopeStale] = useState(false);
   const [docsStale, setDocsStale] = useState(false);
@@ -593,7 +595,7 @@ export default function PresentationFlow({
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
       const res = await fetchFn(`/api/portal/presentations/${presentationId}${tokenParam}`);
       if (!res.ok) return;
-      const fresh = await res.json() as { sowVersion?: string; documents?: { id: number }[] };
+      const fresh = await res.json() as { sowVersion?: string; documents?: { id: number; docType?: string }[] };
       // Check SOW version staleness
       if (initialSowVersionRef.current && fresh.sowVersion && fresh.sowVersion !== initialSowVersionRef.current) {
         setScopeStale(true);
@@ -608,8 +610,12 @@ export default function PresentationFlow({
         setScopedTotalPriceDollars(null);
         setLastRegenPhaseIds(null);
       }
-      // Check document staleness (any doc added, removed, or replaced)
-      const freshFingerprint = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
+      // Check document staleness (any client-visible doc added, removed, or replaced).
+      // task_execution_guide is internal-only — exclude it from the fingerprint so
+      // generating it in the admin panel never triggers the amber stale-docs banner.
+      const freshFingerprint = [...(fresh.documents ?? [])]
+        .filter(d => d.docType !== "task_execution_guide")
+        .map(d => d.id).sort((a, b) => a - b).join(",");
       if (freshFingerprint !== initialDocFingerprintRef.current) {
         setDocsStale(true);
       }
@@ -689,7 +695,9 @@ export default function PresentationFlow({
         const fresh = await res.json() as PresentationData;
         // Update refs so future polls don't immediately re-trigger the banners
         initialSowVersionRef.current = fresh.sowVersion;
-        initialDocFingerprintRef.current = [...(fresh.documents ?? [])].map(d => d.id).sort((a, b) => a - b).join(",");
+        initialDocFingerprintRef.current = [...(fresh.documents ?? [])]
+          .filter((d: PresentationDoc) => d.docType !== "task_execution_guide")
+          .map(d => d.id).sort((a, b) => a - b).join(",");
         // Recompute the step list from fresh docs to get the new count before clamping
         const isSowDoc = (d: PresentationDoc) => d.docType === "consolidated_sow" || d.docType === "sow";
         const isNavHiddenDoc = (d: PresentationDoc) =>
@@ -1201,7 +1209,18 @@ export default function PresentationFlow({
       // When advancing from Scope & Pricing into phase generation (via the generic
       // Next button rather than the dedicated "Build Your Project Plan" button),
       // delegate to handleStartPhaseGen so the workflow actually fires.
+      // Exception: if phases are already saved for the current scope, skip the
+      // Building Plan screen entirely and jump straight to Payment Options.
       if (currentStep?.kind === "sow" && nextStep?.kind === "phase_gen") {
+        if (hasSavedPhasesForCurrentScope) {
+          const pmtIdx = steps.findIndex(s => s.kind === "payment");
+          if (pmtIdx >= 0) {
+            directionRef.current = "forward";
+            setMaxVisitedStep(m => Math.max(m, pmtIdx));
+            applyStepChange(pmtIdx);
+          }
+          return;
+        }
         void handleStartPhaseGen();
         return;
       }
@@ -1237,7 +1256,18 @@ export default function PresentationFlow({
     if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan && !blockedByNoSow) {
       // Navigating to phase_gen must fire the workflow — delegate to handleStartPhaseGen
       // which handles advancing the step itself.
+      // Exception: if phases are already saved for the current scope, redirect to
+      // Payment Options so the Building Plan screen is never shown unnecessarily.
       if (targetStep?.kind === "phase_gen") {
+        if (hasSavedPhasesForCurrentScope) {
+          const pmtIdx = steps.findIndex(s => s.kind === "payment");
+          if (pmtIdx >= 0) {
+            directionRef.current = "forward";
+            applyStepChange(pmtIdx);
+            setSidebarOpen(false);
+          }
+          return;
+        }
         void handleStartPhaseGen();
         setSidebarOpen(false);
         return;
@@ -1289,7 +1319,17 @@ export default function PresentationFlow({
       }).catch(() => { /* fire-and-forget */ });
     }
     // Navigating to phase_gen must fire the workflow — delegate to handleStartPhaseGen.
+    // Exception: if phases are already saved for the current scope, skip to payment.
     if (targetStep?.kind === "phase_gen") {
+      if (hasSavedPhasesForCurrentScope) {
+        const pmtIdx = steps.findIndex(s => s.kind === "payment");
+        if (pmtIdx >= 0) {
+          directionRef.current = "forward";
+          setMaxVisitedStep(m => Math.max(m, pmtIdx));
+          applyStepChange(pmtIdx);
+        }
+        return;
+      }
       void handleStartPhaseGen();
       return;
     }
