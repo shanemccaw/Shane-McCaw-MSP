@@ -5511,11 +5511,17 @@ export async function executeWorkflowRun(
         // Graphs store condition branch handles as "yes"/"no" (set by the flow
         // builder's treeToGraph). Support "true"/"false" as well for backward
         // compatibility with any manually-created graphs that used the old naming.
-        const trueEdge  = outEdges.find(e =>
-          e.sourceHandle === "yes" || e.sourceHandle === "true" ||
-          (!e.sourceHandle && !outEdges.find(x => x.sourceHandle === "yes" || x.sourceHandle === "true"))
-        );
-        const falseEdge = outEdges.find(e => e.sourceHandle === "no" || e.sourceHandle === "false");
+        // IMPORTANT: always prefer "yes" over "true" (and "no" over "false") so
+        // that array ordering of edges cannot change which branch is taken when
+        // a graph contains both handle names (e.g. a stale "true" edge alongside
+        // a live "yes" edge from a subsequent edit).
+        const trueEdge =
+          outEdges.find(e => e.sourceHandle === "yes") ??
+          outEdges.find(e => e.sourceHandle === "true") ??
+          outEdges.find(e => !e.sourceHandle && !outEdges.some(x => x.sourceHandle === "yes" || x.sourceHandle === "true"));
+        const falseEdge =
+          outEdges.find(e => e.sourceHandle === "no") ??
+          outEdges.find(e => e.sourceHandle === "false");
         const cancelEdge = outEdges.find(e => e.sourceHandle === "cancel");
 
         if (!conditionResult && cancelEdge) {
