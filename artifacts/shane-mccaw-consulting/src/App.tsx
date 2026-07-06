@@ -45,6 +45,7 @@ import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import HowItWorks from "@/pages/HowItWorks";
 import TechnicalOverview from "@/pages/TechnicalOverview";
 import LandingPage from "@/pages/LandingPage";
+import Assessments from "@/pages/Assessments";
 
 const queryClient = new QueryClient();
 
@@ -118,6 +119,7 @@ function Router() {
       <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
       <Route path="/how-it-works/technical" component={TechnicalOverview} />
       <Route path="/how-it-works" component={HowItWorks} />
+      <Route path="/assessments" component={Assessments} />
       <Route path="/lp/:slug" component={LandingPage} />
       <Route component={NotFound} />
     </Switch>
