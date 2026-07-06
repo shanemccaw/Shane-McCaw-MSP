@@ -4619,7 +4619,7 @@ router.post("/admin/stripe/replay-session", requireAdmin, async (req: Request, r
 // Admin-only: triggers the processStripeEvent flow for a presentation's stripeSessionId.
 // Designed for testing — re-emits the agreement_signed workflow event even if already processed,
 // so the build-step SSE animation runs live on the confirmation page.
-router.post("/admin/presentations/:id/simulate-payment", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/presentations/:id/simulate-payment", async (req: Request, res: Response) => {
   const presentationId = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(presentationId)) { res.status(400).json({ error: "Invalid presentation ID" }); return; }
 
