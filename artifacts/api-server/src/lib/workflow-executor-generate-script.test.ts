@@ -13,6 +13,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type { WfGraph } from "@workspace/db";
 
 // ── Shared state (hoisted so mock factories can reference it) ─────────────────
 
@@ -225,7 +226,7 @@ const FAKE_VERSION = { id: 1, graph: null };
 
 // Minimal single-node graph: one generate_script node, no edges.
 // inlineGraph overrides the stored version graph.
-const GENERATE_SCRIPT_GRAPH = {
+const GENERATE_SCRIPT_GRAPH: WfGraph = {
   nodes: [
     {
       id: "gs-node-1",
