@@ -1246,14 +1246,16 @@ async function executeNode(
                 const sowSignalsOverride: Set<string> | undefined = (() => {
                   const overrideField = (node.data.signalsOverride as string | undefined)?.trim();
                   if (!overrideField) return undefined;
-                  if (Array.isArray(payload.signals)) return new Set<string>(payload.signals as string[]);
+                  // Resolve the configured expression first (e.g. "{{signals}}" or "{{steps.n8.signals}}")
                   try {
                     const resolved = interp(overrideField, payload);
                     if (resolved) {
                       const parsed = JSON.parse(resolved) as unknown;
                       if (Array.isArray(parsed)) return new Set<string>(parsed as string[]);
                     }
-                  } catch { /* not a valid JSON array — fall through */ }
+                  } catch { /* not a valid JSON array */ }
+                  // Fallback: use raw payload.signals array when interp doesn't yield a JSON array
+                  if (Array.isArray(payload.signals)) return new Set<string>(payload.signals as string[]);
                   return undefined;
                 })();
                 const sowResult = await generateConsolidatedSowDocument({
@@ -1274,7 +1276,11 @@ async function executeNode(
                 output = { documentId: sowResult.docId, docType, category: docCategory, title: docTitle, clientId: clientUserId };
               } catch (sowErr) {
                 nodeError = true;
-                output = { error: sowErr instanceof Error ? sowErr.message : String(sowErr) };
+                const sowErrMsg = sowErr instanceof Error ? sowErr.message : String(sowErr);
+                output = {
+                  error: sowErrMsg,
+                  customerError: "SOW generation failed — please retry or contact support if the problem persists.",
+                };
                 logger.error({ runId, err: sowErr }, "wf-executor: consolidated_sow generation failed");
               }
             }
