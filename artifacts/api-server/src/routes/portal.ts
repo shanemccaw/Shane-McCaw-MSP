@@ -11251,8 +11251,9 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
-    if (guardAgainstSignedPresentation(pres, "POST /presentations/:id/checkout", logger)) {
-      res.status(409).json({ error: "Presentation is already signed — no new checkout session can be created" });
+    // Only block checkout if already paid — "signed" means agreement accepted, payment still due.
+    if (pres.status === "paid") {
+      res.status(409).json({ error: "Presentation is already paid" });
       return;
     }
 

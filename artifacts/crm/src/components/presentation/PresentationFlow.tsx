@@ -240,6 +240,16 @@ export default function PresentationFlow({
         const pmtIdx = steps.findIndex(s => s.kind === "payment");
         return pmtIdx >= 0 ? pmtIdx : clamped;
       }
+      // If the URL tries to land on the Checkout step but the agreement hasn't been signed,
+      // redirect to the Agreement step (or Payment Options if no plan chosen yet).
+      if (steps[clamped]?.kind === "checkout" && !initialData.signedAt) {
+        if (!initialData.paymentPlan) {
+          const pmtIdx = steps.findIndex(s => s.kind === "payment");
+          return pmtIdx >= 0 ? pmtIdx : clamped;
+        }
+        const contractIdx = steps.findIndex(s => s.kind === "contract");
+        return contractIdx >= 0 ? contractIdx : clamped;
+      }
       return clamped;
     }
     return 0;
