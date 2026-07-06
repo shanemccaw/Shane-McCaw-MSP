@@ -186,6 +186,7 @@ export const workflowStepsTable = pgTable("workflow_steps", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   workflowTemplateStepId: integer("workflow_template_step_id"),
   stripeInvoiceId: text("stripe_invoice_id"),
+  sowPhaseId: text("sow_phase_id"),
 });
 
 export type InsertWorkflowStep = typeof workflowStepsTable.$inferInsert;

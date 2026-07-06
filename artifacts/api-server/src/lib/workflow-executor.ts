@@ -2395,6 +2395,8 @@ async function executeNode(
         const cpDescription = interp(node.data.description as string | undefined, payload);
         const cpOrderRaw = interp(node.data.order as string | undefined, payload);
         const cpOrder = cpOrderRaw ? parseInt(cpOrderRaw, 10) : 0;
+        // Optional: link this step to a SOW phase ID so find_object can nest steps per phase
+        const cpSowPhaseId = interp(node.data.sowPhaseId as string | undefined, payload)?.trim() || null;
 
         if (!cpProjectId || !cpTitle?.trim()) {
           const missing: string[] = [];
@@ -2418,6 +2420,7 @@ async function executeNode(
           description: cpDescription ?? undefined,
           status: "pending",
           order: isNaN(cpOrder) ? 0 : cpOrder,
+          sowPhaseId: cpSowPhaseId,
         }).returning();
         output = { phaseId: phase.id, phaseTitle: phase.title };
         break;
@@ -3129,7 +3132,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
               // Fetch workflow steps (tasks) for the project so downstream nodes
               // can iterate over them without a separate find_object call.
-              let foProjectSteps: Array<{ id: number; title: string; description: string; order: number; dueDate: string | null; status: string; }> = [];
+              // Steps with a sow_phase_id are also nested inside their parent phase
+              // in the sowPhases array (Option B). Steps without a sow_phase_id land
+              // in projectSteps only (backward-compatible flat list).
+              type FoStep = { id: number; title: string; description: string; order: number; dueDate: string | null; status: string; sowPhaseId: string | null };
+              let foProjectSteps: FoStep[] = [];
               if (foPres.projectId) {
                 const foStepRows = await db
                   .select({
@@ -3139,6 +3146,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                     order:       workflowStepsTable.order,
                     dueDate:     workflowStepsTable.dueDate,
                     status:      workflowStepsTable.status,
+                    sowPhaseId:  workflowStepsTable.sowPhaseId,
                   })
                   .from(workflowStepsTable)
                   .where(eq(workflowStepsTable.projectId, foPres.projectId))
@@ -3150,8 +3158,24 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                   order:       s.order ?? 0,
                   dueDate:     s.dueDate instanceof Date ? s.dueDate.toISOString() : (s.dueDate ?? null),
                   status:      s.status ?? "pending",
+                  sowPhaseId:  s.sowPhaseId ?? null,
                 }));
               }
+
+              // Nest steps inside their parent SOW phase (Option B).
+              // Steps without a sowPhaseId are omitted from phase.steps but
+              // remain available in the top-level projectSteps array.
+              const foStepsByPhase = new Map<string, FoStep[]>();
+              for (const s of foProjectSteps) {
+                if (!s.sowPhaseId) continue;
+                const arr = foStepsByPhase.get(s.sowPhaseId) ?? [];
+                arr.push(s);
+                foStepsByPhase.set(s.sowPhaseId, arr);
+              }
+              const foSowPhasesWithSteps = foSowPhases.map(p => ({
+                ...p,
+                steps: foStepsByPhase.get(p.id) ?? [],
+              }));
 
               output = {
                 found:            true,
@@ -3164,7 +3188,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 totalPrice:       foPres.totalPrice != null ? Number(foPres.totalPrice) : null,
                 paymentPlan:      foPres.paymentPlan ?? null,
                 signedAt:         foPres.signedAt?.toISOString() ?? null,
-                sowPhases:        foSowPhases,
+                sowPhases:        foSowPhasesWithSteps,
                 selectedPhaseIds: foSelectedIds,
                 projectSteps:     foProjectSteps,
                 createdAt:        foPres.createdAt.toISOString(),

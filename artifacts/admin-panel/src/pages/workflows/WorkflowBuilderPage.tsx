@@ -17,6 +17,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
 import { AssetPickerModal } from "@/components/AssetPickerModal";
 import RunDetailContent, { type WfRunDetail } from "./RunDetailContent";
+import type { AncestorGroup } from "./ancestorOutputs";
+import { getAncestorOutputs as _getAncestorOutputs } from "./ancestorOutputs";
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -1119,30 +1121,8 @@ function StartNodePayloadFields({
 }
 
 // ── Ancestor output resolver + variable picker ───────────────────────────────
-
-interface AncestorGroup {
-  nodeId: string;
-  nodeName: string;
-  /** true for the start/trigger node — its outputs live at the top-level payload, not under steps.<nodeId> */
-  isStartNode: boolean;
-  outputs: Array<{ key: string; label: string; enumValues?: string[] }>;
-}
-
-// Forward DFS from a set of start IDs, following all outgoing edges.
-// Used to determine which nodes are inside a foreach loop body.
-function reachableForward(startIds: string[], edges: Edge[]): Set<string> {
-  const seen = new Set<string>();
-  const q = [...startIds];
-  while (q.length > 0) {
-    const id = q.shift()!;
-    if (seen.has(id)) continue;
-    seen.add(id);
-    for (const e of edges) {
-      if (e.source === id && !seen.has(e.target)) q.push(e.target);
-    }
-  }
-  return seen;
-}
+// Core logic lives in ./ancestorOutputs.ts (framework-free, unit-tested).
+// This wrapper injects the app-level KNOWN_EVENTS and NODE_OUTPUTS registries.
 
 function getAncestorOutputs(
   nodeId: string,
@@ -1150,147 +1130,7 @@ function getAncestorOutputs(
   edges: Edge[],
   eventTriggers: WfTrigger[] = [],
 ): AncestorGroup[] {
-  const visited = new Set<string>();
-  const queue: string[] = edges.filter(e => e.target === nodeId).map(e => e.source);
-  const result: AncestorGroup[] = [];
-  // Track loop-body set_variable virtual groups already injected so we don't duplicate
-  const injectedLoopVars = new Set<string>();
-
-  while (queue.length > 0) {
-    const id = queue.shift()!;
-    if (visited.has(id)) continue;
-    visited.add(id);
-    const node = nodes.find(n => n.id === id);
-    if (!node) continue;
-    const type = (node.data.nodeType as string) ?? "action";
-    const actionType = node.data.actionType as string | undefined;
-    let outputs: Array<{ key: string; label: string }> = [];
-    if (type === "start") {
-      // Merge: trigger-inferred fields + user-declared fields from node.data.payloadFields
-      const declaredFields = (node.data.payloadFields as Array<{ key: string; label: string }> | undefined) ?? [];
-      const enabledTriggers = eventTriggers.filter(t => t.enabled);
-      const fieldMap = new Map<string, { key: string; label: string }>();
-
-      if (enabledTriggers.length === 0) {
-        // No triggers yet — show generic hint
-        fieldMap.set("payload", { key: "payload", label: "Trigger payload (fields depend on trigger type)" });
-      } else {
-        for (const trigger of enabledTriggers) {
-          if (trigger.type === "event") {
-            const eventName = trigger.config.eventName as string | undefined;
-            const knownEv = eventName ? KNOWN_EVENTS.find(e => e.name === eventName) : undefined;
-            if (knownEv) {
-              for (const f of knownEv.payloadFields) fieldMap.set(f.key, f);
-            } else {
-              fieldMap.set("payload", {
-                key: "payload",
-                label: eventName ? `Event payload from "${eventName}"` : "Event payload object",
-              });
-            }
-          } else if (trigger.type === "schedule") {
-            // Schedule runs inject only triggeredAt — no extra fields
-          } else if (trigger.type === "manual") {
-            fieldMap.set("payload", { key: "payload", label: "Manually supplied payload (any fields)" });
-          } else if (trigger.type === "webhook") {
-            fieldMap.set("payload", { key: "payload", label: "Webhook request body" });
-          }
-        }
-      }
-
-      // User-declared payload variables override inferred ones
-      for (const f of declaredFields) if (f.key) fieldMap.set(f.key, { key: f.key, label: f.label || f.key });
-      // triggeredAt is always available
-      fieldMap.set("triggeredAt", { key: "triggeredAt", label: "ISO timestamp when this run started" });
-
-      outputs = Array.from(fieldMap.values());
-    } else if (type === "action" && (actionType === "set_variable" || actionType === "update_variable")) {
-      // set_variable spreads its output into the top-level payload at runtime
-      // (nextPayload = { ...payload, ...output }), so the named variable is reachable
-      // as {{varName}} (top-level) AND as {{steps.nodeId.varName}} (under steps).
-      outputs = NODE_OUTPUTS[actionType] ?? [];
-      const svName = (node.data.variableName as string | undefined)?.trim();
-      if (svName) {
-        const svType = (node.data.variableType as string | undefined)?.trim() ?? "string";
-        const nodeName = (node.data.label as string | undefined) || actionType.replace(/_/g, " ");
-        // Add a virtual top-level group so {{varName}} resolves in the validator
-        result.unshift({
-          nodeId: `${id}__var__${svName}`,
-          nodeName: `${nodeName} → {{${svName}}}`,
-          isStartNode: true,
-          outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
-        });
-      }
-    } else if (type === "action" && actionType) {
-      outputs = NODE_OUTPUTS[actionType] ?? [];
-    } else if (type === "ask_for_input") {
-      // Dynamic outputs — derive from the configured field definitions
-      const fields = (node.data.fields as Array<{ variableName: string; label: string }> | undefined) ?? [];
-      outputs = fields
-        .filter(f => f.variableName)
-        .map(f => ({ key: f.variableName, label: f.label || f.variableName }));
-    } else if (type !== "end" && type !== "condition" && type !== "delay" && type !== "error") {
-      // First-class node types (score_lead, assign_pipeline_stage, etc.)
-      outputs = NODE_OUTPUTS[type] ?? [];
-    }
-
-    // ── Loop-body sibling injection ───────────────────────────────────────────
-    // Intentionally outside the else-if above so it fires for every foreach
-    // ancestor regardless of the exclusion list, and regardless of what type
-    // the CONFIGURED node (nodeId) is.
-    //
-    // Why this matters: the exclusion list above ("condition", "delay", …) is
-    // about which ancestor node types contribute *outputs*. The foreach injection
-    // is orthogonal — it injects outputs from SET VARIABLE siblings living inside
-    // the same loop body.  If this code were inside the else-if it would still
-    // work today (foreach is not excluded), but it would silently break if someone
-    // later added "foreach" to the exclusion list, or if we ever move toward a
-    // different branching structure.
-    //
-    // Covered configured node types: Action, Compose, Condition, Switch-Case — any
-    // node whose ExpressionField or PayloadField calls getAncestorOutputs(nodeId).
-    if (type === "foreach") {
-      const itemHandleTargets = edges
-        .filter(e => e.source === id && (e.sourceHandle === "item" || e.sourceHandle === "body" || e.sourceHandle === "loop"))
-        .map(e => e.target);
-
-      if (itemHandleTargets.length > 0) {
-        const loopBodyIds = reachableForward(itemHandleTargets, edges);
-
-        // Only inject if the node being configured is actually inside this loop
-        // body (guards against false positives from outer/sibling foreach nodes).
-        if (loopBodyIds.has(nodeId)) {
-          for (const bid of loopBodyIds) {
-            if (bid === nodeId || visited.has(bid)) continue; // skip self and already-visited ancestors
-            const bn = nodes.find(x => x.id === bid);
-            if (!bn) continue;
-            const bType = (bn.data.nodeType as string) ?? "action";
-            const bActionType = bn.data.actionType as string | undefined;
-            if (bType === "action" && (bActionType === "set_variable" || bActionType === "update_variable")) {
-              const svName = (bn.data.variableName as string | undefined)?.trim();
-              if (svName && !injectedLoopVars.has(`${bid}__${svName}`)) {
-                injectedLoopVars.add(`${bid}__${svName}`);
-                const svType = (bn.data.variableType as string | undefined)?.trim() ?? "string";
-                const nodeName = (bn.data.label as string | undefined) || bActionType!.replace(/_/g, " ");
-                result.unshift({
-                  nodeId: `${bid}__var__${svName}`,
-                  nodeName: `${nodeName} → {{${svName}}}`,
-                  isStartNode: true,
-                  outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-    if (outputs.length > 0) {
-      const name = (node.data.label as string | undefined)
-        || (actionType ? actionType.replace(/_/g, " ") : type.replace(/_/g, " "));
-      result.unshift({ nodeId: id, nodeName: name, isStartNode: type === "start", outputs });
-    }
-    edges.filter(e => e.target === id).forEach(e => { if (!visited.has(e.source)) queue.push(e.source); });
-  }
-  return result;
+  return _getAncestorOutputs(nodeId, nodes, edges, eventTriggers, KNOWN_EVENTS, NODE_OUTPUTS);
 }
 
 // ── Field hint tooltip ────────────────────────────────────────────────────────
