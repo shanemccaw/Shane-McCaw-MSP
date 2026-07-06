@@ -1231,50 +1231,52 @@ function getAncestorOutputs(
     } else if (type !== "end" && type !== "condition" && type !== "delay" && type !== "error") {
       // First-class node types (score_lead, assign_pipeline_stage, etc.)
       outputs = NODE_OUTPUTS[type] ?? [];
+    }
 
-      // ── Loop-body sibling injection ──────────────────────────────────────
-      // When the current node (nodeId) lives inside a foreach loop body, the
-      // backward BFS only visits direct ancestors along the execution path.
-      // Set Variable nodes on parallel branches within the same loop body are
-      // never visited, so their named variables aren't surfaced in the picker
-      // or validator.  Fix: when we visit a foreach node, forward-scan its
-      // loop-body subgraph; if nodeId is reachable from the item/body handle,
-      // inject any set_variable / update_variable nodes from that subgraph as
-      // virtual top-level groups (isStartNode: true) so {{varName}} resolves.
-      //
-      // This applies to ALL configured node types including Condition and
-      // Switch-Case nodes, because the injection fires based on the foreach
-      // ANCESTOR being visited — not on the type of the node being configured.
-      if (type === "foreach") {
-        const itemHandleTargets = edges
-          .filter(e => e.source === id && (e.sourceHandle === "item" || e.sourceHandle === "body" || e.sourceHandle === "loop"))
-          .map(e => e.target);
+    // ── Loop-body sibling injection ───────────────────────────────────────────
+    // Intentionally outside the else-if above so it fires for every foreach
+    // ancestor regardless of the exclusion list, and regardless of what type
+    // the CONFIGURED node (nodeId) is.
+    //
+    // Why this matters: the exclusion list above ("condition", "delay", …) is
+    // about which ancestor node types contribute *outputs*. The foreach injection
+    // is orthogonal — it injects outputs from SET VARIABLE siblings living inside
+    // the same loop body.  If this code were inside the else-if it would still
+    // work today (foreach is not excluded), but it would silently break if someone
+    // later added "foreach" to the exclusion list, or if we ever move toward a
+    // different branching structure.
+    //
+    // Covered configured node types: Action, Compose, Condition, Switch-Case — any
+    // node whose ExpressionField or PayloadField calls getAncestorOutputs(nodeId).
+    if (type === "foreach") {
+      const itemHandleTargets = edges
+        .filter(e => e.source === id && (e.sourceHandle === "item" || e.sourceHandle === "body" || e.sourceHandle === "loop"))
+        .map(e => e.target);
 
-        if (itemHandleTargets.length > 0) {
-          const loopBodyIds = reachableForward(itemHandleTargets, edges);
+      if (itemHandleTargets.length > 0) {
+        const loopBodyIds = reachableForward(itemHandleTargets, edges);
 
-          // Only inject if the current node being configured is actually inside
-          // this loop body (guards against false positives on nested loops).
-          if (loopBodyIds.has(nodeId)) {
-            for (const bid of loopBodyIds) {
-              if (bid === nodeId || visited.has(bid)) continue; // skip self and already-found ancestors
-              const bn = nodes.find(x => x.id === bid);
-              if (!bn) continue;
-              const bType = (bn.data.nodeType as string) ?? "action";
-              const bActionType = bn.data.actionType as string | undefined;
-              if (bType === "action" && (bActionType === "set_variable" || bActionType === "update_variable")) {
-                const svName = (bn.data.variableName as string | undefined)?.trim();
-                if (svName && !injectedLoopVars.has(`${bid}__${svName}`)) {
-                  injectedLoopVars.add(`${bid}__${svName}`);
-                  const svType = (bn.data.variableType as string | undefined)?.trim() ?? "string";
-                  const nodeName = (bn.data.label as string | undefined) || bActionType!.replace(/_/g, " ");
-                  result.unshift({
-                    nodeId: `${bid}__var__${svName}`,
-                    nodeName: `${nodeName} → {{${svName}}}`,
-                    isStartNode: true,
-                    outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
-                  });
-                }
+        // Only inject if the node being configured is actually inside this loop
+        // body (guards against false positives from outer/sibling foreach nodes).
+        if (loopBodyIds.has(nodeId)) {
+          for (const bid of loopBodyIds) {
+            if (bid === nodeId || visited.has(bid)) continue; // skip self and already-visited ancestors
+            const bn = nodes.find(x => x.id === bid);
+            if (!bn) continue;
+            const bType = (bn.data.nodeType as string) ?? "action";
+            const bActionType = bn.data.actionType as string | undefined;
+            if (bType === "action" && (bActionType === "set_variable" || bActionType === "update_variable")) {
+              const svName = (bn.data.variableName as string | undefined)?.trim();
+              if (svName && !injectedLoopVars.has(`${bid}__${svName}`)) {
+                injectedLoopVars.add(`${bid}__${svName}`);
+                const svType = (bn.data.variableType as string | undefined)?.trim() ?? "string";
+                const nodeName = (bn.data.label as string | undefined) || bActionType!.replace(/_/g, " ");
+                result.unshift({
+                  nodeId: `${bid}__var__${svName}`,
+                  nodeName: `${nodeName} → {{${svName}}}`,
+                  isStartNode: true,
+                  outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
+                });
               }
             }
           }
