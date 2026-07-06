@@ -473,14 +473,14 @@ function StepCard({
       <div
         className={`relative transition-all cursor-pointer select-none ${isDragging ? "opacity-40" : ""}`}
         style={{
-          background: "#FEF3C7",
-          border: `2px solid ${isSelected ? "#0078D4" : "#CA8A04"}`,
+          background: "#1A1600",
+          border: `1.5px solid ${isSelected ? "#0078D4" : "#78530A"}`,
           borderRadius: 10,
           padding: "10px 14px 12px",
           minWidth: 0,
           boxShadow: isSelected
-            ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
-            : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
+            ? "0 0 0 3px #0078D440, 0 2px 8px rgba(202,138,4,0.15)"
+            : "0 2px 6px rgba(0,0,0,0.35)",
         }}
         onClick={e => { e.stopPropagation(); onSelect(); }}
         onDragOver={handleDragOver}
