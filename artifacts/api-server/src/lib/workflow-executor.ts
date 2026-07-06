@@ -4901,6 +4901,82 @@ async function executeItemSubgraph(
       continue;
     }
 
+    // Nested ForEach: expand and iterate sequentially, mirroring main BFS foreach logic.
+    // Without this, the inner foreach is treated as a regular node — item is never injected
+    // into the payload, so any node in the inner loop body that uses {{item.*}} gets undefined.
+    if (node.type === "foreach") {
+      const nestedItems  = (output.foreachItems as unknown[]) ?? [];
+      const nestedAlias  = (output.itemAlias as string | null) ?? null;
+      const nestedOut    = subEdges.filter(e => e.source === nodeId);
+      const nestedBody   = nestedOut.filter(e => e.sourceHandle === "item" || e.sourceHandle === "body");
+      const nestedDone   = nestedOut.filter(e => e.sourceHandle === "done");
+
+      // DFS to collect the nested foreach body subgraph, constrained to nodes already
+      // in the outer subgraph so we never escape the current execution boundary.
+      const nestedDoneIds = new Set(nestedDone.map(e => e.target));
+      const nestedSubIds  = new Set<string>();
+      const nStack = nestedBody.map(e => e.target);
+      while (nStack.length > 0) {
+        const nId = nStack.pop()!;
+        if (nestedSubIds.has(nId) || nestedDoneIds.has(nId) || !subgraphNodeIdSet.has(nId)) continue;
+        nestedSubIds.add(nId);
+        for (const e of subEdges.filter(e => e.source === nId)) {
+          if (!nestedSubIds.has(e.target) && !nestedDoneIds.has(e.target)) nStack.push(e.target);
+        }
+      }
+
+      const nestedStartIds   = nestedBody.map(e => e.target).filter(id => nestedSubIds.has(id));
+      const nestedTotal      = nestedItems.length;
+      const nestedCollected: Record<string, unknown>[] = [];
+
+      for (let ni = 0; ni < nestedItems.length; ni++) {
+        const nestedElem = nestedItems[ni];
+        const prevSteps  = (currentPayload.steps as Record<string, unknown>) ?? {};
+        const prevNodes  = (currentPayload.nodes as Record<string, unknown>) ?? {};
+        const nIterStep: Record<string, unknown> = {
+          ...(prevSteps[nodeId] as Record<string, unknown> ?? {}),
+          item: nestedElem,
+          itemIndex: ni,
+          itemsTotal: nestedTotal,
+          ...(nestedAlias ? { [nestedAlias]: nestedElem } : {}),
+        };
+        const nIterPayload: Record<string, unknown> = {
+          ...currentPayload,
+          item: nestedElem,
+          ...(nestedAlias ? { [nestedAlias]: nestedElem } : {}),
+          itemIndex: ni,
+          itemsTotal: nestedTotal,
+          steps: { ...prevSteps, [nodeId]: nIterStep },
+          nodes: { ...prevNodes, [nodeId]: nIterStep },
+        };
+
+        const nResult = await executeItemSubgraph(
+          graph, nestedSubIds, nestedStartIds, nIterPayload,
+          runId, dryRun, inputValues, definitionId,
+        );
+
+        if (nResult.cancelRun) return { payload: currentPayload, lastOutput, cancelRun: true, nodeError: false };
+        if (nResult.nodeError) return {
+          payload: currentPayload, lastOutput, cancelRun: false,
+          nodeError: true, errorOutput: nResult.errorOutput, failedNodeId: nResult.failedNodeId,
+        };
+
+        nestedCollected.push(nResult.lastOutput);
+        currentPayload = nResult.payload;
+      }
+
+      currentPayload = { ...currentPayload, collectedResults: nestedCollected, itemsTotal: nestedTotal };
+
+      // Prevent the outer subgraph BFS from re-executing the inner loop body nodes.
+      for (const nId of nestedSubIds) {
+        subResolved.set(nId, (subInDegree.get(nId) ?? 0) + 1);
+      }
+
+      // Route done edges (post inner-loop continuation within the outer loop body).
+      for (const e of nestedDone) subResolveEdge(e.target, true);
+      continue;
+    }
+
     for (const e of subEdges.filter(e => e.source === nodeId)) subResolveEdge(e.target, true);
   }
 
