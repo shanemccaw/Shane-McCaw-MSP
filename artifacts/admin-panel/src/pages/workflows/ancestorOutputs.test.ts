@@ -303,6 +303,75 @@ describe("getAncestorOutputs — multiple loop variables", () => {
   });
 });
 
+// ── Nested foreach scope isolation ────────────────────────────────────────────
+
+describe("getAncestorOutputs — nested foreach scope isolation", () => {
+  /**
+   * Graph layout:
+   *
+   *  outerFe [body] → outerAct → outerSv (set_variable "outerVar")
+   *                            ↘ innerFe [body] → innerSv (set_variable "innerVar")
+   *                                             ↘ innerTarget (the configured node inside inner loop)
+   */
+  function buildNestedGraph() {
+    const nodes: AncestorNode[] = [
+      n("outerFe",     "foreach"),
+      n("outerAct",    "action", { actionType: "send_email" }),
+      setVar("outerSv", "outerVar"),
+      n("innerFe",     "foreach"),
+      setVar("innerSv", "innerVar"),
+      n("innerTarget", "action", { actionType: "send_email" }),
+      n("outerTarget", "condition"),
+    ];
+    const edges: AncestorEdge[] = [
+      e("outerFe",  "outerAct",    "body"),
+      e("outerAct", "outerSv"),
+      e("outerAct", "innerFe"),
+      e("innerFe",  "innerSv",     "body"),
+      e("innerFe",  "innerTarget", "body"),
+      e("outerAct", "outerTarget"),
+    ];
+    return { nodes, edges };
+  }
+
+  it("inner-loop set_variable is NOT visible in the outer loop's picker", () => {
+    const { nodes, edges } = buildNestedGraph();
+
+    // outerTarget is a direct sibling in the outer body — should NOT see innerVar
+    const result = getAncestorOutputs("outerTarget", nodes, edges, NO_TRIGGERS, NO_EVENTS, NO_OUTPUTS);
+
+    const leaked = result.find(g => g.isStartNode && g.outputs.some(o => o.key === "innerVar"));
+    expect(leaked).toBeUndefined();
+  });
+
+  it("outer-loop set_variable IS visible in the outer loop's picker", () => {
+    const { nodes, edges } = buildNestedGraph();
+
+    const result = getAncestorOutputs("outerTarget", nodes, edges, NO_TRIGGERS, NO_EVENTS, NO_OUTPUTS);
+
+    const outerVar = result.find(g => g.isStartNode && g.outputs.some(o => o.key === "outerVar"));
+    expect(outerVar).toBeTruthy();
+  });
+
+  it("inner-loop set_variable IS visible inside the inner loop", () => {
+    const { nodes, edges } = buildNestedGraph();
+
+    const result = getAncestorOutputs("innerTarget", nodes, edges, NO_TRIGGERS, NO_EVENTS, NO_OUTPUTS);
+
+    const innerVar = result.find(g => g.isStartNode && g.outputs.some(o => o.key === "innerVar"));
+    expect(innerVar).toBeTruthy();
+  });
+
+  it("outer-loop set_variable is also visible inside the inner loop (via ancestor BFS)", () => {
+    const { nodes, edges } = buildNestedGraph();
+
+    const result = getAncestorOutputs("innerTarget", nodes, edges, NO_TRIGGERS, NO_EVENTS, NO_OUTPUTS);
+
+    const outerVar = result.find(g => g.isStartNode && g.outputs.some(o => o.key === "outerVar"));
+    expect(outerVar).toBeTruthy();
+  });
+});
+
 // ── Nodes NOT inside any foreach loop ────────────────────────────────────────
 
 describe("getAncestorOutputs — no foreach ancestor", () => {

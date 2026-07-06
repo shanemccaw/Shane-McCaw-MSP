@@ -74,6 +74,43 @@ export function reachableForward(
   return seen;
 }
 
+/**
+ * Returns the set of node IDs that live inside the body of any *nested*
+ * foreach nodes found within `loopBodyIds`.
+ *
+ * Used to filter the sibling-injection scan: a set_variable node that lives
+ * inside a nested foreach's own body should NOT be injected into the enclosing
+ * (outer) foreach scope.
+ */
+function nestedForeachBodyIds(
+  loopBodyIds: Set<string>,
+  nodes: AncestorNode[],
+  edges: AncestorEdge[],
+): Set<string> {
+  const nested = new Set<string>();
+  for (const id of loopBodyIds) {
+    const node = nodes.find(n => n.id === id);
+    if (!node || (node.data.nodeType as string) !== "foreach") continue;
+
+    const bodyHandleTargets = edges
+      .filter(
+        e =>
+          e.source === id &&
+          (e.sourceHandle === "item" ||
+            e.sourceHandle === "body" ||
+            e.sourceHandle === "loop"),
+      )
+      .map(e => e.target);
+
+    if (bodyHandleTargets.length > 0) {
+      for (const rid of reachableForward(bodyHandleTargets, edges)) {
+        nested.add(rid);
+      }
+    }
+  }
+  return nested;
+}
+
 // ── getAncestorOutputs ────────────────────────────────────────────────────────
 
 /**
@@ -220,8 +257,19 @@ export function getAncestorOutputs(
         const loopBodyIds = reachableForward(itemHandleTargets, edges);
 
         if (loopBodyIds.has(nodeId)) {
+          // Compute nodes that belong to deeper (nested) foreach bodies so we
+          // can exclude their set_variable nodes from THIS foreach's injection.
+          // This prevents inner-loop variables from leaking into the outer
+          // loop's picker while still letting the outer foreach inject its own
+          // variables into inner nodes (nodeId may be inside a nested foreach
+          // and should still receive this outer foreach's variables).
+          const nestedBodyIds = nestedForeachBodyIds(loopBodyIds, nodes, edges);
+
           for (const bid of loopBodyIds) {
             if (bid === nodeId || visited.has(bid)) continue;
+            // Skip set_variable nodes that live inside a nested foreach body —
+            // they are scoped to that inner loop, not this one.
+            if (nestedBodyIds.has(bid)) continue;
             const bn = nodes.find(x => x.id === bid);
             if (!bn) continue;
             const bType = (bn.data.nodeType as string) ?? "action";
