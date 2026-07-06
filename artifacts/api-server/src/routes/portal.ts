@@ -11786,15 +11786,21 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
       customer: customerId,
       billing_address_collection: "required",
       ...(stripeDiscounts.length > 0 && { discounts: stripeDiscounts }),
+      // For phased plans, save the card for future off-session charges (remaining phases).
+      // Stripe attaches the PM to the customer automatically and shows the buyer a
+      // "card saved for future payments" disclosure at checkout.
+      ...(paymentPlan === "phased" && {
+        payment_intent_data: { setup_future_usage: "off_session" },
+      }),
       line_items: [{
         price_data: {
           currency: "usd",
           product_data: {
             name: paymentPlan === "full"
               ? `${projectTitle} — Full Payment`
-              : `${projectTitle} — 20% Deposit (Phase 1)`,
+              : `${projectTitle} — 20% Deposit (Phase 1 of payment plan)`,
             description: paymentPlan === "phased"
-              ? `20% upfront deposit. Remaining phases invoiced upon completion.`
+              ? `20% upfront deposit. Your card will be saved and charged automatically when each project phase is completed.`
               : undefined,
           },
           unit_amount: chargeAmount,
