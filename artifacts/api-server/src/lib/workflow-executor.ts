@@ -546,6 +546,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "notify_major_changes":
       return { dryRun: true, notified: false, skipped: true };
 
+    case "check_script_output":
+      return { dryRun: true, passed: true, outcome: "Dry run: output accepted (balanced sensitivity)" };
+
     case "play_sound": {
       const psTarget = (node.data.target as string | undefined) ?? "browser";
       const psSound  = (node.data.sound  as string | undefined) ?? "ping";
@@ -1064,7 +1067,7 @@ async function executeNode(
   }
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
-  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case", "report_progress", "retry"]);
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "check_script_output", "error", "switch_case", "report_progress", "retry"]);
 
   // Promoted type bridge: first-class node types alias to the action handler.
   // Inject data.actionType from node.type so the action case works unchanged.
@@ -1738,6 +1741,35 @@ async function executeNode(
           cancelRun = true;
           output.cancelledReason = "cancelOnFalse=true";
         }
+        break;
+      }
+
+      case "check_script_output": {
+        const rawOutput    = interp(node.data.scriptOutput as string | undefined, payload) ?? "";
+        const sensitivity  = (node.data.sensitivity as string | undefined) ?? "balanced";
+        if (dryRun) {
+          conditionResult = true;
+          output = { dryRun: true, passed: true, outcome: "Dry run: output accepted (balanced sensitivity)" };
+          break;
+        }
+        const sensitivityGuide =
+          sensitivity === "strict"   ? "Fail on ANY warning, non-zero exit code, or error message." :
+          sensitivity === "lenient"  ? "Only fail if there is an explicit ERROR keyword or exception." :
+                                       "Fail on major errors only; warnings and informational messages are acceptable.";
+        const aiText = await (async () => {
+          const msg = await anthropic.messages.create({
+            model: "claude-haiku-4-5",
+            max_tokens: 256,
+            system: `You are a script-output evaluator. Respond with ONLY valid JSON: {"passed": boolean, "outcome": "one sentence"}. ${sensitivityGuide}`,
+            messages: [{ role: "user", content: rawOutput.length > 0 ? rawOutput.slice(0, 8000) : "(empty output)" }],
+          });
+          return msg.content.find(b => b.type === "text")?.text ?? "";
+        })();
+        const parsed = extractJsonFromAiText(aiText);
+        const passed = typeof parsed?.passed === "boolean" ? parsed.passed : true;
+        const outcome = typeof parsed?.outcome === "string" ? parsed.outcome : aiText.slice(0, 200);
+        conditionResult = passed;
+        output = { passed, outcome, sensitivity };
         break;
       }
 
@@ -5173,6 +5205,16 @@ async function executeItemSubgraph(
       return { payload: currentPayload, lastOutput, cancelRun: false, nodeError: true, errorOutput: output, failedNodeId: nodeId };
     }
 
+    if (node.type === "check_script_output" && conditionResult !== undefined) {
+      const outEdges  = subEdges.filter(e => e.source === nodeId);
+      const trueEdge  = outEdges.find(e => e.sourceHandle === "yes");
+      const falseEdge = outEdges.find(e => e.sourceHandle === "no");
+      for (const e of outEdges) {
+        subResolveEdge(e.target, conditionResult ? e.id === trueEdge?.id : e.id === falseEdge?.id);
+      }
+      continue;
+    }
+
     if (node.type === "condition" && conditionResult !== undefined) {
       const outEdges  = subEdges.filter(e => e.source === nodeId);
       const trueEdge  = outEdges.find(e => e.sourceHandle === "yes" || e.sourceHandle === "true");
@@ -5411,6 +5453,17 @@ export async function executeWorkflowRun(
           }).where(eq(wfRunsTable.id, runId));
           logger.warn({ runId, nodeId }, "wf-executor: node error, no handler — run failed");
           return;
+        }
+        continue;
+      }
+
+      // Condition / Check Script Output: route yes/no branches
+      if (node.type === "check_script_output" && conditionResult !== undefined) {
+        const outEdges  = graph.edges.filter(e => e.source === nodeId);
+        const trueEdge  = outEdges.find(e => e.sourceHandle === "yes");
+        const falseEdge = outEdges.find(e => e.sourceHandle === "no");
+        for (const e of outEdges) {
+          resolveEdge(e.target, conditionResult ? e.id === trueEdge?.id : e.id === falseEdge?.id);
         }
         continue;
       }

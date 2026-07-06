@@ -1818,6 +1818,7 @@ export interface WfNode {
     | "edit_stripe_invoice"
     // Scripts
     | "generate_script"
+    | "check_script_output"
     // Variables
     | "set_variable"
     | "update_variable"

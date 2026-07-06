@@ -119,14 +119,14 @@ vi.mock("./sse-broadcast", () => ({
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
   anthropic: {
     messages: {
-      create: async () => ({
+      create: vi.fn(async () => ({
         content: [{ type: "text", text: '{"topic":"test","rationale":"test"}' }],
-      }),
-      stream: () => ({
+      })),
+      stream: vi.fn(() => ({
         finalMessage: async () => ({
           content: [{ type: "text", text: "generated content" }],
         }),
-      }),
+      })),
     },
   },
 }));
@@ -202,6 +202,7 @@ vi.mock("fs/promises", () => {
 
 // ── Import after all mocks ─────────────────────────────────────────────────────
 import { executeWorkflowRun } from "./workflow-executor";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -725,6 +726,122 @@ describe("delay — dry-run happy path", () => {
 
   it("node output is captured", () => {
     expect(state.nodeOutputInserts.length).toBeGreaterThan(0);
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// check_script_output — live path (AI says passed)
+// =============================================================================
+
+describe("check_script_output — output accepted (no errors)", () => {
+  beforeEach(async () => {
+    vi.mocked(anthropic.messages.create).mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"passed":true,"outcome":"Script completed successfully with no errors."}' }],
+    } as never);
+
+    resetState();
+    seedDb(singleNodeGraph("check_script_output", {
+      scriptOutput: "Operation completed successfully. 5 users updated.",
+      sensitivity: "balanced",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.passed is true", () => {
+    expect(capturedOutput().passed).toBe(true);
+  });
+
+  it("output.outcome is the AI sentence", () => {
+    expect(capturedOutput().outcome).toBe("Script completed successfully with no errors.");
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// check_script_output — live path (AI says failed)
+// =============================================================================
+
+describe("check_script_output — output rejected (many errors)", () => {
+  beforeEach(async () => {
+    vi.mocked(anthropic.messages.create).mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"passed":false,"outcome":"Script terminated with critical error: access denied."}' }],
+    } as never);
+
+    resetState();
+    seedDb(singleNodeGraph("check_script_output", {
+      scriptOutput: "ERROR: Access denied. Script aborted.",
+      sensitivity: "strict",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.passed is false", () => {
+    expect(capturedOutput().passed).toBe(false);
+  });
+
+  it("output.outcome describes the failure", () => {
+    expect(capturedOutput().outcome).toContain("critical error");
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// check_script_output — empty output (lenient → passed)
+// =============================================================================
+
+describe("check_script_output — empty output (lenient sensitivity)", () => {
+  beforeEach(async () => {
+    vi.mocked(anthropic.messages.create).mockResolvedValueOnce({
+      content: [{ type: "text", text: '{"passed":true,"outcome":"No output produced; no explicit errors detected."}' }],
+    } as never);
+
+    resetState();
+    seedDb(singleNodeGraph("check_script_output", {
+      scriptOutput: "",
+      sensitivity: "lenient",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.passed is true", () => {
+    expect(capturedOutput().passed).toBe(true);
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// check_script_output — dry-run
+// =============================================================================
+
+describe("check_script_output — dry-run", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("check_script_output", {
+      scriptOutput: "{{scriptOutput}}",
+      sensitivity: "balanced",
+    }));
+    await executeWorkflowRun(1, { dryRun: true });
+  });
+
+  it("output.dryRun is true", () => {
+    expect(capturedOutput().dryRun).toBe(true);
+  });
+
+  it("output.passed is true in dry run", () => {
+    expect(capturedOutput().passed).toBe(true);
   });
 
   it("node status is ok", () => {

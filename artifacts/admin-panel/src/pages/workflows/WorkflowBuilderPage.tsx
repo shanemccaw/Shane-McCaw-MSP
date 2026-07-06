@@ -134,7 +134,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   parallel: { bg: "#0D1020", border: "#06B6D4", icon: "⇉",  label: "Parallel"           },
   join:     { bg: "#0D1020", border: "#06B6D4", icon: "⇊",  label: "Join"               },
   // ── Scripts ──
-  generate_script: { bg: "#0D1A10", border: "#22C55E", icon: "📜", label: "Generate Script" },
+  generate_script:      { bg: "#0D1A10", border: "#22C55E", icon: "📜", label: "Generate Script"       },
+  check_script_output:  { bg: "#041A18", border: "#2DD4BF", icon: "🔬", label: "Check Script Output"   },
   // ── Utilities ──
   comment:  { bg: "#1A1600", border: "#CA8A04", icon: "📝", label: "Comment"            },
 };
@@ -253,6 +254,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   ],
   // Scripts
   generate_script: [{ key: "scriptId", label: "Script ID — single script saved to the library" }, { key: "packageId", label: "Package ID — multi-module package saved to the library" }],
+  check_script_output: [{ key: "passed", label: "true if AI judged the output as passing" }, { key: "outcome", label: "One-sentence AI explanation of the verdict" }],
   // Social Media
   post_linkedin: [{ key: "linkedinPostId", label: "LinkedIn UGC post ID" }, { key: "linkedinPostUrl", label: "Direct URL to the LinkedIn post" }],
   post_twitter:  [{ key: "twitterTweetId", label: "Twitter/X tweet ID" }, { key: "twitterTweetUrl", label: "Direct URL to the tweet" }],
@@ -882,7 +884,8 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Scripts",
     nodes: [
-      { type: "generate_script", label: "Generate Script", description: "AI-generates a PowerShell script from a service or insights document and saves it to the Script Library under Workflow Generated", tags: ["script", "powershell", "ai", "generate", "library", "m365", "azure"] },
+      { type: "generate_script",     label: "Generate Script",      description: "AI-generates a PowerShell script from a service or insights document and saves it to the Script Library under Workflow Generated", tags: ["script", "powershell", "ai", "generate", "library", "m365", "azure"] },
+      { type: "check_script_output", label: "Check Script Output",  description: "Use Claude AI to evaluate PowerShell / runbook output and branch to Passed or On Failure", tags: ["script", "check", "evaluate", "ai", "branch", "condition", "powershell", "output"] },
     ],
   },
   {
@@ -4708,6 +4711,34 @@ function NodeConfigPanel({
               true → follow <span className="text-emerald-400 font-mono">true</span> edge &nbsp;·&nbsp;
               false → follow <span className="text-amber-400 font-mono">false</span> edge
               {node.data.cancelOnFalse ? " (or cancel if no false edge)" : ""}
+            </p>
+          </>
+        )}
+
+        {nodeType === "check_script_output" && (
+          <>
+            <PayloadField
+              label="Script Output"
+              value={(node.data.scriptOutput as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, scriptOutput: v })}
+              placeholder="{{scriptOutput}} or paste raw output"
+              multiline
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Sensitivity</label>
+              <select
+                value={(node.data.sensitivity as string) ?? "balanced"}
+                onChange={e => onChange(node.id, { ...node.data, sensitivity: e.target.value })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#2DD4BF]/60"
+              >
+                <option value="strict">Strict — any warning or non-zero exit fails</option>
+                <option value="balanced">Balanced — major errors fail, warnings pass</option>
+                <option value="lenient">Lenient — only explicit errors fail</option>
+              </select>
+            </div>
+            <p className="text-[10px] text-[#484F58] leading-relaxed">
+              AI evaluates the output and routes to <span className="text-[#2DD4BF] font-mono">Passed</span> or <span className="text-red-400 font-mono">On Failure</span>.
             </p>
           </>
         )}

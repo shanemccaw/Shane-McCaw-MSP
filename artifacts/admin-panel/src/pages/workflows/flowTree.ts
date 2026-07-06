@@ -53,6 +53,7 @@ export function isContainerNode(node: StoredNode): boolean {
   if (type === "fetch_news_headlines") return true;
   if (type === "generate_document") return true;
   if (type === "retry") return true;
+  if (type === "check_script_output") return true;
   return false;
 }
 
@@ -258,6 +259,44 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       const result: FlowStep[] = [step];
       if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
         result.push(...buildSequence(nextEdge.target, stopSet));
+      }
+      return result;
+    }
+
+    // ── Check Script Output (Passed / On Failure) ────────────────────────────
+    if (type === "check_script_output") {
+      const yesEdge = out.find(e => e.sourceHandle === "yes");
+      const noEdge  = out.find(e => e.sourceHandle === "no");
+
+      const yesSet = localCollect(yesEdge?.target);
+      const noSet  = localCollect(noEdge?.target);
+      let continuationId = findContinuation([yesSet, noSet]);
+
+      if (!continuationId) {
+        const directTargets = [yesEdge?.target, noEdge?.target]
+          .filter((t): t is string => !!t && !visited.has(t) && nodeMap.has(t));
+        for (const t of directTargets) {
+          if ((inEdgeCount.get(t) ?? 0) > 1) { continuationId = t; break; }
+        }
+      }
+      if (!continuationId) {
+        const plainEdge = out.find(e => !e.sourceHandle);
+        if (plainEdge) continuationId = plainEdge.target;
+      }
+
+      const branchStop = new Set<string>([...(stopSet ?? []), ...(continuationId ? [continuationId] : [])]);
+
+      step.branches = {
+        yes: yesEdge ? buildSequence(yesEdge.target, branchStop) : [],
+        no:  noEdge  ? buildSequence(noEdge.target,  branchStop) : [],
+      };
+
+      for (const id of yesSet) if (!branchStop.has(id)) visited.add(id);
+      for (const id of noSet)  if (!branchStop.has(id)) visited.add(id);
+
+      const result: FlowStep[] = [step];
+      if (continuationId && !visited.has(continuationId) && !stopSet?.has(continuationId)) {
+        result.push(...buildSequence(continuationId, stopSet));
       }
       return result;
     }
@@ -472,6 +511,36 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         const { nextY: notHotEnd } = doLayout(notHotSteps, rightX, y, [{ id: step.id, handle: "notHot" }]);
         y = Math.max(hotEnd, notHotEnd) + 40;
         feeders_ = [{ id: step.id }];
+      }
+
+      // ── Check Script Output (Passed / On Failure) ─────────────────────────
+      else if (step.nodeType === "check_script_output") {
+        const yesSteps = step.branches["yes"] ?? [];
+        const noSteps  = step.branches["no"]  ?? [];
+        const leftX  = x - BRANCH_W / 2;
+        const rightX = x + BRANCH_W / 2;
+
+        const { terminals: yesTerm, nextY: yEnd } = doLayout(yesSteps, leftX,  y, [{ id: step.id, handle: "yes" }]);
+        const { terminals: noTerm,  nextY: nEnd } = doLayout(noSteps,  rightX, y, [{ id: step.id, handle: "no"  }]);
+        y = Math.max(yEnd, nEnd) + 40;
+
+        feeders_ = [
+          ...(yesSteps.length > 0 ? yesTerm : []),
+          ...(noSteps.length  > 0 ? noTerm  : []),
+        ];
+
+        const nextStepId = seqSteps[i + 1]?.id;
+        if (nextStepId) {
+          if (yesSteps.length === 0) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: nextStepId, sourceHandle: "yes" });
+          }
+          if (noSteps.length === 0) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: nextStepId, sourceHandle: "no" });
+          }
+          if (feeders_.length === 0) feeders_ = [];
+        } else {
+          if (feeders_.length === 0) feeders_ = [{ id: step.id }];
+        }
       }
 
       // ── Condition ──────────────────────────────────────────────────────────

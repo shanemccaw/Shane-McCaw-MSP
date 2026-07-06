@@ -1109,6 +1109,67 @@ function ContainerBody({
     );
   }
 
+  // ── Check Script Output (Passed / On Failure) ────────────────────────────
+  if (nodeType === "check_script_output") {
+    const yesSteps = branches["yes"] ?? [];
+    const noSteps  = branches["no"]  ?? [];
+    return (
+      <div className="border-t border-[#2DD4BF]/30 rounded-b-xl overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#30363D]">
+          {/* Passed branch */}
+          <BranchColumn containerId={step.id} branchKey="yes" className="bg-teal-500/5">
+            <div className="px-3 py-1.5 border-b border-[#30363D]">
+              <span className="text-[9px] uppercase tracking-widest font-bold text-[#2DD4BF]">✓ Passed</span>
+            </div>
+            <div className="px-2 pb-3 pt-1">
+              <BranchStepList
+                steps={yesSteps}
+                containerId={step.id}
+                containerHandle="yes"
+                lastNodeIdFn={lastNodeId}
+                branchKey="yes"
+                isArchived={isArchived}
+                nodeStyles={nodeStyles}
+                nodeIdCounter={nodeIdCounter}
+                libraryCategories={libraryCategories}
+                allLibraryNodes={allLibraryNodes}
+                nodes={nodes}
+                edges={edges}
+                onGraphChange={onGraphChange}
+                onDuplicateNode={onDuplicateNode}
+              />
+            </div>
+          </BranchColumn>
+
+          {/* On Failure branch */}
+          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
+            <div className="px-3 py-1.5 border-b border-[#30363D]">
+              <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">✕ On Failure</span>
+            </div>
+            <div className="px-2 pb-3 pt-1">
+              <BranchStepList
+                steps={noSteps}
+                containerId={step.id}
+                containerHandle="no"
+                lastNodeIdFn={lastNodeId}
+                branchKey="no"
+                isArchived={isArchived}
+                nodeStyles={nodeStyles}
+                nodeIdCounter={nodeIdCounter}
+                libraryCategories={libraryCategories}
+                allLibraryNodes={allLibraryNodes}
+                nodes={nodes}
+                edges={edges}
+                onGraphChange={onGraphChange}
+                onDuplicateNode={onDuplicateNode}
+              />
+            </div>
+          </BranchColumn>
+        </div>
+      </div>
+    );
+  }
+
   // ── Condition (Yes / No) — responsive: stacked on mobile, side-by-side on sm+ ──
   if (nodeType === "condition") {
     const yesSteps = branches["yes"] ?? [];
