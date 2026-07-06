@@ -7,6 +7,7 @@ import {
   Handle,
   Position,
   type NodeProps,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import FlowCanvas from "./FlowCanvas";
@@ -366,39 +367,97 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   ],
 };
 
-// ── Custom node component ─────────────────────────────────────────────────────
+// ── Comment (sticky-note) node — extracted as its own component so hooks are
+//    always called unconditionally (Rules of Hooks compliance).
+function CommentNode({ data, selected, id }: NodeProps) {
+  const text = ((data.params as Record<string, unknown> | undefined)?.text as string | undefined) || "";
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { updateNodeData: rfUpdateNodeData } = useReactFlow();
 
-function WfNode({ data, selected, id }: NodeProps) {
-  const nodeType = (data.nodeType as string) ?? "action";
-  const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
-  const label = (data.label as string) || style.label;
+  function commitEdit(value: string) {
+    setIsEditing(false);
+    const trimmed = value.trimEnd();
+    setDraft(trimmed);
+    rfUpdateNodeData(id, {
+      ...data,
+      params: { ...((data.params as Record<string, unknown> | undefined) ?? {}), text: trimmed },
+    });
+  }
 
-  // ── Comment node — sticky-note card (completely separate visual branch) ──────
-  if (nodeType === "comment") {
-    const text = ((data.params as Record<string, unknown> | undefined)?.text as string | undefined) || "";
-    return (
-      <div
-        style={{
-          background: "#FEF3C7",
-          border: `2px solid ${selected ? "#0078D4" : "#CA8A04"}`,
-          borderRadius: 10,
-          padding: "10px 14px 12px",
-          minWidth: 220,
-          maxWidth: 300,
-          boxShadow: selected
-            ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
-            : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
-        }}
-      >
-        <div className="flex items-center gap-1.5 mb-2.5">
-          <span style={{ fontSize: 13, lineHeight: 1 }}>📝</span>
+  function handleDoubleClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDraft(text);
+    setIsEditing(true);
+    requestAnimationFrame(() => textareaRef.current?.select());
+  }
+
+  return (
+    <div
+      onDoubleClick={handleDoubleClick}
+      style={{
+        background: "#FEF3C7",
+        border: `2px solid ${isEditing ? "#0078D4" : selected ? "#0078D4" : "#CA8A04"}`,
+        borderRadius: 10,
+        padding: "10px 14px 12px",
+        minWidth: 220,
+        maxWidth: 300,
+        cursor: isEditing ? "text" : "default",
+        boxShadow: isEditing
+          ? "0 0 0 3px #0078D440, 0 4px 14px rgba(0,120,212,0.25)"
+          : selected
+          ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
+          : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
+      }}
+    >
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <span style={{ fontSize: 13, lineHeight: 1 }}>📝</span>
+        <span
+          className="text-[9px] uppercase tracking-widest font-bold"
+          style={{ color: "#92400E" }}
+        >
+          Note
+        </span>
+        {!isEditing && (
           <span
-            className="text-[9px] uppercase tracking-widest font-bold"
-            style={{ color: "#92400E" }}
+            style={{ color: "#A16207", fontSize: 9, marginLeft: "auto", fontStyle: "italic" }}
+            title="Double-click to edit"
           >
-            Note
+            double-click to edit
           </span>
-        </div>
+        )}
+      </div>
+      {isEditing ? (
+        <textarea
+          ref={textareaRef}
+          className="nopan nodrag"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={e => commitEdit(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              commitEdit(draft);
+            }
+          }}
+          autoFocus
+          rows={4}
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.6)",
+            border: "1px solid #CA8A04",
+            borderRadius: 6,
+            padding: "4px 6px",
+            fontSize: 12,
+            lineHeight: "1.55",
+            color: "#1C1917",
+            resize: "vertical",
+            outline: "none",
+            fontFamily: "inherit",
+          }}
+        />
+      ) : (
         <p
           style={{
             color: text ? "#1C1917" : "#A16207",
@@ -412,8 +471,22 @@ function WfNode({ data, selected, id }: NodeProps) {
         >
           {text || "Add a note…"}
         </p>
-      </div>
-    );
+      )}
+    </div>
+  );
+}
+
+// ── Custom node component ─────────────────────────────────────────────────────
+
+function WfNode(props: NodeProps) {
+  const { data, selected, id } = props;
+  const nodeType = (data.nodeType as string) ?? "action";
+  const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+  const label = (data.label as string) || style.label;
+
+  // ── Comment node — delegate to dedicated component ──────────────────────────
+  if (nodeType === "comment") {
+    return <CommentNode {...props} />;
   }
 
   return (
