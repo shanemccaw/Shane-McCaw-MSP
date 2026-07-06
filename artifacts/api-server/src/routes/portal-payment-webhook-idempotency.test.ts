@@ -257,6 +257,7 @@ mock.module("../lib/kanban-auto-fire.ts", {
   namedExports: {
     autoFireFirstBacklogScript: async () => {},
     autoFireDocumentCard: async () => {},
+    autoFireRunWorkflowCards: async () => {},
   },
 });
 

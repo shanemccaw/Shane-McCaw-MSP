@@ -69,6 +69,7 @@ mock.module("./kanban-auto-fire.ts", {
     },
     reconcileOrphanedRuns: async () => {},
     reconcileStalledPhases: async () => {},
+    autoFireRunWorkflowCards: async () => {},
   },
 });
 
