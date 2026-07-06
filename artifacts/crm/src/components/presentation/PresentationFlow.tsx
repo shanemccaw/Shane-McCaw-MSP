@@ -1532,7 +1532,7 @@ export default function PresentationFlow({
               const sowReviewed = hasSowDocument && sowStepIndex >= 0 && maxVisitedStep >= sowStepIndex && !scopeStale;
               return (
                 <>
-                  <AnimatedBackground fullScreen />
+                  <AnimatedBackground fullScreen positioning="absolute" />
                   <div className="relative z-10 flex-1 flex flex-col items-center text-center gap-6 py-2 max-w-2xl mx-auto w-full">
 
                     {/* Icon + heading */}
@@ -1920,7 +1920,7 @@ export default function PresentationFlow({
             {currentStep?.kind === "sow" && (!hasSowDocument || regeneratingSow) && (
               <div className="flex-1 relative overflow-hidden flex flex-col items-center justify-center" style={{ backgroundColor: "rgb(243,246,250)" }}>
                 {/* Torus knot — z-[1] so it sits above the panel background but below z-10 content */}
-                <AnimatedBackground />
+                <AnimatedBackground positioning="absolute" />
 
                 {/* Screen-edge Copilot Aura */}
                 <CopilotAura />

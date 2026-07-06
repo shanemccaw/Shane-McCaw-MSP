@@ -3,9 +3,10 @@ import * as THREE from "three";
 
 interface AnimatedBackgroundProps {
   fullScreen?: boolean;
+  positioning?: "fixed" | "absolute";
 }
 
-export default function AnimatedBackground({ fullScreen = false }: AnimatedBackgroundProps) {
+export default function AnimatedBackground({ fullScreen = false, positioning = "fixed" }: AnimatedBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,7 +23,10 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
 
     try {
       const width = container.clientWidth || window.innerWidth;
-      const height = fullScreen ? (container.clientHeight || window.innerHeight) : 600;
+      // When absolutely positioned, always use the container's actual height so the
+      // canvas fills the panel rather than a hard-coded 600 px.
+      const useContainerHeight = fullScreen || positioning === "absolute";
+      const height = useContainerHeight ? (container.clientHeight || window.innerHeight) : 600;
 
       const scene = new THREE.Scene();
       const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
@@ -102,7 +106,7 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
 
       function onResize() {
         const w = containerRef.current?.clientWidth || window.innerWidth;
-        const h = fullScreen ? (containerRef.current?.clientHeight || window.innerHeight) : 600;
+        const h = useContainerHeight ? (containerRef.current?.clientHeight || window.innerHeight) : 600;
         renderer!.setSize(w, h);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
@@ -136,16 +140,20 @@ export default function AnimatedBackground({ fullScreen = false }: AnimatedBackg
       return undefined;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fullScreen]);
+  }, [fullScreen, positioning]);
+
+  const posClass = positioning === "absolute"
+    ? "absolute inset-0 w-full h-full z-[1] pointer-events-none"
+    : fullScreen
+      ? "fixed inset-0 w-full h-full z-[1] opacity-50 pointer-events-none"
+      : "fixed top-0 left-0 w-full h-[600px] z-[1] opacity-40 pointer-events-none";
+
+  const opacityClass = positioning === "absolute" ? (fullScreen ? "opacity-50" : "opacity-40") : "";
 
   return (
     <div
       ref={containerRef}
-      className={
-        fullScreen
-          ? "fixed inset-0 w-full h-full z-[1] opacity-50 pointer-events-none"
-          : "fixed top-0 left-1/2 -translate-x-1/2 w-full h-[600px] z-[1] opacity-40 pointer-events-none"
-      }
+      className={`${posClass} ${opacityClass}`}
     />
   );
 }
