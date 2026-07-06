@@ -529,7 +529,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   {
     name: "SOW Generation",
-    description: "Generates a Consolidated SOW document for a client engagement. Accepts clientUserId, projectId, and title from the trigger payload. Designed to be called as a sub-workflow via a 'Run Workflow' node. On generation failure, runs profile + intelligence-table updates before retrying, then ends with a notification.",
+    description: "Generates a Consolidated SOW document for a client engagement. Accepts clientUserId, projectId, and title from the trigger payload. On generation failure, refreshes the M365 profile and intelligence tables before retrying, then sends a failure notification if the retry also fails.",
     triggerType: "event",
     eventName: "sow.generate",
     triggerEnabled: false,
@@ -542,6 +542,9 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           data: { nodeType: "start", label: "Generate SOW" },
         },
         {
+          // generate_document executor resolves clientId from node.data.clientId
+          // or node.data.customerId — NOT clientUserId. We use clientId here with
+          // the {{clientUserId}} interpolation so the payload value flows through.
           id: "gen_sow",
           type: "action",
           position: { x: 400, y: 190 },
@@ -550,7 +553,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             actionType: "generate_document",
             label: "Generate Consolidated SOW",
             docType: "consolidated_sow",
-            clientUserId: "{{clientUserId}}",
+            docCategory: "consulting",
+            clientId: "{{clientUserId}}",
             projectId: "{{projectId}}",
             title: "{{title}}",
           },
@@ -562,23 +566,27 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           data: { nodeType: "end", label: "SOW Generated" },
         },
         {
+          // update_m365_profile (promoted action type) requires runbookName.
+          // clientId drives the ClientId runbook parameter.
           id: "refresh_profile",
           type: "update_m365_profile",
           position: { x: 700, y: 370 },
           data: {
             nodeType: "update_m365_profile",
             label: "Refresh M365 Profile",
-            clientUserId: "{{clientUserId}}",
+            runbookName: "Update-M365-Profile",
+            clientId: "{{clientUserId}}",
           },
         },
         {
+          // update_intelligence_tables executor reads node.data.clientId.
           id: "refresh_intel",
           type: "update_intelligence_tables",
           position: { x: 700, y: 510 },
           data: {
             nodeType: "update_intelligence_tables",
             label: "Refresh Intelligence Tables",
-            clientUserId: "{{clientUserId}}",
+            clientId: "{{clientUserId}}",
           },
         },
         {
@@ -590,7 +598,8 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             actionType: "generate_document",
             label: "Retry: Generate Consolidated SOW",
             docType: "consolidated_sow",
-            clientUserId: "{{clientUserId}}",
+            docCategory: "consulting",
+            clientId: "{{clientUserId}}",
             projectId: "{{projectId}}",
             title: "{{title}}",
           },
@@ -819,6 +828,57 @@ export async function seedSystemWorkflows(): Promise<void> {
           ],
         );
         logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — inserted calc_pricing node");
+      } else if (seed.name === "SOW Generation") {
+        // Patch v1: fix contract mismatches between the original seeded graph and the
+        // workflow executor field conventions. Guard fires when gen_sow still uses
+        // the old clientUserId field instead of clientId on its data object.
+        //
+        // Fixes applied to existing graphs in deployed environments:
+        //  • gen_sow, retry_sow:    rename data.clientUserId → data.clientId
+        //                           add     data.docCategory = "consulting"
+        //  • refresh_profile:       rename data.clientUserId → data.clientId
+        //                           add     data.runbookName = "Update-M365-Profile"
+        //  • refresh_intel:         rename data.clientUserId → data.clientId
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->>'id' IN ('gen_sow', 'retry_sow')
+                      THEN jsonb_set(
+                             jsonb_set(
+                               (node #- '{data,clientUserId}'),
+                               '{data,clientId}', $2::jsonb
+                             ),
+                             '{data,docCategory}', '"consulting"'::jsonb
+                           )
+                      WHEN node->>'id' = 'refresh_profile'
+                      THEN jsonb_set(
+                             jsonb_set(
+                               (node #- '{data,clientUserId}'),
+                               '{data,clientId}', $2::jsonb
+                             ),
+                             '{data,runbookName}', '"Update-M365-Profile"'::jsonb
+                           )
+                      WHEN node->>'id' = 'refresh_intel'
+                      THEN jsonb_set(
+                             (node #- '{data,clientUserId}'),
+                             '{data,clientId}', $2::jsonb
+                           )
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> '[{"id":"gen_sow","data":{"clientUserId":"{{clientUserId}}"}}]'`,
+          [defId, JSON.stringify("{{clientUserId}}")],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched SOW Generation — fixed clientId field contract for generate_document, update_m365_profile, and update_intelligence_tables nodes");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)

@@ -43,9 +43,10 @@ import {
   notificationsTable,
   engagementProjectsTable,
   quickWinPresentationsTable,
+  wfDefinitionsTable,
 } from "@workspace/db";
 import { broadcastPresentationScopeChange, broadcastPresentationDocsChange } from "../lib/sse-broadcast";
-import { emitWorkflowEvent } from "../lib/workflow-executor";
+import { emitWorkflowEvent, fireWorkflowForDefinition } from "../lib/workflow-executor";
 import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
 import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
@@ -1418,32 +1419,32 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
     if (!body.success) return res.status(400).json({ error: body.error.issues[0]?.message ?? "Invalid input" });
     const { customerId, projectId, deliverableType, title, sowDocumentId } = body.data;
 
-    // ── Special path: Consolidated SOW ──────────────────────────────────────────
+    // ── Special path: Consolidated SOW — routed through the workflow engine ─────
     if (deliverableType === "consolidated_sow") {
-      void generateConsolidatedSowDocument({
-        clientUserId: customerId,
-        projectId,
-        title,
-        onRowCreated: (docId) => {
-          res.json({ id: docId, status: "generating" });
-        },
-      }).then(async ({ docId, clientName, sowTotal }) => {
-        if (projectId) {
-          void broadcastSowChangeForProject(projectId);
-          void broadcastDocsChangeForProject(projectId);
-        }
-        void emitWorkflowEvent("document.generated", {
-          documentId:   docId,
-          documentType: "consolidated_sow",
-          clientId:     customerId ?? null,
-          clientName,
-          generatedAt:  new Date().toISOString(),
-          priceCents:   sowTotal > 0 ? Math.round(sowTotal * 100) : 0,
-        });
-      }).catch(err => {
-        logger.error({ err, customerId, projectId }, "insights consulting/generate: consolidated_sow background generation failed");
-      });
-      return; // response already sent via onRowCreated
+      const [wfDef] = await db
+        .select({ id: wfDefinitionsTable.id })
+        .from(wfDefinitionsTable)
+        .where(eq(wfDefinitionsTable.name, "SOW Generation"))
+        .limit(1);
+
+      if (!wfDef) {
+        logger.error({ customerId, projectId }, "insights consulting/generate: 'SOW Generation' workflow definition not found");
+        return res.status(503).json({ error: "SOW Generation workflow is not seeded — please restart the server and retry." });
+      }
+
+      const runId = await fireWorkflowForDefinition(
+        wfDef.id,
+        "manual",
+        `admin:insights:consolidated_sow:project:${projectId}`,
+        { clientUserId: customerId, projectId, title },
+      );
+
+      if (!runId) {
+        return res.status(503).json({ error: "SOW Generation workflow could not be started (concurrency limit or missing version). Please retry." });
+      }
+
+      req.log.info({ runId, customerId, projectId }, "insights consulting/generate: SOW Generation workflow queued");
+      return res.status(202).json({ runId, status: "queued" });
     }
 
     // ── DEAD CODE BELOW — kept only as reference; DELETE after verification ──────

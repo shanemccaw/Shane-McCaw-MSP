@@ -1170,9 +1170,11 @@ function ConsultingTab({
       setError("Please select a SOW document to generate from."); return;
     }
     setWizardStep("generating"); setError(null);
-    // Server returns { id, status: "generating" } immediately (fire-and-forget).
-    // Close the wizard right away — the table auto-polls every 3 s and will show
-    // the row flip from "generating" → "approved" naturally.
+    // consolidated_sow → server queues a workflow run and returns { runId, status: "queued" }.
+    //   The workflow creates the "generating" doc row asynchronously, so we poll after a short
+    //   delay to pick it up; the existing 3 s fast-poll then takes over until completion.
+    // All other types → server returns { id, status: "generating" } immediately (fire-and-forget).
+    // In both cases we close the wizard and let polling surface the final state.
     try {
       const body: Record<string, unknown> = {
         customerId: dialogCustomerId, projectId: dialogProjectId,
@@ -1185,10 +1187,16 @@ function ConsultingTab({
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const d = await r.json() as { id?: number; status?: string; error?: string };
+      const d = await r.json() as { id?: number; runId?: number; status?: string; error?: string };
       if (!r.ok) throw new Error(d.error ?? "Generation failed");
       setWizardOpen(false);
-      void loadDocs();
+      if (d.status === "queued") {
+        // Workflow engine creates the doc row asynchronously — give it 1.5 s then poll.
+        // The 3 s fast-poll will continue once the "generating" row appears in the list.
+        setTimeout(() => { void loadDocs(); }, 1500);
+      } else {
+        void loadDocs();
+      }
     } catch (e) { setError(String(e)); setWizardStep("confirm"); }
   };
 
