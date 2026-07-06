@@ -371,6 +371,49 @@ function WfNode({ data, selected, id }: NodeProps) {
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
   const label = (data.label as string) || style.label;
 
+  // ── Comment node — sticky-note card (completely separate visual branch) ──────
+  if (nodeType === "comment") {
+    const text = ((data.params as Record<string, unknown> | undefined)?.text as string | undefined) || "";
+    return (
+      <div
+        style={{
+          background: "#FEF3C7",
+          border: `2px solid ${selected ? "#0078D4" : "#CA8A04"}`,
+          borderRadius: 10,
+          padding: "10px 14px 12px",
+          minWidth: 220,
+          maxWidth: 300,
+          boxShadow: selected
+            ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
+            : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
+        }}
+      >
+        <div className="flex items-center gap-1.5 mb-2.5">
+          <span style={{ fontSize: 13, lineHeight: 1 }}>📝</span>
+          <span
+            className="text-[9px] uppercase tracking-widest font-bold"
+            style={{ color: "#92400E" }}
+          >
+            Note
+          </span>
+        </div>
+        <p
+          style={{
+            color: text ? "#1C1917" : "#A16207",
+            fontSize: 12,
+            lineHeight: "1.55",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            margin: 0,
+            fontStyle: text ? "normal" : "italic",
+          }}
+        >
+          {text || "Add a note…"}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -508,25 +551,6 @@ function WfNode({ data, selected, id }: NodeProps) {
             </>
           );
         })()
-      ) : nodeType === "comment" ? (
-        <>
-          {((data.params as Record<string, unknown> | undefined)?.text as string | undefined) && (
-            <div
-              className="mt-2 text-[10px] text-[#CA8A04] leading-snug"
-              style={{
-                display: "-webkit-box",
-                WebkitLineClamp: 2,
-                WebkitBoxOrient: "vertical",
-                overflow: "hidden",
-                wordBreak: "break-word",
-                fontStyle: "italic",
-              }}
-            >
-              {(data.params as Record<string, unknown>).text as string}
-            </div>
-          )}
-          <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
-        </>
       ) : nodeType === "fetch_news_headlines" ? (
         <>
           {data.autoBuildCampaign ? (
