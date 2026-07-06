@@ -94,12 +94,12 @@ export async function seedMarketingServices(): Promise<void> {
     // Only run the safe pageHref/pageSlug sync — no new rows created.
     // Jump straight to the sync block below.
     const microOfferPageHrefs: Array<{ slug: string; pageHref: string; pageSlug: string }> = [
-      { slug: "m365-tenant-health-audit",              pageHref: "/micro-offers/tenant-health-audit",            pageSlug: "tenant-health-audit" },
-      { slug: "migration-readiness-assessment",         pageHref: "/micro-offers/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
-      { slug: "power-platform-quickstart",              pageHref: "/micro-offers/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
-      { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/micro-offers/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
-      { slug: "governance-foundations-package",          pageHref: "/micro-offers/governance-foundations",        pageSlug: "governance-foundations" },
-      { slug: "microsoft-365-training--enablement",     pageHref: "/micro-offers/m365-training-enablement",      pageSlug: "m365-training-enablement" },
+      { slug: "m365-tenant-health-audit",              pageHref: "/quick-wins/tenant-health-audit",            pageSlug: "tenant-health-audit" },
+      { slug: "migration-readiness-assessment",         pageHref: "/quick-wins/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
+      { slug: "power-platform-quickstart",              pageHref: "/quick-wins/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
+      { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/quick-wins/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
+      { slug: "governance-foundations-package",          pageHref: "/quick-wins/governance-foundations",        pageSlug: "governance-foundations" },
+      { slug: "microsoft-365-training--enablement",     pageHref: "/quick-wins/m365-training-enablement",      pageSlug: "m365-training-enablement" },
     ];
     for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
       await db.update(servicesTable).set({ pageHref, pageSlug }).where(eq(servicesTable.slug, slug));
@@ -131,7 +131,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["Full tenant analysis", "Executive briefing", "Remediation roadmap", "Licensing optimization review"],
       features: ["NASA‑grade assessment", "Fast turnaround", "Clear prioritization", "Compliance-focused"],
       deliverables: ["20–30 page written assessment", "60‑minute executive briefing", "Full configuration review", "IAM & licensing analysis", "Security & compliance review", "Governance maturity scoring", "Prioritized remediation roadmap"],
-      pageHref: "/micro-offers/tenant-health-audit",
+      pageHref: "/quick-wins/tenant-health-audit",
       pageSlug: "tenant-health-audit",
       sortOrder: 0,
       isPublic: true,
@@ -153,7 +153,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["Risk analysis", "Migration planning", "Remediation roadmap", "Executive summary"],
       features: ["Fast assessment", "Vendor-neutral", "Clear risk visibility", "Actionable plan"],
       deliverables: ["Migration risk report", "Remediation roadmap", "Go/no‑go recommendation", "Phased migration plan"],
-      pageHref: "/micro-offers/migration-readiness-assessment",
+      pageHref: "/quick-wins/migration-readiness-assessment",
       pageSlug: "migration-readiness-assessment",
       sortOrder: 3,
       isPublic: true,
@@ -175,7 +175,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["App/flow build", "Documentation", "Deployment", "Training session"],
       features: ["Rapid delivery", "Business automation", "Low-risk starter project", "High ROI"],
       deliverables: ["One production-ready Power App or flow", "Technical documentation", "Testing & deployment", "90‑minute knowledge transfer session"],
-      pageHref: "/micro-offers/power-platform-quick-start",
+      pageHref: "/quick-wins/power-platform-quick-start",
       pageSlug: "power-platform-quick-start",
       sortOrder: 2,
       isPublic: true,
@@ -197,7 +197,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["Data governance review", "Permissions analysis", "Licensing readiness", "Rollout roadmap"],
       features: ["High-demand service", "Security-first", "Fast turnaround", "Clear deployment path"],
       deliverables: ["Copilot readiness report", "Prioritized rollout plan", "Quick-win recommendations", "Pilot group design + success metrics"],
-      pageHref: "/micro-offers/copilot-readiness-assessment",
+      pageHref: "/quick-wins/copilot-readiness-assessment",
       pageSlug: "copilot-readiness-assessment",
       sortOrder: 5,
       isPublic: true,
@@ -219,7 +219,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["Governance design", "Policy templates", "Training session", "Maturity scoring"],
       features: ["Audit-ready", "Enterprise-grade", "Compliance-focused", "Scalable governance"],
       deliverables: ["Governance maturity assessment", "Full governance framework", "Policy template suite", "90‑minute governance training"],
-      pageHref: "/micro-offers/governance-foundations",
+      pageHref: "/quick-wins/governance-foundations",
       pageSlug: "governance-foundations",
       sortOrder: 2,
       isPublic: true,
@@ -241,7 +241,7 @@ export async function seedMarketingServices(): Promise<void> {
       inclusions: ["Outlook productivity training", "Teams collaboration training", "SharePoint & OneDrive usage best practices", "Exchange fundamentals", "Copilot for M365 user training", "Power Platform basics"],
       features: ["Live instructor-led sessions", "Customizable curriculum", "Practical, real‑world examples", "Boosts adoption & reduces support load"],
       deliverables: ["Customized training agenda", "Live virtual or on‑site training sessions", "Hands‑on demonstrations", "Q&A and troubleshooting", "Recording (if virtual)", "Post-training resource pack"],
-      pageHref: "/micro-offers/m365-training-enablement",
+      pageHref: "/quick-wins/m365-training-enablement",
       pageSlug: "m365-training-enablement",
       sortOrder: 8,
       isPublic: true,
@@ -256,12 +256,12 @@ export async function seedMarketingServices(): Promise<void> {
 
   // Always keep pageHref / pageSlug in sync regardless of how the row was created.
   const microOfferPageHrefs: Array<{ slug: string; pageHref: string; pageSlug: string }> = [
-    { slug: "m365-tenant-health-audit",              pageHref: "/micro-offers/tenant-health-audit",            pageSlug: "tenant-health-audit" },
-    { slug: "migration-readiness-assessment",         pageHref: "/micro-offers/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
-    { slug: "power-platform-quickstart",              pageHref: "/micro-offers/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
-    { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/micro-offers/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
-    { slug: "governance-foundations-package",          pageHref: "/micro-offers/governance-foundations",        pageSlug: "governance-foundations" },
-    { slug: "microsoft-365-training--enablement",     pageHref: "/micro-offers/m365-training-enablement",      pageSlug: "m365-training-enablement" },
+    { slug: "m365-tenant-health-audit",              pageHref: "/quick-wins/tenant-health-audit",            pageSlug: "tenant-health-audit" },
+    { slug: "migration-readiness-assessment",         pageHref: "/quick-wins/migration-readiness-assessment", pageSlug: "migration-readiness-assessment" },
+    { slug: "power-platform-quickstart",              pageHref: "/quick-wins/power-platform-quick-start",     pageSlug: "power-platform-quick-start" },
+    { slug: "copilot-for-m365-readiness-assessment",  pageHref: "/quick-wins/copilot-readiness-assessment",  pageSlug: "copilot-readiness-assessment" },
+    { slug: "governance-foundations-package",          pageHref: "/quick-wins/governance-foundations",        pageSlug: "governance-foundations" },
+    { slug: "microsoft-365-training--enablement",     pageHref: "/quick-wins/m365-training-enablement",      pageSlug: "m365-training-enablement" },
   ];
   for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
     await db

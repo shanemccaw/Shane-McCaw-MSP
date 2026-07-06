@@ -19,7 +19,7 @@ export const HIGH_VALUE_PAGES = new Set([
   "/services/governance",
   "/services/cloud-migration",
   "/pricing",
-  "/micro-offers",
+  "/quick-wins",
   "/book",
   "/contact",
 ]);

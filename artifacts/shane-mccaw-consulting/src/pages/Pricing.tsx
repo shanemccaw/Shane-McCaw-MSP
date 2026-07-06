@@ -252,7 +252,7 @@ export default function Pricing() {
                 range: "$3,000 \u2013 $18,000",
                 desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
                 bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
-                anchor: "#micro-offers",
+                anchor: "#quick-wins",
               },
               {
                 icon: FolderOpen,
@@ -336,7 +336,7 @@ export default function Pricing() {
             <div>
               <p className="font-semibold text-[#0A2540] mb-1">Not sure where to start?</p>
               <p className="text-muted-foreground text-sm leading-relaxed">
-                Most clients begin with the <Link href="/micro-offers/tenant-health-audit" className="text-[#0078D4] font-medium hover:underline">M365 Tenant Health Audit</Link> or the <Link href="/micro-offers/migration-readiness-assessment" className="text-[#0078D4] font-medium hover:underline">Migration Readiness Assessment</Link> — fast, low-risk engagements that surface the real issues and give you the clarity to decide what comes next.
+                Most clients begin with the <Link href="/quick-wins/tenant-health-audit" className="text-[#0078D4] font-medium hover:underline">M365 Tenant Health Audit</Link> or the <Link href="/quick-wins/migration-readiness-assessment" className="text-[#0078D4] font-medium hover:underline">Migration Readiness Assessment</Link> — fast, low-risk engagements that surface the real issues and give you the clarity to decide what comes next.
               </p>
               <p className="text-sm mt-3">
                 <Link href="/quick-win-quiz" className="inline-flex items-center gap-1 text-[#0078D4] font-medium hover:underline">
@@ -349,7 +349,7 @@ export default function Pricing() {
       </section>
 
       {/* Track 01 — Micro-Offers */}
-      <section id="micro-offers" className="bg-[#F7F9FC] py-20 scroll-mt-24">
+      <section id="quick-wins" className="bg-[#F7F9FC] py-20 scroll-mt-24">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="mb-10">
             <div className="flex items-center gap-3 mb-4">

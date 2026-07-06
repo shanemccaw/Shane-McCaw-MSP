@@ -57,14 +57,14 @@ const SERVICES_ITEMS: NavItem[] = withIcons([
 ]);
 
 const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
-  { label: "All Quick Wins",                       href: "/micro-offers" },
+  { label: "All Quick Wins",                       href: "/quick-wins" },
   { label: "Start Here",                           href: "/quick-win-quiz" },
-  { label: "Tenant Health Audit",                 href: "/micro-offers/tenant-health-audit" },
-  { label: "Power Platform Quick-Start",          href: "/micro-offers/power-platform-quick-start" },
-  { label: "Governance Foundations",              href: "/micro-offers/governance-foundations" },
-  { label: "Migration Readiness Assessment",      href: "/micro-offers/migration-readiness-assessment" },
-  { label: "Copilot Readiness Assessment",        href: "/micro-offers/copilot-readiness-assessment" },
-  { label: "Microsoft 365 Training & Enablement", href: "/micro-offers/m365-training-enablement" },
+  { label: "Tenant Health Audit",                 href: "/quick-wins/tenant-health-audit" },
+  { label: "Power Platform Quick-Start",          href: "/quick-wins/power-platform-quick-start" },
+  { label: "Governance Foundations",              href: "/quick-wins/governance-foundations" },
+  { label: "Migration Readiness Assessment",      href: "/quick-wins/migration-readiness-assessment" },
+  { label: "Copilot Readiness Assessment",        href: "/quick-wins/copilot-readiness-assessment" },
+  { label: "Microsoft 365 Training & Enablement", href: "/quick-wins/m365-training-enablement" },
 ]);
 
 const RETAINER_ITEMS: NavItem[] = withIcons([
@@ -263,7 +263,7 @@ export function Header() {
   }
 
   const isServicesActive    = location.startsWith("/services");
-  const isMicroActive       = location.startsWith("/micro-offers");
+  const isMicroActive       = location.startsWith("/quick-wins");
   const isRetainersActive   = location.startsWith("/retainers") || location === "/retainer-quiz";
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
   const isResourcesActive   = location.startsWith("/resources");

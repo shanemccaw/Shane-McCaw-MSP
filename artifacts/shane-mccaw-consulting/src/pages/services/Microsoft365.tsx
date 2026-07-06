@@ -251,7 +251,7 @@ export default function Microsoft365() {
 
           <div className="text-center mt-10">
             <Link
-              href="/micro-offers"
+              href="/quick-wins"
               className="inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:underline"
             >
               View all Quick Win packages <ArrowRight className="w-4 h-4" />

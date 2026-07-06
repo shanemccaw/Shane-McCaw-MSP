@@ -41,7 +41,7 @@ function resolveIcon(name: string | null): LucideIcon {
 const CONSULTING_SITE_ROUTES: Array<string | RegExp> = [
   "/", "/about", "/services", "/services/microsoft-365", "/services/copilot-ai",
   "/services/sharepoint", "/services/power-platform", "/services/governance",
-  "/services/cloud-migration", "/micro-offers", "/pricing", "/resources",
+  "/services/cloud-migration", "/quick-wins", "/pricing", "/resources",
   /^\/resources\/[^/]+$/, "/contact", "/book", "/privacy", "/admin",
 ];
 const KNOWN_PAGE_HREFS = CONSULTING_SITE_ROUTES.filter((r): r is string => typeof r === "string");

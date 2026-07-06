@@ -39,7 +39,7 @@ const STATIC_PAGES = [
   { path: "/services/power-platform",   changefreq: "monthly", priority: "0.8" },
   { path: "/services/governance",       changefreq: "monthly", priority: "0.8" },
   { path: "/services/cloud-migration",  changefreq: "monthly", priority: "0.8" },
-  { path: "/micro-offers",              changefreq: "monthly", priority: "0.8" },
+  { path: "/quick-wins",              changefreq: "monthly", priority: "0.8" },
   { path: "/pricing",                   changefreq: "monthly", priority: "0.8" },
   { path: "/resources",                 changefreq: "weekly",  priority: "0.7" },
   { path: "/contact",                   changefreq: "monthly", priority: "0.7" },

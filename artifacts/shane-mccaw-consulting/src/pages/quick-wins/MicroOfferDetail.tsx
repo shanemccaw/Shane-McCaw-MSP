@@ -157,7 +157,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
             : service.basePrice
             ? { price: service.basePrice, priceCurrency: "USD" }
             : {}),
-          url: `https://shanemccawconsulting.com/micro-offers/${slug}`,
+          url: `https://shanemccawconsulting.com/quick-wins/${slug}`,
           seller: { "@type": "Person", name: "Shane McCaw", jobTitle: "Lead Microsoft 365 Architect" },
           itemOffered: { "@type": "Service", name: service.name, description: service.description ?? undefined },
         }}
@@ -183,7 +183,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
         <div className="max-w-[1200px] mx-auto px-6 relative">
           {/* breadcrumb + badges */}
           <div className="flex flex-wrap items-center gap-3 mb-6">
-            <Link href="/micro-offers" className="text-white/40 text-xs uppercase tracking-widest font-semibold hover:text-white/70 transition-colors">
+            <Link href="/quick-wins" className="text-white/40 text-xs uppercase tracking-widest font-semibold hover:text-white/70 transition-colors">
               Quick Wins
             </Link>
             <span className="text-white/20">›</span>
@@ -684,7 +684,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
           </div>
           <p className="mt-8 text-white/30 text-sm">
             Or{" "}
-            <Link href="/micro-offers" className="text-white/50 hover:text-white underline underline-offset-2">
+            <Link href="/quick-wins" className="text-white/50 hover:text-white underline underline-offset-2">
               view all Quick Win packages →
             </Link>
           </p>

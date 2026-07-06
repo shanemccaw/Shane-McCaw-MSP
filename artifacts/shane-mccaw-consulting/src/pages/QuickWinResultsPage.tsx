@@ -101,7 +101,7 @@ function getPackageName(rec: Recommendation): string {
 }
 
 function getPackageHref(rec: Recommendation): string {
-  return rec.service?.pageHref ?? `/micro-offers/${rec.slug}`;
+  return rec.service?.pageHref ?? `/quick-wins/${rec.slug}`;
 }
 
 // ── Dynamic narrative builders ────────────────────────────────────────────────

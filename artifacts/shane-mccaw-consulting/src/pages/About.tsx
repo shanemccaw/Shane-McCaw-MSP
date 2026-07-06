@@ -634,27 +634,27 @@ export default function About() {
               {
                 name: "Tenant Health Audit",
                 desc: "A structured assessment of your M365 environment — governance gaps, permissions sprawl, security posture, and configuration risk — with a prioritized remediation roadmap. The right starting point for any serious engagement.",
-                href: "/micro-offers",
+                href: "/quick-wins",
               },
               {
                 name: "Governance Foundations",
                 desc: "A complete governance framework designed for your organization: data classification, access controls, retention policy, DLP, and Copilot guardrails. Built from the same principles Shane applies at NASA.",
-                href: "/micro-offers",
+                href: "/quick-wins",
               },
               {
                 name: "Copilot Readiness Assessment",
                 desc: "A six-dimension evaluation of your tenant's readiness for Microsoft 365 Copilot — licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk. Tells you exactly what to fix before Copilot goes live.",
-                href: "/micro-offers",
+                href: "/quick-wins",
               },
               {
                 name: "Migration Readiness",
                 desc: "A focused planning engagement to map your path from on-premises or legacy environments to M365 — sequencing, risk mitigation, and a clear migration architecture. Avoids the stalls and surprises that plague unplanned migrations.",
-                href: "/micro-offers",
+                href: "/quick-wins",
               },
               {
                 name: "Power Platform Quick-Start",
                 desc: "Structured guidance to deploy Power Automate or Power Apps in a governed, secure way — including environment strategy, DLP policy design, and a working proof-of-concept tailored to your use case.",
-                href: "/micro-offers",
+                href: "/quick-wins",
               },
               {
                 name: "Fractional Architect Retainer",
@@ -692,7 +692,7 @@ export default function About() {
                 View All Services <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
-                href="/micro-offers"
+                href="/quick-wins"
                 className="inline-flex items-center justify-center gap-2 border border-[#0078D4] text-[#0078D4] font-semibold px-6 py-3 rounded-lg hover:bg-[#0078D4] hover:text-white transition-colors text-sm"
                 data-testid="about-micro-offers-link"
               >

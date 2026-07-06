@@ -39,7 +39,7 @@ import ArchitectGrowth from "@/pages/retainers/ArchitectGrowth";
 import ArchitectEnterprise from "@/pages/retainers/ArchitectEnterprise";
 import RetainersOverview from "@/pages/retainers/RetainersOverview";
 import RetainerQuiz from "@/pages/retainers/RetainerQuiz";
-import MicroOfferDetail from "@/pages/micro-offers/MicroOfferDetail";
+import MicroOfferDetail from "@/pages/quick-wins/MicroOfferDetail";
 import QuickWinQuiz from "@/pages/QuickWinQuiz";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
 import HowItWorks from "@/pages/HowItWorks";
@@ -90,8 +90,8 @@ function Router() {
       <Route path="/services/cloud-migration" component={CloudMigration} />
       <Route path="/services/m365-training" component={M365Training} />
       <Route path="/services/security-hardening" component={SecurityHardening} />
-      <Route path="/micro-offers" component={MicroOffers} />
-      <Route path="/micro-offers/:slug" component={MicroOfferDetail} />
+      <Route path="/quick-wins" component={MicroOffers} />
+      <Route path="/quick-wins/:slug" component={MicroOfferDetail} />
       <Route path="/pricing" component={Pricing} />
       <Route path="/resources" component={Resources} />
       <Route path="/resources/:slug" component={ArticlePage} />

@@ -56,7 +56,7 @@ export default function MicroOffers() {
           "@type": "ItemList",
           "name": "Fixed-Price Microsoft 365 Quick-Win Packages",
           "description": "Fixed-price Microsoft 365 consulting packages by Shane McCaw. Clear scope, defined deliverables, no hourly billing.",
-          "url": "https://shanemccaw.com/micro-offers",
+          "url": "https://shanemccaw.com/quick-wins",
           "itemListElement": offers.map((o, i) => {
             const hasRange = o.basePrice && o.maxPrice;
             return {
@@ -68,7 +68,7 @@ export default function MicroOffers() {
                 ...(hasRange
                   ? { "priceRange": formatPriceDisplay(o) }
                   : { "price": o.price ?? o.basePrice ?? "", "priceCurrency": "USD" }),
-                "url": "https://shanemccawconsulting.com/micro-offers",
+                "url": "https://shanemccawconsulting.com/quick-wins",
                 "seller": { "@type": "Person", "name": "Shane McCaw" }
               }
             };

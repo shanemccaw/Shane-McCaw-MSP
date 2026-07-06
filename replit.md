@@ -35,7 +35,7 @@ A professional multi-page consulting website for Shane McCaw — Lead Microsoft 
 | `/services/power-platform` | PowerPlatform |
 | `/services/governance` | Governance |
 | `/services/cloud-migration` | CloudMigration |
-| `/micro-offers` | MicroOffers |
+| `/quick-wins` | MicroOffers |
 | `/pricing` | Pricing |
 | `/resources` | Resources |
 | `/contact` | Contact |

@@ -958,7 +958,7 @@ export const CopilotReadinessPDF = () => (
               A 2-day structured engagement covering all 7 domains. Deliverable: a prioritized 
               remediation roadmap with effort estimates and risk ratings.
             </Text>
-            <Text style={styles.ctaCardLink}>shanemccaw.com/micro-offers</Text>
+            <Text style={styles.ctaCardLink}>shanemccaw.com/quick-wins</Text>
           </View>
           <View style={styles.ctaCard}>
             <Text style={styles.ctaCardTitle}>Free 30-Minute Consultation</Text>

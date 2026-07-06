@@ -5142,7 +5142,7 @@ const DESTINATION_OPTIONS: { path: string; label: string }[] = [
   { path: "/services/power-platform",    label: "Power Platform (/services/power-platform)" },
   { path: "/services/governance",        label: "Governance (/services/governance)" },
   { path: "/services/cloud-migration",   label: "Cloud Migration (/services/cloud-migration)" },
-  { path: "/micro-offers",               label: "Micro-Offers (/micro-offers)" },
+  { path: "/quick-wins",               label: "Micro-Offers (/quick-wins)" },
   { path: "/",                           label: "Home (/)" },
 ];
 

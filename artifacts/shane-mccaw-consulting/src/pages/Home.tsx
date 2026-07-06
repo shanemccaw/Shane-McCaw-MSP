@@ -46,8 +46,8 @@ interface ServiceRecord {
 /** Always returns a usable detail URL for a service card. */
 function serviceDetailHref(service: ServiceRecord): string {
   if (service.pageHref) return service.pageHref;
-  if (service.pageSlug) return `/micro-offers/${service.pageSlug}`;
-  return "/micro-offers";
+  if (service.pageSlug) return `/quick-wins/${service.pageSlug}`;
+  return "/quick-wins";
 }
 
 // ── Static data ───────────────────────────────────────────────────────────────
@@ -235,7 +235,7 @@ export default function Home() {
               Book a Discovery Call
             </CTAButton>
             <Link
-              href="/micro-offers"
+              href="/quick-wins"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
               See Fixed-Price Packages <ArrowRight className="w-4 h-4" />
@@ -390,7 +390,7 @@ export default function Home() {
           )}
 
           <div className="text-center mt-10">
-            <CTAButton href="/micro-offers" className="text-base px-8 py-3.5">
+            <CTAButton href="/quick-wins" className="text-base px-8 py-3.5">
               View All Fixed-Price Packages
             </CTAButton>
           </div>

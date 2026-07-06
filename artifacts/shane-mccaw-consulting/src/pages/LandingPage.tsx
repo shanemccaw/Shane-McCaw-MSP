@@ -588,7 +588,7 @@ export default function LandingPage() {
             <CTAButton {...ctaProps("text-base px-10 py-4 shadow-lg shadow-[#0078D4]/30")} />
             {tokenError && <p className="text-red-300 text-sm text-center">{tokenError}</p>}
             <a
-              href="/micro-offers"
+              href="/quick-wins"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
               See All Packages <ArrowRight className="w-4 h-4" />

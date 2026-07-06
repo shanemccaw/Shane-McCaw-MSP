@@ -32,37 +32,37 @@ const PACKAGES: Record<Slug, { name: string; tagline: string; href: string }> = 
     name: "M365 Tenant Health Audit",
     tagline:
       "A deep-dive audit of your entire tenant — security posture, licensing efficiency, governance gaps, and a prioritised remediation roadmap.",
-    href: "/micro-offers/tenant-health-audit",
+    href: "/quick-wins/tenant-health-audit",
   },
   "power-platform-quick-start": {
     name: "Power Platform Quick-Start",
     tagline:
       "Get your first Power Automate flow or Power App live in days — automating a real business process with a proven delivery framework.",
-    href: "/micro-offers/power-platform-quick-start",
+    href: "/quick-wins/power-platform-quick-start",
   },
   "governance-foundations": {
     name: "Governance Foundations Package",
     tagline:
       "Establish policies, naming conventions, lifecycle rules, and a DLP framework that keeps your tenant compliant and manageable long-term.",
-    href: "/micro-offers/governance-foundations",
+    href: "/quick-wins/governance-foundations",
   },
   "migration-readiness-assessment": {
     name: "Migration Readiness Assessment",
     tagline:
       "A structured pre-migration review covering your source environment, data risks, cutover plan, and the blockers most teams miss.",
-    href: "/micro-offers/migration-readiness-assessment",
+    href: "/quick-wins/migration-readiness-assessment",
   },
   "copilot-readiness-assessment": {
     name: "Copilot for M365 Readiness Assessment",
     tagline:
       "Evaluate whether your tenant's data governance, identity, and adoption practices are ready for Copilot AI deployment.",
-    href: "/micro-offers/copilot-readiness-assessment",
+    href: "/quick-wins/copilot-readiness-assessment",
   },
   "m365-training-enablement": {
     name: "Microsoft 365 Training & Enablement",
     tagline:
       "Targeted end-user and admin training that closes the adoption gap and unlocks the ROI already sitting inside your M365 licences.",
-    href: "/micro-offers/m365-training-enablement",
+    href: "/quick-wins/m365-training-enablement",
   },
 };
 
@@ -490,7 +490,7 @@ export function QuickWinsSelectorQuiz() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
-          <CTAButton href="/micro-offers" className="px-7 py-3 text-sm">
+          <CTAButton href="/quick-wins" className="px-7 py-3 text-sm">
             View All Quick Wins
           </CTAButton>
           <a
