@@ -21,6 +21,9 @@
  *   - Polling interval: 30-second period matches the configured value
  *   - Refresh: initialSowVersionRef reset clears the stale flag
  *   - Edge cases: missing sowVersion, empty string, undefined
+ *   - Auto-refresh guard (autoRefreshedRef): fires exactly once per staleness
+ *     event, survives a pathological re-stale after refresh, and resets on
+ *     step navigation so the next staleness event is not silently suppressed.
  *
  * Run with:
  *   pnpm --filter @workspace/crm run test
@@ -378,5 +381,214 @@ describe("amber banner lifecycle — stale flag set, shown, then cleared on refr
     );
     scopeStale = await checkScopeVersion(initialVersion, fetchAfterRefresh, 1);
     expect(scopeStale).toBe(false); // banner should be gone, client can proceed
+  });
+});
+
+// =============================================================================
+// Auto-refresh guard (autoRefreshedRef) — the useEffect in PresentationFlow.tsx
+//
+// The effect (lines 700-711 of PresentationFlow.tsx) is:
+//
+//   if ((scopeStale || docsStale) && currentStepKind === "sow") {
+//     if (!autoRefreshedRef.current) {
+//       autoRefreshedRef.current = true;
+//       void handleRefreshScope();
+//     }
+//   } else if (!scopeStale && !docsStale) {
+//     autoRefreshedRef.current = false;
+//   }
+//
+// This section tests that guard in isolation (extracted as a pure function)
+// to verify three required invariants without mounting the React component:
+//
+//   1. handleRefreshScope fires exactly once when scopeStale becomes true on
+//      the SOW step.
+//   2. If the refresh somehow re-sets scopeStale=true (edge case), no
+//      infinite loop occurs — the guard remains set.
+//   3. Navigating away from the SOW step and back does NOT suppress a
+//      subsequent auto-refresh after a new staleness event.
+// =============================================================================
+
+/**
+ * Pure function mirroring the useEffect body from PresentationFlow.tsx
+ * (lines 700-711).  The caller supplies the mutable ref object so test code
+ * can inspect and reset it between calls.
+ */
+function runAutoRefreshEffect(
+  scopeStale: boolean,
+  docsStale: boolean,
+  currentStepKind: string | undefined,
+  autoRefreshedRef: { current: boolean },
+  handleRefreshScope: () => void,
+): void {
+  if ((scopeStale || docsStale) && currentStepKind === "sow") {
+    if (!autoRefreshedRef.current) {
+      autoRefreshedRef.current = true;
+      handleRefreshScope();
+    }
+  } else if (!scopeStale && !docsStale) {
+    autoRefreshedRef.current = false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Invariant 1: fires exactly once per staleness event
+// -----------------------------------------------------------------------------
+
+describe("auto-refresh guard — fires handleRefreshScope exactly once per staleness event", () => {
+  it("calls handleRefreshScope once when scopeStale first becomes true on the SOW step", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+    expect(autoRefreshedRef.current).toBe(true);
+  });
+
+  it("does NOT call handleRefreshScope a second time when the effect re-runs while still stale", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    // First run — guard fires
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+
+    // Second run — same stale state (e.g. re-render triggered by unrelated update)
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1); // still exactly once
+  });
+
+  it("does not call handleRefreshScope when scopeStale and docsStale are both false", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    runAutoRefreshEffect(false, false, "sow", autoRefreshedRef, handleRefreshScope);
+
+    expect(handleRefreshScope).not.toHaveBeenCalled();
+  });
+
+  it("does not call handleRefreshScope when on a non-SOW step even if stale", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    runAutoRefreshEffect(true, false, "agreement", autoRefreshedRef, handleRefreshScope);
+
+    expect(handleRefreshScope).not.toHaveBeenCalled();
+  });
+
+  it("fires when docsStale is true (not just scopeStale) on the SOW step", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    runAutoRefreshEffect(false, true, "sow", autoRefreshedRef, handleRefreshScope);
+
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Invariant 2: pathological re-stale after refresh does NOT loop
+// -----------------------------------------------------------------------------
+
+describe("auto-refresh guard — pathological re-stale after refresh does NOT loop", () => {
+  it("if handleRefreshScope re-triggers the effect with scopeStale=true, guard blocks a second call", () => {
+    const autoRefreshedRef = { current: false };
+    let callCount = 0;
+
+    // Simulate a misbehaving handleRefreshScope that causes the effect to fire
+    // again with scopeStale still true (e.g. the API call fails and the caller
+    // never clears scopeStale).
+    const handleRefreshScope = vi.fn().mockImplementation(() => {
+      callCount++;
+      // Recursively simulate the effect re-running with stale still true
+      runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    });
+
+    // Initial effect run
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+
+    // The guard (autoRefreshedRef.current = true after the first call) ensures
+    // handleRefreshScope is invoked exactly once regardless of recursive re-runs.
+    expect(callCount).toBe(1);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+  });
+
+  it("guard remains set after first auto-refresh; 10 additional effect runs do not produce more calls", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+
+    for (let i = 0; i < 10; i++) {
+      runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    }
+
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1); // never more than once
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Invariant 3: navigating away and back does not permanently suppress the guard
+// -----------------------------------------------------------------------------
+
+describe("auto-refresh guard — navigation away/back resets the guard correctly", () => {
+  it("staleness clearing resets autoRefreshedRef so the NEXT staleness event triggers auto-refresh", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    // --- First staleness event ---
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+    expect(autoRefreshedRef.current).toBe(true);
+
+    // Refresh completes, staleness cleared → guard resets
+    runAutoRefreshEffect(false, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(autoRefreshedRef.current).toBe(false);
+
+    // --- Second staleness event (Shane regenerates the SOW again) ---
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(2); // fired again, not suppressed
+  });
+
+  it("navigating to a non-SOW step while still stale does NOT reset the guard", () => {
+    // The else-if branch only resets when BOTH scopeStale AND docsStale are false.
+    // While still stale on a non-SOW step, the guard must stay set to avoid
+    // re-triggering auto-refresh when the user returns to the SOW step.
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    // Auto-refresh fires on SOW step
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(autoRefreshedRef.current).toBe(true);
+
+    // User navigates to Agreement while still stale — neither branch resets the ref
+    runAutoRefreshEffect(true, false, "agreement", autoRefreshedRef, handleRefreshScope);
+    expect(autoRefreshedRef.current).toBe(true); // guard unchanged
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1); // no extra call
+  });
+
+  it("guard resets after staleness clears; returning to SOW after a new stale event fires again", () => {
+    const handleRefreshScope = vi.fn();
+    const autoRefreshedRef = { current: false };
+
+    // First auto-refresh on SOW step
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+
+    // Staleness clears (still on SOW step) → guard resets
+    runAutoRefreshEffect(false, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(autoRefreshedRef.current).toBe(false);
+
+    // User navigates to Agreement; a new stale event arrives (Shane updated again)
+    // Effect fires on Agreement — no auto-refresh off-step, guard stays false
+    runAutoRefreshEffect(true, false, "agreement", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(1);
+    expect(autoRefreshedRef.current).toBe(false);
+
+    // User navigates back to SOW — auto-refresh must fire again
+    runAutoRefreshEffect(true, false, "sow", autoRefreshedRef, handleRefreshScope);
+    expect(handleRefreshScope).toHaveBeenCalledTimes(2);
+    expect(autoRefreshedRef.current).toBe(true);
   });
 });
