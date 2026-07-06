@@ -426,8 +426,7 @@ export default function ConfirmationStep({
   const [, navigate] = useLocation();
   const { fireSidecannons } = useConfetti();
 
-  const isAdmin = user?.role === "admin";
-  const showSimulate = isAdmin || new URLSearchParams(window.location.search).get("simulate") === "1";
+  const showSimulate = new URLSearchParams(window.location.search).get("simulate") === "1";
 
   const [projectId, setProjectId] = useState<number | null>(initialProjectId);
   const [ctaReady, setCtaReady] = useState(initialProjectId !== null);
