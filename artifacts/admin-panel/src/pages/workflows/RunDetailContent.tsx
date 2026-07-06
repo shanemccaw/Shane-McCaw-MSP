@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 import { format } from "date-fns";
 import {
   type NodeTypes,
@@ -472,6 +473,164 @@ export function fmtDuration(ms: number | null): string {
   return `${(ms / 60_000).toFixed(1)}m`;
 }
 
+// ── ChildRunInline ─────────────────────────────────────────────────────────────
+
+/**
+ * Expandable inline panel showing the status, duration, and node steps of a
+ * child workflow run. Rendered inside the parent run's output sidebar and
+ * payload tab whenever a `run_workflow` node output contains `childRunId`.
+ */
+export function ChildRunInline({ childRunId }: { childRunId: number }) {
+  const { fetchWithAuth } = useAuth();
+  const [, navigate] = useLocation();
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: child, isLoading } = useQuery<WfRunDetail>({
+    queryKey: ["wf-run", childRunId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${childRunId}`);
+      if (!res.ok) throw new Error("Failed to load child run");
+      return res.json();
+    },
+    enabled: expanded,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "running" || status === "pending" ? 3000 : false;
+    },
+  });
+
+  const statusStyle = child
+    ? (STATUS_STYLES[child.status] ?? "bg-[#30363D] text-[#7D8590] border-[#30363D]")
+    : "";
+
+  return (
+    <div className="mt-2 rounded-xl border border-[#3B82F6]/40 bg-[#0D1A2E] overflow-hidden">
+      {/* Header row — always visible */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded(x => !x)}
+        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setExpanded(x => !x); }}
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#0078D4]/10 transition-colors select-none"
+      >
+        <span className="text-[#3B82F6] text-sm">⚡</span>
+        <span className="text-xs font-semibold text-[#E6EDF3] flex-1">Child Run #{childRunId}</span>
+        {child && (
+          <>
+            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${statusStyle}`}>
+              {child.status}
+            </span>
+            {child.durationMs != null && (
+              <span className="text-[10px] text-[#484F58] font-mono">{fmtDuration(child.durationMs)}</span>
+            )}
+          </>
+        )}
+        {isLoading && expanded && (
+          <span className="inline-block w-3 h-3 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+        )}
+        <svg
+          className={`w-3.5 h-3.5 text-[#484F58] flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </div>
+
+      {/* Expanded body */}
+      {expanded && (
+        <div className="border-t border-[#3B82F6]/20 px-3 py-2.5 space-y-2.5">
+          {isLoading && !child && (
+            <p className="text-[10px] text-[#7D8590]">Loading…</p>
+          )}
+
+          {child && (
+            <>
+              {/* Summary row */}
+              <div className="flex flex-wrap gap-2 text-[10px]">
+                <span className="text-[#484F58]">
+                  {child.definitionName && (
+                    <span className="text-[#7D8590] font-medium">{child.definitionName}</span>
+                  )}
+                </span>
+                {child.startedAt && (
+                  <span className="text-[#484F58]">
+                    Started {format(new Date(child.startedAt), "HH:mm:ss")}
+                  </span>
+                )}
+                {child.finishedAt && (
+                  <span className="text-[#484F58]">
+                    · Finished {format(new Date(child.finishedAt), "HH:mm:ss")}
+                  </span>
+                )}
+              </div>
+
+              {/* Error message */}
+              {child.errorMessage && (
+                <div className="px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/30 text-[10px] text-red-400 font-mono">
+                  {child.errorMessage}
+                </div>
+              )}
+
+              {/* Node step list */}
+              {child.branchPath.length > 0 && (
+                <div className="space-y-0.5">
+                  <p className="text-[9px] font-semibold text-[#484F58] uppercase tracking-wider mb-1">Node steps</p>
+                  {child.branchPath.map((nodeId, idx) => {
+                    const graphNode = (child.graph?.nodes ?? []).find(n => n.id === nodeId);
+                    const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
+                    const label = (graphNode?.data?.label as string) ?? nodeType;
+                    const nodeOutput = child.nodeOutputs.find(o => o.nodeId === nodeId);
+                    const hasError = nodeOutput?.status === "error";
+                    const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType };
+
+                    return (
+                      <div
+                        key={`${nodeId}-${idx}`}
+                        className="flex items-center gap-2 px-2 py-1 rounded-lg"
+                        style={{ background: hasError ? "#1A0808" : style.bg + "80" }}
+                      >
+                        <span className="text-[11px] flex-shrink-0">{style.icon}</span>
+                        <span className="flex-1 text-[10px] font-medium text-[#E6EDF3] truncate">{label || style.label}</span>
+                        {nodeOutput && (
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold flex-shrink-0 ${
+                            hasError
+                              ? "bg-red-500/10 text-red-400 border-red-500/30"
+                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                          }`}>
+                            {hasError ? "error" : "ok"}
+                          </span>
+                        )}
+                        {nodeOutput?.durationMs != null && (
+                          <span className="text-[9px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(nodeOutput.durationMs)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {child.branchPath.length === 0 && (
+                <p className="text-[10px] text-[#484F58] italic">No steps executed yet.</p>
+              )}
+
+              {/* Navigate to full run */}
+              <button
+                onClick={e => { e.stopPropagation(); navigate(`/workflows/runs/${childRunId}`); }}
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-[#2E9EFF] hover:text-[#60C0FF] transition-colors"
+              >
+                View full child run
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── RunDetailContent — three-tab body, owns its own fetching ──────────────────
 
 export default function RunDetailContent({ runId }: { runId: number }) {
@@ -737,6 +896,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       )}
                       <JsonBlock data={currentOutput.input} label="Input" />
                       <JsonBlock data={currentOutput.output} label="Output" />
+                      {typeof currentOutput.output.childRunId === "number" && (
+                        <div>
+                          <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider mb-1">Sub-workflow</p>
+                          <ChildRunInline childRunId={currentOutput.output.childRunId as number} />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -894,6 +1059,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       )}
                       {output.errorMessage && (
                         <p className="text-[10px] text-red-400 font-mono mt-1">Error: {output.errorMessage}</p>
+                      )}
+                      {typeof output.output.childRunId === "number" && (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider mb-1">Sub-workflow</p>
+                          <ChildRunInline childRunId={output.output.childRunId as number} />
+                        </div>
                       )}
                     </div>
                   </div>
