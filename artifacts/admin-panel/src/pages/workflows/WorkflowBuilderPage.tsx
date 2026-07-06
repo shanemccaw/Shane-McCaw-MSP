@@ -46,6 +46,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   update_m365_profile:    { bg: "#110D22", border: "#8B5CF6",  icon: "☁️", label: "Update M365 Profile"    },
   generate_document:      { bg: "#111620", border: "#64748B",  icon: "📄", label: "Generate Document"      },
   calculate_pricing:      { bg: "#111620", border: "#00B4D8",  icon: "💲", label: "Calculate Pricing"       },
+  // ── Sub-workflow ──
+  run_workflow:           { bg: "#0D1A2E", border: "#3B82F6",  icon: "⚡", label: "Run Workflow"            },
   // ── CRM ──
   score_lead:            { bg: "#061A18", border: "#00B4D8", icon: "⭐", label: "Score Lead"          },
   assign_pipeline_stage: { bg: "#061A18", border: "#00B4D8", icon: "🏷", label: "Assign Stage"        },
@@ -162,6 +164,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }, { key: "runbookName", label: "Runbook name" }],
   update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
   generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }, { key: "htmlContent", label: "Full HTML of the generated document (task_execution_guide only)" }],
+  run_workflow:           [{ key: "childRunId", label: "Child run ID" }],
   calculate_pricing:      [{ key: "documentId", label: "Document ID (echoed)" }, { key: "totalPrice", label: "Computed total price (USD)" }, { key: "lineCount", label: "Number of pricing lines written" }],
   http_request:           [{ key: "status", label: "HTTP response status code" }, { key: "ok", label: "true if 2xx response" }],
   sql_query:              [{ key: "queryRows", label: "Array of result rows" }],
@@ -645,6 +648,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "foreach",         label: "For Each",        description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
       { type: "approval_gate",   label: "Approval Gate",   description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
       { type: "report_progress", label: "Report Progress", description: "Emit a real-time status message visible in the test-run panel and run timeline", tags: ["progress", "status", "log", "notify", "control", "debug"] },
+      { type: "run_workflow",    label: "Run Workflow",    description: "Execute another published workflow synchronously and merge its outputs into the current context", tags: ["workflow", "subworkflow", "call", "invoke", "control", "run"] },
     ],
   },
   {
@@ -2365,6 +2369,74 @@ function NodeConfigPanel({
             )}
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "run_workflow" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Target Workflow ID</label>
+              <input
+                type="number"
+                value={(node.data.workflowId as number | undefined) ?? ""}
+                onChange={e => onChange(node.id, { ...node.data, workflowId: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="e.g. 12"
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
+              />
+              <p className="text-[10px] text-[#484F58]">The numeric ID of the published workflow to execute. Find it in the Workflows list URL.</p>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-[#7D8590]">Input Mapping</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const cur = (node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? [];
+                    onChange(node.id, { ...node.data, inputMapping: [...cur, { key: "", expr: "" }] });
+                  }}
+                  className="text-[10px] text-[#0078D4] hover:text-[#3B9EDB] transition-colors"
+                >
+                  + Add mapping
+                </button>
+              </div>
+              {((node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? []).map((m, idx) => (
+                <div key={idx} className="flex gap-1.5 items-center">
+                  <input
+                    value={m.key}
+                    onChange={e => {
+                      const cur = [...((node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? [])];
+                      cur[idx] = { ...cur[idx]!, key: e.target.value };
+                      onChange(node.id, { ...node.data, inputMapping: cur });
+                    }}
+                    placeholder="key"
+                    className="w-1/3 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58] font-mono"
+                  />
+                  <input
+                    value={m.expr}
+                    onChange={e => {
+                      const cur = [...((node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? [])];
+                      cur[idx] = { ...cur[idx]!, expr: e.target.value };
+                      onChange(node.id, { ...node.data, inputMapping: cur });
+                    }}
+                    placeholder={"{{value}}"}
+                    className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-[10px] text-[#E6EDF3] outline-none focus:border-[#0078D4]/60 placeholder-[#484F58] font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = [...((node.data.inputMapping as Array<{ key: string; expr: string }> | undefined) ?? [])];
+                      cur.splice(idx, 1);
+                      onChange(node.id, { ...node.data, inputMapping: cur });
+                    }}
+                    className="text-red-400 hover:text-red-300 text-xs px-1"
+                  >✕</button>
+                </div>
+              ))}
+              <p className="text-[10px] text-[#484F58]">Map values from the current context into the sub-workflow's input payload. The sub-workflow outputs are merged back and <span className="font-mono text-[#7D8590]">{"{{childRunId}}"}</span> is always available.</p>
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+              <p className="text-[10px] text-[#484F58]">Runs the target workflow <strong className="text-[#7D8590]">synchronously</strong> — the parent run waits for it to complete. On failure, routes to the <span className="font-mono text-[#7D8590]">onError</span> edge (if wired). Outputs: <span className="font-mono text-[#7D8590]">{"{{childRunId}}"}</span>.</p>
             </div>
           </>
         )}

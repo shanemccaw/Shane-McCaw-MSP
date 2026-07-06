@@ -527,6 +527,105 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  {
+    name: "SOW Generation",
+    description: "Generates a Consolidated SOW document for a client engagement. Accepts clientUserId, projectId, and title from the trigger payload. Designed to be called as a sub-workflow via a 'Run Workflow' node. On generation failure, runs profile + intelligence-table updates before retrying, then ends with a notification.",
+    triggerType: "event",
+    eventName: "sow.generate",
+    triggerEnabled: false,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 400, y: 50 },
+          data: { nodeType: "start", label: "Generate SOW" },
+        },
+        {
+          id: "gen_sow",
+          type: "action",
+          position: { x: 400, y: 190 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            clientUserId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+            title: "{{title}}",
+          },
+        },
+        {
+          id: "end_ok",
+          type: "end",
+          position: { x: 400, y: 370 },
+          data: { nodeType: "end", label: "SOW Generated" },
+        },
+        {
+          id: "refresh_profile",
+          type: "update_m365_profile",
+          position: { x: 700, y: 370 },
+          data: {
+            nodeType: "update_m365_profile",
+            label: "Refresh M365 Profile",
+            clientUserId: "{{clientUserId}}",
+          },
+        },
+        {
+          id: "refresh_intel",
+          type: "update_intelligence_tables",
+          position: { x: 700, y: 510 },
+          data: {
+            nodeType: "update_intelligence_tables",
+            label: "Refresh Intelligence Tables",
+            clientUserId: "{{clientUserId}}",
+          },
+        },
+        {
+          id: "retry_sow",
+          type: "action",
+          position: { x: 700, y: 650 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Retry: Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            clientUserId: "{{clientUserId}}",
+            projectId: "{{projectId}}",
+            title: "{{title}}",
+          },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 700, y: 830 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: SOW Generation Failed",
+            title: "SOW generation failed for project {{projectId}}",
+            body: "Both the initial attempt and the recovery retry failed. Check the run logs and verify that M365 profile data is available.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_fail",
+          type: "end",
+          position: { x: 700, y: 970 },
+          data: { nodeType: "end", label: "Failed" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start",          target: "gen_sow"        },
+        { id: "e2", source: "gen_sow",         target: "end_ok"         },
+        { id: "e3", source: "gen_sow",         target: "refresh_profile", sourceHandle: "onError" },
+        { id: "e4", source: "refresh_profile", target: "refresh_intel"  },
+        { id: "e5", source: "refresh_intel",   target: "retry_sow"      },
+        { id: "e6", source: "retry_sow",       target: "end_ok"         },
+        { id: "e7", source: "retry_sow",       target: "notify_fail",   sourceHandle: "onError" },
+        { id: "e8", source: "notify_fail",     target: "end_fail"       },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {

@@ -51,6 +51,7 @@ export function isContainerNode(node: StoredNode): boolean {
   const type = (node.data.nodeType as string) || node.type || "";
   if (CONTAINER_TYPES.has(type)) return true;
   if (type === "fetch_news_headlines") return true;
+  if (type === "generate_document") return true;
   return false;
 }
 
@@ -158,6 +159,22 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       const result: FlowStep[] = [step];
       if (doneEdge && !visited.has(doneEdge.target) && !stopSet?.has(doneEdge.target)) {
         result.push(...buildSequence(doneEdge.target, stopSet));
+      }
+      return result;
+    }
+
+    // ── Generate Document (onError side branch) ───────────────────────────────
+    if (type === "generate_document") {
+      const errorEdge = out.find(e => e.sourceHandle === "onError" || e.sourceHandle === "error");
+      const nextEdge  = out.find(e => !e.sourceHandle);
+
+      step.branches = {
+        onError: errorEdge ? buildSequence(errorEdge.target, stopSet) : [],
+      };
+
+      const result: FlowStep[] = [step];
+      if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
+        result.push(...buildSequence(nextEdge.target, stopSet));
       }
       return result;
     }
@@ -325,6 +342,17 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         y = afterBody + 40;
         // Continuation from foreach uses "done" handle
         feeders_ = [{ id: step.id, handle: "done" }];
+      }
+
+      // ── Generate Document (onError side branch) ────────────────────────────
+      else if (step.nodeType === "generate_document" && step.branches) {
+        const errorSteps = step.branches["onError"] ?? [];
+        if (errorSteps.length > 0) {
+          const rightX = x + BRANCH_W;
+          const { nextY: errorEnd } = doLayout(errorSteps, rightX, y, [{ id: step.id, handle: "onError" }]);
+          y = Math.max(y, errorEnd) + 40;
+        }
+        feeders_ = [{ id: step.id }];
       }
 
       // ── Fetch News Headlines (hot / notHot branches side-by-side) ─────────

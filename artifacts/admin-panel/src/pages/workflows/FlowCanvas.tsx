@@ -776,6 +776,36 @@ function ContainerBody({
     );
   }
 
+  // ── Generate Document (On Error branch) ────────────────────────────────────
+  if (nodeType === "generate_document") {
+    const errorSteps = branches["onError"] ?? [];
+    return (
+      <div className="border-t border-red-500/30 rounded-b-xl overflow-hidden">
+        <div className="px-3 py-1.5 flex items-center gap-1.5">
+          <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">⚠ On Error — Recovery steps</span>
+        </div>
+        <div className="px-3 pb-3">
+          <BranchStepList
+            steps={errorSteps}
+            containerId={step.id}
+            containerHandle="onError"
+            lastNodeIdFn={lastNodeId}
+            branchKey="onError"
+            isArchived={isArchived}
+            nodeStyles={nodeStyles}
+            nodeIdCounter={nodeIdCounter}
+            libraryCategories={libraryCategories}
+            allLibraryNodes={allLibraryNodes}
+            nodes={nodes}
+            edges={edges}
+            onGraphChange={onGraphChange}
+            onDuplicateNode={onDuplicateNode}
+          />
+        </div>
+      </div>
+    );
+  }
+
   // ── Fetch News Headlines (hot / notHot branches) ───────────────────────────
   if (nodeType === "fetch_news_headlines") {
     const hotSteps    = branches["hot"]    ?? [];

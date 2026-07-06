@@ -871,7 +871,7 @@ const PROMOTED_ACTION_TYPES = new Set([
   "http_request", "sql_query", "send_email", "send_sms", "emit_event",
   "cancel_workflow", "create_lead", "convert_to_opportunity", "create_client",
   "create_project", "update_m365_profile", "execute_runbook", "generate_document",
-  "calculate_pricing",
+  "calculate_pricing", "run_workflow",
 ]);
 
 // ── Node execution ────────────────────────────────────────────────────────────
@@ -1427,6 +1427,84 @@ async function executeNode(
               } else {
                 output = { documentId: calcDocId, totalPrice, lineCount, ...(calcDocType ? { docType: calcDocType } : {}) };
                 logger.info({ runId, calcDocId, lineCount, totalPrice, calcDocType }, "wf-executor: calculate_pricing completed");
+              }
+            }
+          }
+        } else if (actionType === "run_workflow") {
+          // ── Run Workflow: execute a published sub-workflow synchronously ─────
+          const workflowIdRaw = node.data.workflowId as string | number | undefined;
+          const subDefId = typeof workflowIdRaw === "number"
+            ? workflowIdRaw
+            : parseInt(String(workflowIdRaw ?? ""), 10);
+
+          if (isNaN(subDefId)) {
+            nodeError = true;
+            output = { error: "run_workflow requires a workflowId" };
+          } else {
+            const rawMapping = node.data.inputMapping as Array<{ key: string; expr: string }> | undefined;
+            const subPayload: Record<string, unknown> = { ...payload };
+            if (rawMapping) {
+              for (const { key, expr } of rawMapping) {
+                if (key) subPayload[key] = interp(expr, payload) ?? expr;
+              }
+            }
+            subPayload._parentRunId = runId;
+
+            const subVersionRows = await db.select()
+              .from(wfVersionsTable)
+              .where(and(eq(wfVersionsTable.definitionId, subDefId), eq(wfVersionsTable.status, "published")))
+              .limit(1);
+            const subVersion = subVersionRows[0];
+
+            if (!subVersion) {
+              nodeError = true;
+              output = { error: `run_workflow: no published version found for workflow ${subDefId}` };
+            } else {
+              const [childRunRow] = await db.insert(wfRunsTable).values({
+                versionId: subVersion.id,
+                definitionId: subDefId,
+                triggerType: "manual",
+                triggerRef: `run_workflow:parent:${runId}`,
+                payload: subPayload,
+                status: "pending",
+              }).returning({ id: wfRunsTable.id });
+              const childRunId = childRunRow?.id;
+
+              if (!childRunId) {
+                nodeError = true;
+                output = { error: "run_workflow: failed to create child run record" };
+              } else {
+                await executeWorkflowRun(childRunId);
+
+                const childRunStatusRows = await db.select({
+                  status: wfRunsTable.status,
+                  errorMessage: wfRunsTable.errorMessage,
+                }).from(wfRunsTable).where(eq(wfRunsTable.id, childRunId)).limit(1);
+                const childStatus = childRunStatusRows[0];
+
+                if (childStatus?.status === "failed" || childStatus?.status === "cancelled") {
+                  nodeError = true;
+                  output = {
+                    error: childStatus.errorMessage ?? `Sub-workflow ${childStatus.status}`,
+                    childRunId,
+                  };
+                } else {
+                  const childOutputRows = await db.select({ output: wfRunNodeOutputsTable.output })
+                    .from(wfRunNodeOutputsTable)
+                    .where(and(
+                      eq(wfRunNodeOutputsTable.runId, childRunId),
+                      eq(wfRunNodeOutputsTable.status, "ok"),
+                    ))
+                    .orderBy(wfRunNodeOutputsTable.id)
+                    .limit(50);
+                  const mergedChildOutput: Record<string, unknown> = {};
+                  for (const row of childOutputRows) {
+                    const rowOutput = row.output as Record<string, unknown> | null;
+                    if (rowOutput) Object.assign(mergedChildOutput, rowOutput);
+                  }
+                  output = { childRunId, ...mergedChildOutput };
+                  logger.info({ runId, childRunId, subDefId }, "wf-executor: run_workflow completed — child outputs merged into parent context");
+                }
               }
             }
           }

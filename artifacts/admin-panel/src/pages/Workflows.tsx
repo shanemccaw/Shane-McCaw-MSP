@@ -33,6 +33,7 @@ const TASK_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "document_generation", label: "Document Generation (AI)" },
   { value: "script", label: "Script" },
   { value: "manualScript", label: "Manual Script" },
+  { value: "run_workflow", label: "Run Workflow (Sub-workflow)" },
 ];
 
 const REPORT_DOC_TYPES: { value: string; label: string }[] = [
