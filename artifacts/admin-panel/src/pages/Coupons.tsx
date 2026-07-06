@@ -91,6 +91,12 @@ export default function CouponsPage() {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
   const [publishingToProd, setPublishingToProd] = useState(false);
+  const [publishDiffLoading, setPublishDiffLoading] = useState(false);
+  const [publishDiff, setPublishDiff] = useState<{
+    added: Array<{ code: string; discountType: string; discountValue: string }>;
+    updated: Array<{ code: string }>;
+    removed: Array<{ code: string }>;
+  } | null>(null);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [redemptions, setRedemptions] = useState<Record<number, Redemption[]>>({});
@@ -235,12 +241,27 @@ export default function CouponsPage() {
     }
   };
 
-  async function handlePublishToProd() {
+  async function handlePreviewPublish() {
+    setPublishDiffLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/coupons/publish-to-prod?dryRun=true", { method: "POST" });
+      const body = await res.json() as { dryRun?: boolean; added?: Array<{ code: string; discountType: string; discountValue: string }>; updated?: Array<{ code: string }>; removed?: Array<{ code: string }>; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to preview");
+      setPublishDiff({ added: body.added ?? [], updated: body.updated ?? [], removed: body.removed ?? [] });
+    } catch (err) {
+      toast({ title: "Preview failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishDiffLoading(false);
+    }
+  }
+
+  async function handleConfirmPublish() {
     setPublishingToProd(true);
     try {
       const res = await fetchWithAuth("/api/admin/coupons/publish-to-prod", { method: "POST" });
       const body = await res.json() as { ok?: boolean; upserted?: number; removed?: number; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Failed to publish");
+      setPublishDiff(null);
       toast({ title: "Published to production", description: `${body.upserted ?? 0} coupon(s) synced, ${body.removed ?? 0} removed.` });
     } catch (err) {
       toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });

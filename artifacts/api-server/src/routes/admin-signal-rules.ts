@@ -1383,7 +1383,8 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
 // into production. Strategy: delete all prod rules/groups, re-insert from dev
 // with remapped group IDs.
 
-router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const dryRun = String(req.query["dryRun"] ?? "") === "true";
   const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
   if (!isProdDbConfigured()) {
     res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
@@ -1421,6 +1422,35 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
     const client = await prodPool.connect();
 
     try {
+      if (dryRun) {
+        // Read prod state and compute diff without writing
+        const [prodCustomRes, prodGroupsRes, prodRulesRes] = await Promise.all([
+          client.query<{ key: string }>(`SELECT key FROM custom_signals`),
+          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_rule_groups`),
+          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_derivation_rules`),
+        ]);
+        const prodCustomKeys = new Set(prodCustomRes.rows.map(r => r.key));
+        const devCustomKeys = new Set(devCustomSignals.map(s => s.key));
+
+        res.json({
+          dryRun: true,
+          customSignals: {
+            added: devCustomSignals.filter(s => !prodCustomKeys.has(s.key)).map(s => s.key),
+            removed: prodCustomRes.rows.filter(r => !devCustomKeys.has(r.key)).map(r => r.key),
+          },
+          groups: {
+            current: parseInt(prodGroupsRes.rows[0]?.count ?? "0", 10),
+            incoming: devGroups.length,
+          },
+          rules: {
+            current: parseInt(prodRulesRes.rows[0]?.count ?? "0", 10),
+            incoming: devRules.length,
+          },
+        });
+        return;
+      }
+
+      // Actual write
       await client.query("BEGIN");
 
       // 1. Delete all existing prod rules (FK references groups)
@@ -1463,7 +1493,7 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
 
       await client.query("COMMIT");
     } catch (err) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => { /* ignore */ });
       throw err;
     } finally {
       client.release();

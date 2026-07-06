@@ -151,7 +151,8 @@ router.delete("/admin/engagement-projects/:id", requireAdmin, async (req: Reques
 // Upserts all engagement projects (by title) from dev into the production DB,
 // then removes any prod rows whose titles are absent from dev.
 
-router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const dryRun = String(req.query["dryRun"] ?? "") === "true";
   const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
   if (!isProdDbConfigured()) {
     res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
@@ -167,13 +168,36 @@ router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (_
       title: string; price_range: string; description: string | null; meaning: string | null;
       triggered_by: string[]; sow_items: string[]; pages: string[]; sort_order: number; is_visible: boolean;
     }>;
+    const devTitleSet = new Set(devProjects.map(p => p.title));
 
     const { pool: prodPool } = buildProdDb();
     const client = await prodPool.connect();
-    let upserted = 0;
-    let removed = 0;
 
     try {
+      if (dryRun) {
+        const prodResult = await client.query<{ title: string; price_range: string }>(
+          `SELECT title, price_range FROM engagement_projects`
+        );
+        const prodTitleSet = new Set(prodResult.rows.map(r => r.title));
+
+        const added = devProjects
+          .filter(p => !prodTitleSet.has(p.title))
+          .map(p => ({ title: p.title, priceRange: p.price_range }));
+        const updated = devProjects
+          .filter(p => prodTitleSet.has(p.title))
+          .map(p => ({ title: p.title }));
+        const removed = prodResult.rows
+          .filter(r => !devTitleSet.has(r.title))
+          .map(r => ({ title: r.title }));
+
+        res.json({ dryRun: true, added, updated, removed });
+        return;
+      }
+
+      // Actual write
+      let upserted = 0;
+      let removed = 0;
+
       await client.query("BEGIN");
 
       for (const p of devProjects) {
@@ -214,15 +238,14 @@ router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (_
       }
 
       await client.query("COMMIT");
+      res.json({ ok: true, upserted, removed });
     } catch (err) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => { /* ignore */ });
       throw err;
     } finally {
       client.release();
       await prodPool.end();
     }
-
-    res.json({ ok: true, upserted, removed });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
   }

@@ -153,7 +153,8 @@ router.delete("/admin/coupons/:id", requireAdmin, async (req: Request, res: Resp
 // rows whose codes are absent from dev. Does NOT overwrite uses_count so live
 // redemption counters in production are preserved.
 
-router.post("/admin/coupons/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+router.post("/admin/coupons/publish-to-prod", requireAdmin, async (req: Request, res: Response) => {
+  const dryRun = String(req.query["dryRun"] ?? "") === "true";
   const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
   if (!isProdDbConfigured()) {
     res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
@@ -162,13 +163,37 @@ router.post("/admin/coupons/publish-to-prod", requireAdmin, async (_req: Request
 
   try {
     const devCoupons = await db.select().from(couponsTable).orderBy(couponsTable.createdAt);
+    const devMap = new Map(devCoupons.map(c => [c.code, c]));
 
     const { pool: prodPool } = buildProdDb();
     const client = await prodPool.connect();
-    let upserted = 0;
-    let removed = 0;
 
     try {
+      if (dryRun) {
+        // Read prod state and compute diff without writing
+        const prodResult = await client.query<{ code: string }>(
+          `SELECT code FROM coupons`
+        );
+        const prodCodes = new Set(prodResult.rows.map(r => r.code));
+
+        const added = devCoupons
+          .filter(c => !prodCodes.has(c.code))
+          .map(c => ({ code: c.code, discountType: c.discountType, discountValue: c.discountValue }));
+        const updated = devCoupons
+          .filter(c => prodCodes.has(c.code))
+          .map(c => ({ code: c.code }));
+        const removed = prodResult.rows
+          .filter(r => !devMap.has(r.code))
+          .map(r => ({ code: r.code }));
+
+        res.json({ dryRun: true, added, updated, removed });
+        return;
+      }
+
+      // Actual write
+      let upserted = 0;
+      let removed = 0;
+
       await client.query("BEGIN");
 
       for (const c of devCoupons) {
@@ -202,15 +227,14 @@ router.post("/admin/coupons/publish-to-prod", requireAdmin, async (_req: Request
       }
 
       await client.query("COMMIT");
+      res.json({ ok: true, upserted, removed });
     } catch (err) {
-      await client.query("ROLLBACK");
+      await client.query("ROLLBACK").catch(() => { /* ignore */ });
       throw err;
     } finally {
       client.release();
       await prodPool.end();
     }
-
-    res.json({ ok: true, upserted, removed });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
   }
