@@ -444,6 +444,28 @@ export default function FullScreenWrapper() {
     });
   }, [mode, fetchScorecard, kanbanProjectId]);
 
+  // ── Keep animation targets in sync with live health history ──────────────
+  // scorecardHistory polls /api/portal/m365-scorecard-history every 30 s.
+  // After scripts complete, snapshotHealthFromProfile writes real scores to
+  // client_health_history, which this poll picks up. Without this effect the
+  // animation targets would stay at the stale values from the initial
+  // fetchScorecard() call and the bars would never move off 0%.
+  useEffect(() => {
+    if (mode !== "ProjectTasksView") return;
+    const latest = scorecardHistory?.latest;
+    if (!latest) return;
+    const newTargets: Record<string, number> = {};
+    for (const [k, v] of Object.entries(latest)) {
+      if (typeof v === "number") newTargets[k] = v;
+    }
+    if (Object.keys(newTargets).length === 0) return;
+    targetScoresRef.current = newTargets;
+    if (!scoreAnimStartRef.current) scoreAnimStartRef.current = Date.now();
+    if (kanbanProjectId) {
+      sessionStorage.setItem(`qw-target-scores-${kanbanProjectId}`, JSON.stringify(newTargets));
+    }
+  }, [scorecardHistory, mode, kanbanProjectId]);
+
   // Reset step state whenever a new quick win starts
   useEffect(() => {
     if (mode === "EnteringQuickWin") {
