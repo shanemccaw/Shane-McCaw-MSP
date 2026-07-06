@@ -18,6 +18,7 @@ import {
   treeInsertStepAfter,
   treeReorderStep,
   treeMoveStepIntoBranch,
+  treeFindStepParent,
   treeToGraph,
   isContainerNode,
 } from "./flowTree";
@@ -359,6 +360,8 @@ function StepCard({
   onSelect,
   onGraphChange,
   onDuplicateNode,
+  branchContainerId,
+  parentBranchKey,
 }: {
   step: FlowStep;
   isSelected: boolean;
@@ -372,6 +375,9 @@ function StepCard({
   onSelect: () => void;
   onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
   onDuplicateNode: (id: string) => void;
+  /** When this card lives inside a parallel branch, the container and branch key. */
+  branchContainerId?: string;
+  parentBranchKey?: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
@@ -445,6 +451,11 @@ function StepCard({
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     ctx.onDragOver(step.id, e.clientY < midY ? "before" : "after");
+    // Also highlight the enclosing parallel branch column so the drop zone is
+    // visible even when hovering over an existing card inside that branch.
+    if (branchContainerId && parentBranchKey) {
+      ctx.onDragOverBranchColumn(branchContainerId, parentBranchKey);
+    }
   }
 
   function handleDrop(e: React.DragEvent) {
@@ -614,6 +625,119 @@ function StepCard({
           onDuplicateNode={onDuplicateNode}
         />
       )}
+    </div>
+  );
+}
+
+// ── Parallel Branch Column ─────────────────────────────────────────────────────
+// A self-contained column that wires up column-level drag-over/drop so nodes
+// from outside the branch can be dragged into it, even when the branch is non-empty.
+
+function ParallelBranchColumn({
+  containerId,
+  branchKey,
+  label,
+  color,
+  wait,
+  brSteps,
+  isArchived,
+  nodeStyles,
+  nodeIdCounter,
+  libraryCategories,
+  allLibraryNodes,
+  nodes,
+  edges,
+  lastNodeId,
+  onGraphChange,
+  onDuplicateNode,
+}: {
+  containerId: string;
+  branchKey: string;
+  label: string;
+  color: string;
+  wait: boolean;
+  brSteps: FlowStep[];
+  isArchived: boolean;
+  nodeStyles: Record<string, NodeStyle>;
+  nodeIdCounter: React.MutableRefObject<number>;
+  libraryCategories: LibraryCategory[];
+  allLibraryNodes: LibraryNode[];
+  nodes: StoredNode[];
+  edges: StoredEdge[];
+  lastNodeId: (steps: FlowStep[]) => string;
+  onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
+  onDuplicateNode: (id: string) => void;
+}) {
+  const ctx = React.useContext(FlowCanvasContext);
+  const isDragActive = !!ctx.draggedId;
+  const isColumnTarget =
+    ctx.dropBranchContainerId === containerId && ctx.dropBranchKey === branchKey;
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!isDragActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    ctx.onDragOverBranchColumn(containerId, branchKey);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    // Only clear if we're actually leaving the column (not entering a child)
+    const related = e.relatedTarget as Node | null;
+    if (!e.currentTarget.contains(related)) {
+      ctx.onDragLeaveBranchColumn();
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctx.onDropIntoBranch(containerId, branchKey);
+  }
+
+  return (
+    <div
+      className={`min-w-0 transition-colors ${isColumnTarget ? "bg-[#06B6D4]/10 ring-1 ring-inset ring-[#06B6D4]/50" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      <div
+        className="px-2 py-1.5 border-b border-[#30363D] flex items-center gap-1.5"
+        style={{ background: isColumnTarget ? `${color}20` : `${color}0D` }}
+      >
+        <span className="text-[9px] uppercase tracking-widest font-bold truncate flex-1" style={{ color }}>
+          {label}
+        </span>
+        {isDragActive && isColumnTarget && (
+          <span className="text-[8px] px-1 py-0.5 rounded bg-[#06B6D4]/20 text-[#06B6D4] font-semibold whitespace-nowrap">
+            ↓ drop here
+          </span>
+        )}
+        {!isDragActive && !wait && (
+          <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 font-semibold whitespace-nowrap">
+            🔥 fire &amp; forget
+          </span>
+        )}
+      </div>
+      <div className="px-2 pb-3 pt-1">
+        <BranchStepList
+          steps={brSteps}
+          containerId={containerId}
+          containerHandle={branchKey}
+          lastNodeIdFn={lastNodeId}
+          branchKey={branchKey}
+          isArchived={isArchived}
+          nodeStyles={nodeStyles}
+          nodeIdCounter={nodeIdCounter}
+          libraryCategories={libraryCategories}
+          allLibraryNodes={allLibraryNodes}
+          nodes={nodes}
+          edges={edges}
+          onGraphChange={onGraphChange}
+          onDuplicateNode={onDuplicateNode}
+        />
+      </div>
     </div>
   );
 }
@@ -854,36 +978,25 @@ function ContainerBody({
             const brSteps  = branches[key] ?? [];
 
             return (
-              <div key={key} className="min-w-0">
-                <div className="px-2 py-1.5 border-b border-[#30363D] flex items-center gap-1.5" style={{ background: `${color}0D` }}>
-                  <span className="text-[9px] uppercase tracking-widest font-bold truncate flex-1" style={{ color }}>
-                    {label}
-                  </span>
-                  {!wait && (
-                    <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 font-semibold whitespace-nowrap">
-                      🔥 fire &amp; forget
-                    </span>
-                  )}
-                </div>
-                <div className="px-2 pb-3 pt-1">
-                  <BranchStepList
-                    steps={brSteps}
-                    containerId={step.id}
-                    containerHandle={key}
-                    lastNodeIdFn={lastNodeId}
-                    branchKey={key}
-                    isArchived={isArchived}
-                    nodeStyles={nodeStyles}
-                    nodeIdCounter={nodeIdCounter}
-                    libraryCategories={libraryCategories}
-                    allLibraryNodes={allLibraryNodes}
-                    nodes={nodes}
-                    edges={edges}
-                    onGraphChange={onGraphChange}
-                    onDuplicateNode={onDuplicateNode}
-                  />
-                </div>
-              </div>
+              <ParallelBranchColumn
+                key={key}
+                containerId={step.id}
+                branchKey={key}
+                label={label}
+                color={color}
+                wait={wait}
+                brSteps={brSteps}
+                isArchived={isArchived}
+                nodeStyles={nodeStyles}
+                nodeIdCounter={nodeIdCounter}
+                libraryCategories={libraryCategories}
+                allLibraryNodes={allLibraryNodes}
+                nodes={nodes}
+                edges={edges}
+                lastNodeId={lastNodeId}
+                onGraphChange={onGraphChange}
+                onDuplicateNode={onDuplicateNode}
+              />
             );
           })}
         </div>
@@ -1086,6 +1199,8 @@ function BranchStepList({
             edges={edges}
             onGraphChange={onGraphChange}
             onDuplicateNode={onDuplicateNode}
+            branchContainerId={containerId}
+            parentBranchKey={branchKey}
           />
           {/* "+" after each step within the branch — suppressed for news node (branches have their own AddButtons) */}
           {step.nodeType !== "fetch_news_headlines" && (
@@ -1122,6 +1237,8 @@ function NestedStepRenderer({
   edges,
   onGraphChange,
   onDuplicateNode,
+  branchContainerId,
+  parentBranchKey,
 }: {
   step: FlowStep;
   isArchived: boolean;
@@ -1133,6 +1250,8 @@ function NestedStepRenderer({
   edges: StoredEdge[];
   onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
   onDuplicateNode: (id: string) => void;
+  branchContainerId?: string;
+  parentBranchKey?: string;
 }) {
   const ctx = React.useContext(FlowCanvasContext);
 
@@ -1150,6 +1269,8 @@ function NestedStepRenderer({
       onSelect={() => ctx.onSelectNode(step.id === ctx.selectedNodeId ? null : step.id)}
       onGraphChange={onGraphChange}
       onDuplicateNode={onDuplicateNode}
+      branchContainerId={branchContainerId}
+      parentBranchKey={parentBranchKey}
     />
   );
 }
@@ -1162,12 +1283,19 @@ interface FlowCanvasCtx {
   draggedId: string | null;
   dropTargetId: string | null;
   dropPosition: "before" | "after";
+  /** Container + branch currently highlighted as a column drop target. */
+  dropBranchContainerId: string | null;
+  dropBranchKey: string | null;
   onDragStart: (id: string) => void;
   onDragOver: (id: string, pos: "before" | "after") => void;
   onDrop: (targetId: string, pos: "before" | "after") => void;
   onDragEnd: () => void;
   /** Drop a dragged node into the first position of a specific container branch. */
   onDropIntoBranch: (containerId: string, branchKey: string) => void;
+  /** Signal that a drag is hovering over a specific branch column. */
+  onDragOverBranchColumn: (containerId: string, branchKey: string) => void;
+  /** Clear the branch column hover state (e.g. on drag-leave). */
+  onDragLeaveBranchColumn: () => void;
   /** Distinct categories from all event triggers (e.g. ["CRM", "Payments"]). Empty when unknown. */
   triggerCategories: string[];
 }
@@ -1178,11 +1306,15 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   draggedId: null,
   dropTargetId: null,
   dropPosition: "after",
+  dropBranchContainerId: null,
+  dropBranchKey: null,
   onDragStart: () => {},
   onDragOver: () => {},
   onDrop: () => {},
   onDragEnd: () => {},
   onDropIntoBranch: () => {},
+  onDragOverBranchColumn: () => {},
+  onDragLeaveBranchColumn: () => {},
   triggerCategories: [],
 });
 
@@ -1209,6 +1341,8 @@ export default function FlowCanvas({
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const [dropPosition, setDropPosition] = useState<"before" | "after">("after");
+  const [dropBranchContainerId, setDropBranchContainerId] = useState<string | null>(null);
+  const [dropBranchKey, setDropBranchKey] = useState<string | null>(null);
 
   const handleDragStart = useCallback((id: string) => {
     setDraggedId(id);
@@ -1245,13 +1379,14 @@ export default function FlowCanvas({
     if (!draggedId || draggedId === targetId) {
       setDraggedId(null);
       setDropTargetId(null);
+      setDropBranchContainerId(null);
+      setDropBranchKey(null);
       return;
     }
-    const newTree = treeReorderStep(tree, draggedId, targetId, pos);
-    if (newTree !== tree) {
-      const { nodes: n, edges: e } = treeToGraph(newTree);
-      // Carry non-tree edges (e.g. retry back-edges) into the new graph.
-      // Only include ones whose endpoints still exist and aren't already present.
+    const reordered = treeReorderStep(tree, draggedId, targetId, pos);
+    if (reordered !== tree) {
+      // Same-sequence reorder succeeded — apply it.
+      const { nodes: n, edges: e } = treeToGraph(reordered);
       const newNodeIds = new Set(n.map(nd => nd.id));
       const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
       const extra = nonTreeEdges.filter(
@@ -1260,14 +1395,37 @@ export default function FlowCanvas({
               !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
       );
       onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
+    } else {
+      // Reorder was a no-op: dragged node is in a different sequence than the
+      // target.  Find which container+branch owns the target and adopt the
+      // dragged node into that branch instead.
+      const parent = treeFindStepParent(tree, targetId);
+      if (parent) {
+        const adopted = treeMoveStepIntoBranch(tree, draggedId, parent.containerId, parent.branchKey);
+        if (adopted !== tree) {
+          const { nodes: n, edges: e } = treeToGraph(adopted);
+          const newNodeIds = new Set(n.map(nd => nd.id));
+          const newEdgeKeys = new Set(e.map(ed => `${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`));
+          const extra = nonTreeEdges.filter(
+            ed => newNodeIds.has(ed.source) &&
+                  newNodeIds.has(ed.target) &&
+                  !newEdgeKeys.has(`${ed.source}|${ed.target}|${ed.sourceHandle ?? ""}`)
+          );
+          onGraphChange(n, extra.length > 0 ? [...e, ...extra] : e);
+        }
+      }
     }
     setDraggedId(null);
     setDropTargetId(null);
+    setDropBranchContainerId(null);
+    setDropBranchKey(null);
   }, [draggedId, tree, nonTreeEdges, onGraphChange]);
 
   const handleDragEnd = useCallback(() => {
     setDraggedId(null);
     setDropTargetId(null);
+    setDropBranchContainerId(null);
+    setDropBranchKey(null);
   }, []);
 
   const handleDropIntoBranch = useCallback((containerId: string, branchKey: string) => {
@@ -1287,7 +1445,20 @@ export default function FlowCanvas({
     }
     setDraggedId(null);
     setDropTargetId(null);
+    setDropBranchContainerId(null);
+    setDropBranchKey(null);
   }, [draggedId, tree, nonTreeEdges, onGraphChange]);
+
+  const handleDragOverBranchColumn = useCallback((containerId: string, branchKey: string) => {
+    setDropBranchContainerId(containerId);
+    setDropBranchKey(branchKey);
+    setDropTargetId(null);
+  }, []);
+
+  const handleDragLeaveBranchColumn = useCallback(() => {
+    setDropBranchContainerId(null);
+    setDropBranchKey(null);
+  }, []);
 
   const ctx: FlowCanvasCtx = React.useMemo(() => ({
     selectedNodeId,
@@ -1295,13 +1466,17 @@ export default function FlowCanvas({
     draggedId,
     dropTargetId,
     dropPosition,
+    dropBranchContainerId,
+    dropBranchKey,
     onDragStart: handleDragStart,
     onDragOver: handleDragOver,
     onDrop: handleDrop,
     onDragEnd: handleDragEnd,
     onDropIntoBranch: handleDropIntoBranch,
+    onDragOverBranchColumn: handleDragOverBranchColumn,
+    onDragLeaveBranchColumn: handleDragLeaveBranchColumn,
     triggerCategories,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, triggerCategories]);
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);

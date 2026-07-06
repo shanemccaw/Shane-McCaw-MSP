@@ -796,6 +796,28 @@ export function treeInsertStepAfter(
 
 // ── Cross-level drag helpers ───────────────────────────────────────────────────
 
+/**
+ * Find the immediate container (parallel/condition/foreach/…) and branch key
+ * that directly owns `targetId`. Returns null when `targetId` is at the
+ * top-level sequence (not inside any branch).
+ */
+export function treeFindStepParent(
+  steps: FlowStep[],
+  targetId: string,
+): { containerId: string; branchKey: string } | null {
+  for (const step of steps) {
+    if (!step.branches) continue;
+    for (const [key, branchSteps] of Object.entries(step.branches)) {
+      if (branchSteps.some(s => s.id === targetId)) {
+        return { containerId: step.id, branchKey: key };
+      }
+      const found = treeFindStepParent(branchSteps, targetId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 /** Find a step anywhere in the tree (including nested branches). */
 export function treeFindStep(steps: FlowStep[], id: string): FlowStep | null {
   for (const step of steps) {
