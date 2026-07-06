@@ -273,6 +273,7 @@ function ReplayStepCard({
   isCurrent,
   inPath,
   isSkipped,
+  skipReason,
   hasError,
   isMutated,
   pricingTotal,
@@ -285,6 +286,7 @@ function ReplayStepCard({
   isCurrent: boolean;
   inPath: boolean;
   isSkipped: boolean;
+  skipReason?: string;
   hasError: boolean;
   isMutated: boolean;
   pricingTotal?: number;
@@ -365,7 +367,14 @@ function ReplayStepCard({
             <span className="text-[9px] text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-full">✎ mutated</span>
           )}
           {isSkipped && (
-            <span className="text-[9px] text-[#484F58] bg-[#1C2128] border border-[#30363D] px-1.5 py-0.5 rounded-full">skipped</span>
+            <div className="flex flex-col items-end gap-0.5">
+              <span className="text-[9px] text-[#484F58] bg-[#1C2128] border border-[#30363D] px-1.5 py-0.5 rounded-full">skipped</span>
+              {skipReason && (
+                <span className="text-[8px] text-[#484F58] font-mono max-w-[120px] text-right leading-snug truncate" title={skipReason}>
+                  {skipReason}
+                </span>
+              )}
+            </div>
           )}
           {isCurrent && !hasError && (
             <span className="text-[9px] text-blue-300 bg-blue-500/10 border border-blue-500/30 px-1.5 py-0.5 rounded-full">▶ Current</span>
@@ -732,6 +741,57 @@ export function ChildRunInline({
   );
 }
 
+// ── Skip reason resolver ───────────────────────────────────────────────────────
+// Traces back through the graph to explain why a node was not executed.
+// Returns a short human-readable string, or null when no useful reason is found.
+
+function getSkipReason(
+  nodeId: string,
+  graph: { nodes: Array<{ id: string; type?: string; data: Record<string, unknown> }>; edges: Array<{ source: string; target: string; sourceHandle?: string }> } | undefined | null,
+  nodeOutputMap: Map<string, { output: Record<string, unknown> }>,
+  graphNodeMap: Map<string, { type?: string; data: Record<string, unknown> }>,
+  _visited = new Set<string>(),
+): string | null {
+  if (!graph) return null;
+  if (_visited.has(nodeId)) return null;
+  _visited.add(nodeId);
+
+  const incomingEdges = graph.edges.filter(e => e.target === nodeId);
+  for (const edge of incomingEdges) {
+    const srcNode = graphNodeMap.get(edge.source);
+    const srcType = (srcNode?.data?.nodeType as string | undefined) ?? srcNode?.type ?? "";
+    const srcOut  = nodeOutputMap.get(edge.source);
+
+    if (srcType === "condition" && srcOut) {
+      const result     = srcOut.output.result as boolean | undefined;
+      const expression = srcOut.output.expression as string | undefined;
+      const handle     = edge.sourceHandle ?? "";
+      const isYesBranch = handle === "yes" || handle === "true";
+      const isNoBranch  = handle === "no"  || handle === "false";
+      const exprLabel   = expression ? ` · ${expression}` : "";
+
+      if (result === true  && isNoBranch)  return `condition true → no-branch skipped${exprLabel}`;
+      if (result === false && isYesBranch) return `condition false → yes-branch skipped${exprLabel}`;
+      if (result === true  && isYesBranch) return `condition true → yes-branch taken (this node is downstream of a skipped path)`;
+      if (result === false && isNoBranch)  return `condition false → no-branch taken (this node is downstream of a skipped path)`;
+    }
+
+    if (srcType === "switch_case" && srcOut) {
+      const chosen = srcOut.output.chosenBranch as string | undefined;
+      if (chosen) return `switch chose "${chosen}" — this branch not taken`;
+    }
+
+    // Propagated skip — the source itself was skipped; recurse one level
+    if (srcOut?.output?.skipped === true) {
+      const parentReason = getSkipReason(edge.source, graph, nodeOutputMap, graphNodeMap, _visited);
+      if (parentReason) return parentReason;
+      return "predecessor was not executed";
+    }
+  }
+
+  return null;
+}
+
 // ── RunDetailContent — three-tab body, owns its own fetching ──────────────────
 
 export default function RunDetailContent({ runId }: { runId: number }) {
@@ -941,6 +1001,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               const graphNode = graphNodeMap.get(nodeId);
                               const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                               const label = (graphNode?.data?.label as string) ?? nodeType;
+                              const skipReason = getSkipReason(nodeId, run.graph, nodeOutputMap, graphNodeMap) ?? undefined;
                               return (
                                 <ReplayStepCard
                                   key={nodeId}
@@ -950,6 +1011,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                   isCurrent={false}
                                   inPath={false}
                                   isSkipped={true}
+                                  skipReason={skipReason}
                                   hasError={false}
                                   isMutated={false}
                                   onClick={() => {}}

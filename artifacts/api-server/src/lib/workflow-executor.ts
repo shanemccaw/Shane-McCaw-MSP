@@ -4649,8 +4649,8 @@ async function executeItemSubgraph(
 
     if (node.type === "condition" && conditionResult !== undefined) {
       const outEdges  = subEdges.filter(e => e.source === nodeId);
-      const trueEdge  = outEdges.find(e => e.sourceHandle === "true");
-      const falseEdge = outEdges.find(e => e.sourceHandle === "false");
+      const trueEdge  = outEdges.find(e => e.sourceHandle === "yes" || e.sourceHandle === "true");
+      const falseEdge = outEdges.find(e => e.sourceHandle === "no"  || e.sourceHandle === "false");
       for (const e of outEdges) {
         subResolveEdge(e.target, conditionResult ? e.id === trueEdge?.id : e.id === falseEdge?.id);
       }
@@ -4809,8 +4809,14 @@ export async function executeWorkflowRun(
       // cancel handle: when condition is false AND a cancel edge exists → cancel run immediately
       if (node.type === "condition" && conditionResult !== undefined) {
         const outEdges  = graph.edges.filter(e => e.source === nodeId);
-        const trueEdge  = outEdges.find(e => e.sourceHandle === "true" || (!e.sourceHandle && !outEdges.find(x => x.sourceHandle === "true")));
-        const falseEdge = outEdges.find(e => e.sourceHandle === "false");
+        // Graphs store condition branch handles as "yes"/"no" (set by the flow
+        // builder's treeToGraph). Support "true"/"false" as well for backward
+        // compatibility with any manually-created graphs that used the old naming.
+        const trueEdge  = outEdges.find(e =>
+          e.sourceHandle === "yes" || e.sourceHandle === "true" ||
+          (!e.sourceHandle && !outEdges.find(x => x.sourceHandle === "yes" || x.sourceHandle === "true"))
+        );
+        const falseEdge = outEdges.find(e => e.sourceHandle === "no" || e.sourceHandle === "false");
         const cancelEdge = outEdges.find(e => e.sourceHandle === "cancel");
 
         if (!conditionResult && cancelEdge) {
