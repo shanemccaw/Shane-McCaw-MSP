@@ -148,6 +148,70 @@ router.delete("/admin/coupons/:id", requireAdmin, async (req: Request, res: Resp
   res.json({ deleted: id });
 });
 
+// ─── POST /api/admin/coupons/publish-to-prod ─────────────────────────────────
+// Upserts all coupons (by code) from dev into production, then removes any prod
+// rows whose codes are absent from dev. Does NOT overwrite uses_count so live
+// redemption counters in production are preserved.
+
+router.post("/admin/coupons/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    const devCoupons = await db.select().from(couponsTable).orderBy(couponsTable.createdAt);
+
+    const { pool: prodPool } = buildProdDb();
+    const client = await prodPool.connect();
+    let upserted = 0;
+    let removed = 0;
+
+    try {
+      await client.query("BEGIN");
+
+      for (const c of devCoupons) {
+        await client.query(
+          `INSERT INTO coupons (code, discount_type, discount_value, max_uses, active, expires_at, requires_testimonial)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (code) DO UPDATE SET
+             discount_type       = EXCLUDED.discount_type,
+             discount_value      = EXCLUDED.discount_value,
+             max_uses            = EXCLUDED.max_uses,
+             active              = EXCLUDED.active,
+             expires_at          = EXCLUDED.expires_at,
+             requires_testimonial = EXCLUDED.requires_testimonial`,
+          [c.code, c.discountType, c.discountValue, c.maxUses, c.active, c.expiresAt, c.requiresTestimonial]
+        );
+        upserted++;
+      }
+
+      // Remove prod coupons not present in dev
+      if (devCoupons.length > 0) {
+        const codes = devCoupons.map(c => c.code);
+        const placeholders = codes.map((_, i) => `$${i + 1}`).join(", ");
+        const del = await client.query(
+          `DELETE FROM coupons WHERE code NOT IN (${placeholders})`, codes
+        );
+        removed = del.rowCount ?? 0;
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+      await prodPool.end();
+    }
+
+    res.json({ ok: true, upserted, removed });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
 router.get("/admin/coupons/:id/redemptions", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params.id ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid coupon ID" }); return; }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Pencil, Trash2, Loader2, Tag, ToggleLeft, ToggleRight, X, ChevronDown, ChevronRight, History } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, Tag, ToggleLeft, ToggleRight, X, ChevronDown, ChevronRight, History, Upload } from "lucide-react";
 
 interface Coupon {
   id: number;
@@ -90,6 +90,7 @@ export default function CouponsPage() {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [formError, setFormError] = useState("");
+  const [publishingToProd, setPublishingToProd] = useState(false);
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [redemptions, setRedemptions] = useState<Record<number, Redemption[]>>({});
@@ -234,6 +235,20 @@ export default function CouponsPage() {
     }
   };
 
+  async function handlePublishToProd() {
+    setPublishingToProd(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/coupons/publish-to-prod", { method: "POST" });
+      const body = await res.json() as { ok?: boolean; upserted?: number; removed?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish");
+      toast({ title: "Published to production", description: `${body.upserted ?? 0} coupon(s) synced, ${body.removed ?? 0} removed.` });
+    } catch (err) {
+      toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingToProd(false);
+    }
+  }
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
@@ -241,13 +256,23 @@ export default function CouponsPage() {
           <h1 className="text-2xl font-bold text-[#E6EDF3]">Coupons</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage promo codes for checkout discounts</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Coupon
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { void handlePublishToProd(); }}
+            disabled={publishingToProd || coupons.length === 0}
+            className="flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+          >
+            {publishingToProd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            Publish to Prod
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 bg-[#0078D4] text-white text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-[#005A9E] transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Coupon
+          </button>
+        </div>
       </div>
 
       {showForm && (
