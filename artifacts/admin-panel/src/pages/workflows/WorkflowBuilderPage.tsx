@@ -2374,6 +2374,7 @@ function NodeConfigPanel({
   const [runbookNames, setRunbookNames] = useState<string[]>([]);
   const [runbooksLoading, setRunbooksLoading] = useState(false);
   const [runbooksError, setRunbooksError] = useState(false);
+  const [runbookManualMode, setRunbookManualMode] = useState(false);
 
   useEffect(() => {
     if (nodeType !== "update_m365_profile" && nodeType !== "execute_runbook") return;
@@ -2947,15 +2948,20 @@ function NodeConfigPanel({
                 <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
                   <option>Loading runbooks…</option>
                 </select>
-              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") ? (
-                <select
-                  value={(node.data.runbookName as string) ?? ""}
-                  onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-                >
-                  <option value="">— select a runbook —</option>
-                  {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
+              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") && !runbookManualMode ? (
+                <>
+                  <select
+                    value={(node.data.runbookName as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    <option value="">— select a runbook —</option>
+                    {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    use a variable instead
+                  </button>
+                </>
               ) : (
                 <>
                   <input
@@ -2966,6 +2972,11 @@ function NodeConfigPanel({
                     className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
                   />
                   {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
+                  {runbookNames.length > 0 && !runbooksLoading && (
+                    <button type="button" onClick={() => { setRunbookManualMode(false); onChange(node.id, { ...node.data, runbookName: "" }); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                      choose from list
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -2985,15 +2996,20 @@ function NodeConfigPanel({
                 <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
                   <option>Loading runbooks…</option>
                 </select>
-              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") ? (
-                <select
-                  value={(node.data.runbookName as string) ?? ""}
-                  onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
-                >
-                  <option value="">— select a runbook —</option>
-                  {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
-                </select>
+              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") && !runbookManualMode ? (
+                <>
+                  <select
+                    value={(node.data.runbookName as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                  >
+                    <option value="">— select a runbook —</option>
+                    {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                    use a variable instead
+                  </button>
+                </>
               ) : (
                 <>
                   <input
@@ -3004,6 +3020,11 @@ function NodeConfigPanel({
                     className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
                   />
                   {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
+                  {runbookNames.length > 0 && !runbooksLoading && (
+                    <button type="button" onClick={() => { setRunbookManualMode(false); onChange(node.id, { ...node.data, runbookName: "" }); }} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                      choose from list
+                    </button>
+                  )}
                 </>
               )}
             </div>
