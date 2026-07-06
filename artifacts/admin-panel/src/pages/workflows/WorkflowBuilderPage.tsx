@@ -100,6 +100,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   // ── Control Flow ──
   foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  retry:           { bg: "#1A1100", border: "#F59E0B", icon: "🔁",  label: "Retry"               },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   // ── Calendar (Exchange / Microsoft Graph) ──
@@ -330,6 +331,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "itemsTotal",       label: "Total number of elements in the array" },
     { key: "collectedResults", label: "Array of last payload from each iteration (available on done handle)" },
   ],
+  // Retry — outputs available inside the exhausted subgraph
+  retry: [
+    { key: "_retry.<id>.count",     label: "Number of attempts made (equals maxAttempts when exhausted)" },
+    { key: "_retry.<id>.lastError", label: "Error message from the last failed attempt" },
+  ],
 };
 
 // ── Custom node component ─────────────────────────────────────────────────────
@@ -408,6 +414,25 @@ function WfNode({ data, selected, id }: NodeProps) {
           />
           <div className="flex justify-between text-[9px] font-semibold mt-1 px-4">
             <span style={{ color: "#A855F7" }}>Loop</span>
+            <span className="text-emerald-400">Done</span>
+          </div>
+        </>
+      ) : nodeType === "retry" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="exhausted"
+            style={{ left: "30%", background: "#EF4444", border: "none" }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="done"
+            style={{ left: "70%", background: "#22C55E", border: "none" }}
+          />
+          <div className="flex justify-between text-[9px] font-semibold mt-1 px-4">
+            <span className="text-red-400">Exhausted</span>
             <span className="text-emerald-400">Done</span>
           </div>
         </>
@@ -663,6 +688,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Control Flow",
     nodes: [
       { type: "foreach",         label: "For Each",        description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
+      { type: "retry",           label: "Retry",           description: "Re-run a failed node automatically; wire graceful error handling in the Exhausted body.", tags: ["retry", "error", "loop", "control", "recover", "resilience"] },
       { type: "approval_gate",   label: "Approval Gate",   description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
       { type: "report_progress", label: "Report Progress", description: "Emit a real-time status message visible in the test-run panel and run timeline", tags: ["progress", "status", "log", "notify", "control", "debug"] },
       { type: "run_workflow",    label: "Run Workflow",    description: "Execute another published workflow synchronously and merge its outputs into the current context", tags: ["workflow", "subworkflow", "call", "invoke", "control", "run"] },
@@ -3641,6 +3667,39 @@ function NodeConfigPanel({
               </p>
               <p className="text-[10px] text-[#484F58] leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-[#7D8590]">{"{{collectedResults}}"}</span>.
+              </p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "retry" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Max Attempts</label>
+              <input
+                type="number" min={1}
+                value={(node.data.maxAttempts as number) ?? 3}
+                onChange={e => onChange(node.id, { ...node.data, maxAttempts: Math.max(1, Number(e.target.value)) })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Delay between retries (seconds)</label>
+              </div>
+              <input
+                type="number" min={0}
+                value={(node.data.delaySeconds as number) ?? 0}
+                onChange={e => onChange(node.id, { ...node.data, delaySeconds: Math.max(0, Number(e.target.value)) })}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              />
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold text-red-400">Exhausted</span> handle to the first node of your error-handling subgraph — it receives <span className="font-mono text-[#7D8590]">{`{{_retry.${node.id}.count}}`}</span> and <span className="font-mono text-[#7D8590]">{`{{_retry.${node.id}.lastError}}`}</span>.
+              </p>
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after the exhausted subgraph completes (or after a successful retry, the source node's normal path is used directly).
               </p>
             </div>
           </>

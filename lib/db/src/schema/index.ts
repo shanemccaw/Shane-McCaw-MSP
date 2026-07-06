@@ -1793,6 +1793,7 @@ export interface WfNode {
     | "switch_case"
     // Control Flow
     | "foreach"
+    | "retry"
     | "approval_gate"
     | "report_progress"
     // Calendar (Exchange Online via Microsoft Graph)

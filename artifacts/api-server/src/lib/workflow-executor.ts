@@ -1028,7 +1028,7 @@ async function executeNode(
   }
 
   // Structural nodes always execute normally; everything else is stubbed in dry-run.
-  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case", "report_progress"]);
+  const STRUCTURAL_TYPES = new Set(["start", "end", "condition", "error", "switch_case", "report_progress", "retry"]);
 
   // Promoted type bridge: first-class node types alias to the action handler.
   // Inject data.actionType from node.type so the action case works unchanged.
@@ -1732,6 +1732,12 @@ async function executeNode(
         };
         break;
       }
+
+      case "retry":
+        // No-op — all retry logic is handled in the BFS block after executeNode returns.
+        // nodeError stays false so the BFS can enter the retry block normally.
+        output = {};
+        break;
 
       case "delay": {
         // No hard cap — trust the node-configured values.
@@ -4898,7 +4904,15 @@ export async function executeWorkflowRun(
         const outEdges = graph.edges.filter(e => e.source === nodeId);
         const errorEdge = outEdges.find(e => e.sourceHandle === "error" || e.sourceHandle === "onError");
         if (errorEdge) {
-          for (const e of outEdges) resolveEdge(e.target, e.target === errorEdge.target);
+          // If the error target is a Retry node, defer resolution of normal outgoing edges.
+          // The Retry node will activate them directly on success so that resolveEdge can
+          // still re-queue them (their resolvedCount must not already be at inDegree).
+          const errorTargetNode = graph.nodes.find(n => n.id === errorEdge.target);
+          if (errorTargetNode?.type === "retry") {
+            resolveEdge(errorEdge.target, true);
+          } else {
+            for (const e of outEdges) resolveEdge(e.target, e.target === errorEdge.target);
+          }
         } else {
           // Broadcast phase_gen error to the client SSE channel so the UI can show the escape hatch
           const rawPresId = payload.presentationId;
@@ -5073,6 +5087,187 @@ export async function executeWorkflowRun(
         await db.update(wfRunsTable)
           .set({ branchPath: branchPath as unknown as string[] })
           .where(eq(wfRunsTable.id, runId));
+
+        continue;
+      }
+
+      // Retry: re-run the source node up to maxAttempts times; on exhaustion run the
+      // exhausted subgraph (same pattern as ForEach body), then fire the done edges.
+      if (node.type === "retry") {
+        const retryOutEdges  = graph.edges.filter(e => e.source === nodeId);
+        const exhaustedEdges = retryOutEdges.filter(e => e.sourceHandle === "exhausted");
+        const doneEdges      = retryOutEdges.filter(e => e.sourceHandle === "done");
+
+        // Find the source node before dry-run check so it's available in all branches.
+        // The source is the node whose error/onError edge leads here; filter strictly to
+        // avoid accidentally picking a non-error predecessor.
+        const incomingErrorEdge = graph.edges.find(
+          e => e.target === nodeId && (e.sourceHandle === "error" || e.sourceHandle === "onError"),
+        );
+        const sourceNodeId  = incomingErrorEdge?.source ?? null;
+        const sourceNode    = sourceNodeId ? graph.nodes.find(n => n.id === sourceNodeId) ?? null : null;
+
+        // Helper: deferred source-normal edges — must be resolved (active or inactive) in
+        // every exit path so that AND-gated join nodes that have incoming edges from both
+        // the source normal path AND the retry done path can reach their full inDegree.
+        const sourceNormalEdges = sourceNodeId
+          ? graph.edges.filter(
+              e => e.source === sourceNodeId
+                && e.sourceHandle !== "error"
+                && e.sourceHandle !== "onError",
+            )
+          : [];
+
+        // Dry-run: treat as pass-through — done edges active, source-normal edges inactive,
+        // exhausted subgraph skipped. Resolving both sides satisfies AND-gated join nodes.
+        if (opts.dryRun) {
+          for (const e of sourceNormalEdges) resolveEdge(e.target, false);
+          for (const e of doneEdges) resolveEdge(e.target, true);
+          continue;
+        }
+
+        const maxAttempts   = typeof node.data.maxAttempts  === "number" ? node.data.maxAttempts  : 3;
+        const delaySeconds  = typeof node.data.delaySeconds === "number" ? node.data.delaySeconds : 0;
+
+        // Retrieve current retry state from nested payload: payload._retry[nodeId]
+        // Using nested form so {{_retry.<id>.count}} resolves correctly via the
+        // workflow interpolation engine's dot-path traversal.
+        const retryBucket = (payload._retry as Record<string, { count: number; lastError: string }> | undefined) ?? {};
+        const retryState  = retryBucket[nodeId] ?? { count: 0, lastError: "" };
+        let   attempt     = retryState.count + 1;
+
+        logger.info({ runId, retryNodeId: nodeId, attempt, maxAttempts, sourceNodeId },
+          "wf-executor: retry — attempt starting");
+
+        // Collect exhausted subgraph nodes via DFS from exhausted handle targets.
+        // Stop at nodes directly targeted by the done edges (mirrors ForEach pattern).
+        const doneTargetIds = new Set(doneEdges.map(e => e.target));
+        const exhaustedSubgraphIds = new Set<string>();
+        const exDfsStack = exhaustedEdges.map(e => e.target);
+        while (exDfsStack.length > 0) {
+          const nId = exDfsStack.pop()!;
+          if (exhaustedSubgraphIds.has(nId) || doneTargetIds.has(nId)) continue;
+          exhaustedSubgraphIds.add(nId);
+          for (const e of graph.edges.filter(e => e.source === nId)) {
+            if (!exhaustedSubgraphIds.has(e.target) && !doneTargetIds.has(e.target)) {
+              exDfsStack.push(e.target);
+            }
+          }
+        }
+
+        if (sourceNode && attempt <= maxAttempts) {
+          // Delay before retry
+          if (delaySeconds > 0) {
+            await new Promise<void>(res => setTimeout(res, delaySeconds * 1000));
+          }
+
+          // Re-execute the source node
+          const retryResult = await executeNode(
+            sourceNode, payload, runId, false, opts.inputValues ?? {}, run.definitionId,
+          );
+
+          payload = retryResult.nextPayload;
+
+          if (!retryResult.nodeError) {
+            // Success — fence the retry node + exhausted subgraph so main BFS never re-runs them
+            resolvedCount.set(nodeId, (inDegree.get(nodeId) ?? 0) + 1);
+            for (const nId of exhaustedSubgraphIds) {
+              resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+            }
+            // Source normal edges fire active; done edges fire inactive.
+            // Both must be resolved to satisfy AND-gated join nodes that have incoming
+            // edges from both paths (source-normal AND retry-done).
+            for (const e of sourceNormalEdges) resolveEdge(e.target, true);
+            for (const e of doneEdges)         resolveEdge(e.target, false);
+            branchPath.push(`${nodeId}[retry-success-${attempt}]`);
+          } else {
+            // Still failing — update retry state in nested payload and re-queue this retry node
+            const updatedBucket = {
+              ...retryBucket,
+              [nodeId]: {
+                count:     attempt,
+                lastError: (retryResult.output.error as string | undefined) ?? `Attempt ${attempt} failed`,
+              },
+            };
+            payload = { ...payload, _retry: updatedBucket };
+            readyQueue.push({ nodeId, skip: false });
+            // Bump resolvedCount so the node re-enters the queue correctly on the next pass
+            resolvedCount.set(nodeId, (inDegree.get(nodeId) ?? 0));
+          }
+        } else {
+          // All attempts exhausted (or source node not found)
+          const lastError = retryState.lastError || `Retry exhausted after ${maxAttempts} attempt(s)`;
+
+          if (exhaustedEdges.length === 0) {
+            // No exhausted handler wired — fail the run
+            await db.update(wfRunsTable).set({
+              status: "failed", finishedAt: new Date(),
+              errorMessage: `Retry exhausted after ${maxAttempts} attempt(s): ${lastError}`,
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            logger.warn({ runId, nodeId, maxAttempts, lastError }, "wf-executor: retry exhausted — no handler — run failed");
+            return;
+          }
+
+          // Run the exhausted subgraph — inject retry state under nested _retry[nodeId]
+          // so that {{_retry.<id>.count}} and {{_retry.<id>.lastError}} resolve correctly
+          // in the interpolation engine's dot-path traversal.
+          const exhaustedPayload: Record<string, unknown> = {
+            ...payload,
+            _retry: { ...retryBucket, [nodeId]: { count: retryState.count, lastError } },
+          };
+          const startIds = exhaustedEdges.map(e => e.target).filter(id => exhaustedSubgraphIds.has(id));
+
+          logger.info({ runId, retryNodeId: nodeId, maxAttempts, subgraphSize: exhaustedSubgraphIds.size },
+            "wf-executor: retry — running exhausted subgraph");
+
+          const exResult = await executeItemSubgraph(
+            graph, exhaustedSubgraphIds, startIds, exhaustedPayload,
+            runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId,
+          );
+          branchPath.push(...startIds.map(id => `${id}[exhausted]`));
+
+          if (exResult.cancelRun) {
+            await db.update(wfRunsTable).set({
+              status: "cancelled", finishedAt: new Date(),
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            return;
+          }
+
+          if (exResult.nodeError) {
+            const errMsg = (exResult.errorOutput?.error as string | undefined)
+              ?? `retry: node ${exResult.failedNodeId ?? "unknown"} failed in exhausted subgraph`;
+            await db.update(wfRunsTable).set({
+              status: "failed", finishedAt: new Date(), errorMessage: errMsg,
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            logger.warn({ runId, nodeId, failedNodeId: exResult.failedNodeId },
+              "wf-executor: retry — node error in exhausted subgraph — run failed");
+            return;
+          }
+
+          payload = exResult.payload;
+
+          // Fence exhausted subgraph nodes from main BFS
+          for (const nId of exhaustedSubgraphIds) {
+            resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+          }
+
+          // Resolve the source node's normal (non-error) outgoing edges as inactive.
+          // On exhaustion we deferred their resolution (so retry-success could still
+          // activate them), but now we must account for them in the AND-style join:
+          // any continuation node with incoming edges from both the source normal path
+          // AND the retry done path needs both resolved to reach its full inDegree.
+          for (const e of sourceNormalEdges) resolveEdge(e.target, false);
+
+          // Fire done edges (post-retry continuation)
+          for (const e of doneEdges) resolveEdge(e.target, true);
+
+          await db.update(wfRunsTable)
+            .set({ branchPath: branchPath as unknown as string[] })
+            .where(eq(wfRunsTable.id, runId));
+        }
 
         continue;
       }
