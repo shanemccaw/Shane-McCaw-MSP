@@ -570,12 +570,6 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     ],
   },
   {
-    name: "Project Actions",
-    nodes: [
-      { type: "create_kanban_task", label: "Create Kanban Task", description: "Create a card on the Marketing Kanban or a project board", tags: ["kanban", "task", "project", "card", "board"] },
-    ],
-  },
-  {
     name: "Content",
     nodes: [
       { type: "topic_picker",    label: "Topic Picker",    description: "AI picks a fresh article topic not already covered",           tags: ["content", "article", "ai", "topic", "generate"] },
