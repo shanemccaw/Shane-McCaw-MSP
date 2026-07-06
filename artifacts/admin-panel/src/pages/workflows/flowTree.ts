@@ -52,6 +52,7 @@ export function isContainerNode(node: StoredNode): boolean {
   if (CONTAINER_TYPES.has(type)) return true;
   if (type === "fetch_news_headlines") return true;
   if (type === "generate_document") return true;
+  if (type === "retry") return true;
   return false;
 }
 
@@ -181,6 +182,22 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       const result: FlowStep[] = [step];
       if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
         result.push(...buildSequence(nextEdge.target, stopSet));
+      }
+      return result;
+    }
+
+    // ── Retry (exhausted side branch + done continuation) ────────────────────
+    if (type === "retry") {
+      const exhaustedEdge = out.find(e => e.sourceHandle === "exhausted");
+      const doneEdge      = out.find(e => e.sourceHandle === "done");
+
+      step.branches = {
+        exhausted: exhaustedEdge ? buildSequence(exhaustedEdge.target, stopSet) : [],
+      };
+
+      const result: FlowStep[] = [step];
+      if (doneEdge && !visited.has(doneEdge.target) && !stopSet?.has(doneEdge.target)) {
+        result.push(...buildSequence(doneEdge.target, stopSet));
       }
       return result;
     }
@@ -431,6 +448,18 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
           y = Math.max(y, errorEnd) + 40;
         }
         feeders_ = [{ id: step.id }];
+      }
+
+      // ── Retry (exhausted side branch + done continuation) ──────────────────
+      else if (step.nodeType === "retry" && step.branches) {
+        const exhaustedSteps = step.branches["exhausted"] ?? [];
+        if (exhaustedSteps.length > 0) {
+          const rightX = x + BRANCH_W;
+          const { nextY: exhaustedEnd } = doLayout(exhaustedSteps, rightX, y, [{ id: step.id, handle: "exhausted" }]);
+          y = Math.max(y, exhaustedEnd) + 40;
+        }
+        // Continuation from retry uses "done" handle
+        feeders_ = [{ id: step.id, handle: "done" }];
       }
 
       // ── Fetch News Headlines (hot / notHot branches side-by-side) ─────────
