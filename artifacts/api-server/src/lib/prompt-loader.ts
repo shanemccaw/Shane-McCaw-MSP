@@ -1352,6 +1352,17 @@ export function getDefaultPromptMeta(key: string): {
   return SEEDS.find((s) => s.key === key);
 }
 
+/**
+ * Keys whose prompt body must always be overwritten to the latest seed body on
+ * startup — even when a DB row already exists.  Add a key here when a prompt
+ * contains critical formatting instructions that downstream extractors depend on
+ * (e.g. metric-formatting rules for the OMG stat-card extractor).
+ */
+const FORCE_UPDATE_PROMPT_KEYS = new Set([
+  "insights-report-license_optimization_report",
+  "insights-consulting-remediation_plan",
+]);
+
 export async function seedAiPrompts(): Promise<void> {
   try {
     const rows = SEEDS.map((s) => ({
@@ -1370,6 +1381,29 @@ export async function seedAiPrompts(): Promise<void> {
       .insert(aiPromptsTable)
       .values(rows)
       .onConflictDoNothing({ target: aiPromptsTable.key });
+
+    // Force-upsert: overwrite prompt_body + default_body for keys that carry
+    // critical extractor-facing instructions so all environments stay current.
+    const forceRows = rows.filter((r) => FORCE_UPDATE_PROMPT_KEYS.has(r.key));
+    if (forceRows.length > 0) {
+      for (const row of forceRows) {
+        await db
+          .insert(aiPromptsTable)
+          .values(row)
+          .onConflictDoUpdate({
+            target: aiPromptsTable.key,
+            set: {
+              promptBody:  row.promptBody,
+              defaultBody: row.defaultBody,
+              updatedAt:   new Date(),
+            },
+          });
+      }
+      logger.info(
+        { keys: forceRows.map((r) => r.key) },
+        "prompt-loader: force-updated metric-critical prompts",
+      );
+    }
 
     logger.info({ count: rows.length }, "prompt-loader: AI prompt seed complete");
   } catch (err) {
