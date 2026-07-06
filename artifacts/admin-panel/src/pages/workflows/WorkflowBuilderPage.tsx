@@ -1241,6 +1241,10 @@ function getAncestorOutputs(
       // loop-body subgraph; if nodeId is reachable from the item/body handle,
       // inject any set_variable / update_variable nodes from that subgraph as
       // virtual top-level groups (isStartNode: true) so {{varName}} resolves.
+      //
+      // This applies to ALL configured node types including Condition and
+      // Switch-Case nodes, because the injection fires based on the foreach
+      // ANCESTOR being visited — not on the type of the node being configured.
       if (type === "foreach") {
         const itemHandleTargets = edges
           .filter(e => e.source === id && (e.sourceHandle === "item" || e.sourceHandle === "body" || e.sourceHandle === "loop"))
