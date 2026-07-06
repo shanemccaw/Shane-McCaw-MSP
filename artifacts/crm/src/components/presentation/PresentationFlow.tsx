@@ -805,15 +805,17 @@ export default function PresentationFlow({
     // with docType "scoped_sow" — check both so the AI always sees the right scope.
     const scopedDoc = sortedDocs.find(d => d.docType === "scoped_sow");
     const sowDoc = sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow");
-    // Prefer scoped SOW doc ID, fall back to consolidated SOW doc ID
-    const sowDocId = scopedDoc?.id ?? sowDoc?.id ?? null;
+    // Send both document IDs separately so the workflow can wire them explicitly.
+    const consolidatedSowDocId = sowDoc?.id ?? null;
+    const scopedSowDocId = scopedDoc?.id ?? null;
     try {
       const resp = await fetchFn(`/api/portal/presentations/${presentationId}/generate-phases${tokenParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           totalPrice: effectivePrice,
-          sowDocId,
+          sowDocId: consolidatedSowDocId,
+          scopedSowDocId,
           projectTitle: data.projectTitle ?? "",
           adjustmentsTotal: data.adjustmentsTotal ?? 0,
           adjustmentLines: (data.adjustmentLines ?? []).map(a => ({ title: a.title, price: a.price })),

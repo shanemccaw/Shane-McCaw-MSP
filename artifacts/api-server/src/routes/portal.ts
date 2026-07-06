@@ -10452,6 +10452,7 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
       projectId: pres.projectId ?? null,
       totalPrice: effectiveTotal,
       sowDocId: typeof body.sowDocId === "number" ? body.sowDocId : null,
+      scopedSowDocId: typeof body.scopedSowDocId === "number" ? body.scopedSowDocId : null,
       projectTitle: typeof body.projectTitle === "string" ? body.projectTitle : "",
       adjustmentsTotal: typeof adjustmentsTotalRaw === "number" ? adjustmentsTotalRaw : 0,
       adjustmentLines: Array.isArray(body.adjustmentLines) ? body.adjustmentLines : [],
