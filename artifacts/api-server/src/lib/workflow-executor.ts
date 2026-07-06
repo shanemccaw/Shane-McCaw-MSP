@@ -4410,14 +4410,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
 
         // Attach payment method as customer default so future auto-charges work.
-        // Only attach if we didn't get the customer straight from the session
-        // (session customers already have the PM attached by Stripe).
+        // Always attempt attach — Stripe only auto-attaches the PM to the customer
+        // when the session has setup_future_usage set; without it the PM is used
+        // once but never attached, causing customers.update to throw.
+        // The try/catch swallows "already attached" errors gracefully.
         if (cpiPaymentMethodId) {
-          if (!cpiSessionCustomerId) {
-            try {
-              await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
-            } catch { /* already attached */ }
-          }
+          try {
+            await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
+          } catch { /* already attached — safe to ignore */ }
           await stripeCpi.customers.update(cpiCustomerId, {
             invoice_settings: { default_payment_method: cpiPaymentMethodId },
           });
@@ -4556,10 +4556,6 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             gpiCustomerId = gpiCusts.data.length > 0
               ? gpiCusts.data[0].id
               : (await stripeGpi.customers.create({ email: gpiEmail, name: gpiName || undefined })).id;
-            // Attach the PM since we didn't come from the session customer path
-            if (gpiPaymentMethodId) {
-              try { await stripeGpi.paymentMethods.attach(gpiPaymentMethodId, { customer: gpiCustomerId }); } catch { /* already attached */ }
-            }
           }
         } catch (e) {
           nodeError = true;
@@ -4573,7 +4569,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        // Ensure the PM is set as the customer default for future auto-charge
+        // Always attempt attach — Stripe only auto-attaches the PM when the session
+        // has setup_future_usage set; without it the PM is used once but never attached.
+        try { await stripeGpi.paymentMethods.attach(gpiPaymentMethodId, { customer: gpiCustomerId }); } catch { /* already attached */ }
         await stripeGpi.customers.update(gpiCustomerId, {
           invoice_settings: { default_payment_method: gpiPaymentMethodId },
         });
