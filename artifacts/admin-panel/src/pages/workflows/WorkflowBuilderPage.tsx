@@ -4738,7 +4738,8 @@ function NodeConfigPanel({
               >
                 <option value="strict">Strict — any warning or non-zero exit fails</option>
                 <option value="balanced">Balanced — major errors fail, warnings pass</option>
-                <option value="lenient">Lenient — only explicit errors fail</option>
+                <option value="lenient">Lenient — pass if substantial data present despite some failures</option>
+                <option value="very_lenient">Very Lenient — only fail on total/catastrophic failure</option>
               </select>
             </div>
             <p className="text-[10px] text-[#484F58] leading-relaxed">

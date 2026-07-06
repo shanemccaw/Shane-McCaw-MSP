@@ -1782,14 +1782,16 @@ async function executeNode(
         const rawOutput    = interp(node.data.scriptOutput as string | undefined, payload) ?? "";
         const sensitivity  = (node.data.sensitivity as string | undefined) ?? "balanced";
         if (dryRun) {
+          const dryLabel = sensitivity === "strict" ? "strict" : sensitivity === "lenient" ? "lenient" : sensitivity === "very_lenient" ? "very lenient" : "balanced";
           conditionResult = true;
-          output = { dryRun: true, passed: true, outcome: "Dry run: output accepted (balanced sensitivity)" };
+          output = { dryRun: true, passed: true, outcome: `Dry run: output accepted (${dryLabel} sensitivity)` };
           break;
         }
         const sensitivityGuide =
-          sensitivity === "strict"   ? "Fail on ANY warning, non-zero exit code, or error message." :
-          sensitivity === "lenient"  ? "Only fail if there is an explicit ERROR keyword or exception." :
-                                       "Fail on major errors only; warnings and informational messages are acceptable.";
+          sensitivity === "strict"      ? "Fail on ANY warning, non-zero exit code, or error message. Even minor anomalies should fail." :
+          sensitivity === "lenient"     ? "Pass if the output contains substantial usable structured data overall, even if some individual requests failed (e.g. a few 503/401 errors among many successful data fields). Only fail if the majority of the data collection failed, no meaningful data was collected, or the script terminated before producing useful output." :
+          sensitivity === "very_lenient"? "Pass unless the script produced zero output, crashed before collecting any data at all, or reported a fatal unhandled exception. Individual API errors (401, 403, 503, timeouts) and partial failures on specific endpoints are explicitly non-fatal. Only fail on total catastrophic failure with no usable data whatsoever." :
+                                          "Fail on major errors only; warnings and informational messages are acceptable. Pass if the overall output looks healthy.";
         const aiText = await (async () => {
           const msg = await anthropic.messages.create({
             model: "claude-haiku-4-5",
