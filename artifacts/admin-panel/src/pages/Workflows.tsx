@@ -1809,6 +1809,15 @@ export default function WorkflowsPage() {
     ? (services.find(s => s.workflowTemplateId === selected.id) ?? null)
     : null;
 
+  // AI Generate — prompt editor
+  const [aiPromptExpanded, setAiPromptExpanded] = useState(false);
+  const [aiPromptId, setAiPromptId] = useState<number | null>(null);
+  const [aiPromptText, setAiPromptText] = useState("");
+  const [aiPromptDefaultBody, setAiPromptDefaultBody] = useState("");
+  const [aiPromptLoading, setAiPromptLoading] = useState(false);
+  const [aiPromptSaving, setAiPromptSaving] = useState(false);
+  const [aiPromptDirty, setAiPromptDirty] = useState(false);
+
   // AI asset generation
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
 
@@ -2246,6 +2255,51 @@ export default function WorkflowsPage() {
       setAiGenerating(false);
     }
   }
+
+  async function loadAiPrompt() {
+    setAiPromptLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/ai-prompts/by-key/workflow-generator");
+      if (!res.ok) return;
+      const data = await res.json() as { prompt: { id: number | null; promptBody: string; defaultBody: string } };
+      setAiPromptId(data.prompt.id);
+      setAiPromptText(data.prompt.promptBody);
+      setAiPromptDefaultBody(data.prompt.defaultBody);
+      setAiPromptDirty(false);
+    } finally {
+      setAiPromptLoading(false);
+    }
+  }
+
+  async function saveAiPrompt() {
+    setAiPromptSaving(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/ai-prompts/by-key/workflow-generator", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptBody: aiPromptText }),
+      });
+      if (!res.ok) { toast({ title: "Failed to save prompt", variant: "destructive" }); return; }
+      const data = await res.json() as { prompt: { id: number | null; promptBody: string } };
+      setAiPromptId(data.prompt.id);
+      setAiPromptDirty(false);
+      toast({ title: "Prompt saved" });
+    } finally {
+      setAiPromptSaving(false);
+    }
+  }
+
+  function resetAiPromptToDefault() {
+    setAiPromptText(aiPromptDefaultBody);
+    setAiPromptDirty(true);
+  }
+
+  useEffect(() => {
+    if (aiPromptExpanded && aiPromptText === "") {
+      void loadAiPrompt();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiPromptExpanded]);
 
   // ── Bulk Tools: JSON import ────────────────────────────────────────────────
 
@@ -2946,6 +3000,62 @@ export default function WorkflowsPage() {
                         {aiGenerateMode === "replace" ? "⚠ Clears all existing steps first" : "Appends after existing steps"}
                       </p>
                     </div>
+
+                    {/* Prompt editor */}
+                    <div className="border border-violet-500/20 rounded-md overflow-hidden">
+                      <button
+                        onClick={() => setAiPromptExpanded(v => !v)}
+                        className="w-full flex items-center justify-between px-2.5 py-1.5 text-[10px] font-semibold text-violet-300 hover:text-violet-200 hover:bg-violet-500/10 transition-colors"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                          </svg>
+                          System Prompt
+                          {aiPromptDirty && <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />}
+                        </span>
+                        <svg className={`w-3 h-3 transition-transform ${aiPromptExpanded ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {aiPromptExpanded && (
+                        <div className="border-t border-violet-500/20 p-2 space-y-2">
+                          {aiPromptLoading ? (
+                            <p className="text-[10px] text-[#484F58] text-center py-2">Loading…</p>
+                          ) : (
+                            <>
+                              <textarea
+                                value={aiPromptText}
+                                onChange={e => { setAiPromptText(e.target.value); setAiPromptDirty(true); }}
+                                rows={10}
+                                className="w-full text-[10px] leading-relaxed font-mono bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-[#C9D1D9] placeholder-[#484F58] resize-y focus:outline-none focus:border-violet-500/50"
+                                spellCheck={false}
+                              />
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => void saveAiPrompt()}
+                                  disabled={aiPromptSaving || !aiPromptDirty}
+                                  className="flex-1 text-[10px] font-semibold py-1 rounded bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white transition-colors"
+                                >
+                                  {aiPromptSaving ? "Saving…" : "Save"}
+                                </button>
+                                <button
+                                  onClick={resetAiPromptToDefault}
+                                  disabled={aiPromptLoading || aiPromptText === aiPromptDefaultBody}
+                                  className="text-[10px] font-semibold px-2.5 py-1 rounded border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                              <p className="text-[9px] text-[#484F58]">
+                                Changes are saved globally — all future generations will use this prompt.
+                              </p>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     {aiGenerateError && (
                       <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded px-2 py-1.5">{aiGenerateError}</p>
                     )}
