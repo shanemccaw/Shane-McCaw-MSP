@@ -82,8 +82,7 @@ export async function seedMarketingServices(): Promise<void> {
   // previously seeded. Respect admin deletions — never re-insert a service that
   // was deliberately removed. Only insert on a completely fresh environment.
   const sentinelSlugs = [
-    "m365-tenant-health-audit", "copilot-readiness", "service-area-m365",
-    "architect-essentials", "m365-health-check",
+    "m365-tenant-health-audit", "service-area-m365", "architect-essentials",
   ];
   const existingRows = await db
     .select({ slug: servicesTable.slug })
@@ -270,144 +269,6 @@ export async function seedMarketingServices(): Promise<void> {
       .set({ pageHref, pageSlug })
       .where(eq(servicesTable.slug, slug));
   }
-  const microOffers = [
-    {
-      slug: "m365-health-check",
-      name: "M365 Health Check",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "497.00",
-      turnaround: "2 business days",
-      description: "A full audit of your M365 tenant configuration — permissions, sharing policies, licensing gaps, and security posture — with a prioritized remediation report.",
-      deliverables: "Written audit report + remediation priority list",
-      targetAudience: "Mid-market orgs (200–2,000 employees), regulated industries, and government contractors preparing for audits.",
-      inclusions: [
-        "90-minute live audit session via video call",
-        "Review of tenant settings, security configuration, and permissions",
-        "Assessment of Teams, SharePoint, OneDrive, and Exchange setup",
-        "Comprehensive written report with prioritized findings",
-        "30-minute debrief call to walk through recommendations",
-      ],
-      badge: null,
-      highlighted: false,
-      sortOrder: 0,
-      isPublic: true,
-    },
-    {
-      slug: "copilot-readiness",
-      name: "Copilot Readiness Assessment",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "797.00",
-      turnaround: "5 business days",
-      description: "A six-dimension readiness scorecard for Copilot deployment: licensing, identity, permissions, governance, sensitivity labeling, and oversharing risk.",
-      deliverables: "Readiness scorecard + deployment roadmap",
-      targetAudience: "Organizations that have purchased or are evaluating Microsoft Copilot licenses and want to ensure safe, governance-compliant deployment.",
-      inclusions: [
-        "Full audit of data governance, sensitivity labels, and DLP policies",
-        "Review of SharePoint permissions and oversharing risks",
-        "Licensing review and optimization recommendations",
-        "Copilot deployment readiness score with findings report",
-        "Custom deployment roadmap and adoption strategy",
-        "45-minute debrief and Q&A session",
-      ],
-      badge: "Most requested",
-      highlighted: false,
-      sortOrder: 1,
-      isPublic: true,
-    },
-    {
-      slug: "sharepoint-blueprint",
-      name: "SharePoint Intranet Blueprint",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "997.00",
-      turnaround: "7 business days",
-      description: "A complete information architecture and navigation blueprint for a SharePoint intranet — site structure, permission model, governance policy, and rollout sequence.",
-      deliverables: "IA document + governance policy + rollout plan",
-      targetAudience: "Mid-market orgs and startups scaling into compliance who need a structured intranet foundation.",
-      inclusions: [
-        "Discovery session to understand organizational structure and needs",
-        "Information architecture design",
-        "Site map and navigation strategy",
-        "Taxonomy and metadata framework",
-        "Wireframe for key page types",
-        "Written blueprint document with implementation guidance",
-      ],
-      badge: null,
-      highlighted: false,
-      sortOrder: 2,
-      isPublic: true,
-    },
-    {
-      slug: "power-automate",
-      name: "Power Automate Quick Win",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "597.00",
-      turnaround: "5–7 business days",
-      description: "Shane identifies, designs, and builds one high-impact Power Automate flow for your organization — documented and handed off with user instructions.",
-      deliverables: "Live flow + documentation + handoff walkthrough",
-      targetAudience: "Teams with unused Power Platform licensing who want to automate a high-friction manual process.",
-      inclusions: [
-        "Discovery call to document the target process",
-        "Design and build of one Power Automate flow",
-        "Testing and error handling configuration",
-        "Documentation and knowledge transfer",
-        "30-day email support post-delivery",
-      ],
-      badge: null,
-      highlighted: false,
-      sortOrder: 3,
-      isPublic: true,
-    },
-    {
-      slug: "security-audit",
-      name: "M365 Security & Governance Audit",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "897.00",
-      turnaround: "5 business days",
-      description: "An in-depth review of your DLP policies, retention labels, conditional access rules, and Entra ID posture — with specific remediation steps for each gap found.",
-      deliverables: "Security audit report + DLP/retention gap analysis",
-      targetAudience: "Regulated industries (healthcare, legal, financial services) and orgs preparing for audits or responding to a security incident.",
-      inclusions: [
-        "Full review of DLP policies, sensitivity labels, and retention",
-        "Conditional access policy audit",
-        "Admin role and permissions review",
-        "Guest access and external sharing assessment",
-        "Purview compliance posture review",
-        "Prioritized remediation report",
-      ],
-      badge: null,
-      highlighted: false,
-      sortOrder: 4,
-      isPublic: true,
-    },
-    {
-      slug: "copilot-prompts",
-      name: "Copilot Prompt Library Build",
-      serviceType: "micro_offer",
-      billingType: "one_time" as const,
-      price: "397.00",
-      turnaround: "5 business days",
-      description: "A custom library of 25+ role-specific Copilot prompts built for your organization's departments — covering your actual workflows, not generic examples.",
-      deliverables: "Role-specific prompt library (Word + SharePoint-ready)",
-      targetAudience: "Organizations evaluating or deploying Copilot who want to accelerate adoption with role-specific, workflow-ready prompts.",
-      inclusions: [
-        "Discovery call to understand your team's key use cases",
-        "Custom library of 25+ role-specific Copilot prompts",
-        "Prompts organized by department and task type",
-        "Formatted as a sharable, editable document",
-        "Tips for prompt refinement and iteration",
-      ],
-      badge: null,
-      highlighted: false,
-      sortOrder: 5,
-      isPublic: true,
-    },
-  ];
-
   const retainers = [
     {
       slug: "architect-essentials",
@@ -544,7 +405,7 @@ export async function seedMarketingServices(): Promise<void> {
     },
   ];
 
-  for (const record of [...microOffers, ...retainers, ...serviceAreas]) {
+  for (const record of [...retainers, ...serviceAreas]) {
     const { slug, ...rest } = record as Record<string, unknown> & { slug: string };
     await db
       .insert(servicesTable)

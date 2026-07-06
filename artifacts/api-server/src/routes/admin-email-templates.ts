@@ -26,8 +26,8 @@ function substituteVars(template: string, vars: Record<string, string>): string 
 const SAMPLE_VARS: Record<string, Record<string, string>> = {
   "purchase-confirmation": {
     clientName: "Jane Smith",
-    serviceName: "M365 Health Check",
-    amountDollars: "1,497",
+    serviceName: "M365 Tenant Health Audit",
+    amountDollars: "4,500",
     portalLink: "https://shanemccaw.consulting/crm/portal",
   },
   "onboarding-confirmation": {
