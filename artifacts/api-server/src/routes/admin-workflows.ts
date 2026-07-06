@@ -907,8 +907,8 @@ router.post("/admin/workflows/runs/:id/rerun", requireAdmin, async (req: Request
       .limit(1);
 
     if (!sourceRun) return sendError(res, 404, "Run not found");
-    if (sourceRun.status !== "failed" && sourceRun.status !== "cancelled") {
-      return sendError(res, 409, "Only failed or cancelled runs can be re-run");
+    if (sourceRun.status !== "failed" && sourceRun.status !== "cancelled" && sourceRun.status !== "completed") {
+      return sendError(res, 409, "Only failed, cancelled, or completed runs can be re-run");
     }
 
     // Verify the definition still exists

@@ -219,7 +219,7 @@ export default function RunDetailPage({ runId }: { runId: number }) {
           </div>
         </div>
 
-        {(run.status === "failed" || run.status === "cancelled") && (
+        {(run.status === "failed" || run.status === "cancelled" || run.status === "completed") && (
           <button
             onClick={() => run.definitionName ? setShowRerunDialog(true) : undefined}
             disabled={rerunMut.isPending || !run.definitionName}

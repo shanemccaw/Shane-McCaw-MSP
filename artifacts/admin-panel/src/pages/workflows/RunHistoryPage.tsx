@@ -166,7 +166,7 @@ function RunRow({
         <span className="text-xs text-[#7D8590] font-mono">{fmtDuration(run.durationMs)}</span>
 
         <div className="flex items-center gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
-          {(run.status === "failed" || run.status === "cancelled") && onRerun && (
+          {(run.status === "failed" || run.status === "cancelled" || run.status === "completed") && onRerun && (
             <button
               onClick={onRerun}
               disabled={isRerunning || !run.definitionName}
