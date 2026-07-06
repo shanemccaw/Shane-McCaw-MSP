@@ -505,7 +505,7 @@ function StepCard({
               onDragEnd={e => { e.stopPropagation(); ctx.onDragEnd(); }}
               onClick={e => e.stopPropagation()}
               className="flex-shrink-0 cursor-grab active:cursor-grabbing px-0.5 py-0.5 rounded"
-              style={{ color: "#92400E", opacity: 0.5 }}
+              style={{ color: "#78530A", opacity: 0.7 }}
               title="Drag to reorder"
             >
               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
@@ -518,7 +518,7 @@ function StepCard({
           <span style={{ fontSize: 13, lineHeight: 1 }}>📝</span>
           <span
             className="text-[9px] uppercase tracking-widest font-bold flex-1"
-            style={{ color: "#92400E" }}
+            style={{ color: "#CA8A04" }}
           >
             Note
           </span>
@@ -534,7 +534,7 @@ function StepCard({
                   setMenuOpen(v => !v);
                 }}
                 className="w-5 h-5 rounded flex items-center justify-center transition-colors"
-                style={{ color: "#92400E", opacity: 0.6 }}
+                style={{ color: "#CA8A04", opacity: 0.7 }}
                 title="Options"
               >
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -562,7 +562,7 @@ function StepCard({
         {/* Comment text */}
         <p
           style={{
-            color: text ? "#1C1917" : "#A16207",
+            color: text ? "#D4B896" : "#78530A",
             fontSize: 12,
             lineHeight: "1.55",
             whiteSpace: "pre-wrap",
