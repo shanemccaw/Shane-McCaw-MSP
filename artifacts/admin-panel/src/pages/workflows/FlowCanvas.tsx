@@ -2045,7 +2045,7 @@ export default function FlowCanvas({
                 // container itself — use tree-space insertion so the new step
                 // lands visually after the container block.
                 const needsTreeInsert =
-                  step.nodeType === "condition" || step.nodeType === "switch_case";
+                  step.nodeType === "condition" || step.nodeType === "switch_case" || step.nodeType === "check_script_output";
 
                 const handleTreeInsert = needsTreeInsert
                   ? (newNode: StoredNode) => {
