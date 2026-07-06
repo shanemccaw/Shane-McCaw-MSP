@@ -896,9 +896,54 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       )}
                       <JsonBlock data={currentOutput.input} label="Input" />
                       <JsonBlock data={currentOutput.output} label="Output" />
+                      {/* Depth-limit abort: depth+maxDepth present but no child was created */}
+                      {currentOutput.status === "error"
+                        && typeof currentOutput.output.depth === "number"
+                        && typeof currentOutput.output.maxDepth === "number"
+                        && typeof currentOutput.output.childRunId !== "number" && (
+                        <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30">
+                          <svg className="w-3 h-3 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-red-400 font-semibold">Depth limit reached</span>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+                                {currentOutput.output.depth as number} / {currentOutput.output.maxDepth as number}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-red-400/80 leading-snug">
+                              Increase the sub-workflow's Max Run Depth setting or break the chain into separate triggers to avoid this limit.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {typeof currentOutput.output.childRunId === "number" && (
                         <div>
-                          <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider mb-1">Sub-workflow</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider">Sub-workflow</p>
+                            {typeof currentOutput.output.depth === "number" && typeof currentOutput.output.maxDepth === "number" && (
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${
+                                (currentOutput.output.depth as number) >= (currentOutput.output.maxDepth as number)
+                                  ? "bg-red-500/15 text-red-400 border-red-500/30"
+                                  : (currentOutput.output.depth as number) >= (currentOutput.output.maxDepth as number) - 1
+                                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                  : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+                              }`}>
+                                Depth: {currentOutput.output.depth as number} / {currentOutput.output.maxDepth as number}
+                              </span>
+                            )}
+                          </div>
+                          {currentOutput.status === "error" && typeof currentOutput.output.depth === "number" && typeof currentOutput.output.maxDepth === "number" && (
+                            <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 mb-2">
+                              <svg className="w-3 h-3 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                              </svg>
+                              <span className="text-[10px] text-red-400 font-medium leading-snug">
+                                Depth limit reached ({currentOutput.output.depth as number} / {currentOutput.output.maxDepth as number}). Increase the sub-workflow's Max Run Depth setting or break the chain into separate triggers.
+                              </span>
+                            </div>
+                          )}
                           <ChildRunInline childRunId={currentOutput.output.childRunId as number} />
                         </div>
                       )}
@@ -1060,9 +1105,54 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       {output.errorMessage && (
                         <p className="text-[10px] text-red-400 font-mono mt-1">Error: {output.errorMessage}</p>
                       )}
+                      {/* Depth-limit abort: depth+maxDepth present but no child was created */}
+                      {output.status === "error"
+                        && typeof output.output.depth === "number"
+                        && typeof output.output.maxDepth === "number"
+                        && typeof output.output.childRunId !== "number" && (
+                        <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 mt-1">
+                          <svg className="w-3 h-3 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-red-400 font-semibold">Depth limit reached</span>
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-red-500/15 text-red-400 border border-red-500/30">
+                                {output.output.depth as number} / {output.output.maxDepth as number}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-red-400/80 leading-snug">
+                              Increase the sub-workflow's Max Run Depth setting or break the chain into separate triggers to avoid this limit.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       {typeof output.output.childRunId === "number" && (
                         <div className="mt-2">
-                          <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider mb-1">Sub-workflow</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-[10px] font-semibold text-[#3B82F6] uppercase tracking-wider">Sub-workflow</p>
+                            {typeof output.output.depth === "number" && typeof output.output.maxDepth === "number" && (
+                              <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-semibold border ${
+                                (output.output.depth as number) >= (output.output.maxDepth as number)
+                                  ? "bg-red-500/15 text-red-400 border-red-500/30"
+                                  : (output.output.depth as number) >= (output.output.maxDepth as number) - 1
+                                  ? "bg-amber-500/15 text-amber-400 border-amber-500/30"
+                                  : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+                              }`}>
+                                Depth: {output.output.depth as number} / {output.output.maxDepth as number}
+                              </span>
+                            )}
+                          </div>
+                          {output.status === "error" && typeof output.output.depth === "number" && typeof output.output.maxDepth === "number" && (
+                            <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-lg bg-red-500/10 border border-red-500/30 mb-2">
+                              <svg className="w-3 h-3 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                              </svg>
+                              <span className="text-[10px] text-red-400 font-medium leading-snug">
+                                Depth limit reached ({output.output.depth as number} / {output.output.maxDepth as number}). Increase the sub-workflow's Max Run Depth setting or break the chain into separate triggers.
+                              </span>
+                            </div>
+                          )}
                           <ChildRunInline childRunId={output.output.childRunId as number} />
                         </div>
                       )}

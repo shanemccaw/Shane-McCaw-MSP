@@ -1550,8 +1550,8 @@ async function executeNode(
                     const rowOutput = row.output as Record<string, unknown> | null;
                     if (rowOutput) Object.assign(mergedChildOutput, rowOutput);
                   }
-                  output = { childRunId, ...mergedChildOutput };
-                  logger.info({ runId, childRunId, subDefId }, "wf-executor: run_workflow completed — child outputs merged into parent context");
+                  output = { ...mergedChildOutput, childRunId, depth: currentDepth + 1, maxDepth: RUN_WORKFLOW_MAX_DEPTH };
+                  logger.info({ runId, childRunId, subDefId, depth: currentDepth + 1, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow completed — child outputs merged into parent context");
                 }
               }
             }
