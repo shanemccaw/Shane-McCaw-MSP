@@ -767,6 +767,23 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
     }
 
+    case "parallel": {
+      const branchCount  = (node.data.branchCount  as number   | undefined) ?? 2;
+      const branchLabels = (node.data.branchLabels as string[] | undefined) ?? [];
+      const branchWait   = (node.data.branchWait   as boolean[] | undefined) ?? [];
+      const branchOutputs: Record<string, unknown> = {};
+      for (let i = 0; i < branchCount; i++) {
+        const handle = `branch_${i + 1}`;
+        const label  = branchLabels[i] ?? `Branch ${i + 1}`;
+        const wait   = branchWait[i] !== false;
+        branchOutputs[handle] = { dryRun: true, label, waitForCompletion: wait };
+      }
+      return { dryRun: true, ...branchOutputs };
+    }
+
+    case "join":
+      return { dryRun: true, joined: true };
+
     case "set_variable":
     case "update_variable": {
       const svDryName  = (node.data.variableName as string | undefined)?.trim() || "";
@@ -1742,6 +1759,16 @@ async function executeNode(
         };
         break;
       }
+
+      case "parallel":
+        // Execution handled by the BFS block below; executeNode just returns an empty output.
+        output = {};
+        break;
+
+      case "join":
+        // Pass-through merge point — no-op in executeNode; BFS resolves edges and logs a summary.
+        output = { joined: true };
+        break;
 
       case "retry":
         // No-op — all retry logic is handled in the BFS block after executeNode returns.
@@ -5111,6 +5138,204 @@ export async function executeWorkflowRun(
 
         // Route done edges as active (post-loop continuation)
         for (const e of doneEdges) resolveEdge(e.target, true);
+
+        await db.update(wfRunsTable)
+          .set({ branchPath: branchPath as unknown as string[] })
+          .where(eq(wfRunsTable.id, runId));
+
+        continue;
+      }
+
+      // Parallel: run branch subgraphs concurrently; awaited branches block, detached fire-and-forget.
+      if (node.type === "parallel") {
+        const parallelOutEdges = graph.edges.filter(e => e.source === nodeId);
+        // Sort branch edges by their handle number so config is always keyed to the
+        // correct branch regardless of the order edges were stored in the graph (edge
+        // order can change after editor insertions/removals).
+        const branchEdgesRaw = parallelOutEdges.filter(e => e.sourceHandle?.startsWith("branch_"));
+        const branchEdges = [...branchEdgesRaw].sort((a, b) => {
+          const numA = parseInt((a.sourceHandle ?? "branch_0").replace("branch_", ""), 10) || 0;
+          const numB = parseInt((b.sourceHandle ?? "branch_0").replace("branch_", ""), 10) || 0;
+          return numA - numB;
+        });
+
+        const joinNodeId      = node.data.joinNodeId as string | undefined;
+        const branchWaitArr   = (node.data.branchWait   as boolean[] | undefined) ?? [];
+        const branchLabelsArr = (node.data.branchLabels as string[] | undefined) ?? [];
+
+        // Build handle → config maps so lookup is O(1) and immune to edge reordering.
+        // Config arrays are 0-indexed corresponding to branch_1, branch_2, … branch_N.
+        function waitForHandle(handle: string): boolean {
+          const idx = parseInt(handle.replace("branch_", ""), 10) - 1;
+          return branchWaitArr[idx] !== false; // defaults to true when missing
+        }
+        function labelForHandle(handle: string): string {
+          const idx = parseInt(handle.replace("branch_", ""), 10) - 1;
+          return branchLabelsArr[idx] ?? handle;
+        }
+
+        // Stop set for DFS: the join node
+        const joinStop = joinNodeId ? new Set([joinNodeId]) : new Set<string>();
+
+        interface BranchDef {
+          branchIdx: number;
+          startId: string;
+          handle: string;
+          wait: boolean;
+          label: string;
+          subgraphIds: Set<string>;
+        }
+
+        const branchDefs: BranchDef[] = branchEdges.map((edge, i) => {
+          const handle = edge.sourceHandle ?? `branch_${i + 1}`;
+          const subgraphIds = new Set<string>();
+          const dfsStack    = [edge.target];
+          while (dfsStack.length > 0) {
+            const nId = dfsStack.pop()!;
+            if (subgraphIds.has(nId) || joinStop.has(nId)) continue;
+            subgraphIds.add(nId);
+            for (const e of graph.edges.filter(e => e.source === nId)) {
+              if (!subgraphIds.has(e.target) && !joinStop.has(e.target)) dfsStack.push(e.target);
+            }
+          }
+          return {
+            branchIdx:  i,
+            startId:    edge.target,
+            handle,
+            wait:       waitForHandle(handle),
+            label:      labelForHandle(handle),
+            subgraphIds,
+          };
+        });
+
+        const awaitedBranches  = branchDefs.filter(b => b.wait);
+        const detachedBranches = branchDefs.filter(b => !b.wait);
+
+        // ── Fire-and-forget detached branches ─────────────────────────────
+        // In dry-run mode we execute detached branches synchronously so the dry run
+        // completes deterministically (no background tasks outlive the run).
+        const isDryRun = opts.dryRun ?? false;
+
+        if (isDryRun) {
+          // Dry-run: await detached branches sequentially for deterministic output
+          for (const branch of detachedBranches) {
+            if (branch.subgraphIds.size === 0) continue;
+            const startIds = [branch.startId].filter(id => branch.subgraphIds.has(id));
+            try {
+              const result = await executeItemSubgraph(
+                graph, branch.subgraphIds, startIds, payload,
+                runId, true, opts.inputValues ?? {}, run.definitionId,
+              );
+              if (result.nodeError) {
+                logger.warn({ runId, nodeId, branch: branch.label },
+                  "wf-executor: parallel dry-run detached branch failed (logged, not propagated)");
+              }
+            } catch (err) {
+              logger.error({ runId, nodeId, branch: branch.label, err },
+                "wf-executor: parallel dry-run detached branch threw");
+            }
+          }
+        } else {
+          // Live run: true fire-and-forget via .then()
+          for (const branch of detachedBranches) {
+            if (branch.subgraphIds.size === 0) continue;
+            const startIds = [branch.startId].filter(id => branch.subgraphIds.has(id));
+            executeItemSubgraph(
+              graph, branch.subgraphIds, startIds, payload,
+              runId, false, opts.inputValues ?? {}, run.definitionId,
+            ).then(result => {
+              if (result.nodeError) {
+                logger.warn({ runId, nodeId, branch: branch.label },
+                  "wf-executor: parallel fire-and-forget branch failed (logged, not propagated)");
+              } else {
+                logger.info({ runId, nodeId, branch: branch.label },
+                  "wf-executor: parallel fire-and-forget branch completed");
+              }
+            }).catch(err => {
+              logger.error({ runId, nodeId, branch: branch.label, err },
+                "wf-executor: parallel fire-and-forget branch threw");
+            });
+          }
+        }
+
+        // ── Awaited branches (Promise.all) ─────────────────────────────────
+        const branchOutputs: Record<string, unknown> = {};
+        let parallelFailed = false;
+
+        const awaitedResults = await Promise.all(
+          awaitedBranches.map(branch => {
+            if (branch.subgraphIds.size === 0) {
+              return Promise.resolve({ branch, result: { payload, lastOutput: {}, cancelRun: false, nodeError: false } });
+            }
+            const startIds = [branch.startId].filter(id => branch.subgraphIds.has(id));
+            return executeItemSubgraph(
+              graph, branch.subgraphIds, startIds, payload,
+              runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId,
+            ).then(result => ({ branch, result }));
+          }),
+        );
+
+        for (const { branch, result } of awaitedResults) {
+          if (result.cancelRun) {
+            await db.update(wfRunsTable).set({
+              status: "cancelled", finishedAt: new Date(),
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            await db.insert(wfRunNodeLogsTable).values({
+              runId, nodeId, level: "info",
+              message: `Run cancelled by cancel_workflow inside parallel branch "${branch.label}"`,
+            }).catch(() => { });
+            return;
+          }
+          if (result.nodeError) {
+            parallelFailed = true;
+            logger.warn({ runId, nodeId, branch: branch.label }, "wf-executor: parallel awaited branch failed");
+          } else {
+            branchOutputs[branch.handle] = result.lastOutput;
+          }
+        }
+
+        if (parallelFailed) {
+          await db.update(wfRunsTable).set({
+            status: "failed", finishedAt: new Date(),
+            errorMessage: `A parallel branch failed`,
+            branchPath: branchPath as unknown as string[],
+          }).where(eq(wfRunsTable.id, runId));
+          logger.warn({ runId, nodeId }, "wf-executor: parallel — awaited branch failed, run aborted");
+          return;
+        }
+
+        // Log join summary (awaited vs detached counts) before continuing
+        await db.insert(wfRunNodeLogsTable).values({
+          runId,
+          nodeId,
+          level: "info",
+          message: `Parallel completed: ${awaitedBranches.length} awaited branch${awaitedBranches.length !== 1 ? "es" : ""} merged` +
+            (detachedBranches.length > 0
+              ? `; ${detachedBranches.length} fire-and-forget branch${detachedBranches.length !== 1 ? "es" : ""} launched`
+              : ""),
+        }).catch(() => { });
+
+        // Merge branch outputs into payload
+        const prevStepsP = (payload.steps as Record<string, unknown>) ?? {};
+        payload = { ...payload, steps: { ...prevStepsP, [nodeId]: branchOutputs } };
+
+        // Fence all branch subgraph nodes from the main BFS
+        const allSubgraphIds = new Set<string>();
+        for (const branch of branchDefs) {
+          for (const id of branch.subgraphIds) allSubgraphIds.add(id);
+        }
+        for (const nId of allSubgraphIds) {
+          resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+        }
+
+        // Resolve the join node's incoming edges.
+        // Its inDegree = number of branch edges leading to it.
+        // Since we fenced the branch nodes, resolve manually N times.
+        if (joinNodeId) {
+          const joinInDeg = inDegree.get(joinNodeId) ?? 0;
+          for (let i = 0; i < joinInDeg; i++) resolveEdge(joinNodeId, true);
+        }
 
         await db.update(wfRunsTable)
           .set({ branchPath: branchPath as unknown as string[] })

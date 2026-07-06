@@ -222,6 +222,51 @@ function AddButton({
 
   function handlePick(nodeType: string) {
     const style = nodeStyles[nodeType] ?? nodeStyles["action"] ?? { label: nodeType };
+
+    // ── Parallel: create parallel + join pair atomically ───────────────────
+    if (nodeType === "parallel") {
+      const parallelId = `node-${++nodeIdCounter.current}`;
+      const joinId     = `node-${++nodeIdCounter.current}`;
+      const parallelNode: StoredNode = {
+        id: parallelId,
+        type: "parallel",
+        position: { x: 0, y: 0 },
+        data: {
+          nodeType: "parallel",
+          label: style.label,
+          branchCount: 2,
+          joinNodeId: joinId,
+          branchLabels: ["Branch 1", "Branch 2"],
+          branchWait: [true, true],
+        },
+      };
+      const joinNode: StoredNode = {
+        id: joinId,
+        type: "join",
+        position: { x: 0, y: 0 },
+        data: { nodeType: "join", label: "Join", parallelNodeId: parallelId },
+      };
+
+      // Find the existing edge from afterNodeId (with optional sourceHandle)
+      const sh = sourceHandle || undefined;
+      const existingEdge = edges.find(e =>
+        e.source === afterNodeId && (sh ? e.sourceHandle === sh : !e.sourceHandle),
+      );
+      const nextId  = existingEdge?.target;
+      const newEdges = edges.filter(e => e !== existingEdge);
+      // afterNodeId → parallel
+      newEdges.push({ id: `e-ins-${parallelId}-a`, source: afterNodeId, target: parallelId, sourceHandle: sh });
+      // parallel → join (empty branch_1 and branch_2 edges)
+      newEdges.push({ id: `e-par-b1-${parallelId}`, source: parallelId, target: joinId, sourceHandle: "branch_1" });
+      newEdges.push({ id: `e-par-b2-${parallelId}`, source: parallelId, target: joinId, sourceHandle: "branch_2" });
+      // join → next (if there was a successor)
+      if (nextId) {
+        newEdges.push({ id: `e-ins-${joinId}-c`, source: joinId, target: nextId });
+      }
+      onGraphChange([...nodes, parallelNode, joinNode], newEdges);
+      return;
+    }
+
     const extraData: Record<string, unknown> = {};
     if (nodeType === "switch_case") {
       // Seed one Case so the canvas immediately shows Case 1 + Default columns
@@ -508,18 +553,22 @@ function StepCard({
             style={{ top: menuPos.top, right: menuPos.right }}
             onClick={e => e.stopPropagation()}
           >
-                <button
-                  onClick={handleMoveUp}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-                >
-                  ↑ Move Up
-                </button>
-                <button
-                  onClick={handleMoveDown}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-                >
-                  ↓ Move Down
-                </button>
+                {step.nodeType !== "parallel" && step.nodeType !== "join" && (
+                  <>
+                    <button
+                      onClick={handleMoveUp}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                    >
+                      ↑ Move Up
+                    </button>
+                    <button
+                      onClick={handleMoveDown}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                    >
+                      ↓ Move Down
+                    </button>
+                  </>
+                )}
                 <button
                   onClick={handleDuplicate}
                   className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
@@ -600,6 +649,7 @@ function ContainerBody({
     if (nodeType === "condition") return branchKey;
     if (nodeType === "switch_case") return branchKey === "__default__" ? "default" : `case-${branchKey}`;
     if (nodeType === "fetch_news_headlines") return branchKey; // "hot" or "notHot"
+    if (nodeType === "parallel") return branchKey; // "branch_1", "branch_2", …
     return undefined;
   }
 
@@ -771,6 +821,68 @@ function ContainerBody({
               </div>
             );
           })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Parallel (fan-out branches) ────────────────────────────────────────────
+  if (nodeType === "parallel") {
+    const branchKeys   = Object.keys(branches).sort(); // branch_1, branch_2, …
+    const branchLabels = (step.data.branchLabels as string[] | undefined) ?? [];
+    const branchWait   = (step.data.branchWait   as boolean[] | undefined) ?? [];
+    const branchColors = ["#06B6D4", "#A855F7", "#F59E0B", "#10B981", "#EF4444"];
+
+    return (
+      <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-x-auto">
+        <div
+          className="grid divide-x divide-[#30363D]"
+          style={{ gridTemplateColumns: `repeat(${branchKeys.length}, minmax(140px, 1fr))` }}
+        >
+          {branchKeys.map((key, bi) => {
+            const label    = branchLabels[bi] ?? `Branch ${bi + 1}`;
+            const wait     = branchWait[bi] !== false;
+            const color    = branchColors[bi % branchColors.length];
+            const brSteps  = branches[key] ?? [];
+
+            return (
+              <div key={key} className="min-w-0">
+                <div className="px-2 py-1.5 border-b border-[#30363D] flex items-center gap-1.5" style={{ background: `${color}0D` }}>
+                  <span className="text-[9px] uppercase tracking-widest font-bold truncate flex-1" style={{ color }}>
+                    {label}
+                  </span>
+                  {!wait && (
+                    <span className="text-[8px] px-1 py-0.5 rounded bg-amber-500/15 text-amber-400 font-semibold whitespace-nowrap">
+                      🔥 fire &amp; forget
+                    </span>
+                  )}
+                </div>
+                <div className="px-2 pb-3 pt-1">
+                  <BranchStepList
+                    steps={brSteps}
+                    containerId={step.id}
+                    containerHandle={key}
+                    lastNodeIdFn={lastNodeId}
+                    branchKey={key}
+                    isArchived={isArchived}
+                    nodeStyles={nodeStyles}
+                    nodeIdCounter={nodeIdCounter}
+                    libraryCategories={libraryCategories}
+                    allLibraryNodes={allLibraryNodes}
+                    nodes={nodes}
+                    edges={edges}
+                    onGraphChange={onGraphChange}
+                    onDuplicateNode={onDuplicateNode}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Join footer */}
+        <div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-[#06B6D4]/20 bg-[#06B6D4]/5">
+          <span className="text-[9px] text-[#06B6D4]/70 font-mono">⇊ join</span>
+          <span className="text-[9px] text-[#484F58]">awaited branches merged here</span>
         </div>
       </div>
     );

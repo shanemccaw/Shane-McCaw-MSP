@@ -40,7 +40,7 @@ export interface StoredEdge {
   animated?: boolean;
 }
 
-export const CONTAINER_TYPES = new Set(["foreach", "condition", "switch_case"]);
+export const CONTAINER_TYPES = new Set(["foreach", "condition", "switch_case", "parallel"]);
 
 /**
  * Data-aware container check.
@@ -181,6 +181,48 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       const result: FlowStep[] = [step];
       if (nextEdge && !visited.has(nextEdge.target) && !stopSet?.has(nextEdge.target)) {
         result.push(...buildSequence(nextEdge.target, stopSet));
+      }
+      return result;
+    }
+
+    // ── Parallel (fan-out / fan-in) ───────────────────────────────────────────
+    if (type === "parallel") {
+      const branchEdges = out.filter(e => e.sourceHandle?.startsWith("branch_"));
+      const joinNodeId  = node.data.joinNodeId as string | undefined;
+
+      // Stop set for branch DFS: the join node and any outer stops
+      const joinStop   = joinNodeId ? new Set([joinNodeId]) : new Set<string>();
+      const branchStop = new Set<string>([...(stopSet ?? []), ...joinStop]);
+
+      // Collect local node sets per branch (for visited marking)
+      const branchSets = branchEdges.map(e => localCollect(e.target));
+
+      const branches: Record<string, FlowStep[]> = {};
+      branchEdges.forEach((edge, _i) => {
+        const key    = edge.sourceHandle as string;
+        // If the edge goes directly to the join node, the branch is empty
+        const target = edge.target;
+        branches[key] = (target && !joinStop.has(target))
+          ? buildSequence(target, branchStop)
+          : [];
+        // Mark branch subgraph nodes visited
+        for (const id of branchSets[_i]) {
+          if (!branchStop.has(id)) visited.add(id);
+        }
+      });
+
+      step.branches = branches;
+
+      const result: FlowStep[] = [step];
+
+      if (joinNodeId && !visited.has(joinNodeId) && !stopSet?.has(joinNodeId)) {
+        // Skip the join node itself — it is rendered as part of the parallel block footer
+        visited.add(joinNodeId);
+        // Continue from the join node's outgoing plain edge
+        const joinOutEdge = rawEdges.find(e => e.source === joinNodeId && !e.sourceHandle);
+        if (joinOutEdge && !visited.has(joinOutEdge.target) && !stopSet?.has(joinOutEdge.target)) {
+          result.push(...buildSequence(joinOutEdge.target, stopSet));
+        }
       }
       return result;
     }
@@ -445,6 +487,55 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         }
       }
 
+      // ── Parallel (fan-out / fan-in) ────────────────────────────────────────
+      else if (step.nodeType === "parallel") {
+        const branchKeys = Object.keys(step.branches ?? {});
+        const n          = branchKeys.length;
+        const totalW     = (n - 1) * BRANCH_W;
+        let maxEndY      = y;
+        const branchTerminals: Array<{ id: string; handle?: string }> = [];
+        const emptyBranchKeys: string[] = [];
+
+        branchKeys.forEach((key, bi) => {
+          const bSteps = step.branches![key] ?? [];
+          const bx = x - totalW / 2 + bi * BRANCH_W;
+          const { terminals: bTerm, nextY: bEnd } = doLayout(bSteps, bx, y, [{ id: step.id, handle: key }]);
+          maxEndY = Math.max(maxEndY, bEnd);
+          if (bSteps.length > 0) {
+            branchTerminals.push(...bTerm);
+          } else {
+            emptyBranchKeys.push(key);
+          }
+        });
+
+        y = maxEndY + 40;
+
+        // Insert the join node (ID is stored on the parallel step's data)
+        const joinNodeId = step.data.joinNodeId as string | undefined;
+        if (joinNodeId) {
+          allNodes.push({
+            id: joinNodeId,
+            type: "join",
+            position: { x, y },
+            data: { nodeType: "join", label: "Join", parallelNodeId: step.id },
+          });
+
+          // Wire branch terminals → join
+          for (const term of branchTerminals) {
+            allEdges.push({ id: newEdgeId(), source: term.id, target: joinNodeId, sourceHandle: term.handle });
+          }
+          // Wire empty branches directly: parallel → join (so join gets correct inDegree)
+          for (const key of emptyBranchKeys) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: joinNodeId, sourceHandle: key });
+          }
+
+          y += STEP_H;
+          feeders_ = [{ id: joinNodeId }];
+        } else {
+          feeders_ = branchTerminals.length > 0 ? branchTerminals : [{ id: step.id }];
+        }
+      }
+
       // ── Switch / Case ──────────────────────────────────────────────────────
       else if (step.nodeType === "switch_case") {
         const branchKeys = Object.keys(step.branches);
@@ -526,6 +617,45 @@ export function graphRemoveStep(
   edges: StoredEdge[],
   nodeId: string,
 ): { nodes: StoredNode[]; edges: StoredEdge[] } {
+  const targetNode = nodes.find(n => n.id === nodeId);
+
+  // ── Parallel: also remove join node + all branch subgraph nodes ────────────
+  if (targetNode && ((targetNode.data.nodeType as string) === "parallel" || targetNode.type === "parallel")) {
+    const joinNodeId = targetNode.data.joinNodeId as string | undefined;
+
+    // Collect all nodes inside the branches via DFS (stopping at join)
+    const joinStop   = joinNodeId ? new Set([joinNodeId]) : new Set<string>();
+    const branchNodeIds = new Set<string>();
+    const branchStartEdges = edges.filter(e => e.source === nodeId && e.sourceHandle?.startsWith("branch_"));
+    const dfsStack = branchStartEdges.map(e => e.target);
+    while (dfsStack.length > 0) {
+      const nId = dfsStack.pop()!;
+      if (branchNodeIds.has(nId) || joinStop.has(nId)) continue;
+      branchNodeIds.add(nId);
+      for (const e of edges.filter(e => e.source === nId)) {
+        if (!branchNodeIds.has(e.target) && !joinStop.has(e.target)) dfsStack.push(e.target);
+      }
+    }
+
+    const removeIds = new Set([nodeId, ...(joinNodeId ? [joinNodeId] : []), ...branchNodeIds]);
+
+    // Find the inEdge to the parallel node and the outEdge from the join node
+    const inEdge  = edges.find(e => e.target === nodeId);
+    const outEdge = joinNodeId ? edges.find(e => e.source === joinNodeId && !e.sourceHandle) : undefined;
+
+    const nextEdges = edges.filter(e => !removeIds.has(e.source) && !removeIds.has(e.target));
+    if (inEdge && outEdge) {
+      nextEdges.push({
+        id: `e-del-${nodeId}`,
+        source: inEdge.source,
+        target: outEdge.target,
+        sourceHandle: inEdge.sourceHandle ?? undefined,
+      });
+    }
+
+    return { nodes: nodes.filter(n => !removeIds.has(n.id)), edges: nextEdges };
+  }
+
   const inEdge  = edges.find(e => e.target === nodeId);
   // Successor: prefer plain edge, then "done" (foreach continuation)
   const outEdge =
@@ -555,11 +685,19 @@ export function graphMoveStepUp(
   edges: StoredEdge[],
   nodeId: string,
 ): { nodes: StoredNode[]; edges: StoredEdge[] } {
+  // Parallel and join nodes must move as a paired block — generic swap would corrupt sequencing.
+  const movingNode = nodes.find(n => n.id === nodeId);
+  if (movingNode?.type === "parallel" || movingNode?.type === "join") return { nodes, edges };
+
   const inEdge = edges.find(e => e.target === nodeId);
   if (!inEdge) return { nodes, edges }; // no predecessor at all
 
   // If the incoming edge has a sourceHandle, this is the first in its branch — can't move up
   if (inEdge.sourceHandle) return { nodes, edges };
+
+  // Don't swap past a parallel or join node — that would also corrupt sequencing
+  const prevNode = nodes.find(n => n.id === inEdge.source);
+  if (prevNode?.type === "parallel" || prevNode?.type === "join") return { nodes, edges };
 
   const prevId = inEdge.source;
   const prevInEdge = edges.find(e => e.target === prevId);
@@ -587,12 +725,19 @@ export function graphMoveStepDown(
   edges: StoredEdge[],
   nodeId: string,
 ): { nodes: StoredNode[]; edges: StoredEdge[] } {
+  // Parallel and join nodes must move as a paired block — generic swap would corrupt sequencing.
+  const movingNode = nodes.find(n => n.id === nodeId);
+  if (movingNode?.type === "parallel" || movingNode?.type === "join") return { nodes, edges };
+
   const outEdge =
     edges.find(e => e.source === nodeId && !e.sourceHandle) ??
     edges.find(e => e.source === nodeId && e.sourceHandle === "done");
   if (!outEdge) return { nodes, edges }; // already last
 
   const nextId = outEdge.target;
+  // Don't swap past a parallel or join node — that would also corrupt sequencing
+  const nextNode = nodes.find(n => n.id === nextId);
+  if (nextNode?.type === "parallel" || nextNode?.type === "join") return { nodes, edges };
   const nextOutEdge = edges.find(e => e.source === nextId && !e.sourceHandle);
   const inEdge = edges.find(e => e.target === nodeId);
 

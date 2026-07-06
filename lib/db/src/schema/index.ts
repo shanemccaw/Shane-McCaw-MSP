@@ -1793,6 +1793,8 @@ export interface WfNode {
     | "switch_case"
     // Control Flow
     | "foreach"
+    | "parallel"
+    | "join"
     | "retry"
     | "approval_gate"
     | "report_progress"

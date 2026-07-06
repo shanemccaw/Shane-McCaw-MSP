@@ -125,6 +125,9 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Variables ──
   set_variable:    { bg: "#0A1A10", border: "#34D399", icon: "📦", label: "Set Variable"    },
   update_variable: { bg: "#1A0E00", border: "#F97316", icon: "✏️", label: "Update Variable" },
+  // ── Parallel / Join ──
+  parallel: { bg: "#0D1020", border: "#06B6D4", icon: "⇉",  label: "Parallel"           },
+  join:     { bg: "#0D1020", border: "#06B6D4", icon: "⇊",  label: "Join"               },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -214,6 +217,14 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   // Data
   find_object: [{ key: "found", label: "true if a matching record was found" }, { key: "objectId", label: "Primary key (or Stripe invoice ID) of the found record" }, { key: "objectType", label: "Type queried", enumValues: ["lead", "client", "project", "article", "stripe_invoice", "insights_document", "presentation"] }, { key: "presentationId", label: "Presentation DB ID (presentation only)" }, { key: "clientUserId", label: "Client user ID (presentation/project only)" }, { key: "sowPhases", label: "JSON array of SOW phases, each with id, title, description, price, selected (presentation only)" }, { key: "selectedPhaseIds", label: "Array of selected phase IDs (presentation only)" }, { key: "totalPrice", label: "Total price as decimal string (presentation only)" }, { key: "paymentPlan", label: "Payment plan: full or phased (presentation only)", enumValues: ["full", "phased"] }, { key: "signedAt", label: "ISO timestamp when presentation was signed, or null (presentation only)" }, { key: "createdAt", label: "ISO timestamp when record was created (presentation only)" }, { key: "email", label: "Email (lead/client only)" }, { key: "name", label: "Name (lead/client only)" }, { key: "status", label: "Status field (all types)", enumValues: ["draft", "approved", "delivered", "archived", "generating", "failed"] }, { key: "stripeInvoiceId", label: "Stripe invoice ID (stripe_invoice only)" }, { key: "dueDate", label: "Invoice due date ISO string (stripe_invoice only)" }, { key: "amountDue", label: "Amount due in cents (stripe_invoice only)" }, { key: "customerId", label: "Customer ID (stripe_invoice/insights_document)" }, { key: "documentId", label: "Insights document DB ID (insights_document only)" }, { key: "title", label: "Document title (insights_document only)" }, { key: "category", label: "Document category — report or consulting (insights_document only)", enumValues: ["report", "consulting"] }, { key: "docType", label: "Document type e.g. full_readiness_report (insights_document only)", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "htmlContent", label: "Full HTML body of the document (insights_document only)" }, { key: "pdfUrl", label: "PDF download URL if generated (insights_document only)" }, { key: "sowPricingLines", label: "SOW pricing lines array (insights_document only)" }, { key: "sowTotalPrice", label: "SOW total price as decimal string (insights_document only)" }, { key: "approvedAt", label: "ISO timestamp when document was approved (insights_document only)" }, { key: "deliveredAt", label: "ISO timestamp when document was delivered (insights_document only)" }, { key: "projectId", label: "Linked project ID (insights_document only)" }],
   compose: [{ key: "value", label: "Composed value — string, or parsed JSON object/array when 'Parse as JSON' is enabled" }],
+  // Control Flow — Parallel
+  parallel: [
+    { key: "branch_1", label: "Branch 1 output (awaited)" },
+    { key: "branch_2", label: "Branch 2 output (awaited)" },
+    { key: "branch_3", label: "Branch 3 output (awaited)" },
+    { key: "branch_4", label: "Branch 4 output (awaited)" },
+  ],
+  join: [{ key: "joined", label: "true — all awaited branches completed" }],
   // Content (image)
   generate_image: [{ key: "imageUrl", label: "Permanent URL of the saved image (e.g. /api/uploads/generated-images/<uuid>.png)" }, { key: "revisedPrompt", label: "Final prompt sent to the AI (may include style suffix)" }],
   // AI
@@ -688,6 +699,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Control Flow",
     nodes: [
       { type: "foreach",         label: "For Each",        description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
+      { type: "parallel",        label: "Parallel",        description: "Split into multiple branches that run concurrently; awaited branches are merged at a Join node", tags: ["parallel", "concurrent", "branch", "split", "fan-out", "control"] },
       { type: "retry",           label: "Retry",           description: "Re-run a failed node automatically; wire graceful error handling in the Exhausted body.", tags: ["retry", "error", "loop", "control", "recover", "resilience"] },
       { type: "approval_gate",   label: "Approval Gate",   description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
       { type: "report_progress", label: "Report Progress", description: "Emit a real-time status message visible in the test-run panel and run timeline", tags: ["progress", "status", "log", "notify", "control", "debug"] },
@@ -3653,6 +3665,10 @@ function NodeConfigPanel({
           </>
         )}
 
+        {nodeType === "parallel" && (
+          <ParallelPanel node={node} onChange={onChange} nodes={nodes} edges={edges} onGraphChange={onGraphChange} />
+        )}
+
         {nodeType === "foreach" && (
           <>
             <PayloadField
@@ -6155,6 +6171,157 @@ function BuildCasesPopover({
   );
 }
 
+function ParallelPanel({
+  node,
+  onChange,
+  nodes,
+  edges,
+  onGraphChange,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  nodes: Node[];
+  edges: Edge[];
+  onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
+}) {
+  const branchCount  = (node.data.branchCount  as number   | undefined) ?? 2;
+  const branchLabels = (node.data.branchLabels as string[] | undefined) ?? Array.from({ length: branchCount }, (_, i) => `Branch ${i + 1}`);
+  const branchWait   = (node.data.branchWait   as boolean[] | undefined) ?? Array(branchCount).fill(true);
+  const joinNodeId   = node.data.joinNodeId as string | undefined;
+
+  function updateData(updates: Partial<{ branchCount: number; branchLabels: string[]; branchWait: boolean[] }>) {
+    onChange(node.id, { ...node.data, ...updates });
+  }
+
+  function toStoredNodes(rfNodes: Node[]): StoredNode[] {
+    return rfNodes.map(n => ({ id: n.id, type: (n.data?.nodeType as string) ?? n.type ?? "action", position: n.position, data: n.data as Record<string, unknown> }));
+  }
+  function toStoredEdges(rfEdges: Edge[]): StoredEdge[] {
+    return rfEdges.map(e => ({ id: e.id, source: e.source, target: e.target, sourceHandle: e.sourceHandle ?? undefined }));
+  }
+
+  function setBranchCount(n: number) {
+    const next = Math.max(2, Math.min(4, n));
+    if (next === branchCount) return;
+
+    const nextLabels = Array.from({ length: next }, (_, i) => branchLabels[i] ?? `Branch ${i + 1}`);
+    const nextWait   = Array.from({ length: next }, (_, i) => branchWait[i] ?? true);
+
+    // Update graph edges: add or remove branch_N edges
+    let newEdges = [...edges];
+    if (next > branchCount) {
+      // Add new branch edges (empty → join)
+      for (let i = branchCount; i < next; i++) {
+        const handle = `branch_${i + 1}`;
+        const alreadyExists = newEdges.some(e => e.source === node.id && e.sourceHandle === handle);
+        if (!alreadyExists && joinNodeId) {
+          newEdges.push({ id: `e-par-b${i + 1}-${node.id}`, source: node.id, target: joinNodeId, sourceHandle: handle });
+        }
+      }
+      onGraphChange(toStoredNodes(nodes), toStoredEdges(newEdges));
+    } else {
+      // Remove excess branch edges and all nodes inside those branches
+      let currentNodes = [...nodes];
+      for (let i = next; i < branchCount; i++) {
+        const handle = `branch_${i + 1}`;
+        const branchEdge = newEdges.find(e => e.source === node.id && e.sourceHandle === handle);
+        if (!branchEdge) continue;
+        // Collect nodes in that branch and remove them
+        const joinStop = joinNodeId ? new Set([joinNodeId]) : new Set<string>();
+        const branchNodeIds = new Set<string>();
+        const dfsStack = [branchEdge.target];
+        while (dfsStack.length > 0) {
+          const nId = dfsStack.pop()!;
+          if (branchNodeIds.has(nId) || joinStop.has(nId)) continue;
+          branchNodeIds.add(nId);
+          for (const e of newEdges.filter(e => e.source === nId)) {
+            if (!branchNodeIds.has(e.target) && !joinStop.has(e.target)) dfsStack.push(e.target);
+          }
+        }
+        newEdges = newEdges.filter(e => !branchNodeIds.has(e.source) && !branchNodeIds.has(e.target) && !(e.source === node.id && e.sourceHandle === handle));
+        currentNodes = currentNodes.filter(n => !branchNodeIds.has(n.id));
+      }
+      onGraphChange(toStoredNodes(currentNodes), toStoredEdges(newEdges));
+    }
+    updateData({ branchCount: next, branchLabels: nextLabels, branchWait: nextWait });
+  }
+
+  function updateLabel(i: number, label: string) {
+    const next = [...branchLabels];
+    next[i] = label;
+    updateData({ branchLabels: next });
+  }
+
+  function updateWait(i: number, wait: boolean) {
+    const next = [...branchWait];
+    next[i] = wait;
+    updateData({ branchWait: next });
+  }
+
+  const branchColors = ["#06B6D4", "#A855F7", "#F59E0B", "#10B981", "#EF4444"];
+
+  return (
+    <>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-medium text-[#7D8590]">Branch Count</label>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setBranchCount(branchCount - 1)}
+              disabled={branchCount <= 2}
+              className="w-5 h-5 rounded bg-[#1C2128] border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 text-sm leading-none flex items-center justify-center"
+            >−</button>
+            <span className="text-xs text-[#E6EDF3] w-4 text-center">{branchCount}</span>
+            <button
+              onClick={() => setBranchCount(branchCount + 1)}
+              disabled={branchCount >= 4}
+              className="w-5 h-5 rounded bg-[#1C2128] border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] disabled:opacity-30 text-sm leading-none flex items-center justify-center"
+            >+</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {Array.from({ length: branchCount }, (_, i) => {
+          const color = branchColors[i % branchColors.length];
+          const wait  = branchWait[i] !== false;
+          return (
+            <div key={i} className="rounded-lg border border-[#30363D] overflow-hidden">
+              <div className="px-2.5 py-1.5 flex items-center gap-2" style={{ background: `${color}0D`, borderBottom: `1px solid ${color}25` }}>
+                <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+                <input
+                  value={branchLabels[i] ?? `Branch ${i + 1}`}
+                  onChange={e => updateLabel(i, e.target.value)}
+                  className="flex-1 bg-transparent text-[11px] font-semibold text-[#E6EDF3] outline-none placeholder-[#484F58]"
+                  placeholder={`Branch ${i + 1}`}
+                />
+              </div>
+              <div className="px-2.5 py-2 flex items-center justify-between bg-[#0D1117]">
+                <label className="text-[10px] text-[#7D8590]">Wait for completion</label>
+                <input
+                  type="checkbox"
+                  checked={wait}
+                  onChange={e => updateWait(i, e.target.checked)}
+                  className="w-3.5 h-3.5 rounded accent-[#06B6D4]"
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-lg bg-[#041A1A] border border-[#06B6D4]/25 p-3 space-y-1.5">
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+          Branches with <span className="text-[#06B6D4] font-semibold">Wait for completion</span> run concurrently via Promise.all — their outputs are merged at the Join node.
+        </p>
+        <p className="text-[10px] text-[#7D8590] leading-relaxed">
+          Branches with it <span className="text-amber-400 font-semibold">off</span> fire and forget — failures are logged but do not fail the run.
+        </p>
+      </div>
+    </>
+  );
+}
+
 function SwitchCasePanel({
   node,
   onChange,
@@ -7856,20 +8023,47 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   // Users can also insert at a specific position via the "+" buttons in FlowCanvas.
   function addNode(nodeType: string) {
     pushHistory();
-    const id = `node-${++nodeIdCounter.current}`;
     const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+
+    // Find a leaf node to connect after (node with no outgoing plain edge)
+    const sourcesOfMainEdge = new Set(edges.filter(e => !e.sourceHandle).map(e => e.source));
+    const leafNode = [...nodes].reverse().find(n => !sourcesOfMainEdge.has(n.id));
+
+    // ── Parallel: insert parallel + join pair ─────────────────────────────
+    if (nodeType === "parallel") {
+      const parallelId = `node-${++nodeIdCounter.current}`;
+      const joinId     = `node-${++nodeIdCounter.current}`;
+      const parallelNode: StoredNode = {
+        id: parallelId, type: "parallel", position: { x: 300, y: 100 },
+        data: { nodeType: "parallel", label: style.label, branchCount: 2, joinNodeId: joinId, branchLabels: ["Branch 1", "Branch 2"], branchWait: [true, true] },
+      };
+      const joinNode: StoredNode = {
+        id: joinId, type: "join", position: { x: 300, y: 200 },
+        data: { nodeType: "join", label: "Join", parallelNodeId: parallelId },
+      };
+      const extraEdges = [
+        { id: `e-par-b1-${parallelId}`, source: parallelId, target: joinId, sourceHandle: "branch_1" },
+        { id: `e-par-b2-${parallelId}`, source: parallelId, target: joinId, sourceHandle: "branch_2" },
+      ];
+      if (leafNode) {
+        setNodes(nds => [...nds, parallelNode, joinNode]);
+        setEdges(eds => [...eds, { id: `e-lib-${parallelId}`, source: leafNode.id, target: parallelId }, ...extraEdges]);
+      } else {
+        setNodes(nds => [...nds, parallelNode, joinNode]);
+        setEdges(eds => [...eds, ...extraEdges]);
+      }
+      trackRecent(nodeType);
+      setIsDirty(true);
+      return;
+    }
+
+    const id = `node-${++nodeIdCounter.current}`;
     const newNode: StoredNode = {
       id,
       type: nodeType,
       position: { x: 300, y: 100 },
       data: { nodeType, label: style.label },
     };
-
-    // Find a leaf node to connect after (node with no outgoing plain edge)
-    const sourcesOfMainEdge = new Set(
-      edges.filter(e => !e.sourceHandle).map(e => e.source),
-    );
-    const leafNode = [...nodes].reverse().find(n => !sourcesOfMainEdge.has(n.id));
 
     if (leafNode) {
       setNodes(nds => [...nds, newNode]);
