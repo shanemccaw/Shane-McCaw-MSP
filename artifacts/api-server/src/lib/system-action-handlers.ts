@@ -11,7 +11,7 @@ import { insightsAutomationsTable, quickWinPresentationsTable, workflowStepsTabl
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.ts";
-import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard } from "./kanban-auto-fire.ts";
+import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire.ts";
 import { executeAutomation, nextRunFromCron } from "../routes/admin-insights.ts";
 import { checkManualScriptEscalations } from "./manual-script-escalation.ts";
 
@@ -97,6 +97,11 @@ export async function handleSystemAction(
       if (action === "document" || action === "both") {
         autoFireDocumentCard(clientUserId).catch((err: unknown) => {
           logger.warn({ err, clientUserId }, "system_action: auto_fire_kanban document error (non-fatal)");
+        });
+      }
+      if (action === "workflow" || action === "both") {
+        autoFireRunWorkflowCards(clientUserId).catch((err: unknown) => {
+          logger.warn({ err, clientUserId }, "system_action: auto_fire_kanban run_workflow error (non-fatal)");
         });
       }
 

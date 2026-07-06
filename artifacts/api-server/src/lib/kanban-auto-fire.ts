@@ -29,6 +29,9 @@ import {
   powershellScriptsTable,
   scriptRunResultsTable,
   clientAutomationRunsTable,
+  wfDefinitionsTable,
+  wfVersionsTable,
+  wfRunsTable,
 } from "@workspace/db";
 import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
 import { logger } from "./logger";
@@ -38,6 +41,7 @@ import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-adva
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { runAiAnalyzer } from "./ai-analyzer";
 import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./document-generator";
+import { executeWorkflowRun } from "./workflow-executor";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendEmailOrThrow, brandedEmail } from "./mailer";
 import { MAX_AUTO_FIRE_FAILURES, computeNextFailureState } from "./kanban-auto-fire-retry-utils";
@@ -568,12 +572,13 @@ async function runInBackground(
         }
       }
 
-      // Always look for the next backlog card (script or document) in this client's active phase.
-      // Without this, only the first card fires — subsequent cards in the same phase
+      // Always look for the next backlog card (script, document, or sub-workflow) in this client's
+      // active phase. Without this, only the first card fires — subsequent cards in the same phase
       // never get picked up because advancePhaseIfComplete only fires when ALL cards
       // in the step are complete.
       void autoFireFirstBacklogScript(clientUserId);
       void autoFireDocumentCard(clientUserId);
+      void autoFireRunWorkflowCards(clientUserId);
     } else {
       // ── Failure recovery: revert cards to backlog and track retry budget ──
       //
@@ -936,6 +941,7 @@ async function fireDocumentCard(clientUserId: number, card: DocumentCard): Promi
   // SOW gate condition is now satisfied (all non-SOW docs done).
   void autoFireAllDocumentCards(clientUserId);
   void autoFireFirstBacklogScript(clientUserId);
+  void autoFireRunWorkflowCards(clientUserId);
 }
 
 /**
@@ -1021,6 +1027,305 @@ export async function autoFireAllDocumentCards(clientUserId: number): Promise<vo
 
 /** @deprecated Use autoFireAllDocumentCards — kept for call-site backward compatibility */
 export const autoFireDocumentCard = autoFireAllDocumentCards;
+
+// ─── Run Workflow auto-fire ────────────────────────────────────────────────────
+
+interface RunWorkflowCard {
+  id: number;
+  projectId: number;
+  workflowStepId: number | null;
+  runWorkflow: {
+    workflowId: number;
+    inputMapping: Array<{ key: string; expr: string }>;
+  };
+}
+
+async function findAllBacklogRunWorkflowCards(clientUserId: number): Promise<RunWorkflowCard[]> {
+  const projects = await db
+    .select({ id: projectsTable.id })
+    .from(projectsTable)
+    .where(eq(projectsTable.clientUserId, clientUserId));
+
+  if (projects.length === 0) return [];
+  const projectIds = projects.map(p => p.id);
+
+  const activeSteps = await db
+    .select({ id: workflowStepsTable.id })
+    .from(workflowStepsTable)
+    .where(and(
+      inArray(workflowStepsTable.projectId, projectIds),
+      eq(workflowStepsTable.status, "in_progress"),
+    ));
+
+  const activeStepIds = activeSteps.map(s => s.id);
+  if (activeStepIds.length === 0) return [];
+
+  const candidates = await db
+    .select({
+      id:             kanbanTasksTable.id,
+      projectId:      kanbanTasksTable.projectId,
+      workflowStepId: kanbanTasksTable.workflowStepId,
+      taskMetadata:   kanbanTasksTable.taskMetadata,
+    })
+    .from(kanbanTasksTable)
+    .where(and(
+      inArray(kanbanTasksTable.workflowStepId, activeStepIds),
+      eq(kanbanTasksTable.column, "backlog"),
+      eq(kanbanTasksTable.taskType, "run_workflow"),
+      sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
+    ))
+    .orderBy(asc(kanbanTasksTable.workflowStepId), asc(kanbanTasksTable.order));
+
+  const results: RunWorkflowCard[] = [];
+  for (const card of candidates) {
+    const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
+    const rw = meta.runWorkflow as { workflowId?: number; inputMapping?: Array<{ key: string; expr: string }> } | undefined;
+    if (rw?.workflowId) {
+      results.push({
+        id: card.id,
+        projectId: card.projectId,
+        workflowStepId: card.workflowStepId,
+        runWorkflow: {
+          workflowId: rw.workflowId,
+          inputMapping: rw.inputMapping ?? [],
+        },
+      });
+    }
+  }
+  return results;
+}
+
+async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard): Promise<void> {
+  const [metaRow] = await db
+    .select({ taskMetadata: kanbanTasksTable.taskMetadata })
+    .from(kanbanTasksTable)
+    .where(eq(kanbanTasksTable.id, card.id));
+  const prevMeta = ((metaRow?.taskMetadata ?? {}) as Record<string, unknown>);
+  const currentFailureCount = typeof prevMeta.autoFireFailureCount === "number" ? prevMeta.autoFireFailureCount : 0;
+
+  logger.info(
+    { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, currentFailureCount },
+    "kanban-auto-fire: auto-firing run_workflow card",
+  );
+
+  // Find the published version for the chosen workflow definition
+  const [versionRow] = await db
+    .select({ id: wfVersionsTable.id })
+    .from(wfVersionsTable)
+    .where(and(
+      eq(wfVersionsTable.definitionId, card.runWorkflow.workflowId),
+      eq(wfVersionsTable.status, "published"),
+    ))
+    .limit(1);
+
+  if (!versionRow) {
+    const { newCount, exhausted, completionStatus: failStatus } = computeNextFailureState(currentFailureCount);
+    await db.update(kanbanTasksTable)
+      .set({
+        column:           "backlog",
+        completionStatus: failStatus,
+        completionNotes:  `No published version found for workflow ${card.runWorkflow.workflowId}. Attempt ${newCount}/${MAX_AUTO_FIRE_FAILURES}.`,
+        taskMetadata: {
+          ...prevMeta,
+          autoFireFailureCount: newCount,
+          lastFailureReason:    `No published version for workflowId ${card.runWorkflow.workflowId}`,
+          lastFailedAt:         new Date().toISOString(),
+          ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(kanbanTasksTable.id, card.id));
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    logger.error(
+      { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, newCount, exhausted },
+      "kanban-auto-fire: run_workflow no published version — card reverted to backlog",
+    );
+    return;
+  }
+
+  // Build payload: clientUserId + projectId as defaults, then inputMapping overrides
+  const basePayload: Record<string, unknown> = {
+    clientUserId,
+    projectId: card.projectId,
+  };
+  for (const { key, expr } of card.runWorkflow.inputMapping) {
+    if (key) basePayload[key] = expr;
+  }
+
+  // Create the run record
+  let childRunId: number;
+  try {
+    const [runRow] = await db
+      .insert(wfRunsTable)
+      .values({
+        versionId:    versionRow.id,
+        definitionId: card.runWorkflow.workflowId,
+        triggerType:  "manual",
+        triggerRef:   `kanban_auto_fire:card:${card.id}`,
+        payload:      basePayload,
+        status:       "pending",
+      })
+      .returning({ id: wfRunsTable.id });
+    if (!runRow?.id) throw new Error("failed to insert wf_runs row");
+    childRunId = runRow.id;
+  } catch (insertErr) {
+    const { newCount, exhausted, completionStatus: failStatus } = computeNextFailureState(currentFailureCount);
+    const failureReason = insertErr instanceof Error ? insertErr.message : String(insertErr);
+    await db.update(kanbanTasksTable)
+      .set({
+        column:           "backlog",
+        completionStatus: failStatus,
+        completionNotes:  `Failed to create workflow run. Attempt ${newCount}/${MAX_AUTO_FIRE_FAILURES}.`,
+        taskMetadata: {
+          ...prevMeta,
+          autoFireFailureCount: newCount,
+          lastFailureReason:    failureReason,
+          lastFailedAt:         new Date().toISOString(),
+          ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(kanbanTasksTable.id, card.id));
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    logger.error({ insertErr, clientUserId, cardId: card.id, newCount, exhausted },
+      "kanban-auto-fire: run_workflow failed to create run — card reverted to backlog");
+    return;
+  }
+
+  // Execute synchronously
+  try {
+    await executeWorkflowRun(childRunId);
+  } catch (execErr) {
+    const { newCount, exhausted, completionStatus: failStatus } = computeNextFailureState(currentFailureCount);
+    const failureReason = execErr instanceof Error ? execErr.message : String(execErr);
+    const { autoFireFailureCount: _d1, lastFailureReason: _d2, lastFailedAt: _d3, ...cleanMeta } = prevMeta;
+    await db.update(kanbanTasksTable)
+      .set({
+        column:           "backlog",
+        completionStatus: failStatus,
+        completionNotes:  `Workflow execution threw an exception. Attempt ${newCount}/${MAX_AUTO_FIRE_FAILURES}. Error: ${failureReason.slice(0, 200)}`,
+        taskMetadata: {
+          ...cleanMeta,
+          runWorkflow:          { ...card.runWorkflow, childRunId },
+          autoFireFailureCount: newCount,
+          lastFailureReason:    failureReason,
+          lastFailedAt:         new Date().toISOString(),
+          ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(kanbanTasksTable.id, card.id));
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    logger.error({ execErr, clientUserId, cardId: card.id, childRunId, newCount, exhausted },
+      "kanban-auto-fire: run_workflow execution threw — card reverted to backlog");
+    return;
+  }
+
+  // Check the run's final status
+  const [finalRun] = await db
+    .select({ status: wfRunsTable.status, errorMessage: wfRunsTable.errorMessage })
+    .from(wfRunsTable)
+    .where(eq(wfRunsTable.id, childRunId))
+    .limit(1);
+
+  if (finalRun?.status === "failed" || finalRun?.status === "cancelled") {
+    const { newCount, exhausted, completionStatus: failStatus } = computeNextFailureState(currentFailureCount);
+    const failureReason = finalRun.errorMessage ?? `Sub-workflow ${finalRun.status}`;
+    const { autoFireFailureCount: _d1, lastFailureReason: _d2, lastFailedAt: _d3, ...cleanMeta } = prevMeta;
+    await db.update(kanbanTasksTable)
+      .set({
+        column:           "backlog",
+        completionStatus: failStatus,
+        completionNotes:  `Workflow run ${finalRun.status}. Attempt ${newCount}/${MAX_AUTO_FIRE_FAILURES}. ${failureReason.slice(0, 200)}`,
+        taskMetadata: {
+          ...cleanMeta,
+          runWorkflow:          { ...card.runWorkflow, childRunId },
+          autoFireFailureCount: newCount,
+          lastFailureReason:    failureReason,
+          lastFailedAt:         new Date().toISOString(),
+          ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(kanbanTasksTable.id, card.id));
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    logger.error({ clientUserId, cardId: card.id, childRunId, status: finalRun.status, newCount, exhausted },
+      "kanban-auto-fire: run_workflow run ended in failure — card reverted to backlog");
+    return;
+  }
+
+  // Success — move to completed
+  const { autoFireFailureCount: _d1, lastFailureReason: _d2, lastFailedAt: _d3, ...cleanMeta } = prevMeta;
+  await db.update(kanbanTasksTable)
+    .set({
+      column:           "completed",
+      completionStatus: "workflow_triggered",
+      completionNotes:  `Sub-workflow run ${childRunId} completed successfully.`,
+      taskMetadata:     { ...cleanMeta, runWorkflow: { ...card.runWorkflow, childRunId } },
+      updatedAt:        new Date(),
+    })
+    .where(eq(kanbanTasksTable.id, card.id));
+  {
+    const [completed] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (completed) broadcastKanbanChange(card.projectId, { action: "updated", task: completed });
+  }
+
+  logger.info(
+    { clientUserId, cardId: card.id, childRunId },
+    "kanban-auto-fire: run_workflow card completed — sub-workflow triggered",
+  );
+
+  if (card.workflowStepId != null) {
+    const { spawnedTasks } = await advancePhaseIfComplete(card.workflowStepId, card.projectId);
+    if (spawnedTasks.length > 0) {
+      logger.info(
+        { workflowStepId: card.workflowStepId, projectId: card.projectId, spawnedCount: spawnedTasks.length },
+        "kanban-auto-fire: next phase activated after run_workflow",
+      );
+    }
+  }
+
+  void autoFireRunWorkflowCards(clientUserId);
+  void autoFireAllDocumentCards(clientUserId);
+  void autoFireFirstBacklogScript(clientUserId);
+}
+
+/**
+ * Fires ALL eligible backlog run_workflow cards for a client in parallel.
+ * Called alongside autoFireAllDocumentCards and autoFireFirstBacklogScript everywhere.
+ */
+export async function autoFireRunWorkflowCards(clientUserId: number): Promise<void> {
+  try {
+    const allBacklog = await findAllBacklogRunWorkflowCards(clientUserId);
+    if (allBacklog.length === 0) {
+      logger.debug({ clientUserId }, "kanban-auto-fire: no eligible backlog run_workflow cards found");
+      return;
+    }
+
+    logger.info(
+      { clientUserId, count: allBacklog.length },
+      "kanban-auto-fire: firing run_workflow cards in parallel",
+    );
+
+    const cardIds = allBacklog.map(c => c.id);
+    await db.update(kanbanTasksTable)
+      .set({ column: "in_progress", updatedAt: new Date() })
+      .where(inArray(kanbanTasksTable.id, cardIds));
+
+    for (const card of allBacklog) {
+      const [updated] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+      if (updated) broadcastKanbanChange(card.projectId, { action: "updated", task: updated });
+    }
+
+    await Promise.allSettled(allBacklog.map(card => fireRunWorkflowCard(clientUserId, card)));
+  } catch (err) {
+    logger.warn({ err, clientUserId }, "kanban-auto-fire: autoFireRunWorkflowCards unexpected error (non-fatal)");
+  }
+}
 
 export async function autoFireFirstBacklogScript(clientUserId: number): Promise<void> {
   if (!isAzureConfigured()) {
@@ -1352,6 +1657,7 @@ export async function reconcileOrphanedRuns(): Promise<void> {
     for (const clientUserId of processedClientIds) {
       void autoFireFirstBacklogScript(clientUserId);
       void autoFireDocumentCard(clientUserId);
+      void autoFireRunWorkflowCards(clientUserId);
     }
   } catch (err) {
     logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
@@ -1590,11 +1896,88 @@ export async function reconcileStalledPhases(): Promise<void> {
         );
         stalledClientIds.add(step.clientUserId);
       }
+
+      // ── run_workflow stale in_progress detection ──────────────────────────
+      // run_workflow cards complete synchronously — if one is still in_progress
+      // beyond the stale threshold the server was restarted mid-execution.
+      const staleRwCards = await db
+        .select({
+          id:           kanbanTasksTable.id,
+          taskMetadata: kanbanTasksTable.taskMetadata,
+          updatedAt:    kanbanTasksTable.updatedAt,
+        })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "in_progress"),
+            eq(kanbanTasksTable.taskType, "run_workflow"),
+          ),
+        );
+
+      const staleRwToRevert = staleRwCards.filter(c => {
+        const updatedMs = c.updatedAt instanceof Date ? c.updatedAt.getTime() : (c.updatedAt ? new Date(c.updatedAt as string).getTime() : 0);
+        return nowMs - updatedMs > STALE_DOC_THRESHOLD_MS;
+      });
+
+      if (staleRwToRevert.length > 0) {
+        const staleRwIds = staleRwToRevert.map(c => c.id);
+        logger.warn(
+          { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId, staleRwIds },
+          "kanban-auto-fire: reconcileStalledPhases — reverting stale in_progress run_workflow cards to backlog",
+        );
+        for (const card of staleRwToRevert) {
+          const meta = ((card.taskMetadata ?? {}) as Record<string, unknown>);
+          const currentCount = typeof meta.autoFireFailureCount === "number" ? meta.autoFireFailureCount : 0;
+          const { newCount, exhausted, completionStatus: revertStatus } = computeNextFailureState(currentCount);
+          await db.update(kanbanTasksTable)
+            .set({
+              column:           "backlog",
+              completionStatus: revertStatus,
+              taskMetadata: {
+                ...meta,
+                autoFireFailureCount: newCount,
+                lastFailureReason:    "Stale run_workflow card detected by reconcileStalledPhases (server restart suspected)",
+                lastFailedAt:         new Date().toISOString(),
+                ...(exhausted ? { autoFireExhaustedAt: new Date().toISOString() } : {}),
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(kanbanTasksTable.id, card.id));
+        }
+        const revertedRwRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, staleRwIds));
+        if (step.projectId != null) {
+          for (const t of revertedRwRows) broadcastKanbanChange(step.projectId, { action: "updated", task: t });
+        }
+      }
+
+      // Check for backlog run_workflow cards that can be re-fired.
+      const [backlogRwCard] = await db
+        .select({ id: kanbanTasksTable.id })
+        .from(kanbanTasksTable)
+        .where(
+          and(
+            eq(kanbanTasksTable.workflowStepId, step.stepId),
+            eq(kanbanTasksTable.column, "backlog"),
+            eq(kanbanTasksTable.taskType, "run_workflow"),
+            sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
+          ),
+        )
+        .limit(1);
+
+      if (backlogRwCard) {
+        logger.info(
+          { stepId: step.stepId, projectId: step.projectId, clientUserId: step.clientUserId },
+          "kanban-auto-fire: detected stalled phase — backlog run_workflow cards need auto-fire",
+        );
+        stalledClientIds.add(step.clientUserId);
+      }
     }
 
     for (const clientUserId of stalledClientIds) {
       void autoFireFirstBacklogScript(clientUserId);
       void autoFireDocumentCard(clientUserId);
+      void autoFireRunWorkflowCards(clientUserId);
     }
   } catch (err) {
     logger.warn({ err }, "kanban-auto-fire: reconcileStalledPhases failed (non-fatal)");

@@ -16,7 +16,7 @@ import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, type SowPricingLine } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
-import { autoFireFirstBacklogScript, autoFireDocumentCard } from "../lib/kanban-auto-fire.ts";
+import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
@@ -992,13 +992,16 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
       req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
     });
 
-  // Auto-fire the first backlog Kanban card for this client (script or document generation).
-  // Both run in parallel and are no-ops if no eligible card is found.
+  // Auto-fire the first backlog Kanban card for this client (script, document generation, or sub-workflow).
+  // All run in parallel and are no-ops if no eligible card is found.
   autoFireFirstBacklogScript(userId).catch(err => {
     req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
   });
   autoFireDocumentCard(userId).catch(err => {
     req.log.warn({ err, userId }, "portal/app-registration: autoFireDocumentCard error (non-fatal)");
+  });
+  autoFireRunWorkflowCards(userId).catch(err => {
+    req.log.warn({ err, userId }, "portal/app-registration: autoFireRunWorkflowCards error (non-fatal)");
   });
 });
 

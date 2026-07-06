@@ -83,6 +83,7 @@ const EMPTY_TASK_FORM: EditingTaskForm = {
   customerDownloadScriptId: null,
   triggersHealthScore: false,
   documentGeneration: null,
+  runWorkflow: null,
 };
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
@@ -146,6 +147,11 @@ interface DocumentGenerationMeta {
   title: string;
 }
 
+interface RunWorkflowMeta {
+  workflowId: number;
+  inputMapping: Array<{ key: string; expr: string }>;
+}
+
 interface EditingTaskForm {
   title: string;
   groupName: string;
@@ -164,6 +170,7 @@ interface EditingTaskForm {
   customerDownloadScriptId: string | null;
   triggersHealthScore: boolean;
   documentGeneration: DocumentGenerationMeta | null;
+  runWorkflow: RunWorkflowMeta | null;
 }
 
 interface AllPsScript {
@@ -1237,11 +1244,25 @@ function TaskDrawer({
   publishedScripts: PublishedScript[];
   allPsScripts: AllPsScript[];
 }) {
+  const { fetchWithAuth } = useAuth();
   const [tab, setTab] = useState<DrawerTab>("basic");
+  const [wfDefinitions, setWfDefinitions] = useState<Array<{ id: number; name: string }>>([]);
+  const [wfDefinitionsLoading, setWfDefinitionsLoading] = useState(false);
 
   useEffect(() => {
     if (open) setTab("basic");
   }, [open]);
+
+  useEffect(() => {
+    if (!open || form.taskType !== "run_workflow") return;
+    setWfDefinitionsLoading(true);
+    fetchWithAuth("/api/admin/workflows/definitions")
+      .then(res => res.ok ? res.json() as Promise<Array<{ id: number; name: string }>> : Promise.reject(res.statusText))
+      .then(data => setWfDefinitions(data))
+      .catch(() => setWfDefinitions([]))
+      .finally(() => setWfDefinitionsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, form.taskType]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -1335,6 +1356,9 @@ function TaskDrawer({
                         documentGeneration: newType === "document_generation"
                           ? (p.documentGeneration ?? { category: "report", docType: "executive_summary", title: "Executive Summary" })
                           : null,
+                        runWorkflow: newType === "run_workflow"
+                          ? (p.runWorkflow ?? { workflowId: 0, inputMapping: [] })
+                          : null,
                       }));
                     }}
                     className="w-full border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
@@ -1421,6 +1445,116 @@ function TaskDrawer({
                       className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#0078D4]"
                     />
                     <p className="text-[10px] text-[#7D8590] mt-1">Auto-filled from document type — edit to customize.</p>
+                  </div>
+                </div>
+              )}
+
+              {form.taskType === "run_workflow" && (
+                <div className="rounded-lg border border-[#7C3AED]/30 bg-[#7C3AED]/5 px-4 py-4 space-y-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <svg className="w-4 h-4 text-[#7C3AED] flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 010 1.972l-11.54 6.347a1.125 1.125 0 01-1.667-.986V5.653z" />
+                    </svg>
+                    <p className="text-xs font-bold text-[#7C3AED] uppercase tracking-wide">Run Workflow Config</p>
+                  </div>
+                  <p className="text-[10px] text-[#7D8590] leading-relaxed -mt-1">
+                    When this card becomes active, the selected sub-workflow runs automatically with the client and project injected as context.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1 uppercase tracking-wide">Workflow</label>
+                    {wfDefinitionsLoading ? (
+                      <p className="text-xs text-[#7D8590]">Loading workflows…</p>
+                    ) : (
+                      <select
+                        value={form.runWorkflow?.workflowId ?? 0}
+                        onChange={e => {
+                          const wid = parseInt(e.target.value, 10);
+                          setForm(p => ({
+                            ...p,
+                            runWorkflow: p.runWorkflow
+                              ? { ...p.runWorkflow, workflowId: wid }
+                              : { workflowId: wid, inputMapping: [] },
+                          }));
+                        }}
+                        className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED]"
+                      >
+                        <option value={0}>— select a workflow —</option>
+                        {wfDefinitions.map(def => (
+                          <option key={def.id} value={def.id}>{def.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-[#7D8590] uppercase tracking-wide">
+                        Input Mapping <span className="font-normal normal-case">(optional)</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setForm(p => ({
+                          ...p,
+                          runWorkflow: p.runWorkflow
+                            ? { ...p.runWorkflow, inputMapping: [...p.runWorkflow.inputMapping, { key: "", expr: "" }] }
+                            : { workflowId: 0, inputMapping: [{ key: "", expr: "" }] },
+                        }))}
+                        className="text-[10px] text-[#7C3AED] hover:text-[#9F7AEA] font-semibold"
+                      >+ Add row</button>
+                    </div>
+                    {(form.runWorkflow?.inputMapping ?? []).length === 0 ? (
+                      <p className="text-[10px] text-[#484F58] italic">No input mappings — clientUserId and projectId are passed automatically.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {(form.runWorkflow?.inputMapping ?? []).map((row, idx) => (
+                          <div key={idx} className="flex gap-1.5 items-center">
+                            <input
+                              type="text"
+                              value={row.key}
+                              placeholder="key"
+                              onChange={e => {
+                                const key = e.target.value;
+                                setForm(p => {
+                                  if (!p.runWorkflow) return p;
+                                  const mapping = [...p.runWorkflow.inputMapping];
+                                  mapping[idx] = { ...mapping[idx]!, key };
+                                  return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
+                                });
+                              }}
+                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED] min-w-0"
+                            />
+                            <span className="text-[#484F58] text-xs flex-shrink-0">=</span>
+                            <input
+                              type="text"
+                              value={row.expr}
+                              placeholder="expression or value"
+                              onChange={e => {
+                                const expr = e.target.value;
+                                setForm(p => {
+                                  if (!p.runWorkflow) return p;
+                                  const mapping = [...p.runWorkflow.inputMapping];
+                                  mapping[idx] = { ...mapping[idx]!, expr };
+                                  return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
+                                });
+                              }}
+                              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] focus:outline-none focus:border-[#7C3AED] min-w-0"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setForm(p => {
+                                if (!p.runWorkflow) return p;
+                                const mapping = p.runWorkflow.inputMapping.filter((_, i) => i !== idx);
+                                return { ...p, runWorkflow: { ...p.runWorkflow, inputMapping: mapping } };
+                              })}
+                              className="text-[#484F58] hover:text-red-400 flex-shrink-0"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -1961,6 +2095,7 @@ export default function WorkflowsPage() {
       customerDownloadScriptId: task.customerDownloadScriptId ?? null,
       triggersHealthScore: task.triggersHealthScore ?? false,
       documentGeneration: (task.taskMetadata?.documentGeneration as DocumentGenerationMeta | undefined) ?? null,
+      runWorkflow: (task.taskMetadata?.runWorkflow as RunWorkflowMeta | undefined) ?? null,
     });
     setDrawerIsNew(false);
     setDrawerOpen(true);
@@ -1988,6 +2123,8 @@ export default function WorkflowsPage() {
       triggersHealthScore: taskForm.triggersHealthScore,
       taskMetadata: taskForm.taskType === "document_generation" && taskForm.documentGeneration
         ? { documentGeneration: taskForm.documentGeneration }
+        : taskForm.taskType === "run_workflow" && taskForm.runWorkflow?.workflowId
+        ? { runWorkflow: taskForm.runWorkflow }
         : null,
     };
 
