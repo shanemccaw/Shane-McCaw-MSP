@@ -4627,46 +4627,8 @@ router.post("/admin/presentations/:id/simulate-payment", async (req: Request, re
     .where(eq(quickWinPresentationsTable.id, presentationId)).limit(1);
   if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 
-  const stripeSessionId = pres.stripeSessionId;
-
-  if (stripeSessionId) {
-    // Attempt to replay via real Stripe session (same path as replay-session)
-    let stripeKey: string;
-    try { stripeKey = getStripeKey(); } catch (e) {
-      // If Stripe isn't configured, fall through to synthetic-only emit below
-      req.log.warn({ presentationId }, "simulate-payment: Stripe not configured, falling back to direct event emit");
-      stripeKey = "";
-    }
-
-    if (stripeKey) {
-      try {
-        const { default: Stripe } = await import("stripe");
-        const stripe = new Stripe(stripeKey);
-        const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
-        const syntheticEvent = {
-          id: `simulate_${Date.now()}`,
-          object: "event",
-          type: "checkout.session.completed",
-          livemode: session.livemode,
-          created: Math.floor(Date.now() / 1000),
-          api_version: "2024-06-20",
-          pending_webhooks: 0,
-          request: { id: null, idempotency_key: null },
-          data: { object: session },
-        } as unknown as import("stripe").Stripe.Event;
-
-        await processStripeEvent(req, syntheticEvent);
-        req.log.info({ presentationId, stripeSessionId }, "simulate-payment: processStripeEvent completed");
-        res.json({ status: "simulated", presentationId, stripeSessionId });
-        return;
-      } catch (e) {
-        req.log.warn({ err: e, presentationId, stripeSessionId }, "simulate-payment: processStripeEvent failed, falling back to direct emit");
-        // Fall through to direct emit
-      }
-    }
-  }
-
-  // Fallback: directly emit the agreement_signed workflow event so SSE fires
+  // Always emit agreement_signed directly — bypasses processStripeEvent's idempotency
+  // guard so the workflow re-fires even for already-processed sessions.
   try {
     const userIdForEmit = pres.clientUserId ?? null;
     const [clientProfile] = userIdForEmit
@@ -4684,13 +4646,13 @@ router.post("/admin/presentations/:id/simulate-payment", async (req: Request, re
       clientName: clientProfile?.name ?? "",
       paymentPlan: pres.paymentPlan ?? "full",
       totalAmount: pres.totalPrice ? Math.round(parseFloat(String(pres.totalPrice)) * 100) : 0,
-      stripeSessionId: stripeSessionId ?? `sim_${presentationId}_${Date.now()}`,
+      stripeSessionId: pres.stripeSessionId ?? `sim_${presentationId}_${Date.now()}`,
     });
 
-    req.log.info({ presentationId }, "simulate-payment: agreement_signed event emitted directly");
-    res.json({ status: "simulated_direct_emit", presentationId });
+    req.log.info({ presentationId }, "simulate-payment: agreement_signed event emitted");
+    res.json({ status: "simulated", presentationId });
   } catch (e) {
-    req.log.error({ err: e, presentationId }, "simulate-payment: direct emit failed");
+    req.log.error({ err: e, presentationId }, "simulate-payment: emit failed");
     res.status(500).json({ error: `Simulation failed: ${e instanceof Error ? e.message : String(e)}` });
   }
 });
