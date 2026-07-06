@@ -436,6 +436,9 @@ export default function ConfirmationStep({
   const [scoresLoading, setScoresLoading] = useState(true);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [receiptPolling, setReceiptPolling] = useState(false);
+  const receiptPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const receiptPollCountRef = useRef(0);
   const [simulating, setSimulating] = useState(false);
   const [simulateError, setSimulateError] = useState<string | null>(null);
   const lastSseRef = useRef<number>(Date.now());
@@ -462,18 +465,52 @@ export default function ConfirmationStep({
   // ── Confetti on mount ──────────────────────────────────────────────────────
   useEffect(() => { fireSidecannons(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Payment summary ────────────────────────────────────────────────────────
+  // ── Payment summary (with receipt-URL polling) ─────────────────────────────
+  const isRealInvoiceUrl = (url: string | null | undefined): boolean =>
+    typeof url === "string" && url.includes("invoice.stripe.com");
+
+  const stopReceiptPoll = useCallback(() => {
+    if (receiptPollRef.current) {
+      clearInterval(receiptPollRef.current);
+      receiptPollRef.current = null;
+    }
+    setReceiptPolling(false);
+  }, []);
+
   useEffect(() => {
     setSummaryLoading(true);
     const authHeaders: Record<string, string> = {};
     if (accessToken) authHeaders["Authorization"] = `Bearer ${accessToken}`;
     const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
-    fetch(`/api/portal/presentations/${presentationId}/payment-summary${tokenParam}`, { headers: authHeaders })
-      .then(r => r.ok ? r.json() as Promise<PaymentSummary> : null)
-      .then(s => { if (s) setSummary(s); })
-      .catch(() => { /* non-fatal */ })
-      .finally(() => setSummaryLoading(false));
-  }, [presentationId, accessToken, shareToken]);
+    const summaryUrl = `/api/portal/presentations/${presentationId}/payment-summary${tokenParam}`;
+
+    const fetchSummary = () =>
+      fetch(summaryUrl, { headers: authHeaders })
+        .then(r => r.ok ? r.json() as Promise<PaymentSummary> : null)
+        .catch(() => null);
+
+    fetchSummary()
+      .then(s => {
+        if (s) setSummary(s);
+        setSummaryLoading(false);
+
+        // If the receipt URL is not yet a real invoice URL, start polling
+        if (!isRealInvoiceUrl(s?.receiptUrl)) {
+          receiptPollCountRef.current = 0;
+          setReceiptPolling(true);
+          receiptPollRef.current = setInterval(async () => {
+            receiptPollCountRef.current += 1;
+            const polled = await fetchSummary();
+            if (polled) setSummary(polled);
+            if (isRealInvoiceUrl(polled?.receiptUrl) || receiptPollCountRef.current >= 6) {
+              stopReceiptPoll();
+            }
+          }, 10_000);
+        }
+      });
+
+    return () => { stopReceiptPoll(); };
+  }, [presentationId, accessToken, shareToken, stopReceiptPoll]);
 
   // ── M365 profile → scores ─────────────────────────────────────────────────
   useEffect(() => {
@@ -683,7 +720,7 @@ export default function ConfirmationStep({
                     </div>
                   )}
                   <div className="flex flex-col gap-2 pt-1">
-                    {summary?.receiptUrl ? (
+                    {summary?.receiptUrl && isRealInvoiceUrl(summary.receiptUrl) ? (
                       <a
                         href={summary.receiptUrl}
                         target="_blank"
@@ -694,7 +731,7 @@ export default function ConfirmationStep({
                         <ExternalLink className="w-3.5 h-3.5" />View Receipt →
                       </a>
                     ) : summary?.invoicePdfPath ? (
-                      // Stripe receipt not available — promote the invoice PDF prominently
+                      // Stripe receipt not yet available — promote the invoice PDF prominently
                       <a
                         href={summary.invoicePdfPath}
                         download
@@ -706,8 +743,14 @@ export default function ConfirmationStep({
                     ) : (
                       <span className="text-xs" style={{ color: "#94a3b8" }}>Receipt will appear here once processed</span>
                     )}
-                    {/* Secondary download link when receipt URL is also present */}
-                    {summary?.receiptUrl && summary?.invoicePdfPath && (
+                    {/* Polling indicator — shown while waiting for the real invoice URL */}
+                    {receiptPolling && !isRealInvoiceUrl(summary?.receiptUrl) && (
+                      <span className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: "#94a3b8" }}>
+                        <Loader2 className="w-3 h-3 animate-spin" />Retrieving receipt link…
+                      </span>
+                    )}
+                    {/* Secondary download link when real receipt URL is also present */}
+                    {isRealInvoiceUrl(summary?.receiptUrl) && summary?.invoicePdfPath && (
                       <a
                         href={summary.invoicePdfPath}
                         download
