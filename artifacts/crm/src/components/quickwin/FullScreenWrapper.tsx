@@ -190,12 +190,16 @@ export default function FullScreenWrapper() {
     queryKey: ["qw-overlay-kanban", kanbanProjectId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/portal/projects/${kanbanProjectId}`);
+      // Throw on auth failures so React Query retries with the refreshed token
+      // rather than caching an empty result that hides real task data.
+      if (res.status === 401 || res.status === 403) throw new Error("auth");
       if (!res.ok) return { tasks: [], steps: [], previewTaskCount: 0 };
       const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[]; previewTasks?: unknown[] };
       return { tasks: body.tasks ?? [], steps: body.steps ?? [], previewTaskCount: body.previewTasks?.length ?? 0 };
     },
     enabled: !!kanbanProjectId && isVisible,
     refetchInterval: 5_000,
+    retry: 2,
     staleTime: 0,
   });
   // ── Live: M365 scorecard history — same endpoint as the portal dashboard ───
