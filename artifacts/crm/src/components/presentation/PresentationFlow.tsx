@@ -419,6 +419,11 @@ export default function PresentationFlow({
     phases?: PhaseGenPhase[];
   } | null>(null);
 
+  // True while the phase-gen workflow is in flight (between the API call and the
+  // phase_gen_complete / phase_gen_error event). Used to lock sidebar navigation
+  // and prevent the client from leaving the Building Plan step mid-generation.
+  const [isPhaseGenRunning, setIsPhaseGenRunning] = useState(false);
+
   // Track which selectedPhaseIds were active when phase gen last ran.
   // On mount, if sowPhases are already saved, assume they were generated for the current selection.
   const [phaseGenScopeIds, setPhaseGenScopeIds] = useState<string[] | null>(
@@ -770,18 +775,6 @@ export default function PresentationFlow({
   const handleStartPhaseGen = async (force = false) => {
     if (!hasSowDocument || readOnly) return;
 
-    // If phases are already saved for the current scope selection, skip phase gen entirely
-    // and advance straight to Payment Options — unless a forced regeneration was requested.
-    if (!force && hasSavedPhasesForCurrentScope) {
-      const pmtIdx = steps.findIndex(s => s.kind === "payment");
-      if (pmtIdx >= 0) {
-        directionRef.current = "forward";
-        setMaxVisitedStep(m => Math.max(m, pmtIdx));
-        applyStepChange(pmtIdx);
-      }
-      return;
-    }
-
     // Reset any previous phase-gen event so the card starts fresh
     setPhaseGenEvent(null);
 
@@ -799,6 +792,7 @@ export default function PresentationFlow({
       directionRef.current = "forward";
       setMaxVisitedStep(m => Math.max(m, pgIdx));
       applyStepChange(pgIdx);
+      setIsPhaseGenRunning(true);
     }
 
     // Fire the workflow. If the POST fails (network error or non-2xx), immediately
@@ -838,6 +832,7 @@ export default function PresentationFlow({
   };
 
   const handlePhaseGenComplete = (phases: PhaseGenPhase[]) => {
+    setIsPhaseGenRunning(false);
     // Apply phases optimistically so Scope & Pricing renders immediately.
     if (phases.length > 0) {
       setData(prev => ({
@@ -892,6 +887,7 @@ export default function PresentationFlow({
   };
 
   const handlePhaseGenError = () => {
+    setIsPhaseGenRunning(false);
     // Skip phase gen — go straight to payment options even without AI phases
     const pmtIdx = steps.findIndex(s => s.kind === "payment");
     if (pmtIdx >= 0) {
@@ -947,7 +943,8 @@ export default function PresentationFlow({
         body: JSON.stringify({ signatureData, signerName: name }),
       });
       if (res.ok) {
-        // Payment was completed before this step — just record signature and proceed.
+        // Record signature locally, then immediately redirect to Stripe checkout —
+        // the "Complete Payment" step is no longer reachable from the Agreement step.
         setData(prev => ({
           ...prev,
           signatureData,
@@ -955,7 +952,11 @@ export default function PresentationFlow({
           signedAt: new Date().toISOString(),
           status: "signed",
         }));
-        goNext();
+        if (selectedPlan) {
+          void handleCheckout(selectedPlan, preCheckoutOfferApplies);
+        } else {
+          goNext();
+        }
       }
     } finally {
       setSigning(false);
@@ -1274,7 +1275,7 @@ export default function PresentationFlow({
           const isResetBlocked = (sowResetBlocked || needsRegeneration) && (step.kind === "payment" || step.kind === "contract" || step.kind === "checkout");
           const isUnsignedGated = step.kind === "checkout" && !data.signedAt;
           const isNoSowGated = !hasSowDocument && sowGatedKinds.has(step.kind);
-          const isBlocked = isResetBlocked || isUnsignedGated || isNoSowGated;
+          const isBlocked = isResetBlocked || isUnsignedGated || isNoSowGated || isPhaseGenRunning;
           return (
             <button
               key={i}
@@ -2229,7 +2230,7 @@ export default function PresentationFlow({
                   onClick={() => void handleStartPhaseGen()}
                   className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#0078D4] text-white text-sm font-semibold hover:bg-[#0078D4]/90 transition-colors shadow-sm shadow-[#0078D4]/20"
                 >
-                  <span>{hasSavedPhasesForCurrentScope ? "Continue to Payment Options" : "Build Your Project Plan"}</span>
+                  <span>Build Your Project Plan</span>
                   <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                   </svg>
