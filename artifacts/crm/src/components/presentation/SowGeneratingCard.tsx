@@ -10,7 +10,7 @@ const STAGES = [
 
 const DELAYS = [0, 25000, 55000, 95000, 150000];
 
-const STALL_DELAY_MS = 2 * 60 * 1000;
+const STALL_POLL_MS = 60 * 1000;
 
 interface Props {
   clientName: string | null | undefined;
@@ -39,17 +39,19 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (stalledFired.current) return;
+    const fireStall = () => {
+      if (!stalledFired.current) setIsStalled(true);
       stalledFired.current = true;
-      setIsStalled(true);
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
       void fetchFn(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       }).catch(() => {});
-    }, STALL_DELAY_MS);
-    return () => clearTimeout(t);
+    };
+
+    fireStall();
+    const interval = setInterval(fireStall, STALL_POLL_MS);
+    return () => clearInterval(interval);
   }, [presentationId, shareToken, fetchFn]);
 
   const progressPct =

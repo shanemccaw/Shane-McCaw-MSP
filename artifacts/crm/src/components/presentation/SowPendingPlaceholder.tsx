@@ -1,13 +1,36 @@
+import { useEffect, useRef } from "react";
 import AnimatedBackground from "@/components/quickwin/AnimatedBackground";
 import CopilotAura from "@/components/wizard/CopilotAura";
+
+const STALL_POLL_MS = 60 * 1000;
 
 interface SowPendingPlaceholderProps {
   projectTitle: string | null;
   clientName: string | null;
+  presentationId: number;
+  shareToken?: string | null;
+  fetchFn: (url: string, opts?: RequestInit) => Promise<Response>;
   onClose: () => void;
 }
 
-export default function SowPendingPlaceholder({ projectTitle, clientName, onClose }: SowPendingPlaceholderProps) {
+export default function SowPendingPlaceholder({ projectTitle, clientName, presentationId, shareToken, fetchFn, onClose }: SowPendingPlaceholderProps) {
+  const firedRef = useRef(false);
+
+  useEffect(() => {
+    const fireStall = () => {
+      firedRef.current = true;
+      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+      void fetchFn(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }).catch(() => {});
+    };
+
+    fireStall();
+    const interval = setInterval(fireStall, STALL_POLL_MS);
+    return () => clearInterval(interval);
+  }, [presentationId, shareToken, fetchFn]);
+
   return (
     <div className="fixed inset-0 bg-[#060E1A] z-50 overflow-hidden">
       {/* Three.js torus-knot animation — fills the full viewport */}

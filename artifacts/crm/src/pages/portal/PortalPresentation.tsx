@@ -110,10 +110,15 @@ export default function PortalPresentation() {
 
   // No SOW phases yet — show the full-screen holding page (no PortalLayout wrapper)
   if (data.sowPhases.length === 0) {
+    const fetchFn = (url: string, opts?: RequestInit) =>
+      user ? fetchWithAuth(url, opts) : fetch(url, opts);
     return (
       <SowPendingPlaceholder
         projectTitle={data.projectTitle}
         clientName={data.clientName}
+        presentationId={data.id}
+        shareToken={token ?? data.shareToken}
+        fetchFn={fetchFn}
         onClose={() => navigate(user ? "/portal" : "/")}
       />
     );
