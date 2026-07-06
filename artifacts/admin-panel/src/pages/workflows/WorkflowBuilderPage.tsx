@@ -130,6 +130,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Parallel / Join ──
   parallel: { bg: "#0D1020", border: "#06B6D4", icon: "⇉",  label: "Parallel"           },
   join:     { bg: "#0D1020", border: "#06B6D4", icon: "⇊",  label: "Join"               },
+  // ── Utilities ──
+  comment:  { bg: "#1A1600", border: "#CA8A04", icon: "📝", label: "Comment"            },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -495,6 +497,25 @@ function WfNode({ data, selected, id }: NodeProps) {
             </>
           );
         })()
+      ) : nodeType === "comment" ? (
+        <>
+          {((data.params as Record<string, unknown> | undefined)?.text as string | undefined) && (
+            <div
+              className="mt-2 text-[10px] text-[#CA8A04] leading-snug"
+              style={{
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                wordBreak: "break-word",
+                fontStyle: "italic",
+              }}
+            >
+              {(data.params as Record<string, unknown>).text as string}
+            </div>
+          )}
+          <Handle type="source" position={Position.Bottom} style={{ background: style.border, border: "none" }} />
+        </>
       ) : nodeType === "fetch_news_headlines" ? (
         <>
           {data.autoBuildCampaign ? (
@@ -744,6 +765,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "set_variable",    label: "Set Variable",    description: "Create or overwrite a named variable in the run context — available downstream as {{nodeName.value}} or {{variableName}}",           tags: ["variable", "set", "store", "data", "context", "assign"] },
       { type: "update_variable", label: "Update Variable", description: "Overwrite an existing run variable — amber accent makes mutations visually distinct from Set Variable for easier flow readability", tags: ["variable", "update", "mutate", "overwrite", "data", "assign"] },
+    ],
+  },
+  {
+    name: "Utilities",
+    nodes: [
+      { type: "comment", label: "Comment", description: "Annotate the canvas with a plain-text note — skipped entirely at runtime", tags: ["comment", "note", "annotation", "documentation", "utility"] },
     ],
   },
 ];
@@ -3644,6 +3671,26 @@ function NodeConfigPanel({
               <p className="text-[10px] text-[#484F58] leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after the exhausted subgraph completes (or after a successful retry, the source node's normal path is used directly).
               </p>
+            </div>
+          </>
+        )}
+
+        {/* ── Utilities ───────────────────────────────────────── */}
+
+        {nodeType === "comment" && (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Comment</label>
+              <textarea
+                rows={4}
+                value={((node.data.params as Record<string, unknown> | undefined)?.text as string) ?? ""}
+                onChange={e => onChange(node.id, { ...node.data, params: { ...((node.data.params as Record<string, unknown>) ?? {}), text: e.target.value } })}
+                placeholder="Add a note about this workflow step…"
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#CA8A04]/60 resize-none leading-relaxed"
+              />
+            </div>
+            <div className="rounded-lg bg-[#1A1600] border border-[#CA8A04]/20 p-2.5">
+              <p className="text-[10px] text-[#7D8590]">This node is decorative — it is skipped entirely when the workflow runs and produces no output variables.</p>
             </div>
           </>
         )}

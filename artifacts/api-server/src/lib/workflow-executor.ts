@@ -4731,6 +4731,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      case "comment":
+        output = {};
+        break;
+
       default:
         logger.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");
         nodeError = true;

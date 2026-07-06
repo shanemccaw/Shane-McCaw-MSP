@@ -1816,7 +1816,9 @@ export interface WfNode {
     | "edit_stripe_invoice"
     // Variables
     | "set_variable"
-    | "update_variable";
+    | "update_variable"
+    // Utilities
+    | "comment";
   position: { x: number; y: number };
   data: WfNodeData;
 }
