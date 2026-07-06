@@ -3018,23 +3018,76 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                               : eq(quickWinPresentationsTable.projectId, parseInt(foValue, 10));
             const foPresRows = await db.select().from(quickWinPresentationsTable).where(foPresField).orderBy(quickWinPresentationsTable.createdAt).limit(1);
             const foPres = foPresRows[0];
-            output = foPres
-              ? {
-                  found:            true,
-                  objectType:       "presentation",
-                  objectId:         foPres.id,
-                  presentationId:   foPres.id,
-                  projectId:        foPres.projectId ?? null,
-                  clientUserId:     foPres.clientUserId ?? null,
-                  status:           foPres.status,
-                  totalPrice:       foPres.totalPrice ?? null,
-                  paymentPlan:      foPres.paymentPlan ?? null,
-                  signedAt:         foPres.signedAt?.toISOString() ?? null,
-                  sowPhases:        foPres.sowPhases ?? [],
-                  selectedPhaseIds: foPres.selectedPhaseIds ?? [],
-                  createdAt:        foPres.createdAt.toISOString(),
+            if (!foPres) {
+              output = { found: false, objectType: "presentation", fieldName: foField, fieldValue: foValue };
+            } else {
+              // When sow_phases is empty, derive from the linked SOW document's pricing
+              // lines — same two-step fallback used by deriveEffectiveSowData in portal.ts.
+              type FoPricingLine = { title: string; scope: string; priceUsd: number; notes: string; line_type?: string };
+              let foSowPhases = (foPres.sowPhases ?? []) as Array<{ id: string; title: string; description: string; price: number; selected: boolean }>;
+              if (foSowPhases.length === 0) {
+                const foDocIds = (foPres.documentsIncluded ?? []) as number[];
+                let foPricingLines: FoPricingLine[] | null = null;
+
+                // Step 1 — check the included documents
+                if (foDocIds.length > 0) {
+                  const foIncludedDocs = await db.select({
+                    docType: insightsGeneratedDocumentsTable.docType,
+                    sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+                  }).from(insightsGeneratedDocumentsTable)
+                    .where(inArray(insightsGeneratedDocumentsTable.id, foDocIds));
+                  const foSowDoc = foIncludedDocs.find(
+                    d => (d.docType === "consolidated_sow" || d.docType === "sow") &&
+                         Array.isArray(d.sowPricingLines) && (d.sowPricingLines as unknown[]).length > 0,
+                  );
+                  if (foSowDoc) foPricingLines = foSowDoc.sowPricingLines as FoPricingLine[];
                 }
-              : { found: false, objectType: "presentation", fieldName: foField, fieldValue: foValue };
+
+                // Step 2 — fall back to project's most recent approved SOW
+                if (!foPricingLines && foPres.projectId) {
+                  const [foProjectSow] = await db.select({
+                    sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
+                  }).from(insightsGeneratedDocumentsTable)
+                    .where(and(
+                      eq(insightsGeneratedDocumentsTable.projectId, foPres.projectId),
+                      inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+                      inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered"]),
+                    ))
+                    .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+                    .limit(1);
+                  if (foProjectSow && Array.isArray(foProjectSow.sowPricingLines) && (foProjectSow.sowPricingLines as unknown[]).length > 0) {
+                    foPricingLines = foProjectSow.sowPricingLines as FoPricingLine[];
+                  }
+                }
+
+                if (foPricingLines && foPricingLines.length > 0) {
+                  const foWorkstreamLines = foPricingLines.filter(l => l.line_type !== "adjustment");
+                  foSowPhases = foWorkstreamLines.map((l, i) => ({
+                    id: `sow-${i}`,
+                    title: l.title,
+                    description: l.scope || l.notes || "",
+                    price: l.priceUsd,
+                    selected: true,
+                  }));
+                }
+              }
+
+              output = {
+                found:            true,
+                objectType:       "presentation",
+                objectId:         foPres.id,
+                presentationId:   foPres.id,
+                projectId:        foPres.projectId ?? null,
+                clientUserId:     foPres.clientUserId ?? null,
+                status:           foPres.status,
+                totalPrice:       foPres.totalPrice ?? null,
+                paymentPlan:      foPres.paymentPlan ?? null,
+                signedAt:         foPres.signedAt?.toISOString() ?? null,
+                sowPhases:        foSowPhases,
+                selectedPhaseIds: foPres.selectedPhaseIds ?? [],
+                createdAt:        foPres.createdAt.toISOString(),
+              };
+            }
             break;
           }
           default:
