@@ -70,8 +70,17 @@ async function main() {
 
     const signals = mapTitleToSignals(p.title);
     if (!signals) {
-      console.warn(`SKIP  "${p.title}" — no title-based mapping found; review manually`);
-      skipped++;
+      // No title mapping — assign alwaysInclude so the project is never silently
+      // excluded from SOWs after the empty-trigger bypass was removed. An admin
+      // can tighten this to a specific signal key via the Admin Panel.
+      await db
+        .update(engagementProjectsTable)
+        .set({ triggeredBy: ["alwaysInclude"], updatedAt: new Date() })
+        .where(eq(engagementProjectsTable.id, p.id));
+
+      const legacy = existing.length > 0 ? existing.join(", ") : "(empty)";
+      console.warn(`FALLB "${p.title}"\n      ${legacy} → alwaysInclude (no title mapping — tighten via Admin Panel)`);
+      migrated++;
       continue;
     }
 

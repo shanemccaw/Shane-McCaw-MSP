@@ -350,9 +350,11 @@ export function computeTenantSignals(
  * dry-run, and preview endpoints so they all agree on the same semantics.
  *
  * Rules (applied in order):
- * 1. No triggeredBy values → always include
+ * 1. No triggeredBy values → EXCLUDED. Every project must declare at least one
+ *    canonical signal key. Use "alwaysInclude" for projects that should appear in
+ *    every SOW regardless of signals.
  * 2. All triggeredBy values are unrecognized legacy strings (old plan names) →
- *    always include; caller should log a WARN and prompt migration to signal keys
+ *    excluded; migrate to canonical signal keys to re-enable.
  * 3. At least one recognized signal key present → include only if ≥1 of those
  *    recognized keys appears in firedSignals
  */
@@ -364,7 +366,11 @@ export function projectMatchesSignals(
   const triggers = Array.isArray(project.triggeredBy) ? project.triggeredBy : [];
 
   if (triggers.length === 0) {
-    return { included: true, legacyFallback: false };
+    return {
+      included: false,
+      legacyFallback: false,
+      reason: "No triggeredBy signal keys — excluded until at least one canonical key is set (use 'alwaysInclude' to always include)",
+    };
   }
 
   const recognizedTriggers = triggers.filter(t => knownSignalKeys.has(t));
