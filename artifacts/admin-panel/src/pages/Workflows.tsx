@@ -1257,8 +1257,8 @@ function TaskDrawer({
     if (!open || form.taskType !== "run_workflow") return;
     setWfDefinitionsLoading(true);
     fetchWithAuth("/api/admin/workflows/definitions")
-      .then(res => res.ok ? res.json() as Promise<Array<{ id: number; name: string }>> : Promise.reject(res.statusText))
-      .then(data => setWfDefinitions(data))
+      .then(res => res.ok ? res.json() as Promise<Array<{ id: number; name: string; publishedVersionNumber: number | null }>> : Promise.reject(res.statusText))
+      .then(data => setWfDefinitions(data.filter(d => d.publishedVersionNumber !== null)))
       .catch(() => setWfDefinitions([]))
       .finally(() => setWfDefinitionsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps

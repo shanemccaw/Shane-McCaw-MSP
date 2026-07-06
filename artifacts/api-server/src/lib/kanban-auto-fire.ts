@@ -33,7 +33,7 @@ import {
   wfVersionsTable,
   wfRunsTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, isNotNull, sql } from "drizzle-orm";
+import { eq, and, asc, inArray, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
@@ -1030,6 +1030,27 @@ export const autoFireDocumentCard = autoFireAllDocumentCards;
 
 // ─── Run Workflow auto-fire ────────────────────────────────────────────────────
 
+/**
+ * Minimal template interpolator matching workflow-executor's interp() semantics.
+ * Resolves {{key}} and {{payload.key}} placeholders against the supplied context.
+ */
+function interpExpr(template: string, context: Record<string, unknown>): string {
+  return template.replace(/\{\{([\w.\-]+)\}\}/g, (_match, path: string) => {
+    const key = path.startsWith("payload.") ? path.slice(8) : path;
+    const parts = key.split(".");
+    let cur: unknown = context;
+    for (const part of parts) {
+      if (cur == null || typeof cur !== "object") return "";
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    if (cur == null) return "";
+    if (typeof cur === "object") {
+      try { return JSON.stringify(cur); } catch { return String(cur); }
+    }
+    return String(cur);
+  });
+}
+
 interface RunWorkflowCard {
   id: number;
   projectId: number;
@@ -1144,13 +1165,43 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
     return;
   }
 
+  // Admission check — mirrors fireWorkflowForDefinition concurrency guard
+  const [defRow] = await db
+    .select({ concurrencyLimit: wfDefinitionsTable.concurrencyLimit })
+    .from(wfDefinitionsTable)
+    .where(eq(wfDefinitionsTable.id, card.runWorkflow.workflowId))
+    .limit(1);
+  const concurrencyLimit = defRow?.concurrencyLimit ?? 5;
+  const [cntRow] = await db
+    .select({ cnt: count() })
+    .from(wfRunsTable)
+    .where(and(
+      eq(wfRunsTable.definitionId, card.runWorkflow.workflowId),
+      eq(wfRunsTable.status, "running"),
+    ));
+  const runningCount = Number(cntRow?.cnt ?? 0);
+
+  if (runningCount >= concurrencyLimit) {
+    logger.info(
+      { clientUserId, cardId: card.id, workflowId: card.runWorkflow.workflowId, runningCount, concurrencyLimit },
+      "kanban-auto-fire: run_workflow concurrency limit reached — deferring card back to backlog",
+    );
+    await db.update(kanbanTasksTable)
+      .set({ column: "backlog", updatedAt: new Date() })
+      .where(eq(kanbanTasksTable.id, card.id));
+    const [reverted] = await db.select().from(kanbanTasksTable).where(eq(kanbanTasksTable.id, card.id));
+    if (reverted) broadcastKanbanChange(card.projectId, { action: "updated", task: reverted });
+    return;
+  }
+
   // Build payload: clientUserId + projectId as defaults, then inputMapping overrides
+  // Expressions are interpolated so {{clientUserId}}, {{projectId}} etc. resolve correctly
   const basePayload: Record<string, unknown> = {
     clientUserId,
     projectId: card.projectId,
   };
   for (const { key, expr } of card.runWorkflow.inputMapping) {
-    if (key) basePayload[key] = expr;
+    if (key) basePayload[key] = interpExpr(expr, basePayload);
   }
 
   // Create the run record
