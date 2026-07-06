@@ -348,7 +348,10 @@ export async function generateConsolidatedSowDocument(
   let hasAdjSignalRules = false;
   if (signalsOverride != null) {
     const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
-    hasAdjSignalRules = [...signalsOverride].some(k => k.startsWith("adj:"));
+    // Determine whether adj rules are *configured* (not just fired) via a cheap DB existence check.
+    // This matches the DB-evaluation path which sets hasAdjSignalRules = typedSignalRules.some(r => r.signalKey.startsWith("adj:")).
+    const adjRuleCheck = await db.execute(sql`SELECT 1 FROM signal_derivation_rules WHERE signal_key LIKE 'adj:%' LIMIT 1`);
+    hasAdjSignalRules = adjRuleCheck.rows.length > 0;
     if (hasAdjSignalRules) {
       for (const key of signalsOverride) {
         if (key.startsWith("adj:")) firedAdjSignalKeys.add(key);
