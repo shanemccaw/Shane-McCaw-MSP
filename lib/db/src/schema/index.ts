@@ -1771,6 +1771,9 @@ export interface WfNode {
     | "post_linkedin" | "post_twitter" | "post_facebook"
     // Project Actions
     | "create_kanban_task"
+    | "get_phases"
+    | "create_phase"
+    | "save_presentation_phases"
     // Content
     | "generate_article" | "publish_article" | "topic_picker" | "generate_image"
     | "fetch_news_headlines"

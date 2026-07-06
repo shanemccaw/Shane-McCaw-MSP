@@ -117,6 +117,10 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   create_phased_invoices:          { bg: "#041A1A", border: "#F59E0B", icon: "📋", label: "Create Phased Invoices" },
   charge_stripe_invoice:           { bg: "#041A1A", border: "#EF4444", icon: "⚡", label: "Charge Invoice"         },
   edit_stripe_invoice:             { bg: "#041A1A", border: "#818CF8", icon: "✏️", label: "Edit Invoice"            },
+  // ── Project Phase Actions ──
+  get_phases:               { bg: "#0A1A10", border: "#34D399", icon: "🔍", label: "Get Phases"   },
+  create_phase:             { bg: "#0A1A10", border: "#6EE7B7", icon: "📌", label: "Create Phase" },
+  save_presentation_phases: { bg: "#0A1A10", border: "#10B981", icon: "💾", label: "Save Phases"  },
 };
 
 // ── Event registry ────────────────────────────────────────────────────────────
@@ -187,7 +191,10 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   // Marketing Actions
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
-  create_kanban_task:  [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
+  create_kanban_task:       [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
+  get_phases:               [{ key: "phases", label: "Array of selected phases (id, title, description, price, subtasks)" }, { key: "phaseCount", label: "Number of phases returned" }, { key: "presentationId", label: "Presentation DB ID the phases were read from" }],
+  create_phase:             [{ key: "phaseId", label: "Created workflow_steps row ID" }, { key: "phaseTitle", label: "Phase title as saved" }],
+  save_presentation_phases: [{ key: "saved", label: "true on success" }, { key: "phaseCount", label: "Number of phases saved" }, { key: "resolvedPhases", label: "Array of resolved phase objects with price allocation" }],
   // Content
   generate_article: [{ key: "articleTitle", label: "Generated article title" }, { key: "articleSlug", label: "URL slug" }, { key: "articleCategory", label: "Category" }, { key: "articleSummary", label: "Card summary" }, { key: "articleDate", label: "Publication date string" }, { key: "articleContent", label: "Full Markdown body" }],
   publish_article:  [{ key: "published", label: "true if article was saved" }, { key: "slug", label: "Final article slug (may differ if conflict resolved)" }, { key: "articleId", label: "Database row ID" }, { key: "title", label: "Article title as saved" }],
@@ -631,6 +638,15 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "convert_to_opportunity", label: "Convert to Opportunity", description: "Convert a lead into a CRM opportunity",            tags: ["crm", "opportunity", "lead", "convert"] },
       { type: "create_client",          label: "Create Client",          description: "Provision a new client user account",              tags: ["crm", "client", "create", "account"] },
       { type: "create_project",         label: "Create Project",         description: "Create a new engagement project",                  tags: ["crm", "project", "create", "engagement"] },
+    ],
+  },
+  {
+    name: "Project",
+    nodes: [
+      { type: "get_phases",               label: "Get Phases",          description: "Fetch the SOW phases saved on a presentation, filtered to selected phases only. Use before a ForEach to iterate and create project phases.",            tags: ["phases", "project", "sow", "lookup", "presentation"] },
+      { type: "create_phase",             label: "Create Phase",        description: "Insert a new project phase (workflow_steps row) for a given project. Wire inside a ForEach to create all phases from the SOW.",                         tags: ["phase", "project", "workflow step", "create"] },
+      { type: "save_presentation_phases", label: "Save Phases",         description: "Persist AI-generated phases to a presentation (quick_win_presentations.sowPhases). Allocates prices by weight and saves to DB.",                         tags: ["phases", "sow", "presentation", "save"] },
+      { type: "create_kanban_task",       label: "Create Kanban Task",  description: "Create a kanban card on a marketing board or a project board. Supports {{token}} interpolation for boardId so you can pass {{projectId}} dynamically.", tags: ["kanban", "task", "project", "board", "card", "create"] },
     ],
   },
   {
@@ -2640,6 +2656,30 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "get_phases" && (
+          <GetPhasesPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "create_phase" && (
+          <CreatePhasePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "save_presentation_phases" && (
+          <SavePhasesPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {/* ── Content ────────────────────────────────────────── */}
 
         {nodeType === "topic_picker" && (
@@ -3795,10 +3835,23 @@ function GenerateLandingPagePanel({
 
 // ── Create Kanban Task panel ──────────────────────────────────────────────────
 
-interface KanbanBoard { id: string; name: string; }
-interface KanbanColumn { id: string; label: string; }
-
 const PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"];
+
+const MARKETING_COLUMNS = [
+  { id: "ideas",        label: "Ideas"        },
+  { id: "in_progress",  label: "In Progress"  },
+  { id: "scheduled",    label: "Scheduled"    },
+  { id: "published",    label: "Published"    },
+  { id: "completed",    label: "Completed"    },
+  { id: "money_task",   label: "Money Task"   },
+];
+
+const PROJECT_COLUMNS = [
+  { id: "backlog",              label: "Backlog"              },
+  { id: "in_progress",          label: "In Progress"          },
+  { id: "waiting_on_customer",  label: "Waiting on Customer"  },
+  { id: "completed",            label: "Completed"            },
+];
 
 function CreateKanbanTaskPanel({
   node,
@@ -3809,92 +3862,67 @@ function CreateKanbanTaskPanel({
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
 }) {
-  const { fetchWithAuth } = useAuth();
-
-  const { data: boards = [], isLoading: loadingBoards } = useQuery<KanbanBoard[]>({
-    queryKey: ["kanban-boards"],
-    queryFn: async () => {
-      const res = await fetchWithAuth("/api/admin/kanban/boards");
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 60_000,
-  });
-
-  const boardId = (node.data.boardId as string) ?? "";
+  const isMarketing = (node.data.boardId as string | undefined) === "marketing";
   const columnId = (node.data.columnId as string) ?? "";
+  const columns = isMarketing ? MARKETING_COLUMNS : PROJECT_COLUMNS;
+  const effectiveColumnId = columns.some(c => c.id === columnId) ? columnId : columns[0]!.id;
 
-  // Fetch columns from the API whenever the board changes
-  const { data: columns = [], isLoading: loadingColumns } = useQuery<KanbanColumn[]>({
-    queryKey: ["kanban-columns", boardId],
-    queryFn: async () => {
-      if (!boardId) return [];
-      const res = await fetchWithAuth(`/api/admin/kanban/${encodeURIComponent(boardId)}/columns`);
-      if (!res.ok) return [];
-      return res.json();
-    },
-    enabled: !!boardId,
-    staleTime: 60_000,
-  });
-
-  // Keep columnId in sync when board changes and the current value is no longer valid.
-  // Persist a default so node.data.columnId is never silently empty.
-  const validColumnIds = columns.map(c => c.id);
-  const effectiveColumnId = validColumnIds.includes(columnId) ? columnId : (columns[0]?.id ?? "");
   useEffect(() => {
-    if (!boardId || columns.length === 0) return;
-    if (!validColumnIds.includes(columnId)) {
-      onChange(node.id, { ...node.data, columnId: columns[0].id });
+    if (!columns.some(c => c.id === (node.data.columnId as string))) {
+      onChange(node.id, { ...node.data, columnId: columns[0]!.id });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, columns]);
+  }, [isMarketing]);
 
   return (
     <>
       <div className="space-y-1.5">
         <div className="flex items-center gap-1">
-          <label className="text-xs font-medium text-[#7D8590]">Board</label>
-          <FieldHint text="Which kanban board the new task card is placed on." />
+          <label className="text-xs font-medium text-[#7D8590]">Board type</label>
+          <FieldHint text="Choose Marketing to hardcode the marketing board, or Project board to pass a dynamic {{projectId}} at runtime." />
         </div>
-        {loadingBoards ? (
-          <div className="text-xs text-[#484F58] animate-pulse">Loading boards…</div>
-        ) : (
-          <select
-            value={boardId}
-            onChange={e => {
-              // Reset columnId when board changes; the columns query will re-fire
-              onChange(node.id, { ...node.data, boardId: e.target.value, columnId: "" });
-            }}
-            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => onChange(node.id, { ...node.data, boardId: "marketing", columnId: MARKETING_COLUMNS[0]!.id })}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
           >
-            <option value="">— choose a board —</option>
-            {boards.map(b => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        )}
-      </div>
-      {boardId && (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-1">
-            <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
-            <FieldHint text="The column (status) the card starts in. Columns come from the board selected above." />
-          </div>
-          {loadingColumns ? (
-            <div className="text-xs text-[#484F58] animate-pulse">Loading columns…</div>
-          ) : (
-            <select
-              value={effectiveColumnId}
-              onChange={e => onChange(node.id, { ...node.data, columnId: e.target.value })}
-              className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
-            >
-              {columns.map(c => (
-                <option key={c.id} value={c.id}>{c.label}</option>
-              ))}
-            </select>
-          )}
+            Marketing
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange(node.id, { ...node.data, boardId: "{{projectId}}", columnId: PROJECT_COLUMNS[0]!.id })}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${!isMarketing ? "bg-[#818CF8]/20 border-[#818CF8] text-[#C7D2FE]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+          >
+            Project board
+          </button>
         </div>
+      </div>
+      {!isMarketing && (
+        <PayloadField
+          label="Board ID (project ID)"
+          hint="Numeric project ID or {{token}}. Supports {{projectId}} from upstream create_project or get_phases nodes."
+          value={(node.data.boardId as string) ?? "{{projectId}}"}
+          onChange={v => onChange(node.id, { ...node.data, boardId: v })}
+          placeholder="{{projectId}}"
+          ancestorOutputs={ancestorOutputs}
+        />
       )}
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Column / Status</label>
+          <FieldHint text={isMarketing ? "The status column on the marketing board." : "The column (status) the card starts in on the project kanban board."} />
+        </div>
+        <select
+          value={effectiveColumnId}
+          onChange={e => onChange(node.id, { ...node.data, columnId: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#6366F1]/60"
+        >
+          {columns.map(c => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </div>
       <PayloadField
         label="Task Title"
         hint="The card's title on the kanban board. Supports {{variables}} from upstream nodes."
@@ -3927,9 +3955,154 @@ function CreateKanbanTaskPanel({
           ))}
         </select>
       </div>
+      {!isMarketing && (
+        <PayloadField
+          label="Phase ID (optional)"
+          hint="Links this task to a project phase (workflow_steps row). Supports {{phaseId}} from an upstream create_phase node."
+          value={(node.data.phaseId as string) ?? ""}
+          onChange={v => onChange(node.id, { ...node.data, phaseId: v })}
+          placeholder="{{phaseId}}"
+          ancestorOutputs={ancestorOutputs}
+        />
+      )}
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
-        <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title and description support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
+        <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title, description, board ID, and phase ID support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Get Phases panel ──────────────────────────────────────────────────────────
+
+function GetPhasesPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Project ID (primary)"
+        hint="Numeric project ID. Tried first — looks up the presentation linked to this project."
+        value={(node.data.projectId as string) ?? "{{projectId}}"}
+        onChange={v => onChange(node.id, { ...node.data, projectId: v })}
+        placeholder="{{projectId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Presentation ID (fallback)"
+        hint="Used as fallback when no presentation is found by projectId. Supports {{presentationId}}."
+        value={(node.data.presentationId as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, presentationId: v })}
+        placeholder="{{presentationId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Reads <span className="font-mono text-[#7D8590]">sowPhases</span> from <span className="font-mono text-[#7D8590]">quick_win_presentations</span>, filtered to <span className="font-mono text-[#7D8590]">selected: true</span> phases. Returns empty array (non-fatal) if no presentation is found. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phases}}"} · {"{{phaseCount}}"} · {"{{presentationId}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Create Phase panel ────────────────────────────────────────────────────────
+
+function CreatePhasePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Project ID"
+        hint="Numeric project ID of the engagement project to attach this phase to."
+        value={(node.data.projectId as string) ?? "{{projectId}}"}
+        onChange={v => onChange(node.id, { ...node.data, projectId: v })}
+        placeholder="{{projectId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Title"
+        hint="Phase title. Inside a ForEach, use {{item.title}}."
+        value={(node.data.title as string) ?? "{{item.title}}"}
+        onChange={v => onChange(node.id, { ...node.data, title: v })}
+        placeholder="{{item.title}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Description (optional)"
+        hint="Phase description. Inside a ForEach, use {{item.description}}."
+        value={(node.data.description as string) ?? "{{item.description}}"}
+        onChange={v => onChange(node.id, { ...node.data, description: v })}
+        placeholder="{{item.description}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Order (optional)"
+        hint="Sort position (integer). Leave blank to default to 0."
+        value={(node.data.order as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, order: v })}
+        placeholder="0"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Inserts a row into <span className="font-mono text-[#7D8590]">workflow_steps</span> with <span className="font-mono text-[#7D8590]">status: pending</span>. Errors if projectId or title are missing. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phaseId}}"} · {"{{phaseTitle}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Save Phases panel ─────────────────────────────────────────────────────────
+
+function SavePhasesPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Presentation ID"
+        hint="The quick_win_presentations row to update. Supports {{presentationId}}."
+        value={(node.data.presentationId as string) ?? "{{presentationId}}"}
+        onChange={v => onChange(node.id, { ...node.data, presentationId: v })}
+        placeholder="{{presentationId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Total Price"
+        hint="Engagement total in dollars (used to allocate prices across phases by weight). Supports {{totalPrice}}."
+        value={(node.data.totalPrice as string) ?? "{{totalPrice}}"}
+        onChange={v => onChange(node.id, { ...node.data, totalPrice: v })}
+        placeholder="{{totalPrice}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Phases (JSON array)"
+        hint='Array of phase objects with title, description, priceWeight, subtasks[]. Supports {{aiResponse}} or a raw JSON string.'
+        value={(node.data.value as string) ?? "{{aiResponse}}"}
+        onChange={v => onChange(node.id, { ...node.data, value: v })}
+        placeholder="{{aiResponse}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Persists AI-generated phases to <span className="font-mono text-[#7D8590]">quick_win_presentations.sowPhases</span>. Allocates prices by <span className="font-mono text-[#7D8590]">priceWeight</span>. Also inserts <span className="font-mono text-[#7D8590]">workflow_steps</span> rows if a project is linked. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{saved}}"} · {"{{phaseCount}}"} · {"{{resolvedPhases}}"}</p>
       </div>
     </>
   );

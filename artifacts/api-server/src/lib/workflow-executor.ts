@@ -528,10 +528,33 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "create_kanban_task":
       return {
         dryRun: true,
-        boardId: str("boardId", "marketing"),
+        boardId: interp((node.data.boardId as string | undefined) ?? "marketing", p) || "marketing",
         columnId: str("columnId", "backlog"),
         title: interp((node.data.titleExpr as string | undefined) ?? "New task", p) || "New task",
         taskId: null,
+      };
+
+    case "get_phases":
+      return {
+        dryRun: true,
+        phases: [{ id: "uuid-dry-1", title: "Phase 1", description: "Dry-run phase", price: 1000, subtasks: ["Task A", "Task B"], selected: true }],
+        phaseCount: 1,
+        presentationId: null,
+      };
+
+    case "create_phase":
+      return {
+        dryRun: true,
+        phaseId: 0,
+        phaseTitle: interp((node.data.title as string | undefined) ?? "Phase 1", p) || "Phase 1",
+      };
+
+    case "save_presentation_phases":
+      return {
+        dryRun: true,
+        saved: true,
+        phaseCount: 4,
+        resolvedPhases: [],
       };
 
     case "generate_article":
@@ -2112,16 +2135,18 @@ async function executeNode(
       }
 
       case "create_kanban_task": {
-        const boardId = node.data.boardId as string | undefined;
+        const boardIdRaw = interp(node.data.boardId as string | undefined, payload);
         const columnId = node.data.columnId as string | undefined;
         const title = interp(node.data.titleExpr as string | undefined, payload);
         const description = interp(node.data.descriptionExpr as string | undefined, payload);
         const priority = (node.data.priority as string | undefined) ?? "medium";
+        const phaseIdRaw = interp(node.data.phaseId as string | undefined, payload);
+        const phaseIdNum = phaseIdRaw ? parseInt(phaseIdRaw, 10) : undefined;
 
-        if (!boardId || !columnId || !title?.trim()) {
+        if (!boardIdRaw || !columnId || !title?.trim()) {
           nodeError = true;
           output = { error: "create_kanban_task requires boardId, columnId, and a non-empty title" };
-        } else if (boardId === "marketing") {
+        } else if (boardIdRaw === "marketing") {
           const validStatuses = ["ideas", "in_progress", "scheduled", "published", "completed", "money_task"] as const;
           type MarketingStatus = typeof validStatuses[number];
           const status: MarketingStatus = (validStatuses as readonly string[]).includes(columnId) ? (columnId as MarketingStatus) : "ideas";
@@ -2130,12 +2155,12 @@ async function executeNode(
             description: description ?? undefined,
             status,
           }).returning();
-          output = { taskId: task.id, boardId, columnId: status, title: task.title };
+          output = { taskId: task.id, boardId: boardIdRaw, columnId: status, title: task.title };
         } else {
-          const projectId = parseInt(boardId, 10);
+          const projectId = parseInt(boardIdRaw, 10);
           if (isNaN(projectId)) {
             nodeError = true;
-            output = { error: `create_kanban_task: invalid boardId '${boardId}' — must be 'marketing' or a numeric project ID` };
+            output = { error: `create_kanban_task: invalid boardId '${boardIdRaw}' — must be 'marketing' or a numeric project ID` };
           } else {
             const validColumns = ["backlog", "in_progress", "waiting_on_customer", "completed"] as const;
             type KanbanColumn = typeof validColumns[number];
@@ -2146,10 +2171,93 @@ async function executeNode(
               description: description ?? undefined,
               column,
               priority,
+              workflowStepId: !isNaN(phaseIdNum!) ? phaseIdNum : undefined,
             }).returning();
-            output = { taskId: task.id, boardId, columnId: column, title: task.title };
+            output = { taskId: task.id, boardId: boardIdRaw, columnId: column, title: task.title };
           }
         }
+        break;
+      }
+
+      case "get_phases": {
+        const gpProjectId = interp(node.data.projectId as string | undefined, payload);
+        const gpPresentationId = interp(node.data.presentationId as string | undefined, payload);
+
+        let presRow: { id: number; sowPhases: unknown } | undefined;
+        if (gpProjectId) {
+          const pid = parseInt(gpProjectId, 10);
+          if (!isNaN(pid)) {
+            const [found] = await db
+              .select({ id: quickWinPresentationsTable.id, sowPhases: quickWinPresentationsTable.sowPhases })
+              .from(quickWinPresentationsTable)
+              .where(eq(quickWinPresentationsTable.projectId, pid))
+              .orderBy(quickWinPresentationsTable.createdAt)
+              .limit(1);
+            presRow = found;
+          }
+        }
+        if (!presRow && gpPresentationId) {
+          const presId = parseInt(gpPresentationId, 10);
+          if (!isNaN(presId)) {
+            const [found] = await db
+              .select({ id: quickWinPresentationsTable.id, sowPhases: quickWinPresentationsTable.sowPhases })
+              .from(quickWinPresentationsTable)
+              .where(eq(quickWinPresentationsTable.id, presId))
+              .limit(1);
+            presRow = found;
+          }
+        }
+
+        if (!presRow) {
+          logger.warn({ gpProjectId, gpPresentationId }, "get_phases: no presentation found — returning empty phases");
+          output = { phases: [], phaseCount: 0, presentationId: null };
+          break;
+        }
+
+        const allPhases = Array.isArray(presRow.sowPhases) ? presRow.sowPhases as Array<{ id: string; title: string; description: string; price: number; subtasks?: string[]; selected?: boolean }> : [];
+        const phases = allPhases.filter(p => p.selected !== false);
+        output = { phases, phaseCount: phases.length, presentationId: presRow.id };
+        break;
+      }
+
+      case "create_phase": {
+        const cpProjectId = interp(node.data.projectId as string | undefined, payload);
+        const cpTitle = interp(node.data.title as string | undefined, payload);
+        const cpDescription = interp(node.data.description as string | undefined, payload);
+        const cpOrderRaw = interp(node.data.order as string | undefined, payload);
+        const cpOrder = cpOrderRaw ? parseInt(cpOrderRaw, 10) : 0;
+
+        if (!cpProjectId || !cpTitle?.trim()) {
+          nodeError = true;
+          output = { error: "create_phase requires projectId and title" };
+          break;
+        }
+
+        const cpProjId = parseInt(cpProjectId, 10);
+        if (isNaN(cpProjId)) {
+          nodeError = true;
+          output = { error: `create_phase: invalid projectId '${cpProjectId}'` };
+          break;
+        }
+
+        const [phase] = await db.insert(workflowStepsTable).values({
+          projectId: cpProjId,
+          title: cpTitle.trim(),
+          description: cpDescription ?? undefined,
+          status: "pending",
+          order: isNaN(cpOrder) ? 0 : cpOrder,
+        }).returning();
+        output = { phaseId: phase.id, phaseTitle: phase.title };
+        break;
+      }
+
+      case "save_presentation_phases": {
+        const spPayload = {
+          presentationId: interp(node.data.presentationId as string | undefined, payload),
+          totalPrice: interp(node.data.totalPrice as string | undefined, payload),
+          value: interp(node.data.value as string | undefined, payload),
+        };
+        output = await handleSystemAction("save_presentation_phases", spPayload);
         break;
       }
 
