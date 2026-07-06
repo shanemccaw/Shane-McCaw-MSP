@@ -1277,7 +1277,7 @@ export const clientDocumentsTable = pgTable("client_documents", {
 export type InsertClientDocument = typeof clientDocumentsTable.$inferInsert;
 export type ClientDocument = typeof clientDocumentsTable.$inferSelect;
 
-// ── Email Events (Resend webhook tracking) ───────────────────────────────────
+// ── Email Events ─────────────────────────────────────────────────────────────
 
 export const emailEventsTable = pgTable("email_events", {
   id: serial("id").primaryKey(),

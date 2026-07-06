@@ -1767,7 +1767,7 @@ router.get("/admin/marketing/analytics", requireAdmin, async (req: Request, res:
   }
 });
 
-// ─── Email Stats (from stored Resend webhook events) ─────────────────────────
+// ─── Email Stats ──────────────────────────────────────────────────────────────
 
 router.get("/admin/marketing/email-stats", requireAdmin, async (_req: Request, res: Response) => {
   try {

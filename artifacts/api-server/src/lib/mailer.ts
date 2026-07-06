@@ -1,6 +1,3 @@
-import nodemailer from "nodemailer";
-import { Resend } from "resend";
-import { ReplitConnectors } from "@replit/connectors-sdk";
 import { db, emailTemplatesTable, emailEventsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "./logger";
@@ -88,73 +85,11 @@ function getGraphSender(): Sender | null {
   };
 }
 
-function getConnectorSender(): Sender | null {
-  const hasConnectorEnv =
-    process.env.REPLIT_CONNECTORS_HOSTNAME &&
-    process.env.REPL_IDENTITY;
-  if (!hasConnectorEnv) return null;
-  const from = process.env.RESEND_FROM ?? BRAND_FROM;
-  return async (to, subject, html, attachments) => {
-    const connectors = new ReplitConnectors();
-    const body: Record<string, unknown> = { from, to, subject, html };
-    if (attachments && attachments.length > 0) {
-      body.attachments = attachments.map((a) => ({
-        filename: a.filename,
-        content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
-      }));
-    }
-    const res = await connectors.proxy("resend", "/emails", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Resend connector error ${res.status}: ${text}`);
-    }
-  };
-}
-
-function getResendSender(): Sender | null {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) return null;
-  const resend = new Resend(apiKey);
-  const from = process.env.RESEND_FROM ?? BRAND_FROM;
-  return async (to, subject, html, attachments) => {
-    const payload: Parameters<typeof resend.emails.send>[0] = { from, to, subject, html };
-    if (attachments && attachments.length > 0) {
-      payload.attachments = attachments.map((a) => ({
-        filename: a.filename,
-        content: Buffer.isBuffer(a.content) ? a.content.toString("base64") : a.content,
-      }));
-    }
-    const { error } = await resend.emails.send(payload);
-    if (error) throw new Error(error.message);
-  };
-}
-
-function getSmtpSender(): Sender | null {
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  if (!host || !user || !pass) return null;
-  const port = parseInt(process.env.SMTP_PORT ?? "587", 10);
-  const transporter = nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
-  const from = process.env.SMTP_FROM ?? `Shane McCaw Consulting <${user}>`;
-  return async (to, subject, html, attachments) => {
-    await transporter.sendMail({
-      from, to, subject, html,
-      attachments: attachments?.map((a) => ({ filename: a.filename, content: a.content })),
-    });
-  };
-}
-
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Send an email. Prefers Resend via Replit Connector (REPLIT_CONNECTORS_HOSTNAME),
- * then falls back to RESEND_API_KEY, then SMTP. Logs a warning and no-ops when
- * none are configured.
+ * Send an email via Exchange Online (Microsoft Graph).
+ * Logs a warning and no-ops when Graph credentials are absent.
  *
  * Pass raw body HTML — it will be wrapped in the branded template automatically
  * unless you pass `{ skipWrapper: true }`.
@@ -185,9 +120,9 @@ export async function sendEmailOrThrow(
   bodyHtml: string,
   opts?: { skipWrapper?: boolean },
 ): Promise<void> {
-  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender();
   if (!sender) {
-    throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
+    throw new Error("No email transport configured — Exchange Online credentials (GRAPH_MAIL_USER_ID) are required");
   }
   const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
   await sender(to, subject, html);
@@ -211,9 +146,9 @@ export async function sendEmailWithAttachment(
   html: string,
   attachments: EmailAttachment[],
 ): Promise<void> {
-  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender();
   if (!sender) {
-    logger.warn({ to, subject }, "No email transport configured — attachment email skipped");
+    logger.warn({ to, subject }, "Exchange Online not configured (GRAPH_MAIL_USER_ID missing) — attachment email skipped");
     return;
   }
   try {
@@ -234,9 +169,9 @@ export async function sendEmailWithAttachmentOrThrow(
   html: string,
   attachments: EmailAttachment[],
 ): Promise<void> {
-  const sender = getGraphSender() ?? getConnectorSender() ?? getResendSender() ?? getSmtpSender();
+  const sender = getGraphSender();
   if (!sender) {
-    throw new Error("No email transport configured — set REPLIT_CONNECTORS_HOSTNAME, RESEND_API_KEY, or SMTP_HOST/SMTP_USER/SMTP_PASS");
+    throw new Error("No email transport configured — Exchange Online credentials (GRAPH_MAIL_USER_ID) are required");
   }
   await sender(to, subject, html, attachments);
   logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
