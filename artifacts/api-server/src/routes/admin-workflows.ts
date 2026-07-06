@@ -896,6 +896,7 @@ router.post("/admin/workflows/runs/:id/rerun", requireAdmin, async (req: Request
     const [sourceRun] = await db
       .select({
         definitionId: wfRunsTable.definitionId,
+        versionId: wfRunsTable.versionId,
         triggerType: wfRunsTable.triggerType,
         triggerRef: wfRunsTable.triggerRef,
         payload: wfRunsTable.payload,
@@ -910,14 +911,24 @@ router.post("/admin/workflows/runs/:id/rerun", requireAdmin, async (req: Request
       return sendError(res, 409, "Only failed or cancelled runs can be re-run");
     }
 
+    // Verify the definition still exists
+    const [def] = await db
+      .select({ id: wfDefinitionsTable.id })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.id, sourceRun.definitionId))
+      .limit(1);
+    if (!def) return sendError(res, 409, "Workflow definition no longer exists");
+
+    // Use the source run's original version so behaviour is identical
     const newRunId = await fireWorkflowForDefinition(
       sourceRun.definitionId,
       (sourceRun.triggerType as "manual" | "schedule" | "webhook" | "event") ?? "manual",
       sourceRun.triggerRef ?? "rerun",
       sourceRun.payload ?? {},
+      { versionId: sourceRun.versionId },
     );
 
-    if (!newRunId) return sendError(res, 500, "Could not create re-run (concurrency limit or no published version)");
+    if (!newRunId) return sendError(res, 500, "Could not create re-run (concurrency limit or version not found)");
 
     await db
       .update(wfRunsTable)

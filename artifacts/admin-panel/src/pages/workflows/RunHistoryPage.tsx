@@ -169,9 +169,9 @@ function RunRow({
           {(run.status === "failed" || run.status === "cancelled") && onRerun && (
             <button
               onClick={onRerun}
-              disabled={isRerunning}
-              title="Re-run with the same payload"
-              className="p-1 rounded hover:bg-[#0078D4]/20 text-[#484F58] hover:text-[#0078D4] disabled:opacity-40 transition-colors"
+              disabled={isRerunning || !run.definitionName}
+              title={run.definitionName ? "Re-run with the same payload" : "Workflow definition no longer exists"}
+              className="p-1 rounded hover:bg-[#0078D4]/20 text-[#484F58] hover:text-[#0078D4] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               {isRerunning ? (
                 <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
