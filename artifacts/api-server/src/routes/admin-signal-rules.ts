@@ -1378,4 +1378,85 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
   }
 });
 
+// ─── POST /api/admin/signal-rules/publish-to-prod ────────────────────────────
+// Full-replace sync of signal_rule_groups + signal_derivation_rules from dev
+// into production. Strategy: delete all prod rules/groups, re-insert from dev
+// with remapped group IDs.
+
+router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    // Read all groups and rules from dev
+    const devGroupRows = await db.execute(sql`
+      SELECT id, signal_key, logic, label, sort_order
+      FROM signal_rule_groups ORDER BY signal_key, sort_order, id
+    `);
+    const devGroups = devGroupRows.rows as Array<{
+      id: number; signal_key: string; logic: string; label: string | null; sort_order: number;
+    }>;
+
+    const devRuleRows = await db.execute(sql`
+      SELECT signal_key, group_id, rule_type, source_key, compare_value, description, sort_order
+      FROM signal_derivation_rules ORDER BY signal_key, sort_order, id
+    `);
+    const devRules = devRuleRows.rows as Array<{
+      signal_key: string; group_id: number | null; rule_type: string; source_key: string;
+      compare_value: string | null; description: string | null; sort_order: number;
+    }>;
+
+    const { pool: prodPool } = buildProdDb();
+    const client = await prodPool.connect();
+
+    try {
+      await client.query("BEGIN");
+
+      // 1. Delete all existing prod rules (FK references groups)
+      await client.query("DELETE FROM signal_derivation_rules");
+      // 2. Delete all existing prod groups
+      await client.query("DELETE FROM signal_rule_groups");
+
+      // 3. Insert groups, capturing dev id → prod id mapping
+      const groupIdMap = new Map<number, number>();
+      for (const g of devGroups) {
+        const result = await client.query(
+          `INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
+           VALUES ($1, $2, $3, $4) RETURNING id`,
+          [g.signal_key, g.logic, g.label, g.sort_order]
+        );
+        const newId = (result.rows[0] as { id: number }).id;
+        groupIdMap.set(g.id, newId);
+      }
+
+      // 4. Insert rules with remapped group IDs
+      for (const r of devRules) {
+        const prodGroupId = r.group_id != null ? (groupIdMap.get(r.group_id) ?? null) : null;
+        await client.query(
+          `INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [r.signal_key, prodGroupId, r.rule_type, r.source_key, r.compare_value, r.description, r.sort_order]
+        );
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+      await prodPool.end();
+    }
+
+    logger.info({ groups: devGroups.length, rules: devRules.length }, "signal-rules: published to prod");
+    res.json({ ok: true, groups: devGroups.length, rules: devRules.length });
+  } catch (err) {
+    logger.error({ err }, "signal-rules: publish-to-prod failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
 export default router;

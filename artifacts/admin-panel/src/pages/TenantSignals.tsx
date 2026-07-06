@@ -187,6 +187,21 @@ export default function TenantSignalsPage() {
   const [showSignalImportModal, setShowSignalImportModal] = useState(false);
   const [signalImportJson, setSignalImportJson] = useState("");
   const [signalImportRunning, setSignalImportRunning] = useState(false);
+  const [publishingToProd, setPublishingToProd] = useState(false);
+
+  const handlePublishToProd = useCallback(async () => {
+    setPublishingToProd(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/signal-rules/publish-to-prod", { method: "POST" });
+      const body = await res.json() as { ok?: boolean; groups?: number; rules?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish");
+      toast({ title: "Published to production", description: `${body.groups ?? 0} group(s), ${body.rules ?? 0} rule(s) synced.` });
+    } catch (err) {
+      toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingToProd(false);
+    }
+  }, [fetchWithAuth, toast]);
 
   const [showNewSignalModal, setShowNewSignalModal] = useState(false);
   const [newSignalForm, setNewSignalForm] = useState({ label: "", key: "", description: "", expectedImpact: "", isAdjustment: false });
@@ -914,17 +929,29 @@ export default function TenantSignalsPage() {
             </>
           )}
         </div>
-        <button
-          onClick={() => setShowConflictsPanel(true)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-            conflicts.length > 0
-              ? "bg-amber-900/20 text-amber-400 border-amber-500/30 hover:bg-amber-900/30"
-              : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
-          }`}
-        >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          {conflicts.length} Conflict{conflicts.length !== 1 ? "s" : ""}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { void handlePublishToProd(); }}
+            disabled={publishingToProd}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs font-semibold rounded-lg border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+          >
+            {publishingToProd
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <Upload className="w-3.5 h-3.5" />}
+            Publish to Prod
+          </button>
+          <button
+            onClick={() => setShowConflictsPanel(true)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+              conflicts.length > 0
+                ? "bg-amber-900/20 text-amber-400 border-amber-500/30 hover:bg-amber-900/30"
+                : "bg-[#1C2128] text-[#7D8590] border-[#30363D]"
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            {conflicts.length} Conflict{conflicts.length !== 1 ? "s" : ""}
+          </button>
+        </div>
       </div>
 
       {/* ── Simulate view ─────────────────────────────────────────────────────── */}

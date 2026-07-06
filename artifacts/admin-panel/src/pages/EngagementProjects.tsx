@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
-import { Plus, Pencil, Trash2, Loader2, X, GripVertical, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, Loader2, X, GripVertical, ChevronDown, ChevronUp, Download, Upload } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -245,6 +245,7 @@ export default function EngagementProjectsPage() {
   const [editId, setEditId] = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [publishingToProd, setPublishingToProd] = useState(false);
 
   const [form, setForm] = useState({ ...EMPTY_FORM });
 
@@ -354,6 +355,20 @@ export default function EngagementProjectsPage() {
 
   const getSignalLabel = (key: string) => signals.find(s => s.key === key)?.label ?? key;
 
+  async function handlePublishToProd() {
+    setPublishingToProd(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/engagement-projects/publish-to-prod", { method: "POST" });
+      const body = await res.json() as { ok?: boolean; upserted?: number; removed?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish");
+      toast({ title: "Published to production", description: `${body.upserted ?? 0} project(s) synced, ${body.removed ?? 0} removed.` });
+    } catch (err) {
+      toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingToProd(false);
+    }
+  }
+
   function handleExport() {
     const payload = projects.map(p => ({
       id: p.id,
@@ -394,6 +409,16 @@ export default function EngagementProjectsPage() {
             className="inline-flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] hover:border-[#0078D4]/40 hover:text-[#E6EDF3] disabled:opacity-40 transition-colors"
           >
             <Download className="w-4 h-4" /> Export JSON
+          </button>
+          <button
+            onClick={() => { void handlePublishToProd(); }}
+            disabled={publishingToProd || projects.length === 0}
+            className="inline-flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
+          >
+            {publishingToProd
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : <Upload className="w-4 h-4" />}
+            Publish to Prod
           </button>
           <button
             onClick={openCreate}

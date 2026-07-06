@@ -147,4 +147,85 @@ router.delete("/admin/engagement-projects/:id", requireAdmin, async (req: Reques
   }
 });
 
+// ─── POST /api/admin/engagement-projects/publish-to-prod ─────────────────────
+// Upserts all engagement projects (by title) from dev into the production DB,
+// then removes any prod rows whose titles are absent from dev.
+
+router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    const devRows = await db.execute(sql`
+      SELECT title, price_range, description, meaning, triggered_by, sow_items, pages, sort_order, is_visible
+      FROM engagement_projects ORDER BY sort_order ASC, created_at ASC
+    `);
+    const devProjects = devRows.rows as Array<{
+      title: string; price_range: string; description: string | null; meaning: string | null;
+      triggered_by: string[]; sow_items: string[]; pages: string[]; sort_order: number; is_visible: boolean;
+    }>;
+
+    const { pool: prodPool } = buildProdDb();
+    const client = await prodPool.connect();
+    let upserted = 0;
+    let removed = 0;
+
+    try {
+      await client.query("BEGIN");
+
+      for (const p of devProjects) {
+        const existing = await client.query(
+          `SELECT id FROM engagement_projects WHERE title = $1 LIMIT 1`, [p.title]
+        );
+        if (existing.rows.length > 0) {
+          await client.query(
+            `UPDATE engagement_projects SET
+               price_range = $2, description = $3, meaning = $4,
+               triggered_by = $5::jsonb, sow_items = $6::jsonb, pages = $7::jsonb,
+               sort_order = $8, is_visible = $9, updated_at = now()
+             WHERE title = $1`,
+            [p.title, p.price_range, p.description, p.meaning,
+             JSON.stringify(p.triggered_by), JSON.stringify(p.sow_items), JSON.stringify(p.pages),
+             p.sort_order, p.is_visible]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO engagement_projects (title, price_range, description, meaning, triggered_by, sow_items, pages, sort_order, is_visible)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8, $9)`,
+            [p.title, p.price_range, p.description, p.meaning,
+             JSON.stringify(p.triggered_by), JSON.stringify(p.sow_items), JSON.stringify(p.pages),
+             p.sort_order, p.is_visible]
+          );
+        }
+        upserted++;
+      }
+
+      // Remove prod rows not present in dev
+      if (devProjects.length > 0) {
+        const titles = devProjects.map(p => p.title);
+        const placeholders = titles.map((_, i) => `$${i + 1}`).join(", ");
+        const del = await client.query(
+          `DELETE FROM engagement_projects WHERE title NOT IN (${placeholders})`, titles
+        );
+        removed = del.rowCount ?? 0;
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+      await prodPool.end();
+    }
+
+    res.json({ ok: true, upserted, removed });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
 export default router;
