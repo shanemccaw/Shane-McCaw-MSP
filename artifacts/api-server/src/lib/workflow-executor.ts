@@ -3118,6 +3118,41 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 }
               }
 
+              // Filter sowPhases to only the client-selected ones.
+              // selectedPhaseIds records which sow-N ids the client actually agreed to.
+              // The fallback above may derive ALL pricing lines from the SOW doc;
+              // we must restrict to the agreed subset before exposing to workflows.
+              const foSelectedIds = (foPres.selectedPhaseIds ?? []) as string[];
+              if (foSelectedIds.length > 0) {
+                foSowPhases = foSowPhases.filter(p => foSelectedIds.includes(p.id));
+              }
+
+              // Fetch workflow steps (tasks) for the project so downstream nodes
+              // can iterate over them without a separate find_object call.
+              let foProjectSteps: Array<{ id: number; title: string; description: string; order: number; dueDate: string | null; status: string; }> = [];
+              if (foPres.projectId) {
+                const foStepRows = await db
+                  .select({
+                    id:          workflowStepsTable.id,
+                    title:       workflowStepsTable.title,
+                    description: workflowStepsTable.description,
+                    order:       workflowStepsTable.order,
+                    dueDate:     workflowStepsTable.dueDate,
+                    status:      workflowStepsTable.status,
+                  })
+                  .from(workflowStepsTable)
+                  .where(eq(workflowStepsTable.projectId, foPres.projectId))
+                  .orderBy(workflowStepsTable.order);
+                foProjectSteps = foStepRows.map(s => ({
+                  id:          s.id,
+                  title:       s.title,
+                  description: s.description ?? "",
+                  order:       s.order ?? 0,
+                  dueDate:     s.dueDate instanceof Date ? s.dueDate.toISOString() : (s.dueDate ?? null),
+                  status:      s.status ?? "pending",
+                }));
+              }
+
               output = {
                 found:            true,
                 objectType:       "presentation",
@@ -3126,11 +3161,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 projectId:        foPres.projectId ?? null,
                 clientUserId:     foPres.clientUserId ?? null,
                 status:           foPres.status,
-                totalPrice:       foPres.totalPrice ?? null,
+                totalPrice:       foPres.totalPrice != null ? Number(foPres.totalPrice) : null,
                 paymentPlan:      foPres.paymentPlan ?? null,
                 signedAt:         foPres.signedAt?.toISOString() ?? null,
                 sowPhases:        foSowPhases,
-                selectedPhaseIds: foPres.selectedPhaseIds ?? [],
+                selectedPhaseIds: foSelectedIds,
+                projectSteps:     foProjectSteps,
                 createdAt:        foPres.createdAt.toISOString(),
               };
             }
