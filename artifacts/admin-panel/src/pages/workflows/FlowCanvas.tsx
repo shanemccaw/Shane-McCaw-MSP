@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useRef, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { createPortal } from "react-dom";
 import {
   graphToTree,
@@ -229,8 +230,15 @@ function AddButton({
     function onDown(e: MouseEvent) {
       if (!pasteMenuRef.current?.contains(e.target as Node)) setPasteMenuOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setPasteMenuOpen(false);
+    }
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [pasteMenuOpen]);
 
   if (isArchived) return null;
@@ -385,6 +393,14 @@ function AddButton({
             <span className="opacity-60">⎘</span>
             Paste "{pastedLabel}"
           </button>
+          <div className="border-t border-[#30363D] my-1" />
+          <button
+            onClick={() => { setPasteMenuOpen(false); handleOpen(); }}
+            className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+          >
+            <span className="opacity-60">+</span>
+            Add step…
+          </button>
         </div>,
         document.body
       )}
@@ -466,8 +482,15 @@ function StepCard({
       const inPortal = menuPortalRef.current?.contains(e.target as Node);
       if (!inBtn && !inPortal) setMenuOpen(false);
     }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setMenuOpen(false);
+    }
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [menuOpen]);
 
   const ctx = React.useContext(FlowCanvasContext);
@@ -509,6 +532,7 @@ function StepCard({
   function handleContextMenu(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    ctx.onSetLastInteracted(step.id);
     setMenuPos({ top: e.clientY + 4, right: Math.max(0, window.innerWidth - e.clientX) });
     setMenuOpen(true);
   }
@@ -1612,6 +1636,10 @@ interface FlowCanvasCtx {
   onPasteAfterNode: (afterNodeId: string) => void;
   /** Paste the clipboard step at the start of a container branch. */
   onPasteAtBranchStart: (containerId: string, branchKey: string) => void;
+  /** ID of the most recently right-clicked step (used for keyboard shortcuts). */
+  lastInteractedId: string | null;
+  /** Update the last interacted step ID. */
+  onSetLastInteracted: (id: string) => void;
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -1634,6 +1662,8 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   onCopyStep: () => {},
   onPasteAfterNode: () => {},
   onPasteAtBranchStart: () => {},
+  lastInteractedId: null,
+  onSetLastInteracted: () => {},
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -1782,9 +1812,32 @@ export default function FlowCanvas({
 
   // ── Copy / Paste ─────────────────────────────────────────────────────────────
 
+  /** ID of the most recently right-clicked step — used as the keyboard copy/paste anchor. */
+  const [lastInteractedId, setLastInteractedId] = useState<string | null>(null);
+
+  const handleSetLastInteracted = useCallback((id: string) => {
+    setLastInteractedId(id);
+  }, []);
+
+  const { toast } = useToast();
+
   const handleCopyStep = useCallback((step: FlowStep) => {
     onCopyStep?.(step);
-  }, [onCopyStep]);
+    // Count total descendant steps for the toast label.
+    function countSteps(s: FlowStep): number {
+      let n = 1;
+      if (s.branches) {
+        for (const branch of Object.values(s.branches)) {
+          for (const child of branch) n += countSteps(child);
+        }
+      }
+      return n;
+    }
+    const total = countSteps(step);
+    const label = (step.data.label as string | undefined) || step.nodeType;
+    const desc = total > 1 ? `${label} + ${total - 1} nested step${total - 1 === 1 ? "" : "s"} copied` : `${label} copied`;
+    toast({ description: desc, duration: 2500 });
+  }, [onCopyStep, toast]);
 
   /** Paste the clipboard step immediately after `afterNodeId` in tree sequence. */
   const handlePasteAfterNode = useCallback((afterNodeId: string) => {
@@ -1822,7 +1875,9 @@ export default function FlowCanvas({
     }
   }, [copiedStep, tree, nonTreeEdges, onGraphChange]);
 
-  // ── Keyboard shortcuts (Ctrl/Cmd+C → copy selected; Ctrl/Cmd+V → paste after selected) ──
+  // ── Keyboard shortcuts ────────────────────────────────────────────────────────
+  // Ctrl/Cmd+C → copy the most recently right-clicked step (falls back to selected)
+  // Ctrl/Cmd+V → paste after the most recently right-clicked/interacted step
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       const target = e.target as HTMLElement;
@@ -1833,9 +1888,11 @@ export default function FlowCanvas({
       ) return;
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
+      // Prefer the last right-clicked step; fall back to the currently selected node.
+      const anchor = lastInteractedId ?? selectedNodeId;
       if (e.key === "c" || e.key === "C") {
-        if (!selectedNodeId) return;
-        const found = treeFindStep(tree, selectedNodeId);
+        if (!anchor) return;
+        const found = treeFindStep(tree, anchor);
         if (found) {
           e.preventDefault();
           handleCopyStep(found);
@@ -1844,17 +1901,16 @@ export default function FlowCanvas({
       if (e.key === "v" || e.key === "V") {
         if (!copiedStep) return;
         e.preventDefault();
-        if (selectedNodeId) {
-          handlePasteAfterNode(selectedNodeId);
+        if (anchor) {
+          handlePasteAfterNode(anchor);
         } else if (tree.length > 0) {
-          // Paste after the last top-level step.
           handlePasteAfterNode(tree[tree.length - 1].id);
         }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [tree, selectedNodeId, copiedStep, handleCopyStep, handlePasteAfterNode]);
+  }, [tree, selectedNodeId, lastInteractedId, copiedStep, handleCopyStep, handlePasteAfterNode]);
 
   const ctx: FlowCanvasCtx = React.useMemo(() => ({
     selectedNodeId,
@@ -1876,7 +1932,9 @@ export default function FlowCanvas({
     onCopyStep: handleCopyStep,
     onPasteAfterNode: handlePasteAfterNode,
     onPasteAtBranchStart: handlePasteAtBranchStart,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart]);
+    lastInteractedId,
+    onSetLastInteracted: handleSetLastInteracted,
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart, lastInteractedId, handleSetLastInteracted]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);
