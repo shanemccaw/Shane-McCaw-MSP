@@ -63,6 +63,7 @@ import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals } from "./tenant-signals";
+import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -534,7 +535,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, permissionsValid: true, missingCount: 0, jobId: "dry-run-job" };
 
     case "update_intelligence_tables":
-      return { dryRun: true, updated: true, recordId: null, jobId: "dry-run-job" };
+      return { dryRun: true, updated: true, scores: { identity: 75, security: 60, collaboration: 80, compliance: 55, copilotReadiness: 65 }, recordCount: 5, scriptRunId: null };
 
     case "get_tenant_signals":
       return { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true };
@@ -2049,21 +2050,68 @@ async function executeNode(
       case "update_intelligence_tables": {
         const uitClientIdRaw = interp(node.data.clientId as string | undefined, payload);
         const uitClientId = uitClientIdRaw ? parseInt(uitClientIdRaw, 10) : NaN;
-        const uitRunbook = interp(node.data.runbookName as string | undefined, payload) ?? "Update-M365-Intelligence";
         if (isNaN(uitClientId)) {
           nodeError = true;
           output = { error: "update_intelligence_tables requires a valid clientId" };
-        } else if (!isAzureConfigured()) {
-          nodeError = true;
-          output = { error: "Azure Automation is not configured — add required secrets" };
         } else {
-          const job = await createRunbookJob({ runbookName: uitRunbook, parameters: { ClientId: String(uitClientId) } });
-          const [rec] = await db.insert(clientHealthHistoryTable).values({
-            clientId: uitClientId,
-            category: "governance",
-            score: 0,
-          }).returning();
-          output = { updated: true, recordId: rec.id, jobId: job.jobId };
+          // Fetch the most recent completed script run for this client
+          const [latestRun] = await db
+            .select({
+              id: scriptRunResultsTable.id,
+              rawOutput: scriptRunResultsTable.rawOutput,
+              parsedFindings: scriptRunResultsTable.parsedFindings,
+              recommendations: scriptRunResultsTable.recommendations,
+              scoreImpact: scriptRunResultsTable.scoreImpact,
+            })
+            .from(scriptRunResultsTable)
+            .where(
+              and(
+                eq(scriptRunResultsTable.customerId, uitClientId),
+                eq(scriptRunResultsTable.status, "completed"),
+              )
+            )
+            .orderBy(desc(scriptRunResultsTable.createdAt))
+            .limit(1);
+
+          if (!latestRun) {
+            nodeError = true;
+            output = { error: "No completed script run found for this client" };
+          } else {
+            const scores = await scoreHealthFromScriptRun({
+              scriptRunId: latestRun.id,
+              rawOutput: latestRun.rawOutput ?? {},
+              parsedFindings: latestRun.parsedFindings ?? [],
+              recommendations: latestRun.recommendations ?? [],
+              scoreImpact: latestRun.scoreImpact ?? {},
+            });
+
+            // Map copilotReadiness → copilot for the DB category enum
+            const categoryMap: Record<string, string> = {
+              identity: "identity",
+              security: "security",
+              collaboration: "collaboration",
+              compliance: "compliance",
+              copilotReadiness: "copilot",
+            };
+
+            type HealthHistoryCategory = "identity" | "security" | "collaboration" | "compliance" | "copilot" | "governance" | "productivity" | "data";
+            const now = new Date();
+            await db.insert(clientHealthHistoryTable).values(
+              Object.entries(scores).map(([key, score]) => ({
+                clientId: uitClientId,
+                category: (categoryMap[key] ?? key) as HealthHistoryCategory,
+                score,
+                recordedAt: now,
+              }))
+            );
+
+            output = {
+              updated: true,
+              scores,
+              recordCount: Object.keys(scores).length,
+              scriptRunId: latestRun.id,
+            };
+          }
         }
         break;
       }
