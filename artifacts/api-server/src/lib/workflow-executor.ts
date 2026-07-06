@@ -55,7 +55,7 @@ import {
   type WfNode,
 } from "@workspace/db";
 
-import { createRunbookJob, isAzureConfigured } from "./azure-automation";
+import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
@@ -498,7 +498,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       if (at === "convert_to_opportunity") return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
       if (at === "create_client")        return { dryRun: true, clientId: 1, clientEmail: str("email", "test@example.com") };
       if (at === "create_project")       return { dryRun: true, projectId: 1, projectTitle: str("title", "Test Project") };
-      if (at === "execute_runbook" || at === "update_m365_profile")
+      if (at === "execute_runbook")
+        return { dryRun: true, jobId: "dry-run-job", jobStatus: "Completed", runbookName: node.data.runbookName ?? "runbook", jobOutput: "" };
+      if (at === "update_m365_profile")
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
       if (at === "calculate_pricing")    return { dryRun: true, documentId: num("documentId"), totalPrice: 0, lineCount: 0 };
@@ -1213,8 +1215,40 @@ async function executeNode(
               const clientId = interp(node.data.clientId as string | undefined, payload);
               if (clientId) parameters["ClientId"] = clientId;
             }
+            if (actionType === "execute_runbook") {
+              const clientId = interp(node.data.clientId as string | undefined, payload);
+              if (clientId) parameters["ClientId"] = clientId;
+              const projectId = interp(node.data.projectId as string | undefined, payload);
+              if (projectId) parameters["ProjectId"] = projectId;
+            }
             const job = await createRunbookJob({ runbookName, parameters });
-            output = { jobId: job.jobId, jobStatus: job.status, runbookName };
+            if (actionType === "execute_runbook") {
+              // Poll until the job reaches a terminal status (max 10 minutes).
+              const POLL_INTERVAL_MS = 5_000;
+              const TIMEOUT_MS = 10 * 60 * 1_000;
+              const deadline = Date.now() + TIMEOUT_MS;
+              let finalStatus = job.status;
+              while (!isTerminalStatus(finalStatus)) {
+                if (Date.now() >= deadline) {
+                  nodeError = true;
+                  output = { error: "Runbook timed out after 10 minutes", jobId: job.jobId };
+                  break;
+                }
+                await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+                const statusResult = await getJobStatus(job.jobId);
+                finalStatus = statusResult.status;
+              }
+              if (!nodeError) {
+                const streams = await getJobOutput(job.jobId);
+                const jobOutput = streams
+                  .filter(s => s.streamType === "Output")
+                  .map(s => s.text)
+                  .join("\n");
+                output = { jobId: job.jobId, jobStatus: finalStatus, runbookName, jobOutput };
+              }
+            } else {
+              output = { jobId: job.jobId, jobStatus: job.status, runbookName };
+            }
           }
         } else if (actionType === "generate_document") {
           // Mirrors POST /api/admin/insights/documents/generate exactly.
