@@ -877,8 +877,14 @@ INSTRUCTIONS:
 - Structure: header with "Shane McCaw Consulting" + report metadata, executive overview table with the 4 score cards, findings section with a data table, recommendations section, configuration status summary (use profileUpdates data), next steps, footer with Shane's name
 - Write in first person as Shane McCaw with professional consulting tone
 - Be specific and actionable — reference actual findings, not generic advice
+- Total length: 800-1500 words of body content
 
-- Total length: 800-1500 words of body content`,
+METRIC FORMATTING — REQUIRED (the client portal dashboard reads these exact text patterns to populate summary cards; all four must appear as visible plain text in the document body):
+1. License utilization rate — write exactly as: "X% utilization" or "Licensing Coverage X%" (e.g. "9% utilization" or "Licensing Coverage 9%")
+2. Unlicensed user count — write exactly as: "X unlicensed users" (e.g. "20 unlicensed users" or "2 unlicensed users found")
+3. Unused license count — write exactly as: "X unused licenses" (e.g. "20 unused licenses can be removed" or "removing 20 unused licenses")
+4. Annual waste — write exactly as: "$X per year wasted" (e.g. "$3,000 per year wasted in unused licenses" or "$18,000 per year wasted")
+If the telemetry does not supply exact counts, derive reasonable estimates from the findings and state them clearly using these exact phrases.`,
   },
   // ── Insights: Consulting Deliverables (7 types) ──────────────────────────────
   {
@@ -991,8 +997,13 @@ INSTRUCTIONS:
 - Data tables where appropriate (border-collapse, alternating rows)
 - Use [TO BE DETERMINED] placeholders for pricing/dates that need client input
 - Professional consulting tone as Shane McCaw, first person where appropriate
+- Total length: 1000-2000 words
 
-- Total length: 1000-2000 words`,
+METRIC FORMATTING — REQUIRED (the client portal dashboard reads these exact text patterns to populate summary cards; all three must appear as visible plain text in the document body):
+1. Current security score — write exactly as: "X/100" in a sentence (e.g. "current security posture of 18/100" or "composite score of 22/100 before remediation")
+2. Critical findings count — write exactly as: "X critical findings" or "X critical gaps" (e.g. "7 critical findings identified" or "5 critical gaps requiring immediate action")
+3. Remediation timeline — write exactly as: "X phases over Y weeks" (e.g. "3 phases over 8 weeks" or "4 phases over 12 weeks")
+If the telemetry does not supply exact values, derive reasonable estimates from the findings and scores and state them clearly using these exact phrases.`,
   },
   {
     key: "insights-consulting-deployment_plan",
