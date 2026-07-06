@@ -87,6 +87,24 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   generate_stripe_payment_link:    { bg: "#041A1A", border: "#2DD4BF", icon: "🔗", label: "Generate Payment Link"  },
 };
 
+// ── Signal label metadata (mirrors api-server/src/lib/tenant-signals.ts) ───────
+
+const SIGNAL_LABELS: Record<string, string> = {
+  alwaysInclude:               "Always Include",
+  hasExchangeOnPrem:           "Exchange On-Premises",
+  hasPowerPlatformUsage:       "Power Platform Usage",
+  hasGovernanceGaps:           "Governance Gaps",
+  hasSecurityGaps:             "Security Gaps",
+  hasCopilotLicenses:          "Copilot Licenses",
+  hasSharePointIssues:         "SharePoint Issues",
+  hasLicensingWaste:           "Licensing Waste",
+  hasDLPGaps:                  "DLP Gaps",
+  "adj:governance-complexity": "Governance Complexity",
+  "adj:tenant-size":           "Tenant Size",
+  "adj:security-compliance":   "Security / Compliance",
+  "adj:copilot-readiness":     "Copilot Readiness",
+};
+
 // ── HtmlContentPreview ─────────────────────────────────────────────────────────
 
 /**
@@ -281,6 +299,8 @@ function ReplayStepCard({
   isMutated,
   pricingTotal,
   pricingLines,
+  signalCount,
+  hasSignals,
   onClick,
 }: {
   nodeId: string;
@@ -294,6 +314,8 @@ function ReplayStepCard({
   isMutated: boolean;
   pricingTotal?: number;
   pricingLines?: number;
+  signalCount?: number;
+  hasSignals?: boolean;
   onClick: () => void;
 }) {
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? {
@@ -353,6 +375,22 @@ function ReplayStepCard({
               {pricingLines != null && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
                   {pricingLines} line{pricingLines !== 1 ? "s" : ""}
+                </span>
+              )}
+            </div>
+          )}
+          {signalCount != null && (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                hasSignals
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+              }`}>
+                📡 {signalCount} signal{signalCount !== 1 ? "s" : ""}
+              </span>
+              {!hasSignals && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                  alwaysInclude only
                 </span>
               )}
             </div>
@@ -474,6 +512,80 @@ export function JsonBlock({ data, label }: { data: Record<string, unknown>; labe
         {JSON.stringify(displayData, null, 2)}
       </pre>
       {htmlContent !== null && <HtmlContentPreview html={htmlContent} />}
+    </div>
+  );
+}
+
+// ── TenantSignalsPanel ─────────────────────────────────────────────────────────
+
+/**
+ * Replaces the raw "Output" JsonBlock for `get_tenant_signals` node outputs.
+ * Shows the hasSignals badge prominently, then lists each fired signal with its
+ * human-readable label. Each signal is clickable and navigates to the signal
+ * derivation rules admin page.
+ */
+function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
+  const [, navigate] = useLocation();
+  const signals     = Array.isArray(output.signals) ? (output.signals as string[]) : [];
+  const hasSignals  = Boolean(output.hasSignals);
+  const signalCount = typeof output.signalCount === "number" ? (output.signalCount as number) : signals.length;
+
+  return (
+    <div className="space-y-2">
+      {/* Header + hasSignals badge */}
+      <div className="flex items-center gap-2">
+        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider flex-1">Signals Output</p>
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold border ${
+          hasSignals
+            ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+            : "bg-amber-500/15 text-amber-400 border-amber-500/30"
+        }`}>
+          {hasSignals ? "✓ signals found" : "— alwaysInclude only"}
+        </span>
+      </div>
+
+      <p className="text-[10px] text-[#484F58] font-mono">
+        {signalCount} signal{signalCount !== 1 ? "s" : ""} fired
+      </p>
+
+      {/* Signal pill list */}
+      {signals.length === 0 ? (
+        <p className="text-[10px] text-[#484F58] italic">No signals in output</p>
+      ) : (
+        <div className="space-y-1">
+          {signals.map(key => {
+            const label   = SIGNAL_LABELS[key] ?? key;
+            const isAlways = key === "alwaysInclude";
+            const isAdj   = key.startsWith("adj:");
+            return (
+              <button
+                key={key}
+                onClick={() => navigate("/system/signal-mappings")}
+                title="View signal derivation rules"
+                className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-[#1C2128] group"
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded text-[9px] font-bold border flex-shrink-0 ${
+                  isAlways
+                    ? "bg-amber-500/10 text-amber-400 border-amber-500/25"
+                    : isAdj
+                    ? "bg-blue-500/10 text-blue-400 border-blue-500/25"
+                    : "bg-violet-500/10 text-violet-400 border-violet-500/25"
+                }`}>
+                  {isAlways ? "∞" : isAdj ? "±" : "⚡"}
+                </span>
+                <span className="flex-1 text-[10px] text-[#C9D1D9] font-medium leading-snug truncate">{label}</span>
+                <span className="text-[8px] text-[#484F58] font-mono truncate max-w-[70px] group-hover:text-[#7D8590]">{key}</span>
+                <svg className="w-2.5 h-2.5 text-[#484F58] flex-shrink-0 group-hover:text-[#7D8590] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Collapsible raw JSON fallback */}
+      <JsonBlock data={output} label="Raw output" />
     </div>
   );
 }
@@ -1237,6 +1349,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                     const pricingLines = nodeType === "calculate_pricing"
                                       ? (nodeOutput?.output?.lineCount as number | undefined)
                                       : undefined;
+                                    const signalCount = nodeType === "get_tenant_signals"
+                                      ? (nodeOutput?.output?.signalCount as number | undefined)
+                                      : undefined;
+                                    const hasSignals = nodeType === "get_tenant_signals"
+                                      ? (nodeOutput?.output?.hasSignals as boolean | undefined)
+                                      : undefined;
 
                                     return (
                                       <div key={`${nodeId}-${idx}`}>
@@ -1251,6 +1369,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                           isMutated={isMutated}
                                           pricingTotal={pricingTotal}
                                           pricingLines={pricingLines}
+                                          signalCount={signalCount}
+                                          hasSignals={hasSignals}
                                           onClick={() => setReplayStep(idx)}
                                         />
                                         {i < entry.items.length - 1 && (
@@ -1291,6 +1411,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         const pricingLines = nodeType === "calculate_pricing"
                           ? (nodeOutput?.output?.lineCount as number | undefined)
                           : undefined;
+                        const signalCount = nodeType === "get_tenant_signals"
+                          ? (nodeOutput?.output?.signalCount as number | undefined)
+                          : undefined;
+                        const hasSignals = nodeType === "get_tenant_signals"
+                          ? (nodeOutput?.output?.hasSignals as boolean | undefined)
+                          : undefined;
 
                         return (
                           <div key={`${nodeId}-${idx}`}>
@@ -1305,6 +1431,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               isMutated={isMutated}
                               pricingTotal={pricingTotal}
                               pricingLines={pricingLines}
+                              signalCount={signalCount}
+                              hasSignals={hasSignals}
                               onClick={() => setReplayStep(idx)}
                             />
                             {/* Connector line — skip if next entry is an exhausted group
@@ -1457,7 +1585,10 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         </div>
                       )}
                       <JsonBlock data={currentOutput.input} label="Input" />
-                      <JsonBlock data={currentOutput.output} label="Output" />
+                      {currentNodeType === "get_tenant_signals"
+                        ? <TenantSignalsPanel output={currentOutput.output} />
+                        : <JsonBlock data={currentOutput.output} label="Output" />
+                      }
                       {/* Depth-limit abort: depth+maxDepth present but no child was created */}
                       {currentOutput.status === "error"
                         && typeof currentOutput.output.depth === "number"
