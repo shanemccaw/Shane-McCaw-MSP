@@ -359,8 +359,14 @@ logger.info({ articlesDir: ARTICLES_DIR }, "workflow-executor: content articles 
 // boolean truthy path, && and || logical operators.
 
 function evalCondition(expression: string, payload: Record<string, unknown>): boolean {
+  /** Strip {{ }} template delimiters so "{{key}}" resolves the same as "key". */
+  function stripTpl(s: string): string {
+    const t = s.trim();
+    return t.startsWith("{{") && t.endsWith("}}") ? t.slice(2, -2).trim() : t;
+  }
+
   function resolvePath(p: string): unknown {
-    const parts = p.trim().split(".");
+    const parts = stripTpl(p).split(".");
     let cur: unknown = payload;
     for (const part of parts) {
       if (cur == null || typeof cur !== "object") return undefined;
@@ -371,6 +377,8 @@ function evalCondition(expression: string, payload: Record<string, unknown>): bo
 
   function parseValue(s: string): unknown {
     const t = s.trim();
+    // Template reference: {{key}} or {{steps.nodeId.field}}
+    if (t.startsWith("{{") && t.endsWith("}}")) return resolvePath(t);
     if (t === "true") return true;
     if (t === "false") return false;
     if (t === "null") return null;
@@ -385,7 +393,8 @@ function evalCondition(expression: string, payload: Record<string, unknown>): bo
     for (const op of [">=", "<=", "!=", "==", ">", "<", " contains "]) {
       const idx = c.indexOf(op);
       if (idx !== -1) {
-        const lhs = resolvePath(c.slice(0, idx).trim());
+        const lhsRaw = c.slice(0, idx).trim();
+        const lhs = resolvePath(lhsRaw);
         const rhs = parseValue(c.slice(idx + op.length));
         switch (op.trim()) {
           case "==": return lhs == rhs; // eslint-disable-line eqeqeq
