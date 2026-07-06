@@ -265,8 +265,8 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
 
     // ── Check Script Output (Passed / On Failure) ────────────────────────────
     if (type === "check_script_output") {
-      const yesEdge = out.find(e => e.sourceHandle === "yes");
-      const noEdge  = out.find(e => e.sourceHandle === "no");
+      const yesEdge = out.find(e => e.sourceHandle === "yes" || e.sourceHandle === "true");
+      const noEdge  = out.find(e => e.sourceHandle === "no"  || e.sourceHandle === "false");
 
       const yesSet = localCollect(yesEdge?.target);
       const noSet  = localCollect(noEdge?.target);
@@ -303,8 +303,8 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
 
     // ── Condition (If/Else) ───────────────────────────────────────────────────
     if (type === "condition") {
-      const yesEdge = out.find(e => e.sourceHandle === "yes");
-      const noEdge  = out.find(e => e.sourceHandle === "no");
+      const yesEdge = out.find(e => e.sourceHandle === "yes" || e.sourceHandle === "true");
+      const noEdge  = out.find(e => e.sourceHandle === "no"  || e.sourceHandle === "false");
 
       const yesSet = localCollect(yesEdge?.target);
       const noSet  = localCollect(noEdge?.target);
