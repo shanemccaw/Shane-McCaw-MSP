@@ -626,7 +626,7 @@ export default function FullScreenWrapper() {
   // ── Animate display scores every 2 s toward target ────────────────────────
   // Ramp duration: scores reach their full target over ~4 minutes from when the
   // scorecard data first arrives. Task completion can jump ahead of the timer.
-  const EXPECTED_SESSION_MS = 4 * 60 * 1000;
+  const EXPECTED_SESSION_MS = 45 * 1000;
   useEffect(() => {
     if (mode !== "ProjectTasksView") return;
 
@@ -982,7 +982,7 @@ export default function FullScreenWrapper() {
       }}
     >
       {/* 3D Torus Knot Background */}
-      <AnimatedBackground />
+      <AnimatedBackground fullScreen />
 
       {/* Screen-edge Copilot Aura — brand colour glow around the perimeter */}
       <CopilotAura />
