@@ -1455,7 +1455,7 @@ async function executeNode(
           }
         } else if (actionType === "run_workflow") {
           // ── Run Workflow: execute a published sub-workflow synchronously ─────
-          const RUN_WORKFLOW_MAX_DEPTH = Math.max(1, parseInt(process.env.RUN_WORKFLOW_MAX_DEPTH ?? "5", 10) || 5);
+          const globalMaxDepth = Math.max(1, parseInt(process.env.RUN_WORKFLOW_MAX_DEPTH ?? "5", 10) || 5);
           const workflowIdRaw = node.data.workflowId as string | number | undefined;
           const subDefId = typeof workflowIdRaw === "number"
             ? workflowIdRaw
@@ -1467,6 +1467,18 @@ async function executeNode(
           } else {
             const rawDepth = payload._depth;
             const currentDepth = Math.max(0, Number.isInteger(rawDepth) ? (rawDepth as number) : 0);
+
+            // Load the sub-workflow's definition to read its per-workflow maxRunDepth setting
+            const subDefRows = await db.select({ maxRunDepth: wfDefinitionsTable.maxRunDepth })
+              .from(wfDefinitionsTable)
+              .where(eq(wfDefinitionsTable.id, subDefId))
+              .limit(1);
+            const subDefMaxDepth = subDefRows[0]?.maxRunDepth;
+            // Use the sub-workflow's configured limit; fall back to the global env/default
+            const RUN_WORKFLOW_MAX_DEPTH = (typeof subDefMaxDepth === "number" && subDefMaxDepth >= 1 && subDefMaxDepth <= 10)
+              ? subDefMaxDepth
+              : globalMaxDepth;
+
             if (currentDepth >= RUN_WORKFLOW_MAX_DEPTH) {
               nodeError = true;
               output = {

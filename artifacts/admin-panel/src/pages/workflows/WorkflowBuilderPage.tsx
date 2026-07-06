@@ -6847,6 +6847,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settingsMaxDepth, setSettingsMaxDepth] = useState<number>(5);
+  const [settingsDepthError, setSettingsDepthError] = useState<string | null>(null);
   const [showTestRun, setShowTestRun] = useState(false);
   const [testRunTrigger, setTestRunTrigger] = useState(0);
   const [publishLabel, setPublishLabel] = useState("");
@@ -6936,7 +6939,29 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     queryKey: ["wf-def", defId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`);
+      return res.json() as Promise<{ id: number; name: string; description?: string; concurrencyLimit: number; maxRunDepth: number }>;
+    },
+  });
+
+  // Sync settings state when def loads
+  useEffect(() => {
+    if (def?.maxRunDepth != null) {
+      setSettingsMaxDepth(def.maxRunDepth);
+    }
+  }, [def?.maxRunDepth]);
+
+  const settingsMut = useMutation({
+    mutationFn: async (updates: { maxRunDepth: number }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error(await res.text());
       return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-def", defId] });
     },
   });
 
@@ -7379,7 +7404,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           </button>
 
           <button
-            onClick={() => setShowVersionHistory(v => !v)}
+            onClick={() => { setShowVersionHistory(false); setShowSettings(v => !v); }}
+            className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${showSettings ? "text-[#E6EDF3] border-[#484F58] bg-[#1C2128]" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+            title="Workflow settings"
+          >
+            ⚙ Settings
+          </button>
+
+          <button
+            onClick={() => { setShowSettings(false); setShowVersionHistory(v => !v); }}
             className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
           >
             History ({versions.length})
@@ -7705,6 +7738,71 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             edges={edges}
             onGraphChange={handleGraphChange}
           />
+        )}
+
+        {/* Workflow settings drawer */}
+        {showSettings && (
+          <div className="absolute top-0 right-0 bottom-0 w-72 bg-[#161B22] border-l border-[#30363D] z-20 overflow-y-auto p-4 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-[#E6EDF3]">Workflow Settings</h3>
+              <button onClick={() => setShowSettings(false)} className="text-[#7D8590] hover:text-[#E6EDF3]">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Max nesting depth</label>
+              <p className="text-[11px] text-[#7D8590] leading-relaxed">
+                How deep a chain of nested <span className="font-mono text-[#E6EDF3]">Run Workflow</span> calls can go before being stopped. Lower values fail fast; raise this only for legitimate multi-level orchestration patterns (max&nbsp;10).
+              </p>
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={settingsMaxDepth}
+                  onChange={e => {
+                    const v = parseInt(e.target.value, 10);
+                    setSettingsMaxDepth(isNaN(v) ? 1 : v);
+                    if (isNaN(v) || v < 1 || v > 10) {
+                      setSettingsDepthError("Must be between 1 and 10");
+                    } else {
+                      setSettingsDepthError(null);
+                    }
+                  }}
+                  className="w-20 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none"
+                />
+                <span className="text-[10px] text-[#484F58]">default: 5</span>
+              </div>
+              {settingsDepthError && (
+                <p className="text-[11px] text-red-400">{settingsDepthError}</p>
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-[#30363D]">
+              <button
+                onClick={async () => {
+                  const v = settingsMaxDepth;
+                  if (v < 1 || v > 10) {
+                    setSettingsDepthError("Must be between 1 and 10");
+                    return;
+                  }
+                  setSettingsDepthError(null);
+                  await settingsMut.mutateAsync({ maxRunDepth: v });
+                  setShowSettings(false);
+                }}
+                disabled={settingsMut.isPending || !!settingsDepthError}
+                className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {settingsMut.isPending ? "Saving…" : "Save Settings"}
+              </button>
+              {settingsMut.isError && (
+                <p className="text-[11px] text-red-400 mt-1.5">Failed to save — please retry.</p>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Version history drawer */}

@@ -171,6 +171,7 @@ router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, r
     name: z.string().min(1).max(200),
     description: z.string().optional(),
     concurrencyLimit: z.number().int().min(1).max(50).optional(),
+    maxRunDepth: z.number().int().min(1).max(10).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
 
@@ -179,6 +180,7 @@ router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, r
       name: body.data.name,
       description: body.data.description,
       concurrencyLimit: body.data.concurrencyLimit ?? 5,
+      maxRunDepth: body.data.maxRunDepth ?? 5,
     }).returning();
 
     const [version] = await db.insert(wfVersionsTable).values({
@@ -224,6 +226,7 @@ router.put("/admin/workflows/definitions/:id", requireAdmin, async (req: Request
     name: z.string().min(1).max(200).optional(),
     description: z.string().optional(),
     concurrencyLimit: z.number().int().min(1).max(50).optional(),
+    maxRunDepth: z.number().int().min(1).max(10).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
 
@@ -321,6 +324,7 @@ router.post("/admin/workflows/definitions/:id/duplicate", requireAdmin, async (r
       name: `Copy of ${src.name}`,
       description: src.description ?? undefined,
       concurrencyLimit: src.concurrencyLimit,
+      maxRunDepth: src.maxRunDepth,
       metadata: { ...((src.metadata ?? {}) as Record<string, unknown>), system: false },
     }).returning();
 

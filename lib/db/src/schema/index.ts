@@ -1832,6 +1832,7 @@ export const wfDefinitionsTable = pgTable("wf_definitions", {
   name: text("name").notNull(),
   description: text("description"),
   concurrencyLimit: integer("concurrency_limit").notNull().default(5),
+  maxRunDepth: integer("max_run_depth").notNull().default(5),
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
