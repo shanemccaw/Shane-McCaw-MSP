@@ -466,6 +466,117 @@ function StepCard({
     ctx.onDrop(step.id, e.clientY < midY ? "before" : "after");
   }
 
+  // ── Comment node — sticky-note card ──────────────────────────────────────────
+  if (step.nodeType === "comment") {
+    const text = ((step.data.params as Record<string, unknown> | undefined)?.text as string | undefined) ?? "";
+    return (
+      <div
+        className={`relative transition-all cursor-pointer select-none ${isDragging ? "opacity-40" : ""}`}
+        style={{
+          background: "#FEF3C7",
+          border: `2px solid ${isSelected ? "#0078D4" : "#CA8A04"}`,
+          borderRadius: 10,
+          padding: "10px 14px 12px",
+          minWidth: 0,
+          boxShadow: isSelected
+            ? "0 0 0 3px #0078D440, 0 4px 14px rgba(202,138,4,0.3)"
+            : "0 4px 12px rgba(202,138,4,0.22), 2px 3px 0 #CA8A04",
+        }}
+        onClick={e => { e.stopPropagation(); onSelect(); }}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragLeave={e => { e.stopPropagation(); }}
+      >
+        {/* Drop indicators */}
+        {isDropTarget && ctx.dropPosition === "before" && (
+          <div className="absolute -top-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+        )}
+        {isDropTarget && ctx.dropPosition === "after" && (
+          <div className="absolute -bottom-1 left-0 right-0 h-0.5 bg-[#0078D4] rounded-full z-10 pointer-events-none" />
+        )}
+
+        {/* Header row */}
+        <div className="flex items-center gap-1.5 mb-2">
+          {/* Drag handle */}
+          {!isArchived && (
+            <div
+              draggable
+              onDragStart={handleDragStart}
+              onDragEnd={e => { e.stopPropagation(); ctx.onDragEnd(); }}
+              onClick={e => e.stopPropagation()}
+              className="flex-shrink-0 cursor-grab active:cursor-grabbing px-0.5 py-0.5 rounded"
+              style={{ color: "#92400E", opacity: 0.5 }}
+              title="Drag to reorder"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <circle cx="7" cy="5" r="1.5" /><circle cx="13" cy="5" r="1.5" />
+                <circle cx="7" cy="10" r="1.5" /><circle cx="13" cy="10" r="1.5" />
+                <circle cx="7" cy="15" r="1.5" /><circle cx="13" cy="15" r="1.5" />
+              </svg>
+            </div>
+          )}
+          <span style={{ fontSize: 13, lineHeight: 1 }}>📝</span>
+          <span
+            className="text-[9px] uppercase tracking-widest font-bold flex-1"
+            style={{ color: "#92400E" }}
+          >
+            Note
+          </span>
+          {/* Three-dot menu */}
+          {!isArchived && (
+            <div className="relative" ref={menuRef}>
+              <button
+                ref={menuBtnRef}
+                onClick={e => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMenuPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right });
+                  setMenuOpen(v => !v);
+                }}
+                className="w-5 h-5 rounded flex items-center justify-center transition-colors"
+                style={{ color: "#92400E", opacity: 0.6 }}
+                title="Options"
+              >
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="4" cy="10" r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="16" cy="10" r="1.5" />
+                </svg>
+              </button>
+              {menuOpen && menuPos && createPortal(
+                <div
+                  ref={menuPortalRef}
+                  className="fixed z-[9999] bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl py-1 min-w-[140px] text-xs"
+                  style={{ top: menuPos.top, right: menuPos.right }}
+                >
+                  <button onClick={handleMoveUp}   className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Up</button>
+                  <button onClick={handleMoveDown} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Move Down</button>
+                  <button onClick={handleDuplicate} className="w-full text-left px-3 py-1.5 text-[#E6EDF3] hover:bg-[#21262D] transition-colors">Duplicate</button>
+                  <div className="border-t border-[#30363D] my-1" />
+                  <button onClick={handleDelete} className="w-full text-left px-3 py-1.5 text-red-400 hover:bg-[#21262D] transition-colors">Delete</button>
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Comment text */}
+        <p
+          style={{
+            color: text ? "#1C1917" : "#A16207",
+            fontSize: 12,
+            lineHeight: "1.55",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            margin: 0,
+            fontStyle: text ? "normal" : "italic",
+          }}
+        >
+          {text || "Add a note…"}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`relative rounded-xl border transition-all cursor-pointer select-none ${isDragging ? "opacity-40" : ""} ${
