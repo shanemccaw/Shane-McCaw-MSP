@@ -1126,14 +1126,24 @@ async function executeNode(
           } else {
             const clientUserIdRaw = interp(node.data.clientUserId as string | undefined, payload);
             const clientUserId = clientUserIdRaw ? parseInt(clientUserIdRaw, 10) : null;
-            const [project] = await db.insert(projectsTable).values({
-              title,
-              description: interpOrNull(node.data.description as string | undefined, payload),
-              projectType: (node.data.projectType as "project" | "retainer" | "quick_win" | undefined) ?? "project",
-              clientUserId: clientUserId && !isNaN(clientUserId) ? clientUserId : null,
-              status: "active",
-            }).returning();
-            output = { projectId: project.id, projectTitle: project.title };
+            const resolvedClientUserId = clientUserId && !isNaN(clientUserId) ? clientUserId : null;
+            if (resolvedClientUserId !== null) {
+              const [existing] = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.id, resolvedClientUserId)).limit(1);
+              if (!existing) {
+                nodeError = true;
+                output = { error: `create_project: clientUserId ${resolvedClientUserId} not found — no user with that ID exists` };
+              }
+            }
+            if (!nodeError) {
+              const [project] = await db.insert(projectsTable).values({
+                title,
+                description: interpOrNull(node.data.description as string | undefined, payload),
+                projectType: (node.data.projectType as "project" | "retainer" | "quick_win" | undefined) ?? "project",
+                clientUserId: resolvedClientUserId,
+                status: "active",
+              }).returning();
+              output = { projectId: project.id, projectTitle: project.title };
+            }
           }
         } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {
           const runbookName = interp(node.data.runbookName as string | undefined, payload);
