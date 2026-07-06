@@ -98,6 +98,21 @@ export default function RunDetailPage({ runId }: { runId: number }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["wf-run", runId] }),
   });
 
+  const rerunMut = useMutation({
+    mutationFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}/rerun`, { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? "Failed to re-run");
+      }
+      return res.json() as Promise<{ runId: number }>;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["wf-runs"] });
+      navigate(`/workflows/runs/${data.runId}`);
+    },
+  });
+
   const decideMut = useMutation({
     mutationFn: async ({ approvalId, decision, note }: { approvalId: number; decision: "approved" | "rejected"; note?: string }) => {
       const res = await fetchWithAuth(`/api/admin/workflows/pending-approvals/${approvalId}/decide`, {
@@ -149,6 +164,14 @@ export default function RunDetailPage({ runId }: { runId: number }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-[#E6EDF3]">Run #{run.id}</span>
+            {run.retriggeredFromRunId != null && (
+              <button
+                onClick={() => navigate(`/workflows/runs/${run.retriggeredFromRunId}`)}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-violet-500/15 border border-violet-500/30 text-violet-300 hover:bg-violet-500/25 transition-colors"
+              >
+                ↩ Re-run of #{run.retriggeredFromRunId}
+              </button>
+            )}
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${STATUS_STYLES[run.status] ?? ""}`}>
               {run.status === "awaiting_approval" ? "⏸ awaiting approval" : run.status}
             </span>
@@ -195,6 +218,19 @@ export default function RunDetailPage({ runId }: { runId: number }) {
           </div>
         </div>
 
+        {(run.status === "failed" || run.status === "cancelled") && (
+          <button
+            onClick={() => rerunMut.mutate()}
+            disabled={rerunMut.isPending}
+            title="Re-run with the same payload"
+            className="px-3 py-1.5 bg-[#0078D4]/80 hover:bg-[#0078D4] disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {rerunMut.isPending ? "Re-running…" : "Re-run"}
+          </button>
+        )}
         {(run.status === "running" || run.status === "pending") && (
           <button
             onClick={() => cancelMut.mutate()}

@@ -22,6 +22,7 @@
  * GET    /api/admin/workflows/runs
  * GET    /api/admin/workflows/runs/:id
  * POST   /api/admin/workflows/runs/:id/cancel
+ * POST   /api/admin/workflows/runs/:id/rerun
  * GET    /api/admin/workflows/runs/:id/nodes
  * POST   /api/webhooks/workflow/:token              (webhook trigger)
  */
@@ -884,6 +885,50 @@ router.post("/admin/workflows/runs/:id/cancel", requireAdmin, async (req: Reques
     res.json(updated);
   } catch (err) {
     sendError(res, 500, "Failed to cancel run");
+  }
+});
+
+router.post("/admin/workflows/runs/:id/rerun", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(req.params.id as string);
+  if (isNaN(id)) return sendError(res, 400, "Invalid id");
+
+  try {
+    const [sourceRun] = await db
+      .select({
+        definitionId: wfRunsTable.definitionId,
+        triggerType: wfRunsTable.triggerType,
+        triggerRef: wfRunsTable.triggerRef,
+        payload: wfRunsTable.payload,
+        status: wfRunsTable.status,
+      })
+      .from(wfRunsTable)
+      .where(eq(wfRunsTable.id, id))
+      .limit(1);
+
+    if (!sourceRun) return sendError(res, 404, "Run not found");
+    if (sourceRun.status !== "failed" && sourceRun.status !== "cancelled") {
+      return sendError(res, 409, "Only failed or cancelled runs can be re-run");
+    }
+
+    const newRunId = await fireWorkflowForDefinition(
+      sourceRun.definitionId,
+      (sourceRun.triggerType as "manual" | "schedule" | "webhook" | "event") ?? "manual",
+      sourceRun.triggerRef ?? "rerun",
+      sourceRun.payload ?? {},
+    );
+
+    if (!newRunId) return sendError(res, 500, "Could not create re-run (concurrency limit or no published version)");
+
+    await db
+      .update(wfRunsTable)
+      .set({ retriggeredFromRunId: id } as Partial<typeof wfRunsTable.$inferInsert>)
+      .where(eq(wfRunsTable.id, newRunId));
+
+    req.log.info({ sourceRunId: id, newRunId }, "workflows: re-run created");
+    res.json({ runId: newRunId });
+  } catch (err) {
+    req.log.error({ err }, "workflows: rerun failed");
+    sendError(res, 500, "Failed to re-run");
   }
 });
 

@@ -100,14 +100,18 @@ function RunRow({
   onClick,
   onApprove,
   onReject,
+  onRerun,
   isDeciding,
+  isRerunning,
 }: {
   run: WfRun;
   approval?: PendingApproval;
   onClick: () => void;
   onApprove?: (approvalId: number) => void;
   onReject?: (approvalId: number) => void;
+  onRerun?: () => void;
   isDeciding?: boolean;
+  isRerunning?: boolean;
 }) {
   const isAwaitingApproval = run.status === "awaiting_approval" && approval;
 
@@ -161,9 +165,29 @@ function RunRow({
 
         <span className="text-xs text-[#7D8590] font-mono">{fmtDuration(run.durationMs)}</span>
 
-        <svg className="w-4 h-4 text-[#484F58]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
+        <div className="flex items-center gap-1.5 justify-end" onClick={e => e.stopPropagation()}>
+          {(run.status === "failed" || run.status === "cancelled") && onRerun && (
+            <button
+              onClick={onRerun}
+              disabled={isRerunning}
+              title="Re-run with the same payload"
+              className="p-1 rounded hover:bg-[#0078D4]/20 text-[#484F58] hover:text-[#0078D4] disabled:opacity-40 transition-colors"
+            >
+              {isRerunning ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+            </button>
+          )}
+          <svg className="w-4 h-4 text-[#484F58] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
       </div>
 
       {/* Inline approval actions */}
@@ -334,6 +358,21 @@ export default function RunHistoryPage({ initialDefinitionId, onClose }: { initi
       setRejectNote("");
     },
   });
+
+  const [rerunningRunId, setRerunningRunId] = useState<number | null>(null);
+
+  async function handleRerun(runId: number) {
+    setRerunningRunId(runId);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}/rerun`, { method: "POST" });
+      if (!res.ok) return;
+      const data: { runId: number } = await res.json();
+      qc.invalidateQueries({ queryKey: ["wf-runs"] });
+      navigate(`/workflows/runs/${data.runId}`);
+    } finally {
+      setRerunningRunId(null);
+    }
+  }
 
   const total = data?.total ?? 0;
   const userRuns = allRuns.filter(r => !r.isSystem);
@@ -507,7 +546,9 @@ export default function RunHistoryPage({ initialDefinitionId, onClose }: { initi
                   onClick={() => navigate(`/workflows/runs/${run.id}`)}
                   onApprove={approvalId => decideMut.mutate({ approvalId, decision: "approved" })}
                   onReject={approvalId => { setRejectApprovalId(approvalId); }}
+                  onRerun={() => handleRerun(run.id)}
                   isDeciding={decideMut.isPending}
+                  isRerunning={rerunningRunId === run.id}
                 />
               ))}
 
@@ -542,7 +583,9 @@ export default function RunHistoryPage({ initialDefinitionId, onClose }: { initi
                       onClick={() => navigate(`/workflows/runs/${run.id}`)}
                       onApprove={approvalId => decideMut.mutate({ approvalId, decision: "approved" })}
                       onReject={approvalId => { setRejectApprovalId(approvalId); }}
+                      onRerun={() => handleRerun(run.id)}
                       isDeciding={decideMut.isPending}
+                      isRerunning={rerunningRunId === run.id}
                     />
                   ))}
                 </>

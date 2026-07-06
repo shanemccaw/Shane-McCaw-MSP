@@ -185,6 +185,7 @@ export interface WfRunDetail {
   finishedAt: string | null;
   errorMessage: string | null;
   durationMs: number | null;
+  retriggeredFromRunId?: number | null;
   graph: { nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>; edges: Array<{ id: string; source: string; target: string; sourceHandle?: string }> } | null;
   logs: Array<{ id: number; nodeId: string; level: string; message: string; metadata?: Record<string, unknown> | null; timestamp: string }>;
   nodeOutputs: Array<{ id: number; nodeId: string; input: Record<string, unknown>; output: Record<string, unknown>; durationMs: number | null; status: string; errorMessage: string | null; timestamp: string }>;

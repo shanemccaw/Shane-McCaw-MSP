@@ -1872,6 +1872,7 @@ export const wfRunsTable = pgTable("wf_runs", {
   startedAt: timestamp("started_at"),
   finishedAt: timestamp("finished_at"),
   errorMessage: text("error_message"),
+  retriggeredFromRunId: integer("retriggered_from_run_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
