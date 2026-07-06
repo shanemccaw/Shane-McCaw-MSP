@@ -34,6 +34,7 @@ interface KanbanTask {
   title: string;
   column: "backlog" | "in_progress" | "waiting_on_customer" | "completed";
   groupName: string | null;
+  workflowStepId: number | null;
   description: string | null;
   taskType: string | null;
   taskMetadata: Record<string, unknown> | null;
@@ -220,14 +221,14 @@ export default function FullScreenWrapper() {
     { id: 3, title: "Compliance validation", status: "not_started", order: 2 },
   ];
   const SIM_TASKS: KanbanTask[] = [
-    { id: 1, title: "Audit MFA registration coverage", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
-    { id: 2, title: "Review conditional access policies", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
-    { id: 3, title: "Identify legacy authentication blockers", column: "completed", groupName: "Security baseline scan", description: null, taskType: null, taskMetadata: null },
-    { id: 4, title: "Enable MFA for all admin accounts", column: "in_progress", groupName: "Policy hardening", description: "Configuring SSPR and MFA enforcement for all privileged identities.", taskType: null, taskMetadata: null },
-    { id: 5, title: "Block legacy authentication protocols", column: "backlog", groupName: "Policy hardening", description: null, taskType: null, taskMetadata: null },
-    { id: 6, title: "Configure risky sign-in policies", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
-    { id: 7, title: "Enable Defender for Office 365", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
-    { id: 8, title: "Generate compliance posture report", column: "backlog", groupName: "Compliance validation", description: null, taskType: null, taskMetadata: null },
+    { id: 1, title: "Audit MFA registration coverage", column: "completed", groupName: "Security baseline scan", workflowStepId: 1, description: null, taskType: null, taskMetadata: null },
+    { id: 2, title: "Review conditional access policies", column: "completed", groupName: "Security baseline scan", workflowStepId: 1, description: null, taskType: null, taskMetadata: null },
+    { id: 3, title: "Identify legacy authentication blockers", column: "completed", groupName: "Security baseline scan", workflowStepId: 1, description: null, taskType: null, taskMetadata: null },
+    { id: 4, title: "Enable MFA for all admin accounts", column: "in_progress", groupName: "Policy hardening", workflowStepId: 2, description: "Configuring SSPR and MFA enforcement for all privileged identities.", taskType: null, taskMetadata: null },
+    { id: 5, title: "Block legacy authentication protocols", column: "backlog", groupName: "Policy hardening", workflowStepId: 2, description: null, taskType: null, taskMetadata: null },
+    { id: 6, title: "Configure risky sign-in policies", column: "backlog", groupName: "Compliance validation", workflowStepId: 3, description: null, taskType: null, taskMetadata: null },
+    { id: 7, title: "Enable Defender for Office 365", column: "backlog", groupName: "Compliance validation", workflowStepId: 3, description: null, taskType: null, taskMetadata: null },
+    { id: 8, title: "Generate compliance posture report", column: "backlog", groupName: "Compliance validation", workflowStepId: 3, description: null, taskType: null, taskMetadata: null },
   ];
   const SIM_SCORECARD: ScorecardHistoryData = {
     hasData: true,
@@ -951,13 +952,17 @@ export default function FullScreenWrapper() {
       const nextIdx = activePhaseIndex + 1;
       if (nextIdx < workflowSteps.length) {
         const nextStep = workflowSteps[nextIdx];
-        const matched = kanbanTasks.filter(t => t.groupName === nextStep.title);
+        const matched = kanbanTasks.filter(t =>
+          t.workflowStepId === nextStep.id || t.groupName === nextStep.title
+        );
         if (matched.length > 0) return matched;
       }
       // Fallback: any task belonging to the first not_started step
       const notStarted = workflowSteps.find(s => s.status === "not_started");
       if (notStarted) {
-        const matched = kanbanTasks.filter(t => t.groupName === notStarted.title);
+        const matched = kanbanTasks.filter(t =>
+          t.workflowStepId === notStarted.id || t.groupName === notStarted.title
+        );
         if (matched.length > 0) return matched;
       }
     }
