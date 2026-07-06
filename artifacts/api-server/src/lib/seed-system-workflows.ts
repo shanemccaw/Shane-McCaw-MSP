@@ -646,7 +646,7 @@ export async function seedSystemWorkflows(): Promise<void> {
          VALUES ($1, $2, 1, '{"system":true}'::jsonb)
          ON CONFLICT (name) DO UPDATE
            SET description = EXCLUDED.description,
-               metadata    = '{"system":true}'::jsonb,
+               metadata    = COALESCE(wf_definitions.metadata, '{}'::jsonb) || '{"system":true}'::jsonb,
                updated_at  = NOW()
          RETURNING id`,
         [seed.name, seed.description],

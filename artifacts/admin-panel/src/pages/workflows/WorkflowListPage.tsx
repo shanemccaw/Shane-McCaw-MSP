@@ -653,14 +653,12 @@ function ContextMenuPortal({
           </button>
         )}
 
-        {!isSystem && (
-          <button className={itemCls} onClick={onAssignCategory}>
-            <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
-            </svg>
-            Assign Category
-          </button>
-        )}
+        <button className={itemCls} onClick={onAssignCategory}>
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A2 2 0 013 12V7a4 4 0 014-4z" />
+          </svg>
+          Assign Category
+        </button>
 
         <button className={itemCls} onClick={onDuplicate}>
           <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1054,7 +1052,17 @@ export default function WorkflowListPage() {
   }
 
   const userGroups = filterGroups(buildGroups(userDefs));
-  const systemGroupDefs = !q ? systemDefs : systemDefs.filter(d => d.name.toLowerCase().includes(q) || "system".includes(q));
+
+  // System workflows: sub-grouped by category inside the ⚙ System section.
+  // Uncategorised system workflows go into a "General" sub-group rendered last.
+  const filteredSystemDefs = !q ? systemDefs : systemDefs.filter(d => d.name.toLowerCase().includes(q) || "system".includes(q));
+  const systemSubGroups: CategoryGroup[] = (() => {
+    const categorised = filteredSystemDefs.filter(d => !!(d.metadata?.category as string | undefined));
+    const uncategorised = filteredSystemDefs.filter(d => !(d.metadata?.category as string | undefined));
+    const groups = buildGroups(categorised);
+    if (uncategorised.length > 0) groups.push({ name: "General", defs: uncategorised });
+    return groups;
+  })();
 
   // Flat ordered list for keyboard nav
   const flatLeaves: number[] = [];
@@ -1063,8 +1071,13 @@ export default function WorkflowListPage() {
       for (const d of g.defs) flatLeaves.push(d.id);
     }
   }
-  if (systemGroupDefs.length > 0 && !collapsedCategories.has("⚙ System")) {
-    for (const d of systemGroupDefs) flatLeaves.push(d.id);
+  if (filteredSystemDefs.length > 0 && !collapsedCategories.has("⚙ System")) {
+    for (const sg of systemSubGroups) {
+      const subKey = `⚙ System/${sg.name}`;
+      if (!collapsedCategories.has(subKey)) {
+        for (const d of sg.defs) flatLeaves.push(d.id);
+      }
+    }
   }
 
   // ── Keyboard navigation ──
@@ -1284,9 +1297,9 @@ export default function WorkflowListPage() {
         </div>
 
         {/* Category field */}
-        {!isSystem && (() => {
+        {(() => {
           const existingCategories = [...new Set(
-            userDefs.map(d => (d.metadata?.category as string | undefined) ?? deriveCategory(d.name))
+            defs.map(d => (d.metadata?.category as string | undefined)).filter((c): c is string => !!c)
           )].sort();
           const datalistId = `cat-suggestions-${def.id}`;
           return (
@@ -1298,7 +1311,7 @@ export default function WorkflowListPage() {
                   value={catInput}
                   onChange={e => setCatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && isCatDirty) patchCategoryMut.mutate({ id: def.id, category: catInput || null }); }}
-                  placeholder={deriveCategory(def.name)}
+                  placeholder={isSystem ? "None" : deriveCategory(def.name)}
                   className="flex-1 min-w-0 bg-[#1C2128] border border-[#30363D] rounded-md px-2.5 py-1.5 text-xs text-[#C9D1D9] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] transition-colors"
                 />
                 <datalist id={datalistId}>
@@ -1314,14 +1327,14 @@ export default function WorkflowListPage() {
                 {catInput && (
                   <button
                     onClick={() => { setCatInput(""); patchCategoryMut.mutate({ id: def.id, category: null }); }}
-                    title="Clear override — revert to auto-derived category"
+                    title="Clear category"
                     className="flex-shrink-0 px-2 py-1.5 text-[#484F58] hover:text-[#8B949E] text-xs rounded-md border border-transparent hover:border-[#30363D] transition-colors"
                   >
                     ✕
                   </button>
                 )}
               </div>
-              {!currentCategory && (
+              {!currentCategory && !isSystem && (
                 <p className="text-[10px] text-[#484F58] mt-1.5">Auto-derived: <span className="text-[#7D8590]">{deriveCategory(def.name)}</span></p>
               )}
             </div>
@@ -1629,7 +1642,7 @@ export default function WorkflowListPage() {
               </div>
             ) : (
               <>
-                {userGroups.length === 0 && systemGroupDefs.length === 0 ? (
+                {userGroups.length === 0 && filteredSystemDefs.length === 0 ? (
                   <div className="px-3 py-6 text-center">
                     <p className="text-[11px] text-[#484F58]">{search ? "No matches" : "No workflows yet"}</p>
                   </div>
@@ -1646,12 +1659,40 @@ export default function WorkflowListPage() {
                       </div>
                     ))}
 
-                    {systemGroupDefs.length > 0 && (
+                    {filteredSystemDefs.length > 0 && (
                       <div className="mt-1">
-                        <SidebarFolder name="⚙ System" count={systemGroupDefs.length} isSystem />
+                        <SidebarFolder name="⚙ System" count={filteredSystemDefs.length} isSystem />
                         {!collapsedCategories.has("⚙ System") && (
                           <div className="pl-3">
-                            {systemGroupDefs.map(def => <SidebarLeaf key={def.id} def={def} isSystem />)}
+                            {systemSubGroups.map(sg => {
+                              const subKey = `⚙ System/${sg.name}`;
+                              const isOnlyGroup = systemSubGroups.length === 1;
+                              if (isOnlyGroup) {
+                                return sg.defs.map(def => <SidebarLeaf key={def.id} def={def} isSystem />);
+                              }
+                              return (
+                                <div key={sg.name}>
+                                  <button
+                                    onClick={() => toggleCategory(subKey)}
+                                    className="w-full flex items-center gap-1.5 px-2 py-0.5 text-left hover:bg-[#1C2128] transition-colors"
+                                  >
+                                    <svg
+                                      className={`w-2.5 h-2.5 text-[#30363D] flex-shrink-0 transition-transform ${collapsedCategories.has(subKey) ? "" : "rotate-90"}`}
+                                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                    >
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                    <span className="text-[10px] font-medium text-[#484F58] flex-1 truncate">{sg.name}</span>
+                                    <span className="text-[9px] text-[#30363D] flex-shrink-0">{sg.defs.length}</span>
+                                  </button>
+                                  {!collapsedCategories.has(subKey) && (
+                                    <div className="pl-2">
+                                      {sg.defs.map(def => <SidebarLeaf key={def.id} def={def} isSystem />)}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -1907,9 +1948,9 @@ export default function WorkflowListPage() {
       {/* ── Assign Category flyout ── */}
       {categoryDialog && (() => {
         const allCategories = [...new Set(
-          defs.filter(d => !d.metadata?.system).map(d => (d.metadata?.category as string | undefined) ?? deriveCategory(d.name))
+          defs.map(d => (d.metadata?.category as string | undefined)).filter((c): c is string => !!c)
         )].sort();
-        const currentCat = (categoryDialog.def.metadata?.category as string | undefined) ?? deriveCategory(categoryDialog.def.name);
+        const currentCat = (categoryDialog.def.metadata?.category as string | undefined) ?? "";
 
         const handleClose = () => setCategoryDialog(null);
         const handleSelect = (cat: string) => patchCategoryMut.mutate({ id: categoryDialog.def.id, category: cat });
@@ -1949,8 +1990,7 @@ export default function WorkflowListPage() {
                   allCategories.map(cat => {
                     const isSelected = cat === currentCat;
                     const count = defs.filter(d =>
-                      !d.metadata?.system &&
-                      ((d.metadata?.category as string | undefined) ?? deriveCategory(d.name)) === cat
+                      (d.metadata?.category as string | undefined) === cat
                     ).length;
                     return (
                       <button
