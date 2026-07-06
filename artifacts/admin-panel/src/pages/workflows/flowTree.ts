@@ -82,6 +82,11 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
    * Walk from startId WITHOUT modifying global visited.
    * Stops at nodes that have more than one incoming edge (merge/join points)
    * so that those nodes are NOT mistakenly included in a branch's node set.
+   *
+   * Note: the stop applies unconditionally — including the branch-start node
+   * itself. A branch-start with inEdgeCount > 1 is a shared join/merge point
+   * (e.g. both yes and no edges of a condition targeting the same continuation)
+   * and must NOT be collected into the branch set.
    */
   function localCollect(startId: string | null | undefined): Set<string> {
     if (!startId) return new Set();
@@ -90,9 +95,10 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
     while (queue.length > 0) {
       const id = queue.shift()!;
       if (collected.has(id) || visited.has(id)) continue;
-      // Stop at merge points (multiple incoming edges), but only after collecting
-      // at least one node so the branch start itself is always included
-      if (collected.size > 0 && (inEdgeCount.get(id) ?? 0) > 1) continue;
+      // Stop at merge/join points (multiple incoming edges) — no exception for
+      // the first node; a branch-start can itself be a join point when
+      // treeToGraph wired empty branches directly to the continuation.
+      if ((inEdgeCount.get(id) ?? 0) > 1) continue;
       collected.add(id);
       for (const e of outEdges.get(id) ?? []) {
         queue.push(e.target);
@@ -205,13 +211,27 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
       const yesSet = localCollect(yesEdge?.target);
       const noSet  = localCollect(noEdge?.target);
       let continuationId = findContinuation([yesSet, noSet]);
-      // Fallback: when both branches are empty (e.g. freshly inserted node with a
-      // plain outgoing edge), treat the plain edge as the continuation so the node
-      // that follows is still rendered in the parent sequence.
+
+      if (!continuationId) {
+        // treeToGraph wires empty branches with a direct yes/no edge to the
+        // continuation so it gets inEdgeCount ≥ 2 and localCollect stops there.
+        // When both localCollect sets are empty (or only contain the same node
+        // that already has multiple incoming edges), we detect the continuation
+        // by looking at the direct yes/no edge targets.
+        const directTargets = [yesEdge?.target, noEdge?.target]
+          .filter((t): t is string => !!t && !visited.has(t) && nodeMap.has(t));
+        // Prefer a node with multiple incoming edges (definitive join point)
+        for (const t of directTargets) {
+          if ((inEdgeCount.get(t) ?? 0) > 1) { continuationId = t; break; }
+        }
+      }
+      // Final fallback: plain outgoing edge (old format — freshly inserted node
+      // with no branch edges yet, or pre-fix workflow saved with both empty branches).
       if (!continuationId) {
         const plainEdge = out.find(e => !e.sourceHandle);
         if (plainEdge) continuationId = plainEdge.target;
       }
+
       const branchStop = new Set<string>([...(stopSet ?? []), ...(continuationId ? [continuationId] : [])]);
 
       step.branches = {
@@ -219,9 +239,11 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
         no:  noEdge  ? buildSequence(noEdge.target,  branchStop) : [],
       };
 
-      // Mark branch node sets as visited so they aren't re-rendered at a higher level
-      for (const id of yesSet) visited.add(id);
-      for (const id of noSet)  visited.add(id);
+      // Mark branch node sets as visited so they aren't re-rendered at a higher
+      // level.  Exclude nodes in branchStop (the continuation and any outer stop
+      // nodes) so they remain available for the main sequence.
+      for (const id of yesSet) if (!branchStop.has(id)) visited.add(id);
+      for (const id of noSet)  if (!branchStop.has(id)) visited.add(id);
 
       const result: FlowStep[] = [step];
       if (continuationId && !visited.has(continuationId) && !stopSet?.has(continuationId)) {
@@ -242,17 +264,31 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
 
       const branchSets = branchDefs.map(b => localCollect(b.targetId));
       let continuationId = findContinuation(branchSets);
-      // Fallback: when all branches are empty (e.g. freshly inserted node with a
-      // plain outgoing edge), treat the plain edge as the continuation.
+
+      if (!continuationId) {
+        // Same strategy as condition: treeToGraph emits direct case edges for
+        // empty branches so the continuation gets inEdgeCount ≥ 2.  Detect it
+        // by looking at direct branch-edge targets that are join points.
+        const directTargets = branchDefs
+          .map(b => b.targetId)
+          .filter((t): t is string => !!t && !visited.has(t) && nodeMap.has(t));
+        for (const t of directTargets) {
+          if ((inEdgeCount.get(t) ?? 0) > 1) { continuationId = t; break; }
+        }
+      }
+      // Final fallback: plain outgoing edge (old format).
       if (!continuationId) {
         const plainEdge = out.find(e => !e.sourceHandle);
         if (plainEdge) continuationId = plainEdge.target;
       }
+
       const branchStop = new Set<string>([...(stopSet ?? []), ...(continuationId ? [continuationId] : [])]);
 
       branchDefs.forEach((b, i) => {
         branches[b.key] = b.targetId ? buildSequence(b.targetId, branchStop) : [];
-        for (const id of branchSets[i]) visited.add(id);
+        // Exclude branchStop nodes (continuation) from visited marking so they
+        // remain available for the main sequence.
+        for (const id of branchSets[i]) if (!branchStop.has(id)) visited.add(id);
       });
       step.branches = branches;
 
@@ -377,19 +413,36 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         const { terminals: yesTerm, nextY: yEnd } = doLayout(yesSteps, leftX,  y, [{ id: step.id, handle: "yes" }]);
         const { terminals: noTerm,  nextY: nEnd } = doLayout(noSteps,  rightX, y, [{ id: step.id, handle: "no"  }]);
         y = Math.max(yEnd, nEnd) + 40;
-        // Only use a branch's terminals if the branch actually had steps.
-        // When a branch is empty, doLayout returns the incoming feeder (the
-        // condition's own yes/no handle) unchanged as its terminal. If we
-        // include that in feeders_, the next node gets a spurious "yes"/"no"
-        // edge from the condition itself — graphToTree then mis-reads the
-        // continuation node as living INSIDE the branch, collapsing all
-        // following steps into the condition block on re-render.
+
+        // Build feeders from non-empty branch terminals only.
         feeders_ = [
           ...(yesSteps.length > 0 ? yesTerm : []),
           ...(noSteps.length  > 0 ? noTerm  : []),
         ];
-        // If both branches are empty, condition itself feeds the next step plainly
-        if (feeders_.length === 0) feeders_ = [{ id: step.id }];
+
+        // For every empty branch, emit a direct yes/no edge from the condition
+        // to the continuation (the next step in the current sequence).  This
+        // gives the continuation inEdgeCount ≥ 2, so graphToTree's localCollect
+        // stops there on reload instead of sweeping it into the non-empty branch.
+        // The executor already handles yes/no edges correctly: an empty branch
+        // edge that points straight to the continuation is semantically correct
+        // (no work to do in that branch → jump immediately to the continuation).
+        const nextStepId = seqSteps[i + 1]?.id;
+        if (nextStepId) {
+          if (yesSteps.length === 0) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: nextStepId, sourceHandle: "yes" });
+          }
+          if (noSteps.length === 0) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: nextStepId, sourceHandle: "no" });
+          }
+          // When both branches are empty, the direct yes/no edges cover the
+          // connection to the next step — no plain feeder edge needed.
+          if (feeders_.length === 0) feeders_ = [];
+        } else {
+          // No next step (condition is last in this sequence): keep the plain
+          // feeder so the return value is consistent.
+          if (feeders_.length === 0) feeders_ = [{ id: step.id }];
+        }
       }
 
       // ── Switch / Case ──────────────────────────────────────────────────────
@@ -399,6 +452,7 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         const totalW = (n - 1) * BRANCH_W;
         let maxEndY = y;
         const allTerminals: Array<{ id: string; handle?: string }> = [];
+        const emptyBranchHandles: string[] = [];
 
         branchKeys.forEach((key, bi) => {
           const bSteps = step.branches![key] ?? [];
@@ -406,14 +460,25 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
           const handle = key === "__default__" ? "default" : `case-${key}`;
           const { terminals: bTerm, nextY: bEnd } = doLayout(bSteps, bx, y, [{ id: step.id, handle }]);
           maxEndY = Math.max(maxEndY, bEnd);
-          // Only include terminals from non-empty branches (same reason as
-          // the condition fix above — empty-branch doLayout returns the
-          // switch's own feeder handle as a terminal, which creates spurious
-          // case edges to the continuation node).
-          if (bSteps.length > 0) allTerminals.push(...bTerm);
+          if (bSteps.length > 0) {
+            allTerminals.push(...bTerm);
+          } else {
+            emptyBranchHandles.push(handle);
+          }
         });
         y = maxEndY + 40;
-        feeders_ = allTerminals.length > 0 ? allTerminals : [{ id: step.id }];
+
+        // For empty branches, emit direct handle edges to the continuation so
+        // it gets inEdgeCount ≥ 2 and graphToTree's localCollect stops there.
+        const nextStepId = seqSteps[i + 1]?.id;
+        if (nextStepId) {
+          for (const handle of emptyBranchHandles) {
+            allEdges.push({ id: newEdgeId(), source: step.id, target: nextStepId, sourceHandle: handle });
+          }
+          feeders_ = allTerminals.length > 0 ? allTerminals : [];
+        } else {
+          feeders_ = allTerminals.length > 0 ? allTerminals : [{ id: step.id }];
+        }
       }
     }
 

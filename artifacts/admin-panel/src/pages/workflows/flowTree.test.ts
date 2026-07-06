@@ -175,12 +175,137 @@ describe("graphToTree — If/Else (condition)", () => {
     expect(rt[2].id).toBe("cont");
   });
 
-  it("handles empty yes/no branches", () => {
+  it("handles empty yes/no branches (plain-edge fallback)", () => {
     const nodes: StoredNode[] = [node("cond", "condition"), node("cont", "action")];
     const edges: StoredEdge[] = [edge("e1", "cond", "cont")];
     const tree = graphToTree(nodes, edges);
     expect(tree[0].branches?.["yes"]).toEqual([]);
     expect(tree[0].branches?.["no"]).toEqual([]);
+  });
+
+  // ── Asymmetric condition tests (the regression) ──────────────────────────
+
+  it("asymmetric: yes=[A], no=[] — A stays inside yes-branch, cont is top-level", () => {
+    // Graph emitted by new treeToGraph for yes=[A], no=[]:
+    //   cond→(yes)A, cond→(no)cont, A→cont
+    // cont has inEdgeCount=2 so localCollect stops there.
+    const nodes: StoredNode[] = [
+      node("start", "start"),
+      node("cond",  "condition"),
+      node("yesA",  "action"),
+      node("cont",  "action"),
+    ];
+    const edges: StoredEdge[] = [
+      edge("e1", "start", "cond"),
+      edge("e2", "cond",  "yesA", "yes"),
+      edge("e3", "cond",  "cont", "no"),   // ← empty no-branch wired directly to cont
+      edge("e4", "yesA",  "cont"),
+    ];
+
+    const tree = graphToTree(nodes, edges);
+
+    expect(tree).toHaveLength(3); // start, cond, cont
+    const condStep = tree[1];
+    expect(condStep.nodeType).toBe("condition");
+    expect(condStep.branches?.["yes"]).toHaveLength(1);
+    expect(condStep.branches!["yes"][0].id).toBe("yesA");
+    expect(condStep.branches?.["no"]).toHaveLength(0);
+    expect(tree[2].id).toBe("cont");
+  });
+
+  it("asymmetric: yes=[], no=[B] — B stays inside no-branch, cont is top-level", () => {
+    const nodes: StoredNode[] = [
+      node("start", "start"),
+      node("cond",  "condition"),
+      node("noB",   "action"),
+      node("cont",  "action"),
+    ];
+    const edges: StoredEdge[] = [
+      edge("e1", "start", "cond"),
+      edge("e2", "cond",  "cont", "yes"),  // empty yes wired to cont
+      edge("e3", "cond",  "noB",  "no"),
+      edge("e4", "noB",   "cont"),
+    ];
+
+    const tree = graphToTree(nodes, edges);
+
+    expect(tree).toHaveLength(3);
+    const condStep = tree[1];
+    expect(condStep.branches?.["yes"]).toHaveLength(0);
+    expect(condStep.branches?.["no"]).toHaveLength(1);
+    expect(condStep.branches!["no"][0].id).toBe("noB");
+    expect(tree[2].id).toBe("cont");
+  });
+
+  it("round-trip asymmetric condition yes=[A], no=[] with continuation", () => {
+    // Build the tree directly and round-trip it through treeToGraph + graphToTree
+    const initialTree: FlowStep[] = [
+      { id: "start", nodeType: "start", data: { nodeType: "start", label: "start" } },
+      {
+        id: "cond",
+        nodeType: "condition",
+        data: { nodeType: "condition", label: "cond" },
+        branches: {
+          yes: [{ id: "yesA", nodeType: "action", data: { nodeType: "action", label: "yesA" } }],
+          no:  [],
+        },
+      },
+      { id: "cont", nodeType: "action", data: { nodeType: "action", label: "cont" } },
+      { id: "end",  nodeType: "end",    data: { nodeType: "end",    label: "end"  } },
+    ];
+
+    const rt = roundTrip(initialTree);
+
+    expect(rt).toHaveLength(4); // start, cond, cont, end
+    expect(rt[0].id).toBe("start");
+    expect(rt[1].id).toBe("cond");
+    expect(rt[1].branches?.["yes"]).toHaveLength(1);
+    expect(rt[1].branches!["yes"][0].id).toBe("yesA");
+    expect(rt[1].branches?.["no"]).toHaveLength(0);
+    expect(rt[2].id).toBe("cont");
+    expect(rt[3].id).toBe("end");
+  });
+
+  it("round-trip asymmetric condition yes=[], no=[B] with continuation", () => {
+    const initialTree: FlowStep[] = [
+      { id: "start", nodeType: "start", data: { nodeType: "start", label: "start" } },
+      {
+        id: "cond",
+        nodeType: "condition",
+        data: { nodeType: "condition", label: "cond" },
+        branches: {
+          yes: [],
+          no:  [{ id: "noB", nodeType: "action", data: { nodeType: "action", label: "noB" } }],
+        },
+      },
+      { id: "cont", nodeType: "action", data: { nodeType: "action", label: "cont" } },
+      { id: "end",  nodeType: "end",    data: { nodeType: "end",    label: "end"  } },
+    ];
+
+    const rt = roundTrip(initialTree);
+
+    expect(rt).toHaveLength(4);
+    expect(rt[1].id).toBe("cond");
+    expect(rt[1].branches?.["yes"]).toHaveLength(0);
+    expect(rt[1].branches?.["no"]).toHaveLength(1);
+    expect(rt[1].branches!["no"][0].id).toBe("noB");
+    expect(rt[2].id).toBe("cont");
+    expect(rt[3].id).toBe("end");
+  });
+
+  it("round-trip both-empty condition with continuation", () => {
+    const initialTree: FlowStep[] = [
+      { id: "cond", nodeType: "condition", data: { nodeType: "condition", label: "cond" }, branches: { yes: [], no: [] } },
+      { id: "cont", nodeType: "action",    data: { nodeType: "action",    label: "cont" } },
+    ];
+
+    const rt = roundTrip(initialTree);
+
+    expect(rt).toHaveLength(2);
+    expect(rt[0].id).toBe("cond");
+    expect(rt[0].branches?.["yes"]).toHaveLength(0);
+    expect(rt[0].branches?.["no"]).toHaveLength(0);
+    expect(rt[1].id).toBe("cont");
   });
 });
 
