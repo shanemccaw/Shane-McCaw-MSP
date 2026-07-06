@@ -1391,7 +1391,15 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
   }
 
   try {
-    // Read all groups and rules from dev
+    // Read all custom signals, groups, and rules from dev
+    const devCustomRows = await db.execute(sql`
+      SELECT key, label, description, expected_impact, is_adjustment
+      FROM custom_signals ORDER BY created_at ASC
+    `);
+    const devCustomSignals = devCustomRows.rows as Array<{
+      key: string; label: string; description: string; expected_impact: string; is_adjustment: boolean;
+    }>;
+
     const devGroupRows = await db.execute(sql`
       SELECT id, signal_key, logic, label, sort_order
       FROM signal_rule_groups ORDER BY signal_key, sort_order, id
@@ -1419,8 +1427,19 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
       await client.query("DELETE FROM signal_derivation_rules");
       // 2. Delete all existing prod groups
       await client.query("DELETE FROM signal_rule_groups");
+      // 3. Delete all existing prod custom signals
+      await client.query("DELETE FROM custom_signals");
 
-      // 3. Insert groups, capturing dev id → prod id mapping
+      // 4. Insert custom signals
+      for (const cs of devCustomSignals) {
+        await client.query(
+          `INSERT INTO custom_signals (key, label, description, expected_impact, is_adjustment)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [cs.key, cs.label, cs.description, cs.expected_impact, cs.is_adjustment]
+        );
+      }
+
+      // 5. Insert groups, capturing dev id → prod id mapping
       const groupIdMap = new Map<number, number>();
       for (const g of devGroups) {
         const result = await client.query(
@@ -1432,7 +1451,7 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
         groupIdMap.set(g.id, newId);
       }
 
-      // 4. Insert rules with remapped group IDs
+      // 6. Insert rules with remapped group IDs
       for (const r of devRules) {
         const prodGroupId = r.group_id != null ? (groupIdMap.get(r.group_id) ?? null) : null;
         await client.query(
@@ -1451,8 +1470,11 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (_req: Re
       await prodPool.end();
     }
 
-    logger.info({ groups: devGroups.length, rules: devRules.length }, "signal-rules: published to prod");
-    res.json({ ok: true, groups: devGroups.length, rules: devRules.length });
+    logger.info(
+      { customSignals: devCustomSignals.length, groups: devGroups.length, rules: devRules.length },
+      "signal-rules: published to prod",
+    );
+    res.json({ ok: true, customSignals: devCustomSignals.length, groups: devGroups.length, rules: devRules.length });
   } catch (err) {
     logger.error({ err }, "signal-rules: publish-to-prod failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
