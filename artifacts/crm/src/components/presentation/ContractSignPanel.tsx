@@ -46,6 +46,13 @@ interface ContractSignPanelProps {
   adjustmentsTotal?: number;
   adjustmentLines?: AdjustmentLine[];
   totalPrice: number;
+  /**
+   * Pre-discount subtotal used as the "Workstream Subtotal" in the pricing table.
+   * Needed for the "percentage_off" PAY-TODAY variant where totalPrice is already
+   * the discounted amount and the per-phase prices still sum to the original total.
+   * Defaults to `totalPrice` when omitted (preserving the adjustments_waived behaviour).
+   */
+  preDiscountTotal?: number;
   onChangeName: (name: string) => void;
   onSign: (signatureData: string, signerName: string) => Promise<void>;
   signing: boolean;
@@ -75,6 +82,7 @@ export default function ContractSignPanel({
   adjustmentsTotal = 0,
   adjustmentLines = [],
   totalPrice,
+  preDiscountTotal,
   onChangeName,
   onSign,
   signing,
@@ -86,6 +94,10 @@ export default function ContractSignPanel({
   waivedAdjustmentsTotal = 0,
   waivedAdjustmentLines = [],
 }: ContractSignPanelProps) {
+  // For the "percentage_off" variant, per-phase prices sum to the pre-discount total,
+  // not to totalPrice (the discounted final amount). `workstreamSubtotal` is used in
+  // the "Workstream Subtotal" row so the table stays internally consistent.
+  const workstreamSubtotal = preDiscountTotal ?? totalPrice;
   const agreementBody = contractBody ?? DEFAULT_AGREEMENT_BODY;
   const sigPad = useRef<SignatureCanvas | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
@@ -179,7 +191,7 @@ export default function ContractSignPanel({
                         </td>
                         {showPhasedSchedule && <td className="py-1.5 pr-4" />}
                         <td className="py-1.5 text-right font-semibold text-[#0A2540]">
-                          {formatCurrency(totalPrice)}
+                          {formatCurrency(workstreamSubtotal)}
                         </td>
                       </tr>
                       <tr>

@@ -490,11 +490,18 @@ export default function PresentationFlow({
   // Pre-checkout: the offer discount applies when the client has actively selected "Pay in Full"
   // and the offer window is still open. This lets the Agreement page mirror exactly what the
   // Payment Options page showed, so there is no jarring price jump between the two steps.
+  // No `adjustmentsTotal > 0` guard: the "percentage_off" variant discounts the base price
+  // directly and is equally valid even when there are no adjustment line items.
   const preCheckoutOfferApplies =
     offerIsLive &&
     selectedPlan === "full" &&
-    (data.adjustmentsTotal ?? 0) > 0 &&
-    offer?.discountedTotal != null;
+    offer?.discountedTotal != null &&
+    offer.discountedTotal < effectivePrice;
+
+  // Dollar amount saved by the PAY-TODAY offer before checkout.
+  const preCheckoutSavings = preCheckoutOfferApplies
+    ? Math.round((effectivePrice - offer!.discountedTotal) * 100) / 100
+    : 0;
 
   // Contract step shows the actual price paid:
   //  1. Post-checkout: use server-confirmed discountedTotalCents
@@ -532,10 +539,38 @@ export default function PresentationFlow({
   // This covers both the post-checkout case (discountedTotalCents set by server after Stripe)
   // and the pre-checkout case (offer live + client selected full payment).
   const contractAdjustmentsWaived =
-    (data.discountedTotalCents != null && (data.adjustmentsTotal ?? 0) > 0) ||
+    (data.discountedTotalCents != null &&
+      Math.round(data.discountedTotalCents) < Math.round(effectivePrice * 100)) ||
     preCheckoutOfferApplies;
   const contractAdjustmentsTotal = contractAdjustmentsWaived ? 0 : (data.adjustmentsTotal ?? 0);
   const contractAdjustmentLines  = contractAdjustmentsWaived ? [] : (data.adjustmentLines ?? []);
+
+  // For the "percentage_off" variant the per-phase prices sum to effectivePrice (the
+  // undiscounted base), not to contractPrice (which is the discounted total). We pass
+  // `preDiscountTotal` so ContractSignPanel can use it as the "Workstream Subtotal"
+  // and the table adds up correctly before the discount deduction row.
+  const contractPreDiscountTotal =
+    preCheckoutOfferApplies && offer?.variant === "percentage_off"
+      ? effectivePrice
+      : undefined;
+
+  // Waived amounts/lines for the contract breakdown. For "percentage_off" the discount
+  // is a synthetic line item (not an existing adjustment). For "adjustments_waived" we
+  // reuse the existing adjustment lines (which are the ones being waived).
+  const contractWaivedTotal = contractAdjustmentsWaived
+    ? (preCheckoutOfferApplies && offer?.variant === "percentage_off"
+        ? preCheckoutSavings
+        : (data.adjustmentsTotal ?? 0))
+    : 0;
+  const contractWaivedLines = contractAdjustmentsWaived
+    ? (preCheckoutOfferApplies && offer?.variant === "percentage_off"
+        ? [{
+            title: `Pay Today Discount (${(offer!.discountPct ?? 0).toFixed(0)}% off)`,
+            description: "Limited-time pay-in-full discount",
+            price: preCheckoutSavings,
+          }]
+        : (data.adjustmentLines ?? []))
+    : [];
 
   // Aggregate stats for the Overview teaser cards — uses the same per-family
   // extractors as DocumentPanel's OMG panel so both surfaces show identical numbers.
@@ -2063,6 +2098,7 @@ export default function PresentationFlow({
                   adjustmentsTotal={contractAdjustmentsTotal}
                   adjustmentLines={contractAdjustmentLines}
                   totalPrice={contractPrice}
+                  preDiscountTotal={contractPreDiscountTotal}
                   onChangeName={setSignerName}
                   onSign={handleSign}
                   signing={signing}
@@ -2071,8 +2107,8 @@ export default function PresentationFlow({
                   scopedSowHtml={scopedDocMatchesSelection ? scopedSowDoc : null}
                   onReady={handleStepReady}
                   selectedPlan={selectedPlan}
-                  waivedAdjustmentsTotal={contractAdjustmentsWaived ? (data.adjustmentsTotal ?? 0) : 0}
-                  waivedAdjustmentLines={contractAdjustmentsWaived ? (data.adjustmentLines ?? []) : []}
+                  waivedAdjustmentsTotal={contractWaivedTotal}
+                  waivedAdjustmentLines={contractWaivedLines}
                 />
               </div>
             )}
