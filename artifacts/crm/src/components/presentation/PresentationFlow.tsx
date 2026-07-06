@@ -1155,10 +1155,14 @@ export default function PresentationFlow({
   };
 
   const goPrev = () => {
-    if (stepIndex > 0) {
-      directionRef.current = "back";
-      applyStepChange(stepIndex - 1);
+    if (stepIndex <= 0) return;
+    directionRef.current = "back";
+    // Back from Payment Options skips Building Plan and returns to Scope & Pricing.
+    if (currentStep?.kind === "payment") {
+      const sowIdx = steps.findIndex(s => s.kind === "sow");
+      if (sowIdx >= 0) { applyStepChange(sowIdx); return; }
     }
+    applyStepChange(stepIndex - 1);
   };
 
   const navigateToStep = (i: number) => {
