@@ -62,7 +62,7 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
-import { computeTenantSignals } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride } from "./tenant-signals";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -1281,21 +1281,11 @@ async function executeNode(
                 const rawPresId = payload.presentationId;
                 const presId = typeof rawPresId === "number" ? rawPresId
                   : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
-                const sowSignalsOverride: Set<string> | undefined = (() => {
-                  const overrideField = (node.data.signalsOverride as string | undefined)?.trim();
-                  if (!overrideField) return undefined;
-                  // Resolve the configured expression first (e.g. "{{signals}}" or "{{steps.n8.signals}}")
-                  try {
-                    const resolved = interp(overrideField, payload);
-                    if (resolved) {
-                      const parsed = JSON.parse(resolved) as unknown;
-                      if (Array.isArray(parsed)) return new Set<string>(parsed as string[]);
-                    }
-                  } catch { /* not a valid JSON array */ }
-                  // Fallback: use raw payload.signals array when interp doesn't yield a JSON array
-                  if (Array.isArray(payload.signals)) return new Set<string>(payload.signals as string[]);
-                  return undefined;
-                })();
+                const sowSignalsOverride = resolveSignalsOverride(
+                  node.data.signalsOverride as string | undefined,
+                  payload,
+                  interp,
+                );
                 const sowResult = await generateConsolidatedSowDocument({
                   clientUserId,
                   projectId: !isNaN(projectId) ? projectId : null,
@@ -6065,9 +6055,12 @@ export async function executeWorkflowRun(
         continue;
       }
 
-      // Normal: all outgoing edges are active
+      // Normal: non-error outgoing edges are active; onError/error edges are inactive on success
+      // (they are only activated by the nodeError path above so the retry node is never
+      // queued when the source node succeeds on its first attempt).
       for (const e of graph.edges.filter(edge => edge.source === nodeId)) {
-        resolveEdge(e.target, true);
+        const isErrorEdge = e.sourceHandle === "error" || e.sourceHandle === "onError";
+        resolveEdge(e.target, !isErrorEdge);
       }
     }
 

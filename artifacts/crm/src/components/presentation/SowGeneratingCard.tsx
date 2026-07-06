@@ -10,7 +10,8 @@ const STAGES = [
 
 const DELAYS = [0, 25000, 55000, 95000, 150000];
 
-const STALL_POLL_MS = 60 * 1000;
+const STALL_POLL_MS    = 60 * 1000;
+const STALL_UI_DELAY_MS = 2 * 60 * 1000; // show "Taking longer…" only after 2 min
 
 interface Props {
   clientName: string | null | undefined;
@@ -39,9 +40,9 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
   }, []);
 
   useEffect(() => {
-    const fireStall = () => {
-      if (!stalledFired.current) setIsStalled(true);
-      stalledFired.current = true;
+    // Fire the stall-check POST immediately and every 60 s so the server can
+    // trigger a retry run — this is independent of what the user sees.
+    const firePost = () => {
       const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
       void fetchFn(`/api/portal/presentations/${presentationId}/sow-stall-check${tokenParam}`, {
         method: "POST",
@@ -49,9 +50,19 @@ export default function SowGeneratingCard({ clientName, projectTitle, presentati
       }).catch(() => {});
     };
 
-    fireStall();
-    const interval = setInterval(fireStall, STALL_POLL_MS);
-    return () => clearInterval(interval);
+    firePost();
+    const pollInterval = setInterval(firePost, STALL_POLL_MS);
+
+    // Only show "Taking longer than usual" after the 2-min threshold has elapsed.
+    const stallUiTimer = setTimeout(() => {
+      if (!stalledFired.current) setIsStalled(true);
+      stalledFired.current = true;
+    }, STALL_UI_DELAY_MS);
+
+    return () => {
+      clearInterval(pollInterval);
+      clearTimeout(stallUiTimer);
+    };
   }, [presentationId, shareToken, fetchFn]);
 
   const progressPct =

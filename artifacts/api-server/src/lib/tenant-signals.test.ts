@@ -24,10 +24,31 @@ import { describe, it, expect } from "vitest";
 import {
   computeTenantSignals,
   projectMatchesSignals,
+  resolveSignalsOverride,
   TENANT_SIGNALS,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
+
+// ── minimal interp mock ───────────────────────────────────────────────────────
+// Mirrors the top-level substitution that workflow-executor's `interp` does for
+// single-key templates (e.g. "{{signals}}", "{{steps.n8.signals}}").
+// Nested dot-path lookup is omitted — tests that need it supply their own mock.
+function mockInterp(template: string, payload: Record<string, unknown>): string | undefined {
+  // Replace every {{key}} token with JSON.stringify(payload[key]).
+  // Key segments may contain hyphens (e.g. "node-101") in addition to word chars.
+  const result = template.replace(/\{\{([\w-]+(?:\.[\w-]+)*)\}\}/g, (_, keyPath: string) => {
+    const parts = keyPath.split(".");
+    let cur: unknown = payload;
+    for (const part of parts) {
+      if (cur == null || typeof cur !== "object") return `{{${keyPath}}}`;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur !== undefined ? JSON.stringify(cur) : `{{${keyPath}}}`;
+  });
+  // Return undefined when the template contained no resolvable tokens
+  return result === template && template.startsWith("{{") ? undefined : result;
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -513,65 +534,199 @@ describe("signalsOverride parity — fast-path produces identical project filter
   });
 });
 
-// ── get_tenant_signals dry-run output shape ───────────────────────────────────
+// ── resolveSignalsOverride — integration tests ────────────────────────────────
 //
-// The dry-run path in workflow-executor returns a hardcoded stub output.
-// Confirm its shape matches what downstream nodes (SOW generator) expect.
+// These tests exercise the exact code path that runs inside
+// generate_document(consolidated_sow) when a preceding get_tenant_signals node
+// has populated payload.signals.
+//
+// Contract: workflow config carries `signalsOverride: "{{signals}}"`.
+// At runtime the executor interpolates that template against the payload
+// to produce a JSON-serialised array, then parses it into a Set<string> that
+// is passed to generateConsolidatedSowDocument as `signalsOverride`.
+//
+// By testing resolveSignalsOverride with a mock interpolator we exercise the
+// real integration seam (template → JSON parse → Set construction) without
+// requiring the DB or Claude.
 
-describe("get_tenant_signals dry-run output shape", () => {
-  it("dry-run output has the expected keys for downstream signal-gated SOW nodes", () => {
-    // The dry-run stub from workflow-executor.ts:
-    // { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true }
-    const dryRunOutput = {
+describe("resolveSignalsOverride — template interpolation path", () => {
+  // Simulated output of a preceding get_tenant_signals node
+  const gtsNodeOutput = {
+    dryRun: false,
+    signals: ["alwaysInclude", "hasGovernanceGaps", "hasSecurityGaps"],
+    signalCount: 3,
+    hasSignals: true,
+  };
+
+  it("resolves {{signals}} template to a Set containing every upstream signal", () => {
+    const override = resolveSignalsOverride("{{signals}}", gtsNodeOutput as unknown as Record<string, unknown>, mockInterp);
+    expect(override).toBeInstanceOf(Set);
+    expect(override!.has("alwaysInclude")).toBe(true);
+    expect(override!.has("hasGovernanceGaps")).toBe(true);
+    expect(override!.has("hasSecurityGaps")).toBe(true);
+    expect(override!.size).toBe(3);
+  });
+
+  it("resolves nested steps template {{steps.node101.signals}} via dot-path interpolation", () => {
+    const payload: Record<string, unknown> = {
+      steps: { "node-101": { signals: ["alwaysInclude", "teams-lifecycle"], signalCount: 2 } },
+    };
+    const override = resolveSignalsOverride(
+      "{{steps.node-101.signals}}",
+      payload,
+      mockInterp,
+    );
+    expect(override).toBeInstanceOf(Set);
+    expect(override!.has("alwaysInclude")).toBe(true);
+    expect(override!.has("teams-lifecycle")).toBe(true);
+    expect(override!.size).toBe(2);
+  });
+
+  it("falls back to payload.signals array when interp returns a non-JSON string", () => {
+    const payload: Record<string, unknown> = {
+      signals: ["alwaysInclude", "hasLicensingWaste"],
+    };
+    // interp that deliberately fails to resolve the template
+    const brokenInterp = (_t: string, _p: Record<string, unknown>) => "not-valid-json";
+    const override = resolveSignalsOverride("{{signals}}", payload, brokenInterp);
+    expect(override).toBeInstanceOf(Set);
+    expect(override!.has("alwaysInclude")).toBe(true);
+    expect(override!.has("hasLicensingWaste")).toBe(true);
+  });
+
+  it("falls back to payload.signals when interp returns undefined", () => {
+    const payload: Record<string, unknown> = {
+      signals: ["alwaysInclude", "external-governance"],
+    };
+    const returnsUndefined = (_t: string, _p: Record<string, unknown>): string | undefined => undefined;
+    const override = resolveSignalsOverride("{{signals}}", payload, returnsUndefined);
+    expect(override).toBeInstanceOf(Set);
+    expect(override!.has("external-governance")).toBe(true);
+  });
+
+  it("returns undefined when field is empty", () => {
+    expect(resolveSignalsOverride("", {}, mockInterp)).toBeUndefined();
+    expect(resolveSignalsOverride("  ", {}, mockInterp)).toBeUndefined();
+    expect(resolveSignalsOverride(undefined, {}, mockInterp)).toBeUndefined();
+  });
+
+  it("returns undefined when interp cannot resolve and payload.signals is absent", () => {
+    const returnsUndefined = (_t: string, _p: Record<string, unknown>): string | undefined => undefined;
+    const override = resolveSignalsOverride("{{signals}}", {}, returnsUndefined);
+    expect(override).toBeUndefined();
+  });
+
+  it("ignores a literal JSON array in the field (no interpolation needed)", () => {
+    const override = resolveSignalsOverride(
+      '["alwaysInclude","hasGovernanceGaps"]',
+      {},
+      // interp called but no {{}} tokens — returns the literal string unchanged
+      (t) => t,
+    );
+    expect(override).toBeInstanceOf(Set);
+    expect(override!.has("alwaysInclude")).toBe(true);
+    expect(override!.has("hasGovernanceGaps")).toBe(true);
+  });
+});
+
+// ── End-to-end: get_tenant_signals output → resolveSignalsOverride → projectMatchesSignals ──
+//
+// This is the full node-to-node data path:
+//   get_tenant_signals node output (as payload)
+//   → generate_document node resolveSignalsOverride("{{signals}}", payload, interp)
+//   → generateConsolidatedSowDocument(signalsOverride) → projectMatchesSignals per project
+//
+// Asserts PARITY: the Set produced from the upstream node output must gate
+// projects identically to the same Set built directly from computeTenantSignals.
+
+describe("resolveSignalsOverride — get_tenant_signals → generate_document parity", () => {
+  // Shared project catalogue
+  const projects = [
+    { title: "Foundation Assessment",  triggeredBy: ["alwaysInclude"] },
+    { title: "Governance Remediation", triggeredBy: ["hasGovernanceGaps"] },
+    { title: "Security Remediation",   triggeredBy: ["hasSecurityGaps"] },
+    { title: "Teams Lifecycle",        triggeredBy: ["teams-lifecycle"] },
+    { title: "Licensing Optimisation", triggeredBy: ["hasLicensingWaste"] },
+  ];
+
+  function filterProjects(fired: Set<string>) {
+    return projects
+      .filter(p => projectMatchesSignals(p, ALL_KNOWN_KEYS, fired).included)
+      .map(p => p.title);
+  }
+
+  it("signalsOverride resolved from {{signals}} payload matches direct DB-evaluation path", () => {
+    // Simulate what get_tenant_signals produces for a tenant with governance gaps + waste
+    const { firedSignals } = computeTenantSignals(
+      { hasGovernanceIssues: true, hasLicensingWaste: true },
+      [],
+      [
+        makeRule({ id: 1, signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "hasGovernanceIssues", groupId: null, compareValue: null }),
+        makeRule({ id: 2, signalKey: "hasLicensingWaste",  ruleType: "profile_key_truthy", sourceKey: "hasLicensingWaste",  groupId: null, compareValue: null }),
+      ],
+      [],
+    );
+
+    // DB path: the firedSignals Set is passed directly
+    const dbPathTitles = filterProjects(firedSignals);
+
+    // Workflow path: get_tenant_signals serialises the Set to an array in its output
+    const gtsOutput: Record<string, unknown> = {
+      signals: [...firedSignals],
+      signalCount: firedSignals.size,
+      hasSignals: firedSignals.size > 1,
+    };
+    // generate_document resolves "{{signals}}" against the payload produced by get_tenant_signals
+    const signalsOverride = resolveSignalsOverride("{{signals}}", gtsOutput, mockInterp);
+
+    const workflowPathTitles = filterProjects(signalsOverride!);
+
+    // Both paths must produce the same project list
+    expect(workflowPathTitles.sort()).toEqual(dbPathTitles.sort());
+    expect(workflowPathTitles).toContain("Foundation Assessment"); // alwaysInclude always fires
+    expect(workflowPathTitles).toContain("Governance Remediation");
+    expect(workflowPathTitles).toContain("Licensing Optimisation");
+    expect(workflowPathTitles).not.toContain("Security Remediation");
+    expect(workflowPathTitles).not.toContain("Teams Lifecycle");
+  });
+
+  it("when no substantive signals fire, both paths include only alwaysInclude projects", () => {
+    // Tenant with clean profile — only alwaysInclude fires
+    const { firedSignals } = computeTenantSignals({}, [], [], []);
+
+    const dbPathTitles      = filterProjects(firedSignals);
+    const gtsOutput: Record<string, unknown> = { signals: [...firedSignals] };
+    const signalsOverride   = resolveSignalsOverride("{{signals}}", gtsOutput, mockInterp);
+    const workflowPathTitles = filterProjects(signalsOverride!);
+
+    expect(workflowPathTitles.sort()).toEqual(dbPathTitles.sort());
+    expect(workflowPathTitles).toEqual(["Foundation Assessment"]); // only alwaysInclude project
+  });
+
+  it("dry-run: executor get_tenant_signals stub passes through resolveSignalsOverride correctly", () => {
+    // The executor's dry-run return for get_tenant_signals is hardcoded as:
+    //   { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true }
+    // Confirm this stub flows through resolveSignalsOverride to the correct project gate.
+    const DRY_RUN_GTS_OUTPUT: Record<string, unknown> = {
       dryRun: true,
       signals: ["alwaysInclude", "hasGovernanceGaps"],
       signalCount: 2,
       hasSignals: true,
     };
 
-    expect(dryRunOutput.dryRun).toBe(true);
-    expect(Array.isArray(dryRunOutput.signals)).toBe(true);
-    expect(typeof dryRunOutput.signalCount).toBe("number");
-    expect(typeof dryRunOutput.hasSignals).toBe("boolean");
+    const signalsOverride = resolveSignalsOverride("{{signals}}", DRY_RUN_GTS_OUTPUT, mockInterp);
 
-    // The SOW generator receives signals as an array and converts to Set<string>
-    const signalsOverrideFromDryRun = new Set<string>(dryRunOutput.signals);
-    expect(signalsOverrideFromDryRun.has("alwaysInclude")).toBe(true);
-    expect(signalsOverrideFromDryRun.has("hasGovernanceGaps")).toBe(true);
+    expect(signalsOverride).toBeInstanceOf(Set);
+    expect(signalsOverride!.size).toBe(2);
+    expect(signalsOverride!.has("alwaysInclude")).toBe(true);
+    expect(signalsOverride!.has("hasGovernanceGaps")).toBe(true);
 
-    // Confirm that a project gated on hasGovernanceGaps would be included
-    const { included } = projectMatchesSignals(
-      { title: "Governance Remediation", triggeredBy: ["hasGovernanceGaps"] },
-      ALL_KNOWN_KEYS,
-      signalsOverrideFromDryRun,
-    );
-    expect(included).toBe(true);
-  });
-
-  it("dry-run signals can gate a project via signalsOverride — exercises the full dry-run → SOW path", () => {
-    // Simulate the full signal → SOW generation chain in dry-run mode:
-    // 1. get_tenant_signals returns dry-run stub
-    // 2. SOW generator receives signals as signalsOverride
-    // 3. projectMatchesSignals gates the project list
-
-    const dryRunSignals = ["alwaysInclude", "hasGovernanceGaps"];
-    const signalsOverride = new Set<string>(dryRunSignals);
-
-    const projects = [
-      { title: "Foundation Assessment",  triggeredBy: ["alwaysInclude"] },
-      { title: "Governance Remediation", triggeredBy: ["hasGovernanceGaps"] },
-      { title: "Security Remediation",   triggeredBy: ["hasSecurityGaps"] },   // NOT in dry-run signals
-    ];
-
-    const filtered = projects.filter(p => {
-      const { included } = projectMatchesSignals(p, ALL_KNOWN_KEYS, signalsOverride);
-      return included;
-    });
-
-    const titles = filtered.map(p => p.title);
-    expect(titles).toContain("Foundation Assessment");   // alwaysInclude fires
-    expect(titles).toContain("Governance Remediation");  // hasGovernanceGaps fires
-    expect(titles).not.toContain("Security Remediation"); // hasSecurityGaps NOT in dry-run set
-    expect(filtered.length).toBe(2);
+    const titles = filterProjects(signalsOverride!);
+    expect(titles).toContain("Foundation Assessment");   // alwaysInclude
+    expect(titles).toContain("Governance Remediation");  // hasGovernanceGaps
+    expect(titles).not.toContain("Security Remediation"); // hasSecurityGaps NOT in stub
+    expect(titles).not.toContain("Teams Lifecycle");
+    expect(titles).not.toContain("Licensing Optimisation");
+    expect(titles.length).toBe(2);
   });
 });

@@ -396,3 +396,47 @@ export function projectMatchesSignals(
     reason: `Requires signal(s): ${recognizedTriggers.join(", ")} — none fired for this tenant`,
   };
 }
+
+/**
+ * resolveSignalsOverride
+ *
+ * Pure extraction of the signalsOverride resolution path used by the
+ * `generate_document(consolidated_sow)` executor node.
+ *
+ * When a workflow chains `get_tenant_signals → generate_document`, the
+ * generate_document node config carries `signalsOverride: "{{signals}}"`.
+ * At runtime the executor interpolates that template against the current
+ * payload, producing a JSON-serialised string such as
+ * `'["alwaysInclude","hasGovernanceGaps"]'`.  This function handles the
+ * parse + fallback steps so they can be tested independently of the DB
+ * and Claude dependencies of the executor.
+ *
+ * Resolution order:
+ *  1. Interpolate `field` via `interpFn` → parse as JSON array → return Set
+ *  2. Fallback: use `payload.signals` directly when interp doesn't yield a JSON array
+ *  3. Return `undefined` when field is empty/absent
+ *
+ * @param field      The raw template string from `node.data.signalsOverride`
+ *                   (e.g. `"{{signals}}"` or a literal JSON array).
+ * @param payload    The live workflow payload (contains `signals` from a
+ *                   prior `get_tenant_signals` node output).
+ * @param interpFn   Template interpolator — matches the executor's `interp`
+ *                   signature; in tests pass a simple mock.
+ */
+export function resolveSignalsOverride(
+  field: string | undefined,
+  payload: Record<string, unknown>,
+  interpFn: (template: string, payload: Record<string, unknown>) => string | undefined,
+): Set<string> | undefined {
+  const overrideField = field?.trim();
+  if (!overrideField) return undefined;
+  try {
+    const resolved = interpFn(overrideField, payload);
+    if (resolved) {
+      const parsed = JSON.parse(resolved) as unknown;
+      if (Array.isArray(parsed)) return new Set<string>(parsed as string[]);
+    }
+  } catch { /* not a valid JSON array — fall through to payload.signals */ }
+  if (Array.isArray(payload.signals)) return new Set<string>(payload.signals as string[]);
+  return undefined;
+}
