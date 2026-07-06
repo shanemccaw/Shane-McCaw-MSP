@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { Plus, Download, Trash2, Eye, EyeOff, Lock, Copy } from "lucide-react";
+import { Plus, Download, Trash2, Eye, EyeOff, Lock, Copy, Upload, Loader2 } from "lucide-react";
 import { useServices, useDeleteService, useUpdateService, useCreateService, type ServiceRow } from "@/hooks/useServices";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -44,6 +45,7 @@ interface Props {
 
 export default function ServicesList({ onEdit, onCreate }: Props) {
   const { toast } = useToast();
+  const { fetchWithAuth } = useAuth();
   const { data: services = [], isLoading } = useServices();
   const deleteService = useDeleteService();
   const updateService = useUpdateService();
@@ -56,6 +58,21 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
   const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
   const [sortCol, setSortCol] = useState<"name" | "category" | "price" | "visibility" | "updatedAt">("updatedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [publishingToProd, setPublishingToProd] = useState(false);
+
+  async function handlePublishToProd() {
+    setPublishingToProd(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/services/publish-to-prod", { method: "POST" });
+      const body = await res.json() as { ok?: boolean; upserted?: number; removed?: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Failed to publish");
+      toast({ title: "Published to production", description: `${body.upserted ?? 0} service(s) synced, ${body.removed ?? 0} removed.` });
+    } catch (err) {
+      toast({ title: "Publish failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setPublishingToProd(false);
+    }
+  }
 
   const categories = useMemo(
     () => [...new Set(services.map(s => s.category).filter(Boolean) as string[])].sort(),
@@ -201,6 +218,11 @@ export default function ServicesList({ onEdit, onCreate }: Props) {
               className="flex items-center gap-1.5 border border-[#30363D] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
               <Download className="w-3.5 h-3.5" />
               {selected.size > 0 ? `Export ${selected.size}` : "Export CSV"}
+            </button>
+            <button type="button" onClick={() => { void handlePublishToProd(); }} disabled={publishingToProd}
+              className="flex items-center gap-1.5 border border-[#30363D] text-[#C9D1D9] hover:border-emerald-500/40 hover:text-emerald-400 bg-[#1C2128] px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-40 transition-colors">
+              {publishingToProd ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+              Publish to Prod
             </button>
             <button type="button" onClick={onCreate}
               className="flex items-center gap-1.5 bg-[#0078D4] hover:bg-[#006CBE] text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">

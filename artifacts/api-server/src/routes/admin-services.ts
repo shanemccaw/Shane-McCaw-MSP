@@ -337,4 +337,123 @@ router.get("/admin/services/:id/overview-pdf", requireAdmin, async (req: Request
   }
 });
 
+// ─── POST /api/admin/services/publish-to-prod ────────────────────────────────
+// Syncs all service catalog rows from dev to prod. Matches by slug (when present)
+// then by name. Deletes prod services not matched by any dev service.
+// Intentionally skips workflow_template_id (FK IDs differ between envs) and
+// overview_pdf_key / overview_pdf_generated_at (disk-local file references).
+
+router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Request, res: Response) => {
+  const { isProdDbConfigured, buildProdDb } = await import("../lib/prod-db.ts");
+  if (!isProdDbConfigured()) {
+    res.status(503).json({ error: "Production database is not configured. Set DATABASE_URL_PROD in Replit Secrets." });
+    return;
+  }
+
+  try {
+    const devServices = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder);
+
+    const { pool: prodPool } = buildProdDb();
+    const client = await prodPool.connect();
+    let upserted = 0;
+    let removed = 0;
+
+    try {
+      await client.query("BEGIN");
+
+      // Index prod services by slug and name for matching
+      const prodRows = await client.query("SELECT id, slug, name FROM services");
+      const prodBySlug = new Map<string, number>();
+      const prodByName = new Map<string, number>();
+      for (const r of prodRows.rows as Array<{ id: number; slug: string | null; name: string }>) {
+        if (r.slug) prodBySlug.set(r.slug, r.id);
+        prodByName.set(r.name, r.id);
+      }
+
+      const touchedProdIds = new Set<number>();
+
+      for (const s of devServices) {
+        const prodId: number | undefined =
+          (s.slug ? prodBySlug.get(s.slug) : undefined) ?? prodByName.get(s.name);
+
+        const cols = [
+          s.slug, s.name, s.description, s.category,
+          JSON.stringify(s.deliverables ?? []),
+          s.price, s.basePrice, s.maxPrice,
+          s.orderWorkflow != null ? JSON.stringify(s.orderWorkflow) : null,
+          s.durationDays, s.turnaround, s.billingType,
+          s.isPublic, s.visibility, s.serviceType, s.tagline, s.targetAudience,
+          s.inclusions != null ? JSON.stringify(s.inclusions) : null,
+          s.features != null ? JSON.stringify(s.features) : null,
+          s.badge, s.highlighted, s.hoursPerMonth, s.iconName,
+          s.pageHref, s.pageSlug, s.sortOrder, s.tier, s.bestFor,
+          s.triggers != null ? JSON.stringify(s.triggers) : null,
+        ];
+
+        if (prodId != null) {
+          await client.query(`
+            UPDATE services SET
+              slug=$1, name=$2, description=$3, category=$4,
+              deliverables=$5::jsonb, price=$6, base_price=$7, max_price=$8,
+              order_workflow=$9::jsonb, duration_days=$10, turnaround=$11,
+              billing_type=$12, is_public=$13, visibility=$14,
+              service_type=$15, tagline=$16, target_audience=$17,
+              inclusions=$18::jsonb, features=$19::jsonb,
+              badge=$20, highlighted=$21, hours_per_month=$22, icon_name=$23,
+              page_href=$24, page_slug=$25, sort_order=$26, tier=$27,
+              best_for=$28, triggers=$29::jsonb, updated_at=now()
+            WHERE id=$30`,
+            [...cols, prodId]
+          );
+          touchedProdIds.add(prodId);
+        } else {
+          const result = await client.query(`
+            INSERT INTO services (
+              slug, name, description, category,
+              deliverables, price, base_price, max_price,
+              order_workflow, duration_days, turnaround, billing_type,
+              is_public, visibility, service_type, tagline, target_audience,
+              inclusions, features, badge, highlighted, hours_per_month, icon_name,
+              page_href, page_slug, sort_order, tier, best_for, triggers
+            ) VALUES (
+              $1, $2, $3, $4,
+              $5::jsonb, $6, $7, $8,
+              $9::jsonb, $10, $11, $12,
+              $13, $14, $15, $16, $17,
+              $18::jsonb, $19::jsonb, $20, $21, $22, $23,
+              $24, $25, $26, $27, $28, $29::jsonb
+            ) RETURNING id`,
+            cols
+          );
+          touchedProdIds.add((result.rows[0] as { id: number }).id);
+        }
+        upserted++;
+      }
+
+      // Delete prod services not matched to any dev service
+      if (touchedProdIds.size > 0) {
+        const ids = [...touchedProdIds];
+        const placeholders = ids.map((_, i) => `$${i + 1}`).join(", ");
+        const del = await client.query(`DELETE FROM services WHERE id NOT IN (${placeholders})`, ids);
+        removed = del.rowCount ?? 0;
+      } else {
+        const del = await client.query("DELETE FROM services");
+        removed = del.rowCount ?? 0;
+      }
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+      await prodPool.end();
+    }
+
+    res.json({ ok: true, upserted, removed });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
 export default router;
