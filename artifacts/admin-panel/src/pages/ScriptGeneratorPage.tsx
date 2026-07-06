@@ -1412,6 +1412,7 @@ function LibrarySidebar({
   onDeleteScript,
   onModuleRemoved,
   onNewSet,
+  onReload,
 }: {
   scripts: PsScriptListItem[];
   packages: ScriptPackageListItem[];
@@ -1426,6 +1427,7 @@ function LibrarySidebar({
   onDeleteScript?: (scriptId: string) => void;
   onModuleRemoved?: (moduleId: string, packageId: string) => void;
   onNewSet?: () => void;
+  onReload?: () => void;
 }) {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -1585,8 +1587,14 @@ function LibrarySidebar({
         )}
 
         {!loading && catKeys.length === 0 && (
-          <div className="px-3 py-6 text-center">
+          <div className="px-3 py-6 text-center space-y-2">
             <p className="text-xs text-[#484F58]">{(scripts.length === 0 && packages.length === 0) ? "No scripts saved yet" : "No results"}</p>
+            {scripts.length === 0 && packages.length === 0 && onReload && (
+              <button
+                onClick={onReload}
+                className="text-xs text-[#0078D4] hover:text-[#106EBE] underline transition-colors"
+              >Reload</button>
+            )}
           </div>
         )}
 
@@ -4078,6 +4086,7 @@ export default function ScriptGeneratorPage() {
   const [packages, setPackages] = useState<ScriptPackageListItem[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
   const [libraryLoaded, setLibraryLoaded] = useState(false);
+  const [libraryRetry, setLibraryRetry] = useState(0);
   const [newScriptSetDialogOpen, setNewScriptSetDialogOpen] = useState(false);
   const [loadingScriptId, setLoadingScriptId] = useState<string | null>(null);
   const [openDrawerScriptId, setOpenDrawerScriptId] = useState<string | null>(null);
@@ -4138,6 +4147,7 @@ export default function ScriptGeneratorPage() {
   // ── Load library on mount ────────────────────────────────────────────────────
   const loadLibrary = useCallback(async () => {
     if (libraryLoaded) return;
+    if (!token) return;
     setLibraryLoading(true);
     try {
       const [list, pkgList] = await Promise.all([
@@ -4148,11 +4158,13 @@ export default function ScriptGeneratorPage() {
       setPackages(pkgList);
       setLibraryLoaded(true);
     } catch {
-      toast({ title: "Failed to load library", variant: "destructive" });
+      toast({ title: "Failed to load library — retrying…", variant: "destructive" });
+      // Auto-retry once after 3 s (e.g. API server still warming up after a restart)
+      setTimeout(() => setLibraryRetry(r => r + 1), 3000);
     } finally {
       setLibraryLoading(false);
     }
-  }, [libraryLoaded, token, toast]);
+  }, [libraryLoaded, libraryRetry, token, toast]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { void loadLibrary(); }, [loadLibrary]);
 
@@ -4881,6 +4893,7 @@ export default function ScriptGeneratorPage() {
                       ))
                     }
                     onNewSet={() => setNewScriptSetDialogOpen(true)}
+                    onReload={() => { setLibraryLoaded(false); setLibraryRetry(r => r + 1); }}
                   />
                 )}
                 {leftMode === "results" && (

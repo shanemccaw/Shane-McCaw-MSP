@@ -42,6 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   accessTokenRef.current = state.accessToken;
 
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
+  // true only when the server explicitly rejected the refresh token (401).
+  // Stays false on transient network / 5xx errors so we don't log the user out
+  // just because the API server was briefly restarting.
+  const sessionExpiredRef = useRef(false);
 
   const doRefresh = useCallback(async (): Promise<string | null> => {
     try {
@@ -49,20 +53,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) {
+      if (res.status === 401) {
+        // Real auth failure — refresh token is gone / expired
+        sessionExpiredRef.current = true;
         setState({ user: null, accessToken: null, isLoading: false });
+        return null;
+      }
+      if (!res.ok) {
+        // Transient server error (502, 503, restart) — don't clear the user
         return null;
       }
       const data = await res.json() as { accessToken: string; user: AuthUser };
       if (data.user.role !== "admin") {
+        sessionExpiredRef.current = true;
         setState({ user: null, accessToken: null, isLoading: false });
         return null;
       }
+      sessionExpiredRef.current = false;
       setState({ user: data.user, accessToken: data.accessToken, isLoading: false });
       accessTokenRef.current = data.accessToken;
       return data.accessToken;
     } catch {
-      setState({ user: null, accessToken: null, isLoading: false });
+      // Network error — server temporarily unreachable; preserve existing session
       return null;
     }
   }, []);
@@ -168,15 +180,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newToken = await refresh();
     if (!newToken) {
-      setState({ user: null, accessToken: null, isLoading: false });
-      accessTokenRef.current = null;
-      // Session is unrecoverable — hard-redirect to login so the page never stalls.
-      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-      const rel = window.location.pathname.replace(base, "") + window.location.search;
-      if (rel && rel !== "/" && !rel.startsWith("/login")) {
-        sessionStorage.setItem("adminReturnTo", rel);
+      // Only hard-redirect when the server confirmed the session is dead (401).
+      // Transient errors (network down, 502 during restart) leave sessionExpiredRef false
+      // so we return the response and let the page handle it gracefully.
+      if (sessionExpiredRef.current) {
+        accessTokenRef.current = null;
+        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+        const rel = window.location.pathname.replace(base, "") + window.location.search;
+        if (rel && rel !== "/" && !rel.startsWith("/login")) {
+          sessionStorage.setItem("adminReturnTo", rel);
+        }
+        window.location.replace(`${base}/login`);
       }
-      window.location.replace(`${base}/login`);
       return res;
     }
 
