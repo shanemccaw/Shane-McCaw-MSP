@@ -2376,6 +2376,13 @@ function NodeConfigPanel({
   const [runbooksError, setRunbooksError] = useState(false);
   const [runbookManualMode, setRunbookManualMode] = useState(false);
 
+  // Seed manual mode from the saved value whenever the selected node changes.
+  // Nodes pre-saved with {{variable}} open in text mode; all others open in list mode.
+  useEffect(() => {
+    const saved = (node.data.runbookName as string) ?? "";
+    setRunbookManualMode(saved.includes("{{"));
+  }, [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (nodeType !== "update_m365_profile" && nodeType !== "execute_runbook") return;
     setRunbooksLoading(true);
@@ -2948,7 +2955,7 @@ function NodeConfigPanel({
                 <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
                   <option>Loading runbooks…</option>
                 </select>
-              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") && !runbookManualMode ? (
+              ) : runbookNames.length > 0 && !runbookManualMode ? (
                 <>
                   <select
                     value={(node.data.runbookName as string) ?? ""}
@@ -2996,7 +3003,7 @@ function NodeConfigPanel({
                 <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
                   <option>Loading runbooks…</option>
                 </select>
-              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") && !runbookManualMode ? (
+              ) : runbookNames.length > 0 && !runbookManualMode ? (
                 <>
                   <select
                     value={(node.data.runbookName as string) ?? ""}
