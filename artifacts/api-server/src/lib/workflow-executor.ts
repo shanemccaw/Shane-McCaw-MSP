@@ -2304,7 +2304,7 @@ async function executeNode(
       }
 
       case "create_kanban_task": {
-        const boardIdRaw = interp(node.data.boardId as string | undefined, payload);
+        const boardIdRaw = interp(node.data.boardId as string | undefined, payload) || "marketing";
         const columnId = node.data.columnId as string | undefined;
         const title = interp(node.data.titleExpr as string | undefined, payload);
         const description = interp(node.data.descriptionExpr as string | undefined, payload);
@@ -2312,9 +2312,9 @@ async function executeNode(
         const phaseIdRaw = interp(node.data.phaseId as string | undefined, payload);
         const phaseIdNum = phaseIdRaw ? parseInt(phaseIdRaw, 10) : undefined;
 
-        if (!boardIdRaw || !columnId || !title?.trim()) {
+        if (!columnId || !title?.trim()) {
           nodeError = true;
-          output = { error: "create_kanban_task requires boardId, columnId, and a non-empty title" };
+          output = { error: "create_kanban_task requires columnId and a non-empty title" };
         } else if (boardIdRaw === "marketing") {
           const validStatuses = ["ideas", "in_progress", "scheduled", "published", "completed", "money_task"] as const;
           type MarketingStatus = typeof validStatuses[number];
