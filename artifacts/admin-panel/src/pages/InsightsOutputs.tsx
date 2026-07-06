@@ -810,7 +810,10 @@ function DocumentsTab({
                 <div key={doc.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group">
                   <FileText className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm truncate">{doc.title}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white text-sm truncate min-w-0 flex-1">{doc.title}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-gray-500 bg-gray-800 border border-gray-700 rounded px-1 py-0.5">#{doc.id}</span>
+                    </div>
                     {doc.status === "failed" && doc.errorMessage ? (
                       <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
                     ) : (
@@ -1363,7 +1366,10 @@ function ConsultingTab({
                   className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-700/20 transition-colors group ${doc.status !== "generating" && doc.status !== "failed" ? "cursor-pointer" : ""} ${selectedDoc?.id === doc.id ? "bg-gray-700/30" : ""}`}>
                   <BookOpen className={`w-4 h-4 shrink-0 ${doc.status === "generating" ? "text-indigo-400" : doc.status === "failed" ? "text-red-400" : "text-gray-500"}`} />
                   <div className="flex-1 min-w-0">
-                    <div className="text-white text-sm truncate">{doc.title}</div>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-white text-sm truncate min-w-0 flex-1">{doc.title}</span>
+                      <span className="shrink-0 font-mono text-[10px] text-gray-500 bg-gray-800 border border-gray-700 rounded px-1 py-0.5">#{doc.id}</span>
+                    </div>
                     {doc.status === "failed" && doc.errorMessage ? (
                       <div className="text-red-400/80 text-xs truncate" title={doc.errorMessage}>{doc.errorMessage}</div>
                     ) : (
