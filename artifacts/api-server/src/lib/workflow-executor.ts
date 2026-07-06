@@ -4277,10 +4277,15 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // Treat failure as a hard node error so the workflow log shows a clear failure
         // rather than silently creating invoices that can never be auto-charged.
         let cpiPaymentMethodId: string | null = null;
+        let cpiSessionCustomerId: string | null = null;
         try {
           const cpiSession = await stripeCpi.checkout.sessions.retrieve(cpiDepositSessionId, {
             expand: ["payment_intent"],
           });
+          // Prefer the customer directly on the session — it is guaranteed to own the payment method.
+          cpiSessionCustomerId = typeof cpiSession.customer === "string"
+            ? cpiSession.customer
+            : (cpiSession.customer as { id?: string } | null)?.id ?? null;
           const pi = cpiSession.payment_intent;
           if (pi && typeof pi === "object") {
             cpiPaymentMethodId = typeof pi.payment_method === "string"
@@ -4298,21 +4303,34 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        // Look up or create the Stripe Customer
-        const cpiCustomers = await stripeCpi.customers.list({ email: cpiEmail, limit: 1 });
+        // Resolve the Stripe customer.
+        // Always prefer the customer that Stripe already linked to the checkout session —
+        // that customer is guaranteed to own the payment method. Falling back to an
+        // email lookup can return a different customer record, causing the subsequent
+        // `customers.update(invoice_settings.default_payment_method)` to fail because
+        // the PM is not attached to that customer.
         let cpiCustomerId: string;
-        if (cpiCustomers.data.length > 0) {
-          cpiCustomerId = cpiCustomers.data[0].id;
+        if (cpiSessionCustomerId) {
+          cpiCustomerId = cpiSessionCustomerId;
         } else {
-          const cpiCust = await stripeCpi.customers.create({ email: cpiEmail, name: cpiName || undefined });
-          cpiCustomerId = cpiCust.id;
+          const cpiCustomers = await stripeCpi.customers.list({ email: cpiEmail, limit: 1 });
+          if (cpiCustomers.data.length > 0) {
+            cpiCustomerId = cpiCustomers.data[0].id;
+          } else {
+            const cpiCust = await stripeCpi.customers.create({ email: cpiEmail, name: cpiName || undefined });
+            cpiCustomerId = cpiCust.id;
+          }
         }
 
-        // Attach payment method as customer default so future auto-charges work
+        // Attach payment method as customer default so future auto-charges work.
+        // Only attach if we didn't get the customer straight from the session
+        // (session customers already have the PM attached by Stripe).
         if (cpiPaymentMethodId) {
-          try {
-            await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
-          } catch { /* already attached */ }
+          if (!cpiSessionCustomerId) {
+            try {
+              await stripeCpi.paymentMethods.attach(cpiPaymentMethodId, { customer: cpiCustomerId });
+            } catch { /* already attached */ }
+          }
           await stripeCpi.customers.update(cpiCustomerId, {
             invoice_settings: { default_payment_method: cpiPaymentMethodId },
           });
