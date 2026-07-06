@@ -1172,6 +1172,23 @@ function getAncestorOutputs(
       fieldMap.set("triggeredAt", { key: "triggeredAt", label: "ISO timestamp when this run started" });
 
       outputs = Array.from(fieldMap.values());
+    } else if (type === "action" && (actionType === "set_variable" || actionType === "update_variable")) {
+      // set_variable spreads its output into the top-level payload at runtime
+      // (nextPayload = { ...payload, ...output }), so the named variable is reachable
+      // as {{varName}} (top-level) AND as {{steps.nodeId.varName}} (under steps).
+      outputs = NODE_OUTPUTS[actionType] ?? [];
+      const svName = (node.data.variableName as string | undefined)?.trim();
+      if (svName) {
+        const svType = (node.data.variableType as string | undefined)?.trim() ?? "string";
+        const nodeName = (node.data.label as string | undefined) || actionType.replace(/_/g, " ");
+        // Add a virtual top-level group so {{varName}} resolves in the validator
+        result.unshift({
+          nodeId: `${id}__var__${svName}`,
+          nodeName: `${nodeName} → {{${svName}}}`,
+          isStartNode: true,
+          outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
+        });
+      }
     } else if (type === "action" && actionType) {
       outputs = NODE_OUTPUTS[actionType] ?? [];
     } else if (type === "ask_for_input") {
@@ -4701,6 +4718,19 @@ function CreatePhasePanel({
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
 }) {
+  // Seed defaults when the node is first added so the executor sees them even
+  // if the user never touches the fields.  We only write fields that are currently
+  // undefined so we never clobber values the user already set.
+  useEffect(() => {
+    const patches: Record<string, unknown> = {};
+    if (node.data.title === undefined || node.data.title === null) patches.title = "{{item.title}}";
+    if (node.data.description === undefined || node.data.description === null) patches.description = "{{item.description}}";
+    if (Object.keys(patches).length > 0) {
+      onChange(node.id, { ...node.data, ...patches });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [node.id]);
+
   return (
     <>
       <PayloadField

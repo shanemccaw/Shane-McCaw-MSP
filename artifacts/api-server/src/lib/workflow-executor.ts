@@ -54,7 +54,7 @@ import { createRunbookJob, isAzureConfigured } from "./azure-automation";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange } from "./sse-broadcast";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -1143,6 +1143,15 @@ async function executeNode(
                 status: "active",
               }).returning();
               output = { projectId: project.id, projectTitle: project.title };
+              // If this run was triggered by a presentation, broadcast project_ready so the
+              // client's ConfirmationStep CTA button lights up without a page refresh.
+              const presIdRaw = payload.presentationId;
+              const presId = typeof presIdRaw === "number" ? presIdRaw
+                : typeof presIdRaw === "string" ? parseInt(presIdRaw, 10) : NaN;
+              if (!isNaN(presId) && presId > 0) {
+                broadcastPresentationProjectReady(presId, project.id);
+                logger.info({ runId, presId, projectId: project.id }, "wf-executor: project_ready broadcast sent for presentation");
+              }
             }
           }
         } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {

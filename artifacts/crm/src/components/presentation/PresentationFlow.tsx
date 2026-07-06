@@ -2228,6 +2228,15 @@ export default function PresentationFlow({
                 clientName={data.clientName ?? null}
                 projectTitle={data.projectTitle ?? null}
                 onClose={onClose}
+                presentationId={presentationId}
+                totalPrice={contractPrice}
+                sowPhases={(data.sowPhases ?? []).map((p) => ({
+                  id: p.id,
+                  title: p.title,
+                  price: p.price,
+                  deliveryDate: p.deliveryDate ?? null,
+                }))}
+                projectId={data.projectId ?? null}
               />
             )}
           </div>

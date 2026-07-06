@@ -162,3 +162,17 @@ export function replayPhaseGenState(presentationId: number, res: Response): void
   if (!state) return;
   try { res.write(`data: ${JSON.stringify(state)}\n\n`); } catch { }
 }
+
+// ── Project-ready SSE ──────────────────────────────────────────────────────────
+// Fired once the engagement project has been created/linked to a presentation so
+// the client's ConfirmationStep can light up the "Go to Your Project" CTA button.
+
+/** Broadcast { type: "project_ready", projectId } on the presentation's SSE channel. */
+export function broadcastPresentationProjectReady(presentationId: number, projectId: number): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "project_ready", projectId })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
