@@ -2297,6 +2297,22 @@ function NodeConfigPanel({
   const [gsSearch, setGsSearch] = useState("");
   const [gsLoading, setGsLoading] = useState(false);
 
+  // ── Runbook name dropdown (update_m365_profile + execute_runbook) ─────────
+  const [runbookNames, setRunbookNames] = useState<string[]>([]);
+  const [runbooksLoading, setRunbooksLoading] = useState(false);
+  const [runbooksError, setRunbooksError] = useState(false);
+
+  useEffect(() => {
+    if (nodeType !== "update_m365_profile" && nodeType !== "execute_runbook") return;
+    setRunbooksLoading(true);
+    setRunbooksError(false);
+    fetchWithAuth("/api/admin/runbooks")
+      .then(r => r.ok ? r.json() as Promise<{ runbooks?: Array<{ name: string }> }> : Promise.reject())
+      .then(data => setRunbookNames(Array.isArray(data.runbooks) ? data.runbooks.map(rb => rb.name) : []))
+      .catch(() => { setRunbooksError(true); setRunbookNames([]); })
+      .finally(() => setRunbooksLoading(false));
+  }, [nodeType]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (nodeType !== "generate_script") return;
     setGsLoading(true);
@@ -2852,7 +2868,34 @@ function NodeConfigPanel({
 
         {nodeType === "execute_runbook" && (
           <>
-            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
+              {runbooksLoading ? (
+                <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
+                  <option>Loading runbooks…</option>
+                </select>
+              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") ? (
+                <select
+                  value={(node.data.runbookName as string) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                >
+                  <option value="">— select a runbook —</option>
+                  {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={(node.data.runbookName as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                    placeholder="My-Runbook-Name"
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  />
+                  {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
+                </>
+              )}
+            </div>
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets to be configured. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>.</p>
@@ -2863,7 +2906,34 @@ function NodeConfigPanel({
         {nodeType === "update_m365_profile" && (
           <>
             <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
-            <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="M365-Health-Check" ancestorOutputs={ancestorOutputs} />
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
+              {runbooksLoading ? (
+                <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
+                  <option>Loading runbooks…</option>
+                </select>
+              ) : runbookNames.length > 0 && !((node.data.runbookName as string) ?? "").includes("{{") ? (
+                <select
+                  value={(node.data.runbookName as string) ?? ""}
+                  onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                >
+                  <option value="">— select a runbook —</option>
+                  {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
+                </select>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    value={(node.data.runbookName as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                    placeholder="M365-Health-Check"
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                  />
+                  {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
+                </>
+              )}
+            </div>
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
