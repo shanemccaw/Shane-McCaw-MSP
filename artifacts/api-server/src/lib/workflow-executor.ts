@@ -2455,6 +2455,7 @@ async function executeNode(
         const gsTargetRaw  = interp(node.data.targetId as string | undefined, payload) ?? "";
         const gsCustom     = interp(node.data.customInstructions as string | undefined, payload) ?? "";
         const gsTargetId   = parseInt(gsTargetRaw, 10);
+        const gsOutputMode = (node.data.outputMode as "auto" | "single" | "package" | undefined) ?? "auto";
 
         if (!gsTargetRaw || isNaN(gsTargetId)) {
           nodeError = true;
@@ -2464,8 +2465,8 @@ async function executeNode(
 
         try {
           const gsResult = gsSourceMode === "service"
-            ? await generateScriptFromService(gsTargetId, { customInstructions: gsCustom || undefined })
-            : await generateScriptFromDocument(gsTargetId, { customInstructions: gsCustom || undefined });
+            ? await generateScriptFromService(gsTargetId, { customInstructions: gsCustom || undefined, outputMode: gsOutputMode })
+            : await generateScriptFromDocument(gsTargetId, { customInstructions: gsCustom || undefined, outputMode: gsOutputMode });
           output = { ...gsResult, category: "workflow-generated" };
         } catch (gsErr) {
           nodeError = true;

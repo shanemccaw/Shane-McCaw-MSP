@@ -156,6 +156,7 @@ const CATEGORIES = [
   { value: "power-apps", label: "Power Apps" },
   { value: "viva", label: "Viva" },
   { value: "security", label: "Security & Compliance" },
+  { value: "workflow-generated", label: "Workflow Generated" },
   { value: "other", label: "Other" },
 ];
 

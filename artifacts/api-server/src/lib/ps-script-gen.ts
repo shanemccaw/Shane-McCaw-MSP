@@ -289,7 +289,7 @@ const PS_KEYWORD_RE = /Param|function|#requires|\$|Write-|Get-|Set-|New-|Remove-
  */
 export async function generateScriptFromService(
   serviceId: number,
-  opts: { customInstructions?: string; category?: string } = {},
+  opts: { customInstructions?: string; category?: string; outputMode?: "auto" | "single" | "package" } = {},
 ): Promise<{ scriptId: string | null; packageId: string | null; title: string }> {
   const category = opts.category ?? "workflow-generated";
 
@@ -358,7 +358,14 @@ export async function generateScriptFromService(
     ? `\n\nAdditional instructions:\n${opts.customInstructions.trim()}`
     : "";
 
-  const userMessage = `${serviceContext}${workflowContext}${customBlock}
+  const outputModeOverride =
+    opts.outputMode === "package"
+      ? "\n\nOUTPUT MODE OVERRIDE: Always use the 'package' shape. Even if there is only one automatable task, produce a multi-module package where each phase or logical grouping becomes its own named script file."
+      : opts.outputMode === "single"
+        ? "\n\nOUTPUT MODE OVERRIDE: Always use the 'single' shape. Consolidate ALL automatable tasks into one comprehensive PowerShell script. Do not split into a package."
+        : "";
+
+  const userMessage = `${serviceContext}${workflowContext}${customBlock}${outputModeOverride}
 
 Classify each task and generate PowerShell automation scripts for all M365/Azure-automatable tasks. If no tasks can be automated, return the human-only shape. Return the JSON response exactly as instructed.`;
 
@@ -397,29 +404,44 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
 
   const packageTitle = String(env["title"] ?? `${service.name} — Workflow Generated`);
 
-  if (envType === "package" && psMap.size > 1) {
-    const [pkg] = await db
-      .insert(scriptPackagesTable)
-      .values({ title: packageTitle, category, permissions, tags: ["workflow-generated"] })
-      .returning({ id: scriptPackagesTable.id });
+  // ── Save branching — outputMode is authoritative ───────────────────────────
+  // "package" → always script_packages row + modules (regardless of AI shape)
+  // "single"  → always single powershellScripts row (regardless of AI shape)
+  // "auto"    → infer from AI-reported envType (original behaviour)
 
+  const effectiveMode: "package" | "single" =
+    opts.outputMode === "package" ? "package"
+    : opts.outputMode === "single" ? "single"
+    : (envType === "package" && psMap.size > 1) ? "package"
+    : "single";
+
+  if (effectiveMode === "package") {
+    const modules = env["modules"] as Array<{ filename: string; description?: string }> | undefined;
     const modRows: { packageId: string; filename: string; description: string | null; content: string; sortOrder: number }[] = [];
     let i = 0;
     for (const [filename, content] of psMap) {
       if (!PS_KEYWORD_RE.test(content)) continue;
-      const modules = env["modules"] as Array<{ filename: string; description?: string }> | undefined;
       const meta = modules?.find((m) => m.filename === filename);
-      modRows.push({ packageId: pkg!.id, filename, description: meta?.description ?? null, content, sortOrder: i++ });
+      modRows.push({ packageId: "", filename, description: meta?.description ?? null, content, sortOrder: i++ });
     }
     if (modRows.length === 0) {
-      throw new Error("generate_script: no valid PowerShell modules found in AI response");
+      throw new Error(
+        opts.outputMode === "package"
+          ? "generate_script (package mode): AI returned no valid PowerShell code — try again or switch to Single Script mode"
+          : "generate_script: no valid PowerShell modules found in AI response",
+      );
     }
-    await db.insert(scriptModulesTable).values(modRows);
+    const [pkg] = await db
+      .insert(scriptPackagesTable)
+      .values({ title: packageTitle, category, permissions, tags: ["workflow-generated"] })
+      .returning({ id: scriptPackagesTable.id });
+    const withPkgId = modRows.map((r) => ({ ...r, packageId: pkg!.id }));
+    await db.insert(scriptModulesTable).values(withPkgId);
     logger.info({ packageId: pkg!.id, moduleCount: modRows.length, service: service.name }, "ps-script-gen: saved package");
     return { scriptId: null, packageId: pkg!.id, title: packageTitle };
   }
 
-  // single or manual — use the first (largest) script
+  // single — use the first (largest) script fence; merge all fences if forced single
   const [[, scriptBody]] = [...psMap.entries()];
   if (!scriptBody || !PS_KEYWORD_RE.test(scriptBody)) {
     throw new Error("generate_script: AI returned prose instead of a PowerShell script — try again");
@@ -449,7 +471,7 @@ Classify each task and generate PowerShell automation scripts for all M365/Azure
  */
 export async function generateScriptFromDocument(
   documentId: number,
-  opts: { customInstructions?: string; category?: string } = {},
+  opts: { customInstructions?: string; category?: string; outputMode?: "auto" | "single" | "package" } = {},
 ): Promise<{ scriptId: string | null; packageId: string | null; title: string }> {
   const category = opts.category ?? "workflow-generated";
 
@@ -467,6 +489,13 @@ export async function generateScriptFromDocument(
     ? `\n\nAdditional instructions:\n${opts.customInstructions.trim()}`
     : "";
 
+  const outputModeOverrideDoc =
+    opts.outputMode === "single"
+      ? "\n\nOUTPUT MODE OVERRIDE: Consolidate ALL scriptable tasks into a single comprehensive PowerShell script."
+      : opts.outputMode === "package"
+        ? "\n\nOUTPUT MODE OVERRIDE: Produce multiple separate PowerShell scripts (one per logical task group), each in its own ```powershell fence with a '# file: <name.ps1>' header."
+        : "";
+
   const systemPrompt = await getPrompt("ps-engineer-from-document", GENERATE_FROM_DOCUMENT_SYSTEM);
 
   const resp = await anthropic.messages.create({
@@ -475,14 +504,51 @@ export async function generateScriptFromDocument(
     messages: [
       {
         role: "user",
-        content: `${systemPrompt}${customBlock}\n\nDocument title: ${doc.title ?? "Untitled"}\n\nDocument content:\n${plainText.slice(0, 24000)}\n\nWrite complete PowerShell scripts followed by the permissions JSON block.`,
+        content: `${systemPrompt}${customBlock}${outputModeOverrideDoc}\n\nDocument title: ${doc.title ?? "Untitled"}\n\nDocument content:\n${plainText.slice(0, 24000)}\n\nWrite complete PowerShell scripts followed by the permissions JSON block.`,
       },
     ],
   });
 
   const fullText = resp.content.filter((b) => b.type === "text").map((b) => (b as { type: "text"; text: string }).text).join("");
 
-  // Document mode: find the ```json perms block at the end + powershell fences
+  // Parse trailing permissions JSON block
+  let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
+  const trailingJson = extractEnvelopeJson(fullText);
+  if (trailingJson && typeof trailingJson === "object" && !Array.isArray(trailingJson)) {
+    const raw = trailingJson as Record<string, unknown>;
+    permissions = {
+      appPermissions: Array.isArray(raw["appPermissions"]) ? normalizeAppPerms(raw["appPermissions"] as unknown[]) : [],
+      delegatedPermissions: Array.isArray(raw["delegatedPermissions"]) ? (raw["delegatedPermissions"] as string[]) : [],
+      notes: typeof raw["notes"] === "string" ? raw["notes"] : "",
+    };
+  }
+
+  const packageTitle = `${doc.title ?? "Document"} — Workflow Generated`;
+
+  // Package mode is authoritative: when outputMode === "package", always create a
+  // script_packages row + child modules regardless of how many fences the AI returned.
+  const psMap = extractPowershellFences(fullText);
+  if (opts.outputMode === "package") {
+    const modRows: { packageId: string; filename: string; description: string | null; content: string; sortOrder: number }[] = [];
+    let i = 0;
+    for (const [filename, content] of psMap) {
+      if (!PS_KEYWORD_RE.test(content)) continue;
+      modRows.push({ packageId: "", filename, description: null, content, sortOrder: i++ });
+    }
+    if (modRows.length === 0) {
+      throw new Error("generate_script (package mode): AI returned no valid PowerShell code — try again or switch to Single Script mode");
+    }
+    const [pkg] = await db
+      .insert(scriptPackagesTable)
+      .values({ title: packageTitle, category, permissions, tags: ["workflow-generated", "from-document"] })
+      .returning({ id: scriptPackagesTable.id });
+    const withPkgId = modRows.map((r) => ({ ...r, packageId: pkg!.id }));
+    await db.insert(scriptModulesTable).values(withPkgId);
+    logger.info({ packageId: pkg!.id, moduleCount: modRows.length, documentId }, "ps-script-gen: saved package from document");
+    return { scriptId: null, packageId: pkg!.id, title: packageTitle };
+  }
+
+  // Single script mode: extract the first (largest) script body
   const jsonFenceIdx = fullText.search(/```json/i);
   let scriptBody: string;
   if (jsonFenceIdx > 0) {
@@ -500,19 +566,7 @@ export async function generateScriptFromDocument(
     throw new Error("generate_script: AI returned prose instead of a PowerShell script — try again");
   }
 
-  // Parse trailing permissions JSON block
-  let permissions: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
-  const trailingJson = extractEnvelopeJson(fullText);
-  if (trailingJson && typeof trailingJson === "object" && !Array.isArray(trailingJson)) {
-    const raw = trailingJson as Record<string, unknown>;
-    permissions = {
-      appPermissions: Array.isArray(raw["appPermissions"]) ? normalizeAppPerms(raw["appPermissions"] as unknown[]) : [],
-      delegatedPermissions: Array.isArray(raw["delegatedPermissions"]) ? (raw["delegatedPermissions"] as string[]) : [],
-      notes: typeof raw["notes"] === "string" ? raw["notes"] : "",
-    };
-  }
-
-  const scriptTitle = `${doc.title ?? "Document"} — Workflow Generated`;
+  const scriptTitle = packageTitle;
   const [saved] = await db
     .insert(powershellScriptsTable)
     .values({

@@ -2938,6 +2938,33 @@ function NodeConfigPanel({
         {nodeType === "generate_script" && (
           <>
             <div className="space-y-1.5">
+              <label className="text-xs font-medium text-[#7D8590]">Output Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                {([
+                  { value: "auto",    label: "🤖 Auto" },
+                  { value: "single",  label: "📄 Single Script" },
+                  { value: "package", label: "📦 Script Package" },
+                ] as const).map(({ value, label }) => {
+                  const current = (node.data.outputMode as string | undefined) ?? "auto";
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => onChange(node.id, { ...node.data, outputMode: value })}
+                      className={`flex-1 py-1.5 text-xs font-medium transition-colors ${current === value ? "bg-[#0078D4]/20 text-[#58A6FF] border-r border-[#0078D4]/30" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-[#484F58]">
+                <span className="font-medium text-[#7D8590]">Auto</span> — AI decides based on task count.{" "}
+                <span className="font-medium text-[#7D8590]">Single</span> — one consolidated script.{" "}
+                <span className="font-medium text-[#7D8590]">Package</span> — always creates a Script Package with multiple named modules.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
               <label className="text-xs font-medium text-[#7D8590]">Source Mode</label>
               <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
                 {(["service", "document"] as const).map(mode => (
