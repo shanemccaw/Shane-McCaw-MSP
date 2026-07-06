@@ -1455,6 +1455,7 @@ async function executeNode(
           }
         } else if (actionType === "run_workflow") {
           // ── Run Workflow: execute a published sub-workflow synchronously ─────
+          const RUN_WORKFLOW_MAX_DEPTH = Math.max(1, parseInt(process.env.RUN_WORKFLOW_MAX_DEPTH ?? "5", 10) || 5);
           const workflowIdRaw = node.data.workflowId as string | number | undefined;
           const subDefId = typeof workflowIdRaw === "number"
             ? workflowIdRaw
@@ -1464,6 +1465,17 @@ async function executeNode(
             nodeError = true;
             output = { error: "run_workflow requires a workflowId" };
           } else {
+            const rawDepth = payload._depth;
+            const currentDepth = Math.max(0, Number.isInteger(rawDepth) ? (rawDepth as number) : 0);
+            if (currentDepth >= RUN_WORKFLOW_MAX_DEPTH) {
+              nodeError = true;
+              output = {
+                error: `run_workflow: maximum nesting depth of ${RUN_WORKFLOW_MAX_DEPTH} reached — possible recursive workflow loop. Aborting to prevent infinite recursion.`,
+                depth: currentDepth,
+                maxDepth: RUN_WORKFLOW_MAX_DEPTH,
+              };
+              logger.warn({ runId, subDefId, currentDepth, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow depth limit reached — aborting to prevent infinite loop");
+            } else {
             const rawMapping = node.data.inputMapping as Array<{ key: string; expr: string }> | undefined;
             const subPayload: Record<string, unknown> = { ...payload };
             if (rawMapping) {
@@ -1472,6 +1484,7 @@ async function executeNode(
               }
             }
             subPayload._parentRunId = runId;
+            subPayload._depth = currentDepth + 1;
 
             const subVersionRows = await db.select()
               .from(wfVersionsTable)
@@ -1530,6 +1543,7 @@ async function executeNode(
                 }
               }
             }
+            } // end depth-check else
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };
