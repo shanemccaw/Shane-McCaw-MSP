@@ -377,7 +377,17 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         const { terminals: yesTerm, nextY: yEnd } = doLayout(yesSteps, leftX,  y, [{ id: step.id, handle: "yes" }]);
         const { terminals: noTerm,  nextY: nEnd } = doLayout(noSteps,  rightX, y, [{ id: step.id, handle: "no"  }]);
         y = Math.max(yEnd, nEnd) + 40;
-        feeders_ = [...yesTerm, ...noTerm];
+        // Only use a branch's terminals if the branch actually had steps.
+        // When a branch is empty, doLayout returns the incoming feeder (the
+        // condition's own yes/no handle) unchanged as its terminal. If we
+        // include that in feeders_, the next node gets a spurious "yes"/"no"
+        // edge from the condition itself — graphToTree then mis-reads the
+        // continuation node as living INSIDE the branch, collapsing all
+        // following steps into the condition block on re-render.
+        feeders_ = [
+          ...(yesSteps.length > 0 ? yesTerm : []),
+          ...(noSteps.length  > 0 ? noTerm  : []),
+        ];
         // If both branches are empty, condition itself feeds the next step plainly
         if (feeders_.length === 0) feeders_ = [{ id: step.id }];
       }
@@ -396,7 +406,11 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
           const handle = key === "__default__" ? "default" : `case-${key}`;
           const { terminals: bTerm, nextY: bEnd } = doLayout(bSteps, bx, y, [{ id: step.id, handle }]);
           maxEndY = Math.max(maxEndY, bEnd);
-          allTerminals.push(...bTerm);
+          // Only include terminals from non-empty branches (same reason as
+          // the condition fix above — empty-branch doLayout returns the
+          // switch's own feeder handle as a terminal, which creates spurious
+          // case edges to the continuation node).
+          if (bSteps.length > 0) allTerminals.push(...bTerm);
         });
         y = maxEndY + 40;
         feeders_ = allTerminals.length > 0 ? allTerminals : [{ id: step.id }];
