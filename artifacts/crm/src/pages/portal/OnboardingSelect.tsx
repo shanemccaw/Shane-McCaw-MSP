@@ -340,6 +340,7 @@ export default function OnboardingSelect() {
                   onChange={e => setGuestName(e.target.value)}
                   placeholder="Jane Smith"
                   required
+                  autoFocus
                   className="w-full border border-border rounded-xl px-3 py-2.5 text-sm text-[#0A2540] placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-[#0078D4]/30 focus:border-[#0078D4]"
                 />
               </div>
@@ -360,7 +361,6 @@ export default function OnboardingSelect() {
                 <input
                   type="email"
                   required
-                  autoFocus
                   value={guestEmail}
                   onChange={e => setGuestEmail(e.target.value)}
                   placeholder="jane@company.com"
