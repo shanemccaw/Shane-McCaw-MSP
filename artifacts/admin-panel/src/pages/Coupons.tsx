@@ -259,7 +259,7 @@ export default function CouponsPage() {
         <div className="flex items-center gap-2">
           <button
             onClick={() => { void handlePublishToProd(); }}
-            disabled={publishingToProd || coupons.length === 0}
+            disabled={publishingToProd}
             className="flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
           >
             {publishingToProd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}

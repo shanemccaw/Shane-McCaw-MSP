@@ -187,13 +187,17 @@ router.post("/admin/coupons/publish-to-prod", requireAdmin, async (_req: Request
         upserted++;
       }
 
-      // Remove prod coupons not present in dev
+      // Remove prod coupons not present in dev (handles empty-set too)
       if (devCoupons.length > 0) {
         const codes = devCoupons.map(c => c.code);
         const placeholders = codes.map((_, i) => `$${i + 1}`).join(", ");
         const del = await client.query(
           `DELETE FROM coupons WHERE code NOT IN (${placeholders})`, codes
         );
+        removed = del.rowCount ?? 0;
+      } else {
+        // No dev coupons — wipe prod entirely
+        const del = await client.query("DELETE FROM coupons");
         removed = del.rowCount ?? 0;
       }
 
