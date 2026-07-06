@@ -394,8 +394,10 @@ export default function PresentationFlow({
   // redirect to payment. Catches any path not covered by the init / nav guards
   // (e.g. localStorage restoring a visited step from a prior session where plan
   // was never persisted server-side).
+  // Exception: skip when the agreement is already signed — a plan was chosen
+  // before signing even if paymentPlan was not persisted to the DB at that time.
   useEffect(() => {
-    if (currentStep?.kind === "contract" && !selectedPlan) {
+    if (currentStep?.kind === "contract" && !selectedPlan && !data.signedAt) {
       const pmtIdx = steps.findIndex(s => s.kind === "payment");
       if (pmtIdx >= 0) {
         directionRef.current = "back";
