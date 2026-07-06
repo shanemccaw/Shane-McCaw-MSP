@@ -2354,8 +2354,11 @@ async function executeNode(
         const cpOrder = cpOrderRaw ? parseInt(cpOrderRaw, 10) : 0;
 
         if (!cpProjectId || !cpTitle?.trim()) {
+          const missing: string[] = [];
+          if (!cpProjectId) missing.push(`projectId (configured: "${node.data.projectId ?? "(not set)"}", resolved: "${cpProjectId ?? ""}")`);
+          if (!cpTitle?.trim()) missing.push(`title (configured: "${node.data.title ?? "(not set)"}", resolved: "${cpTitle ?? ""}")`);
           nodeError = true;
-          output = { error: "create_phase requires projectId and title" };
+          output = { error: `create_phase: missing required field(s): ${missing.join("; ")}` };
           break;
         }
 
