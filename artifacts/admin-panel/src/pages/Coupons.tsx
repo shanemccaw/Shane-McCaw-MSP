@@ -279,11 +279,11 @@ export default function CouponsPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { void handlePublishToProd(); }}
-            disabled={publishingToProd}
+            onClick={() => { void handlePreviewPublish(); }}
+            disabled={publishDiffLoading || publishingToProd}
             className="flex items-center gap-2 bg-[#1C2128] text-[#C9D1D9] text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#30363D] hover:border-emerald-500/40 hover:text-emerald-400 disabled:opacity-40 transition-colors"
           >
-            {publishingToProd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+            {publishDiffLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
             Publish to Prod
           </button>
           <button
@@ -295,6 +295,58 @@ export default function CouponsPage() {
           </button>
         </div>
       </div>
+
+      {/* Publish-to-prod diff modal */}
+      {publishDiff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
+            <h2 className="text-base font-bold text-[#E6EDF3] mb-1">Review Changes</h2>
+            <p className="text-xs text-[#7D8590] mb-4">These changes will be applied to the production database.</p>
+            <div className="space-y-2 mb-5">
+              {publishDiff.added.length > 0 && (
+                <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-emerald-400 mb-1">+ {publishDiff.added.length} new coupon{publishDiff.added.length !== 1 ? "s" : ""} will be created</p>
+                  <p className="text-[11px] text-emerald-300/70 font-mono">{publishDiff.added.map(c => c.code).join(", ")}</p>
+                </div>
+              )}
+              {publishDiff.updated.length > 0 && (
+                <div className="rounded-lg bg-[#0078D4]/10 border border-[#0078D4]/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-[#58A6FF] mb-1">↻ {publishDiff.updated.length} existing coupon{publishDiff.updated.length !== 1 ? "s" : ""} will be updated</p>
+                  <p className="text-[11px] text-[#58A6FF]/60 font-mono">{publishDiff.updated.map(c => c.code).join(", ")}</p>
+                </div>
+              )}
+              {publishDiff.removed.length > 0 && (
+                <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
+                  <p className="text-xs font-semibold text-red-400 mb-1">− {publishDiff.removed.length} coupon{publishDiff.removed.length !== 1 ? "s" : ""} will be removed</p>
+                  <p className="text-[11px] text-red-300/70 font-mono">{publishDiff.removed.map(c => c.code).join(", ")}</p>
+                </div>
+              )}
+              {publishDiff.added.length === 0 && publishDiff.updated.length === 0 && publishDiff.removed.length === 0 && (
+                <div className="rounded-lg bg-[#1C2128] border border-[#30363D] px-3 py-2">
+                  <p className="text-xs text-[#7D8590]">No changes detected — prod is already in sync.</p>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setPublishDiff(null)}
+                disabled={publishingToProd}
+                className="text-sm font-semibold px-4 py-2 rounded-lg border border-[#30363D] text-[#7D8590] hover:text-[#C9D1D9] hover:border-[#484F58] disabled:opacity-40 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { void handleConfirmPublish(); }}
+                disabled={publishingToProd}
+                className="flex items-center gap-2 text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white transition-colors"
+              >
+                {publishingToProd ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                Publish to Prod
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-[#161B22] border border-border rounded-2xl p-5 mb-6 shadow-sm">
