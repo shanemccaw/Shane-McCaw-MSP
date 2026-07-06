@@ -5,7 +5,7 @@ import { useConfetti } from "@/hooks/useConfetti";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Calendar, ChevronLeft, Loader2 } from "lucide-react";
+import { Calendar, ChevronLeft, Loader2, ExternalLink, Download, FileText, Receipt, CreditCard, CheckCircle2, Clock } from "lucide-react";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -49,6 +49,19 @@ interface M365Scores {
   composite: number;
 }
 
+interface PaymentSummary {
+  receiptUrl: string | null;
+  invoiceId: number | null;
+  invoicePdfPath: string | null;
+  contractId: number | null;
+  contractPdfPath: string | null;
+  paidAt: string | null;
+  signerName: string | null;
+  signedAt: string | null;
+  paymentPlan: string;
+  phases: Array<{ id: string; title: string; price: number; deliveryDate: string | null; invoiceStatus: string }>;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function boolScore(fields: (boolean | undefined)[]): number {
@@ -72,15 +85,18 @@ function computeScores(profile: Record<string, unknown>): M365Scores {
   return { security, compliance, copilot, adoption, composite };
 }
 
-function formatPrice(cents: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(cents);
+function formatPrice(amount: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0 }).format(amount);
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 function getNextKickoffMondays(n: number): MondayDate[] {
   const result: MondayDate[] = [];
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
-  // Skip today — advance to tomorrow first
   cursor.setDate(cursor.getDate() + 1);
   while (result.length < n) {
     if (cursor.getDay() === 1) {
@@ -151,6 +167,24 @@ function StatusBadge({ status }: { status: BuildStepStatus }) {
   );
 }
 
+function PhaseBadge({ status }: { status: string }) {
+  if (status === "paid") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+      <CheckCircle2 className="w-3 h-3" />Paid
+    </span>
+  );
+  if (status === "overdue") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-red-100 text-red-700 border border-red-200 whitespace-nowrap">
+      <Clock className="w-3 h-3" />Overdue
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 whitespace-nowrap">
+      <Clock className="w-3 h-3" />Upcoming
+    </span>
+  );
+}
+
 function StatCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub?: string }) {
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm px-5 py-4 flex items-start gap-3">
@@ -180,15 +214,32 @@ function ScoreBar({ label, score, loading }: { label: string; score: number; loa
       </div>
       <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
         {!loading && (
-          <div
-            className="h-full rounded-full transition-all duration-700"
-            style={{ width: `${score}%`, backgroundColor: color }}
-          />
+          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${score}%`, backgroundColor: color }} />
         )}
         {loading && <div className="h-full w-1/3 rounded-full bg-slate-200 animate-pulse" />}
       </div>
     </div>
   );
+}
+
+// ─── Card shell ───────────────────────────────────────────────────────────────
+
+function Card({ title, icon, children, className }: { title: string; icon?: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden ${className ?? ""}`}>
+      <div className="px-5 py-3.5 border-b border-slate-100 flex items-center gap-2">
+        {icon && <div className="w-5 h-5 flex items-center justify-center flex-shrink-0" style={{ color: "#0078D4" }}>{icon}</div>}
+        <p className="text-[10px] font-bold uppercase tracking-widest" style={{ color: "#0078D4" }}>{title}</p>
+      </div>
+      <div className="px-5 py-4">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SkeletonLine({ w }: { w?: string }) {
+  return <div className={`h-4 rounded bg-slate-100 animate-pulse ${w ?? "w-full"}`} />;
 }
 
 // ─── Kickoff Calendar Picker ──────────────────────────────────────────────────
@@ -216,7 +267,6 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
     defaultValues: { name: prefillName, email: prefillEmail, topic: "Kickoff call for my Microsoft 365 engagement" },
   });
 
-  // Pre-fill when parent data becomes available
   useEffect(() => { if (prefillName) setValue("name", prefillName); }, [prefillName, setValue]);
   useEffect(() => { if (prefillEmail) setValue("email", prefillEmail); }, [prefillEmail, setValue]);
 
@@ -239,10 +289,7 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
 
   useEffect(() => { void fetchSlots(mondays[0]!); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSelectMonday = (m: MondayDate) => {
-    setSelectedMonday(m);
-    void fetchSlots(m);
-  };
+  const handleSelectMonday = (m: MondayDate) => { setSelectedMonday(m); void fetchSlots(m); };
 
   const onSubmit = async (data: BookingForm) => {
     if (!selectedSlot) return;
@@ -264,7 +311,7 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
 
   if (booked) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+      <div className="flex flex-col items-center justify-center gap-3 py-6 text-center">
         <div className="w-12 h-12 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center">
           <svg className="w-6 h-6 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -279,7 +326,6 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Monday picker */}
       <div className="flex gap-2">
         {mondays.map(m => (
           <button
@@ -296,7 +342,6 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
         ))}
       </div>
 
-      {/* Slot grid */}
       {slotsLoading && (
         <div className="grid grid-cols-3 gap-2">
           {Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-9 rounded-lg bg-slate-100 animate-pulse" />)}
@@ -323,7 +368,6 @@ function KickoffCalendarPicker({ prefillName, prefillEmail }: { prefillName: str
         </div>
       )}
 
-      {/* Booking form */}
       {selectedSlot && (
         <div>
           <div className="flex items-center gap-2 rounded-lg border border-[#0078D4]/20 bg-[#0078D4]/5 px-3 py-2 mb-3">
@@ -373,6 +417,7 @@ export default function ConfirmationStep({
   onClose,
   presentationId,
   totalPrice,
+  sowPhases,
   projectId: initialProjectId,
   shareToken,
 }: Props) {
@@ -385,6 +430,8 @@ export default function ConfirmationStep({
   const [buildSteps, setBuildSteps] = useState<BuildStep[]>(INITIAL_BUILD_STEPS);
   const [scores, setScores] = useState<M365Scores | null>(null);
   const [scoresLoading, setScoresLoading] = useState(true);
+  const [summary, setSummary] = useState<PaymentSummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const lastSseRef = useRef<number>(Date.now());
   const heuristicRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -397,8 +444,31 @@ export default function ConfirmationStep({
     return formatKickoffDate(new Date(y!, m! - 1, d!));
   })();
 
+  // Build fetch function that includes auth token or share token
+  const fetchFn = useCallback((url: string, opts: RequestInit = {}) => {
+    const headers: Record<string, string> = { ...(opts.headers as Record<string, string> ?? {}) };
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    const separator = url.includes("?") ? "&" : "?";
+    const finalUrl = shareToken ? `${url}${url.includes("?") ? separator : "?"}token=${encodeURIComponent(shareToken)}` : url;
+    return fetch(finalUrl, { ...opts, headers });
+  }, [accessToken, shareToken]);
+
   // ── Confetti on mount ──────────────────────────────────────────────────────
   useEffect(() => { fireSidecannons(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Payment summary ────────────────────────────────────────────────────────
+  useEffect(() => {
+    setSummaryLoading(true);
+    const authHeaders: Record<string, string> = {};
+    if (accessToken) authHeaders["Authorization"] = `Bearer ${accessToken}`;
+    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+    fetch(`/api/portal/presentations/${presentationId}/payment-summary${tokenParam}`, { headers: authHeaders })
+      .then(r => r.ok ? r.json() as Promise<PaymentSummary> : null)
+      .then(s => { if (s) setSummary(s); })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setSummaryLoading(false));
+  }, [presentationId, accessToken, shareToken]);
 
   // ── M365 profile → scores ─────────────────────────────────────────────────
   useEffect(() => {
@@ -476,8 +546,11 @@ export default function ConfirmationStep({
     ? scores.composite >= 70 ? "Strong" : scores.composite >= 40 ? "Moderate" : "Needs Work"
     : "—";
 
+  const selectedPhases = sowPhases.filter(p => p.price > 0);
+  const sowTotal = selectedPhases.reduce((s, p) => s + p.price, 0) || totalPrice;
+
   return (
-    <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#F7F9FC" }}>
+    <div className="flex-1" style={{ backgroundColor: "#F7F9FC" }}>
       <div className="max-w-5xl mx-auto px-4 md:px-8 py-8 flex flex-col gap-6">
 
         {/* ── Hero ─────────────────────────────────────────────────────────── */}
@@ -492,9 +565,6 @@ export default function ConfirmationStep({
               Let's go, {firstName}. Your environment transformation starts now.
             </p>
           )}
-          <p className="text-sm font-bold tracking-widest select-none" style={{ color: "#00B4D8", letterSpacing: "0.2em" }}>
-            YES! • BOOM • LFG • LET'S GO
-          </p>
         </div>
 
         {/* ── Stat row ─────────────────────────────────────────────────────── */}
@@ -522,16 +592,153 @@ export default function ConfirmationStep({
         {/* ── Two-column grid ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Left: Build Status + M365 Scorecard */}
+          {/* ── Left column ─────────────────────────────────────────────────── */}
           <div className="flex flex-col gap-4">
 
-            {/* Build Status */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: "#0078D4" }}>Project Build Status</p>
-                <p className="text-xs" style={{ color: "#64748b" }}>Your workspace is being provisioned and configured.</p>
-              </div>
-              <ul className="divide-y divide-slate-100">
+            {/* Payment & Receipt */}
+            <Card title="Payment & Receipt" icon={<Receipt className="w-4 h-4" />}>
+              {summaryLoading ? (
+                <div className="flex flex-col gap-3">
+                  <SkeletonLine w="w-2/3" />
+                  <SkeletonLine w="w-1/2" />
+                  <SkeletonLine w="w-3/4" />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium" style={{ color: "#64748b" }}>Amount paid</span>
+                    <span className="text-sm font-bold" style={{ color: "#0A2540" }}>{formatPrice(totalPrice)}</span>
+                  </div>
+                  {summary?.paidAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium" style={{ color: "#64748b" }}>Date</span>
+                      <span className="text-sm font-semibold" style={{ color: "#0A2540" }}>{formatDate(summary.paidAt)}</span>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2 pt-1">
+                    {summary?.receiptUrl ? (
+                      <a
+                        href={summary.receiptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline"
+                        style={{ color: "#0078D4" }}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />View Receipt →
+                      </a>
+                    ) : (
+                      <span className="text-xs" style={{ color: "#94a3b8" }}>Receipt not available yet</span>
+                    )}
+                    {summary?.invoicePdfPath ? (
+                      <a
+                        href={summary.invoicePdfPath}
+                        download
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold transition-colors hover:bg-slate-50 w-fit"
+                        style={{ color: "#0A2540" }}
+                      >
+                        <Download className="w-3.5 h-3.5" />Download Invoice PDF
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </Card>
+
+            {/* Your Contract */}
+            <Card title="Your Contract" icon={<FileText className="w-4 h-4" />}>
+              {summaryLoading ? (
+                <div className="flex flex-col gap-3">
+                  <SkeletonLine w="w-2/3" />
+                  <SkeletonLine w="w-1/2" />
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {summary?.signedAt && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium" style={{ color: "#64748b" }}>Signed</span>
+                      <span className="text-sm font-semibold" style={{ color: "#0A2540" }}>{formatDate(summary.signedAt)}</span>
+                    </div>
+                  )}
+                  {summary?.signerName && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium" style={{ color: "#64748b" }}>Signed by</span>
+                      <span className="text-sm font-semibold" style={{ color: "#0A2540" }}>{summary.signerName}</span>
+                    </div>
+                  )}
+                  {!summary?.signedAt && !summary?.signerName && (
+                    <span className="text-xs" style={{ color: "#94a3b8" }}>Contract details not available yet</span>
+                  )}
+                  {summary?.contractPdfPath ? (
+                    <a
+                      href={summary.contractPdfPath}
+                      download
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold transition-colors hover:bg-slate-50 w-fit"
+                      style={{ color: "#0A2540" }}
+                    >
+                      <Download className="w-3.5 h-3.5" />Download Contract PDF
+                    </a>
+                  ) : null}
+                </div>
+              )}
+            </Card>
+
+            {/* What We Agreed To */}
+            {selectedPhases.length > 0 && (
+              <Card title="What We Agreed To" icon={<CreditCard className="w-4 h-4" />}>
+                <div className="flex flex-col gap-2">
+                  {selectedPhases.map(phase => (
+                    <div key={phase.id} className="flex items-center justify-between gap-2 py-1 border-b border-slate-50 last:border-0">
+                      <span className="text-xs font-medium truncate" style={{ color: "#0A2540" }}>{phase.title}</span>
+                      <span className="text-xs font-bold whitespace-nowrap" style={{ color: "#0078D4" }}>{formatPrice(phase.price)}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 mt-1">
+                    <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#0A2540" }}>Total</span>
+                    <span className="text-sm font-black" style={{ color: "#0A2540" }}>{formatPrice(sowTotal)}</span>
+                  </div>
+                </div>
+              </Card>
+            )}
+          </div>
+
+          {/* ── Right column ─────────────────────────────────────────────────── */}
+          <div className="flex flex-col gap-4">
+
+            {/* Book Your Kickoff Call */}
+            <Card title="Book Your Kickoff Call" icon={<Calendar className="w-4 h-4" />}>
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>Monday slots only — pick a time and confirm before you leave.</p>
+              <KickoffCalendarPicker
+                prefillName={clientName ?? user?.name ?? ""}
+                prefillEmail={user?.email ?? ""}
+              />
+            </Card>
+
+            {/* Payment Schedule (phased only) */}
+            {!summaryLoading && summary?.paymentPlan === "phased" && summary.phases.length > 0 && (
+              <Card title="Payment Schedule" icon={<CreditCard className="w-4 h-4" />}>
+                <div className="flex flex-col gap-2">
+                  {summary.phases.map(phase => (
+                    <div key={phase.id} className="flex items-center justify-between gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold truncate" style={{ color: "#0A2540" }}>{phase.title}</p>
+                        {phase.deliveryDate && (
+                          <p className="text-[11px]" style={{ color: "#64748b" }}>Due: {formatDate(phase.deliveryDate)}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="text-xs font-bold" style={{ color: "#0A2540" }}>{formatPrice(phase.price)}</span>
+                        <PhaseBadge status={phase.invoiceStatus} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Project Build Status */}
+            <Card title="Project Build Status">
+              <p className="text-xs mb-3" style={{ color: "#64748b" }}>Your workspace is being provisioned and configured.</p>
+              <ul className="divide-y divide-slate-100 -mx-5 px-0">
                 {buildSteps.map((step, i) => (
                   <li key={i} className="px-5 py-2.5 flex items-center justify-between gap-3">
                     <span className="text-sm font-medium" style={{ color: "#0A2540" }}>{step.label}</span>
@@ -539,40 +746,23 @@ export default function ConfirmationStep({
                   </li>
                 ))}
               </ul>
-            </div>
-
-            {/* M365 Health Scorecard */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-slate-100">
-                <p className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: "#0078D4" }}>M365 Health Scorecard</p>
-                <p className="text-xs" style={{ color: "#64748b" }}>Based on your environment profile — improvement areas identified.</p>
-              </div>
-              <div className="px-5 py-4 flex flex-col gap-3">
-                <ScoreBar label="Security" score={scores?.security ?? 0} loading={scoresLoading} />
-                <ScoreBar label="Compliance" score={scores?.compliance ?? 0} loading={scoresLoading} />
-                <ScoreBar label="Copilot Readiness" score={scores?.copilot ?? 0} loading={scoresLoading} />
-                <ScoreBar label="Adoption" score={scores?.adoption ?? 0} loading={scoresLoading} />
-                {!scoresLoading && !scores && (
-                  <p className="text-xs text-center py-1" style={{ color: "#94a3b8" }}>Complete your M365 profile to see scores.</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: Kickoff Calendar */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-            <div className="px-5 py-3.5 border-b border-slate-100">
-              <p className="text-[10px] font-bold uppercase tracking-widest mb-0.5" style={{ color: "#0078D4" }}>Book Your Kickoff Call</p>
-              <p className="text-xs" style={{ color: "#64748b" }}>Monday slots only — pick a time and confirm before you leave.</p>
-            </div>
-            <div className="px-5 py-4 flex-1">
-              <KickoffCalendarPicker
-                prefillName={clientName ?? user?.name ?? ""}
-                prefillEmail={user?.email ?? ""}
-              />
-            </div>
+            </Card>
           </div>
         </div>
+
+        {/* ── M365 Scorecard (full-width) ───────────────────────────────────── */}
+        <Card title="M365 Health Scorecard">
+          <p className="text-xs mb-4" style={{ color: "#64748b" }}>Based on your environment profile — improvement areas identified.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <ScoreBar label="Security" score={scores?.security ?? 0} loading={scoresLoading} />
+            <ScoreBar label="Compliance" score={scores?.compliance ?? 0} loading={scoresLoading} />
+            <ScoreBar label="Copilot Readiness" score={scores?.copilot ?? 0} loading={scoresLoading} />
+            <ScoreBar label="Adoption" score={scores?.adoption ?? 0} loading={scoresLoading} />
+          </div>
+          {!scoresLoading && !scores && (
+            <p className="text-xs text-center py-2 mt-2" style={{ color: "#94a3b8" }}>Complete your M365 profile to see scores.</p>
+          )}
+        </Card>
 
         {/* ── CTA button ───────────────────────────────────────────────────── */}
         <div className="flex flex-col items-center gap-2 pb-4">

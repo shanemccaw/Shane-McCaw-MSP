@@ -1700,6 +1700,7 @@ export const quickWinPresentationsTable = pgTable("quick_win_presentations", {
   phaseGenRequestedAt: timestamp("phase_gen_requested_at"),
   payTodayDiscountApplied: boolean("pay_today_discount_applied").default(false),
   discountedTotalCents: integer("discounted_total_cents"),
+  projectTitle: text("project_title"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

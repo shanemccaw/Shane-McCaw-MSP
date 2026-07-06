@@ -10328,7 +10328,7 @@ router.get("/portal/presentations/:id", async (req: Request, res: Response) => {
       signerName: pres.signerName,
       paymentPlan: pres.paymentPlan,
       status: currentStatus,
-      projectTitle: project?.title ?? null,
+      projectTitle: pres.projectTitle ?? project?.title ?? null,
       clientName: clientUser?.name ?? null,
       contractBody,
       workflowName: project?.workflowName ?? null,
@@ -10551,6 +10551,117 @@ router.post("/portal/presentations/:id/reset-for-rescope", async (req: Request, 
   } catch (err) {
     req.log.error(err, "portal: reset-for-rescope failed");
     res.status(500).json({ error: "Failed to reset presentation" });
+  }
+});
+
+// GET /portal/presentations/:id/payment-summary — receipt, invoice, contract, payment schedule
+router.get("/portal/presentations/:id/payment-summary", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try { authedUserId = (jwt.verify(tok, jwtSecret) as { id: number }).id; } catch { /* no auth */ }
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id)).limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isValidToken) { res.status(403).json({ error: "Access denied" }); return; }
+
+    // Look up invoice by stripeSessionId, with projectId fallback
+    let invoice = pres.stripeSessionId
+      ? await db.select().from(invoicesTable)
+          .where(eq(invoicesTable.stripeSessionId, pres.stripeSessionId))
+          .orderBy(desc(invoicesTable.createdAt))
+          .limit(1)
+          .then(rows => rows[0] ?? null)
+      : null;
+    if (!invoice && pres.projectId) {
+      invoice = await db.select().from(invoicesTable)
+        .where(eq(invoicesTable.projectId, pres.projectId))
+        .orderBy(desc(invoicesTable.createdAt))
+        .limit(1)
+        .then(rows => rows[0] ?? null);
+    }
+
+    // Look up contract by project or stripeSessionId
+    const contract = pres.projectId
+      ? await db.select().from(contractsTable)
+          .where(eq(contractsTable.projectId, pres.projectId))
+          .orderBy(desc(contractsTable.createdAt))
+          .limit(1)
+          .then(rows => rows[0] ?? null)
+      : pres.stripeSessionId
+      ? await db.select().from(contractsTable)
+          .where(eq(contractsTable.stripeSessionId, pres.stripeSessionId))
+          .orderBy(desc(contractsTable.createdAt))
+          .limit(1)
+          .then(rows => rows[0] ?? null)
+      : null;
+
+    // Fetch Stripe receipt URL if invoice has a stripeInvoiceId
+    let receiptUrl: string | null = null;
+    if (invoice?.stripeInvoiceId) {
+      try {
+        let stripeKey: string | null = null;
+        try { stripeKey = getStripeKey(); } catch { /* not configured */ }
+        if (stripeKey) {
+          const { default: Stripe } = await import("stripe");
+          const stripe = new Stripe(stripeKey);
+          const si = await stripe.invoices.retrieve(invoice.stripeInvoiceId);
+          receiptUrl = (si as unknown as { hosted_invoice_url?: string | null }).hosted_invoice_url ?? null;
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // Phased plan: look up child phase invoices from workflow_steps
+    let phases: Array<{ id: string; title: string; price: number; deliveryDate: string | null; invoiceStatus: string }> = [];
+    if (pres.paymentPlan === "phased" && pres.projectId) {
+      const steps = await db.select().from(workflowStepsTable)
+        .where(eq(workflowStepsTable.projectId, pres.projectId))
+        .orderBy(asc(workflowStepsTable.order));
+      const sowPhases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number; deliveryDate?: string | null }>;
+      phases = steps.map((step, i) => {
+        const matched = sowPhases.find(p => step.sowPhaseId ? p.id === step.sowPhaseId : p.title === step.title);
+        return {
+          id: String(step.id),
+          title: step.title,
+          price: matched?.price ?? 0,
+          deliveryDate: step.dueDate ? step.dueDate.toISOString() : (matched?.deliveryDate ?? null),
+          invoiceStatus: (() => {
+            if (step.status === "completed") return "paid";
+            const dueDate = step.dueDate;
+            if (dueDate && new Date(dueDate) < new Date()) return "overdue";
+            return "upcoming";
+          })(),
+        };
+      });
+    }
+
+    res.json({
+      receiptUrl,
+      invoiceId: invoice?.id ?? null,
+      invoicePdfPath: invoice?.pdfFilename ? `/api/portal/invoices/${invoice.id}/download` : null,
+      contractId: contract?.id ?? null,
+      contractPdfPath: contract ? `/api/portal/contracts/${contract.id}/download` : null,
+      paidAt: invoice?.paidAt?.toISOString() ?? pres.signedAt?.toISOString() ?? null,
+      signerName: contract?.signerName ?? pres.signerName ?? null,
+      signedAt: contract?.signedAt?.toISOString() ?? pres.signedAt?.toISOString() ?? null,
+      paymentPlan: pres.paymentPlan ?? "full",
+      phases,
+    });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to get payment-summary");
+    res.status(500).json({ error: "Failed to get payment summary" });
   }
 });
 

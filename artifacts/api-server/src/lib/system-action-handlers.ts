@@ -103,6 +103,40 @@ export async function handleSystemAction(
       return { fired: true, clientUserId, action };
     }
 
+    case "save_presentation_title": {
+      const presId = typeof payload.presentationId === "number"
+        ? payload.presentationId
+        : typeof payload.presentationId === "string"
+        ? parseInt(payload.presentationId, 10)
+        : NaN;
+      if (isNaN(presId)) {
+        logger.warn({ payload }, "save_presentation_title: missing or invalid presentationId");
+        return { saved: false, error: "missing presentationId" };
+      }
+
+      // Try to extract projectTitle from the compose node output (payload.value or payload.projectTitle)
+      let projectTitle: string | null = null;
+      const raw = payload.value ?? payload.projectTitle;
+      if (typeof raw === "string" && raw.trim()) {
+        projectTitle = raw.trim();
+      } else if (raw && typeof raw === "object" && "projectTitle" in (raw as Record<string, unknown>)) {
+        const pt = (raw as Record<string, unknown>).projectTitle;
+        if (typeof pt === "string" && pt.trim()) projectTitle = pt.trim();
+      }
+
+      if (!projectTitle) {
+        logger.warn({ payload }, "save_presentation_title: no projectTitle found in payload — skipping");
+        return { saved: false, reason: "no projectTitle" };
+      }
+
+      await db.update(quickWinPresentationsTable)
+        .set({ projectTitle, updatedAt: new Date() })
+        .where(eq(quickWinPresentationsTable.id, presId));
+
+      logger.info({ presId, projectTitle }, "save_presentation_title: saved");
+      return { saved: true, projectTitle };
+    }
+
     case "save_presentation_phases": {
       const presId = typeof payload.presentationId === "number"
         ? payload.presentationId
