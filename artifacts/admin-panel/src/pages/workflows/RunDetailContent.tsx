@@ -285,6 +285,15 @@ export function ReplayNode({ data }: NodeProps) {
 
 export const replayNodeTypes: NodeTypes = { replayNode: ReplayNode };
 
+// ── Sensitivity label map for check_script_output ─────────────────────────────
+
+const SENSITIVITY_LABELS: Record<string, string> = {
+  strict:       "Strict",
+  balanced:     "Balanced",
+  lenient:      "Lenient",
+  very_lenient: "Very Lenient",
+};
+
 // ── Vertical replay step card ──────────────────────────────────────────────────
 
 function ReplayStepCard({
@@ -301,6 +310,8 @@ function ReplayStepCard({
   pricingLines,
   signalCount,
   hasSignals,
+  scriptCheckPassed,
+  scriptCheckSensitivity,
   onClick,
 }: {
   nodeId: string;
@@ -316,6 +327,8 @@ function ReplayStepCard({
   pricingLines?: number;
   signalCount?: number;
   hasSignals?: boolean;
+  scriptCheckPassed?: boolean;
+  scriptCheckSensitivity?: string;
   onClick: () => void;
 }) {
   const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? {
@@ -391,6 +404,22 @@ function ReplayStepCard({
               {!hasSignals && (
                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
                   alwaysInclude only
+                </span>
+              )}
+            </div>
+          )}
+          {scriptCheckPassed != null && (
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                scriptCheckPassed
+                  ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                  : "bg-red-500/15 text-red-400 border-red-500/30"
+              }`}>
+                🔬 {scriptCheckPassed ? "passed" : "failed"}
+              </span>
+              {scriptCheckSensitivity && (
+                <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+                  {SENSITIVITY_LABELS[scriptCheckSensitivity] ?? scriptCheckSensitivity}
                 </span>
               )}
             </div>
@@ -585,6 +614,57 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
       )}
 
       {/* Collapsible raw JSON fallback */}
+      <JsonBlock data={output} label="Raw output" />
+    </div>
+  );
+}
+
+// ── ScriptCheckOutputPanel ─────────────────────────────────────────────────────
+
+/**
+ * Replaces the raw "Output" JsonBlock for `check_script_output` node outputs.
+ * Shows the pass/fail result and sensitivity level prominently, then shows the
+ * AI outcome sentence and collapsible raw output.
+ */
+function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> }) {
+  const passed      = typeof output.passed === "boolean" ? (output.passed as boolean) : null;
+  const outcome     = typeof output.outcome === "string" ? (output.outcome as string) : null;
+  const sensitivity = typeof output.sensitivity === "string" ? (output.sensitivity as string) : null;
+  const sensitivityLabel = sensitivity ? (SENSITIVITY_LABELS[sensitivity] ?? sensitivity) : null;
+
+  return (
+    <div className="space-y-2">
+      {/* Header */}
+      <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">
+        Script Output Check{sensitivityLabel ? ` (${sensitivityLabel})` : ""}
+      </p>
+
+      {/* Pass / fail badge row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {passed !== null && (
+          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+            passed
+              ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+              : "bg-red-500/15 text-red-400 border-red-500/30"
+          }`}>
+            🔬 {passed ? "Passed" : "Failed"}
+          </span>
+        )}
+        {sensitivityLabel && (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#1C2128] border border-[#30363D] text-[#7D8590]">
+            {sensitivityLabel} sensitivity
+          </span>
+        )}
+      </div>
+
+      {/* AI outcome sentence */}
+      {outcome && (
+        <div className="px-3 py-2 rounded-lg bg-[#1C2128] border border-[#30363D]">
+          <p className="text-[10px] text-[#C9D1D9] leading-relaxed">{outcome}</p>
+        </div>
+      )}
+
+      {/* Collapsible raw JSON */}
       <JsonBlock data={output} label="Raw output" />
     </div>
   );
@@ -1355,6 +1435,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                     const hasSignals = nodeType === "get_tenant_signals"
                                       ? (nodeOutput?.output?.hasSignals as boolean | undefined)
                                       : undefined;
+                                    const scriptCheckPassed = nodeType === "check_script_output"
+                                      ? (nodeOutput?.output?.passed as boolean | undefined)
+                                      : undefined;
+                                    const scriptCheckSensitivity = nodeType === "check_script_output"
+                                      ? (nodeOutput?.output?.sensitivity as string | undefined)
+                                      : undefined;
 
                                     return (
                                       <div key={`${nodeId}-${idx}`}>
@@ -1371,6 +1457,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                           pricingLines={pricingLines}
                                           signalCount={signalCount}
                                           hasSignals={hasSignals}
+                                          scriptCheckPassed={scriptCheckPassed}
+                                          scriptCheckSensitivity={scriptCheckSensitivity}
                                           onClick={() => setReplayStep(idx)}
                                         />
                                         {i < entry.items.length - 1 && (
@@ -1417,6 +1505,12 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         const hasSignals = nodeType === "get_tenant_signals"
                           ? (nodeOutput?.output?.hasSignals as boolean | undefined)
                           : undefined;
+                        const scriptCheckPassed = nodeType === "check_script_output"
+                          ? (nodeOutput?.output?.passed as boolean | undefined)
+                          : undefined;
+                        const scriptCheckSensitivity = nodeType === "check_script_output"
+                          ? (nodeOutput?.output?.sensitivity as string | undefined)
+                          : undefined;
 
                         return (
                           <div key={`${nodeId}-${idx}`}>
@@ -1433,6 +1527,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               pricingLines={pricingLines}
                               signalCount={signalCount}
                               hasSignals={hasSignals}
+                              scriptCheckPassed={scriptCheckPassed}
+                              scriptCheckSensitivity={scriptCheckSensitivity}
                               onClick={() => setReplayStep(idx)}
                             />
                             {/* Connector line — skip if next entry is an exhausted group
@@ -1585,10 +1681,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         </div>
                       )}
                       <JsonBlock data={currentOutput.input} label="Input" />
-                      {currentNodeType === "get_tenant_signals"
-                        ? <TenantSignalsPanel output={currentOutput.output} />
-                        : <JsonBlock data={currentOutput.output} label="Output" />
-                      }
+                      {currentNodeType === "get_tenant_signals" ? (
+                        <TenantSignalsPanel output={currentOutput.output} />
+                      ) : currentNodeType === "check_script_output" ? (
+                        <ScriptCheckOutputPanel output={currentOutput.output} />
+                      ) : (
+                        <JsonBlock data={currentOutput.output} label="Output" />
+                      )}
                       {/* Depth-limit abort: depth+maxDepth present but no child was created */}
                       {currentOutput.status === "error"
                         && typeof currentOutput.output.depth === "number"
