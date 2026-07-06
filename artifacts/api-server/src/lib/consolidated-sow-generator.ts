@@ -313,6 +313,28 @@ export async function generateConsolidatedSowDocument(
   }
   const allFindingsForSignals = [...new Set(typedRunsForSignals.flatMap(r => r.parsedFindings ?? []))];
 
+  // Insert the "generating" row and notify caller BEFORE signal eval and AI generation.
+  // This ensures the row always exists so it can be marked "failed" if anything goes wrong.
+  const [genSowRowEarly] = await db.insert(insightsGeneratedDocumentsTable).values({
+    customerId: clientUserId,
+    projectId:  projectId ?? null,
+    category:   "consulting",
+    docType:    "consolidated_sow",
+    title,
+    htmlContent: "",
+    status:     "generating",
+    pdfUrl:     null,
+  }).returning({ id: insightsGeneratedDocumentsTable.id });
+  const docId = genSowRowEarly!.id;
+
+  // Notify caller synchronously so HTTP routes can send the docId before the slow AI step.
+  params.onRowCreated?.(docId);
+
+  logger.info(
+    { ...logCtx, docId, engagementProjectCount: allEngagementProjects.length },
+    "consolidated-sow-generator: starting signal evaluation",
+  );
+
   let signalFilteredProjects = allEngagementProjects;
   let signalFilterMeta: { clean: boolean; conflictCount: number; conflicts?: Array<{ ruleIds: number[]; description: string }> } = { clean: true, conflictCount: 0 };
   // Adjustment signal keys that fired for this tenant — populated inside the try block.
@@ -402,7 +424,12 @@ export async function generateConsolidatedSowDocument(
         "consolidated-sow-generator: signal filter excluded projects");
     }
   } catch (signalErr) {
-    logger.warn({ ...logCtx, signalErr }, "consolidated-sow-generator: signal evaluation failed — using all projects");
+    logger.error({ ...logCtx, docId, signalErr }, "consolidated-sow-generator: signal evaluation failed — aborting SOW generation");
+    await db.update(insightsGeneratedDocumentsTable)
+      .set({ status: "failed", errorMessage: ("Signal evaluation failed: " + (signalErr instanceof Error ? signalErr.message : String(signalErr))).slice(0, 500), updatedAt: new Date() })
+      .where(eq(insightsGeneratedDocumentsTable.id, docId))
+      .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
+    throw new Error("SOW generation failed: could not evaluate tenant signals — please retry");
   }
 
   const projectsBlock = signalFilteredProjects.length > 0
@@ -580,21 +607,6 @@ export async function generateConsolidatedSowDocument(
       .limit(1);
     priorSowId = prior[0]?.id ?? null;
   }
-
-  const [genSowRow] = await db.insert(insightsGeneratedDocumentsTable).values({
-    customerId: clientUserId,
-    projectId:  projectId ?? null,
-    category:   "consulting",
-    docType:    "consolidated_sow",
-    title,
-    htmlContent: "",
-    status:     "generating",
-    pdfUrl:     null,
-  }).returning({ id: insightsGeneratedDocumentsTable.id });
-  const docId = genSowRow!.id;
-
-  // Notify caller synchronously so HTTP routes can send the docId before the slow AI step.
-  params.onRowCreated?.(docId);
 
   logger.info({ ...logCtx, docId }, "consolidated-sow-generator: starting AI generation");
 
