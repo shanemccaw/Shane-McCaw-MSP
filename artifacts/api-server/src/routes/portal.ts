@@ -3966,7 +3966,7 @@ async function provisionOnboardingProject(
   stripeSubscriptionId?: string | null,
   userIdOverride?: number,
 ): Promise<void> {
-  const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr, servicePrices: servicePricesStr } = session.metadata ?? {};
+  const { userId, serviceId, serviceIds: serviceIdsStr, contractId, contractIds: contractIdsStr, servicePrices: servicePricesStr, presentationId: presIdStr } = session.metadata ?? {};
   const uid = userIdOverride ?? parseInt(userId ?? "", 10);
 
   // Support both legacy (serviceId) and new (serviceIds) metadata formats
@@ -4086,6 +4086,24 @@ async function provisionOnboardingProject(
       .orderBy(asc(workflowTemplateStepsTable.order));
   }
 
+  // ── Resolve SOW phase IDs for step tagging (non-fatal) ───────────────────
+  // When the checkout was created from the portal presentation flow, the session
+  // metadata includes presentationId.  Use it to pull selectedPhaseIds so we can
+  // tag workflow_steps with the correct sow_phase_id at creation time.
+  let sowSelectedPhaseIds: string[] = [];
+  const presId = parseInt(presIdStr ?? "", 10);
+  if (!isNaN(presId)) {
+    try {
+      const [pres] = await db
+        .select({ selectedPhaseIds: quickWinPresentationsTable.selectedPhaseIds })
+        .from(quickWinPresentationsTable)
+        .where(eq(quickWinPresentationsTable.id, presId));
+      sowSelectedPhaseIds = (pres?.selectedPhaseIds ?? []) as string[];
+    } catch (err) {
+      req.log.warn({ err, presId }, "provisionOnboardingProject: failed to resolve SOW phase IDs (non-fatal)");
+    }
+  }
+
   // ── Loop over every service: assign clientService, link contract, create invoice ──
   for (let i = 0; i < orderedServices.length; i++) {
     const svc = orderedServices[i];
@@ -4111,6 +4129,8 @@ async function provisionOnboardingProject(
 
     // ── Seed workflow steps for this client service ────────────────────────
     if (i === 0 && workflowTemplateSteps.length > 0) {
+      // sowPhaseId: prefer the phase at service index i, fall back to first phase
+      const sowPhaseId = sowSelectedPhaseIds[i] ?? sowSelectedPhaseIds[0] ?? null;
       // New: steps come from workflow template; first step auto-starts in_progress
       const createdSteps = await db.insert(workflowStepsTable).values(
         workflowTemplateSteps.map((s, idx) => ({
@@ -4121,6 +4141,7 @@ async function provisionOnboardingProject(
           status: idx === 0 ? ("in_progress" as const) : ("pending" as const),
           order: idx + 1,
           workflowTemplateStepId: s.id,
+          sowPhaseId,
         }))
       ).returning();
 
