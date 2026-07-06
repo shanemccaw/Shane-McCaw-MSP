@@ -199,6 +199,9 @@ export default function PresentationFlow({
   // Dwell-time tracking: record when the client entered the current doc step
   const docStepStartRef = useRef<{ stepIndex: number; docId: number | null; docTitle: string; startMs: number } | null>(null);
 
+  // Guard so the auto-refresh on the SOW step only fires once per staleness event
+  const autoRefreshedRef = useRef(false);
+
   const computeInitialStep = () => {
     // Docs hidden from the left nav: SOW documents (shown in the Scope step) and
     // task execution guides (internal-only; never surfaced to clients).
@@ -689,6 +692,23 @@ export default function PresentationFlow({
       setRefreshingScope(false);
     }
   }, [fetchFn, presentationId, shareToken, readOnly]);
+
+  // Auto-refresh on the Scope & Pricing step: when staleness is detected while the
+  // client is already on the SOW step, fire handleRefreshScope() immediately so they
+  // never need to click the amber banner manually.  The ref guard ensures we call it
+  // only once per staleness event and reset when the stale flags clear.
+  useEffect(() => {
+    if ((scopeStale || docsStale) && currentStep?.kind === "sow") {
+      if (!autoRefreshedRef.current) {
+        autoRefreshedRef.current = true;
+        void handleRefreshScope();
+      }
+    } else if (!scopeStale && !docsStale) {
+      // Staleness cleared (either by the refresh above or by the admin reverting) —
+      // reset the guard so the next staleness event can trigger auto-refresh again.
+      autoRefreshedRef.current = false;
+    }
+  }, [scopeStale, docsStale, currentStep?.kind, handleRefreshScope]);
 
   // Flush dwell time for the doc step that was just left
   const flushDocDwell = useCallback((leavingStepIndex: number) => {
