@@ -170,18 +170,39 @@ router.post("/admin/coupons/publish-to-prod", requireAdmin, async (req: Request,
 
     try {
       if (dryRun) {
-        // Read prod state and compute diff without writing
-        const prodResult = await client.query<{ code: string }>(
-          `SELECT code FROM coupons`
-        );
-        const prodCodes = new Set(prodResult.rows.map(r => r.code));
+        // Read all publish-relevant fields from prod so we can do real field comparison
+        const prodResult = await client.query<{
+          code: string;
+          discount_type: string;
+          discount_value: string;
+          max_uses: number | null;
+          active: boolean;
+          expires_at: Date | null;
+          requires_testimonial: boolean;
+        }>(`SELECT code, discount_type, discount_value, max_uses, active, expires_at, requires_testimonial FROM coupons`);
+
+        const prodMap = new Map(prodResult.rows.map(r => [r.code, r]));
 
         const added = devCoupons
-          .filter(c => !prodCodes.has(c.code))
+          .filter(c => !prodMap.has(c.code))
           .map(c => ({ code: c.code, discountType: c.discountType, discountValue: c.discountValue }));
-        const updated = devCoupons
-          .filter(c => prodCodes.has(c.code))
-          .map(c => ({ code: c.code }));
+
+        const updated: Array<{ code: string }> = [];
+        for (const c of devCoupons) {
+          const p = prodMap.get(c.code);
+          if (!p) continue; // new — already in added
+          const changed =
+            c.discountType !== p.discount_type ||
+            String(c.discountValue) !== String(p.discount_value) ||
+            (c.maxUses ?? null) !== (p.max_uses ?? null) ||
+            c.active !== p.active ||
+            (c.requiresTestimonial ?? false) !== (p.requires_testimonial ?? false) ||
+            // compare expires_at as ISO strings, treating null as null
+            ((c.expiresAt ? new Date(c.expiresAt).toISOString() : null) !==
+             (p.expires_at ? new Date(p.expires_at).toISOString() : null));
+          if (changed) updated.push({ code: c.code });
+        }
+
         const removed = prodResult.rows
           .filter(r => !devMap.has(r.code))
           .map(r => ({ code: r.code }));

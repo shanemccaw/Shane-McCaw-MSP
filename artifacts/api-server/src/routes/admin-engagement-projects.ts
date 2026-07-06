@@ -175,17 +175,43 @@ router.post("/admin/engagement-projects/publish-to-prod", requireAdmin, async (r
 
     try {
       if (dryRun) {
-        const prodResult = await client.query<{ title: string; price_range: string }>(
-          `SELECT title, price_range FROM engagement_projects`
-        );
-        const prodTitleSet = new Set(prodResult.rows.map(r => r.title));
+        // Fetch all publish-relevant fields from prod for accurate field-level diff
+        const prodResult = await client.query<{
+          title: string;
+          price_range: string;
+          description: string | null;
+          meaning: string | null;
+          triggered_by: string[];
+          sow_items: string[];
+          pages: string[];
+          sort_order: number;
+          is_visible: boolean;
+        }>(`SELECT title, price_range, description, meaning, triggered_by, sow_items, pages, sort_order, is_visible FROM engagement_projects`);
+
+        const prodMap = new Map(prodResult.rows.map(r => [r.title, r]));
 
         const added = devProjects
-          .filter(p => !prodTitleSet.has(p.title))
+          .filter(p => !prodMap.has(p.title))
           .map(p => ({ title: p.title, priceRange: p.price_range }));
-        const updated = devProjects
-          .filter(p => prodTitleSet.has(p.title))
-          .map(p => ({ title: p.title }));
+
+        const updated: Array<{ title: string }> = [];
+        for (const p of devProjects) {
+          const q = prodMap.get(p.title);
+          if (!q) continue; // new — already in added
+          const arrEq = (a: string[], b: string[]) =>
+            a.length === b.length && a.every((v, i) => v === b[i]);
+          const changed =
+            p.price_range !== q.price_range ||
+            (p.description ?? null) !== (q.description ?? null) ||
+            (p.meaning ?? null) !== (q.meaning ?? null) ||
+            p.sort_order !== q.sort_order ||
+            p.is_visible !== q.is_visible ||
+            !arrEq(p.triggered_by ?? [], q.triggered_by ?? []) ||
+            !arrEq(p.sow_items ?? [], q.sow_items ?? []) ||
+            !arrEq(p.pages ?? [], q.pages ?? []);
+          if (changed) updated.push({ title: p.title });
+        }
+
         const removed = prodResult.rows
           .filter(r => !devTitleSet.has(r.title))
           .map(r => ({ title: r.title }));
