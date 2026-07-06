@@ -10469,6 +10469,69 @@ router.post("/portal/presentations/:id/generate-phases", async (req: Request, re
   }
 });
 
+// POST /portal/presentations/:id/reset-for-rescope
+// Clears phases + signature so the presenter can regenerate the SOW.
+// Blocked if the presentation is already paid (terminal state).
+router.post("/portal/presentations/:id/reset-for-rescope", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try {
+        const decoded = jwt.verify(tok, jwtSecret) as { id: number };
+        authedUserId = decoded.id;
+      } catch { /* no auth */ }
+    }
+
+    const [pres] = await db
+      .select({ id: quickWinPresentationsTable.id, clientUserId: quickWinPresentationsTable.clientUserId, shareToken: quickWinPresentationsTable.shareToken, status: quickWinPresentationsTable.status })
+      .from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isValidToken) { res.status(403).json({ error: "Access denied" }); return; }
+
+    if (pres.status === "paid") {
+      res.status(409).json({ error: "Presentation is already paid and cannot be reset" }); return;
+    }
+
+    await db.update(quickWinPresentationsTable)
+      .set({
+        sowPhases: [],
+        selectedPhaseIds: [],
+        signatureData: null,
+        signedAt: null,
+        signerName: null,
+        status: "draft",
+        paymentPlan: null,
+        stripeSessionId: null,
+        scopedSowHtml: null,
+        scopedTotalPrice: null,
+        scopedPhaseIds: null,
+        payTodayDiscountApplied: false,
+        discountedTotalCents: null,
+        phaseGenRequestedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    req.log.info({ presentationId: id }, "portal: reset-for-rescope completed");
+    res.json({ reset: true });
+  } catch (err) {
+    req.log.error(err, "portal: reset-for-rescope failed");
+    res.status(500).json({ error: "Failed to reset presentation" });
+  }
+});
+
 // GET /portal/presentations/:id/offer — PAY-TODAY limited-time offer state
 // Returns discount parameters tied to a 72-hour window anchored at first visit.
 router.get("/portal/presentations/:id/offer", async (req: Request, res: Response) => {
