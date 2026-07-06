@@ -1145,7 +1145,8 @@ async function executeNode(
               output = { projectId: project.id, projectTitle: project.title };
               // If this run was triggered by a presentation, broadcast project_ready so the
               // client's ConfirmationStep CTA button lights up without a page refresh.
-              const presIdRaw = payload.presentationId;
+              // The agreement_signed event uses `contractId`; other paths may use `presentationId`.
+              const presIdRaw = payload.contractId ?? payload.presentationId;
               const presId = typeof presIdRaw === "number" ? presIdRaw
                 : typeof presIdRaw === "string" ? parseInt(presIdRaw, 10) : NaN;
               if (!isNaN(presId) && presId > 0) {

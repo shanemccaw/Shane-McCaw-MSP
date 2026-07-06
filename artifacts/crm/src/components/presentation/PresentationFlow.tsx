@@ -2237,6 +2237,7 @@ export default function PresentationFlow({
                   deliveryDate: p.deliveryDate ?? null,
                 }))}
                 projectId={data.projectId ?? null}
+                shareToken={shareToken}
               />
             )}
           </div>

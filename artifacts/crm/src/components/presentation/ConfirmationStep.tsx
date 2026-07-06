@@ -17,6 +17,7 @@ interface Props {
   totalPrice: number;
   sowPhases: SowPhase[];
   projectId: number | null;
+  shareToken?: string | null;
 }
 
 // ─── Confetti canvas ─────────────────────────────────────────────────────────
@@ -155,6 +156,7 @@ export default function ConfirmationStep({
   totalPrice,
   sowPhases,
   projectId: initialProjectId,
+  shareToken,
 }: Props) {
   const { accessToken } = useAuth();
   const [, navigate] = useLocation();
@@ -176,7 +178,12 @@ export default function ConfirmationStep({
   // ── SSE: listen for project_ready ────────────────────────────────────────
   const openSSE = useCallback(() => {
     if (ctaReady) return;
-    const qs = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+    // scope-events authenticates via ?jwt= (JWT) or ?token= (share token).
+    // EventSource cannot send headers, so we pass credentials as query params.
+    const params = new URLSearchParams();
+    if (accessToken) params.set("jwt", accessToken);
+    else if (shareToken) params.set("token", shareToken);
+    const qs = params.toString() ? `?${params.toString()}` : "";
     const es = new EventSource(`/api/portal/presentations/${presentationId}/scope-events${qs}`);
     es.onmessage = (e) => {
       try {
