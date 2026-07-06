@@ -1128,6 +1128,22 @@ interface AncestorGroup {
   outputs: Array<{ key: string; label: string; enumValues?: string[] }>;
 }
 
+// Forward DFS from a set of start IDs, following all outgoing edges.
+// Used to determine which nodes are inside a foreach loop body.
+function reachableForward(startIds: string[], edges: Edge[]): Set<string> {
+  const seen = new Set<string>();
+  const q = [...startIds];
+  while (q.length > 0) {
+    const id = q.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    for (const e of edges) {
+      if (e.source === id && !seen.has(e.target)) q.push(e.target);
+    }
+  }
+  return seen;
+}
+
 function getAncestorOutputs(
   nodeId: string,
   nodes: Node[],
@@ -1137,6 +1153,9 @@ function getAncestorOutputs(
   const visited = new Set<string>();
   const queue: string[] = edges.filter(e => e.target === nodeId).map(e => e.source);
   const result: AncestorGroup[] = [];
+  // Track loop-body set_variable virtual groups already injected so we don't duplicate
+  const injectedLoopVars = new Set<string>();
+
   while (queue.length > 0) {
     const id = queue.shift()!;
     if (visited.has(id)) continue;
@@ -1212,6 +1231,51 @@ function getAncestorOutputs(
     } else if (type !== "end" && type !== "condition" && type !== "delay" && type !== "error") {
       // First-class node types (score_lead, assign_pipeline_stage, etc.)
       outputs = NODE_OUTPUTS[type] ?? [];
+
+      // ── Loop-body sibling injection ──────────────────────────────────────
+      // When the current node (nodeId) lives inside a foreach loop body, the
+      // backward BFS only visits direct ancestors along the execution path.
+      // Set Variable nodes on parallel branches within the same loop body are
+      // never visited, so their named variables aren't surfaced in the picker
+      // or validator.  Fix: when we visit a foreach node, forward-scan its
+      // loop-body subgraph; if nodeId is reachable from the item/body handle,
+      // inject any set_variable / update_variable nodes from that subgraph as
+      // virtual top-level groups (isStartNode: true) so {{varName}} resolves.
+      if (type === "foreach") {
+        const itemHandleTargets = edges
+          .filter(e => e.source === id && (e.sourceHandle === "item" || e.sourceHandle === "body" || e.sourceHandle === "loop"))
+          .map(e => e.target);
+
+        if (itemHandleTargets.length > 0) {
+          const loopBodyIds = reachableForward(itemHandleTargets, edges);
+
+          // Only inject if the current node being configured is actually inside
+          // this loop body (guards against false positives on nested loops).
+          if (loopBodyIds.has(nodeId)) {
+            for (const bid of loopBodyIds) {
+              if (bid === nodeId || visited.has(bid)) continue; // skip self and already-found ancestors
+              const bn = nodes.find(x => x.id === bid);
+              if (!bn) continue;
+              const bType = (bn.data.nodeType as string) ?? "action";
+              const bActionType = bn.data.actionType as string | undefined;
+              if (bType === "action" && (bActionType === "set_variable" || bActionType === "update_variable")) {
+                const svName = (bn.data.variableName as string | undefined)?.trim();
+                if (svName && !injectedLoopVars.has(`${bid}__${svName}`)) {
+                  injectedLoopVars.add(`${bid}__${svName}`);
+                  const svType = (bn.data.variableType as string | undefined)?.trim() ?? "string";
+                  const nodeName = (bn.data.label as string | undefined) || bActionType!.replace(/_/g, " ");
+                  result.unshift({
+                    nodeId: `${bid}__var__${svName}`,
+                    nodeName: `${nodeName} → {{${svName}}}`,
+                    isStartNode: true,
+                    outputs: [{ key: svName, label: `Set Variable "${svName}" (${svType})` }],
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
     }
     if (outputs.length > 0) {
       const name = (node.data.label as string | undefined)
