@@ -236,7 +236,9 @@ export default function PresentationFlow({
       }
       // If the URL tries to land on the Agreement step but no plan has been chosen,
       // redirect to the Payment Options step so the client picks a plan first.
-      if (steps[clamped]?.kind === "contract" && !initialData.paymentPlan) {
+      // Exception: if the agreement is already signed, the plan was chosen previously —
+      // allow navigation even if paymentPlan wasn't persisted before signing.
+      if (steps[clamped]?.kind === "contract" && !initialData.paymentPlan && !initialData.signedAt) {
         const pmtIdx = steps.findIndex(s => s.kind === "payment");
         return pmtIdx >= 0 ? pmtIdx : clamped;
       }
@@ -1077,7 +1079,8 @@ export default function PresentationFlow({
       return;
     }
     // Hard-block advancing from the payment options step until a plan is selected.
-    if (currentStep?.kind === "payment" && !selectedPlan) {
+    // Exception: if the agreement is already signed, a plan was chosen before — allow advancing.
+    if (currentStep?.kind === "payment" && !selectedPlan && !data.signedAt) {
       return;
     }
     if (stepIndex < steps.length - 1) {
@@ -1119,7 +1122,8 @@ export default function PresentationFlow({
     const blockedByUnsigned = targetStep?.kind === "checkout" && !data.signedAt;
     // Hard-block sidebar navigation to contract when no payment plan has been chosen.
     // Redirect to the payment step so the client picks a plan first.
-    const blockedByNoPlan = targetStep?.kind === "contract" && !selectedPlan;
+    // Exception: if the agreement is already signed, a plan was chosen before signing.
+    const blockedByNoPlan = targetStep?.kind === "contract" && !selectedPlan && !data.signedAt;
     // Hard-block all SOW-gated steps when no SOW document is present.
     const blockedByNoSow = !hasSowDocument && !!targetStep && sowGatedKinds.has(targetStep.kind);
     if (i <= maxVisitedStep && !blockedByReset && !blockedByUnsigned && !blockedByNoPlan && !blockedByNoSow) {
@@ -1157,7 +1161,8 @@ export default function PresentationFlow({
     // Hard-block jumps to checkout without a signed agreement.
     if (targetStep?.kind === "checkout" && !data.signedAt) return;
     // Hard-block jumps to contract when no payment plan has been chosen — redirect to payment.
-    if (targetStep?.kind === "contract" && !selectedPlan) {
+    // Exception: if the agreement is already signed, a plan was chosen before signing.
+    if (targetStep?.kind === "contract" && !selectedPlan && !data.signedAt) {
       const pmtIdx = steps.findIndex(s => s.kind === "payment");
       if (pmtIdx >= 0) {
         directionRef.current = "back";
@@ -2005,7 +2010,15 @@ export default function PresentationFlow({
                 <div className="flex-1 overflow-auto px-4 sm:px-6 py-6">
                   <PaymentOptionsPanel
                     totalPrice={effectivePrice}
-                    onPlanSelected={setSelectedPlan}
+                    onPlanSelected={(plan) => {
+                      setSelectedPlan(plan);
+                      const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
+                      void fetchFn(`/api/portal/presentations/${presentationId}/payment-plan${tokenParam}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ paymentPlan: plan }),
+                      }).catch(() => { /* fire-and-forget; plan is still held in local state */ });
+                    }}
                     initialPlan={selectedPlan}
                     loading={false}
                     alreadyPaid={isPaid}

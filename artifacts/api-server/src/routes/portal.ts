@@ -10599,6 +10599,40 @@ router.patch("/portal/presentations/:id/selections", requireAuth, async (req: Re
   }
 });
 
+// PATCH /portal/presentations/:id/payment-plan — persist chosen payment plan
+// Called immediately when the client picks a plan on the Payment Options step.
+// Allowed for status "draft" and "signed" (agreement signed, not yet paid).
+// Blocked only when already "paid" to protect the final state.
+router.patch("/portal/presentations/:id/payment-plan", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    const userId = req.user!.id;
+    const { paymentPlan } = req.body as { paymentPlan: "full" | "phased" };
+
+    if (!paymentPlan || !["full", "phased"].includes(paymentPlan)) {
+      res.status(400).json({ error: "paymentPlan must be 'full' or 'phased'" }); return;
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .limit(1);
+    if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+    if (pres.status === "paid") {
+      res.status(409).json({ error: "Presentation is already paid" }); return;
+    }
+
+    await db.update(quickWinPresentationsTable)
+      .set({ paymentPlan, updatedAt: new Date() })
+      .where(eq(quickWinPresentationsTable.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, "portal: failed to save payment plan");
+    res.status(500).json({ error: "Failed to save payment plan" });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Helper — build a clean scoped SOW HTML document from selected phases.
 // ---------------------------------------------------------------------------
