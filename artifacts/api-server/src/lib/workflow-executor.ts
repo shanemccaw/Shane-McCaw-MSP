@@ -415,17 +415,43 @@ function evalCondition(expression: string, payload: Record<string, unknown>): bo
 
 // ── Variable type coercion ────────────────────────────────────────────────────
 
-function coerceToType(raw: string, type: string): unknown {
+/**
+ * Coerce a string value to the declared type.
+ * Throws a descriptive Error on invalid input so the executor can fail fast
+ * and surface a clear message instead of silently producing wrong data.
+ */
+function coerceToType(raw: string, type: string, varName: string): unknown {
   switch (type) {
-    case "int":     return parseInt(raw, 10);
-    case "float":   return parseFloat(raw);
-    case "boolean": return raw === "true" || raw === "1";
-    case "null":    return null;
+    case "int": {
+      const n = parseInt(raw, 10);
+      if (isNaN(n)) throw new Error(`Set Variable "${varName}": cannot parse "${raw}" as int`);
+      return n;
+    }
+    case "float": {
+      const f = parseFloat(raw);
+      if (isNaN(f)) throw new Error(`Set Variable "${varName}": cannot parse "${raw}" as float`);
+      return f;
+    }
+    case "boolean":
+      if (raw !== "true" && raw !== "false" && raw !== "1" && raw !== "0")
+        throw new Error(`Set Variable "${varName}": expected "true"/"false"/"1"/"0", got "${raw}"`);
+      return raw === "true" || raw === "1";
+    case "null":
+      return null;
     case "array":
     case "object":
-    case "json":
-      try { return JSON.parse(raw); } catch { return raw; }
-    default:        return raw;
+    case "json": {
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); }
+      catch (e) { throw new Error(`Set Variable "${varName}": invalid JSON — ${(e as Error).message}`); }
+      if (type === "array" && !Array.isArray(parsed))
+        throw new Error(`Set Variable "${varName}": expected JSON array, got ${typeof parsed}`);
+      if (type === "object" && (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)))
+        throw new Error(`Set Variable "${varName}": expected JSON object, got ${typeof parsed}`);
+      return parsed;
+    }
+    default:
+      return raw;
   }
 }
 
@@ -734,8 +760,20 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "set_variable":
     case "update_variable": {
-      const svDryName = (node.data.variableName as string | undefined)?.trim() || "<variable_name>";
-      return { dryRun: true, value: svDryName };
+      const svDryName  = (node.data.variableName as string | undefined)?.trim() || "";
+      const svDryType  = ((node.data.variableType as string | undefined)?.trim()) || "string";
+      const dryPlaceholder: unknown =
+        svDryType === "int"    ? 0
+        : svDryType === "float"  ? 0.0
+        : svDryType === "boolean" ? false
+        : svDryType === "null"   ? null
+        : svDryType === "array"  ? []
+        : svDryType === "object" ? {}
+        : svDryType === "json"   ? null
+        : `<${svDryName || "variable"}>`;
+      const currentDryVars: Record<string, unknown> = {};
+      if (svDryName) currentDryVars[svDryName] = dryPlaceholder;
+      return { dryRun: true, value: dryPlaceholder, variables: currentDryVars, ...(svDryName ? { [svDryName]: dryPlaceholder } : {}) };
     }
 
     case "check_exchange_calendar_availability":
@@ -3131,8 +3169,18 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const svType   = ((node.data.variableType as string | undefined)?.trim()) || "string";
         const svRawTpl = (node.data.variableValue as string | undefined) ?? "";
         const svRaw    = interp(svRawTpl, payload) ?? "";
-        const svValue  = coerceToType(svRaw, svType);
-        output = { value: svValue };
+        let svValue: unknown;
+        try {
+          svValue = coerceToType(svRaw, svType, svName || node.id);
+        } catch (e) {
+          nodeError = true;
+          output = { error: (e as Error).message };
+          break;
+        }
+        // Maintain a per-run variables namespace inside the payload
+        const currentVars = (payload.variables as Record<string, unknown> | undefined) ?? {};
+        const updatedVars = svName ? { ...currentVars, [svName]: svValue } : currentVars;
+        output = { value: svValue, variables: updatedVars };
         if (svName) output[svName] = svValue;
         break;
       }

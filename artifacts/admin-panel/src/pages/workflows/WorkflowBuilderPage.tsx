@@ -2992,20 +2992,31 @@ function NodeConfigPanel({
                 )}
               </label>
               {["array", "object", "json"].includes((node.data.variableType as string) ?? "string") ? (
-                <textarea
-                  rows={4}
-                  value={(node.data.variableValue as string) ?? ""}
-                  onChange={e => onChange(node.id, { ...node.data, variableValue: e.target.value })}
-                  placeholder={
-                    (node.data.variableType as string) === "array"
-                      ? '["item1", "item2"]'
-                      : (node.data.variableType as string) === "object"
-                        ? '{"key": "value"}'
-                        : "[]  or  {}  or  42  or  \"text\""
-                  }
-                  spellCheck={false}
-                  className="w-full rounded-md border border-[#30363D] bg-[#0D1117] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none focus:border-[#34D399]/60 resize-y"
-                />
+                <>
+                  <textarea
+                    rows={4}
+                    value={(node.data.variableValue as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, variableValue: e.target.value, _jsonError: undefined })}
+                    onBlur={e => {
+                      const val = e.target.value.trim();
+                      if (!val) { onChange(node.id, { ...node.data, _jsonError: undefined }); return; }
+                      try { JSON.parse(val); onChange(node.id, { ...node.data, _jsonError: undefined }); }
+                      catch (err) { onChange(node.id, { ...node.data, _jsonError: (err as Error).message }); }
+                    }}
+                    placeholder={
+                      (node.data.variableType as string) === "array"
+                        ? '["item1", "item2"]'
+                        : (node.data.variableType as string) === "object"
+                          ? '{"key": "value"}'
+                          : "[]  or  {}  or  42  or  \"text\""
+                    }
+                    spellCheck={false}
+                    className={`w-full rounded-md border bg-[#0D1117] px-2.5 py-2 text-[11px] font-mono text-[#C9D1D9] placeholder-[#3D444D] focus:outline-none resize-y ${node.data._jsonError ? "border-[#EF4444]/70 focus:border-[#EF4444]" : "border-[#30363D] focus:border-[#34D399]/60"}`}
+                  />
+                  {node.data._jsonError && (
+                    <p className="text-[10px] text-[#EF4444] font-mono break-all">{node.data._jsonError as string}</p>
+                  )}
+                </>
               ) : (
                 <PayloadField
                   label=""
@@ -3029,8 +3040,8 @@ function NodeConfigPanel({
             <div className={`rounded-lg p-3 space-y-1 border ${nodeType === "update_variable" ? "bg-[#1A0E00] border-[#F97316]/30" : "bg-[#0A1A10] border-[#34D399]/30"}`}>
               <p className="text-[10px] text-[#7D8590] leading-relaxed">
                 The resolved value is coerced to the selected type at run-time.
-                For <span className="font-mono">array / object / json</span>, the executor JSON-parses the interpolated string.
-                If parsing fails the raw string is stored instead.
+                For <span className="font-mono">array / object / json</span>, the executor JSON-parses the interpolated string — invalid JSON causes the node to fail with a descriptive error.
+                For <span className="font-mono">int / float</span>, NaN results are also treated as errors.
                 The{" "}
                 <span className={`font-mono ${nodeType === "update_variable" ? "text-[#F97316]" : "text-[#34D399]"}`}>
                   Update Variable
