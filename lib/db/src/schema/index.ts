@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 
@@ -1872,7 +1872,7 @@ export const wfRunsTable = pgTable("wf_runs", {
   startedAt: timestamp("started_at"),
   finishedAt: timestamp("finished_at"),
   errorMessage: text("error_message"),
-  retriggeredFromRunId: integer("retriggered_from_run_id"),
+  retriggeredFromRunId: integer("retriggered_from_run_id").references((): AnyPgColumn => wfRunsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
