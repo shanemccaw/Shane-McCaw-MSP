@@ -1481,6 +1481,77 @@ router.get("/admin/workflows/sound-events", requireAdmin, (req: Request, res: Re
   registerAdminWorkflowEventClient(res, () => clearInterval(keepAlive));
 });
 
+// ── Expression helper ─────────────────────────────────────────────────────────
+// POST /api/admin/workflows/expression-helper
+// Calls Claude to generate a workflow expression from a natural-language prompt.
+// Returns { expression, explanation } — expression on line 1, ≤15-word explanation on line 2.
+
+const EXPRESSION_HELPER_SCHEMA = z.object({
+  userPrompt: z.string().min(1).max(500),
+  availableVariables: z.array(z.object({
+    tokenPath: z.string(),
+    label: z.string(),
+  })).max(200),
+  expressionType: z.enum(["boolean", "value"]),
+});
+
+router.post("/admin/workflows/expression-helper", requireAdmin, async (req: Request, res: Response) => {
+  const parsed = EXPRESSION_HELPER_SCHEMA.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request" });
+    return;
+  }
+
+  const { userPrompt, availableVariables, expressionType } = parsed.data;
+
+  const varList = availableVariables.length
+    ? availableVariables.map(v => `  {{${v.tokenPath}}} — ${v.label}`).join("\n")
+    : "  (no upstream variables available)";
+
+  const systemPrompt = `You are a workflow expression writer for a no-code automation builder.
+Expression syntax rules:
+- Variable references: {{variablePath}} e.g. {{status}}, {{steps.node-101.score}}
+- Comparison operators: ==, !=, >, <, >=, <=, contains
+- Logical operators: && (and), || (or)
+- Value literals: numbers (42), strings ('active'), booleans (true/false), null
+- Example boolean: {{status}} == 'active' && {{score}} > 80
+- Example value: {{steps.node-101.tier}}
+
+Available variables for this node:
+${varList}
+
+Output format — EXACTLY two lines, no markdown, no prose:
+Line 1: the expression
+Line 2: plain-English explanation of what it checks (≤15 words)
+
+${expressionType === "boolean" ? "The expression must evaluate to true or false." : "The expression resolves to any value (string, number, boolean, etc.)."}`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 256,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const raw = message.content[0]?.type === "text" ? message.content[0].text.trim() : "";
+    const lines = raw.split("\n").map((l: string) => l.trim()).filter(Boolean);
+    const expression = lines[0] ?? "";
+    const explanation = lines[1] ?? "";
+
+    if (!expression) {
+      res.status(500).json({ error: "AI returned an empty expression" });
+      return;
+    }
+
+    req.log.info({ userPrompt, expressionType }, "expression-helper: expression generated");
+    res.json({ ok: true, expression, explanation });
+  } catch (err) {
+    req.log.error({ err }, "expression-helper: AI call failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Expression helper failed" });
+  }
+});
+
 // ── Sound synthesiser ─────────────────────────────────────────────────────────
 // POST /api/admin/workflows/synthesise-sound
 // Calls Claude to produce Web Audio API parameters from a natural-language

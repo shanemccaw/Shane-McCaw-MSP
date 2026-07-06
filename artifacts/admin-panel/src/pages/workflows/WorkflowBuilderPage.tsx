@@ -1423,6 +1423,504 @@ function PayloadField({
   );
 }
 
+// ── Expression utilities ──────────────────────────────────────────────────────
+// Client-side port of the server's evalCondition() — no eval/new Function.
+// Returns { status, resolvedValue, error } so we can show the badge.
+
+type ExprValidation =
+  | { status: "empty" }
+  | { status: "valid"; resolvedValue: unknown }
+  | { status: "invalid"; reason: string };
+
+function buildMockPayload(ancestorOutputs: AncestorGroup[]): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  const steps: Record<string, Record<string, unknown>> = {};
+
+  for (const group of ancestorOutputs) {
+    for (const output of group.outputs) {
+      // Use enumValues[0] when available so comparisons like {{tier}} == 'Beginner' resolve
+      const mockVal: unknown = output.enumValues?.length ? output.enumValues[0] : (() => {
+        const k = output.key.toLowerCase();
+        if (k === "ok" || k.startsWith("is") || k.startsWith("has") || k.endsWith("valid") || k === "sent" || k === "found") return true;
+        if (k.endsWith("count") || k.endsWith("score") || k === "amount" || k === "totalprice" || k === "totalduration") return 42;
+        if (k.endsWith("id") || k === "id") return 1;
+        if (k.endsWith("at") || k.endsWith("date")) return "2025-01-01T00:00:00Z";
+        if (k === "status" || k === "stage") return "active";
+        return `mock_${output.key}`;
+      })();
+
+      if (group.isStartNode) {
+        payload[output.key] = mockVal;
+      } else {
+        if (!steps[group.nodeId]) steps[group.nodeId] = {};
+        steps[group.nodeId]![output.key] = mockVal;
+      }
+    }
+  }
+
+  if (Object.keys(steps).length > 0) payload.steps = steps;
+  return payload;
+}
+
+function evalExpressionClient(
+  expression: string,
+  mockPayload: Record<string, unknown>,
+  type: "boolean" | "value",
+): ExprValidation {
+  if (!expression.trim()) return { status: "empty" };
+
+  function stripTpl(s: string): string {
+    const t = s.trim();
+    return t.startsWith("{{") && t.endsWith("}}") ? t.slice(2, -2).trim() : t;
+  }
+
+  function resolvePath(p: string): unknown {
+    const parts = stripTpl(p).split(".");
+    let cur: unknown = mockPayload;
+    for (const part of parts) {
+      if (cur == null || typeof cur !== "object") return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return cur;
+  }
+
+  function parseValue(s: string): unknown {
+    const t = s.trim();
+    if (t.startsWith("{{") && t.endsWith("}}")) {
+      const key = t.slice(2, -2).trim();
+      const resolved = resolvePath(t);
+      if (resolved === undefined) throw new Error(`Unknown variable: ${key}`);
+      return resolved;
+    }
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (t === "null") return null;
+    if (t === "undefined") return undefined;
+    if (/^-?\d+(\.\d+)?$/.test(t)) return Number(t);
+    if (/^["'].*["']$/.test(t)) return t.slice(1, -1);
+    return resolvePath(t);
+  }
+
+  function evalClause(clause: string): boolean {
+    const c = clause.trim();
+    if (!c) throw new Error("Empty clause — dangling && or || operator");
+    for (const op of [">=", "<=", "!=", "==", ">", "<", " contains "]) {
+      const idx = c.indexOf(op);
+      if (idx !== -1) {
+        const lhsRaw = c.slice(0, idx).trim();
+        const rhsRaw = c.slice(idx + op.length).trim();
+        if (!lhsRaw) throw new Error(`Missing left-hand side before "${op.trim()}"`);
+        if (!rhsRaw) throw new Error(`Missing right-hand side after "${op.trim()}"`);
+        // Validate LHS references a known variable if it's a template path
+        if (lhsRaw.startsWith("{{") && lhsRaw.endsWith("}}")) {
+          const key = lhsRaw.slice(2, -2).trim();
+          const resolved = resolvePath(lhsRaw);
+          if (resolved === undefined) {
+            throw new Error(`Unknown variable: ${key}`);
+          }
+        }
+        const lhs = resolvePath(lhsRaw);
+        const rhs = parseValue(rhsRaw);
+        switch (op.trim()) {
+          case "==": return lhs == rhs; // eslint-disable-line eqeqeq
+          case "!=": return lhs != rhs; // eslint-disable-line eqeqeq
+          case ">":  return Number(lhs) > Number(rhs);
+          case "<":  return Number(lhs) < Number(rhs);
+          case ">=": return Number(lhs) >= Number(rhs);
+          case "<=": return Number(lhs) <= Number(rhs);
+          case "contains": return String(lhs).includes(String(rhs));
+        }
+      }
+    }
+    // Bare path — check it resolves
+    if (c.startsWith("{{") && c.endsWith("}}")) {
+      const key = c.slice(2, -2).trim();
+      const v = resolvePath(c);
+      if (v === undefined) throw new Error(`Unknown variable: ${key}`);
+      return Boolean(v);
+    }
+    return Boolean(resolvePath(c));
+  }
+
+  try {
+    // Early structural checks that apply to all expression types
+    if (/\{\{[^}]*$/.test(expression)) throw new Error("Unclosed {{ — missing closing }}");
+    if (type === "value") {
+      // For value expressions, check all template references are known, then resolve
+      for (const match of expression.matchAll(/\{\{([\w.\-]+)\}\}/g)) {
+        const key = match[1]!;
+        if (resolvePath(`{{${key}}}`) === undefined) {
+          throw new Error(`Unknown variable: ${key}`);
+        }
+      }
+      const resolved = parseValue(expression.trim());
+      return { status: "valid", resolvedValue: resolved };
+    }
+    // Boolean expression — validate no dangling operators
+    const trimmed = expression.trim();
+    if (/^\s*(&&|\|\|)/.test(trimmed)) throw new Error("Expression cannot start with && or ||");
+    if (/(&&|\|\|)\s*$/.test(trimmed)) throw new Error("Expression cannot end with && or ||");
+    const orParts = trimmed.split(" || ");
+    let result = false;
+    for (const orPart of orParts) {
+      if (!orPart.trim()) throw new Error("Empty clause — dangling || operator");
+      const andParts = orPart.split(" && ");
+      for (const andPart of andParts) {
+        if (!andPart.trim()) throw new Error("Empty clause — dangling && operator");
+      }
+      if (andParts.every(p => evalClause(p))) { result = true; break; }
+    }
+    return { status: "valid", resolvedValue: result };
+  } catch (e) {
+    return { status: "invalid", reason: (e as Error).message ?? "Invalid expression" };
+  }
+}
+
+// ── ExpressionField ───────────────────────────────────────────────────────────
+// Like PayloadField but adds a live validator badge and an AI helper popover.
+
+function ExpressionField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  multiline,
+  ancestorOutputs,
+  hint,
+  expressionType = "boolean",
+  fetchWithAuth,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  multiline?: boolean;
+  ancestorOutputs: AncestorGroup[];
+  hint?: string;
+  expressionType?: "boolean" | "value";
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
+}) {
+  // ── Variable picker state (mirrors PayloadField) ──
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
+  const [pickerPos, setPickerPos] = useState<{ top: number; right: number } | null>(null);
+  const [suggest, setSuggest] = useState<{ openAt: number; filter: string } | null>(null);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  const pickerBtnRef = useRef<HTMLButtonElement>(null);
+
+  // ── Validator state ──
+  const [validation, setValidation] = useState<ExprValidation>({ status: "empty" });
+  const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [aiHint, setAiHint] = useState<string | null>(null);
+
+  // ── AI helper state ──
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const allTokens = ancestorOutputs.flatMap(group =>
+    group.outputs.map(o => ({
+      tokenPath: group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`,
+      label: o.label,
+      groupName: group.nodeName,
+    }))
+  );
+
+  const filteredTokens = suggest
+    ? allTokens.filter(t => t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase()))
+    : [];
+
+  // Debounced validator
+  useEffect(() => {
+    if (validationTimerRef.current) clearTimeout(validationTimerRef.current);
+    validationTimerRef.current = setTimeout(() => {
+      const mockPayload = buildMockPayload(ancestorOutputs);
+      setValidation(evalExpressionClient(value, mockPayload, expressionType));
+    }, 300);
+    return () => { if (validationTimerRef.current) clearTimeout(validationTimerRef.current); };
+  }, [value, ancestorOutputs, expressionType]);
+
+  function insertToken(key: string) {
+    const token = `{{${key}}}`;
+    const el = inputRef.current;
+    if (el) {
+      const start = el.selectionStart ?? value.length;
+      const end = el.selectionEnd ?? value.length;
+      onChange(value.slice(0, start) + token + value.slice(end));
+      setTimeout(() => { el.focus(); const pos = start + token.length; el.setSelectionRange(pos, pos); }, 0);
+    } else {
+      onChange(value ? `${value} ${token}` : token);
+    }
+    setPickerOpen(false);
+  }
+
+  function pickSuggestion(tokenPath: string) {
+    if (!suggest) return;
+    const el = inputRef.current;
+    const cursorPos = el ? (el.selectionStart ?? value.length) : value.length;
+    const replacement = `{{${tokenPath}}}`;
+    const newVal = value.slice(0, suggest.openAt) + replacement + value.slice(cursorPos);
+    onChange(newVal);
+    const pos = suggest.openAt + replacement.length;
+    setTimeout(() => { if (el) { el.focus(); el.setSelectionRange(pos, pos); } }, 0);
+    setSuggest(null);
+    setActiveIdx(0);
+  }
+
+  function handleChange(newVal: string, cursorPos: number) {
+    onChange(newVal);
+    setAiHint(null); // Only clear hint on manual edits, not on AI-generated insertions
+    const before = newVal.slice(0, cursorPos);
+    const match = before.match(/\{\{([^{}]*)$/);
+    if (match) {
+      setSuggest({ openAt: cursorPos - match[0].length, filter: match[1] ?? "" });
+      setActiveIdx(0);
+    } else {
+      setSuggest(null);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!suggest || filteredTokens.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => (i + 1) % filteredTokens.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx(i => (i - 1 + filteredTokens.length) % filteredTokens.length); }
+    else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSuggestion(filteredTokens[activeIdx]!.tokenPath); }
+    else if (e.key === "Escape") setSuggest(null);
+  }
+
+  async function handleAiSubmit() {
+    if (!aiPrompt.trim() || aiLoading) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetchWithAuth("/api/admin/workflows/expression-helper", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userPrompt: aiPrompt.trim(),
+          availableVariables: allTokens.map(t => ({ tokenPath: t.tokenPath, label: t.label })),
+          expressionType,
+        }),
+      });
+      const json = await res.json() as { ok?: boolean; expression?: string; explanation?: string; error?: string };
+      if (!res.ok || !json.expression) {
+        setAiError(json.error ?? "AI helper failed");
+      } else {
+        onChange(json.expression);
+        setAiHint(json.explanation ?? null);
+        setAiOpen(false);
+        setAiPrompt("");
+      }
+    } catch (e) {
+      setAiError(String(e));
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  const hasVars = ancestorOutputs.some(g => g.outputs.length > 0);
+
+  const badgeEl = validation.status !== "empty" && (
+    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] leading-tight ${
+      validation.status === "valid" ? "bg-[#0f2a1a] text-emerald-400" : "bg-[#2a0f0f] text-red-400"
+    }`}>
+      <span>{validation.status === "valid" ? "✓" : "✗"}</span>
+      <span className="font-mono">
+        {validation.status === "valid"
+          ? (() => {
+              const v = validation.resolvedValue;
+              if (v === null) return "null";
+              if (typeof v === "object") return JSON.stringify(v).slice(0, 60);
+              return String(v).slice(0, 60);
+            })()
+          : validation.reason}
+      </span>
+    </div>
+  );
+
+  return (
+    <div className="space-y-1">
+      {/* Label row */}
+      <div className="flex items-center justify-between min-h-[18px]">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">{label}</label>
+          {hint && <FieldHint text={hint} />}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* AI helper button */}
+          <button
+            type="button"
+            onClick={() => { setAiOpen(v => !v); setAiError(null); }}
+            className="text-[10px] text-[#A78BFA] hover:text-[#C4B5FD] transition-colors flex items-center gap-1"
+            title="Help me write this expression"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.347.346A3.999 3.999 0 0114 18H10a3.999 3.999 0 01-2.829-1.172l-.346-.346z" />
+            </svg>
+            Help me write this
+          </button>
+          {/* Variable picker button */}
+          {hasVars && (
+            <div className="relative">
+              <button
+                ref={pickerBtnRef}
+                type="button"
+                onClick={() => {
+                  if (pickerBtnRef.current) {
+                    const r = pickerBtnRef.current.getBoundingClientRect();
+                    setPickerPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+                  }
+                  setPickerOpen(v => !v);
+                  setPickerSearch("");
+                }}
+                className="text-[10px] text-[#0078D4] hover:text-[#2E9EFF] transition-colors flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                variables
+              </button>
+              {pickerOpen && pickerPos && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => { setPickerOpen(false); setPickerSearch(""); }} />
+                  <div
+                    className="fixed z-50 w-64 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden"
+                    style={{ top: pickerPos.top, right: pickerPos.right }}
+                  >
+                    <div className="px-2 pt-2 pb-1">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={pickerSearch}
+                        onChange={e => setPickerSearch(e.target.value)}
+                        placeholder="Search variables…"
+                        className="w-full bg-[#0D1117] border border-[#30363D] rounded px-2 py-1 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                      />
+                    </div>
+                    <div className="max-h-52 overflow-y-auto py-1">
+                      {(() => {
+                        const q = pickerSearch.trim().toLowerCase();
+                        const filteredGroups = ancestorOutputs.map(group => ({
+                          ...group,
+                          outputs: q
+                            ? group.outputs.filter(o => o.key.toLowerCase().includes(q) || o.label.toLowerCase().includes(q))
+                            : group.outputs,
+                        })).filter(g => g.outputs.length > 0);
+                        if (filteredGroups.length === 0) return <p className="px-3 py-2 text-[10px] text-[#484F58]">No variables match.</p>;
+                        return filteredGroups.map(group => (
+                          <div key={group.nodeId}>
+                            <p className="px-3 pt-2 pb-0.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{group.nodeName}</p>
+                            {group.outputs.map(o => {
+                              const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
+                              return (
+                                <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
+                                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI helper popover */}
+      {aiOpen && (
+        <div className="rounded-lg border border-[#A78BFA]/40 bg-[#110D22] p-2.5 space-y-2">
+          <p className="text-[10px] text-[#7D8590] leading-relaxed">Describe what you want to check and AI will write the expression.</p>
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={aiPrompt}
+              onChange={e => setAiPrompt(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") void handleAiSubmit(); if (e.key === "Escape") setAiOpen(false); }}
+              placeholder="e.g. status is active and score is above 80"
+              disabled={aiLoading}
+              className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#A78BFA]/60 disabled:opacity-50"
+            />
+            <button
+              type="button"
+              onClick={() => void handleAiSubmit()}
+              disabled={!aiPrompt.trim() || aiLoading}
+              className="px-3 py-1.5 rounded bg-[#A78BFA]/20 border border-[#A78BFA]/40 text-[10px] font-semibold text-[#A78BFA] hover:bg-[#A78BFA]/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              {aiLoading ? "…" : "Submit"}
+            </button>
+          </div>
+          {aiError && <p className="text-[10px] text-red-400">{aiError}</p>}
+        </div>
+      )}
+
+      {/* Input / textarea with inline autocomplete */}
+      <div className="relative">
+        {multiline ? (
+          <textarea
+            ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+            value={value}
+            onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            placeholder={placeholder}
+            rows={3}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
+          />
+        ) : (
+          <input
+            ref={inputRef as React.RefObject<HTMLInputElement>}
+            type="text"
+            value={value}
+            onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+            onKeyDown={handleKeyDown}
+            onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            placeholder={placeholder}
+            className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+          />
+        )}
+        {suggest && filteredTokens.length > 0 && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-2xl overflow-hidden">
+            <div className="max-h-48 overflow-y-auto py-1">
+              {filteredTokens.map((t, i) => (
+                <button
+                  key={t.tokenPath}
+                  type="button"
+                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t.tokenPath); }}
+                  className={`w-full text-left px-3 py-1.5 flex items-start justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                >
+                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${t.tokenPath}}}`}</span>
+                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="px-3 py-1 border-t border-[#30363D] flex items-center gap-2">
+              <span className="text-[9px] text-[#484F58]">↑↓ navigate</span>
+              <span className="text-[9px] text-[#484F58]">↵ / Tab insert</span>
+              <span className="text-[9px] text-[#484F58]">Esc dismiss</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Validator badge */}
+      {badgeEl}
+
+      {/* AI-generated hint text */}
+      {aiHint && (
+        <p className="text-[10px] text-[#A78BFA] leading-relaxed italic">{aiHint}</p>
+      )}
+    </div>
+  );
+}
+
 // ── ImageUrlField — PayloadField + asset picker button ────────────────────────
 
 function ImageUrlField({
@@ -1674,13 +2172,15 @@ function PlaySoundPanel({
         </select>
 
         {playConditionOp !== "always" && (
-          <PayloadField
+          <ExpressionField
             label="Condition variable"
             value={playConditionExpr}
             onChange={v => up({ playConditionExpr: v })}
             placeholder="{{steps.execute_runbook.success}}"
             ancestorOutputs={ancestorOutputs}
             hint="Reference an ancestor step output. The value is interpolated at runtime and then tested against the chosen operator."
+            expressionType="value"
+            fetchWithAuth={fetchWithAuth}
           />
         )}
 
@@ -2803,7 +3303,7 @@ function NodeConfigPanel({
 
         {nodeType === "compose" && (
           <>
-            <PayloadField
+            <ExpressionField
               label="Inputs"
               hint="Any value, expression, or JSON. Reference upstream data with {{steps.nodeId.key}}. The result is exposed downstream as {{steps.<thisNodeId>.value}}."
               value={(node.data.inputs as string) ?? ""}
@@ -2811,6 +3311,8 @@ function NodeConfigPanel({
               placeholder="{{steps.nodeId.value}} or any static text / JSON"
               multiline
               ancestorOutputs={ancestorOutputs}
+              expressionType="value"
+              fetchWithAuth={fetchWithAuth}
             />
             <label className="flex items-center gap-2 cursor-pointer select-none">
               <input
@@ -3059,7 +3561,7 @@ function NodeConfigPanel({
         )}
 
         {nodeType === "switch_case" && (
-          <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} nodes={nodes} />
+          <SwitchCasePanel node={node} onChange={onChange} ancestorOutputs={ancestorOutputs} nodes={nodes} fetchWithAuth={fetchWithAuth} />
         )}
 
         {nodeType === "approval_gate" && (
@@ -3660,13 +4162,15 @@ function NodeConfigPanel({
 
         {nodeType === "condition" && (
           <>
-            <PayloadField
+            <ExpressionField
               label="Expression"
               value={(node.data.expression as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, expression: v })}
               placeholder="{{status}} == 'active' && {{count}} > 0"
               multiline
               ancestorOutputs={ancestorOutputs}
+              expressionType="boolean"
+              fetchWithAuth={fetchWithAuth}
             />
             <div className="flex items-center gap-2 pt-0.5">
               <input
@@ -3723,11 +4227,14 @@ function NodeConfigPanel({
             )}
             {(node.data.mode as string) === "until_condition" && (
               <>
-                <ConfigField
+                <ExpressionField
                   label="Condition Expression"
                   value={(node.data.expression as string) ?? ""}
                   onChange={v => onChange(node.id, { ...node.data, expression: v })}
                   multiline
+                  ancestorOutputs={ancestorOutputs}
+                  expressionType="boolean"
+                  fetchWithAuth={fetchWithAuth}
                 />
                 <ConfigField
                   label="Poll Interval (seconds)"
@@ -5563,11 +6070,13 @@ function SwitchCasePanel({
   onChange,
   ancestorOutputs,
   nodes,
+  fetchWithAuth,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
   ancestorOutputs: AncestorGroup[];
   nodes: Node[];
+  fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
   const cases = ((node.data.cases as SwitchCaseItem[] | undefined) ?? []);
   const switchExpr = (node.data.switchExpr as string) ?? "";
@@ -5652,12 +6161,14 @@ function SwitchCasePanel({
   return (
     <div className="space-y-3">
       {/* Switch expression */}
-      <PayloadField
+      <ExpressionField
         label="Switch on (expression)"
         value={switchExpr}
         onChange={v => onChange(node.id, { ...node.data, switchExpr: v })}
         placeholder="{{status}} or {{tier}}"
         ancestorOutputs={ancestorOutputs}
+        expressionType="value"
+        fetchWithAuth={fetchWithAuth}
       />
 
       {/* Build Cases button — shown when the switch expression references a known list-valued key */}
