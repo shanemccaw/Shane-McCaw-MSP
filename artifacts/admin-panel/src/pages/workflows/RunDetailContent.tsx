@@ -73,6 +73,8 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  parallel:        { bg: "#041620", border: "#06B6D4", icon: "⇉",  label: "Parallel"            },
+  join:            { bg: "#041620", border: "#06B6D4", icon: "⤤",  label: "Join"                },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
   check_exchange_calendar_availability: { bg: "#041620", border: "#0078D4", icon: "📅", label: "Check Calendar"           },
@@ -481,6 +483,195 @@ export function fmtDuration(ms: number | null): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60_000).toFixed(1)}m`;
+}
+
+// ── Parallel branch output components ──────────────────────────────────────────
+
+interface BranchInfo {
+  handle: string;
+  label: string;
+  wait: boolean;
+  output: Record<string, unknown> | undefined;
+}
+
+function ParallelBranchCard({ branch }: { branch: BranchInfo }) {
+  const [expanded, setExpanded] = useState(false);
+  const borderColor = branch.wait ? "#06B6D4" : "#F59E0B";
+  const bgColor     = branch.wait ? "#04161E" : "#160E00";
+  const canExpand   = branch.wait && branch.output !== undefined;
+
+  return (
+    <div
+      className="rounded-lg overflow-hidden"
+      style={{ border: `1px solid ${borderColor}40`, background: bgColor }}
+    >
+      <button
+        onClick={() => canExpand && setExpanded(x => !x)}
+        className="w-full flex items-center gap-2 px-2.5 py-1.5 text-left"
+        style={{ cursor: canExpand ? "pointer" : "default" }}
+      >
+        <span className="text-[11px] font-bold flex-shrink-0" style={{ color: borderColor }}>⇉</span>
+        <span className="flex-1 text-[10px] font-semibold text-[#E6EDF3] truncate">{branch.label}</span>
+        <span
+          className="flex-shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded-full border"
+          style={{ color: borderColor, borderColor: `${borderColor}50`, background: `${borderColor}15` }}
+        >
+          {!branch.wait ? "fire-and-forget" : branch.output ? "merged ✓" : "no output"}
+        </span>
+        {canExpand && (
+          <svg
+            className={`w-3 h-3 flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
+            style={{ color: borderColor }}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </button>
+
+      {!branch.wait && (
+        <div className="px-2.5 pb-2 text-[9px] text-amber-400/70 italic font-mono">
+          launched in background — result not awaited
+        </div>
+      )}
+
+      {branch.wait && !branch.output && (
+        <div className="px-2.5 pb-2 text-[9px] text-red-400/60 italic font-mono">
+          branch did not produce output
+        </div>
+      )}
+
+      {canExpand && expanded && (
+        <div
+          className="px-2.5 pb-2.5 pt-1"
+          style={{ borderTop: `1px solid ${borderColor}25` }}
+        >
+          <JsonBlock data={branch.output!} label="Branch output" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ParallelBranchPanel({
+  nodeId,
+  graphNode,
+  payload,
+}: {
+  nodeId: string;
+  graphNode: { data: Record<string, unknown> } | undefined;
+  payload: Record<string, unknown>;
+}) {
+  const branchLabels = (graphNode?.data?.branchLabels as string[] | undefined) ?? [];
+  const branchWait   = (graphNode?.data?.branchWait   as boolean[] | undefined) ?? [];
+  const branchCount  = Math.max(
+    (graphNode?.data?.branchCount as number | undefined) ?? 0,
+    branchLabels.length,
+  );
+
+  const steps        = (payload.steps as Record<string, unknown> | undefined) ?? {};
+  const branchOutputs = (steps[nodeId] as Record<string, unknown> | undefined) ?? {};
+
+  const branches: BranchInfo[] = Array.from({ length: branchCount }, (_, i) => {
+    const handle = `branch_${i + 1}`;
+    const label  = branchLabels[i] ?? `Branch ${i + 1}`;
+    const wait   = branchWait[i] !== false;
+    const output = branchOutputs[handle] as Record<string, unknown> | undefined;
+    return { handle, label, wait, output };
+  });
+
+  const awaitedCount  = branches.filter(b => b.wait).length;
+  const detachedCount = branches.filter(b => !b.wait).length;
+
+  if (branches.length === 0) {
+    return (
+      <p className="text-[10px] text-[#484F58] font-mono italic">No branch configuration found.</p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Parallel Branches</p>
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-cyan-500/15 text-cyan-400 border border-cyan-500/30">
+          {awaitedCount} awaited
+        </span>
+        {detachedCount > 0 && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+            {detachedCount} fire-and-forget
+          </span>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        {branches.map(branch => (
+          <ParallelBranchCard key={branch.handle} branch={branch} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function JoinNodeSummary({
+  nodeId,
+  graph,
+}: {
+  nodeId: string;
+  graph: WfRunDetail["graph"];
+}) {
+  if (!graph) return null;
+
+  const parallelNode = graph.nodes.find(n => n.data?.joinNodeId === nodeId);
+  const branchLabels = (parallelNode?.data?.branchLabels as string[] | undefined) ?? [];
+  const branchWait   = (parallelNode?.data?.branchWait   as boolean[] | undefined) ?? [];
+  const branchCount  = Math.max(
+    (parallelNode?.data?.branchCount as number | undefined) ?? 0,
+    branchLabels.length,
+    branchWait.length,
+  );
+
+  const awaitedCount  = branchCount > 0
+    ? Array.from({ length: branchCount }, (_, i) => branchWait[i] !== false).filter(Boolean).length
+    : graph.edges.filter(e => e.target === nodeId).length;
+  const detachedCount = branchCount > 0
+    ? branchWait.filter(w => w === false).length
+    : 0;
+
+  return (
+    <div className="px-2.5 py-2.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="text-sm">⤤</span>
+        <p className="text-[10px] font-semibold text-cyan-400">
+          Merged {awaitedCount} awaited branch{awaitedCount !== 1 ? "es" : ""}
+        </p>
+      </div>
+      {detachedCount > 0 && (
+        <p className="text-[9px] text-amber-400/80 font-mono">
+          + {detachedCount} fire-and-forget branch{detachedCount !== 1 ? "es" : ""} launched
+        </p>
+      )}
+      {branchLabels.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-0.5">
+          {Array.from({ length: branchCount }, (_, i) => {
+            const label = branchLabels[i] ?? `Branch ${i + 1}`;
+            const wait  = branchWait[i] !== false;
+            return (
+              <span
+                key={i}
+                className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-medium border"
+                style={
+                  wait
+                    ? { color: "#06B6D4", borderColor: "#06B6D430", background: "#06B6D415" }
+                    : { color: "#F59E0B", borderColor: "#F59E0B30", background: "#F59E0B15" }
+                }
+              >
+                {label}{!wait ? " ↗" : ""}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ── ChildRunInline ─────────────────────────────────────────────────────────────
@@ -1026,12 +1217,36 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                   </div>
 
                   {/* Sidebar: Input / Output / status for the selected step */}
-                  {currentOutput && (
+                  {(() => {
+                    if (!currentNodeId) return null;
+                    const currentGraphNode = graphNodeMap.get(currentNodeId);
+                    const currentNodeType  = (currentGraphNode?.data?.nodeType as string) ?? currentGraphNode?.type ?? "";
+                    const isParallelNode   = currentNodeType === "parallel";
+                    const isJoinNode       = currentNodeType === "join";
+                    if (!currentOutput && !isParallelNode && !isJoinNode) return null;
+                    return (
                     <div className="w-64 flex-shrink-0 bg-[#161B22] border-l border-[#30363D] overflow-y-auto p-3 space-y-3">
                       <p className="text-xs font-semibold text-[#E6EDF3]">
                         Step {replayStep + 1} / {branchPath.length}
                       </p>
                       <p className="text-[10px] text-[#484F58] font-mono break-all">{currentNodeId}</p>
+
+                      {/* ── Parallel node: show branch output panel ── */}
+                      {isParallelNode && (
+                        <ParallelBranchPanel
+                          nodeId={currentNodeId}
+                          graphNode={currentGraphNode}
+                          payload={run.payload}
+                        />
+                      )}
+
+                      {/* ── Join node: show merge summary ── */}
+                      {isJoinNode && (
+                        <JoinNodeSummary nodeId={currentNodeId} graph={run.graph} />
+                      )}
+
+                      {currentOutput && !isParallelNode && !isJoinNode && (
+                        <>
                       <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                         currentOutput.status === "ok" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         : currentOutput.status === "error" ? "bg-red-500/10 text-red-400 border-red-500/20"
@@ -1115,8 +1330,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           />
                         </div>
                       )}
+                        </>
+                      )}
                     </div>
-                  )}
+                  );
+                  })()}
                 </div>
 
                 {/* Step controls */}
@@ -1236,11 +1454,20 @@ export default function RunDetailContent({ runId }: { runId: number }) {
               {run.nodeOutputs.length === 0 ? (
                 <p className="text-[#7D8590] text-sm">No node outputs recorded.</p>
               ) : (
-                run.nodeOutputs.map(output => (
+                run.nodeOutputs.map(output => {
+                  const payloadGraphNode = graphNodeMap.get(output.nodeId);
+                  const payloadNodeType  = (payloadGraphNode?.data?.nodeType as string) ?? payloadGraphNode?.type ?? "";
+                  const isJoinPayload    = payloadNodeType === "join" || output.output.joined === true;
+                  return (
                   <div key={output.id} className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-[#E6EDF3] font-mono">{output.nodeId}</span>
+                        {isJoinPayload && (
+                          <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full border bg-cyan-500/10 text-cyan-400 border-cyan-500/20">
+                            join
+                          </span>
+                        )}
                         <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${
                           output.status === "ok" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           : output.status === "error" ? "bg-red-500/10 text-red-400 border-red-500/20"
@@ -1251,6 +1478,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       </div>
                       <span className="text-[10px] text-[#484F58] font-mono">{fmtDuration(output.durationMs)}</span>
                     </div>
+
+                    {/* Join node: show merge summary instead of diff */}
+                    {isJoinPayload ? (
+                      <JoinNodeSummary nodeId={output.nodeId} graph={run.graph} />
+                    ) : (
                     <div className="space-y-2">
                       <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Payload diff (input → output)</p>
                       <DiffViewer before={output.input} after={output.output} />
@@ -1329,8 +1561,10 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                         </div>
                       )}
                     </div>
+                    )}
                   </div>
-                ))
+                );
+                })
               )}
             </div>
           </div>
