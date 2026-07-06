@@ -3875,7 +3875,10 @@ function GenerateFromDocumentDialog({
   useEffect(() => {
     fetchWithAuth("/api/admin/insights/documents")
       .then(r => r.json())
-      .then((data: InsightsDocumentListItem[]) => setDocs(Array.isArray(data) ? data : []))
+      .then((data: { documents?: InsightsDocumentListItem[] } | InsightsDocumentListItem[]) => {
+        const list = Array.isArray(data) ? data : (data as { documents?: InsightsDocumentListItem[] }).documents ?? [];
+        setDocs(list);
+      })
       .catch(() => toast({ title: "Failed to load documents", variant: "destructive" }))
       .finally(() => setLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
