@@ -63,6 +63,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   update_intelligence_tables:{ bg: "#110D22", border: "#8B5CF6", icon: "🧠", label: "Update Intel"        },
   generate_diff_report:      { bg: "#110D22", border: "#8B5CF6", icon: "📄", label: "Diff Report"         },
   notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
+  get_tenant_signals:        { bg: "#0D1020", border: "#7C3AED", icon: "📡", label: "Get Tenant Signals"  },
   // ── Marketing Actions ──
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   // ── Project Actions ──
@@ -203,6 +204,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   update_intelligence_tables:[{ key: "updated", label: "true on success" }, { key: "recordId", label: "Health history record ID" }, { key: "jobId", label: "Azure job ID" }],
   generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
   notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
+  get_tenant_signals:        [{ key: "signals", label: "Array of all fired signal keys (including alwaysInclude) — pipe into Generate Document signalsOverride" }, { key: "signalCount", label: "Total number of fired signals" }, { key: "hasSignals", label: "true if at least one tenant-specific signal fired (beyond alwaysInclude)" }],
   // Marketing Actions
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
@@ -656,6 +658,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "update_intelligence_tables", label: "Update Intel Tables",     description: "Refresh client health history from a runbook",       tags: ["m365", "health", "intelligence", "runbook"] },
       { type: "generate_diff_report",       label: "Diff Report",             description: "Compare last two health snapshots and create a doc",  tags: ["m365", "health", "diff", "report"] },
       { type: "notify_major_changes",       label: "Notify Major Changes",    description: "Alert Shane if health score changed significantly",   tags: ["m365", "health", "notify", "alert"] },
+      { type: "get_tenant_signals",          label: "Get Tenant Signals",       description: "Evaluate all signal rules for a client and output the fired signal keys. Pipe {{signals}} into Generate Document (consolidated_sow) to skip redundant signal evaluation.", tags: ["m365", "signals", "tenant", "sow", "engagement", "intelligence"] },
     ],
   },
   {
@@ -2953,6 +2956,20 @@ function NodeConfigPanel({
                 </div>
               </>
             )}
+            {(node.data.docType as string) === "consolidated_sow" && (
+              <>
+                <PayloadField
+                  label="Pre-computed Signals (optional)"
+                  value={(node.data.signalsOverride as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, signalsOverride: v })}
+                  placeholder="{{signals}}"
+                  ancestorOutputs={ancestorOutputs}
+                />
+                <div className="rounded-lg bg-[#0D1A1A] border border-[#00B4D8]/30 p-2.5">
+                  <p className="text-[10px] text-[#00B4D8]/70">Pipe <span className="font-mono">{"{{signals}}"}</span> from an upstream <em>Get Tenant Signals</em> node to skip redundant signal computation during SOW generation. Leave empty to compute signals automatically.</p>
+                </div>
+              </>
+            )}
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Creates a document for the client. All fields support <span className="font-mono text-[#7D8590]">{"{{variable}}"}</span> interpolation. Outputs: <span className="font-mono text-[#7D8590]">{"{{documentId}}"}</span>{(node.data.docType as string) === "task_execution_guide" && <>, <span className="font-mono text-[#7D8590]">{"{{htmlContent}}"}</span></>}.</p>
             </div>
@@ -3338,6 +3355,16 @@ function NodeConfigPanel({
             </div>
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
               <p className="text-[10px] text-[#484F58]">Sends an email alert if <span className="font-mono text-[#7D8590]">{"{{changeCount}}"}</span> (from a prior Diff Report node) meets or exceeds the threshold. Uses <span className="font-mono text-[#7D8590]">CRM_ADMIN_EMAIL</span> as fallback if no email is specified.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "get_tenant_signals" && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Evaluates all configured signal rules for the client and outputs the fired signal keys. Pipe <span className="font-mono text-[#7D8590]">{"{{signals}}"}</span> into the <em>Pre-computed Signals</em> field of a downstream <em>Generate Document</em> (consolidated_sow) node to skip redundant signal evaluation. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{signals}}"} · {"{{signalCount}}"} · {"{{hasSignals}}"}</p>
             </div>
           </>
         )}

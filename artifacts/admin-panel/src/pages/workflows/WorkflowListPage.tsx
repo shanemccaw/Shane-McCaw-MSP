@@ -722,6 +722,39 @@ function isSameCenterView(a: CenterView, b: CenterView): boolean {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+const WF_TEMPLATES: Array<{ id: string; name: string; description: string; graph: { nodes: unknown[]; edges: unknown[] } }> = [
+  {
+    id: "sow-signal-check",
+    name: "SOW with Signal Check",
+    description: "Evaluates tenant signals first, then generates a Consolidated SOW. If no signals are found, refreshes M365 data before generating.",
+    graph: {
+      nodes: [
+        { id: "n1", type: "start",              position: { x: 300, y: 50   }, data: { label: "Start" } },
+        { id: "n2", type: "get_tenant_signals",  position: { x: 300, y: 200  }, data: { label: "Get Tenant Signals",    clientId: "{{clientId}}" } },
+        { id: "n3", type: "condition",           position: { x: 300, y: 390  }, data: { label: "Has Signals?",          expression: "{{hasSignals}}" } },
+        { id: "n4", type: "generate_document",   position: { x: 80,  y: 580  }, data: { label: "Generate SOW",         docCategory: "consulting", docType: "consolidated_sow", clientId: "{{clientId}}", signalsOverride: "{{signals}}" } },
+        { id: "n5", type: "end",                 position: { x: 80,  y: 760  }, data: { label: "Done" } },
+        { id: "n6", type: "update_m365_profile", position: { x: 570, y: 510  }, data: { label: "Refresh M365 Profile", clientId: "{{clientId}}" } },
+        { id: "n7", type: "update_intelligence_tables", position: { x: 570, y: 670 }, data: { label: "Refresh Intel Tables", clientId: "{{clientId}}" } },
+        { id: "n8", type: "get_tenant_signals",  position: { x: 570, y: 840  }, data: { label: "Get Signals (retry)",  clientId: "{{clientId}}" } },
+        { id: "n9", type: "generate_document",   position: { x: 570, y: 1020 }, data: { label: "Generate SOW",         docCategory: "consulting", docType: "consolidated_sow", clientId: "{{clientId}}", signalsOverride: "{{signals}}" } },
+        { id: "n10", type: "end",                position: { x: 570, y: 1200 }, data: { label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "n1",  target: "n2" },
+        { id: "e2", source: "n2",  target: "n3" },
+        { id: "e3", source: "n3",  target: "n4",  label: "true",  sourceHandle: "true"  },
+        { id: "e4", source: "n3",  target: "n6",  label: "false", sourceHandle: "false" },
+        { id: "e5", source: "n4",  target: "n5" },
+        { id: "e6", source: "n6",  target: "n7" },
+        { id: "e7", source: "n7",  target: "n8" },
+        { id: "e8", source: "n8",  target: "n9" },
+        { id: "e9", source: "n9",  target: "n10" },
+      ],
+    },
+  },
+];
+
 export default function WorkflowListPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
@@ -732,6 +765,7 @@ export default function WorkflowListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [activeRun, setActiveRun] = useState<{ defId: number; runId: number } | null>(null);
@@ -855,10 +889,15 @@ export default function WorkflowListPage() {
   // ── Mutations ──
   const createMut = useMutation({
     mutationFn: async () => {
+      const tpl = WF_TEMPLATES.find(t => t.id === selectedTemplateId);
       const res = await fetchWithAuth("/api/admin/workflows/definitions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName.trim(), description: newDesc.trim() || undefined }),
+        body: JSON.stringify({
+          name: newName.trim(),
+          description: newDesc.trim() || (tpl?.description) || undefined,
+          graph: tpl?.graph,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create");
       return res.json() as Promise<{ id: number; draftVersionId: number }>;
@@ -868,6 +907,7 @@ export default function WorkflowListPage() {
       setShowCreate(false);
       setNewName("");
       setNewDesc("");
+      setSelectedTemplateId(null);
       navigate(`/workflows/builder/${data.id}?vid=${data.draftVersionId}`);
     },
   });
@@ -1832,17 +1872,38 @@ export default function WorkflowListPage() {
 
       {/* Create dialog */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowCreate(false)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { setShowCreate(false); setSelectedTemplateId(null); }}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
             <h2 className="font-semibold text-[#E6EDF3]">New Workflow</h2>
             <div className="space-y-3">
+              <div>
+                <p className="text-xs text-[#7D8590] mb-2">Start from a template or build from scratch</p>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setSelectedTemplateId(null)}
+                    className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === null ? "border-[#0078D4]/60 bg-[#0078D4]/10" : "border-[#30363D] bg-[#0D1117] hover:border-[#484F58]"}`}
+                  >
+                    <p className="text-sm font-medium text-[#E6EDF3]">Blank workflow</p>
+                    <p className="text-[11px] text-[#484F58] mt-0.5">Start with a single Start node</p>
+                  </button>
+                  {WF_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => { setSelectedTemplateId(tpl.id); if (!newName.trim()) setNewName(tpl.name); }}
+                      className={`w-full text-left rounded-lg border px-3 py-2.5 transition-colors ${selectedTemplateId === tpl.id ? "border-[#7C3AED]/60 bg-[#7C3AED]/10" : "border-[#30363D] bg-[#0D1117] hover:border-[#484F58]"}`}
+                    >
+                      <p className="text-sm font-medium text-[#E6EDF3]">📡 {tpl.name}</p>
+                      <p className="text-[11px] text-[#484F58] mt-0.5">{tpl.description}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
               <input
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && newName.trim()) createMut.mutate(); }}
                 placeholder="Workflow name"
                 className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
-                autoFocus
               />
               <textarea
                 value={newDesc}
@@ -1853,7 +1914,7 @@ export default function WorkflowListPage() {
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button onClick={() => { setShowCreate(false); setSelectedTemplateId(null); }} className="px-4 py-2 text-sm text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
               <button
                 onClick={() => createMut.mutate()}
                 disabled={!newName.trim() || createMut.isPending}

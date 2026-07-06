@@ -214,6 +214,10 @@ export interface GenerateConsolidatedSowParams {
   /** Called synchronously after the "generating" DB row is inserted, before AI runs.
    *  Use this to send the docId to an HTTP client before the slow AI step. */
   onRowCreated?: (docId: number) => void;
+  /** Pre-computed fired signal keys from an upstream get_tenant_signals workflow node.
+   *  When provided, the internal computeTenantSignals DB evaluation is skipped entirely
+   *  and these signals are used directly to gate engagement project inclusion. */
+  signalsOverride?: Set<string>;
 }
 
 export interface GenerateConsolidatedSowResult {
@@ -225,7 +229,7 @@ export interface GenerateConsolidatedSowResult {
 export async function generateConsolidatedSowDocument(
   params: GenerateConsolidatedSowParams,
 ): Promise<GenerateConsolidatedSowResult> {
-  const { clientUserId, projectId, title, runId } = params;
+  const { clientUserId, projectId, title, runId, signalsOverride } = params;
   const logCtx = { clientUserId, projectId, title, runId };
 
   const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
@@ -342,6 +346,30 @@ export async function generateConsolidatedSowDocument(
   // the validate/purge pass.  Stays empty if no adj:* rules are configured in the DB.
   let firedAdjSignalKeys = new Set<string>();
   let hasAdjSignalRules = false;
+  if (signalsOverride != null) {
+    const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
+    hasAdjSignalRules = [...signalsOverride].some(k => k.startsWith("adj:"));
+    if (hasAdjSignalRules) {
+      for (const key of signalsOverride) {
+        if (key.startsWith("adj:")) firedAdjSignalKeys.add(key);
+      }
+    }
+    signalFilteredProjects = allEngagementProjects.filter(p => {
+      const triggers = Array.isArray(p.triggeredBy) ? p.triggeredBy as string[] : [];
+      const { included, reason } = projectMatchesSignals(
+        { title: p.title, triggeredBy: triggers },
+        knownSignalKeys,
+        signalsOverride,
+      );
+      if (!included && reason) {
+        logger.debug({ ...logCtx, projectTitle: p.title, reason },
+          "consolidated-sow-generator: project excluded by signal gate (pre-computed override)");
+      }
+      return included;
+    });
+    logger.info({ ...logCtx, docId, signalCount: signalsOverride.size },
+      "consolidated-sow-generator: using pre-computed signals override — skipped DB signal evaluation");
+  } else {
   try {
     const signalRules = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
@@ -431,6 +459,7 @@ export async function generateConsolidatedSowDocument(
       .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
     throw new Error("SOW generation failed: could not evaluate tenant signals — please retry");
   }
+  } // end else (signalsOverride == null)
 
   const projectsBlock = signalFilteredProjects.length > 0
     ? signalFilteredProjects.map(p =>

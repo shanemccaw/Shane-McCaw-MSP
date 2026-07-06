@@ -173,8 +173,19 @@ router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, r
     description: z.string().optional(),
     concurrencyLimit: z.number().int().min(1).max(50).optional(),
     maxRunDepth: z.number().int().min(1).max(10).optional(),
+    graph: z.object({ nodes: z.array(z.any()), edges: z.array(z.any()) }).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
+
+  const defaultGraph = {
+    nodes: [{
+      id: "node-1",
+      type: "start",
+      position: { x: 300, y: 100 },
+      data: { nodeType: "start", label: "Start" },
+    }],
+    edges: [] as unknown[],
+  };
 
   try {
     const [def] = await db.insert(wfDefinitionsTable).values({
@@ -189,15 +200,7 @@ router.post("/admin/workflows/definitions", requireAdmin, async (req: Request, r
       versionNumber: 1,
       label: "v1 — Initial draft",
       status: "draft",
-      graph: {
-        nodes: [{
-          id: "node-1",
-          type: "start",
-          position: { x: 300, y: 100 },
-          data: { nodeType: "start", label: "Start" },
-        }],
-        edges: [],
-      },
+      graph: body.data.graph ?? defaultGraph,
     }).returning();
 
     res.status(201).json({ ...def, draftVersionId: version.id });

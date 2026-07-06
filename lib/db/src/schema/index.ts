@@ -1821,6 +1821,8 @@ export interface WfNode {
     // Variables
     | "set_variable"
     | "update_variable"
+    // Signals
+    | "get_tenant_signals"
     // Utilities
     | "comment";
   position: { x: number; y: number };

@@ -43,6 +43,8 @@ import {
   scriptRunResultsTable,
   insightsGeneratedDocumentsTable,
   clientM365ProfilesTable,
+  signalDerivationRulesTable,
+  signalRuleGroupsTable,
   deviceTokensTable,
   workflowStepsTable,
   quickWinPresentationsTable,
@@ -60,6 +62,7 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
+import { computeTenantSignals } from "./tenant-signals";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
 import { eq, and, count, desc, inArray } from "drizzle-orm";
@@ -532,6 +535,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "update_intelligence_tables":
       return { dryRun: true, updated: true, recordId: null, jobId: "dry-run-job" };
+
+    case "get_tenant_signals":
+      return { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true };
 
     case "generate_diff_report":
       return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
@@ -1237,11 +1243,25 @@ async function executeNode(
                 const rawPresId = payload.presentationId;
                 const presId = typeof rawPresId === "number" ? rawPresId
                   : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
+                const sowSignalsOverride: Set<string> | undefined = (() => {
+                  const overrideField = (node.data.signalsOverride as string | undefined)?.trim();
+                  if (!overrideField) return undefined;
+                  if (Array.isArray(payload.signals)) return new Set<string>(payload.signals as string[]);
+                  try {
+                    const resolved = interp(overrideField, payload);
+                    if (resolved) {
+                      const parsed = JSON.parse(resolved) as unknown;
+                      if (Array.isArray(parsed)) return new Set<string>(parsed as string[]);
+                    }
+                  } catch { /* not a valid JSON array — fall through */ }
+                  return undefined;
+                })();
                 const sowResult = await generateConsolidatedSowDocument({
                   clientUserId,
                   projectId: !isNaN(projectId) ? projectId : null,
                   title: docTitle,
                   runId: runId != null ? String(runId) : undefined,
+                  signalsOverride: sowSignalsOverride,
                 });
                 if (!isNaN(presId)) {
                   broadcastPresentationDocsChange(presId);
@@ -2083,6 +2103,72 @@ async function executeNode(
             );
           }
           output = { notified: true, skipped: false };
+        }
+        break;
+      }
+
+      case "get_tenant_signals": {
+        const gtsClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const gtsClientId = gtsClientIdRaw ? parseInt(gtsClientIdRaw, 10) : NaN;
+        if (isNaN(gtsClientId)) {
+          nodeError = true;
+          output = {
+            error: "get_tenant_signals requires a valid clientId",
+            customerError: "Unable to retrieve your tenant signals — no client ID was provided.",
+          };
+        } else {
+          try {
+            const [profileRow, scriptRuns] = await Promise.all([
+              db.select({ profile: clientM365ProfilesTable.profile })
+                .from(clientM365ProfilesTable)
+                .where(eq(clientM365ProfilesTable.clientId, gtsClientId))
+                .limit(1),
+              db.select({
+                parsedFindings: scriptRunResultsTable.parsedFindings,
+                profileUpdates: scriptRunResultsTable.profileUpdates,
+              })
+              .from(scriptRunResultsTable)
+              .where(and(
+                eq(scriptRunResultsTable.customerId, gtsClientId),
+                eq(scriptRunResultsTable.status, "completed"),
+              ))
+              .orderBy(desc(scriptRunResultsTable.createdAt))
+              .limit(50),
+            ]);
+
+            const mergedProfile: Record<string, unknown> = {};
+            for (const run of [...scriptRuns].reverse()) {
+              Object.assign(mergedProfile, run.profileUpdates ?? {});
+            }
+            Object.assign(mergedProfile, (profileRow[0]?.profile as Record<string, unknown> | null) ?? {});
+
+            const allFindings = [...new Set(scriptRuns.flatMap(r => (r.parsedFindings as string[] | null) ?? []))];
+
+            const [signalRules, signalGroups] = await Promise.all([
+              db.select().from(signalDerivationRulesTable).orderBy(signalDerivationRulesTable.sortOrder),
+              db.select().from(signalRuleGroupsTable).orderBy(signalRuleGroupsTable.sortOrder),
+            ]);
+
+            const { firedSignals } = computeTenantSignals(
+              mergedProfile,
+              allFindings,
+              signalRules as Parameters<typeof computeTenantSignals>[2],
+              signalGroups as Parameters<typeof computeTenantSignals>[3],
+            );
+
+            const signals = [...firedSignals];
+            const hasSignals = firedSignals.size > 1;
+            output = { signals, signalCount: signals.length, hasSignals };
+            logger.info({ runId, gtsClientId, signalCount: signals.length, hasSignals }, "wf-executor: get_tenant_signals completed");
+          } catch (gtsErr) {
+            nodeError = true;
+            const errMsg = gtsErr instanceof Error ? gtsErr.message : String(gtsErr);
+            output = {
+              error: errMsg,
+              customerError: "Unable to retrieve your tenant signals — an error occurred. Please retry or contact support.",
+            };
+            logger.error({ runId, gtsErr }, "wf-executor: get_tenant_signals failed");
+          }
         }
         break;
       }
