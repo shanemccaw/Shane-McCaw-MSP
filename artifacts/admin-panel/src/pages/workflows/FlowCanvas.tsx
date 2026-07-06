@@ -866,6 +866,62 @@ function ParallelBranchColumn({
   );
 }
 
+// ── Generic Branch Column ──────────────────────────────────────────────────────
+// Wraps any branch column with column-level drag-over/drop so nodes can be
+// dragged into it even when the column is non-empty. Modelled on ParallelBranchColumn.
+
+function BranchColumn({
+  containerId,
+  branchKey,
+  className,
+  style,
+  children,
+}: {
+  containerId: string;
+  branchKey: string;
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const ctx = React.useContext(FlowCanvasContext);
+  const isDragActive = !!ctx.draggedId;
+  const isColumnTarget =
+    ctx.dropBranchContainerId === containerId && ctx.dropBranchKey === branchKey;
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!isDragActive) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "move";
+    ctx.onDragOverBranchColumn(containerId, branchKey);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    const related = e.relatedTarget as Node | null;
+    if (!e.currentTarget.contains(related)) {
+      ctx.onDragLeaveBranchColumn();
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    ctx.onDropIntoBranch(containerId, branchKey);
+  }
+
+  return (
+    <div
+      className={`transition-colors ${isColumnTarget ? "ring-1 ring-inset ring-[#06B6D4]/50 bg-[#06B6D4]/10" : ""} ${className ?? ""}`}
+      style={style}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {children}
+    </div>
+  );
+}
+
 // ── Container Body ─────────────────────────────────────────────────────────────
 
 function ContainerBody({
@@ -947,7 +1003,7 @@ function ContainerBody({
       <div className="border-t border-[#F59E0B]/30 rounded-b-xl overflow-hidden">
         <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#30363D]">
           {/* Yes branch */}
-          <div className="bg-emerald-500/5">
+          <BranchColumn containerId={step.id} branchKey="yes" className="bg-emerald-500/5">
             <div className="px-3 py-1.5 border-b border-[#30363D]">
               <span className="text-[9px] uppercase tracking-widest font-bold text-emerald-400">✓ Yes</span>
             </div>
@@ -969,10 +1025,10 @@ function ContainerBody({
                 onDuplicateNode={onDuplicateNode}
               />
             </div>
-          </div>
+          </BranchColumn>
 
           {/* No branch */}
-          <div className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
+          <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
             <div className="px-3 py-1.5 border-b border-[#30363D]">
               <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">✕ No</span>
             </div>
@@ -994,7 +1050,7 @@ function ContainerBody({
                 onDuplicateNode={onDuplicateNode}
               />
             </div>
-          </div>
+          </BranchColumn>
         </div>
       </div>
     );
@@ -1050,7 +1106,7 @@ function ContainerBody({
             const branchSteps = branches[key] ?? [];
 
             return (
-              <div key={key} className="min-w-0">
+              <BranchColumn key={key} containerId={step.id} branchKey={key} className="min-w-0">
                 <div className="px-2 py-1.5 border-b border-[#30363D]" style={{ background: `${color}08` }}>
                   <span className="text-[9px] uppercase tracking-widest font-bold truncate block" style={{ color }}>
                     {label}
@@ -1074,7 +1130,7 @@ function ContainerBody({
                     onDuplicateNode={onDuplicateNode}
                   />
                 </div>
-              </div>
+              </BranchColumn>
             );
           })}
         </div>
@@ -1138,27 +1194,29 @@ function ContainerBody({
     const errorSteps = branches["onError"] ?? [];
     return (
       <div className="border-t border-red-500/30 rounded-b-xl overflow-hidden">
-        <div className="px-3 py-1.5 flex items-center gap-1.5">
-          <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">⚠ On Error — Recovery steps</span>
-        </div>
-        <div className="px-3 pb-3">
-          <BranchStepList
-            steps={errorSteps}
-            containerId={step.id}
-            containerHandle="onError"
-            lastNodeIdFn={lastNodeId}
-            branchKey="onError"
-            isArchived={isArchived}
-            nodeStyles={nodeStyles}
-            nodeIdCounter={nodeIdCounter}
-            libraryCategories={libraryCategories}
-            allLibraryNodes={allLibraryNodes}
-            nodes={nodes}
-            edges={edges}
-            onGraphChange={onGraphChange}
-            onDuplicateNode={onDuplicateNode}
-          />
-        </div>
+        <BranchColumn containerId={step.id} branchKey="onError">
+          <div className="px-3 py-1.5 flex items-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">⚠ On Error — Recovery steps</span>
+          </div>
+          <div className="px-3 pb-3">
+            <BranchStepList
+              steps={errorSteps}
+              containerId={step.id}
+              containerHandle="onError"
+              lastNodeIdFn={lastNodeId}
+              branchKey="onError"
+              isArchived={isArchived}
+              nodeStyles={nodeStyles}
+              nodeIdCounter={nodeIdCounter}
+              libraryCategories={libraryCategories}
+              allLibraryNodes={allLibraryNodes}
+              nodes={nodes}
+              edges={edges}
+              onGraphChange={onGraphChange}
+              onDuplicateNode={onDuplicateNode}
+            />
+          </div>
+        </BranchColumn>
       </div>
     );
   }
@@ -1168,27 +1226,29 @@ function ContainerBody({
     const exhaustedSteps = branches["exhausted"] ?? [];
     return (
       <div className="border-t border-amber-500/30 rounded-b-xl overflow-hidden">
-        <div className="px-3 py-1.5 flex items-center gap-1.5">
-          <span className="text-[9px] uppercase tracking-widest font-bold text-amber-400">🔁 Exhausted — runs when all retries are used up</span>
-        </div>
-        <div className="px-3 pb-3">
-          <BranchStepList
-            steps={exhaustedSteps}
-            containerId={step.id}
-            containerHandle="exhausted"
-            lastNodeIdFn={lastNodeId}
-            branchKey="exhausted"
-            isArchived={isArchived}
-            nodeStyles={nodeStyles}
-            nodeIdCounter={nodeIdCounter}
-            libraryCategories={libraryCategories}
-            allLibraryNodes={allLibraryNodes}
-            nodes={nodes}
-            edges={edges}
-            onGraphChange={onGraphChange}
-            onDuplicateNode={onDuplicateNode}
-          />
-        </div>
+        <BranchColumn containerId={step.id} branchKey="exhausted">
+          <div className="px-3 py-1.5 flex items-center gap-1.5">
+            <span className="text-[9px] uppercase tracking-widest font-bold text-amber-400">🔁 Exhausted — runs when all retries are used up</span>
+          </div>
+          <div className="px-3 pb-3">
+            <BranchStepList
+              steps={exhaustedSteps}
+              containerId={step.id}
+              containerHandle="exhausted"
+              lastNodeIdFn={lastNodeId}
+              branchKey="exhausted"
+              isArchived={isArchived}
+              nodeStyles={nodeStyles}
+              nodeIdCounter={nodeIdCounter}
+              libraryCategories={libraryCategories}
+              allLibraryNodes={allLibraryNodes}
+              nodes={nodes}
+              edges={edges}
+              onGraphChange={onGraphChange}
+              onDuplicateNode={onDuplicateNode}
+            />
+          </div>
+        </BranchColumn>
       </div>
     );
   }
@@ -1201,7 +1261,7 @@ function ContainerBody({
       <div className="border-t border-[#06B6D4]/30 rounded-b-xl overflow-hidden">
         <div className="grid grid-cols-2 divide-x divide-[#06B6D4]/20">
           {/* Hot branch */}
-          <div className="bg-[#06B6D4]/5">
+          <BranchColumn containerId={step.id} branchKey="hot" className="bg-[#06B6D4]/5">
             <div className="px-3 py-1.5 flex items-center gap-1.5">
               <span className="text-[9px] uppercase tracking-widest font-bold text-[#06B6D4]">🔥 Hot — Run Campaign</span>
             </div>
@@ -1223,9 +1283,9 @@ function ContainerBody({
                 onDuplicateNode={onDuplicateNode}
               />
             </div>
-          </div>
+          </BranchColumn>
           {/* Not Hot branch */}
-          <div className="bg-slate-900/30">
+          <BranchColumn containerId={step.id} branchKey="notHot" className="bg-slate-900/30">
             <div className="px-3 py-1.5 flex items-center gap-1.5">
               <span className="text-[9px] uppercase tracking-widest font-bold text-slate-400">❄️ Not Hot — Skip</span>
             </div>
@@ -1247,7 +1307,7 @@ function ContainerBody({
                 onDuplicateNode={onDuplicateNode}
               />
             </div>
-          </div>
+          </BranchColumn>
         </div>
       </div>
     );
