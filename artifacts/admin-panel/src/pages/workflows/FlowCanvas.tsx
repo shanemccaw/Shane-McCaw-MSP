@@ -173,6 +173,7 @@ function NodePicker({
 function AddButton({
   afterNodeId,
   sourceHandle,
+  label,
   isArchived,
   nodeIdCounter,
   nodeStyles,
@@ -185,6 +186,8 @@ function AddButton({
 }: {
   afterNodeId: string;
   sourceHandle?: string;
+  /** Optional badge shown beside the + connector (e.g. "After loop") */
+  label?: string;
   isArchived: boolean;
   nodeIdCounter: React.MutableRefObject<number>;
   nodeStyles: Record<string, NodeStyle>;
@@ -290,11 +293,16 @@ function AddButton({
     <div className="flex justify-center my-1">
       <div className="flex flex-col items-center">
         <div className="w-px h-3 bg-[#30363D]" />
+        {label && (
+          <span className="mb-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-[#A855F7]/15 text-[#A855F7] border border-[#A855F7]/30 select-none">
+            {label}
+          </span>
+        )}
         <button
           ref={btnRef}
           onClick={handleOpen}
           className="w-6 h-6 rounded-full bg-[#1C2128] border border-[#30363D] hover:border-[#0078D4] hover:bg-[#0078D4]/10 text-[#484F58] hover:text-[#0078D4] flex items-center justify-center transition-colors text-sm font-bold leading-none"
-          title="Add step"
+          title={label ? `Add step after loop (runs once when all iterations finish)` : "Add step"}
         >
           +
         </button>
@@ -1380,6 +1388,7 @@ export default function FlowCanvas({
                       <AddButton
                         afterNodeId={step.id}
                         sourceHandle={step.nodeType === "foreach" ? "done" : undefined}
+                        label={step.nodeType === "foreach" ? "After loop" : undefined}
                         isArchived={isArchived}
                         nodeIdCounter={nodeIdCounter}
                         nodeStyles={nodeStyles}
