@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
@@ -984,6 +984,64 @@ function getSkipReason(
   return null;
 }
 
+// ── Retry exhausted map ────────────────────────────────────────────────────────
+
+/**
+ * Builds a map from each retry node ID to the set of node IDs that belong to
+ * its "exhausted" branch.  Used by the replay view to visually group those
+ * nodes into a distinct container rather than rendering them inline with the
+ * main execution flow.
+ */
+function buildRetryExhaustedMap(
+  graph: WfRunDetail["graph"],
+): Map<string, Set<string>> {
+  if (!graph) return new Map();
+  const { nodes, edges } = graph;
+  const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+  const outEdges = new Map<string, typeof edges>();
+  for (const e of edges) {
+    if (!outEdges.has(e.source)) outEdges.set(e.source, []);
+    outEdges.get(e.source)!.push(e);
+  }
+
+  const result = new Map<string, Set<string>>();
+
+  for (const node of nodes) {
+    const nType = (node.data.nodeType as string) || node.type || "";
+    if (nType !== "retry") continue;
+
+    const nodeOut = outEdges.get(node.id) ?? [];
+    const exhaustedEdge = nodeOut.find(e => e.sourceHandle === "exhausted");
+    if (!exhaustedEdge) continue;
+
+    const doneEdge = nodeOut.find(e => e.sourceHandle === "done");
+    const doneTarget = doneEdge?.target;
+
+    const exhaustedSet = new Set<string>();
+    const visited = new Set<string>();
+    const queue: string[] = [exhaustedEdge.target];
+    while (queue.length > 0) {
+      const id = queue.shift()!;
+      if (visited.has(id) || id === doneTarget) continue;
+      visited.add(id);
+      if (!nodeMap.has(id)) continue;
+      exhaustedSet.add(id);
+      for (const e of outEdges.get(id) ?? []) queue.push(e.target);
+    }
+
+    result.set(node.id, exhaustedSet);
+  }
+
+  return result;
+}
+
+// ── Replay entry types ─────────────────────────────────────────────────────────
+
+type ReplayEntry =
+  | { kind: "step"; nodeId: string; idx: number }
+  | { kind: "exhausted_group"; retryNodeId: string; items: Array<{ nodeId: string; idx: number }> };
+
 // ── RunDetailContent — three-tab body, owns its own fetching ──────────────────
 
 export default function RunDetailContent({ runId }: { runId: number }) {
@@ -1008,6 +1066,52 @@ export default function RunDetailContent({ runId }: { runId: number }) {
       return status === "running" || status === "pending" ? 3000 : false;
     },
   });
+
+  // ── Retry exhausted grouping (hooks must be called before any early return) ──
+  // Build retry → exhaustedSet map from the run graph, then group branchPath
+  // entries so exhausted-branch nodes are rendered in a distinct container.
+  // Optional-chained so these are safe while `run` is still undefined.
+  const retryExhaustedMap = useMemo(
+    () => buildRetryExhaustedMap(run?.graph ?? null),
+    [run?.graph],
+  );
+
+  // Inverse map: exhaustedNodeId → retryNodeId
+  const nodeToRetry = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const [retryId, exhaSet] of retryExhaustedMap) {
+      for (const nid of exhaSet) m.set(nid, retryId);
+    }
+    return m;
+  }, [retryExhaustedMap]);
+
+  const allExhaustedIds = useMemo(() => new Set(nodeToRetry.keys()), [nodeToRetry]);
+
+  const _branchPathForMemo = run?.branchPath ?? [];
+  // Group the flat branchPath into ReplayEntry items so exhausted steps are
+  // collected under their parent retry node in a single visual block.
+  const replayEntries = useMemo((): ReplayEntry[] => {
+    const entries: ReplayEntry[] = [];
+    const groupByRetry = new Map<string, ReplayEntry & { kind: "exhausted_group" }>();
+
+    for (let idx = 0; idx < _branchPathForMemo.length; idx++) {
+      const nodeId = _branchPathForMemo[idx]!;
+      if (allExhaustedIds.has(nodeId)) {
+        const retryId = nodeToRetry.get(nodeId)!;
+        let group = groupByRetry.get(retryId);
+        if (!group) {
+          group = { kind: "exhausted_group", retryNodeId: retryId, items: [] };
+          groupByRetry.set(retryId, group);
+          entries.push(group);
+        }
+        group.items.push({ nodeId, idx });
+      } else {
+        entries.push({ kind: "step", nodeId, idx });
+      }
+    }
+    return entries;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [_branchPathForMemo, allExhaustedIds, nodeToRetry]);
 
   if (isLoading) {
     return (
@@ -1090,19 +1194,97 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                   {/* Vertical card list */}
                   <div className="flex-1 overflow-y-auto bg-[#0D1117] p-4">
                     <div className="max-w-lg mx-auto space-y-1">
-                      {branchPath.map((nodeId, idx) => {
+                      {replayEntries.map((entry, entryIdx) => {
+                        const isLastEntry = entryIdx === replayEntries.length - 1;
+
+                        if (entry.kind === "exhausted_group") {
+                          // ── Exhausted branch container ─────────────────────
+                          const anyInPath = entry.items.some(({ idx }) => idx <= replayStep);
+                          return (
+                            <div key={`exhausted-${entry.retryNodeId}`}>
+                              {/* Connector from the preceding step */}
+                              <div className="flex justify-center">
+                                <div className="w-px h-3 bg-amber-500/40" />
+                              </div>
+                              <div className="rounded-xl border border-amber-500/40 overflow-hidden"
+                                style={{ background: anyInPath ? "#1A1200" : "#0D1117" }}>
+                                {/* Header */}
+                                <div className="flex items-center gap-2 px-3 py-2 border-b border-amber-500/25">
+                                  <span className="text-amber-400 text-sm">🔁</span>
+                                  <span className="text-[9px] uppercase tracking-widest font-bold text-amber-400">
+                                    Exhausted — ran after all retries were used up
+                                  </span>
+                                  <span className="ml-auto text-[9px] font-mono text-amber-500/60">
+                                    {entry.items.length} step{entry.items.length !== 1 ? "s" : ""}
+                                  </span>
+                                </div>
+                                {/* Steps inside the group */}
+                                <div className="p-3 space-y-1">
+                                  {entry.items.map(({ nodeId, idx }, i) => {
+                                    const graphNode = graphNodeMap.get(nodeId);
+                                    const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
+                                    const label = (graphNode?.data?.label as string) ?? nodeType;
+                                    const inPath = idx <= replayStep;
+                                    const isCurrent = nodeId === currentNodeId;
+                                    const nodeOutput = nodeOutputMap.get(nodeId);
+                                    const hasError = nodeOutput?.status === "error";
+                                    const isMutated = !hasError && nodeOutput != null
+                                      && Object.keys(nodeOutput.output).length > 0
+                                      && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
+                                    const pricingTotal = nodeType === "calculate_pricing"
+                                      ? (nodeOutput?.output?.totalPrice as number | undefined)
+                                      : undefined;
+                                    const pricingLines = nodeType === "calculate_pricing"
+                                      ? (nodeOutput?.output?.lineCount as number | undefined)
+                                      : undefined;
+
+                                    return (
+                                      <div key={`${nodeId}-${idx}`}>
+                                        <ReplayStepCard
+                                          nodeId={nodeId}
+                                          nodeType={nodeType}
+                                          label={label}
+                                          isCurrent={isCurrent}
+                                          inPath={inPath}
+                                          isSkipped={false}
+                                          hasError={hasError}
+                                          isMutated={isMutated}
+                                          pricingTotal={pricingTotal}
+                                          pricingLines={pricingLines}
+                                          onClick={() => setReplayStep(idx)}
+                                        />
+                                        {i < entry.items.length - 1 && (
+                                          <div className="flex justify-center">
+                                            <div className="w-px h-3 bg-amber-500/30" />
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {/* Connector to next entry */}
+                              {!isLastEntry && (
+                                <div className="flex justify-center">
+                                  <div className="w-px h-3 bg-[#30363D]" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        }
+
+                        // ── Regular step ──────────────────────────────────────
+                        const { nodeId, idx } = entry;
                         const graphNode = graphNodeMap.get(nodeId);
                         const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                         const label = (graphNode?.data?.label as string) ?? nodeType;
-                        const nodeIdx = idx;
-                        const inPath = nodeIdx <= replayStep;
+                        const inPath = idx <= replayStep;
                         const isCurrent = nodeId === currentNodeId;
-                        const nodeOutput = run.nodeOutputs.find(o => o.nodeId === nodeId);
+                        const nodeOutput = nodeOutputMap.get(nodeId);
                         const hasError = nodeOutput?.status === "error";
                         const isMutated = !hasError && nodeOutput != null
                           && Object.keys(nodeOutput.output).length > 0
                           && JSON.stringify(nodeOutput.input) !== JSON.stringify(nodeOutput.output);
-
                         const pricingTotal = nodeType === "calculate_pricing"
                           ? (nodeOutput?.output?.totalPrice as number | undefined)
                           : undefined;
@@ -1125,8 +1307,9 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               pricingLines={pricingLines}
                               onClick={() => setReplayStep(idx)}
                             />
-                            {/* Connector line between cards */}
-                            {idx < branchPath.length - 1 && (
+                            {/* Connector line — skip if next entry is an exhausted group
+                                (it renders its own incoming connector) */}
+                            {!isLastEntry && replayEntries[entryIdx + 1]?.kind !== "exhausted_group" && (
                               <div className="flex justify-center">
                                 <div className="w-px h-3 bg-[#30363D]" />
                               </div>
