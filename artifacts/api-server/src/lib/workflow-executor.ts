@@ -893,6 +893,27 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
           projectId:       1,
         };
       }
+      if (foType === "presentation") {
+        return {
+          dryRun:           true,
+          found:            true,
+          objectType:       "presentation",
+          objectId:         1,
+          presentationId:   1,
+          projectId:        1,
+          clientUserId:     1,
+          status:           "signed",
+          totalPrice:       "12500.00",
+          paymentPlan:      "phased",
+          signedAt:         new Date().toISOString(),
+          sowPhases: [
+            { id: "phase-1", title: "Phase 1 — Discovery", description: "Initial assessment and planning", price: 5000, selected: true },
+            { id: "phase-2", title: "Phase 2 — Implementation", description: "Core M365 deployment", price: 7500, selected: true },
+          ],
+          selectedPhaseIds: ["phase-1", "phase-2"],
+          createdAt:        new Date().toISOString(),
+        };
+      }
       return { dryRun: true, found: true, objectType: foType, objectId: 1 };
     }
 
@@ -2979,6 +3000,31 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                   projectId:       foDoc.projectId ?? null,
                 }
               : { found: false, objectType: "insights_document", fieldName: foField, fieldValue: foValue };
+            break;
+          }
+          case "presentation": {
+            const foPresField = foField === "clientUserId" ? eq(quickWinPresentationsTable.clientUserId, parseInt(foValue, 10))
+                              : foField === "projectId"    ? eq(quickWinPresentationsTable.projectId,    parseInt(foValue, 10))
+                              : eq(quickWinPresentationsTable.projectId, parseInt(foValue, 10));
+            const foPresRows = await db.select().from(quickWinPresentationsTable).where(foPresField).orderBy(quickWinPresentationsTable.createdAt).limit(1);
+            const foPres = foPresRows[0];
+            output = foPres
+              ? {
+                  found:            true,
+                  objectType:       "presentation",
+                  objectId:         foPres.id,
+                  presentationId:   foPres.id,
+                  projectId:        foPres.projectId ?? null,
+                  clientUserId:     foPres.clientUserId ?? null,
+                  status:           foPres.status,
+                  totalPrice:       foPres.totalPrice ?? null,
+                  paymentPlan:      foPres.paymentPlan ?? null,
+                  signedAt:         foPres.signedAt?.toISOString() ?? null,
+                  sowPhases:        foPres.sowPhases ?? [],
+                  selectedPhaseIds: foPres.selectedPhaseIds ?? [],
+                  createdAt:        foPres.createdAt.toISOString(),
+                }
+              : { found: false, objectType: "presentation", fieldName: foField, fieldValue: foValue };
             break;
           }
           default:
