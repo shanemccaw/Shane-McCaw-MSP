@@ -127,6 +127,7 @@ mock.module("../lib/azure-automation.ts", {
     isTerminalStatus: (s: string) =>
       ["Completed", "Failed", "Stopped", "Suspended"].includes(s),
     isAzureConfigured:   () => true,
+    testAzureConnection: async () => ({ ok: true }),
     listRunbooks:        async () => [],
     createRunbookJob:    async () => ({ jobId: FAKE_JOB_ID, status: "New" }),
     pushScriptToAzure:   async () => {},

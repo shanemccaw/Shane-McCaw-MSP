@@ -162,6 +162,14 @@ mock.module("@workspace/db", {
     scriptPackagesTable: {},
     scriptModulesTable: {},
     azureTenantCredentialsTable: {},
+    workflowTemplatesTable: {},
+    serviceScriptSetsTable: {},
+    clientCallbackTokensTable: {},
+    insightsGeneratedDocumentsTable: {},
+    quickWinPresentationsTable: {},
+    presentationDocViewsTable: {},
+    quickWinResultSharesTable: {},
+    clientDocumentsTable: {},
   },
 });
 
@@ -210,6 +218,10 @@ mock.module("../lib/sms.ts", {
 
 mock.module("../lib/push.ts", {
   namedExports: { sendPushNotifications: async () => {} },
+});
+
+mock.module("../lib/web-push.ts", {
+  namedExports: { sendWebPushToAdmins: async () => {} },
 });
 
 mock.module("../lib/audit.ts", {
@@ -269,6 +281,70 @@ mock.module("../lib/manual-script-package.ts", {
   namedExports: {
     generateManualScriptPackage: async () => Buffer.from(""),
     injectCallbackVars: (script: string) => script,
+  },
+});
+
+mock.module("../lib/probe-graph-permissions.ts", {
+  namedExports: { probeGraphPermissions: async () => ({ ok: false }) },
+});
+
+mock.module("../lib/kanban-phase-advance.ts", {
+  namedExports: {
+    advancePhaseIfComplete: async () => {},
+    syncProjectProgress: async () => {},
+  },
+});
+
+mock.module("../lib/kanban-auto-fire.ts", {
+  namedExports: {
+    autoFireFirstBacklogScript: async () => {},
+    autoFireDocumentCard: async () => {},
+  },
+});
+
+mock.module("../lib/crm-pipeline.ts", {
+  namedExports: { ensureLeadForClient: async () => {} },
+});
+
+mock.module("../lib/insight-pdf.ts", {
+  namedExports: {
+    buildHtmlDoc: () => "",
+    htmlToPdf: async () => Buffer.from(""),
+  },
+});
+
+mock.module("../lib/sse-broadcast.ts", {
+  namedExports: {
+    broadcastKanbanChange: () => {},
+    registerSSEClient: () => {},
+    registerPresentationSSEClient: () => {},
+    broadcastPresentationScopeChange: () => {},
+    replayPhaseGenState: () => {},
+  },
+});
+
+mock.module("../lib/workflow-executor.ts", {
+  namedExports: {
+    fireWorkflowsForEvent: async () => {},
+    emitWorkflowEvent: async () => {},
+    fireWorkflowForDefinition: async () => {},
+    executeWorkflowRun: async () => {},
+    triggerScheduledWorkflows: async () => {},
+    computeNextCronRun: () => null,
+  },
+});
+
+mock.module("../lib/azure-automation.ts", {
+  namedExports: { isAzureConfigured: () => false },
+});
+
+mock.module("../lib/sow-pricing.ts", {
+  namedExports: {
+    stripStagedForReviewBanner: (h: string) => h,
+    stripTierDetectionText: (h: string) => h,
+    extractAiHtml: (h: string) => h,
+    nextBusinessMonday: () => new Date(),
+    WORKSTREAM_ADJ_MAP: {},
   },
 });
 

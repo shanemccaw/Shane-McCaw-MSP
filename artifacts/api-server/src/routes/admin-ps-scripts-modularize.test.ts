@@ -67,6 +67,9 @@ mock.module("@workspace/db", {
     clientServicesTable: {},
     scriptRunResultsTable: {},
     aiPromptsTable: {},
+    projectsTable: {},
+    insightsGeneratedDocumentsTable: {},
+    pool: {},
   },
 });
 
@@ -77,6 +80,21 @@ const noopLogger = {
 };
 mock.module("../lib/logger.ts", {
   namedExports: { logger: noopLogger },
+});
+
+mock.module("../lib/ps-script-gen.ts", {
+  namedExports: {
+    normalizeAppPerms: (perms: unknown[]) => perms,
+    extractPowershellFences: () => new Map(),
+    extractJson: () => null,
+    extractJsonArray: () => null,
+    repairJsonStrings: (s: string) => s,
+    jsonParse: () => null,
+    extractEnvelopeJson: () => null,
+    hasPsKeywords: () => false,
+    hasPsKeywordsFullText: () => false,
+    generateScriptFromService: async () => ({ scriptId: null, packageId: null, title: "" }),
+  },
 });
 
 // ── Load the REAL route module AFTER mocks are registered ─────────────────────
@@ -141,7 +159,7 @@ describe("POST /api/admin/ps-scripts/modularize — real route: prose-only AI re
     const { body } = await postJson("/api/admin/ps-scripts/modularize", modularizePayload);
     assert.equal(
       (body as { error: string }).error,
-      "AI returned a summary instead of a script. Please try again.",
+      "AI response did not contain a valid module array",
     );
   });
 });

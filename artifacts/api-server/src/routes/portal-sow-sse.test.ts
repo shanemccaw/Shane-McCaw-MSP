@@ -113,6 +113,7 @@ mock.module("@workspace/db", {
     scriptPackagesTable: {},
     scriptModulesTable: {},
     azureTenantCredentialsTable: {},
+    clientDocumentsTable: {},
     serviceScriptSetsTable: {},
     clientCallbackTokensTable: {},
     insightsGeneratedDocumentsTable: {},

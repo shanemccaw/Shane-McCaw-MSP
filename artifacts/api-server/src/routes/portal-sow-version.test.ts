@@ -115,6 +115,7 @@ mock.module("@workspace/db", {
     scriptPackagesTable: {},
     scriptModulesTable: {},
     azureTenantCredentialsTable: {},
+    clientDocumentsTable: {},
     serviceScriptSetsTable: {},
     clientCallbackTokensTable: {},
     insightsGeneratedDocumentsTable: {},
@@ -250,6 +251,7 @@ mock.module("../lib/sse-broadcast.ts", {
     registerPresentationSSEClient: () => {},
     broadcastPresentationScopeChange: () => {},
     getPresentationSSEClientCount: () => 0,
+    replayPhaseGenState: () => {},
   },
 });
 
@@ -358,10 +360,11 @@ function makeSowDoc(pricingLines: Array<{ title: string; scope: string; priceUsd
  * Build the DB queue for one GET /portal/presentations/:id request with a SOW doc.
  *
  * The handler executes these selects in order:
- *   [0] quickWinPresentationsTable   (presRow)
- *   [1] insightsGeneratedDocumentsTable (docsRaw — HTML for display)
- *   [2] insightsGeneratedDocumentsTable (docsWithPricing inside deriveEffectiveSowData)
- *   [3] usersTable                      (clientUser — fires when clientUserId is non-null)
+ *   [0] quickWinPresentationsTable          (presRow)
+ *   [1] insightsGeneratedDocumentsTable      (liveDocs — by clientUserId, fires when clientUserId non-null)
+ *   [2] insightsGeneratedDocumentsTable      (docsRaw — HTML for display, by mergedDocIds)
+ *   [3] insightsGeneratedDocumentsTable      (docsWithPricing inside deriveEffectiveSowData)
+ *   [4] usersTable                           (clientUser — fires when clientUserId is non-null)
  *
  * projectId=null → no projectsTable select.
  * stripeSessionId=null → no Stripe sync select.
@@ -369,9 +372,10 @@ function makeSowDoc(pricingLines: Array<{ title: string; scope: string; priceUsd
 function queueForOneGet(pricingLines: Array<{ title: string; scope: string; priceUsd: number; notes: string }>): unknown[][] {
   return [
     [makePresRow([10])],        // [0] presRow
-    [makeSowDoc(pricingLines)], // [1] docsRaw (HTML display)
-    [makeSowDoc(pricingLines)], // [2] docsWithPricing (deriveEffectiveSowData)
-    [],                         // [3] clientUser (empty — name is irrelevant for these tests)
+    [makeSowDoc(pricingLines)], // [1] liveDocs (returns doc id 10 — mock db ignores column selection)
+    [makeSowDoc(pricingLines)], // [2] docsRaw (HTML display)
+    [makeSowDoc(pricingLines)], // [3] docsWithPricing (deriveEffectiveSowData)
+    [],                         // [4] clientUser (empty — name is irrelevant for these tests)
   ];
 }
 
@@ -568,7 +572,7 @@ describe("GET presentation sowVersion — fallback snapshot phases produce a ver
       selectedPhaseIds: ["snap-A", "snap-B"],
       totalPrice: "15000",
     };
-    dbQueue = [[presRow], []]; // presRow + empty clientUser result
+    dbQueue = [[presRow], [], []]; // presRow + empty liveDocs (clientUserId non-null) + empty clientUser
     const { body: b } = await getPresentation();
     body = b;
   });

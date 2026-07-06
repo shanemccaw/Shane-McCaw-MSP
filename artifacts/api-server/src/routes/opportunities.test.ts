@@ -161,6 +161,8 @@ mock.module("@workspace/db", {
     leadsTable: mockLeadsTable,
     leadQualificationsTable: mockLeadQualificationsTable,
     projectsTable: mockProjectsTable,
+    usersTable: {},
+    insightsGeneratedDocumentsTable: {},
   },
 });
 

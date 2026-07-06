@@ -119,6 +119,7 @@ mock.module("@workspace/db", {
     scriptPackagesTable: {},
     scriptModulesTable: {},
     azureTenantCredentialsTable: {},
+    clientDocumentsTable: {},
     serviceScriptSetsTable: {},
     clientCallbackTokensTable: {},
     insightsGeneratedDocumentsTable: {},
@@ -268,6 +269,7 @@ mock.module("../lib/sse-broadcast.ts", {
     registerSSEClient: () => {},
     registerPresentationSSEClient: () => {},
     broadcastPresentationScopeChange: () => {},
+    replayPhaseGenState: () => {},
   },
 });
 

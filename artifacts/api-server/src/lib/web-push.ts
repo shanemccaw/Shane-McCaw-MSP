@@ -1,7 +1,7 @@
 import webpush from "web-push";
 import { db, pushSubscriptionsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { logger } from "./logger";
+import { logger } from "./logger.ts";
 
 let vapidConfigured = false;
 

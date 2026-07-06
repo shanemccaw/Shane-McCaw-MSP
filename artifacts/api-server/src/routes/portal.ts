@@ -5056,7 +5056,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             { presentationId, sessionId: session.id },
             "processStripeEvent: presentation not found for completed session, skipping paid update",
           );
-        } else if (currentPresentation.status !== "paid") {
+        } else if (currentPresentation.status !== "paid" && currentPresentation.status !== "signed") {
           await db.update(quickWinPresentationsTable)
             .set({ status: "paid", updatedAt: new Date() })
             .where(eq(quickWinPresentationsTable.id, presentationId));
@@ -9928,7 +9928,8 @@ async function deriveEffectiveSowData(
   // pricing lines, which represent the full-SOW workstream breakdown, not the
   // execution phases shown on Scope & Pricing.
   const aiPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
-  if (aiPhases.length > 0) {
+  const hasAiGeneratedPhases = aiPhases.length > 0 && aiPhases.every(p => typeof p.id === "string" && (p.id as string).startsWith("sow-"));
+  if (hasAiGeneratedPhases) {
     const storedIds = ((storedSelectedIds ?? pres.selectedPhaseIds) ?? []) as string[];
     const allAiIds  = aiPhases.map(p => p.id);
     const intersection = storedIds.filter(id => allAiIds.includes(id));
@@ -10095,21 +10096,26 @@ async function deriveEffectiveSowData(
   }
 
   // No live SOW pricing — fall back to creation-time snapshot.
-  // At creation time totalPrice was stored as the SOW grand total (workstreams +
-  // adjustments), so derive adjustmentsTotal from the snapshot difference.
+  // Compute a fresh total from the selected phases (the stored totalPrice may be
+  // stale if the presentation was created before the SOW was finalised).
   const fallbackPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
-  const fallbackSelected = (pres.selectedPhaseIds ?? fallbackPhases.map(p => p.id)) as string[];
-  const fallbackTotal = pres.totalPrice ? parseFloat(String(pres.totalPrice)) : 0;
-  const fallbackPhasesSum = fallbackPhases.reduce((s, p) => s + p.price, 0);
-  const adjustmentsTotal = Math.max(0, fallbackTotal - fallbackPhasesSum);
+  const storedFallbackIds = ((storedSelectedIds ?? pres.selectedPhaseIds) ?? []) as string[];
+  const allFallbackIds = fallbackPhases.map(p => p.id);
+  const fallbackIntersection = storedFallbackIds.filter(id => allFallbackIds.includes(id));
+  const fallbackSelectedIds = fallbackIntersection.length > 0 ? fallbackIntersection : allFallbackIds;
+  const effectiveSowPhases = fallbackPhases.map(p => ({
+    ...p,
+    selected: fallbackSelectedIds.includes(p.id),
+  }));
+  const selectedPhasesTotal = effectiveSowPhases.filter(p => p.selected).reduce((s, p) => s + p.price, 0);
   return {
-    effectiveSowPhases: fallbackPhases,
-    effectiveSelectedPhaseIds: fallbackSelected,
-    effectiveTotalPrice: fallbackTotal,
-    adjustmentsTotal,
+    effectiveSowPhases,
+    effectiveSelectedPhaseIds: fallbackSelectedIds,
+    effectiveTotalPrice: selectedPhasesTotal,
+    adjustmentsTotal: 0,
     // Snapshot fallback has no individual adjustment line detail
     namedAdjustmentLines: [] as Array<{ title: string; description: string; price: number }>,
-    sowVersion: computeSowVersion(fallbackPhases),
+    sowVersion: computeSowVersion(effectiveSowPhases),
   };
 }
 

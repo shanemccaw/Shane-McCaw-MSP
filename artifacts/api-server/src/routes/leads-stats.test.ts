@@ -150,6 +150,8 @@ mock.module("@workspace/db", {
     opportunityTasksTable: {},
     opportunitiesTable: {},
     projectsTable: {},
+    notificationsTable: {},
+    usersTable: {},
   },
 });
 
@@ -167,6 +169,10 @@ const noopLogger = {
 };
 mock.module("../lib/logger.ts", {
   namedExports: { logger: noopLogger },
+});
+
+mock.module("../lib/web-push.ts", {
+  namedExports: { sendWebPushToAdmins: async () => {} },
 });
 
 mock.module("../lib/mailer.ts", {

@@ -293,6 +293,7 @@ mock.module("../lib/sse-broadcast.ts", {
     registerSSEClient: () => {},
     registerPresentationSSEClient: () => {},
     broadcastPresentationScopeChange: () => {},
+    replayPhaseGenState: () => {},
   },
 });
 

@@ -108,6 +108,8 @@ mock.module("@workspace/db", {
       update: () => ({ set: () => ({ where: async () => [] }) }),
     },
     insightsAutomationsTable: {},
+    quickWinPresentationsTable: {},
+    workflowStepsTable: {},
   },
 });
 

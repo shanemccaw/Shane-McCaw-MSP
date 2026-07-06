@@ -31,7 +31,7 @@ import {
   extractPowershellFences,
   extractJson,
   extractJsonArray,
-} from "../lib/ps-script-gen.js";
+} from "../lib/ps-script-gen.ts";
 
 // ─── Runbook name helpers ─────────────────────────────────────────────────────
 

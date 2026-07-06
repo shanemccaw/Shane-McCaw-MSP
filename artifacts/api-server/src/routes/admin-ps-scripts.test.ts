@@ -102,6 +102,9 @@ mock.module("@workspace/db", {
     clientServicesTable: {},
     scriptRunResultsTable: {},
     aiPromptsTable: {},
+    projectsTable: {},
+    insightsGeneratedDocumentsTable: {},
+    pool: {},
   },
 });
 
@@ -113,6 +116,24 @@ const noopLogger = {
 };
 mock.module("../lib/logger.ts", {
   namedExports: { logger: noopLogger },
+});
+
+// 5. Stub ps-script-gen helpers (imported with .js extension by admin-ps-scripts.ts).
+//    The prose guard path returns before any of these are called, but the module
+//    must be resolvable at load time under node:test's mock loader.
+mock.module("../lib/ps-script-gen.ts", {
+  namedExports: {
+    normalizeAppPerms: (perms: unknown[]) => perms,
+    extractPowershellFences: () => new Map(),
+    extractJson: () => null,
+    extractJsonArray: () => null,
+    repairJsonStrings: (s: string) => s,
+    jsonParse: () => null,
+    extractEnvelopeJson: () => null,
+    hasPsKeywords: () => false,
+    hasPsKeywordsFullText: () => false,
+    generateScriptFromService: async () => ({ scriptId: null, packageId: null, title: "" }),
+  },
 });
 
 // ── Dynamically import the REAL route module AFTER mocks are registered ───────

@@ -3900,7 +3900,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             }
           }
 
-          if (!fbUseImage && !output) {
+          if (!fbUseImage && Object.keys(output).length === 0) {
             // Fall back to text-only post and surface the warning
             const resp = await fetch(
               `https://graph.facebook.com/v19.0/${encodeURIComponent(pageId)}/feed`,
