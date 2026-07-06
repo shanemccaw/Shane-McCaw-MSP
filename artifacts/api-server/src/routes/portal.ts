@@ -4615,6 +4615,86 @@ router.post("/admin/stripe/replay-session", requireAdmin, async (req: Request, r
   res.json({ status: "created", sessionId, invoiceId: created?.id ?? null });
 });
 
+// POST /api/admin/presentations/:id/simulate-payment
+// Admin-only: triggers the processStripeEvent flow for a presentation's stripeSessionId.
+// Designed for testing — re-emits the agreement_signed workflow event even if already processed,
+// so the build-step SSE animation runs live on the confirmation page.
+router.post("/admin/presentations/:id/simulate-payment", requireAdmin, async (req: Request, res: Response) => {
+  const presentationId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(presentationId)) { res.status(400).json({ error: "Invalid presentation ID" }); return; }
+
+  const [pres] = await db.select().from(quickWinPresentationsTable)
+    .where(eq(quickWinPresentationsTable.id, presentationId)).limit(1);
+  if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
+
+  const stripeSessionId = pres.stripeSessionId;
+
+  if (stripeSessionId) {
+    // Attempt to replay via real Stripe session (same path as replay-session)
+    let stripeKey: string;
+    try { stripeKey = getStripeKey(); } catch (e) {
+      // If Stripe isn't configured, fall through to synthetic-only emit below
+      req.log.warn({ presentationId }, "simulate-payment: Stripe not configured, falling back to direct event emit");
+      stripeKey = "";
+    }
+
+    if (stripeKey) {
+      try {
+        const { default: Stripe } = await import("stripe");
+        const stripe = new Stripe(stripeKey);
+        const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
+        const syntheticEvent = {
+          id: `simulate_${Date.now()}`,
+          object: "event",
+          type: "checkout.session.completed",
+          livemode: session.livemode,
+          created: Math.floor(Date.now() / 1000),
+          api_version: "2024-06-20",
+          pending_webhooks: 0,
+          request: { id: null, idempotency_key: null },
+          data: { object: session },
+        } as unknown as import("stripe").Stripe.Event;
+
+        await processStripeEvent(req, syntheticEvent);
+        req.log.info({ presentationId, stripeSessionId }, "simulate-payment: processStripeEvent completed");
+        res.json({ status: "simulated", presentationId, stripeSessionId });
+        return;
+      } catch (e) {
+        req.log.warn({ err: e, presentationId, stripeSessionId }, "simulate-payment: processStripeEvent failed, falling back to direct emit");
+        // Fall through to direct emit
+      }
+    }
+  }
+
+  // Fallback: directly emit the agreement_signed workflow event so SSE fires
+  try {
+    const userIdForEmit = pres.clientUserId ?? null;
+    const [clientProfile] = userIdForEmit
+      ? await db.select({ email: usersTable.email, name: usersTable.name })
+          .from(usersTable)
+          .where(eq(usersTable.id, userIdForEmit))
+          .limit(1)
+      : [null];
+
+    void emitWorkflowEvent("agreement_signed", {
+      contractId: presentationId,
+      projectId: pres.projectId ?? null,
+      clientId: userIdForEmit,
+      clientEmail: clientProfile?.email ?? "",
+      clientName: clientProfile?.name ?? "",
+      paymentPlan: pres.paymentPlan ?? "full",
+      totalAmount: pres.totalPrice ? Math.round(parseFloat(String(pres.totalPrice)) * 100) : 0,
+      stripeSessionId: stripeSessionId ?? `sim_${presentationId}_${Date.now()}`,
+    });
+
+    req.log.info({ presentationId }, "simulate-payment: agreement_signed event emitted directly");
+    res.json({ status: "simulated_direct_emit", presentationId });
+  } catch (e) {
+    req.log.error({ err: e, presentationId }, "simulate-payment: direct emit failed");
+    res.status(500).json({ error: `Simulation failed: ${e instanceof Error ? e.message : String(e)}` });
+  }
+});
+
 async function processStripeEvent(req: Request, event: import("stripe").Stripe.Event): Promise<void> {
   // Top-level guard: any unhandled error inside this function is logged with full
   // context (event type, session ID, message, stack) before being re-thrown so
@@ -10554,6 +10634,112 @@ router.post("/portal/presentations/:id/reset-for-rescope", async (req: Request, 
   }
 });
 
+// GET /portal/presentations/:id/sow-document
+// Portal-accessible (JWT auth or share token). Serves the scoped SOW HTML in a browser-friendly page
+// so clients can open it in a new tab from the confirmation screen without needing admin access.
+router.get("/portal/presentations/:id/sow-document", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).send("Invalid ID"); return; }
+
+    const token = String(req.query.token ?? "");
+    const authHeader = req.headers.authorization;
+    const jwtSecret = process.env.JWT_SECRET;
+    let authedUserId: number | null = null;
+    if (authHeader && jwtSecret) {
+      const tok = authHeader.replace(/^Bearer\s+/i, "");
+      try { authedUserId = (jwt.verify(tok, jwtSecret) as { id: number }).id; } catch { /* no auth */ }
+    }
+
+    const [pres] = await db.select().from(quickWinPresentationsTable)
+      .where(eq(quickWinPresentationsTable.id, id)).limit(1);
+    if (!pres) { res.status(404).send("Presentation not found"); return; }
+
+    const isOwner = authedUserId != null && pres.clientUserId === authedUserId;
+    const isAdmin = authedUserId != null
+      ? await db.select({ role: usersTable.role }).from(usersTable).where(eq(usersTable.id, authedUserId)).limit(1).then(rows => rows[0]?.role === "admin")
+      : false;
+    const isValidToken = token && pres.shareToken === token;
+    if (!isOwner && !isAdmin && !isValidToken) { res.status(403).send("Access denied"); return; }
+
+    // Find the scoped SOW document for this presentation
+    let htmlContent: string | null = null;
+    let docTitle = "Scope of Work";
+
+    if (pres.projectId || pres.clientUserId) {
+      const [scopedDoc] = await db
+        .select({ id: insightsGeneratedDocumentsTable.id, htmlContent: insightsGeneratedDocumentsTable.htmlContent, title: insightsGeneratedDocumentsTable.title })
+        .from(insightsGeneratedDocumentsTable)
+        .where(
+          and(
+            eq(insightsGeneratedDocumentsTable.docType, "scoped_sow"),
+            pres.projectId
+              ? eq(insightsGeneratedDocumentsTable.projectId, pres.projectId)
+              : eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId!),
+          ),
+        )
+        .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+        .limit(1);
+
+      if (scopedDoc) {
+        htmlContent = scopedDoc.htmlContent;
+        docTitle = scopedDoc.title;
+      } else if (pres.clientUserId) {
+        // Fall back to consolidated_sow / sow
+        const [anySow] = await db
+          .select({ htmlContent: insightsGeneratedDocumentsTable.htmlContent, title: insightsGeneratedDocumentsTable.title })
+          .from(insightsGeneratedDocumentsTable)
+          .where(
+            and(
+              eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId),
+              or(
+                eq(insightsGeneratedDocumentsTable.docType, "sow"),
+                eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+              ),
+            ),
+          )
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          .limit(1);
+        if (anySow) {
+          htmlContent = anySow.htmlContent;
+          docTitle = anySow.title;
+        }
+      }
+    }
+
+    // Fall back to the scoped SOW HTML stored directly on the presentation
+    if (!htmlContent && pres.scopedSowHtml) {
+      htmlContent = pres.scopedSowHtml;
+    }
+
+    if (!htmlContent) {
+      res.status(404).send("<p>Scope of Work document not available.</p>");
+      return;
+    }
+
+    // Serve as a standalone HTML page so it opens cleanly in a new tab
+    const page = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>${docTitle.replace(/</g, "&lt;")} — Shane McCaw Consulting</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 24px; color: #0A2540; line-height: 1.6; }
+  h1,h2,h3 { color: #0A2540; } a { color: #0078D4; }
+  @media print { body { margin: 0; padding: 16px; } }
+</style>
+</head>
+<body>${htmlContent}</body>
+</html>`;
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(page);
+  } catch (err) {
+    logger.error({ err }, "portal: failed to serve sow-document");
+    res.status(500).send("Failed to load document");
+  }
+});
+
 // GET /portal/presentations/:id/payment-summary — receipt, invoice, contract, payment schedule
 router.get("/portal/presentations/:id/payment-summary", async (req: Request, res: Response) => {
   try {
@@ -10610,41 +10796,110 @@ router.get("/portal/presentations/:id/payment-summary", async (req: Request, res
 
     // Fetch Stripe receipt URL if invoice has a stripeInvoiceId
     let receiptUrl: string | null = null;
-    if (invoice?.stripeInvoiceId) {
+    let stripeInstance: import("stripe").Stripe | null = null;
+    try {
+      let stripeKey: string | null = null;
+      try { stripeKey = getStripeKey(); } catch { /* not configured */ }
+      if (stripeKey) {
+        const { default: Stripe } = await import("stripe");
+        stripeInstance = new Stripe(stripeKey);
+      }
+    } catch { /* non-fatal */ }
+
+    if (invoice?.stripeInvoiceId && stripeInstance) {
       try {
-        let stripeKey: string | null = null;
-        try { stripeKey = getStripeKey(); } catch { /* not configured */ }
-        if (stripeKey) {
-          const { default: Stripe } = await import("stripe");
-          const stripe = new Stripe(stripeKey);
-          const si = await stripe.invoices.retrieve(invoice.stripeInvoiceId);
-          receiptUrl = (si as unknown as { hosted_invoice_url?: string | null }).hosted_invoice_url ?? null;
-        }
+        const si = await stripeInstance.invoices.retrieve(invoice.stripeInvoiceId);
+        receiptUrl = (si as unknown as { hosted_invoice_url?: string | null }).hosted_invoice_url ?? null;
       } catch { /* non-fatal */ }
     }
 
-    // Phased plan: look up child phase invoices from workflow_steps
+    // Fallback: retrieve the Stripe checkout session receipt URL when no invoice has one
+    if (!receiptUrl && pres.stripeSessionId && stripeInstance) {
+      try {
+        const session = await stripeInstance.checkout.sessions.retrieve(pres.stripeSessionId);
+        const receiptExt = (session as unknown as { receipt_url?: string | null }).receipt_url;
+        receiptUrl = receiptExt ?? session.url ?? null;
+      } catch { /* non-fatal */ }
+    }
+
+    // Build phases: prefer workflow steps for phased plans, fall back to sowPhases JSON for all plans
     let phases: Array<{ id: string; title: string; price: number; deliveryDate: string | null; invoiceStatus: string }> = [];
-    if (pres.paymentPlan === "phased" && pres.projectId) {
+    const presPhaseJson = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number; deliveryDate?: string | null; selected?: boolean }>;
+
+    if (pres.projectId) {
+      // For projects with workflow steps, use the steps as authoritative phase list
       const steps = await db.select().from(workflowStepsTable)
         .where(eq(workflowStepsTable.projectId, pres.projectId))
         .orderBy(asc(workflowStepsTable.order));
-      const sowPhases = (pres.sowPhases ?? []) as Array<{ id: string; title: string; price: number; deliveryDate?: string | null }>;
-      phases = steps.map((step, i) => {
-        const matched = sowPhases.find(p => step.sowPhaseId ? p.id === step.sowPhaseId : p.title === step.title);
-        return {
-          id: String(step.id),
-          title: step.title,
-          price: matched?.price ?? 0,
-          deliveryDate: step.dueDate ? step.dueDate.toISOString() : (matched?.deliveryDate ?? null),
-          invoiceStatus: (() => {
-            if (step.status === "completed") return "paid";
-            const dueDate = step.dueDate;
-            if (dueDate && new Date(dueDate) < new Date()) return "overdue";
-            return "upcoming";
-          })(),
-        };
-      });
+      if (steps.length > 0) {
+        phases = steps.map((step) => {
+          const matched = presPhaseJson.find(p => step.sowPhaseId ? p.id === step.sowPhaseId : p.title === step.title);
+          return {
+            id: String(step.id),
+            title: step.title,
+            price: matched?.price ?? 0,
+            deliveryDate: step.dueDate ? step.dueDate.toISOString() : (matched?.deliveryDate ?? null),
+            invoiceStatus: (() => {
+              if (step.status === "completed") return "paid";
+              const dueDate = step.dueDate;
+              if (dueDate && new Date(dueDate) < new Date()) return "overdue";
+              return "upcoming";
+            })(),
+          };
+        });
+      }
+    }
+
+    // If no workflow steps yet, return phases from the SOW JSON so the frontend can display the agreed scope
+    if (phases.length === 0 && presPhaseJson.length > 0) {
+      const scopedIds = (pres.scopedPhaseIds ?? []) as string[];
+      const filteredPhases = scopedIds.length > 0
+        ? presPhaseJson.filter(p => scopedIds.includes(p.id))
+        : presPhaseJson.filter(p => p.selected !== false);
+      phases = filteredPhases.map(p => ({
+        id: p.id,
+        title: p.title,
+        price: p.price,
+        deliveryDate: p.deliveryDate ?? null,
+        invoiceStatus: "upcoming",
+      }));
+    }
+
+    // Build the "View Scope of Work" URL using the portal-accessible sow-document endpoint.
+    // The share token is embedded so clients can open it in a new tab without needing auth headers.
+    // Falls back to the scopedSowHtml stored directly on the presentation if no doc exists.
+    let sowDocPath: string | null = null;
+    const hasSowContent = await (async () => {
+      if (pres.scopedSowHtml) return true;
+      if (!pres.projectId && !pres.clientUserId) return false;
+      try {
+        const [doc] = await db
+          .select({ id: insightsGeneratedDocumentsTable.id })
+          .from(insightsGeneratedDocumentsTable)
+          .where(
+            and(
+              or(
+                eq(insightsGeneratedDocumentsTable.docType, "scoped_sow"),
+                eq(insightsGeneratedDocumentsTable.docType, "sow"),
+                eq(insightsGeneratedDocumentsTable.docType, "consolidated_sow"),
+              ),
+              pres.projectId
+                ? eq(insightsGeneratedDocumentsTable.projectId, pres.projectId)
+                : eq(insightsGeneratedDocumentsTable.customerId, pres.clientUserId!),
+            ),
+          )
+          .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+          .limit(1);
+        return doc != null;
+      } catch { return false; }
+    })();
+    if (hasSowContent) {
+      // Use share token in URL so the link works in a new tab without auth headers.
+      // For logged-in clients with no share token, omit the link rather than expose a broken URL.
+      const tokenSuffix = pres.shareToken ? `?token=${encodeURIComponent(pres.shareToken)}` : "";
+      if (tokenSuffix || isOwner || isValidToken) {
+        sowDocPath = `/api/portal/presentations/${id}/sow-document${tokenSuffix}`;
+      }
     }
 
     res.json({
@@ -10658,6 +10913,7 @@ router.get("/portal/presentations/:id/payment-summary", async (req: Request, res
       signedAt: contract?.signedAt?.toISOString() ?? pres.signedAt?.toISOString() ?? null,
       paymentPlan: pres.paymentPlan ?? "full",
       phases,
+      sowDocPath,
     });
   } catch (err) {
     logger.error({ err }, "portal: failed to get payment-summary");

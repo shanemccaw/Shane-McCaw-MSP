@@ -5,7 +5,7 @@ import { useConfetti } from "@/hooks/useConfetti";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Calendar, ChevronLeft, Loader2, ExternalLink, Download, FileText, Receipt, CreditCard, CheckCircle2, Clock } from "lucide-react";
+import { Calendar, ChevronLeft, Loader2, ExternalLink, Download, FileText, Receipt, CreditCard, CheckCircle2, Clock, Zap } from "lucide-react";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -60,6 +60,7 @@ interface PaymentSummary {
   signedAt: string | null;
   paymentPlan: string;
   phases: Array<{ id: string; title: string; price: number; deliveryDate: string | null; invoiceStatus: string }>;
+  sowDocPath: string | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -425,6 +426,9 @@ export default function ConfirmationStep({
   const [, navigate] = useLocation();
   const { fireSidecannons } = useConfetti();
 
+  const isAdmin = user?.role === "admin";
+  const showSimulate = isAdmin || new URLSearchParams(window.location.search).get("simulate") === "1";
+
   const [projectId, setProjectId] = useState<number | null>(initialProjectId);
   const [ctaReady, setCtaReady] = useState(initialProjectId !== null);
   const [buildSteps, setBuildSteps] = useState<BuildStep[]>(INITIAL_BUILD_STEPS);
@@ -432,6 +436,8 @@ export default function ConfirmationStep({
   const [scoresLoading, setScoresLoading] = useState(true);
   const [summary, setSummary] = useState<PaymentSummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [simulating, setSimulating] = useState(false);
+  const [simulateError, setSimulateError] = useState<string | null>(null);
   const lastSseRef = useRef<number>(Date.now());
   const heuristicRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -448,9 +454,8 @@ export default function ConfirmationStep({
   const fetchFn = useCallback((url: string, opts: RequestInit = {}) => {
     const headers: Record<string, string> = { ...(opts.headers as Record<string, string> ?? {}) };
     if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
     const separator = url.includes("?") ? "&" : "?";
-    const finalUrl = shareToken ? `${url}${url.includes("?") ? separator : "?"}token=${encodeURIComponent(shareToken)}` : url;
+    const finalUrl = shareToken ? `${url}${separator}token=${encodeURIComponent(shareToken)}` : url;
     return fetch(finalUrl, { ...opts, headers });
   }, [accessToken, shareToken]);
 
@@ -536,6 +541,33 @@ export default function ConfirmationStep({
       .catch(() => { /* non-fatal */ });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Simulate payment (admin only) ─────────────────────────────────────────
+  const handleSimulate = async () => {
+    setSimulating(true);
+    setSimulateError(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+      const r = await fetch(`/api/admin/presentations/${presentationId}/simulate-payment`, {
+        method: "POST",
+        headers,
+      });
+      const d = await r.json() as { status?: string; error?: string };
+      if (!r.ok) {
+        setSimulateError(d.error ?? "Simulation failed");
+      } else {
+        // Re-open SSE so the build animation runs
+        setBuildSteps(INITIAL_BUILD_STEPS);
+        setCtaReady(false);
+        setTimeout(() => { openSSE(); }, 300);
+      }
+    } catch {
+      setSimulateError("Network error during simulation");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
   const handleGoToProject = () => {
     if (!projectId) return;
     navigate(`/portal/projects/${projectId}`);
@@ -546,8 +578,13 @@ export default function ConfirmationStep({
     ? scores.composite >= 70 ? "Strong" : scores.composite >= 40 ? "Moderate" : "Needs Work"
     : "—";
 
-  const selectedPhases = sowPhases.filter(p => p.price > 0);
-  const sowTotal = selectedPhases.reduce((s, p) => s + p.price, 0) || totalPrice;
+  // Determine SOW phases to display in "What We Agreed To"
+  // Prefer phases from the payment summary (actual invoiced phases) when available
+  const agreedPhases = (summary && summary.phases.length > 0)
+    ? summary.phases
+    : sowPhases.filter(p => p.price > 0);
+
+  const sowTotal = agreedPhases.reduce((s, p) => s + p.price, 0) || totalPrice;
 
   return (
     <div className="flex-1" style={{ backgroundColor: "#F7F9FC" }}>
@@ -589,6 +626,36 @@ export default function ConfirmationStep({
           />
         </div>
 
+        {/* ── Project Build Status (full-width, above the grid) ─────────────── */}
+        <Card title="Project Build Status">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <p className="text-xs" style={{ color: "#64748b" }}>Your workspace is being provisioned and configured.</p>
+            {showSimulate && (
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                <button
+                  onClick={() => { void handleSimulate(); }}
+                  disabled={simulating}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-[11px] font-semibold hover:bg-amber-100 disabled:opacity-60 transition-colors"
+                >
+                  {simulating
+                    ? <><Loader2 className="w-3 h-3 animate-spin" />Simulating…</>
+                    : <><Zap className="w-3 h-3" />Simulate Payment</>
+                  }
+                </button>
+                {simulateError && <p className="text-[10px] text-rose-500">{simulateError}</p>}
+              </div>
+            )}
+          </div>
+          <ul className="divide-y divide-slate-100 -mx-5 px-0 mt-3">
+            {buildSteps.map((step, i) => (
+              <li key={i} className="px-5 py-2.5 flex items-center justify-between gap-3">
+                <span className="text-sm font-medium" style={{ color: "#0A2540" }}>{step.label}</span>
+                <StatusBadge status={step.status} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+
         {/* ── Two-column grid ───────────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
@@ -626,10 +693,21 @@ export default function ConfirmationStep({
                       >
                         <ExternalLink className="w-3.5 h-3.5" />View Receipt →
                       </a>
+                    ) : summary?.invoicePdfPath ? (
+                      // Stripe receipt not available — promote the invoice PDF prominently
+                      <a
+                        href={summary.invoicePdfPath}
+                        download
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white transition-all w-fit"
+                        style={{ background: "linear-gradient(135deg,#0078D4,#00B4D8)" }}
+                      >
+                        <Download className="w-3.5 h-3.5" />Download Invoice PDF
+                      </a>
                     ) : (
-                      <span className="text-xs" style={{ color: "#94a3b8" }}>Receipt not available yet</span>
+                      <span className="text-xs" style={{ color: "#94a3b8" }}>Receipt will appear here once processed</span>
                     )}
-                    {summary?.invoicePdfPath ? (
+                    {/* Secondary download link when receipt URL is also present */}
+                    {summary?.receiptUrl && summary?.invoicePdfPath && (
                       <a
                         href={summary.invoicePdfPath}
                         download
@@ -638,7 +716,7 @@ export default function ConfirmationStep({
                       >
                         <Download className="w-3.5 h-3.5" />Download Invoice PDF
                       </a>
-                    ) : null}
+                    )}
                   </div>
                 </div>
               )}
@@ -668,25 +746,38 @@ export default function ConfirmationStep({
                   {!summary?.signedAt && !summary?.signerName && (
                     <span className="text-xs" style={{ color: "#94a3b8" }}>Contract details not available yet</span>
                   )}
-                  {summary?.contractPdfPath ? (
-                    <a
-                      href={summary.contractPdfPath}
-                      download
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold transition-colors hover:bg-slate-50 w-fit"
-                      style={{ color: "#0A2540" }}
-                    >
-                      <Download className="w-3.5 h-3.5" />Download Contract PDF
-                    </a>
-                  ) : null}
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {summary?.contractId && (
+                      <a
+                        href={`/api/portal/contracts/${summary.contractId}/download`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline"
+                        style={{ color: "#0078D4" }}
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />View Contract →
+                      </a>
+                    )}
+                    {summary?.contractPdfPath && (
+                      <a
+                        href={summary.contractPdfPath}
+                        download
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold transition-colors hover:bg-slate-50 w-fit"
+                        style={{ color: "#0A2540" }}
+                      >
+                        <Download className="w-3.5 h-3.5" />Download Contract PDF
+                      </a>
+                    )}
+                  </div>
                 </div>
               )}
             </Card>
 
             {/* What We Agreed To */}
-            {selectedPhases.length > 0 && (
+            {!summaryLoading && agreedPhases.length > 0 && (
               <Card title="What We Agreed To" icon={<CreditCard className="w-4 h-4" />}>
                 <div className="flex flex-col gap-2">
-                  {selectedPhases.map(phase => (
+                  {agreedPhases.map(phase => (
                     <div key={phase.id} className="flex items-center justify-between gap-2 py-1 border-b border-slate-50 last:border-0">
                       <span className="text-xs font-medium truncate" style={{ color: "#0A2540" }}>{phase.title}</span>
                       <span className="text-xs font-bold whitespace-nowrap" style={{ color: "#0078D4" }}>{formatPrice(phase.price)}</span>
@@ -696,6 +787,17 @@ export default function ConfirmationStep({
                     <span className="text-xs font-bold uppercase tracking-wide" style={{ color: "#0A2540" }}>Total</span>
                     <span className="text-sm font-black" style={{ color: "#0A2540" }}>{formatPrice(sowTotal)}</span>
                   </div>
+                  {summary?.sowDocPath && (
+                    <a
+                      href={summary.sowDocPath}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-semibold hover:underline mt-1"
+                      style={{ color: "#0078D4" }}
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />View Scope of Work →
+                    </a>
+                  )}
                 </div>
               </Card>
             )}
@@ -713,8 +815,8 @@ export default function ConfirmationStep({
               />
             </Card>
 
-            {/* Payment Schedule (phased only) */}
-            {!summaryLoading && summary?.paymentPlan === "phased" && summary.phases.length > 0 && (
+            {/* Payment Schedule — visible whenever there are phases */}
+            {!summaryLoading && summary && summary.phases.length > 0 && (
               <Card title="Payment Schedule" icon={<CreditCard className="w-4 h-4" />}>
                 <div className="flex flex-col gap-2">
                   {summary.phases.map(phase => (
@@ -734,19 +836,6 @@ export default function ConfirmationStep({
                 </div>
               </Card>
             )}
-
-            {/* Project Build Status */}
-            <Card title="Project Build Status">
-              <p className="text-xs mb-3" style={{ color: "#64748b" }}>Your workspace is being provisioned and configured.</p>
-              <ul className="divide-y divide-slate-100 -mx-5 px-0">
-                {buildSteps.map((step, i) => (
-                  <li key={i} className="px-5 py-2.5 flex items-center justify-between gap-3">
-                    <span className="text-sm font-medium" style={{ color: "#0A2540" }}>{step.label}</span>
-                    <StatusBadge status={step.status} />
-                  </li>
-                ))}
-              </ul>
-            </Card>
           </div>
         </div>
 
