@@ -234,6 +234,14 @@ function evaluateRule(
       return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "truthy" : "falsy"}` };
     }
     case "profile_key_falsy": {
+      // Only fire when the key is explicitly present in the profile.
+      // An absent key means "the script that writes this field hasn't run yet" —
+      // not that the feature is unconfigured.  This keeps profile_key_falsy
+      // symmetric with profile_key_truthy (which correctly does not fire when
+      // the key is missing).
+      if (!(sourceKey in mergedProfile)) {
+        return { result: false, reason: `profile[${sourceKey}] absent — key not yet written by any script, treating as unknown (not falsy)` };
+      }
       const val = mergedProfile[sourceKey];
       const result = !val || val === 0 || val === "" || val === "false" || val === false;
       return { result, reason: `profile[${sourceKey}] = ${JSON.stringify(val)} → ${result ? "falsy" : "truthy"}` };
