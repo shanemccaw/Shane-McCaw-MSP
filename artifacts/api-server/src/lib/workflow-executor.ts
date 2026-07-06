@@ -4511,6 +4511,118 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Generate a single phased invoice ───────────────────────────────────
+
+      case "generate_phased_invoice": {
+        const { getStripeKey: getGpiKey } = await import("./stripe");
+        let gpiStripeKey: string;
+        try { gpiStripeKey = getGpiKey(); } catch (e) { nodeError = true; output = { error: String(e) }; break; }
+        const { default: StripeGpi } = await import("stripe");
+        const stripeGpi = new StripeGpi(gpiStripeKey);
+
+        const gpiEmail        = interp(node.data.clientEmail      as string | undefined, payload) ?? String(payload.clientEmail ?? "");
+        const gpiName         = interp(node.data.clientName       as string | undefined, payload) ?? String(payload.clientName  ?? "");
+        const gpiPhaseTitle   = interp(node.data.phaseTitle       as string | undefined, payload) ?? String(payload.phaseTitle  ?? "Phase");
+        const gpiAmountRaw    = interp(node.data.amountCents      as string | undefined, payload) ?? String(payload.amountCents ?? "0");
+        const gpiAmountCents  = Math.round(Number(gpiAmountRaw));
+        const gpiDepositSid   = interp(node.data.depositSessionId as string | undefined, payload) ?? String(payload.stripeSessionId ?? "");
+        const gpiProjectIdRaw = interp(node.data.projectId        as string | undefined, payload);
+        const gpiProjectId    = gpiProjectIdRaw ? parseInt(gpiProjectIdRaw, 10) : NaN;
+        const gpiPhaseIdRaw   = interp(node.data.phaseId          as string | undefined, payload) ?? String(payload.phaseId ?? "");
+
+        if (!gpiEmail)        { nodeError = true; output = { error: "generate_phased_invoice: clientEmail is required" }; break; }
+        if (gpiAmountCents <= 0) { nodeError = true; output = { error: "generate_phased_invoice: amountCents must be a positive number" }; break; }
+        if (!gpiDepositSid)   { nodeError = true; output = { error: "generate_phased_invoice: depositSessionId is required to retrieve the saved payment method" }; break; }
+
+        // Retrieve deposit session — extract customer and payment method
+        let gpiCustomerId: string;
+        let gpiPaymentMethodId: string | null = null;
+        try {
+          const gpiSession = await stripeGpi.checkout.sessions.retrieve(gpiDepositSid, { expand: ["payment_intent"] });
+          const gpiSessionCid = typeof gpiSession.customer === "string"
+            ? gpiSession.customer
+            : (gpiSession.customer as { id?: string } | null)?.id ?? null;
+          const gpiPi = gpiSession.payment_intent;
+          if (gpiPi && typeof gpiPi === "object") {
+            gpiPaymentMethodId = typeof gpiPi.payment_method === "string"
+              ? gpiPi.payment_method
+              : (gpiPi.payment_method as { id?: string } | null)?.id ?? null;
+          }
+          if (gpiSessionCid) {
+            gpiCustomerId = gpiSessionCid;
+          } else {
+            // Fallback: look up or create by email
+            const gpiCusts = await stripeGpi.customers.list({ email: gpiEmail, limit: 1 });
+            gpiCustomerId = gpiCusts.data.length > 0
+              ? gpiCusts.data[0].id
+              : (await stripeGpi.customers.create({ email: gpiEmail, name: gpiName || undefined })).id;
+            // Attach the PM since we didn't come from the session customer path
+            if (gpiPaymentMethodId) {
+              try { await stripeGpi.paymentMethods.attach(gpiPaymentMethodId, { customer: gpiCustomerId }); } catch { /* already attached */ }
+            }
+          }
+        } catch (e) {
+          nodeError = true;
+          output = { error: `generate_phased_invoice: failed to retrieve deposit session: ${String(e)}` };
+          break;
+        }
+
+        if (!gpiPaymentMethodId) {
+          nodeError = true;
+          output = { error: `generate_phased_invoice: deposit session ${gpiDepositSid} has no confirmed payment method — invoice NOT created` };
+          break;
+        }
+
+        // Ensure the PM is set as the customer default for future auto-charge
+        await stripeGpi.customers.update(gpiCustomerId, {
+          invoice_settings: { default_payment_method: gpiPaymentMethodId },
+        });
+
+        // Create the draft invoice for this single phase
+        const gpiInvoice = await stripeGpi.invoices.create({
+          customer: gpiCustomerId,
+          collection_method: "charge_automatically",
+          auto_advance: false,
+          metadata: {
+            phaseTitle: gpiPhaseTitle,
+            ...(gpiPhaseIdRaw  ? { phaseId:   gpiPhaseIdRaw } : {}),
+            ...(isNaN(gpiProjectId) ? {} : { projectId: String(gpiProjectId) }),
+          },
+        });
+        await stripeGpi.invoiceItems.create({
+          customer: gpiCustomerId,
+          invoice: gpiInvoice.id,
+          description: `Phase: ${gpiPhaseTitle}`,
+          amount: gpiAmountCents,
+          currency: "usd",
+        });
+
+        // If we have a project ID, try to write the stripeInvoiceId back to the
+        // matching workflow_step row (best-effort — matched by title)
+        if (!isNaN(gpiProjectId) && gpiPhaseTitle) {
+          try {
+            const gpiSteps = await db
+              .select({ id: workflowStepsTable.id, title: workflowStepsTable.title })
+              .from(workflowStepsTable)
+              .where(eq(workflowStepsTable.projectId, gpiProjectId));
+            const gpiMatch = gpiSteps.find(s => s.title.trim().toLowerCase() === gpiPhaseTitle.trim().toLowerCase());
+            if (gpiMatch) {
+              await db.update(workflowStepsTable)
+                .set({ stripeInvoiceId: gpiInvoice.id })
+                .where(eq(workflowStepsTable.id, gpiMatch.id));
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        output = {
+          invoiceId: gpiInvoice.id,
+          customerId: gpiCustomerId,
+          amountCents: gpiAmountCents,
+          phaseTitle: gpiPhaseTitle,
+        };
+        break;
+      }
+
       // ── Charge a draft Stripe invoice (phased auto-charge) ─────────────────
 
       case "charge_stripe_invoice": {
