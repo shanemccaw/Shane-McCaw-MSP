@@ -475,15 +475,46 @@ export function fmtDuration(ms: number | null): string {
 
 // ── ChildRunInline ─────────────────────────────────────────────────────────────
 
+/** Maximum visual nesting depth to prevent infinite DOM growth. */
+const MAX_RENDER_DEPTH = 5;
+
+/**
+ * Per-depth colour palette: border, accent text, and panel background.
+ * Index 0 = depth 0 (immediate child), index 1 = grandchild, etc.
+ * Beyond the last entry the palette wraps (modulo).
+ */
+const DEPTH_PALETTE = [
+  { border: "#3B82F6", accent: "#3B82F6", bg: "#0D1A2E" }, // blue
+  { border: "#00B4D8", accent: "#00B4D8", bg: "#04161E" }, // teal
+  { border: "#A855F7", accent: "#A855F7", bg: "#110820" }, // purple
+  { border: "#F59E0B", accent: "#F59E0B", bg: "#160E00" }, // amber
+  { border: "#F472B6", accent: "#F472B6", bg: "#1A0612" }, // pink
+] as const;
+
 /**
  * Expandable inline panel showing the status, duration, and node steps of a
- * child workflow run. Rendered inside the parent run's output sidebar and
- * payload tab whenever a `run_workflow` node output contains `childRunId`.
+ * child workflow run. Recursively renders grandchild runs up to MAX_RENDER_DEPTH.
+ * Rendered inside the parent run's output sidebar and payload tab whenever a
+ * `run_workflow` node output contains `childRunId`.
  */
-export function ChildRunInline({ childRunId }: { childRunId: number }) {
+export function ChildRunInline({
+  childRunId,
+  depth = 0,
+  depthValue,
+  maxDepthValue,
+}: {
+  childRunId: number;
+  depth?: number;
+  /** The executor-reported depth of this child run (from the parent node output). */
+  depthValue?: number;
+  /** The configured max depth ceiling (from the parent node output). */
+  maxDepthValue?: number;
+}) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [expanded, setExpanded] = useState(false);
+
+  const palette = DEPTH_PALETTE[depth % DEPTH_PALETTE.length]!;
 
   const { data: child, isLoading } = useQuery<WfRunDetail>({
     queryKey: ["wf-run", childRunId],
@@ -504,29 +535,69 @@ export function ChildRunInline({ childRunId }: { childRunId: number }) {
     : "";
 
   return (
-    <div className="mt-2 rounded-xl border border-[#3B82F6]/40 bg-[#0D1A2E] overflow-hidden">
+    <div
+      className="mt-2 rounded-xl overflow-hidden"
+      style={{
+        border: `1px solid ${palette.border}40`,
+        background: palette.bg,
+        marginLeft: depth > 0 ? "8px" : undefined,
+      }}
+    >
       {/* Header row — always visible */}
       <div
         role="button"
         tabIndex={0}
         onClick={() => setExpanded(x => !x)}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") setExpanded(x => !x); }}
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#0078D4]/10 transition-colors select-none"
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors select-none"
+        style={{ ["--hover-bg" as string]: `${palette.border}1A` }}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = `${palette.border}18`; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = ""; }}
       >
-        <span className="text-[#3B82F6] text-sm">⚡</span>
-        <span className="text-xs font-semibold text-[#E6EDF3] flex-1">Child Run #{childRunId}</span>
+        {/* Depth indicator connector line */}
+        {depth > 0 && (
+          <span
+            className="flex-shrink-0 text-[10px] font-bold"
+            style={{ color: palette.accent }}
+          >
+            {"└"}
+          </span>
+        )}
+        <span className="text-sm flex-shrink-0" style={{ color: palette.accent }}>⚡</span>
+        <span className="text-xs font-semibold text-[#E6EDF3] flex-1">
+          {depth === 0 ? "Child" : "Grandchild"} Run #{childRunId}
+          {depth > 1 && <span className="text-[#7D8590]"> (depth {depth})</span>}
+        </span>
+
+        {/* Depth badge — reflects this run's own depth value, passed from the parent node output */}
+        {depthValue != null && maxDepthValue != null && (
+          <span
+            className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-semibold border flex-shrink-0"
+            style={{
+              background: `${palette.border}20`,
+              color: palette.accent,
+              borderColor: `${palette.border}50`,
+            }}
+          >
+            Depth: {depthValue} / {maxDepthValue}
+          </span>
+        )}
+
         {child && (
           <>
-            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${statusStyle}`}>
+            <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${statusStyle}`}>
               {child.status}
             </span>
             {child.durationMs != null && (
-              <span className="text-[10px] text-[#484F58] font-mono">{fmtDuration(child.durationMs)}</span>
+              <span className="text-[10px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(child.durationMs)}</span>
             )}
           </>
         )}
         {isLoading && expanded && (
-          <span className="inline-block w-3 h-3 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <span
+            className="inline-block w-3 h-3 border-2 border-t-transparent rounded-full animate-spin flex-shrink-0"
+            style={{ borderColor: `${palette.border} transparent transparent transparent` }}
+          />
         )}
         <svg
           className={`w-3.5 h-3.5 text-[#484F58] flex-shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
@@ -538,7 +609,10 @@ export function ChildRunInline({ childRunId }: { childRunId: number }) {
 
       {/* Expanded body */}
       {expanded && (
-        <div className="border-t border-[#3B82F6]/20 px-3 py-2.5 space-y-2.5">
+        <div
+          className="px-3 py-2.5 space-y-2.5"
+          style={{ borderTop: `1px solid ${palette.border}25` }}
+        >
           {isLoading && !child && (
             <p className="text-[10px] text-[#7D8590]">Loading…</p>
           )}
@@ -547,11 +621,9 @@ export function ChildRunInline({ childRunId }: { childRunId: number }) {
             <>
               {/* Summary row */}
               <div className="flex flex-wrap gap-2 text-[10px]">
-                <span className="text-[#484F58]">
-                  {child.definitionName && (
-                    <span className="text-[#7D8590] font-medium">{child.definitionName}</span>
-                  )}
-                </span>
+                {child.definitionName && (
+                  <span className="text-[#7D8590] font-medium">{child.definitionName}</span>
+                )}
                 {child.startedAt && (
                   <span className="text-[#484F58]">
                     Started {format(new Date(child.startedAt), "HH:mm:ss")}
@@ -584,24 +656,52 @@ export function ChildRunInline({ childRunId }: { childRunId: number }) {
                     const style = NODE_STYLES[nodeType] ?? NODE_STYLES["action"] ?? { bg: "#1C2128", border: "#30363D", icon: "⚡", label: nodeType };
 
                     return (
-                      <div
-                        key={`${nodeId}-${idx}`}
-                        className="flex items-center gap-2 px-2 py-1 rounded-lg"
-                        style={{ background: hasError ? "#1A0808" : style.bg + "80" }}
-                      >
-                        <span className="text-[11px] flex-shrink-0">{style.icon}</span>
-                        <span className="flex-1 text-[10px] font-medium text-[#E6EDF3] truncate">{label || style.label}</span>
-                        {nodeOutput && (
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold flex-shrink-0 ${
-                            hasError
-                              ? "bg-red-500/10 text-red-400 border-red-500/30"
-                              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                          }`}>
-                            {hasError ? "error" : "ok"}
-                          </span>
+                      <div key={`${nodeId}-${idx}`}>
+                        <div
+                          className="flex items-center gap-2 px-2 py-1 rounded-lg"
+                          style={{ background: hasError ? "#1A0808" : style.bg + "80" }}
+                        >
+                          <span className="text-[11px] flex-shrink-0">{style.icon}</span>
+                          <span className="flex-1 text-[10px] font-medium text-[#E6EDF3] truncate">{label || style.label}</span>
+                          {nodeOutput && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-semibold flex-shrink-0 ${
+                              hasError
+                                ? "bg-red-500/10 text-red-400 border-red-500/30"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                            }`}>
+                              {hasError ? "error" : "ok"}
+                            </span>
+                          )}
+                          {nodeOutput?.durationMs != null && (
+                            <span className="text-[9px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(nodeOutput.durationMs)}</span>
+                          )}
+                        </div>
+
+                        {/* Inline grandchild run (recursive) — badge shown in nested header */}
+                        {nodeOutput && typeof nodeOutput.output.childRunId === "number" && depth < MAX_RENDER_DEPTH && (
+                          <div className="pl-3">
+                            <ChildRunInline
+                              childRunId={nodeOutput.output.childRunId as number}
+                              depth={depth + 1}
+                              depthValue={typeof nodeOutput.output.depth === "number" ? (nodeOutput.output.depth as number) : undefined}
+                              maxDepthValue={typeof nodeOutput.output.maxDepth === "number" ? (nodeOutput.output.maxDepth as number) : undefined}
+                            />
+                          </div>
                         )}
-                        {nodeOutput?.durationMs != null && (
-                          <span className="text-[9px] text-[#484F58] font-mono flex-shrink-0">{fmtDuration(nodeOutput.durationMs)}</span>
+
+                        {/* Depth cap reached */}
+                        {nodeOutput && typeof nodeOutput.output.childRunId === "number" && depth >= MAX_RENDER_DEPTH && (
+                          <div className="mt-1 pl-3 flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#30363D]/40 border border-[#30363D]">
+                            <span className="text-[10px] text-[#7D8590]">
+                              ⛔ Chain continues — max display depth ({MAX_RENDER_DEPTH}) reached.{" "}
+                              <button
+                                className="underline text-[#2E9EFF] hover:text-[#60C0FF] transition-colors"
+                                onClick={e => { e.stopPropagation(); navigate(`/workflows/runs/${nodeOutput.output.childRunId as number}`); }}
+                              >
+                                View run #{nodeOutput.output.childRunId as number}
+                              </button>
+                            </span>
+                          </div>
                         )}
                       </div>
                     );
@@ -616,9 +716,10 @@ export function ChildRunInline({ childRunId }: { childRunId: number }) {
               {/* Navigate to full run */}
               <button
                 onClick={e => { e.stopPropagation(); navigate(`/workflows/runs/${childRunId}`); }}
-                className="flex items-center gap-1.5 text-[10px] font-semibold text-[#2E9EFF] hover:text-[#60C0FF] transition-colors"
+                className="flex items-center gap-1.5 text-[10px] font-semibold transition-colors"
+                style={{ color: palette.accent }}
               >
-                View full child run
+                View full {depth === 0 ? "child" : "nested"} run
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -944,7 +1045,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               </span>
                             </div>
                           )}
-                          <ChildRunInline childRunId={currentOutput.output.childRunId as number} />
+                          <ChildRunInline
+                            childRunId={currentOutput.output.childRunId as number}
+                            depthValue={typeof currentOutput.output.depth === "number" ? (currentOutput.output.depth as number) : undefined}
+                            maxDepthValue={typeof currentOutput.output.maxDepth === "number" ? (currentOutput.output.maxDepth as number) : undefined}
+                          />
                         </div>
                       )}
                     </div>
@@ -1153,7 +1258,11 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                               </span>
                             </div>
                           )}
-                          <ChildRunInline childRunId={output.output.childRunId as number} />
+                          <ChildRunInline
+                            childRunId={output.output.childRunId as number}
+                            depthValue={typeof output.output.depth === "number" ? (output.output.depth as number) : undefined}
+                            maxDepthValue={typeof output.output.maxDepth === "number" ? (output.output.maxDepth as number) : undefined}
+                          />
                         </div>
                       )}
                     </div>
