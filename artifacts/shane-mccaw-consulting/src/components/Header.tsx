@@ -43,7 +43,7 @@ function withIcons(items: Array<Omit<NavItem, "icon">>): NavItem[] {
 }
 
 // ─── Nav data ─────────────────────────────────────────────────────────────────
-interface NavItem { label: string; href: string; icon?: React.ReactNode; }
+interface NavItem { label: string; href: string; icon?: React.ReactNode; featured?: boolean; badge?: string; }
 
 const SERVICES_ITEMS: NavItem[] = withIcons([
   { label: "Service Overview",              href: "/services" },
@@ -75,16 +75,19 @@ const RETAINER_ITEMS: NavItem[] = withIcons([
   { label: "Architect Enterprise", href: "/retainers/architect-enterprise" },
 ]);
 
-const ASSESSMENTS_ITEMS: NavItem[] = withIcons([
-  { label: "Copilot Readiness Assessment",     href: "/copilot-quiz" },
-  { label: "M365 Health Assessment",           href: "/m365-health-quiz" },
-  { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz" },
-  { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz" },
-  { label: "Security & Compliance Assessment", href: "/security-compliance-quiz" },
-  { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz" },
-  { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz" },
-  { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
-]);
+const ASSESSMENTS_ITEMS: NavItem[] = [
+  { label: "Free Copilot Readiness Snapshot", href: "/lp/copilot-readiness-lead-generation-campaign", featured: true, badge: "FREE" },
+  ...withIcons([
+    { label: "Copilot Readiness Assessment",     href: "/copilot-quiz" },
+    { label: "M365 Health Assessment",           href: "/m365-health-quiz" },
+    { label: "SharePoint Readiness Assessment",  href: "/sharepoint-readiness-quiz" },
+    { label: "Power Platform Risk Assessment",   href: "/power-platform-quiz" },
+    { label: "Security & Compliance Assessment", href: "/security-compliance-quiz" },
+    { label: "Teams Maturity Assessment",        href: "/teams-maturity-quiz" },
+    { label: "Migration Readiness Assessment",   href: "/migration-readiness-quiz" },
+    { label: "Governance Maturity Assessment",   href: "/governance-maturity-quiz" },
+  ]),
+];
 
 const COMPANY_ITEMS: NavItem[] = withIcons([
   { label: "About",        href: "/about" },
@@ -174,24 +177,48 @@ function DropdownPanel({
     >
       <div className={cn(twoCol && "grid grid-cols-2")}>
         {items.map((item) => (
-          <Link
-            key={`${item.href}::${item.label}`}
-            href={item.href}
-            role="menuitem"
-            tabIndex={0}
-            onClick={onClose}
-            data-track="nav"
-            className={cn(
-              "flex items-center gap-2 px-4 py-2 text-sm transition-colors focus:outline-none focus:bg-white/10",
-              location === item.href
-                ? "text-primary font-medium"
-                : "text-white/75 hover:text-white hover:bg-white/5"
-            )}
-          >
-            {item.icon && <span className="shrink-0 w-5 h-5 opacity-60">{item.icon}</span>}
-            {!item.icon && <span className="shrink-0 w-5 h-5" aria-hidden="true" />}
-            {item.label}
-          </Link>
+          item.featured ? (
+            <Link
+              key={`${item.href}::${item.label}`}
+              href={item.href}
+              role="menuitem"
+              tabIndex={0}
+              onClick={onClose}
+              data-track="nav"
+              className={cn(
+                "col-span-2 flex items-center gap-3 px-4 py-2.5 mx-1.5 my-1 rounded-lg text-sm font-semibold transition-colors focus:outline-none",
+                "bg-[#00B4D8]/10 border border-[#00B4D8]/25 hover:bg-[#00B4D8]/20",
+                location === item.href ? "text-[#00B4D8]" : "text-[#00B4D8]"
+              )}
+            >
+              <span className="shrink-0 w-5 h-5 opacity-70">⚡</span>
+              <span className="flex-1">{item.label}</span>
+              {item.badge && (
+                <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-[#00B4D8] text-[#0A2540]">
+                  {item.badge}
+                </span>
+              )}
+            </Link>
+          ) : (
+            <Link
+              key={`${item.href}::${item.label}`}
+              href={item.href}
+              role="menuitem"
+              tabIndex={0}
+              onClick={onClose}
+              data-track="nav"
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 text-sm transition-colors focus:outline-none focus:bg-white/10",
+                location === item.href
+                  ? "text-primary font-medium"
+                  : "text-white/75 hover:text-white hover:bg-white/5"
+              )}
+            >
+              {item.icon && <span className="shrink-0 w-5 h-5 opacity-60">{item.icon}</span>}
+              {!item.icon && <span className="shrink-0 w-5 h-5" aria-hidden="true" />}
+              {item.label}
+            </Link>
+          )
         ))}
       </div>
     </div>
@@ -400,18 +427,35 @@ export function Header() {
                 {mobileExpanded[key] && (
                   <div className="pb-2">
                     {items.map((item) => (
-                      <Link
-                        key={`${item.href}::${item.label}`}
-                        href={item.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={cn(
-                          "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
-                          location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
-                        )}
-                      >
-                        {item.icon && <span className="shrink-0 opacity-60">{item.icon}</span>}
-                        {item.label}
-                      </Link>
+                      item.featured ? (
+                        <Link
+                          key={`${item.href}::${item.label}`}
+                          href={item.href}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="flex items-center gap-2 px-3 py-2 mx-1 mb-1 rounded-lg text-sm font-semibold text-[#00B4D8] bg-[#00B4D8]/10 border border-[#00B4D8]/25 hover:bg-[#00B4D8]/20 transition-colors"
+                        >
+                          <span className="shrink-0 opacity-70">⚡</span>
+                          <span className="flex-1">{item.label}</span>
+                          {item.badge && (
+                            <span className="shrink-0 text-[10px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-[#00B4D8] text-[#0A2540]">
+                              {item.badge}
+                            </span>
+                          )}
+                        </Link>
+                      ) : (
+                        <Link
+                          key={`${item.href}::${item.label}`}
+                          href={item.href}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+                            location === item.href ? "text-primary font-medium" : "text-white/75 hover:text-white hover:bg-white/5"
+                          )}
+                        >
+                          {item.icon && <span className="shrink-0 opacity-60">{item.icon}</span>}
+                          {item.label}
+                        </Link>
+                      )
                     ))}
                   </div>
                 )}
