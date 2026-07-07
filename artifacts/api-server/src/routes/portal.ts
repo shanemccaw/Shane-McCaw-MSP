@@ -992,17 +992,51 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
       req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
     });
 
-  // Auto-fire the first backlog Kanban card for this client (script, document generation, or sub-workflow).
-  // All run in parallel and are no-ops if no eligible card is found.
-  autoFireFirstBacklogScript(userId).catch(err => {
-    req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
-  });
-  autoFireDocumentCard(userId).catch(err => {
-    req.log.warn({ err, userId }, "portal/app-registration: autoFireDocumentCard error (non-fatal)");
-  });
-  autoFireRunWorkflowCards(userId).catch(err => {
-    req.log.warn({ err, userId }, "portal/app-registration: autoFireRunWorkflowCards error (non-fatal)");
-  });
+  // For Tier 01 Quick Win projects: emit customer.app_reg_complete so the
+  // Workflow Engine can subscribe and take over execution.
+  // For all other project types: fall back to the three legacy autoFire* helpers.
+  (async () => {
+    try {
+      const [quickWinProject] = await db
+        .select({
+          projectId: projectsTable.id,
+          serviceType: servicesTable.serviceType,
+        })
+        .from(projectsTable)
+        .leftJoin(clientServicesTable, eq(clientServicesTable.projectId, projectsTable.id))
+        .leftJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+        .where(
+          and(
+            eq(projectsTable.clientUserId, userId),
+            eq(projectsTable.projectType, "quick_win"),
+          ),
+        )
+        .limit(1);
+
+      if (quickWinProject) {
+        void fireWorkflowsForEvent("customer.app_reg_complete", {
+          userId,
+          projectId: quickWinProject.projectId,
+          serviceType: quickWinProject.serviceType ?? null,
+        });
+      } else {
+        autoFireFirstBacklogScript(userId).catch(err => {
+          req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
+        });
+        autoFireDocumentCard(userId).catch(err => {
+          req.log.warn({ err, userId }, "portal/app-registration: autoFireDocumentCard error (non-fatal)");
+        });
+        autoFireRunWorkflowCards(userId).catch(err => {
+          req.log.warn({ err, userId }, "portal/app-registration: autoFireRunWorkflowCards error (non-fatal)");
+        });
+      }
+    } catch (err) {
+      req.log.warn({ err, userId }, "portal/app-registration: quick-win check failed — falling back to autoFire helpers");
+      autoFireFirstBacklogScript(userId).catch(() => {});
+      autoFireDocumentCard(userId).catch(() => {});
+      autoFireRunWorkflowCards(userId).catch(() => {});
+    }
+  })();
 });
 
 // ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
