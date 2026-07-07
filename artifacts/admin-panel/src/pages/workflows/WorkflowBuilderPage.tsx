@@ -2429,7 +2429,7 @@ function NodeConfigPanel({
   }, [nodeType, gsSourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <div className="absolute right-4 top-4 bottom-4 w-72 bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-y-auto z-10">
+    <div className="flex flex-col h-full bg-[#161B22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
         <div className="flex items-center gap-2">
           <span style={{ color: style.border, fontSize: 16 }}>{style.icon}</span>
@@ -7588,26 +7588,8 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
 }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
-  const [wide, setWide] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const [closing, setClosing] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const prevTriggerRef = useRef(0);
-
-  useEffect(() => {
-    requestAnimationFrame(() => setMounted(true));
-  }, []);
-
-  function handleClose() {
-    setClosing(true);
-    setTimeout(onClose, 250);
-  }
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") handleClose(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: triggers = [], isLoading: loadingTriggers } = useQuery<WfTrigger[]>({
     queryKey: ["wf-triggers-testrun", defId],
@@ -7733,12 +7715,8 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
     return undefined;
   }, [runIsTerminal, progressLogs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
-
   return (
-    <div
-      className={`fixed right-0 top-14 bottom-0 z-50 bg-[#161B22] border-l border-[#30363D] shadow-2xl flex flex-col transform transition-all duration-250 ease-in-out ${slideClass} ${wide ? "w-[760px]" : "w-[480px]"}`}
-    >
+    <div className="flex flex-col h-full bg-[#161B22] overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D] flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
@@ -7771,22 +7749,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
               </button>
             </div>
           )}
-          <button
-            onClick={() => setWide(w => !w)}
-            title={wide ? "Narrow panel" : "Wide panel"}
-            className="text-[#484F58] hover:text-[#E6EDF3] transition-colors p-1 rounded"
-          >
-            {wide ? (
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4m0 0H4m5 0L3 10m12-1V4m0 0h5m-5 0l6 6M9 20v-5m0 5H4m5 0l-6-6m12 6v-5m0 5h5m-5 0l6-6" />
-              </svg>
-            ) : (
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-              </svg>
-            )}
-          </button>
-          <button onClick={handleClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1">×</button>
+          <button onClick={onClose} className="text-[#484F58] hover:text-[#E6EDF3] text-xl leading-none px-1" title="Close test run">×</button>
         </div>
       </div>
 
@@ -7944,7 +7907,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
 
           {/* Footer */}
           <div className="flex items-center justify-between px-4 py-3 border-t border-[#30363D] flex-shrink-0">
-            <button onClick={handleClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+            <button onClick={onClose} className="text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors">Cancel</button>
             <button
               onClick={() => handleRunClick()}
               disabled={!!jsonErr || runMut.isPending}
@@ -8456,11 +8419,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(null);
+  const [leftCollapsed, setLeftCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem("wf-lib-collapsed") === "true"; } catch { return false; }
+  });
+  const [rightPanelWidth, setRightPanelWidth] = useState<number>(() => {
+    try { return Math.max(260, Math.min(500, parseInt(localStorage.getItem("wf-panel-width") ?? "320", 10))); } catch { return 320; }
+  });
+  const panelResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [settingsMaxDepth, setSettingsMaxDepth] = useState<number>(5);
   const [settingsDepthError, setSettingsDepthError] = useState<string | null>(null);
-  const [showTestRun, setShowTestRun] = useState(false);
   const [testRunTrigger, setTestRunTrigger] = useState(0);
   const [publishLabel, setPublishLabel] = useState("");
   const [showPublish, setShowPublish] = useState(false);
@@ -9144,7 +9112,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       // Escape — deselect
       if (e.key === "Escape" && !inInput) {
         setSelectedNodeId(null);
-        setShowTestRun(false);
+        setRightPanelTab(null);
         return;
       }
 
@@ -9215,6 +9183,28 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     return `${diffHr} hr ago`;
   }
 
+  // Persist layout preferences to localStorage
+  useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
+  useEffect(() => { localStorage.setItem("wf-panel-width", String(rightPanelWidth)); }, [rightPanelWidth]);
+
+  function startPanelResize(e: React.MouseEvent) {
+    e.preventDefault();
+    panelResizeRef.current = { startX: e.clientX, startWidth: rightPanelWidth };
+    function onMove(ev: MouseEvent) {
+      if (!panelResizeRef.current) return;
+      const delta = panelResizeRef.current.startX - ev.clientX;
+      const newW = Math.max(260, Math.min(500, panelResizeRef.current.startWidth + delta));
+      setRightPanelWidth(newW);
+    }
+    function onUp() {
+      panelResizeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Toolbar */}
@@ -9271,6 +9261,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           </div>
 
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
+          {/* Group: Layout / Runs */}
           <button
             onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
@@ -9296,7 +9289,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
-          {/* Inspect run overlay — show execution results on canvas */}
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
+          {/* Group: Inspect */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => { setInspectMode(v => !v); if (inspectMode) setInspectRunId(null); }}
@@ -9317,21 +9312,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             )}
           </div>
 
-          <button
-            onClick={() => { setShowVersionHistory(false); setShowSettings(v => !v); }}
-            className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${showSettings ? "text-[#E6EDF3] border-[#484F58] bg-[#1C2128]" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
-            title="Workflow settings"
-          >
-            ⚙ Settings
-          </button>
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
-          <button
-            onClick={() => { setShowSettings(false); setShowVersionHistory(v => !v); }}
-            className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
-          >
-            History ({versions.length})
-          </button>
-
+          {/* Group: Save / Publish */}
           {lastDraftSavedAt && saveStatus !== "saved" && (
             <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
               Auto-saved {draftAgeLabel(lastDraftSavedAt)}
@@ -9367,6 +9350,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
+          {/* Group: AI */}
           <button
             onClick={() => setShowAiModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -9391,8 +9377,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
+          {/* Test Run → opens right panel Test Run tab */}
           <button
-            onClick={() => { setShowTestRun(true); setTestRunTrigger(t => t + 1); }}
+            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
@@ -9512,12 +9499,23 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Node library sidebar */}
-        <div className="w-52 flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] overflow-y-auto flex flex-col">
-          {/* Search */}
-          <div className="flex-shrink-0 p-3 border-b border-[#1C2128]">
-            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Node Library</p>
+      <div className="flex-1 flex overflow-hidden">
+        {/* Node library sidebar (collapsible) */}
+        <div className={`flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] flex flex-col overflow-hidden transition-[width] duration-200 ${leftCollapsed ? "w-0" : "w-52"}`}>
+          {/* Header + collapse toggle */}
+          <div className="flex-shrink-0 flex items-center justify-between p-3 border-b border-[#1C2128]">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Node Library</p>
+            <button
+              onClick={() => setLeftCollapsed(true)}
+              className="text-[#484F58] hover:text-[#E6EDF3] p-0.5 rounded transition-colors"
+              title="Collapse node library"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-shrink-0 px-3 py-2">
             <input
               value={libSearch}
               onChange={e => setLibSearch(e.target.value)}
@@ -9624,152 +9622,201 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           </div>
         </div>
 
-        {/* Flow Canvas */}
-        <FlowCanvas
-          nodes={nodes}
-          edges={edges}
-          selectedNodeId={selectedNodeId}
-          isArchived={isArchived}
-          isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
-          nodeStyles={NODE_STYLES}
-          libraryCategories={LIBRARY_CATEGORIES}
-          allLibraryNodes={ALL_LIBRARY_NODES}
-          nodeIdCounter={nodeIdCounter}
-          onSelectNode={id => { setSelectedNodeId(id); }}
-          onGraphChange={handleGraphChange}
-          onDuplicateNode={duplicateNode}
-          triggerCategories={canvasTriggerCategories}
-          copiedStep={copiedStep}
-          onCopyStep={setCopiedStep}
-          stepResultMap={inspectMode ? stepResultMap : undefined}
-        />
-
-        {/* Node config panel */}
-        {selectedNode && (
-          <NodeConfigPanel
-            node={{ id: selectedNode.id, data: selectedNode.data as Record<string, unknown> }}
-            onChange={updateNodeData}
-            onClose={() => setSelectedNodeId(null)}
-            onDelete={deleteNode}
-            defId={defId}
+        {/* Center: Canvas */}
+        <div className="flex-1 overflow-hidden relative">
+          {leftCollapsed && (
+            <button
+              onClick={() => setLeftCollapsed(false)}
+              className="absolute top-2 left-2 z-10 w-6 h-6 flex items-center justify-center bg-[#1C2128] border border-[#30363D] hover:border-[#484F58] text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors"
+              title="Expand node library"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+          <FlowCanvas
             nodes={nodes}
             edges={edges}
+            selectedNodeId={selectedNodeId}
+            isArchived={isArchived}
+            isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
+            nodeStyles={NODE_STYLES}
+            libraryCategories={LIBRARY_CATEGORIES}
+            allLibraryNodes={ALL_LIBRARY_NODES}
+            nodeIdCounter={nodeIdCounter}
+            onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab("node"); }}
             onGraphChange={handleGraphChange}
+            onDuplicateNode={duplicateNode}
+            triggerCategories={canvasTriggerCategories}
+            copiedStep={copiedStep}
+            onCopyStep={setCopiedStep}
+            stepResultMap={inspectMode ? stepResultMap : undefined}
           />
-        )}
+        </div>
 
-        {/* Workflow settings drawer */}
-        {showSettings && (
-          <div className="absolute top-0 right-0 bottom-0 w-72 bg-[#161B22] border-l border-[#30363D] z-20 overflow-y-auto p-4 space-y-5">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#E6EDF3]">Workflow Settings</h3>
-              <button onClick={() => setShowSettings(false)} className="text-[#7D8590] hover:text-[#E6EDF3]">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Max nesting depth</label>
-              <p className="text-[11px] text-[#7D8590] leading-relaxed">
-                How deep a chain of nested <span className="font-mono text-[#E6EDF3]">Run Workflow</span> calls can go before being stopped. Lower values fail fast; raise this only for legitimate multi-level orchestration patterns (max&nbsp;10).
-              </p>
-              <div className="flex items-center gap-2 mt-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={settingsMaxDepth}
-                  onChange={e => {
-                    const v = parseInt(e.target.value, 10);
-                    setSettingsMaxDepth(isNaN(v) ? 1 : v);
-                    if (isNaN(v) || v < 1 || v > 10) {
-                      setSettingsDepthError("Must be between 1 and 10");
-                    } else {
-                      setSettingsDepthError(null);
-                    }
-                  }}
-                  className="w-20 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none"
-                />
-                <span className="text-[10px] text-[#484F58]">default: 5</span>
-              </div>
-              {settingsDepthError && (
-                <p className="text-[11px] text-red-400">{settingsDepthError}</p>
-              )}
-            </div>
-
-            <div className="pt-2 border-t border-[#30363D]">
-              <button
-                onClick={async () => {
-                  const v = settingsMaxDepth;
-                  if (v < 1 || v > 10) {
-                    setSettingsDepthError("Must be between 1 and 10");
-                    return;
-                  }
-                  setSettingsDepthError(null);
-                  await settingsMut.mutateAsync({ maxRunDepth: v });
-                  setShowSettings(false);
-                }}
-                disabled={settingsMut.isPending || !!settingsDepthError}
-                className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {settingsMut.isPending ? "Saving…" : "Save Settings"}
-              </button>
-              {settingsMut.isError && (
-                <p className="text-[11px] text-red-400 mt-1.5">Failed to save — please retry.</p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Version history drawer */}
-        {showVersionHistory && (
-          <div className="absolute top-0 left-44 bottom-0 w-64 bg-[#161B22] border-l border-[#30363D] z-20 overflow-y-auto p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-[#E6EDF3]">Version History</h3>
-              <button onClick={() => setShowVersionHistory(false)} className="text-[#7D8590] hover:text-[#E6EDF3]">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            {versions.map(v => (
-              <div key={v.id} className="space-y-1">
+        {/* Right: Docked Panel */}
+        {rightPanelTab !== null && (
+          <div
+            className="flex-shrink-0 relative flex flex-col border-l border-[#30363D] bg-[#161B22] overflow-hidden"
+            style={{ width: rightPanelWidth }}
+          >
+            {/* Resize handle on left edge */}
+            <div
+              className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-[#0078D4]/30 z-20 transition-colors"
+              onMouseDown={startPanelResize}
+            />
+            {/* Tab bar */}
+            <div className="flex-shrink-0 flex items-center border-b border-[#30363D] bg-[#0D1117] overflow-x-auto">
+              {([
+                { id: "node" as const, label: "Node Config" },
+                { id: "testrun" as const, label: "Test Run" },
+                { id: "metadata" as const, label: "Metadata" },
+                { id: "settings" as const, label: "Settings" },
+                { id: "history" as const, label: `History (${versions.length})` },
+              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history"; label: string }[]).map(tab => (
                 <button
-                  onClick={() => { setCurrentVersionId(v.id); setShowVersionHistory(false); }}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                  key={tab.id}
+                  onClick={() => setRightPanelTab(tab.id)}
+                  className={`px-3 py-2.5 text-[11px] font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                    rightPanelTab === tab.id
+                      ? "border-[#0078D4] text-[#E6EDF3] bg-[#161B22]"
+                      : "border-transparent text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#161B22]/50"
+                  }`}
                 >
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
-                    {v.isDefault && (
-                      <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full font-medium">Default</span>
+                  {tab.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setRightPanelTab(null)}
+                className="ml-auto px-2.5 py-2 text-[#484F58] hover:text-[#E6EDF3] flex-shrink-0 transition-colors"
+                title="Close panel (Esc)"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Panel content */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+              {rightPanelTab === "node" && selectedNode ? (
+                <NodeConfigPanel
+                  node={{ id: selectedNode.id, data: selectedNode.data as Record<string, unknown> }}
+                  onChange={updateNodeData}
+                  onClose={() => { setSelectedNodeId(null); setRightPanelTab(null); }}
+                  onDelete={deleteNode}
+                  defId={defId}
+                  nodes={nodes}
+                  edges={edges}
+                  onGraphChange={handleGraphChange}
+                />
+              ) : rightPanelTab === "node" ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
+                  <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+                  </svg>
+                  <p className="text-xs text-[#484F58]">Select a node on the canvas<br />to configure it here</p>
+                </div>
+              ) : rightPanelTab === "testrun" ? (
+                <TestRunPanel
+                  defId={defId}
+                  nodes={nodes}
+                  edges={edges}
+                  onClose={() => setRightPanelTab(null)}
+                  trigger={testRunTrigger}
+                />
+              ) : rightPanelTab === "metadata" ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
+                  <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-xs text-[#484F58]">Workflow metadata<br />coming soon</p>
+                </div>
+              ) : rightPanelTab === "settings" ? (
+                <div className="overflow-y-auto p-4 space-y-5">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Max nesting depth</label>
+                    <p className="text-[11px] text-[#7D8590] leading-relaxed">
+                      How deep a chain of nested <span className="font-mono text-[#E6EDF3]">Run Workflow</span> calls can go before being stopped. Lower values fail fast; raise this only for legitimate multi-level orchestration patterns (max&nbsp;10).
+                    </p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={settingsMaxDepth}
+                        onChange={e => {
+                          const v = parseInt(e.target.value, 10);
+                          setSettingsMaxDepth(isNaN(v) ? 1 : v);
+                          if (isNaN(v) || v < 1 || v > 10) {
+                            setSettingsDepthError("Must be between 1 and 10");
+                          } else {
+                            setSettingsDepthError(null);
+                          }
+                        }}
+                        className="w-20 bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] outline-none"
+                      />
+                      <span className="text-[10px] text-[#484F58]">default: 5</span>
+                    </div>
+                    {settingsDepthError && (
+                      <p className="text-[11px] text-red-400">{settingsDepthError}</p>
                     )}
                   </div>
-                  <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
-                </button>
-                {v.isDefault && v.id !== currentVersionId && (
-                  <button
-                    onClick={async () => {
-                      await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/revert-to-default`, { method: "POST" });
-                      setCurrentVersionId(v.id);
-                      setShowVersionHistory(false);
-                    }}
-                    className="w-full text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg py-1.5 transition-colors"
-                  >
-                    Revert to default
-                  </button>
-                )}
-              </div>
-            ))}
+                  <div className="pt-2 border-t border-[#30363D]">
+                    <button
+                      onClick={async () => {
+                        const v = settingsMaxDepth;
+                        if (v < 1 || v > 10) { setSettingsDepthError("Must be between 1 and 10"); return; }
+                        setSettingsDepthError(null);
+                        await settingsMut.mutateAsync({ maxRunDepth: v });
+                        setRightPanelTab(null);
+                      }}
+                      disabled={settingsMut.isPending || !!settingsDepthError}
+                      className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {settingsMut.isPending ? "Saving…" : "Save Settings"}
+                    </button>
+                    {settingsMut.isError && (
+                      <p className="text-[11px] text-red-400 mt-1.5">Failed to save — please retry.</p>
+                    )}
+                  </div>
+                </div>
+              ) : rightPanelTab === "history" ? (
+                <div className="overflow-y-auto p-4 space-y-3">
+                  {versions.map(v => (
+                    <div key={v.id} className="space-y-1">
+                      <button
+                        onClick={() => { setCurrentVersionId(v.id); setRightPanelTab(null); }}
+                        className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                      >
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
+                          {v.isDefault && (
+                            <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full font-medium">Default</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
+                      </button>
+                      {v.isDefault && v.id !== currentVersionId && (
+                        <button
+                          onClick={async () => {
+                            await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/revert-to-default`, { method: "POST" });
+                            setCurrentVersionId(v.id);
+                            setRightPanelTab(null);
+                          }}
+                          className="w-full text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg py-1.5 transition-colors"
+                        >
+                          Revert to default
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Test Run panel (right slide-out) */}
-      {showTestRun && (
-        <TestRunPanel defId={defId} nodes={nodes} edges={edges} onClose={() => setShowTestRun(false)} trigger={testRunTrigger} />
-      )}
 
       {/* Publish dialog */}
       {showPublish && (
