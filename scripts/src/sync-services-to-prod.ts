@@ -77,17 +77,21 @@ async function main(): Promise<void> {
 
   // Upsert dev services into production.
   // workflowTemplateId references dev-local IDs that don't exist in production,
-  // so we strip it to avoid the services_workflow_template_id_fk constraint error.
+  // so we strip it from both INSERT and UPDATE to avoid FK constraint errors and
+  // to preserve any Default Service link the admin has set in the production UI.
+  // INSERT: new prod rows start with workflowTemplateId = null (no dev link).
+  // UPDATE: the set clause intentionally omits workflowTemplateId so the
+  //         existing prod link is preserved across deploys.
   console.log(`Upserting ${sluggedServices.length} service(s) into production…`);
   for (const svc of sluggedServices) {
     const { id: _id, workflowTemplateId: _wt, ...rest } = svc;
-    const prodRow = { ...rest, workflowTemplateId: null };
+    const insertRow = { ...rest, workflowTemplateId: null };
     await prodDb
       .insert(servicesTable)
-      .values(prodRow)
+      .values(insertRow)
       .onConflictDoUpdate({
         target: servicesTable.slug,
-        set: prodRow,
+        set: rest, // excludes workflowTemplateId — keeps the prod link intact
       });
     console.log(`  synced: ${svc.slug} — ${svc.name}`);
   }
