@@ -8420,6 +8420,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(null);
+  const canvasScrollRef = useRef<HTMLDivElement>(null);
+  const [canvasScrollPct, setCanvasScrollPct] = useState(0);
+  const [canvasViewPct, setCanvasViewPct] = useState(1);
+  const [showMiniMap, setShowMiniMap] = useState(true);
+
   const [leftCollapsed, setLeftCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("wf-lib-collapsed") === "true"; } catch { return false; }
   });
@@ -9213,6 +9218,20 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
   useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
+  // Track canvas scroll position for the MiniMap viewport indicator
+  useEffect(() => {
+    const el = canvasScrollRef.current;
+    if (!el) return;
+    function onScroll() {
+      const maxScroll = el!.scrollHeight - el!.clientHeight;
+      setCanvasScrollPct(maxScroll > 0 ? el!.scrollTop / maxScroll : 0);
+      setCanvasViewPct(el!.clientHeight / Math.max(el!.scrollHeight, 1));
+    }
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [nodes]);
+
   function startPanelResize(e: React.MouseEvent) {
     e.preventDefault();
     panelResizeRef.current = { startX: e.clientX, startWidth: rightPanelWidth };
@@ -9765,6 +9784,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           )}
           {/* Canvas zoom wrapper — scale transforms the entire step list */}
           <div
+            ref={canvasScrollRef}
             className="w-full h-full overflow-auto"
             style={{ contain: "layout" }}
           >
@@ -9793,6 +9813,85 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               />
             </div>
           </div>
+
+          {/* Custom MiniMap — equivalent to @xyflow/react <MiniMap />; positioned bottom-right */}
+          {/* FlowCanvas is a custom vertical tree renderer (not a ReactFlow instance),   */}
+          {/* so MiniMap and Controls are implemented as custom canvas overlay components.  */}
+          {showMiniMap && nodes.length > 0 && (
+            <div
+              className="absolute bottom-20 right-2 w-24 bg-[#0D1117]/90 border border-[#30363D] rounded-lg overflow-hidden z-10 shadow-xl"
+              style={{ height: Math.min(120, nodes.length * 4 + 16) }}
+              title="MiniMap — click to jump"
+              onClick={e => {
+                const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
+                const pct = (e.clientY - rect.top) / rect.height;
+                const el = canvasScrollRef.current;
+                if (el) el.scrollTop = pct * (el.scrollHeight - el.clientHeight);
+              }}
+            >
+              <div className="px-1.5 pt-1 pb-0.5 flex items-center justify-between">
+                <span className="text-[9px] text-[#484F58] font-medium uppercase tracking-wide">Map</span>
+                <button
+                  onClick={e => { e.stopPropagation(); setShowMiniMap(false); }}
+                  className="text-[#30363D] hover:text-[#484F58] transition-colors"
+                  title="Hide minimap"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="relative mx-1.5 mb-1" style={{ height: Math.min(100, nodes.length * 4) }}>
+                {/* Step blocks */}
+                {nodes.map((n, i) => {
+                  const style = NODE_STYLES[n.type as string] ?? NODE_STYLES["action"];
+                  const hue = style?.border?.includes("violet") ? "#7C3AED"
+                    : style?.border?.includes("amber")  ? "#F59E0B"
+                    : style?.border?.includes("red")    ? "#EF4444"
+                    : style?.border?.includes("emerald") || style?.border?.includes("green") ? "#10B981"
+                    : style?.border?.includes("sky")    ? "#0EA5E9"
+                    : "#0078D4";
+                  const total = nodes.length;
+                  const topPct = total > 1 ? (i / (total - 1)) * 100 : 0;
+                  const inReplay = replayMode && i < replayStep;
+                  return (
+                    <div
+                      key={n.id}
+                      className="absolute left-0 right-0 h-[3px] rounded-sm opacity-70 transition-opacity"
+                      style={{
+                        top: `${topPct}%`,
+                        backgroundColor: inReplay ? "#F59E0B" : hue,
+                        opacity: stepResultMap[n.id]?.status === "error" ? 1 : 0.6,
+                      }}
+                    />
+                  );
+                })}
+                {/* Viewport indicator */}
+                {canvasViewPct < 0.99 && (
+                  <div
+                    className="absolute left-0 right-0 rounded border border-[#0078D4]/50 bg-[#0078D4]/10 pointer-events-none"
+                    style={{
+                      top: `${canvasScrollPct * (1 - canvasViewPct) * 100}%`,
+                      height: `${canvasViewPct * 100}%`,
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Show minimap toggle when it's been closed */}
+          {!showMiniMap && (
+            <button
+              onClick={() => setShowMiniMap(true)}
+              className="absolute bottom-20 right-2 z-10 w-7 h-7 flex items-center justify-center bg-[#0D1117]/90 border border-[#30363D] hover:border-[#484F58] text-[#484F58] hover:text-[#E6EDF3] rounded transition-colors"
+              title="Show minimap"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+            </button>
+          )}
 
           {/* Canvas controls: zoom in / reset / zoom out (bottom-right, VS Code-style) */}
           <div className="absolute bottom-4 right-4 flex flex-col gap-0.5 z-10">
@@ -9859,7 +9958,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </button>
               ))}
               <button
-                onClick={() => setRightPanelTab(null)}
+                onClick={() => { setSelectedNodeId(null); setRightPanelTab(null); }}
                 className="ml-auto px-2.5 py-2 text-[#484F58] hover:text-[#E6EDF3] flex-shrink-0 transition-colors"
                 title="Close panel (Esc)"
               >
