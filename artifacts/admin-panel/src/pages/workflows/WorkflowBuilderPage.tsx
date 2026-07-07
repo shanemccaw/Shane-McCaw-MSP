@@ -86,6 +86,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Data ──
   find_object:               { bg: "#0D1020", border: "#818CF8", icon: "🔍", label: "Find Object"              },
   compose:                   { bg: "#0A1A18", border: "#2DD4BF", icon: "⧉",  label: "Compose"                  },
+  group_by:                  { bg: "#0A1020", border: "#818CF8", icon: "⊞",  label: "Group By"                 },
   // ── AI ──
   ask_ai: { bg: "#110D1F", border: "#A78BFA", icon: "🤖", label: "Ask AI" },
   // ── News ──
@@ -195,6 +196,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   emit_event:             [{ key: "eventName", label: "Name of the emitted event" }],
   send_email:             [{ key: "sent", label: "true if email was sent" }],
   send_sms:               [{ key: "sent", label: "true if SMS was sent" }],
+  // Array / transform nodes
+  group_by:              [{ key: "groups", label: "Array of { key, items } objects" }, { key: "groupCount", label: "Number of distinct groups" }],
   // CRM nodes
   score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "qualified", label: "true if score ≥ threshold" }],
   assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage", enumValues: ["Junk", "Cold", "Warm", "Hot", "DiscoveryCall", "Proposal", "QuickWin", "Retainer", "Onboarding", "Closed Won", "Closed Lost"] }],
@@ -781,6 +784,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "find_object", label: "Find Object", description: "Look up a lead, client, project, article, Stripe invoice, insights document, or presentation by field value", tags: ["data", "lookup", "find", "lead", "client", "project", "insights", "document", "presentation"] },
       { type: "compose",     label: "Compose",     description: "Evaluate any value or expression and expose it downstream as {{steps.<id>.value}}", tags: ["data", "compose", "expression", "variable", "glue", "transform"] },
+      { type: "group_by",    label: "Group By",    description: "Bucket an array of items by a field value, producing {{groups}} — an array of { key, items } objects. Feed into a ForEach to iterate over each group.", tags: ["data", "group", "bucket", "aggregate", "array", "transform", "group-by"] },
     ],
   },
   {
@@ -3773,6 +3777,38 @@ function NodeConfigPanel({
               {Boolean(node.data.parseAsJson) && (
                 <>{" "}When <span className="font-mono text-[#2DD4BF]">Parse as JSON</span> is on, the result is stored as a structured object; if parsing fails, the raw string is used instead.</>
               )}
+            </p>
+          </>
+        )}
+
+        {nodeType === "group_by" && (
+          <>
+            <ExpressionField
+              label="Array"
+              hint="The array to group. Use a {{variable}} that resolves to an array, e.g. {{steps.getTasks.flatTasks}}."
+              value={(node.data.arrayExpression as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, arrayExpression: v })}
+              placeholder="{{steps.nodeId.flatTasks}}"
+              ancestorOutputs={ancestorOutputs}
+              expressionType="value"
+              fetchWithAuth={fetchWithAuth}
+            />
+            <ExpressionField
+              label="Group Key"
+              hint="Expression evaluated for each item to determine its group. Use {{currentItem.*}} to access item fields."
+              value={(node.data.keyExpression as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, keyExpression: v })}
+              placeholder="{{currentItem.taskMetadata.linkedRunbook.azureRunbookName}}"
+              ancestorOutputs={ancestorOutputs}
+              expressionType="value"
+              fetchWithAuth={fetchWithAuth}
+            />
+            <p className="text-[10px] text-[#7D8590] leading-relaxed">
+              Outputs <span className="font-mono text-[#818CF8]">{"{{steps.<id>.groups}}"}</span> — an array of{" "}
+              <span className="font-mono text-[#818CF8]">{"{ key, items }"}</span> objects.{" "}
+              Feed into a <span className="font-mono text-[#818CF8]">ForEach</span> and access{" "}
+              <span className="font-mono text-[#818CF8]">{"{{currentItem.key}}"}</span> and{" "}
+              <span className="font-mono text-[#818CF8]">{"{{currentItem.items}}"}</span> inside the loop.
             </p>
           </>
         )}

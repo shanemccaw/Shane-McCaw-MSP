@@ -702,6 +702,18 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "edit_stripe_invoice":
       return { dryRun: true, invoiceId: "dry-run-inv-id", status: "draft", dueDate: new Date().toISOString() };
 
+    case "group_by": {
+      const dryKeyExpr = (node.data.keyExpression as string | undefined) ?? "{{currentItem.key}}";
+      return {
+        dryRun: true,
+        groups: [
+          { key: `<${dryKeyExpr}>`, items: [{ dryRunElement: 1 }, { dryRunElement: 2 }] },
+          { key: `<${dryKeyExpr} — group 2>`, items: [{ dryRunElement: 3 }] },
+        ],
+        groupCount: 2,
+      };
+    }
+
     case "compose": {
       const dryResolved = interp(node.data.inputs as string | undefined, payload) ?? "";
       const dryRawValue = dryResolved || "<compose output>";
@@ -3811,6 +3823,33 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       // ── Compose ───────────────────────────────────────────────────────────
+      case "group_by": {
+        const gbArrayExpr = (node.data.arrayExpression as string | undefined) ?? "";
+        const gbKeyExpr   = (node.data.keyExpression   as string | undefined) ?? "";
+        const gbRaw = interp(gbArrayExpr, payload);
+        let gbArray: unknown[];
+        if (Array.isArray(gbRaw)) {
+          gbArray = gbRaw;
+        } else if (typeof gbRaw === "string" && gbRaw.trim().startsWith("[")) {
+          try { gbArray = JSON.parse(gbRaw); }
+          catch { nodeError = true; output = { error: "Group By: arrayExpression resolved to an invalid JSON string — expected an array" }; break; }
+        } else {
+          nodeError = true;
+          output = { error: `Group By: arrayExpression did not resolve to an array (got ${Array.isArray(gbRaw) ? "array" : typeof gbRaw})` };
+          break;
+        }
+        const grouped: Record<string, unknown[]> = {};
+        for (const item of gbArray) {
+          const tempPayload = { ...payload, currentItem: item };
+          const key = interp(gbKeyExpr, tempPayload) ?? "(no key)";
+          if (!grouped[key]) grouped[key] = [];
+          grouped[key].push(item);
+        }
+        const groups = Object.entries(grouped).map(([key, items]) => ({ key, items }));
+        output = { groups, groupCount: groups.length };
+        break;
+      }
+
       case "compose": {
         const resolvedValue = interp(node.data.inputs as string | undefined, payload) ?? "";
         if (node.data.parseAsJson) {

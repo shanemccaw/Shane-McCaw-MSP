@@ -1826,6 +1826,8 @@ export interface WfNode {
     | "update_variable"
     // Signals
     | "get_tenant_signals"
+    // Array / transform
+    | "group_by"
     // Utilities
     | "comment";
   position: { x: number; y: number };
