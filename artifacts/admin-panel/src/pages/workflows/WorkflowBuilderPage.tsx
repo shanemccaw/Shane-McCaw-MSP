@@ -8667,11 +8667,13 @@ import { PATTERNS as WORKFLOW_PATTERNS } from "./patternRegistry";
 
 function RibbonGroup({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`relative flex items-center gap-0.5 border border-[#30363D] bg-[#1C2128] rounded px-2 pt-1.5 pb-3 flex-shrink-0 ${className ?? ""}`}>
-      {children}
-      <span className="absolute bottom-0.5 left-0 right-0 text-center text-[9px] uppercase tracking-widest text-[#484F58] pointer-events-none select-none leading-none">
+    <div className={`flex-shrink-0 flex flex-col border border-[#30363D] bg-[#1C2128] rounded overflow-hidden ${className ?? ""}`}>
+      <div className="flex items-end gap-0.5 px-1.5 pt-1.5 pb-1">
+        {children}
+      </div>
+      <div className="border-t border-[#30363D] text-[9px] uppercase tracking-widest text-[#484F58] py-0.5 text-center select-none leading-none">
         {label}
-      </span>
+      </div>
     </div>
   );
 }
@@ -8692,8 +8694,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(() => {
     try {
       const saved = localStorage.getItem("wf-panel-tab");
-      if (saved && (["node", "testrun", "settings", "history", "metadata"] as const).includes(saved as "node")) {
-        return saved as "node" | "testrun" | "settings" | "history" | "metadata";
+      // Only restore persistent tabs; "node" and "testrun" are action-triggered and should not auto-open on load
+      const persistent = ["settings", "history", "metadata"];
+      if (saved && persistent.includes(saved)) {
+        return saved as "settings" | "history" | "metadata";
       }
     } catch { /* ignore */ }
     return null;
@@ -9166,7 +9170,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     }
     handleGraphChange([...nodes, ...newPNodes], [...connectedEdges, ...newPEdges]);
     // Select the first inserted node so the user can configure it immediately
-    if (newPNodes.length > 0) { setSelectedNodeId(newPNodes[0].id); setRightPanelTab("node"); }
+    if (newPNodes.length > 0) { setSelectedNodeId(newPNodes[0].id); setRightPanelTab(prev => prev !== null ? "node" : prev); }
     setIsDirty(true);
     addSystemLog("info", `Pattern inserted: ${pattern.name} (${newPNodes.length} node${newPNodes.length !== 1 ? "s" : ""})`);
   }
@@ -10028,7 +10032,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
 
         {/* ── Row 2: Command Ribbon ──────────────────────────────────────────── */}
-        <div className="bg-[#0D1117] flex items-end gap-1.5 px-3 pb-1 min-h-[52px] overflow-x-auto">
+        <div className="bg-[#0D1117] flex items-end gap-1.5 px-3 pt-1.5 pb-1.5 overflow-x-auto border-b border-[#1C2128]">
 
           {/* Clipboard */}
           <RibbonGroup label="Clipboard">
@@ -10036,21 +10040,23 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={handleUndo}
               disabled={!canUndo}
               title="Undo (Ctrl+Z)"
-              className="p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590]"
+              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590] disabled:hover:bg-transparent"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
               </svg>
+              <span className="text-[9px] leading-none">Undo</span>
             </button>
             <button
               onClick={handleRedo}
               disabled={!canRedo}
               title="Redo (Ctrl+Shift+Z)"
-              className="p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590]"
+              className="flex flex-col items-center gap-0.5 w-9 rounded py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590] disabled:hover:bg-transparent"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6M21 10l-6-6" />
               </svg>
+              <span className="text-[9px] leading-none">Redo</span>
             </button>
           </RibbonGroup>
 
@@ -10059,24 +10065,24 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {!isReadOnly && (
               <button
                 onClick={runAutoLayout}
-                className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
                 title="Auto-arrange nodes in a structured top-to-bottom layout"
               >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
                 </svg>
-                Auto Layout
+                <span className="text-[9px] leading-none whitespace-nowrap">Auto Layout</span>
               </button>
             )}
             <button
               onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
-              className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+              className="flex flex-col items-center gap-0.5 min-w-[46px] rounded px-1.5 py-1 transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
               title="View run history for this workflow"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              View Runs
+              <span className="text-[9px] leading-none whitespace-nowrap">View Runs</span>
             </button>
           </RibbonGroup>
 
@@ -10084,25 +10090,26 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <RibbonGroup label="Analytics">
             <button
               onClick={() => { setShowTrendsDrawer(v => !v); setShowTrends(v => !v); }}
-              className={`p-1.5 rounded transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
+              className={`flex flex-col items-center gap-0.5 min-w-[40px] rounded px-1.5 py-1 transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
               title="View workflow trends and run analytics"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
+              <span className="text-[9px] leading-none">Trends</span>
             </button>
             {nodes.length > 1 && (
               <button
                 onClick={() => setShowHealthPanel(v => !v)}
-                className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                className={`flex flex-col items-center gap-0.5 min-w-[40px] rounded px-1.5 py-1 transition-colors ${
                   healthResult.score >= 80 ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
                   : healthResult.score >= 60 ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
                   : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
                 }`}
                 title="Workflow health score"
               >
-                {healthResult.score >= 80 ? "✓" : healthResult.score >= 60 ? "⚠" : "✕"}
-                {healthResult.score}
+                <span className="text-sm font-bold leading-none">{healthResult.score >= 80 ? "✓" : healthResult.score >= 60 ? "⚠" : "✕"}{healthResult.score}</span>
+                <span className="text-[9px] leading-none font-normal">Health</span>
               </button>
             )}
           </RibbonGroup>
@@ -10111,13 +10118,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <RibbonGroup label="Inspect">
             <button
               onClick={() => { setInspectMode(v => !v); if (inspectMode) { setInspectRunId(null); setReplayMode(false); } }}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${inspectMode ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
+              className={`flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 transition-colors ${inspectMode ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
               title="Inspect a run — overlay execution results on each step card"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
               </svg>
-              Inspect
+              <span className="text-[9px] leading-none">Inspect</span>
             </button>
             {inspectMode && (
               <RunSelectorDropdown
@@ -10129,16 +10136,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             <button
               onClick={() => { const entering = !replayMode; setReplayMode(entering); if (entering) setLiveRunState(null); }}
               disabled={!inspectRunId}
-              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+              className={`flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                 replayMode ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
               }`}
               title={inspectRunId ? "Toggle replay mode — step through run with ← →" : "Select a run first to enable replay"}
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Replay
+              <span className="text-[9px] leading-none">Replay</span>
             </button>
           </RibbonGroup>
 
@@ -10147,25 +10154,25 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {!isReadOnly && (
               <button
                 onClick={() => setShowAiModal(true)}
-                className="flex items-center gap-1 px-1.5 py-1 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-medium rounded transition-colors"
+                className="flex flex-col items-center gap-0.5 min-w-[52px] rounded px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white transition-colors"
                 title="Describe a workflow and let AI build it on the canvas"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                ✦ Build with AI
+                <span className="text-[9px] leading-none whitespace-nowrap">Build with AI</span>
               </button>
             )}
             {!isReadOnly && nodes.length > 0 && (
               <button
                 onClick={() => setShowRefineModal(true)}
-                className="flex items-center gap-1 px-1.5 py-1 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-[11px] font-medium rounded transition-colors"
+                className="flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 border border-violet-500/30 hover:border-violet-500/50 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 transition-colors"
                 title="Refine the current workflow with an AI instruction"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
-                Refine…
+                <span className="text-[9px] leading-none">Refine…</span>
               </button>
             )}
             {nodes.length > 0 && (
@@ -10199,19 +10206,19 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     addAiOutput(["✕ Explain — network error"]);
                   }
                 }}
-                className="flex items-center gap-1 px-1.5 py-1 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-[11px] font-medium rounded transition-colors"
+                className="flex flex-col items-center gap-0.5 min-w-[44px] rounded px-2 py-1 border border-violet-500/30 hover:border-violet-500/50 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 transition-colors"
                 title="Ask AI to explain what this workflow does — output streams to the AI Output dock tab"
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Explain
+                <span className="text-[9px] leading-none">Explain</span>
               </button>
             )}
           </RibbonGroup>
 
           {/* Right-anchored utility controls */}
-          <div className="ml-auto flex items-center gap-1 pb-1.5 flex-shrink-0">
+          <div className="ml-auto flex items-center gap-1 self-end pb-0.5 flex-shrink-0">
             <button
               onClick={() => void publishToProd()}
               disabled={publishingToProd || !prodDbConnected || !hasPublishedVersion}
@@ -10664,7 +10671,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 libraryCategories={LIBRARY_CATEGORIES}
                 allLibraryNodes={ALL_LIBRARY_NODES}
                 nodeIdCounter={nodeIdCounter}
-                onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab("node"); }}
+                onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab(prev => prev !== null ? "node" : prev); }}
                 onGraphChange={handleGraphChange}
                 onDuplicateNode={duplicateNode}
                 triggerCategories={canvasTriggerCategories}
