@@ -7967,10 +7967,12 @@ function AiWorkflowModal({
   defId,
   onClose,
   onGenerate,
+  onAiOutput,
 }: {
   defId: number;
   onClose: () => void;
   onGenerate: (result: AiWorkflowResult) => void;
+  onAiOutput?: (lines: string[]) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const [description, setDescription] = useState("");
@@ -8000,8 +8002,17 @@ function AiWorkflowModal({
       const data = await res.json() as AiWorkflowResult & { error?: string };
       if (!res.ok) {
         setError(data.error ?? "AI generation failed");
+        onAiOutput?.(["✕ Build with AI failed: " + (data.error ?? "unknown error")]);
         return;
       }
+      // Emit output lines to AI Output dock tab
+      const nodeCount = Array.isArray(data.nodes) ? data.nodes.length : 0;
+      const edgeCount = Array.isArray(data.edges) ? data.edges.length : 0;
+      onAiOutput?.([
+        `✓ Build with AI completed — generated ${nodeCount} node${nodeCount !== 1 ? "s" : ""}, ${edgeCount} connection${edgeCount !== 1 ? "s" : ""}`,
+        ...(data.unsupportedFeatures?.length ? [`⚠ Unsupported features: ${data.unsupportedFeatures.join(", ")}`] : []),
+        ...(data.replitPrompt ? [`💡 Replit prompt ready — copy from the Build dialog`] : []),
+      ]);
       // Hydrate the canvas immediately
       onGenerate(data);
       // If the engine couldn't cover everything, stay open and show the suggestion
@@ -8015,6 +8026,7 @@ function AiWorkflowModal({
       }
     } catch {
       setError("Network error — please try again");
+      onAiOutput?.(["✕ Build with AI — network error"]);
     } finally {
       setLoading(false);
     }
@@ -8233,11 +8245,13 @@ function AiRefineModal({
   edges,
   onClose,
   onGenerate,
+  onAiOutput,
 }: {
   nodes: Node[];
   edges: Edge[];
   onClose: () => void;
   onGenerate: (result: AiWorkflowResult) => void;
+  onAiOutput?: (lines: string[]) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const [instruction, setInstruction] = useState("");
@@ -8274,11 +8288,19 @@ function AiRefineModal({
       const data = await res.json() as { nodes?: unknown; edges?: unknown; error?: string };
       if (!res.ok) {
         setError((data as { error?: string }).error ?? "AI refinement failed");
+        onAiOutput?.(["✕ Refine with AI failed: " + ((data as { error?: string }).error ?? "unknown error")]);
         return;
       }
-      onGenerate(data as AiWorkflowResult);
+      const r = data as AiWorkflowResult;
+      const nodeCount = Array.isArray(r.nodes) ? r.nodes.length : 0;
+      onAiOutput?.([
+        `✓ Refine with AI completed — workflow updated to ${nodeCount} node${nodeCount !== 1 ? "s" : ""}`,
+        `  Instruction: "${instruction.trim().slice(0, 80)}${instruction.trim().length > 80 ? "…" : ""}"`,
+      ]);
+      onGenerate(r);
     } catch {
       setError("Network error — please try again");
+      onAiOutput?.(["✕ Refine with AI — network error"]);
     } finally {
       setLoading(false);
     }
@@ -8410,6 +8432,7 @@ function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value:
 function RunOutputDock({ runId }: { runId: number }) {
   const { fetchWithAuth } = useAuth();
   const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+  const [expandedIo, setExpandedIo] = useState<Set<string>>(new Set());
   const { data: runData } = useQuery<WfRunDetail>({
     queryKey: ["wf-run-dock", runId],
     refetchInterval: (q) => {
@@ -8422,6 +8445,14 @@ function RunOutputDock({ runId }: { runId: number }) {
     },
   });
   const logs = (runData?.logs ?? []).filter(l => l.level !== "progress");
+  // Build a nodeId → completed nodeOutput map for I/O sub-rows
+  const nodeOutputMap = new Map(
+    (runData?.nodeOutputs ?? []).map(no => [no.nodeId, no])
+  );
+  // Track the last log entry per nodeId so we can attach the I/O row after it
+  const lastLogIdxByNode = new Map<string, number>();
+  logs.forEach((log, idx) => { if (log.nodeId) lastLogIdxByNode.set(log.nodeId, idx); });
+
   return (
     <div className="p-3 space-y-1">
       {runData?.status && (
@@ -8440,22 +8471,141 @@ function RunOutputDock({ runId }: { runId: number }) {
       )}
       {logs.length === 0 ? (
         <div className="text-[#484F58] py-2 font-sans">Waiting for log output…</div>
-      ) : logs.map(log => (
-        <div key={log.id} className="flex items-start gap-2">
-          <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#484F58]"}`}>
-            {log.level === "error" ? "✕" : log.level === "warn" ? "⚠" : "·"}
-          </span>
-          <span className="text-[#484F58] flex-shrink-0">
-            {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-          </span>
-          <span className={log.level === "error" ? "text-red-300" : log.level === "warn" ? "text-amber-300" : "text-[#7D8590]"}>
-            {log.message}
-          </span>
-        </div>
-      ))}
+      ) : logs.map((log, idx) => {
+        const isLastForNode = log.nodeId ? lastLogIdxByNode.get(log.nodeId) === idx : false;
+        const nodeOut = log.nodeId ? nodeOutputMap.get(log.nodeId) : undefined;
+        const ioKey = log.nodeId ?? `log-${idx}`;
+        const isExpanded = expandedIo.has(ioKey);
+        return (
+          <React.Fragment key={log.id}>
+            <div className="flex items-start gap-2">
+              <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#484F58]"}`}>
+                {log.level === "error" ? "✕" : log.level === "warn" ? "⚠" : "·"}
+              </span>
+              <span className="text-[#484F58] flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </span>
+              <span className={log.level === "error" ? "text-red-300" : log.level === "warn" ? "text-amber-300" : "text-[#7D8590]"}>
+                {log.message}
+              </span>
+            </div>
+            {/* Per-step I/O sub-row — shown after the last log line for a completed node */}
+            {isLastForNode && log.nodeId && (
+              nodeOut ? (
+                <div className="ml-8 border border-[#1C2128] rounded-lg overflow-hidden font-sans">
+                  <button
+                    onClick={() => setExpandedIo(prev => {
+                      const next = new Set(prev);
+                      next.has(ioKey) ? next.delete(ioKey) : next.add(ioKey);
+                      return next;
+                    })}
+                    className={`w-full flex items-center gap-2 px-2.5 py-1.5 text-[10px] transition-colors ${
+                      nodeOut.status === "completed" ? "text-emerald-400 bg-emerald-500/5 hover:bg-emerald-500/10" :
+                      nodeOut.status === "failed" ? "text-red-400 bg-red-500/5 hover:bg-red-500/10" :
+                      "text-[#7D8590] bg-[#0D1117] hover:bg-[#1C2128]"
+                    }`}
+                  >
+                    <span>{isExpanded ? "▾" : "▸"}</span>
+                    <span className="font-mono">{log.nodeId}</span>
+                    <span className="ml-1 capitalize">{nodeOut.status}</span>
+                    {nodeOut.durationMs != null && <span className="ml-auto text-[#484F58]">{nodeOut.durationMs}ms</span>}
+                  </button>
+                  {isExpanded && (
+                    <div className="border-t border-[#1C2128] divide-y divide-[#1C2128]">
+                      {[
+                        { label: "Input", obj: nodeOut.input },
+                        { label: "Output", obj: nodeOut.output },
+                      ].map(({ label, obj }) => (
+                        <div key={label} className="p-2">
+                          <p className="text-[9px] uppercase tracking-widest text-[#484F58] mb-1">{label}</p>
+                          <pre className="text-[10px] text-[#7D8590] overflow-auto max-h-40 whitespace-pre-wrap break-all">
+                            {JSON.stringify(obj, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                      {nodeOut.errorMessage && (
+                        <div className="p-2">
+                          <p className="text-[9px] uppercase tracking-widest text-red-400 mb-1">Error</p>
+                          <pre className="text-[10px] text-red-300 whitespace-pre-wrap break-all">{nodeOut.errorMessage}</pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : !TERMINAL.has(runData?.status ?? "") ? (
+                // Step is still running — show spinner
+                <div className="ml-8 flex items-center gap-2 text-[#484F58] py-1 text-[10px] font-sans">
+                  <span className="w-3 h-3 rounded-full border border-[#484F58] border-t-transparent animate-spin flex-shrink-0" />
+                  <span className="font-mono">{log.nodeId}</span> — capturing I/O…
+                </div>
+              ) : null
+            )}
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
+
+// ── Static workflow pattern registry ─────────────────────────────────────────
+// Pre-built patterns users can insert as sub-trees. Each entry is a named,
+// searchable snippet of nodes + edges that gets grafted onto the canvas.
+const WORKFLOW_PATTERNS = [
+  {
+    name: "Error Handler Guard",
+    description: "Wraps an action with an on-error branch that logs the failure and sends an admin notification.",
+    tags: ["error", "guard", "resilience", "handler"],
+    nodes: [
+      { id: "p-action", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Main Action" } },
+      { id: "p-error", type: "error", position: { x: 180, y: 0 }, data: { nodeType: "error", label: "On Error" } },
+    ],
+    edges: [{ id: "p-e1", source: "p-action", target: "p-error", sourceHandle: "error" }],
+  },
+  {
+    name: "Approval Gate",
+    description: "Pauses execution and waits for human approval before continuing downstream steps.",
+    tags: ["approval", "human-in-the-loop", "review", "gate"],
+    nodes: [
+      { id: "p-req", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Request Approval" } },
+      { id: "p-cond", type: "condition", position: { x: 0, y: 120 }, data: { nodeType: "condition", label: "Approved?" } },
+    ],
+    edges: [{ id: "p-e1", source: "p-req", target: "p-cond" }],
+  },
+  {
+    name: "Scheduled Digest",
+    description: "Runs on a schedule, iterates over an array, and sends a summary email for each item.",
+    tags: ["schedule", "email", "digest", "foreach", "loop"],
+    nodes: [
+      { id: "p-loop", type: "foreach", position: { x: 0, y: 0 }, data: { nodeType: "foreach", label: "For Each Item" } },
+      { id: "p-send", type: "action", position: { x: 0, y: 120 }, data: { nodeType: "send_email", label: "Send Digest Email" } },
+    ],
+    edges: [{ id: "p-e1", source: "p-loop", target: "p-send", sourceHandle: "body" }],
+  },
+  {
+    name: "Lead Intake → Proposal",
+    description: "Triggered on lead creation: sends a welcome email, delays 2 days, then creates a CRM presentation.",
+    tags: ["lead", "crm", "proposal", "onboarding", "email"],
+    nodes: [
+      { id: "p-email", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "send_email", label: "Welcome Email" } },
+      { id: "p-delay", type: "delay", position: { x: 0, y: 120 }, data: { nodeType: "delay", label: "Wait 2 Days" } },
+      { id: "p-pres", type: "action", position: { x: 0, y: 240 }, data: { nodeType: "create_presentation", label: "Create Presentation" } },
+    ],
+    edges: [
+      { id: "p-e1", source: "p-email", target: "p-delay" },
+      { id: "p-e2", source: "p-delay", target: "p-pres" },
+    ],
+  },
+  {
+    name: "Retry with Backoff",
+    description: "Tries an action up to 3 times with a delay between attempts before hitting a final error handler.",
+    tags: ["retry", "backoff", "resilience", "error"],
+    nodes: [
+      { id: "p-try", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Attempt Action", retryLimit: 3, retryDelayMs: 5000 } },
+      { id: "p-err", type: "error", position: { x: 180, y: 0 }, data: { nodeType: "error", label: "Final Failure" } },
+    ],
+    edges: [{ id: "p-e1", source: "p-try", target: "p-err", sourceHandle: "error" }],
+  },
+] as const;
 
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
@@ -8575,6 +8725,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
   // Last test-run ID shared with bottom dock Run Output tab
   const [lastTestRunId, setLastTestRunId] = useState<number | null>(null);
+
+  // AI Output dock tab — lines emitted by AiWorkflowModal / AiRefineModal
+  const aiLogIdRef = useRef(0);
+  const [aiOutputLog, setAiOutputLog] = useState<Array<{ id: number; ts: number; line: string }>>([]);
+  function addAiOutput(lines: string[]) {
+    const now = Date.now();
+    setAiOutputLog(prev => [
+      ...prev.slice(-199),
+      ...lines.map(line => ({ id: ++aiLogIdRef.current, ts: now, line })),
+    ]);
+  }
 
   // Metadata panel local state (synced from def on load)
   const [metaName, setMetaName] = useState("");
@@ -8854,6 +9015,37 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     onError: () => addSystemLog("error", "Publish failed — save the workflow first and retry"),
   });
 
+
+  // Insert a pattern sub-tree at the end of the current canvas.
+  // Re-IDs all pattern nodes to avoid clashes, then appends them + edges.
+  function insertPattern(pattern: typeof WORKFLOW_PATTERNS[number]) {
+    pushHistory(`Inserted pattern: ${pattern.name}`);
+    // Find a safe Y offset below the last existing node
+    const maxY = nodes.reduce((m, n) => Math.max(m, (n.position?.y ?? 0) + 120), 100);
+    // Build a fresh ID map
+    const idMap = new Map<string, string>();
+    const newPNodes = pattern.nodes.map(pn => {
+      const freshId = `node-${++nodeIdCounter.current}`;
+      idMap.set(pn.id, freshId);
+      return {
+        id: freshId,
+        type: "wfNode" as const,
+        position: { x: (pn.position?.x ?? 0) + 300, y: (pn.position?.y ?? 0) + maxY },
+        data: { ...pn.data },
+      };
+    });
+    const newPEdges = (pattern.edges as ReadonlyArray<{ id: string; source: string; target: string; sourceHandle?: string }>).map(pe => ({
+      id: `edge-${++nodeIdCounter.current}`,
+      source: idMap.get(pe.source) ?? pe.source,
+      target: idMap.get(pe.target) ?? pe.target,
+      sourceHandle: pe.sourceHandle,
+      style: { stroke: "#30363D", strokeWidth: 2 },
+      animated: false,
+    }));
+    handleGraphChange([...nodes, ...newPNodes], [...edges, ...newPEdges]);
+    setIsDirty(true);
+    addSystemLog("info", `Pattern inserted: ${pattern.name} (${newPNodes.length} node${newPNodes.length !== 1 ? "s" : ""})`);
+  }
 
   // Add a node from the library sidebar — appends to the end of the flat sequence.
   // Users can also insert at a specific position via the "+" buttons in FlowCanvas.
@@ -10635,9 +10827,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </button>
               ))}
               <div className="ml-auto flex items-center gap-2">
-                {(bottomDockTab === "system" || bottomDockTab === "runoutput") && (
+                {(bottomDockTab === "system" || bottomDockTab === "runoutput" || bottomDockTab === "aioutput") && (
                   <button
-                    onClick={() => { if (bottomDockTab === "system") setSystemLog([]); }}
+                    onClick={() => {
+                      if (bottomDockTab === "system") setSystemLog([]);
+                      else if (bottomDockTab === "aioutput") setAiOutputLog([]);
+                    }}
                     className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors"
                     title="Clear log"
                   >
@@ -10715,9 +10910,29 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
-                  <span className="text-2xl">🤖</span>
-                  <p className="text-xs text-center">AI generation output streams here.<br /><span className="text-[10px] text-[#30363D]">Full support arrives with task #2541.</span></p>
+                <div className="p-3 space-y-1">
+                  {aiOutputLog.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
+                      <span className="text-2xl">🤖</span>
+                      <p className="text-xs text-center">AI generation output appears here.<br />Open <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
+                    </div>
+                  ) : [...aiOutputLog].reverse().map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2">
+                      <span className="text-[#484F58] flex-shrink-0">
+                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span className={
+                        entry.line.startsWith("✓") ? "text-emerald-300" :
+                        entry.line.startsWith("✕") ? "text-red-300" :
+                        entry.line.startsWith("⚠") ? "text-amber-300" :
+                        entry.line.startsWith("💡") ? "text-violet-300" :
+                        entry.line.startsWith("🤖") ? "text-[#0078D4]" :
+                        "text-[#7D8590]"
+                      }>
+                        {entry.line}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -10762,44 +10977,94 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       return lbl.includes(q) || nt.includes(q) || n.id.toLowerCase().includes(q) || annotation.includes(q) || configStr.includes(q);
                     })
                   : nodes;
-                if (filtered.length === 0) {
+                const patternFiltered = q
+                  ? WORKFLOW_PATTERNS.filter(p =>
+                      p.name.toLowerCase().includes(q) ||
+                      p.description.toLowerCase().includes(q) ||
+                      p.tags.some(t => t.toLowerCase().includes(q))
+                    )
+                  : [];
+
+                const hasResults = filtered.length > 0 || patternFiltered.length > 0;
+                if (!hasResults) {
                   return (
                     <div className="py-8 text-center text-[#484F58] text-sm">
-                      {q ? `No nodes matching "${searchQuery}"` : "No nodes in this workflow yet"}
+                      {q ? `No nodes or patterns matching "${searchQuery}"` : "No nodes in this workflow yet"}
                     </div>
                   );
                 }
-                return filtered.map(n => {
-                  const label = (n.data.label as string) || n.id;
-                  const nt = (n.data.nodeType as string) ?? "action";
-                  const style = NODE_STYLES[nt] ?? NODE_STYLES.action;
-                  return (
-                    <button
-                      key={n.id}
-                      onClick={() => {
-                        setSelectedNodeId(n.id);
-                        setRightPanelTab("node");
-                        setShowSearch(false);
-                        setSearchQuery("");
-                        canvasScrollRef.current?.scrollTo({ top: Math.max(0, (n.position?.y ?? 0) - 100), behavior: "smooth" });
-                      }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
-                    >
-                      <span className="text-base flex-shrink-0">{style.icon}</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm text-[#E6EDF3] truncate">{label}</p>
-                        <p className="text-[10px] text-[#484F58]">{nt} · {n.id}</p>
-                      </div>
-                      <svg className="w-3 h-3 text-[#484F58] ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </button>
-                  );
-                });
+                return (
+                  <>
+                    {filtered.length > 0 && (
+                      <>
+                        {(q || patternFiltered.length > 0) && (
+                          <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-[#484F58] font-bold border-b border-[#30363D] bg-[#0D1117]">
+                            Nodes in this workflow
+                          </div>
+                        )}
+                        {filtered.map(n => {
+                          const label = (n.data.label as string) || n.id;
+                          const nt = (n.data.nodeType as string) ?? "action";
+                          const style = NODE_STYLES[nt] ?? NODE_STYLES.action;
+                          return (
+                            <button
+                              key={n.id}
+                              onClick={() => {
+                                setSelectedNodeId(n.id);
+                                setRightPanelTab("node");
+                                setShowSearch(false);
+                                setSearchQuery("");
+                                canvasScrollRef.current?.scrollTo({ top: Math.max(0, (n.position?.y ?? 0) - 100), behavior: "smooth" });
+                              }}
+                              className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
+                            >
+                              <span className="text-base flex-shrink-0">{style.icon}</span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm text-[#E6EDF3] truncate">{label}</p>
+                                <p className="text-[10px] text-[#484F58]">{nt} · {n.id}</p>
+                              </div>
+                              <svg className="w-3 h-3 text-[#484F58] ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                    {patternFiltered.length > 0 && (
+                      <>
+                        <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-[#484F58] font-bold border-b border-[#30363D] bg-[#0D1117]">
+                          Patterns — insert sub-tree
+                        </div>
+                        {patternFiltered.map((pattern, pi) => (
+                          <button
+                            key={pi}
+                            onClick={() => {
+                              insertPattern(pattern);
+                              setShowSearch(false);
+                              setSearchQuery("");
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
+                          >
+                            <span className="text-base flex-shrink-0">🧩</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm text-[#E6EDF3] truncate">{pattern.name}</p>
+                              <p className="text-[10px] text-[#484F58] truncate">{pattern.description}</p>
+                            </div>
+                            <span className="flex-shrink-0 text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full">insert</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                    {!q && nodes.length === 0 && (
+                      <div className="py-4 text-center text-[#484F58] text-xs">No nodes yet — type to search patterns</div>
+                    )}
+                  </>
+                );
               })()}
             </div>
             <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
-              <span className="text-[10px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""} in workflow</span>
+              <span className="text-[10px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""} · {WORKFLOW_PATTERNS.length} patterns</span>
               <span className="text-[10px] text-[#484F58]">↵ to select · Esc to close</span>
             </div>
           </div>
@@ -10959,7 +11224,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         <AiWorkflowModal
           defId={defId}
           onClose={() => setShowAiModal(false)}
-          onGenerate={handleAiGenerate}
+          onGenerate={(result) => { addAiOutput([`🤖 Build with AI started (${new Date().toLocaleTimeString()})`]); handleAiGenerate(result); }}
+          onAiOutput={(lines) => { addAiOutput(lines); setBottomDockOpen(true); setBottomDockTab("aioutput"); }}
         />
       )}
 
@@ -10979,7 +11245,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           nodes={nodes}
           edges={edges}
           onClose={() => setShowRefineModal(false)}
-          onGenerate={handleAiRefine}
+          onGenerate={(result) => { addAiOutput([`🤖 Refine with AI started (${new Date().toLocaleTimeString()})`]); handleAiRefine(result); }}
+          onAiOutput={(lines) => { addAiOutput(lines); setBottomDockOpen(true); setBottomDockTab("aioutput"); }}
         />
       )}
 
@@ -11022,7 +11289,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
       )}
 
-      {/* Health Report slide-over — full scoring engine arrives with #2541 */}
+      {/* Health Report slide-over — backed by the same workflowIssues state as the Errors tab */}
       {showHealthReport && (
         <div className="fixed inset-0 z-50 flex" onClick={() => setShowHealthReport(false)}>
           <div className="flex-1" />
@@ -11036,6 +11303,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 <span className="text-sm font-semibold text-[#E6EDF3]">Health Report</span>
+                {workflowIssues.length > 0 && (
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${workflowIssues.some(i => i.severity === "high") ? "bg-red-500/20 text-red-400" : "bg-amber-500/20 text-amber-400"}`}>
+                    {workflowIssues.length} issue{workflowIssues.length !== 1 ? "s" : ""}
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => setShowHealthReport(false)}
@@ -11047,25 +11319,44 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {/* Static health dimensions — scored values will come from #2541 scoreWorkflow() */}
-              {([
-                { label: "Error handling", detail: "Nodes without an on-error branch", icon: "🛡️" },
-                { label: "Retry coverage", detail: "Steps missing retry configuration", icon: "🔁" },
-                { label: "Timeout guards", detail: "Long-running nodes without a timeout", icon: "⏱️" },
-                { label: "Dead branches", detail: "Unreachable condition branches detected", icon: "🌿" },
-                { label: "Documentation", detail: "Nodes missing description fields", icon: "📝" },
-              ] as { label: string; detail: string; icon: string }[]).map(({ label, detail, icon }) => (
-                <div key={label} className="flex items-start gap-3 p-3 rounded-lg bg-[#0D1117] border border-[#30363D]">
-                  <span className="text-base leading-none mt-0.5">{icon}</span>
-                  <div className="min-w-0">
-                    <div className="text-xs font-medium text-[#E6EDF3]">{label}</div>
-                    <div className="text-[11px] text-[#7D8590] mt-0.5">{detail}</div>
+              {workflowIssues.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+                  <span className="text-2xl">✅</span>
+                  <p className="text-sm font-medium text-emerald-400">No issues found</p>
+                  <p className="text-xs text-[#7D8590]">This workflow passes all structural checks.</p>
+                </div>
+              ) : workflowIssues.map((issue, i) => (
+                <div
+                  key={i}
+                  onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); setShowHealthReport(false); } }}
+                  className={`flex items-start gap-3 p-3 rounded-lg border transition-colors ${
+                    issue.severity === "high"
+                      ? "bg-red-500/5 border-red-500/30 hover:bg-red-500/10 cursor-pointer"
+                      : issue.severity === "medium"
+                      ? "bg-amber-500/5 border-amber-500/30 hover:bg-amber-500/10 cursor-pointer"
+                      : "bg-[#0D1117] border-[#30363D]"
+                  }`}
+                >
+                  <span className={`text-base leading-none mt-0.5 flex-shrink-0 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                    {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>{issue.message}</div>
+                    {issue.nodeId && (
+                      <div className="text-[9px] font-mono text-[#484F58] mt-0.5">{issue.nodeId} — click to inspect</div>
+                    )}
                   </div>
-                  <div className="ml-auto flex-shrink-0 text-[10px] text-[#484F58] font-mono bg-[#1C2128] px-1.5 py-0.5 rounded">—</div>
+                  <span className={`flex-shrink-0 text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border ${
+                    issue.severity === "high" ? "border-red-500/30 text-red-400 bg-red-500/10" :
+                    issue.severity === "medium" ? "border-amber-500/30 text-amber-400 bg-amber-500/10" :
+                    "border-[#30363D] text-[#484F58]"
+                  }`}>
+                    {issue.severity}
+                  </span>
                 </div>
               ))}
               <p className="text-[11px] text-[#484F58] text-center pt-2">
-                Scores are computed by <code className="font-mono">#2541 scoreWorkflow()</code> after each save.
+                {workflowIssues.length > 0 ? "Click an issue to jump to the affected node." : "Full scoring engine arrives with #2541 scoreWorkflow()."}
               </p>
             </div>
           </div>
