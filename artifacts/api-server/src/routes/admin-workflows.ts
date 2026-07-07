@@ -635,6 +635,38 @@ router.delete("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, as
   }
 });
 
+// ── Trigger activity summary (all definitions, today) ────────────────────────
+// Returns today's trigger-event counts aggregated per workflow definition so
+// the workflow list page can show "N runs today" badges without N+1 queries.
+
+router.get("/admin/workflows/trigger-activity-summary", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const rows = await db.execute<{
+      definition_id: number;
+      today_count: number;
+      last_fired_at: string | null;
+    }>(sql`
+      SELECT
+        t.definition_id,
+        COUNT(te.id)::int AS today_count,
+        MAX(te.fired_at)  AS last_fired_at
+      FROM wf_triggers t
+      LEFT JOIN wf_trigger_events te
+        ON  te.trigger_id = t.id
+        AND te.fired_at  >= date_trunc('day', now() AT TIME ZONE 'UTC')
+      GROUP BY t.definition_id
+    `);
+    res.json(rows.rows.map(r => ({
+      definitionId: Number(r.definition_id),
+      todayCount:   Number(r.today_count),
+      lastFiredAt:  r.last_fired_at ?? null,
+    })));
+  } catch (err) {
+    req.log.error({ err }, "workflows: trigger-activity-summary failed");
+    sendError(res, 500, "Failed to fetch trigger activity summary");
+  }
+});
+
 // ── Trigger event history ─────────────────────────────────────────────────────
 
 router.get("/admin/workflows/definitions/:id/triggers/:tid/events", requireAdmin, async (req: Request, res: Response) => {

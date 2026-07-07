@@ -870,6 +870,19 @@ export default function WorkflowListPage() {
 
   const selectedDef = defs.find(d => d.id === selectedId) ?? null;
 
+  // ── Trigger activity summary (today's run counts per definition) ──
+  const { data: activitySummary = [] } = useQuery<Array<{ definitionId: number; todayCount: number; lastFiredAt: string | null }>>({
+    queryKey: ["wf-trigger-activity"],
+    queryFn: async () => {
+      const res = await fetchWithAuth("/api/admin/workflows/trigger-activity-summary");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const activityByDef = new Map(activitySummary.map(a => [a.definitionId, a]));
+
   // ── Activity feed ──
   const isLiveRun = (selectedDef?.lastRunStatus === "running" || selectedDef?.lastRunStatus === "pending") || activeRun?.defId === selectedId;
   const { data: recentRuns, isLoading: runsLoading } = useQuery<WfRun[]>({
@@ -1238,6 +1251,37 @@ export default function WorkflowListPage() {
         <span className={`flex-1 text-xs truncate ${isSystem ? "text-[#8B949E]" : "text-[#C9D1D9]"} ${isSelected ? "text-[#E6EDF3] font-medium" : ""}`}>
           {def.name}
         </span>
+        {/* Today's trigger activity badge */}
+        {(() => {
+          const activity = activityByDef.get(def.id);
+          const todayCount = activity?.todayCount ?? 0;
+          if (todayCount > 0) {
+            return (
+              <button
+                onClick={e => { e.stopPropagation(); navigate(`/workflows/triggers/${def.id}`); }}
+                title={`${todayCount} trigger event${todayCount !== 1 ? "s" : ""} fired today — click to view triggers`}
+                className="flex-shrink-0 flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-teal-500/15 text-teal-400 border border-teal-500/25 hover:bg-teal-500/25 transition-colors"
+              >
+                <svg className="w-2.5 h-2.5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                {todayCount}
+              </button>
+            );
+          }
+          if (def.triggerCount > 0) {
+            return (
+              <span
+                onClick={e => { e.stopPropagation(); navigate(`/workflows/triggers/${def.id}`); }}
+                title="No trigger activity today"
+                className="opacity-0 group-hover:opacity-100 flex-shrink-0 text-[9px] text-[#484F58] transition-opacity cursor-pointer hover:text-[#7D8590]"
+              >
+                no activity
+              </span>
+            );
+          }
+          return null;
+        })()}
         {canRun && (
           <button
             onClick={e => { e.stopPropagation(); isActiveRunDef ? (activeRun && stopMut.mutate(activeRun.runId)) : handlePlayClick(def); }}

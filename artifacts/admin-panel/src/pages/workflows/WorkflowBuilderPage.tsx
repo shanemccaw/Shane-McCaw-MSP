@@ -8634,11 +8634,8 @@ function RunOutputDock({ runId }: { runId: number }) {
 
 // Pattern registry — imported from the canonical module so both the Patterns
 // sidebar tab and the global search palette share the same data and insertion path.
-import { WORKFLOW_PATTERNS } from "./patternRegistry";
+import { PATTERNS as WORKFLOW_PATTERNS } from "./patternRegistry";
 
-// Workflow health scoring — the canonical function that produces the unified issue list
-// consumed by both the Errors dock tab and the Health Report slide-over.
-// Covers structural validation + per-node schema validation (missing required fields).
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [location, navigate] = useLocation();
