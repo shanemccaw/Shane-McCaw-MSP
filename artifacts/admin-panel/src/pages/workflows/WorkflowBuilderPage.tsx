@@ -197,7 +197,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   send_sms:               [{ key: "sent", label: "true if SMS was sent" }],
   // CRM nodes
   score_lead:            [{ key: "leadId", label: "Lead ID" }, { key: "score", label: "Score 0–100" }, { key: "scoreLabel", label: "Low / Medium / High", enumValues: ["Low", "Medium", "High"] }, { key: "qualified", label: "true if score ≥ threshold" }],
-  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage", enumValues: ["new", "qualified", "proposal", "negotiation", "won", "lost"] }],
+  assign_pipeline_stage: [{ key: "targetType", label: "Target type" }, { key: "leadId", label: "Lead ID" }, { key: "opportunityId", label: "Opportunity ID" }, { key: "stage", label: "New stage", enumValues: ["Junk", "Cold", "Warm", "Hot", "DiscoveryCall", "Proposal", "QuickWin", "Retainer", "Onboarding", "Closed Won", "Closed Lost"] }],
   create_opportunity:    [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   // Diagnostics nodes
   parse_quiz_results:       [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "totalScore", label: "Overall quiz score" }, { key: "tier", label: "Score tier", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }],

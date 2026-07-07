@@ -199,7 +199,7 @@ mock.module("../lib/service-overview-pdf.ts", {
 
 mock.module("../lib/lead-scorer.ts", {
   namedExports: {
-    scoreLead: () => ({ score: 0, stage: "Lead" }),
+    scoreLead: () => ({ score: 0, stage: "Cold" }),
     determineNextStep: () => "Follow up",
   },
 });
