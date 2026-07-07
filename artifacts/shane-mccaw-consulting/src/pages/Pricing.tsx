@@ -295,7 +295,7 @@ export default function Pricing() {
                 tier: "Entry",
                 title: "Fixed-Price Quick Wins",
                 range: track01Range,
-                desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
+                desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No call required — purchase directly and the automated diagnostic begins immediately.",
                 bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
                 anchor: "#quick-wins",
               },
@@ -303,9 +303,9 @@ export default function Pricing() {
                 icon: FolderOpen,
                 label: "Track 02",
                 tier: "Core",
-                title: "Project-Based Engagements",
-                range: track02Range,
-                desc: "For larger, multi-phase work \u2014 tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
+                title: "Engagement Projects",
+                range: "Starting from $3,000",
+                desc: "Projects are scoped from Tier 1 assessment telemetry via the Signal Engine — Shane builds your project scope directly from diagnostic findings. Priced automatically after your Tier 1 assessment completes.",
                 bestFor: "Organizations with a defined initiative — preparing for Copilot, remediating governance gaps, or executing a migration — that need structured delivery and committed outcomes.",
                 anchor: "#project-based",
               },
@@ -410,6 +410,9 @@ export default function Pricing() {
             <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
               <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages ($3,000–$5,000) are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages ($8,000–$18,000) are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
             </p>
+            <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm mt-3 bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-lg px-4 py-3">
+              <span className="font-semibold text-[#0A2540]">No call required</span> — purchase directly and the automated diagnostic begins immediately.
+            </p>
           </div>
           {offersLoading && microOffers.length === 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -438,20 +441,20 @@ export default function Pricing() {
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
               <div className="max-w-2xl">
                 <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
-                  Project-Based Engagements
+                  Engagement Projects — Starting from $3,000
                 </h2>
                 <p className="text-muted-foreground leading-relaxed mb-3">
-                  For complex, multi-phase work that goes beyond a packaged deliverable. Every project is priced as a fixed fee with defined deliverables and a committed timeline — not an hourly estimate.
+                  Projects are scoped from Tier 1 assessment telemetry via the Signal Engine — Shane builds your project scope directly from diagnostic findings. Priced automatically after your Tier 1 assessment completes.
                 </p>
                 <p className="text-muted-foreground leading-relaxed text-sm">
-                  You'll receive a detailed proposal before any commitment. Scope changes require a signed change order.
+                  Every project is delivered as a fixed fee with defined deliverables and a committed timeline — not an hourly estimate. You'll receive a detailed proposal before any commitment. Scope changes require a signed change order.
                 </p>
               </div>
               <div className="flex-shrink-0">
                 <div className="bg-[#F7F9FC] rounded-xl border border-border p-5 mb-4 text-center lg:text-right">
                   <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-1">Typical project range</p>
-                  <p className="text-2xl font-extrabold text-[#0078D4]">{track02Range}</p>
-                  <p className="text-muted-foreground text-xs mt-1">Scoped after a free discovery call.</p>
+                  <p className="text-2xl font-extrabold text-[#0078D4]">Starting from $3,000</p>
+                  <p className="text-muted-foreground text-xs mt-1">Priced automatically after your Tier 1 assessment.</p>
                 </div>
                 <CTAButton href="/book" className="text-sm w-full justify-center" data-testid="project-cta">
                   Book a Free Scoping Call
