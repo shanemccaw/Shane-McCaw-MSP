@@ -2668,10 +2668,12 @@ async function executeNode(
           .orderBy(workflowStepsTable.order, kanbanTasksTable.order);
 
         // Query 2: fetch template step tasks for all steps that have a template link.
-        // Maps (workflowTemplateStepId, position-index) → template task metadata fields.
-        const gptTemplateStepIds = [...new Set(
-          gptRows.map(r => r.workflowTemplateStepId).filter((id): id is number => id != null)
-        )];
+        // Include IDs from BOTH task rows AND phases — phases with no kanban tasks yet
+        // still need their template tasks so we can synthesize entries for them.
+        const gptTemplateStepIds = [...new Set([
+          ...gptRows.map(r => r.workflowTemplateStepId).filter((id): id is number => id != null),
+          ...gptPhases.map(p => p.workflowTemplateStepId).filter((id): id is number => id != null),
+        ])];
 
         type TemplateMeta = {
           isCustomerTask: boolean;
@@ -2679,13 +2681,28 @@ async function executeNode(
           customerDownloadScriptId: string | null;
           triggersHealthScore: boolean;
         };
-        // key: `${templateStepId}:${positionIndex}` → template task metadata
+        type FullTemplateMeta = TemplateMeta & {
+          id: number;
+          title: string;
+          groupName: string | null;
+          taskType: string | null;
+          taskMetadata: Record<string, unknown> | null;
+          runbookId: string | null;
+        };
+        // key: `${templateStepId}:${positionIndex}` → enrichment metadata for kanban tasks
         const gptTemplateMetaMap = new Map<string, TemplateMeta>();
+        // key: templateStepId → ordered list of full template task data (for synthesizing tasks in empty phases)
+        const gptTemplateTasksByStep = new Map<number, FullTemplateMeta[]>();
 
         if (gptTemplateStepIds.length > 0) {
           const gptTemplateTasks = await db
             .select({
+              id:                       workflowTemplateStepTasksTable.id,
               workflowTemplateStepId:   workflowTemplateStepTasksTable.workflowTemplateStepId,
+              title:                    workflowTemplateStepTasksTable.title,
+              groupName:                workflowTemplateStepTasksTable.groupName,
+              taskType:                 workflowTemplateStepTasksTable.taskType,
+              taskMetadata:             workflowTemplateStepTasksTable.taskMetadata,
               order:                    workflowTemplateStepTasksTable.order,
               isCustomerTask:           workflowTemplateStepTasksTable.isCustomerTask,
               runbookId:                workflowTemplateStepTasksTable.runbookId,
@@ -2705,14 +2722,24 @@ async function executeNode(
           }
 
           for (const [stepId, tasks] of gptTemplateByStep) {
+            const full: FullTemplateMeta[] = [];
             tasks.forEach((tt, idx) => {
-              gptTemplateMetaMap.set(`${stepId}:${idx}`, {
+              const entry: FullTemplateMeta = {
+                id:                       tt.id,
+                title:                    tt.title,
+                groupName:                tt.groupName ?? null,
+                taskType:                 tt.taskType ?? null,
+                taskMetadata:             tt.taskMetadata ?? null,
+                runbookId:                tt.runbookId ?? null,
                 isCustomerTask:           tt.isCustomerTask ?? false,
                 linkedRunbookId:          tt.runbookId ?? null,
                 customerDownloadScriptId: tt.customerDownloadScriptId ?? null,
                 triggersHealthScore:      tt.triggersHealthScore,
-              });
+              };
+              gptTemplateMetaMap.set(`${stepId}:${idx}`, entry);
+              full.push(entry);
             });
+            gptTemplateTasksByStep.set(stepId, full);
           }
         }
 
@@ -2725,7 +2752,7 @@ async function executeNode(
           phaseStatus: string | null;
           order: number;
           tasks: Array<{
-            taskId: number;
+            taskId: number | null;
             title: string;
             column: string;
             priority: string;
@@ -2793,6 +2820,32 @@ async function executeNode(
             triggersHealthScore:      templateMeta?.triggersHealthScore ?? (typeof metaFallback.triggersHealthScore === "boolean" ? metaFallback.triggersHealthScore : null),
             taskMetadata:             row.taskMetadata ?? null,
           });
+        }
+
+        // For phases that still have no kanban tasks, synthesize task entries from their
+        // workflow template so the phase's expected work is visible to downstream nodes.
+        for (const phase of gptPhases) {
+          if (!phase.workflowTemplateStepId) continue;
+          const phaseEntry = phaseMap.get(String(phase.id));
+          if (!phaseEntry || phaseEntry.tasks.length > 0) continue;
+          const templateTasks = gptTemplateTasksByStep.get(phase.workflowTemplateStepId) ?? [];
+          for (const tt of templateTasks) {
+            phaseEntry.tasks.push({
+              taskId:                   null,
+              title:                    tt.title,
+              column:                   "backlog",
+              priority:                 "medium",
+              assignedTo:               null,
+              dueDate:                  null,
+              groupName:                tt.groupName,
+              taskType:                 tt.taskType,
+              isCustomerTask:           tt.isCustomerTask,
+              linkedRunbookId:          tt.linkedRunbookId,
+              customerDownloadScriptId: tt.customerDownloadScriptId,
+              triggersHealthScore:      tt.triggersHealthScore,
+              taskMetadata:             tt.taskMetadata,
+            });
+          }
         }
 
         const phases = Array.from(phaseMap.values()).sort((a, b) => a.order - b.order);
