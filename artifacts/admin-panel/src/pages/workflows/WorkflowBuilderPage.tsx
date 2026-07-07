@@ -9922,51 +9922,95 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 bg-[#161B22] border-b border-[#30363D] gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={() => isDirty ? setShowUnsavedDialog(true) : (onClose ? onClose() : navigate("/workflows/list"))}
-            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
-            title={isDirty ? "You have unsaved changes" : "Back to workflows"}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-[#E6EDF3] truncate">{def?.name ?? "Loading…"}</p>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#484F58]">{currentVersion?.label ?? ""}</span>
-              {isPublished && (
-                <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-semibold">LIVE</span>
-              )}
-              {isDraft && (
-                <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-semibold">DRAFT</span>
-              )}
-              {isArchived && (
-                <span className="text-[9px] bg-[#30363D] border border-[#484F58] text-[#7D8590] px-1.5 py-0.5 rounded-full font-semibold">ARCHIVED</span>
-              )}
+      {/* Toolbar: two-row Office Ribbon */}
+      <div className="flex-shrink-0 flex flex-col bg-[#161B22] border-b border-[#30363D]">
+
+        {/* ── Row 1: Title bar ──────────────────────────────────────────────── */}
+        <div className="flex items-center justify-between px-4 h-9 border-b border-[#30363D]/50 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => isDirty ? setShowUnsavedDialog(true) : (onClose ? onClose() : navigate("/workflows/list"))}
+              className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors flex-shrink-0"
+              title={isDirty ? "You have unsaved changes" : "Back to workflows"}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-[#E6EDF3] truncate">{def?.name ?? "Loading…"}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[#484F58]">{currentVersion?.label ?? ""}</span>
+                {isPublished && (
+                  <span className="text-[9px] bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-semibold">LIVE</span>
+                )}
+                {isDraft && (
+                  <span className="text-[9px] bg-amber-500/10 border border-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-semibold">DRAFT</span>
+                )}
+                {isArchived && (
+                  <span className="text-[9px] bg-[#30363D] border border-[#484F58] text-[#7D8590] px-1.5 py-0.5 rounded-full font-semibold">ARCHIVED</span>
+                )}
+              </div>
             </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {liveRunState && (
+              <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg animate-pulse">
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg>
+                {String(Math.floor(liveElapsedSecs / 60)).padStart(2, "0")}:{String(liveElapsedSecs % 60).padStart(2, "0")}
+              </span>
+            )}
+            {lastDraftSavedAt && saveStatus !== "saved" && (
+              <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
+                Auto-saved {draftAgeLabel(lastDraftSavedAt)}
+              </span>
+            )}
+            {!isReadOnly && (
+              <button
+                onClick={() => saveMut.mutate()}
+                disabled={saveMut.isPending}
+                className="px-3 py-1 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
+                title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
+              >
+                {saveStatus === "saving" ? "Saving…"
+                 : saveStatus === "saved" ? "✓ Saved"
+                 : saveStatus === "error" ? "Error"
+                 : isPublished ? "Save as Draft"
+                 : "Save"}
+              </button>
+            )}
+            {isDraft && (
+              <button
+                onClick={() => {
+                  const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
+                  setPublishLabel(lastPublished?.label ?? "");
+                  setPublishAcknowledged(false);
+                  setShowPublish(true);
+                }}
+                className="px-3 py-1 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+              >
+                Publish
+              </button>
+            )}
+            <button
+              onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              🧪 Test Run
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Live-run elapsed timer */}
-          {liveRunState && (
-            <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg animate-pulse">
-              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg>
-              {String(Math.floor(liveElapsedSecs / 60)).padStart(2, "0")}:{String(liveElapsedSecs % 60).padStart(2, "0")}
-            </span>
-          )}
+        {/* ── Row 2: Command Ribbon ──────────────────────────────────────────── */}
+        <div className="bg-[#0D1117] flex items-end gap-1.5 px-3 pb-1 min-h-[52px] overflow-x-auto">
 
-          {/* Undo / Redo */}
-          <div className="flex items-center gap-0.5">
+          {/* Clipboard */}
+          <RibbonGroup label="Clipboard">
             <button
               onClick={handleUndo}
               disabled={!canUndo}
               title="Undo (Ctrl+Z)"
-              className="p-1.5 rounded-lg border border-[#30363D] transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] disabled:hover:text-[#7D8590] disabled:hover:border-[#30363D]"
+              className="p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590]"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
@@ -9976,60 +10020,72 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={handleRedo}
               disabled={!canRedo}
               title="Redo (Ctrl+Shift+Z)"
-              className="p-1.5 rounded-lg border border-[#30363D] transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58] disabled:hover:text-[#7D8590] disabled:hover:border-[#30363D]"
+              className="p-1.5 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] disabled:hover:text-[#7D8590]"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10H11a8 8 0 00-8 8v2M21 10l-6 6M21 10l-6-6" />
               </svg>
             </button>
-          </div>
+          </RibbonGroup>
 
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Group: Layout / Runs */}
-          <button
-            onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
-            title="View run history for this workflow"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            View Runs
-          </button>
-
-          {/* Semantic auto-layout */}
-          {!isReadOnly && (
+          {/* Canvas */}
+          <RibbonGroup label="Canvas">
+            {!isReadOnly && (
+              <button
+                onClick={runAutoLayout}
+                className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                title="Auto-arrange nodes in a structured top-to-bottom layout"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+                </svg>
+                Auto Layout
+              </button>
+            )}
             <button
-              onClick={runAutoLayout}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
-              title="Auto-arrange nodes in a structured top-to-bottom layout"
+              onClick={() => onViewRuns ? onViewRuns() : navigate(`/workflows/runs?definitionId=${defId}`)}
+              className="flex items-center gap-1 px-1.5 py-1 rounded text-[11px] text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+              title="View run history for this workflow"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              Auto Layout
+              View Runs
             </button>
-          )}
+          </RibbonGroup>
 
-          {/* Trends — opens the trends drawer stub; full data arrives with #2541 */}
-          <button
-            onClick={() => { setShowTrendsDrawer(v => !v); setShowTrends(v => !v); }}
-            className={`p-1.5 rounded-lg border border-[#30363D] transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
-            title="View workflow trends and run analytics"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </button>
+          {/* Analytics */}
+          <RibbonGroup label="Analytics">
+            <button
+              onClick={() => { setShowTrendsDrawer(v => !v); setShowTrends(v => !v); }}
+              className={`p-1.5 rounded transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
+              title="View workflow trends and run analytics"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </button>
+            {nodes.length > 1 && (
+              <button
+                onClick={() => setShowHealthPanel(v => !v)}
+                className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] font-semibold transition-colors ${
+                  healthResult.score >= 80 ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                  : healthResult.score >= 60 ? "bg-amber-500/10 text-amber-400 hover:bg-amber-500/20"
+                  : "bg-red-500/10 text-red-400 hover:bg-red-500/20"
+                }`}
+                title="Workflow health score"
+              >
+                {healthResult.score >= 80 ? "✓" : healthResult.score >= 60 ? "⚠" : "✕"}
+                {healthResult.score}
+              </button>
+            )}
+          </RibbonGroup>
 
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Group: Inspect + Replay */}
-          <div className="flex items-center gap-1">
+          {/* Inspect */}
+          <RibbonGroup label="Inspect">
             <button
               onClick={() => { setInspectMode(v => !v); if (inspectMode) { setInspectRunId(null); setReplayMode(false); } }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg transition-colors ${inspectMode ? "bg-violet-600/20 border-violet-500/40 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors ${inspectMode ? "bg-violet-600/20 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"}`}
               title="Inspect a run — overlay execution results on each step card"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10044,14 +10100,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 onChange={setInspectRunId}
               />
             )}
-            {/* Replay toggle — enabled only when a run is selected in Inspect mode */}
             <button
               onClick={() => { const entering = !replayMode; setReplayMode(entering); if (entering) setLiveRunState(null); }}
               disabled={!inspectRunId}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
-                replayMode
-                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
-                  : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"
+              className={`flex items-center gap-1 px-1.5 py-1 rounded text-[11px] transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                replayMode ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30" : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#30363D]"
               }`}
               title={inspectRunId ? "Toggle replay mode — step through run with ← →" : "Select a run first to enable replay"}
             >
@@ -10061,276 +10114,129 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </svg>
               Replay
             </button>
-          </div>
+          </RibbonGroup>
 
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Health Score badge — clicking opens Health Report slide-over; score populated by #2541 */}
-          {(() => {
-            const score = (def as Record<string, unknown> | undefined)?.healthScore as number | undefined;
-            const band = score == null ? null : score >= 80 ? "green" : score >= 50 ? "amber" : "red";
-            const cls = band === "green" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
-                       : band === "amber" ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
-                       : band === "red"   ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
-                       : "bg-[#30363D] border-[#484F58] text-[#7D8590] hover:bg-[#484F58]/20";
-            return (
+          {/* Intelligence */}
+          <RibbonGroup label="Intelligence">
+            {!isReadOnly && (
               <button
-                onClick={() => setShowHealthReport(true)}
-                className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold border rounded-full transition-colors ${cls}`}
-                title={score != null ? `Health score: ${score}/100 — click for report` : "Health report — click to open (score populated by #2541)"}
+                onClick={() => setShowAiModal(true)}
+                className="flex items-center gap-1 px-1.5 py-1 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-medium rounded transition-colors"
+                title="Describe a workflow and let AI build it on the canvas"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                {score != null ? `${score}` : "—"}
+                ✦ Build with AI
               </button>
-            );
-          })()}
-
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Group: AI — Build with AI | Refine… | Explain */}
-          <button
-            onClick={() => setShowAiModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-            title="Describe a workflow and let AI build it on the canvas"
-          >
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            Build with AI
-          </button>
-
-          {nodes.length > 0 && (
-            <button
-              onClick={() => setShowRefineModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
-              title="Refine the current workflow with an AI instruction"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Refine…
-            </button>
-          )}
-
-          {/* Explain — POST /explain; response narrative is streamed to the AI Output dock tab */}
-          {nodes.length > 0 && (
-            <button
-              onClick={async () => {
-                addAiOutput([`🤖 Explain started (${new Date().toLocaleTimeString()}) — ${nodes.length} node${nodes.length !== 1 ? "s" : ""}`]);
-                setBottomDockOpen(true);
-                setBottomDockTab("aioutput");
-                try {
-                  const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ graph: { nodes, edges } }),
-                  });
-                  if (!res.ok) {
-                    const body = await res.json().catch(() => ({ error: "unknown" })) as { error?: string };
-                    addAiOutput([`✕ Explain failed: ${body.error ?? res.statusText}`]);
-                    return;
-                  }
-                  const data = await res.json() as { narrative?: string; summary?: string; steps?: string[] };
-                  const lines: string[] = [];
-                  if (data.summary) lines.push(`✓ ${data.summary}`);
-                  if (data.narrative) data.narrative.split("\n").filter(Boolean).forEach(l => lines.push(`  ${l}`));
-                  if (data.steps?.length) {
-                    lines.push("  Steps:");
-                    data.steps.forEach((s, i) => lines.push(`    ${i + 1}. ${s}`));
-                  }
-                  if (lines.length === 0) lines.push("✓ Explain completed — no narrative returned by server");
-                  addAiOutput(lines);
-                } catch {
-                  addAiOutput(["✕ Explain — network error"]);
-                }
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
-              title="Ask AI to explain what this workflow does — output streams to the AI Output dock tab"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Explain
-            </button>
-          )}
-
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Group: Save · Publish (right-anchored) */}
-          {lastDraftSavedAt && saveStatus !== "saved" && (
-            <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
-              Auto-saved {draftAgeLabel(lastDraftSavedAt)}
-            </span>
-          )}
-
-          {!isReadOnly && (
-            <button
-              onClick={() => saveMut.mutate()}
-              disabled={saveMut.isPending}
-              className="px-3 py-1.5 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
-              title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
-            >
-              {saveStatus === "saving" ? "Saving…"
-               : saveStatus === "saved" ? "✓ Saved"
-               : saveStatus === "error" ? "Error"
-               : isPublished ? "Save as Draft"
-               : "Save"}
-            </button>
-          )}
-
-          {isDraft && (
-            <button
-              onClick={() => {
-                const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
-                setPublishLabel(lastPublished?.label ?? "");
-                setPublishAcknowledged(false);
-                setShowPublish(true);
-              }}
-              className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Publish
-            </button>
-          )}
-
-          {/* Health Score Badge */}
-          {nodes.length > 1 && (
-            <button
-              onClick={() => setShowHealthPanel(v => !v)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
-                healthResult.score >= 80
-                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
-                  : healthResult.score >= 60
-                  ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
-                  : "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
-              }`}
-              title="Workflow health score"
-            >
-              {healthResult.score >= 80 ? "✓" : healthResult.score >= 60 ? "⚠" : "✕"}
-              {healthResult.score}
-            </button>
-          )}
-
-          {/* Trends button */}
-          <button
-            onClick={() => setShowTrends(v => !v)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${showTrends ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#4DA6F5]" : "text-[#7D8590] border-[#30363D] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
-            title="Execution trends"
-          >
-            📈 Trends
-          </button>
-
-          {/* AI Narrative */}
-          {nodes.length > 1 && (
-            <button
-              onClick={() => void fetchNarrative()}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-400 rounded-lg transition-colors"
-              title="Generate an AI explanation of this workflow"
-            >
-              ✨ Explain
-            </button>
-          )}
-
-          {!isReadOnly && (
-            <button
-              onClick={() => setShowAiModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
-              title="Describe a workflow and let AI build it on the canvas"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              Build with AI
-            </button>
-          )}
-
-          {!isReadOnly && nodes.length > 0 && (
-            <button
-              onClick={() => setShowRefineModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
-              title="Refine the current workflow with an AI instruction"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Refine…
-            </button>
-          )}
-
-          <button
-            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            🧪 Test Run
-          </button>
-
-
-          <button
-            onClick={() => void publishToProd()}
-            disabled={publishingToProd || !prodDbConnected || !hasPublishedVersion}
-            title={
-              !prodDbConnected
-                ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets"
-                : !hasPublishedVersion
-                ? "Publish a version first — no published version exists for this workflow"
-                : "Publish this workflow to the production database"
-            }
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-xs font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {publishingToProd ? (
-              <div className="w-3 h-3 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
-            ) : (
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
             )}
-            {publishingToProd ? "Publishing…" : "Publish to Prod"}
-          </button>
+            {!isReadOnly && nodes.length > 0 && (
+              <button
+                onClick={() => setShowRefineModal(true)}
+                className="flex items-center gap-1 px-1.5 py-1 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-[11px] font-medium rounded transition-colors"
+                title="Refine the current workflow with an AI instruction"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Refine…
+              </button>
+            )}
+            {nodes.length > 0 && (
+              <button
+                onClick={async () => {
+                  addAiOutput([`🤖 Explain started (${new Date().toLocaleTimeString()}) — ${nodes.length} node${nodes.length !== 1 ? "s" : ""}`]);
+                  setBottomDockOpen(true);
+                  setBottomDockTab("aioutput");
+                  try {
+                    const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ graph: { nodes, edges } }),
+                    });
+                    if (!res.ok) {
+                      const body = await res.json().catch(() => ({ error: "unknown" })) as { error?: string };
+                      addAiOutput([`✕ Explain failed: ${body.error ?? res.statusText}`]);
+                      return;
+                    }
+                    const data = await res.json() as { narrative?: string; summary?: string; steps?: string[] };
+                    const lines: string[] = [];
+                    if (data.summary) lines.push(`✓ ${data.summary}`);
+                    if (data.narrative) data.narrative.split("\n").filter(Boolean).forEach(l => lines.push(`  ${l}`));
+                    if (data.steps?.length) {
+                      lines.push("  Steps:");
+                      data.steps.forEach((s, i) => lines.push(`    ${i + 1}. ${s}`));
+                    }
+                    if (lines.length === 0) lines.push("✓ Explain completed — no narrative returned by server");
+                    addAiOutput(lines);
+                  } catch {
+                    addAiOutput(["✕ Explain — network error"]);
+                  }
+                }}
+                className="flex items-center gap-1 px-1.5 py-1 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-[11px] font-medium rounded transition-colors"
+                title="Ask AI to explain what this workflow does — output streams to the AI Output dock tab"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Explain
+              </button>
+            )}
+          </RibbonGroup>
 
-          {/* Search (Cmd/Ctrl+F) */}
-          <button
-            onClick={() => { setShowSearch(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
-            className={`p-1.5 rounded-lg border transition-colors ${showSearch ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
-            title="Search nodes (Cmd/Ctrl+F)"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </button>
+          {/* Right-anchored utility controls */}
+          <div className="ml-auto flex items-center gap-1 pb-1.5 flex-shrink-0">
+            <button
+              onClick={() => void publishToProd()}
+              disabled={publishingToProd || !prodDbConnected || !hasPublishedVersion}
+              title={
+                !prodDbConnected
+                  ? "Production database not configured — set DATABASE_URL_PROD in Replit Secrets"
+                  : !hasPublishedVersion
+                  ? "Publish a version first — no published version exists for this workflow"
+                  : "Publish this workflow to the production database"
+              }
+              className="flex items-center gap-1 px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 text-[11px] font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              {publishingToProd ? (
+                <div className="w-3 h-3 border border-emerald-400/40 border-t-emerald-400 rounded-full animate-spin" />
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+              {publishingToProd ? "Publishing…" : "→ Prod"}
+            </button>
+            <button
+              onClick={() => { setShowSearch(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+              className={`p-1.5 rounded-lg border transition-colors ${showSearch ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              title="Search nodes (Cmd/Ctrl+F)"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setBottomDockOpen(v => !v)}
+              className={`p-1.5 rounded-lg border transition-colors ${bottomDockOpen ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              title={bottomDockOpen ? "Close output dock" : "Open output dock (console)"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                <rect x="13" y="14" width="7" height="5" rx="1" strokeWidth={2} />
+              </svg>
+            </button>
+            <button
+              onClick={() => setSplitViewActive(v => !v)}
+              className={`p-1.5 rounded-lg border transition-colors ${splitViewActive ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              title={splitViewActive ? "Exit split view (Ctrl+\\)" : "Split view — canvas + console side by side (Ctrl+\\)"}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4M9 3h10a2 2 0 012 2v14a2 2 0 01-2 2H9M9 3v18" />
+              </svg>
+            </button>
+          </div>
 
-          {/* Bottom dock toggle */}
-          <button
-            onClick={() => setBottomDockOpen(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors ${bottomDockOpen ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
-            title={bottomDockOpen ? "Close output dock" : "Open output dock (console)"}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-              <rect x="13" y="14" width="7" height="5" rx="1" strokeWidth={2} />
-            </svg>
-          </button>
-
-          {/* Split view toggle */}
-          <button
-            onClick={() => setSplitViewActive(v => !v)}
-            className={`p-1.5 rounded-lg border transition-colors ${splitViewActive ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
-            title={splitViewActive ? "Exit split view (Ctrl+\\)" : "Split view — canvas + console side by side (Ctrl+\\)"}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4M9 3h10a2 2 0 012 2v14a2 2 0 01-2 2H9M9 3v18" />
-            </svg>
-          </button>
-
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Test Run — far-right anchor */}
-          <button
-            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            🧪 Test Run
-          </button>
         </div>
       </div>
 
