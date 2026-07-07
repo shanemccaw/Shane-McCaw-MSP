@@ -758,6 +758,28 @@ const WF_TEMPLATES: Array<{ id: string; name: string; description: string; graph
       ],
     },
   },
+  {
+    id: "process-project-tasks",
+    name: "Process All Project Tasks",
+    description: "Fetches every kanban task for a project in one call, then iterates the flat list with a single ForEach — no nested loops required. Wire your per-task logic (update column, send email, etc.) inside the ForEach body.",
+    graph: {
+      nodes: [
+        { id: "n1", type: "start",            position: { x: 300, y: 50  }, data: { label: "Start" } },
+        { id: "n2", type: "get_project_tasks", position: { x: 300, y: 200 }, data: { label: "Get Project Tasks", projectId: "{{projectId}}" } },
+        { id: "n3", type: "foreach",           position: { x: 300, y: 380 }, data: { label: "For Each Task", arrayPath: "{{steps.n2.flatTasks}}", itemAlias: "task" } },
+        { id: "n4", type: "update_project_task", position: { x: 300, y: 560 }, data: { label: "Update Task", taskId: "{{steps.n3.task.taskId}}", column: "", titleExpr: "", priority: "" } },
+        { id: "n5", type: "end",               position: { x: 300, y: 760 }, data: { label: "Done" } },
+        { id: "nerr", type: "end",             position: { x: 660, y: 300 }, data: { label: "Error", customerError: "Failed to load project tasks — check that projectId is valid." } },
+      ],
+      edges: [
+        { id: "e1",  source: "n1",   target: "n2" },
+        { id: "e2",  source: "n2",   target: "n3" },
+        { id: "e3",  source: "n3",   target: "n4",   sourceHandle: "body" },
+        { id: "e4",  source: "n3",   target: "n5" },
+        { id: "fe1", source: "n2",   target: "nerr", label: "onError", sourceHandle: "onError" },
+      ],
+    },
+  },
 ];
 
 export default function WorkflowListPage() {

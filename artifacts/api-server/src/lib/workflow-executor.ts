@@ -602,6 +602,35 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         taskId: null,
       };
 
+    case "get_project_tasks": {
+      const dryPhase1Tasks = [
+        { taskId: 1, title: "Define scope", column: "done", priority: "high", assignedTo: null, dueDate: null, groupName: null, taskType: null, isCustomerTask: false, linkedRunbookId: null, customerDownloadScriptId: null, triggersHealthScore: false, taskMetadata: null, phaseId: 1, phaseTitle: "Discovery", phaseStatus: "active", phaseOrder: 1 },
+        { taskId: 2, title: "Kickoff call", column: "in_progress", priority: "medium", assignedTo: null, dueDate: null, groupName: null, taskType: null, isCustomerTask: true, linkedRunbookId: null, customerDownloadScriptId: null, triggersHealthScore: false, taskMetadata: null, phaseId: 1, phaseTitle: "Discovery", phaseStatus: "active", phaseOrder: 1 },
+      ];
+      const dryPhase2Tasks = [
+        { taskId: 3, title: "Deploy configuration", column: "todo", priority: "high", assignedTo: null, dueDate: null, groupName: null, taskType: null, isCustomerTask: false, linkedRunbookId: null, customerDownloadScriptId: null, triggersHealthScore: true, taskMetadata: null, phaseId: 2, phaseTitle: "Implementation", phaseStatus: "pending", phaseOrder: 2 },
+      ];
+      return {
+        dryRun: true,
+        phases: [
+          { phaseId: 1, phaseTitle: "Discovery", phaseStatus: "active", order: 1, tasks: dryPhase1Tasks.map(t => { const { phaseId: _p, phaseTitle: _pt, phaseStatus: _ps, phaseOrder: _po, ...rest } = t; return rest; }) },
+          { phaseId: 2, phaseTitle: "Implementation", phaseStatus: "pending", order: 2, tasks: dryPhase2Tasks.map(t => { const { phaseId: _p, phaseTitle: _pt, phaseStatus: _ps, phaseOrder: _po, ...rest } = t; return rest; }) },
+        ],
+        flatTasks: [...dryPhase1Tasks, ...dryPhase2Tasks],
+        taskCount: 3,
+        projectId: num("projectId") || 1,
+      };
+    }
+
+    case "update_project_task":
+      return {
+        dryRun: true,
+        updated: true,
+        taskId: num("taskId") || 1,
+        column: str("column", "in_progress"),
+        title: str("titleExpr", "Updated task"),
+      };
+
     case "get_phases":
       return {
         dryRun: true,
@@ -2718,7 +2747,20 @@ async function executeNode(
 
         const phases = Array.from(phaseMap.values()).sort((a, b) => a.order - b.order);
         const taskCount = gptRows.length;
-        output = { phases, taskCount, projectId: gptProjectId };
+
+        // flatTasks: all tasks across all phases, each enriched with phase metadata.
+        // Allows a single ForEach over flatTasks instead of nested ForEach over phases then tasks.
+        const flatTasks = phases.flatMap(phase =>
+          phase.tasks.map(task => ({
+            ...task,
+            phaseId:     phase.phaseId,
+            phaseTitle:  phase.phaseTitle,
+            phaseStatus: phase.phaseStatus,
+            phaseOrder:  phase.order,
+          }))
+        );
+
+        output = { phases, flatTasks, taskCount, projectId: gptProjectId };
         break;
       }
 
