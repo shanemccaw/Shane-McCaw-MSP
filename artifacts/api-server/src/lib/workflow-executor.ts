@@ -704,13 +704,17 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "group_by": {
       const dryKeyExpr = (node.data.keyExpression as string | undefined) ?? "{{currentItem.key}}";
+      const drySort = (node.data.sortGroups as string | undefined) ?? "none";
+      const dryGroups = [
+        { key: `<${dryKeyExpr}>`, items: [{ dryRunElement: 1 }, { dryRunElement: 2 }] },
+        { key: `<${dryKeyExpr} — group 2>`, items: [{ dryRunElement: 3 }] },
+      ];
+      if (drySort === "asc") dryGroups.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+      else if (drySort === "desc") dryGroups.sort((a, b) => String(b.key).localeCompare(String(a.key)));
       return {
         dryRun: true,
-        groups: [
-          { key: `<${dryKeyExpr}>`, items: [{ dryRunElement: 1 }, { dryRunElement: 2 }] },
-          { key: `<${dryKeyExpr} — group 2>`, items: [{ dryRunElement: 3 }] },
-        ],
-        groupCount: 2,
+        groups: dryGroups,
+        groupCount: dryGroups.length,
       };
     }
 
@@ -3845,7 +3849,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(item);
         }
-        const groups = Object.entries(grouped).map(([key, items]) => ({ key, items }));
+        let groups = Object.entries(grouped).map(([key, items]) => ({ key, items }));
+        const gbSort = (node.data.sortGroups as string | undefined) ?? "none";
+        if (gbSort === "asc") groups.sort((a, b) => String(a.key).localeCompare(String(b.key)));
+        else if (gbSort === "desc") groups.sort((a, b) => String(b.key).localeCompare(String(a.key)));
         output = { groups, groupCount: groups.length };
         break;
       }
