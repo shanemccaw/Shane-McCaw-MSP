@@ -9016,13 +9016,18 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   });
 
 
-  // Insert a pattern sub-tree at the end of the current canvas.
-  // Re-IDs all pattern nodes to avoid clashes, then appends them + edges.
+  // Insert a pattern sub-tree at the current cursor insertion point.
+  // When a node is selected the pattern is placed adjacent to it;
+  // otherwise it falls back to below the last node on the canvas.
   function insertPattern(pattern: typeof WORKFLOW_PATTERNS[number]) {
     pushHistory(`Inserted pattern: ${pattern.name}`);
-    // Find a safe Y offset below the last existing node
-    const maxY = nodes.reduce((m, n) => Math.max(m, (n.position?.y ?? 0) + 120), 100);
-    // Build a fresh ID map
+    // Determine insertion origin from selected node or canvas bottom
+    const anchor = selectedNodeId ? nodes.find(n => n.id === selectedNodeId) : null;
+    const originX = anchor ? (anchor.position?.x ?? 300) : 300;
+    const originY = anchor
+      ? (anchor.position?.y ?? 0) + 160  // place below the selected node
+      : nodes.reduce((m, n) => Math.max(m, (n.position?.y ?? 0) + 120), 100);
+    // Build a fresh ID map to avoid collisions
     const idMap = new Map<string, string>();
     const newPNodes = pattern.nodes.map(pn => {
       const freshId = `node-${++nodeIdCounter.current}`;
@@ -9030,7 +9035,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       return {
         id: freshId,
         type: "wfNode" as const,
-        position: { x: (pn.position?.x ?? 0) + 300, y: (pn.position?.y ?? 0) + maxY },
+        position: { x: originX + (pn.position?.x ?? 0), y: originY + (pn.position?.y ?? 0) },
         data: { ...pn.data },
       };
     });
@@ -9042,7 +9047,20 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       style: { stroke: "#30363D", strokeWidth: 2 },
       animated: false,
     }));
-    handleGraphChange([...nodes, ...newPNodes], [...edges, ...newPEdges]);
+    // If there is a selected anchor node, connect it to the first inserted pattern node
+    const connectedEdges = [...edges];
+    if (anchor && newPNodes.length > 0) {
+      connectedEdges.push({
+        id: `edge-${++nodeIdCounter.current}`,
+        source: anchor.id,
+        target: newPNodes[0].id,
+        style: { stroke: "#30363D", strokeWidth: 2 },
+        animated: false,
+      });
+    }
+    handleGraphChange([...nodes, ...newPNodes], [...connectedEdges, ...newPEdges]);
+    // Select the first inserted node so the user can configure it immediately
+    if (newPNodes.length > 0) { setSelectedNodeId(newPNodes[0].id); setRightPanelTab("node"); }
     setIsDirty(true);
     addSystemLog("info", `Pattern inserted: ${pattern.name} (${newPNodes.length} node${newPNodes.length !== 1 ? "s" : ""})`);
   }
@@ -9552,7 +9570,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     return `${diffHr} hr ago`;
   }
 
-  // Workflow issues — basic schema validation (scoreWorkflow from #2541 not yet available)
+  // Workflow issues — unified source of truth shared by the Errors tab and Health Report slide-over.
+  // Covers structural/schema validation today; scoring dimensions (retry coverage, timeout guards, etc.)
+  // will be appended here when scoreWorkflow() ships in #2541.
   const workflowIssues = useMemo(() => {
     const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
     if (nodes.length === 0) {
@@ -9824,18 +9844,40 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
-          {/* Explain — triggers POST /api/admin/workflows/definitions/:id/explain (wired by #2541) */}
+          {/* Explain — POST /explain; response narrative is streamed to the AI Output dock tab */}
           {nodes.length > 0 && (
             <button
               onClick={async () => {
+                addAiOutput([`🤖 Explain started (${new Date().toLocaleTimeString()}) — ${nodes.length} node${nodes.length !== 1 ? "s" : ""}`]);
+                setBottomDockOpen(true);
+                setBottomDockTab("aioutput");
                 try {
-                  await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, { method: "POST" });
+                  const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ graph: { nodes, edges } }),
+                  });
+                  if (!res.ok) {
+                    const body = await res.json().catch(() => ({ error: "unknown" })) as { error?: string };
+                    addAiOutput([`✕ Explain failed: ${body.error ?? res.statusText}`]);
+                    return;
+                  }
+                  const data = await res.json() as { narrative?: string; summary?: string; steps?: string[] };
+                  const lines: string[] = [];
+                  if (data.summary) lines.push(`✓ ${data.summary}`);
+                  if (data.narrative) data.narrative.split("\n").filter(Boolean).forEach(l => lines.push(`  ${l}`));
+                  if (data.steps?.length) {
+                    lines.push("  Steps:");
+                    data.steps.forEach((s, i) => lines.push(`    ${i + 1}. ${s}`));
+                  }
+                  if (lines.length === 0) lines.push("✓ Explain completed — no narrative returned by server");
+                  addAiOutput(lines);
                 } catch {
-                  // explain endpoint lands with #2541
+                  addAiOutput(["✕ Explain — network error"]);
                 }
               }}
               className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
-              title="Ask AI to explain what this workflow does (POST /explain — #2541)"
+              title="Ask AI to explain what this workflow does — output streams to the AI Output dock tab"
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
