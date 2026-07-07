@@ -300,9 +300,18 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
       updateFields.name = body.data.name;
     }
 
+    // description lives in two places: the canonical top-level column (read by workflow
+    // list cards and other screens) AND metadata.description (read by the Metadata panel).
+    // Keep both in sync when the caller supplies a description value.
+    type UpdateFieldsWithDesc = UpdateFields & { description?: string | null };
+    const updateFieldsExt = updateFields as UpdateFieldsWithDesc;
+    if (body.data.description !== undefined) {
+      updateFieldsExt.description = body.data.description ?? null;
+    }
+
     const [updated] = await db
       .update(wfDefinitionsTable)
-      .set(updateFields)
+      .set(updateFieldsExt)
       .where(eq(wfDefinitionsTable.id, id))
       .returning();
     res.json(updated);

@@ -8551,15 +8551,18 @@ function RunOutputDock({ runId }: { runId: number }) {
 // sidebar tab and the global search palette share the same data and insertion path.
 import { WORKFLOW_PATTERNS } from "./patternRegistry";
 
-// Workflow health scoring — the canonical function that produces the issue list
+// Workflow health scoring — the canonical function that produces the unified issue list
 // consumed by both the Errors dock tab and the Health Report slide-over.
-// Structural checks live here today; when scoreWorkflow() ships in #2541 it
-// will augment this list with retry-coverage, timeout-guard, and dead-branch scores.
+// Covers structural validation + per-node schema validation (missing required fields).
+// When #2541 ships scoreWorkflow() it will append retry-coverage, timeout-guard,
+// and dead-branch scores to the same array — no changes needed in the component.
 function scoreWorkflow(
   nodes: StoredNode[],
   edges: StoredEdge[],
 ): Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> {
   const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
+
+  // ── Structural checks ────────────────────────────────────────────────────
   if (nodes.length === 0) {
     issues.push({ nodeId: null, severity: "high", message: "Workflow has no nodes — add at least one action node." });
     return issues;
@@ -8582,6 +8585,49 @@ function scoreWorkflow(
   if (unlabelledCount > 0) {
     issues.push({ nodeId: null, severity: "low", message: `${unlabelledCount} node${unlabelledCount > 1 ? "s have" : " has"} a generic label — rename for clarity.` });
   }
+
+  // ── Per-node schema validation (required field checks) ───────────────────
+  nodes.forEach(n => {
+    const nt = (n.data.nodeType as string) ?? "";
+    const lbl = `"${(n.data.label as string) || n.id}"`;
+    switch (nt) {
+      case "send_email": {
+        if (!n.data.toEmail && !n.data.to) {
+          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (send_email) is missing a recipient — set the "To" field.` });
+        }
+        if (!n.data.subject) {
+          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (send_email) has no email subject.` });
+        }
+        break;
+      }
+      case "condition": {
+        if (!n.data.expression && !n.data.condition) {
+          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (condition) has no expression — it will always follow the default branch.` });
+        }
+        break;
+      }
+      case "delay": {
+        const dur = n.data.durationMs ?? n.data.delayMs ?? n.data.duration;
+        if (!dur) {
+          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (delay) has no duration configured.` });
+        }
+        break;
+      }
+      case "foreach": {
+        if (!n.data.arrayExpr && !n.data.array && !n.data.iterableExpression) {
+          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (foreach) has no array expression — it will iterate over nothing.` });
+        }
+        break;
+      }
+      case "webhook": {
+        if (!n.data.url && !n.data.webhookUrl) {
+          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (webhook) is missing a target URL.` });
+        }
+        break;
+      }
+    }
+  });
+
   return issues;
 }
 
@@ -10662,7 +10708,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               ) : rightPanelTab === "history" ? (
                 <div className="overflow-y-auto p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Undo History</p>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Snapshot History</p>
                     {undoHistoryLog.length > 0 && (
                       <button
                         onClick={() => { setUndoHistoryLog([]); historyRef.current = []; redoRef.current = []; setCanUndo(false); setCanRedo(false); }}
@@ -10673,83 +10719,85 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </button>
                     )}
                   </div>
-                  {undoHistoryLog.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
-                      <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
-                      </svg>
-                      <p className="text-xs text-[#484F58]">No edits yet — make a change<br />and it'll appear here.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {[...undoHistoryLog].reverse().map((entry, idx) => {
-                        const isLatest = idx === 0;
-                        const stackPos = undoHistoryLog.length - idx;
-                        // Diff: compare this entry's nodeCount vs the previous entry (next in reversed order)
-                        const prevEntry = idx < undoHistoryLog.length - 1 ? [...undoHistoryLog].reverse()[idx + 1] : null;
-                        const nodeDelta = prevEntry != null ? entry.nodeCount - prevEntry.nodeCount : null;
-                        // Relative timestamp
-                        const relTs = (() => {
-                          const diff = Date.now() - entry.ts;
-                          if (diff < 5000) return "just now";
-                          if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
-                          if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-                          return new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-                        })();
-                        return (
-                          <button
-                            key={entry.id}
-                            onClick={() => {
-                              if (idx === 0) return; // already viewing the current state
-                              // Non-destructive snapshot jump: look up the target snapshot by index
-                              // without popping or truncating the history stack.
-                              // historyRef stores pre-edit states; the snapshot for reversed-idx N
-                              // is at historyRef.current[historyRef.current.length - idx].
-                              const targetIdx = historyRef.current.length - idx;
-                              const target = historyRef.current[targetIdx];
-                              if (!target) return;
-                              setNodes(target.nodes.map(n => ({ ...n, type: "wfNode" as const })));
-                              setEdges(target.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
-                              setIsDirty(true);
-                              // Add a new log entry (non-destructive: don't truncate existing history)
-                              const jumpId = ++undoLogIdRef.current;
-                              setUndoHistoryLog(prev => [...prev.slice(-29), {
-                                id: jumpId,
-                                label: `Jumped to: ${entry.label}`,
-                                ts: Date.now(),
-                                nodeCount: target.nodes.length,
-                                edgeCount: target.edges.length,
-                              }]);
-                              setCanUndo(historyRef.current.length > 0);
-                            }}
-                            disabled={isLatest}
-                            title={nodeDelta != null ? `${nodeDelta > 0 ? "+" : ""}${nodeDelta} node${Math.abs(nodeDelta) !== 1 ? "s" : ""} · ${entry.nodeCount} total` : `${entry.nodeCount} node${entry.nodeCount !== 1 ? "s" : ""}`}
-                            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
-                              isLatest
-                                ? "bg-[#0078D4]/10 border-[#0078D4]/30 cursor-default"
-                                : "bg-[#0D1117] border-[#30363D] hover:border-[#484F58] cursor-pointer"
-                            }`}
-                          >
-                            <span className="text-[10px] font-mono text-[#484F58] flex-shrink-0 w-4 text-right">{stackPos}</span>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-xs truncate ${isLatest ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{entry.label}</p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-[9px] text-[#484F58]">{relTs}</p>
-                                {nodeDelta != null && nodeDelta !== 0 && (
-                                  <span className={`text-[9px] font-mono ${nodeDelta > 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
-                                    {nodeDelta > 0 ? "+" : ""}{nodeDelta}
-                                  </span>
-                                )}
+                  {(() => {
+                    // Virtual "Current canvas" entry always shown at top, reflecting the live canvas.
+                    // Historical entries below it are actual snapshots in historyRef — all clickable.
+                    // Jump indexing: display row N (1-based below the current entry)
+                    //   → historyRef.current[historyRef.current.length - N]
+                    //   which is the state AFTER action N-1 was applied (= before action N).
+                    const reversedLog = [...undoHistoryLog].reverse();
+                    return (
+                      <div className="space-y-1">
+                        {/* Virtual current entry — always at the top */}
+                        <div className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border bg-[#0078D4]/10 border-[#0078D4]/30">
+                          <span className="text-[10px] font-mono text-[#0078D4] flex-shrink-0 w-4 text-right">★</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs truncate text-[#0078D4]">Current canvas</p>
+                            <p className="text-[9px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""}, {edges.length} edge{edges.length !== 1 ? "s" : ""}</p>
+                          </div>
+                          <span className="text-[9px] text-[#0078D4] flex-shrink-0">live</span>
+                        </div>
+                        {reversedLog.length === 0 && (
+                          <p className="text-[11px] text-[#484F58] text-center py-4">Make a change to record a snapshot.</p>
+                        )}
+                        {reversedLog.map((entry, idx) => {
+                          // 1-based display index: idx=0 → displayN=1
+                          const displayN = idx + 1;
+                          // The snapshot stored at historyRef position for this entry
+                          const snapshotIdx = historyRef.current.length - displayN;
+                          const hasSnapshot = snapshotIdx >= 0 && snapshotIdx < historyRef.current.length;
+                          // Delta vs. the entry above in the display (the virtual current or a newer entry)
+                          const newerEntry = idx === 0 ? { nodeCount: nodes.length } : reversedLog[idx - 1];
+                          const nodeDelta = entry.nodeCount - (newerEntry?.nodeCount ?? entry.nodeCount);
+                          const relTs = (() => {
+                            const diff = Date.now() - entry.ts;
+                            if (diff < 5000) return "just now";
+                            if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+                            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                            return new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                          })();
+                          return (
+                            <button
+                              key={entry.id}
+                              onClick={() => {
+                                if (!hasSnapshot) return;
+                                const target = historyRef.current[snapshotIdx];
+                                if (!target) return;
+                                // Non-destructive: apply snapshot without modifying historyRef
+                                setNodes(target.nodes.map(n => ({ ...n, type: "wfNode" as const })));
+                                setEdges(target.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
+                                setIsDirty(true);
+                                setCanUndo(historyRef.current.length > 0);
+                              }}
+                              disabled={!hasSnapshot}
+                              title={`${entry.nodeCount} node${entry.nodeCount !== 1 ? "s" : ""}${nodeDelta !== 0 ? ` (${nodeDelta > 0 ? "+" : ""}${nodeDelta})` : ""} · ${relTs}`}
+                              className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
+                                hasSnapshot
+                                  ? "bg-[#0D1117] border-[#30363D] hover:border-[#484F58] cursor-pointer"
+                                  : "bg-[#0D1117] border-[#30363D] opacity-40 cursor-not-allowed"
+                              }`}
+                            >
+                              <span className="text-[10px] font-mono text-[#484F58] flex-shrink-0 w-4 text-right">{displayN}</span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs truncate text-[#7D8590]">{entry.label}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-[9px] text-[#484F58]">{relTs}</p>
+                                  {nodeDelta !== 0 && (
+                                    <span className={`text-[9px] font-mono ${nodeDelta > 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
+                                      {nodeDelta > 0 ? "+" : ""}{nodeDelta}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                            {isLatest && (
-                              <span className="text-[9px] text-[#0078D4] flex-shrink-0">current</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
+                              <svg className="w-3 h-3 text-[#30363D] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   <div className="pt-3 border-t border-[#30363D] space-y-2">
                     <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Version History</p>
