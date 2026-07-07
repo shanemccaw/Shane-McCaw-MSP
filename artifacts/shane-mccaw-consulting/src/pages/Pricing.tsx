@@ -76,11 +76,13 @@ export default function Pricing() {
   const offersLoading = loading;
   const retainersLoading = loading;
 
+  const fmtPrice = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+  // Track 03 — retainer prices from DB
   const retainerPrices = retainers
     .map((r) => parseFloat(r.price ?? ""))
     .filter((n) => !isNaN(n))
     .sort((a, b) => a - b);
-  const fmtPrice = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
   const retainerRange = retainerPrices.length > 0
     ? `${fmtPrice(retainerPrices[0])} \u2013 ${fmtPrice(retainerPrices[retainerPrices.length - 1])}/mo`
     : null;
@@ -90,6 +92,34 @@ export default function Pricing() {
   const retainerPriceList = retainerPrices.length > 0
     ? `${retainerPrices.map(fmtPrice).join(" / ")} per month`
     : null;
+
+  // Track 01 — micro_offer prices from DB
+  const microOfferPrices = microOffers
+    .flatMap((s) => [
+      parseFloat(s.price ?? ""),
+      parseFloat(s.basePrice ?? ""),
+      parseFloat(s.maxPrice ?? ""),
+    ])
+    .filter((n) => !isNaN(n) && n > 0);
+  // Fallback shown when no micro_offer services exist in the database yet
+  const track01Range = microOfferPrices.length > 0
+    ? `${fmtPrice(Math.min(...microOfferPrices))} \u2013 ${fmtPrice(Math.max(...microOfferPrices))}`
+    : "$3,000 \u2013 $18,000";
+
+  // Track 02 — project_engagement prices from DB
+  // Fallback constant used when no project_engagement services exist in the database yet
+  const TRACK02_FALLBACK_RANGE = "$7,500 \u2013 $35,000+";
+  const projectEngagements = allServices.filter((s) => s.serviceType === "project_engagement");
+  const projectPrices = projectEngagements
+    .flatMap((s) => [
+      parseFloat(s.price ?? ""),
+      parseFloat(s.basePrice ?? ""),
+      parseFloat(s.maxPrice ?? ""),
+    ])
+    .filter((n) => !isNaN(n) && n > 0);
+  const track02Range = projectPrices.length > 0
+    ? `${fmtPrice(Math.min(...projectPrices))} \u2013 ${fmtPrice(Math.max(...projectPrices))}`
+    : TRACK02_FALLBACK_RANGE;
 
   const jsonLd = [
     {
@@ -264,7 +294,7 @@ export default function Pricing() {
                 label: "Track 01",
                 tier: "Entry",
                 title: "Fixed-Price Quick Wins",
-                range: "$3,000 \u2013 $18,000",
+                range: track01Range,
                 desc: "Scoped deliverables with a defined price, a defined output, and a defined turnaround. No discovery call required to start \u2014 pick the package that matches your need and get in the queue.",
                 bestFor: "Mid-market organizations (200–2,000 employees), regulated industries, and government contractors that need a fast, low-risk diagnostic before committing to a larger engagement.",
                 anchor: "#quick-wins",
@@ -274,7 +304,7 @@ export default function Pricing() {
                 label: "Track 02",
                 tier: "Core",
                 title: "Project-Based Engagements",
-                range: "$7,500 \u2013 $35,000+",
+                range: track02Range,
                 desc: "For larger, multi-phase work \u2014 tenant migrations, full governance overhauls, Copilot deployment programs, intranet builds. Priced as a fixed project after a free scoping call.",
                 bestFor: "Organizations with a defined initiative — preparing for Copilot, remediating governance gaps, or executing a migration — that need structured delivery and committed outcomes.",
                 anchor: "#project-based",
@@ -420,7 +450,7 @@ export default function Pricing() {
               <div className="flex-shrink-0">
                 <div className="bg-[#F7F9FC] rounded-xl border border-border p-5 mb-4 text-center lg:text-right">
                   <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-1">Typical project range</p>
-                  <p className="text-2xl font-extrabold text-[#0078D4]">$7,500 – $35,000+</p>
+                  <p className="text-2xl font-extrabold text-[#0078D4]">{track02Range}</p>
                   <p className="text-muted-foreground text-xs mt-1">Scoped after a free discovery call.</p>
                 </div>
                 <CTAButton href="/book" className="text-sm w-full justify-center" data-testid="project-cta">
@@ -542,8 +572,8 @@ export default function Pricing() {
                   },
                   {
                     label: "Price",
-                    entry: "$3,000 – $18,000 fixed",
-                    core: "$7,500 – $35,000+ fixed project fee",
+                    entry: `${track01Range} fixed`,
+                    core: `${track02Range} fixed project fee`,
                     strategic: retainerPriceList ?? "Contact for pricing",
                   },
                   {
@@ -615,7 +645,7 @@ export default function Pricing() {
                 icon: <Zap className="w-5 h-5 text-[#0078D4]" />,
                 badge: "Track 01 — Entry",
                 title: "Fixed-Price Quick Wins",
-                price: "$3,000 – $18,000 fixed",
+                price: `${track01Range} fixed`,
                 timeline: "5–15 business days",
                 bestFor: "Fast, low-risk diagnostics or defined point solutions",
                 commitment: "One-time — can feed into a project or retainer",
@@ -624,7 +654,7 @@ export default function Pricing() {
                 icon: <FolderOpen className="w-5 h-5 text-[#0078D4]" />,
                 badge: "Track 02 — Core",
                 title: "Project-Based Engagements",
-                price: "$7,500 – $35,000+ fixed",
+                price: `${track02Range} fixed`,
                 timeline: "4–12 weeks",
                 bestFor: "Multi-phase problems requiring a defined SOW and fixed deliverables",
                 commitment: "One-time project — optionally followed by a retainer",
