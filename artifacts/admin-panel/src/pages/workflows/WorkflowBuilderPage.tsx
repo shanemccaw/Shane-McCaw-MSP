@@ -10001,8 +10001,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
           {/* Trends — opens the trends drawer stub; full data arrives with #2541 */}
           <button
-            onClick={() => setShowTrendsDrawer(true)}
-            className={`p-1.5 rounded-lg border border-[#30363D] transition-colors ${showTrendsDrawer ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
+            onClick={() => { setShowTrendsDrawer(v => !v); setShowTrends(v => !v); }}
+            className={`p-1.5 rounded-lg border border-[#30363D] transition-colors ${(showTrendsDrawer || showTrends) ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
             title="View workflow trends and run analytics"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10033,7 +10033,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             )}
             {/* Replay toggle — enabled only when a run is selected in Inspect mode */}
             <button
-              onClick={() => setReplayMode(v => !v)}
+              onClick={() => { const entering = !replayMode; setReplayMode(entering); if (entering) setLiveRunState(null); }}
               disabled={!inspectRunId}
               className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                 replayMode
@@ -11099,13 +11099,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   onClose={() => setRightPanelTab(null)}
                   trigger={testRunTrigger}
                   onRunStarted={(id) => { setLastTestRunId(id); setBottomDockOpen(true); setBottomDockTab("runoutput"); }}
-                  onLiveRunUpdate={setLiveRunState}
+                  onLiveRunUpdate={(state) => { setLiveRunState(state); if (state) setReplayMode(false); }}
                 />
               ) : rightPanelTab === "metadata" ? (
                 <div className="overflow-y-auto p-4 space-y-4">
-                  {/* Risk Level Badge — derived from healthScore if available */}
+                  {/* Risk Level Badge — derived from live healthResult score */}
                   {(() => {
-                    const hs = def?.healthScore;
+                    const hs = nodes.length > 1 ? healthResult.score : (def?.healthScore ?? null);
                     let riskDerived: "critical" | "high" | "medium" | "low" | null = null;
                     if (hs != null) {
                       riskDerived = hs < 40 ? "critical" : hs < 60 ? "high" : hs < 80 ? "medium" : "low";
@@ -11883,7 +11883,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 ["Ctrl+Enter", "Open Publish dialog"],
                 ["Delete / Backspace", "Delete selected node"],
                 ["Escape", "Deselect node / close panel / exit Replay"],
-                ["/", "Open global search palette"],
+                ["Cmd/Ctrl+F  or  /", "Open global search palette"],
                 ["?", "Toggle this shortcuts panel"],
                 ["← / →", "Step backward / forward in Replay mode"],
                 ["Ctrl+\\", "Toggle split view — canvas + console side by side"],
