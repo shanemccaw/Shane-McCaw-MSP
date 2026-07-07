@@ -2744,6 +2744,37 @@ async function executeNode(
           }
         }
 
+        // Query 3: resolve linked workflow names for run_workflow tasks.
+        // Collect IDs from both live kanban rows AND synthesized template tasks so that
+        // phases with no kanban tasks yet (whose entries come from gptTemplateTasksByStep)
+        // still resolve their linked workflow names.
+        const gptRunWorkflowIdSet = new Set<number>();
+        for (const row of gptRows) {
+          if (row.taskType === "run_workflow") {
+            const wfId = (row.taskMetadata as any)?.runWorkflow?.workflowId;
+            if (typeof wfId === "number" && wfId > 0) gptRunWorkflowIdSet.add(wfId);
+          }
+        }
+        for (const tasks of gptTemplateTasksByStep.values()) {
+          for (const tt of tasks) {
+            if (tt.taskType === "run_workflow") {
+              const wfId = (tt.taskMetadata as any)?.runWorkflow?.workflowId;
+              if (typeof wfId === "number" && wfId > 0) gptRunWorkflowIdSet.add(wfId);
+            }
+          }
+        }
+        const gptRunWorkflowIds = [...gptRunWorkflowIdSet];
+        const gptWorkflowNameMap = new Map<number, string>();
+        if (gptRunWorkflowIds.length > 0) {
+          const gptWfDefs = await db
+            .select({ id: wfDefinitionsTable.id, name: wfDefinitionsTable.name })
+            .from(wfDefinitionsTable)
+            .where(inArray(wfDefinitionsTable.id, gptRunWorkflowIds));
+          for (const def of gptWfDefs) {
+            gptWorkflowNameMap.set(def.id, def.name);
+          }
+        }
+
         // Track position index of each kanban task within its step (for template task matching)
         const gptStepPositionCount = new Map<string, number>();
 
@@ -2765,6 +2796,8 @@ async function executeNode(
             linkedRunbookId: string | null;
             customerDownloadScriptId: string | null;
             triggersHealthScore: boolean | null;
+            linkedWorkflowId: number | null;
+            linkedWorkflowName: string | null;
             taskMetadata: unknown;
           }>;
         };
@@ -2806,6 +2839,9 @@ async function executeNode(
           }
           const metaFallback = (row.taskMetadata ?? {}) as Record<string, unknown>;
 
+          const gptLinkedWfId = row.taskType === "run_workflow"
+            ? ((row.taskMetadata as any)?.runWorkflow?.workflowId ?? null)
+            : null;
           phaseMap.get(phaseKey)!.tasks.push({
             taskId:                   row.taskId,
             title:                    row.title,
@@ -2819,6 +2855,8 @@ async function executeNode(
             linkedRunbookId:          templateMeta?.linkedRunbookId ?? (typeof metaFallback.linkedRunbookId === "string" ? metaFallback.linkedRunbookId : null),
             customerDownloadScriptId: templateMeta?.customerDownloadScriptId ?? (typeof metaFallback.customerDownloadScriptId === "string" ? metaFallback.customerDownloadScriptId : null),
             triggersHealthScore:      templateMeta?.triggersHealthScore ?? (typeof metaFallback.triggersHealthScore === "boolean" ? metaFallback.triggersHealthScore : null),
+            linkedWorkflowId:         typeof gptLinkedWfId === "number" ? gptLinkedWfId : null,
+            linkedWorkflowName:       typeof gptLinkedWfId === "number" ? (gptWorkflowNameMap.get(gptLinkedWfId) ?? null) : null,
             taskMetadata:             row.taskMetadata ?? null,
           });
         }
@@ -2831,6 +2869,9 @@ async function executeNode(
           if (!phaseEntry || phaseEntry.tasks.length > 0) continue;
           const templateTasks = gptTemplateTasksByStep.get(phase.workflowTemplateStepId) ?? [];
           for (const tt of templateTasks) {
+            const ttLinkedWfId = tt.taskType === "run_workflow"
+              ? ((tt.taskMetadata as any)?.runWorkflow?.workflowId ?? null)
+              : null;
             phaseEntry.tasks.push({
               taskId:                   null,
               title:                    tt.title,
@@ -2844,6 +2885,8 @@ async function executeNode(
               linkedRunbookId:          tt.linkedRunbookId,
               customerDownloadScriptId: tt.customerDownloadScriptId,
               triggersHealthScore:      tt.triggersHealthScore,
+              linkedWorkflowId:         typeof ttLinkedWfId === "number" ? ttLinkedWfId : null,
+              linkedWorkflowName:       typeof ttLinkedWfId === "number" ? (gptWorkflowNameMap.get(ttLinkedWfId) ?? null) : null,
               taskMetadata:             tt.taskMetadata,
             });
           }
