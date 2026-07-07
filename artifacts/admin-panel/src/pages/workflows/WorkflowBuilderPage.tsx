@@ -8686,7 +8686,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(null);
+  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(() => {
+    try {
+      const saved = localStorage.getItem("wf-panel-tab");
+      if (saved && (["node", "testrun", "settings", "history", "metadata"] as const).includes(saved as "node")) {
+        return saved as "node" | "testrun" | "settings" | "history" | "metadata";
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
   const canvasScrollRef = useRef<HTMLDivElement>(null);
   const [canvasScrollPct, setCanvasScrollPct] = useState(0);
   const [canvasViewPct, setCanvasViewPct] = useState(1);
@@ -8787,8 +8795,23 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
   const preSplitReplayTabRef = useRef<"runoutput" | "errors" | "system" | "aioutput" | null>(null);
-  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">("node");
-  useEffect(() => { if (rightPanelTab !== null) lastRightPanelTabRef.current = rightPanelTab; }, [rightPanelTab]);
+  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">(
+    (() => {
+      try {
+        const saved = localStorage.getItem("wf-panel-tab");
+        if (saved && (["node", "testrun", "settings", "history", "metadata"] as const).includes(saved as "node")) {
+          return saved as "node" | "testrun" | "settings" | "history" | "metadata";
+        }
+      } catch { /* ignore */ }
+      return "node";
+    })()
+  );
+  useEffect(() => {
+    if (rightPanelTab !== null) {
+      lastRightPanelTabRef.current = rightPanelTab;
+      try { localStorage.setItem("wf-panel-tab", rightPanelTab); } catch { /* ignore */ }
+    }
+  }, [rightPanelTab]);
 
   // System log (replaces/complements toast notifications; max 200 entries)
   const sysLogIdRef = useRef(0);
