@@ -416,6 +416,30 @@ export default function Services() {
 
       <AssessmentSelector />
 
+      {/* Bridge — Full Diagnostic */}
+      <section className="bg-[#0A2540] py-20 border-t border-white/10">
+        <div className="max-w-[1200px] mx-auto px-6 text-center">
+          <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em] mb-4">Go Deeper</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-6 leading-tight max-w-2xl mx-auto">
+            Ready for the Full Diagnostic?
+          </h2>
+          <p className="text-white/70 text-lg max-w-2xl mx-auto mb-10 leading-relaxed">
+            The free assessments give you a directional score in 5 minutes. Our Tier 1 Quick Win packages run a complete automated diagnostic against your live Microsoft 365 tenant — no manual surveys, no guesswork. You get full health telemetry, a scored report across 5 categories, and a scoped remediation proposal — all before you speak to Shane.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <CTAButton href="/quick-wins" className="text-base px-8 py-3">
+              See Quick Win Packages <ArrowRight className="ml-2 w-4 h-4" />
+            </CTAButton>
+            <Link
+              href="/book"
+              className="inline-flex items-center justify-center border border-white/30 text-white font-semibold px-8 py-3 rounded hover:bg-white/10 transition-colors text-base whitespace-nowrap"
+            >
+              Book a Discovery Call
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Closing CTA */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">
