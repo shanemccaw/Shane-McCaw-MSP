@@ -8431,6 +8431,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     try { return (localStorage.getItem("wf-lib-tab") as "nodes" | "patterns") ?? "nodes"; } catch { return "nodes"; }
   });
   const [replayMode, setReplayMode] = useState(false);
+  const [replayStep, setReplayStep] = useState(0);
+  const [canvasZoom, setCanvasZoom] = useState(1.0);
+  const [showTrendsDrawer, setShowTrendsDrawer] = useState(false);
+  const [showHealthReport, setShowHealthReport] = useState(false);
   const [settingsMaxDepth, setSettingsMaxDepth] = useState<number>(5);
   const [settingsDepthError, setSettingsDepthError] = useState<string | null>(null);
   const [testRunTrigger, setTestRunTrigger] = useState(0);
@@ -9113,6 +9117,20 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
+      // Replay stepping — ArrowLeft / ArrowRight
+      if (replayMode && !inInput) {
+        if (e.key === "ArrowRight") {
+          e.preventDefault();
+          setReplayStep(s => Math.min(s + 1, nodes.length));
+          return;
+        }
+        if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          setReplayStep(s => Math.max(s - 1, 0));
+          return;
+        }
+      }
+
       // Escape — deselect, close panel, exit replay
       if (e.key === "Escape" && !inInput) {
         setSelectedNodeId(null);
@@ -9131,7 +9149,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo, selectedNodeId, nodes, edges, duplicateNode, handleGraphChange, pushHistory, saveMut, setShowPublish, setShowShortcuts]);
+  }, [handleUndo, handleRedo, selectedNodeId, nodes, edges, duplicateNode, handleGraphChange, pushHistory, saveMut, setShowPublish, setShowShortcuts, replayMode, replayStep]);
 
   // Warn on tab close / reload when there are unsaved changes
   useEffect(() => {
@@ -9192,6 +9210,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
   useEffect(() => { localStorage.setItem("wf-panel-width", String(rightPanelWidth)); }, [rightPanelWidth]);
   useEffect(() => { localStorage.setItem("wf-lib-tab", libTab); }, [libTab]);
+  useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
+  useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
   function startPanelResize(e: React.MouseEvent) {
     e.preventDefault();
@@ -9295,10 +9315,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
-          {/* Trends — placeholder; #2541 will wire this to the trends drawer */}
+          {/* Trends — opens the trends drawer stub; full data arrives with #2541 */}
           <button
-            className="p-1.5 rounded-lg border border-[#30363D] transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"
-            title="Trends — available after #2541 lands"
+            onClick={() => setShowTrendsDrawer(true)}
+            className={`p-1.5 rounded-lg border border-[#30363D] transition-colors ${showTrendsDrawer ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
+            title="View workflow trends and run analytics"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -9347,18 +9368,19 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
-          {/* Health Score badge — populated by #2541 scoreWorkflow() after save */}
+          {/* Health Score badge — clicking opens Health Report slide-over; score populated by #2541 */}
           {(() => {
             const score = (def as Record<string, unknown> | undefined)?.healthScore as number | undefined;
             const band = score == null ? null : score >= 80 ? "green" : score >= 50 ? "amber" : "red";
-            const cls = band === "green" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                       : band === "amber" ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                       : band === "red"   ? "bg-red-500/10 border-red-500/20 text-red-400"
-                       : "bg-[#30363D] border-[#484F58] text-[#7D8590]";
+            const cls = band === "green" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
+                       : band === "amber" ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
+                       : band === "red"   ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
+                       : "bg-[#30363D] border-[#484F58] text-[#7D8590] hover:bg-[#484F58]/20";
             return (
               <button
+                onClick={() => setShowHealthReport(true)}
                 className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold border rounded-full transition-colors ${cls}`}
-                title={score != null ? `Workflow health score: ${score}/100` : "Health score — computed after save (requires #2541)"}
+                title={score != null ? `Health score: ${score}/100 — click for report` : "Health report — click to open (score populated by #2541)"}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -9461,27 +9483,6 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
-          </button>
-
-          {/* Settings / History quick-open — icon-only for discoverability when panel is closed */}
-          <button
-            onClick={() => setRightPanelTab("settings")}
-            className={`p-1.5 rounded-lg border transition-colors ${rightPanelTab === "settings" ? "border-[#0078D4]/60 text-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] text-[#484F58] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
-            title="Workflow settings"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setRightPanelTab("history")}
-            className={`p-1.5 rounded-lg border transition-colors ${rightPanelTab === "history" ? "border-[#0078D4]/60 text-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] text-[#484F58] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
-            title="Version history"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
           </button>
 
           <button
@@ -9762,24 +9763,67 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </svg>
             </button>
           )}
-          <FlowCanvas
-            nodes={nodes}
-            edges={edges}
-            selectedNodeId={selectedNodeId}
-            isArchived={isArchived}
-            isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
-            nodeStyles={NODE_STYLES}
-            libraryCategories={LIBRARY_CATEGORIES}
-            allLibraryNodes={ALL_LIBRARY_NODES}
-            nodeIdCounter={nodeIdCounter}
-            onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab("node"); }}
-            onGraphChange={handleGraphChange}
-            onDuplicateNode={duplicateNode}
-            triggerCategories={canvasTriggerCategories}
-            copiedStep={copiedStep}
-            onCopyStep={setCopiedStep}
-            stepResultMap={inspectMode ? stepResultMap : undefined}
-          />
+          {/* Canvas zoom wrapper — scale transforms the entire step list */}
+          <div
+            className="w-full h-full overflow-auto"
+            style={{ contain: "layout" }}
+          >
+            <div style={{ zoom: canvasZoom, transformOrigin: "top left", minHeight: "100%" }}>
+              <FlowCanvas
+                nodes={nodes}
+                edges={edges}
+                selectedNodeId={selectedNodeId}
+                isArchived={isArchived}
+                isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
+                nodeStyles={NODE_STYLES}
+                libraryCategories={LIBRARY_CATEGORIES}
+                allLibraryNodes={ALL_LIBRARY_NODES}
+                nodeIdCounter={nodeIdCounter}
+                onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab("node"); }}
+                onGraphChange={handleGraphChange}
+                onDuplicateNode={duplicateNode}
+                triggerCategories={canvasTriggerCategories}
+                copiedStep={copiedStep}
+                onCopyStep={setCopiedStep}
+                stepResultMap={inspectMode ? (
+                  replayMode
+                    ? Object.fromEntries(nodes.slice(0, replayStep).map(n => n.id).filter(id => stepResultMap[id]).map(id => [id, stepResultMap[id]]))
+                    : stepResultMap
+                ) : undefined}
+              />
+            </div>
+          </div>
+
+          {/* Canvas controls: zoom in / reset / zoom out (bottom-right, VS Code-style) */}
+          <div className="absolute bottom-4 right-4 flex flex-col gap-0.5 z-10">
+            <button
+              onClick={() => setCanvasZoom(z => Math.min(+(z + 0.15).toFixed(2), 1.5))}
+              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-sm font-semibold transition-colors"
+              title="Zoom in"
+            >+</button>
+            <button
+              onClick={() => setCanvasZoom(1.0)}
+              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-[10px] font-mono transition-colors"
+              title={`Reset zoom (${Math.round(canvasZoom * 100)}%)`}
+            >{Math.round(canvasZoom * 100)}%</button>
+            <button
+              onClick={() => setCanvasZoom(z => Math.max(+(z - 0.15).toFixed(2), 0.5))}
+              className="w-7 h-7 flex items-center justify-center bg-[#161B22] border border-[#30363D] hover:border-[#484F58] text-[#7D8590] hover:text-[#E6EDF3] rounded text-sm font-semibold transition-colors"
+              title="Zoom out"
+            >−</button>
+          </div>
+
+          {/* Replay mode banner */}
+          {replayMode && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[11px] font-medium px-3 py-1.5 rounded-full shadow-xl">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Replay mode — step {replayStep} / {nodes.length} &nbsp;
+              <span className="text-amber-500/70">← →</span>
+            </div>
+          )}
         </div>
 
         {/* Right: Docked Panel */}
@@ -10144,6 +10188,95 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           onClose={() => setShowRefineModal(false)}
           onGenerate={handleAiRefine}
         />
+      )}
+
+      {/* Trends drawer — slide over from the right; full analytics data arrives with #2541 */}
+      {showTrendsDrawer && (
+        <div className="fixed inset-0 z-50 flex" onClick={() => setShowTrendsDrawer(false)}>
+          <div className="flex-1" />
+          <div
+            className="w-80 h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                <span className="text-sm font-semibold text-[#E6EDF3]">Workflow Trends</span>
+              </div>
+              <button
+                onClick={() => setShowTrendsDrawer(false)}
+                className="w-6 h-6 flex items-center justify-center text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center">
+                <svg className="w-5 h-5 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-[#E6EDF3]">Trends coming in #2541</p>
+              <p className="text-xs text-[#7D8590] leading-relaxed">
+                Run-over-run success rates, avg duration, error hotspot detection, and step-level P95 latency charts will appear here once the analytics pipeline ships.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Health Report slide-over — full scoring engine arrives with #2541 */}
+      {showHealthReport && (
+        <div className="fixed inset-0 z-50 flex" onClick={() => setShowHealthReport(false)}>
+          <div className="flex-1" />
+          <div
+            className="w-80 h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                <span className="text-sm font-semibold text-[#E6EDF3]">Health Report</span>
+              </div>
+              <button
+                onClick={() => setShowHealthReport(false)}
+                className="w-6 h-6 flex items-center justify-center text-[#484F58] hover:text-[#E6EDF3] transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {/* Static health dimensions — scored values will come from #2541 scoreWorkflow() */}
+              {([
+                { label: "Error handling", detail: "Nodes without an on-error branch", icon: "🛡️" },
+                { label: "Retry coverage", detail: "Steps missing retry configuration", icon: "🔁" },
+                { label: "Timeout guards", detail: "Long-running nodes without a timeout", icon: "⏱️" },
+                { label: "Dead branches", detail: "Unreachable condition branches detected", icon: "🌿" },
+                { label: "Documentation", detail: "Nodes missing description fields", icon: "📝" },
+              ] as { label: string; detail: string; icon: string }[]).map(({ label, detail, icon }) => (
+                <div key={label} className="flex items-start gap-3 p-3 rounded-lg bg-[#0D1117] border border-[#30363D]">
+                  <span className="text-base leading-none mt-0.5">{icon}</span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-[#E6EDF3]">{label}</div>
+                    <div className="text-[11px] text-[#7D8590] mt-0.5">{detail}</div>
+                  </div>
+                  <div className="ml-auto flex-shrink-0 text-[10px] text-[#484F58] font-mono bg-[#1C2128] px-1.5 py-0.5 rounded">—</div>
+                </div>
+              ))}
+              <p className="text-[11px] text-[#484F58] text-center pt-2">
+                Scores are computed by <code className="font-mono">#2541 scoreWorkflow()</code> after each save.
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Unsaved changes confirmation dialog */}
