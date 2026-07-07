@@ -1773,6 +1773,8 @@ export interface WfNode {
     | "post_linkedin" | "post_twitter" | "post_facebook"
     // Project Actions
     | "create_kanban_task"
+    | "get_project_tasks"
+    | "update_project_task"
     | "get_phases"
     | "create_phase"
     | "save_presentation_phases"

@@ -47,6 +47,7 @@ import {
   signalRuleGroupsTable,
   deviceTokensTable,
   workflowStepsTable,
+  workflowTemplateStepTasksTable,
   quickWinPresentationsTable,
   powershellScriptsTable,
   servicesTable,
@@ -2555,6 +2556,218 @@ async function executeNode(
             output = { taskId: task.id, boardId: boardIdRaw, columnId: column, title: task.title };
           }
         }
+        break;
+      }
+
+      case "get_project_tasks": {
+        const gptProjectIdRaw = interp(node.data.projectId as string | undefined, payload);
+        if (!gptProjectIdRaw?.trim()) {
+          nodeError = true;
+          output = { error: "get_project_tasks: projectId is required" };
+          break;
+        }
+        const gptProjectId = parseInt(gptProjectIdRaw, 10);
+        if (isNaN(gptProjectId)) {
+          nodeError = true;
+          output = { error: `get_project_tasks: invalid projectId '${gptProjectIdRaw}'` };
+          break;
+        }
+
+        // Query 1: kanban_tasks left-joined to workflow_steps for phase metadata.
+        // Ordered so tasks within the same step appear in their creation order (kanban_tasks.order).
+        const gptRows = await db
+          .select({
+            taskId:                    kanbanTasksTable.id,
+            title:                     kanbanTasksTable.title,
+            column:                    kanbanTasksTable.column,
+            priority:                  kanbanTasksTable.priority,
+            assignedTo:                kanbanTasksTable.assignedTo,
+            dueDate:                   kanbanTasksTable.dueDate,
+            groupName:                 kanbanTasksTable.groupName,
+            taskType:                  kanbanTasksTable.taskType,
+            taskMetadata:              kanbanTasksTable.taskMetadata,
+            taskOrder:                 kanbanTasksTable.order,
+            workflowStepId:            kanbanTasksTable.workflowStepId,
+            phaseId:                   workflowStepsTable.id,
+            phaseTitle:                workflowStepsTable.title,
+            phaseStatus:               workflowStepsTable.status,
+            phaseOrder:                workflowStepsTable.order,
+            workflowTemplateStepId:    workflowStepsTable.workflowTemplateStepId,
+          })
+          .from(kanbanTasksTable)
+          .leftJoin(workflowStepsTable, eq(kanbanTasksTable.workflowStepId, workflowStepsTable.id))
+          .where(eq(kanbanTasksTable.projectId, gptProjectId))
+          .orderBy(workflowStepsTable.order, kanbanTasksTable.order);
+
+        // Query 2: fetch template step tasks for all steps that have a template link.
+        // Maps (workflowTemplateStepId, position-index) → template task metadata fields.
+        const gptTemplateStepIds = [...new Set(
+          gptRows.map(r => r.workflowTemplateStepId).filter((id): id is number => id != null)
+        )];
+
+        type TemplateMeta = {
+          isCustomerTask: boolean;
+          linkedRunbookId: string | null;
+          customerDownloadScriptId: string | null;
+          triggersHealthScore: boolean;
+        };
+        // key: `${templateStepId}:${positionIndex}` → template task metadata
+        const gptTemplateMetaMap = new Map<string, TemplateMeta>();
+
+        if (gptTemplateStepIds.length > 0) {
+          const gptTemplateTasks = await db
+            .select({
+              workflowTemplateStepId:   workflowTemplateStepTasksTable.workflowTemplateStepId,
+              order:                    workflowTemplateStepTasksTable.order,
+              isCustomerTask:           workflowTemplateStepTasksTable.isCustomerTask,
+              runbookId:                workflowTemplateStepTasksTable.runbookId,
+              customerDownloadScriptId: workflowTemplateStepTasksTable.customerDownloadScriptId,
+              triggersHealthScore:      workflowTemplateStepTasksTable.triggersHealthScore,
+            })
+            .from(workflowTemplateStepTasksTable)
+            .where(inArray(workflowTemplateStepTasksTable.workflowTemplateStepId, gptTemplateStepIds))
+            .orderBy(workflowTemplateStepTasksTable.workflowTemplateStepId, workflowTemplateStepTasksTable.order);
+
+          // Group by templateStepId, track position index within each step
+          const gptTemplateByStep = new Map<number, typeof gptTemplateTasks>();
+          for (const tt of gptTemplateTasks) {
+            const bucket = gptTemplateByStep.get(tt.workflowTemplateStepId) ?? [];
+            bucket.push(tt);
+            gptTemplateByStep.set(tt.workflowTemplateStepId, bucket);
+          }
+
+          for (const [stepId, tasks] of gptTemplateByStep) {
+            tasks.forEach((tt, idx) => {
+              gptTemplateMetaMap.set(`${stepId}:${idx}`, {
+                isCustomerTask:           tt.isCustomerTask ?? false,
+                linkedRunbookId:          tt.runbookId ?? null,
+                customerDownloadScriptId: tt.customerDownloadScriptId ?? null,
+                triggersHealthScore:      tt.triggersHealthScore,
+              });
+            });
+          }
+        }
+
+        // Track position index of each kanban task within its step (for template task matching)
+        const gptStepPositionCount = new Map<string, number>();
+
+        type PhaseGroup = {
+          phaseId: number | null;
+          phaseTitle: string;
+          phaseStatus: string | null;
+          order: number;
+          tasks: Array<{
+            taskId: number;
+            title: string;
+            column: string;
+            priority: string;
+            assignedTo: string | null;
+            dueDate: Date | null;
+            groupName: string | null;
+            taskType: string | null;
+            isCustomerTask: boolean | null;
+            linkedRunbookId: string | null;
+            customerDownloadScriptId: string | null;
+            triggersHealthScore: boolean | null;
+            taskMetadata: unknown;
+          }>;
+        };
+
+        const phaseMap = new Map<string, PhaseGroup>();
+
+        for (const row of gptRows) {
+          const phaseKey = row.phaseId != null ? String(row.phaseId) : "__unassigned__";
+          if (!phaseMap.has(phaseKey)) {
+            phaseMap.set(phaseKey, {
+              phaseId:     row.phaseId ?? null,
+              phaseTitle:  row.phaseTitle ?? "Unassigned",
+              phaseStatus: row.phaseStatus ?? null,
+              order:       row.phaseOrder ?? 9999,
+              tasks:       [],
+            });
+          }
+
+          // Determine position of this kanban task within its workflow step (for template lookup)
+          const posKey = String(row.workflowStepId ?? "__none__");
+          const posIdx = gptStepPositionCount.get(posKey) ?? 0;
+          gptStepPositionCount.set(posKey, posIdx + 1);
+
+          // Look up template task metadata for this position, falling back to taskMetadata JSONB
+          let templateMeta: TemplateMeta | undefined;
+          if (row.workflowTemplateStepId != null) {
+            templateMeta = gptTemplateMetaMap.get(`${row.workflowTemplateStepId}:${posIdx}`);
+          }
+          const metaFallback = (row.taskMetadata ?? {}) as Record<string, unknown>;
+
+          phaseMap.get(phaseKey)!.tasks.push({
+            taskId:                   row.taskId,
+            title:                    row.title,
+            column:                   row.column,
+            priority:                 row.priority,
+            assignedTo:               row.assignedTo ?? null,
+            dueDate:                  row.dueDate ?? null,
+            groupName:                row.groupName ?? null,
+            taskType:                 row.taskType ?? null,
+            isCustomerTask:           templateMeta?.isCustomerTask ?? (typeof metaFallback.isCustomerTask === "boolean" ? metaFallback.isCustomerTask : null),
+            linkedRunbookId:          templateMeta?.linkedRunbookId ?? (typeof metaFallback.linkedRunbookId === "string" ? metaFallback.linkedRunbookId : null),
+            customerDownloadScriptId: templateMeta?.customerDownloadScriptId ?? (typeof metaFallback.customerDownloadScriptId === "string" ? metaFallback.customerDownloadScriptId : null),
+            triggersHealthScore:      templateMeta?.triggersHealthScore ?? (typeof metaFallback.triggersHealthScore === "boolean" ? metaFallback.triggersHealthScore : null),
+            taskMetadata:             row.taskMetadata ?? null,
+          });
+        }
+
+        const phases = Array.from(phaseMap.values()).sort((a, b) => a.order - b.order);
+        const taskCount = gptRows.length;
+        output = { phases, taskCount, projectId: gptProjectId };
+        break;
+      }
+
+      case "update_project_task": {
+        const uptTaskIdRaw = interp(node.data.taskId as string | undefined, payload);
+        if (!uptTaskIdRaw?.trim()) {
+          nodeError = true;
+          output = { error: "update_project_task: taskId is required" };
+          break;
+        }
+        const uptTaskId = parseInt(uptTaskIdRaw, 10);
+        if (isNaN(uptTaskId)) {
+          nodeError = true;
+          output = { error: `update_project_task: invalid taskId '${uptTaskIdRaw}'` };
+          break;
+        }
+
+        const uptPatch: Record<string, unknown> = { updatedAt: new Date() };
+        const validColumns = ["backlog", "in_progress", "waiting_on_customer", "completed"] as const;
+
+        const uptColumn      = interp(node.data.column      as string | undefined, payload);
+        const uptTitle       = interp(node.data.title       as string | undefined, payload);
+        const uptDescription = interp(node.data.description as string | undefined, payload);
+        const uptPriority    = interp(node.data.priority    as string | undefined, payload);
+        const uptAssignedTo  = interp(node.data.assignedTo  as string | undefined, payload);
+        const uptDueDate     = interp(node.data.dueDate     as string | undefined, payload);
+
+        if (uptColumn?.trim()      && (validColumns as readonly string[]).includes(uptColumn.trim())) uptPatch.column      = uptColumn.trim();
+        if (uptTitle?.trim())       uptPatch.title       = uptTitle.trim();
+        if (uptDescription?.trim()) uptPatch.description = uptDescription.trim();
+        if (uptPriority?.trim())    uptPatch.priority    = uptPriority.trim();
+        if (uptAssignedTo?.trim())  uptPatch.assignedTo  = uptAssignedTo.trim();
+        if (uptDueDate?.trim()) {
+          const d = new Date(uptDueDate.trim());
+          if (!isNaN(d.getTime())) uptPatch.dueDate = d;
+        }
+
+        const [uptUpdated] = await db
+          .update(kanbanTasksTable)
+          .set(uptPatch as Parameters<typeof db.update>[0] extends never ? never : Record<string, unknown>)
+          .where(eq(kanbanTasksTable.id, uptTaskId))
+          .returning({ id: kanbanTasksTable.id, column: kanbanTasksTable.column, title: kanbanTasksTable.title });
+
+        if (!uptUpdated) {
+          nodeError = true;
+          output = { error: `update_project_task: no task found with id ${uptTaskId}` };
+          break;
+        }
+        output = { updated: true, taskId: uptUpdated.id, column: uptUpdated.column, title: uptUpdated.title };
         break;
       }
 

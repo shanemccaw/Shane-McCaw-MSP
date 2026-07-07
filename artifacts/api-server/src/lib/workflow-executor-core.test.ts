@@ -16,6 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ── Shared mutable state ──────────────────────────────────────────────────────
 const state = vi.hoisted(() => ({
   dbQueue: [] as unknown[][],
+  updateQueue: [] as unknown[][],
   nodeOutputInserts: [] as Record<string, unknown>[],
   logInserts: [] as Record<string, unknown>[],
 }));
@@ -38,8 +39,9 @@ vi.mock("@workspace/db", () => {
   }
 
   function makeUpdateChain(): Record<string, unknown> {
+    const whereChain = { returning: async () => state.updateQueue.shift() ?? [] };
     const chain: Record<string, unknown> = {
-      set:   () => ({ where: async () => [] }),
+      set:   () => ({ where: () => whereChain }),
       where: async () => [],
     };
     return chain;
@@ -70,7 +72,7 @@ vi.mock("@workspace/db", () => {
     "leadsTable", "usersTable", "projectsTable", "opportunitiesTable",
     "clientDocumentsTable", "leadQualificationsTable", "quizLeadsTable",
     "clientHealthHistoryTable", "emailTemplatesTable", "marketingTasksTable",
-    "kanbanTasksTable", "articlesTable", "notificationsTable",
+    "kanbanTasksTable", "workflowTemplateStepTasksTable", "articlesTable", "notificationsTable",
     "campaignsTable", "landingPagesTable", "pendingApprovalsTable",
     "workflowStepsTable", "clientPresentationsTable", "deviceTokensTable",
     "insightsGeneratedDocumentsTable", "quickWinPresentationsTable",
@@ -208,6 +210,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 function resetState() {
   state.dbQueue = [];
+  state.updateQueue = [];
   state.nodeOutputInserts = [];
   state.logInserts = [];
 }
@@ -846,5 +849,182 @@ describe("check_script_output — dry-run", () => {
 
   it("node status is ok", () => {
     expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// get_project_tasks — happy path (live)
+// =============================================================================
+
+describe("get_project_tasks — happy path (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(
+      singleNodeGraph("get_project_tasks", { projectId: "42" }),
+      {},
+      [
+        // Query 1: kanban_tasks left-joined to workflow_steps
+        [
+          {
+            taskId: 1, title: "Write docs", column: "backlog", priority: "medium",
+            assignedTo: null, dueDate: null, groupName: null, taskType: null,
+            taskMetadata: null, taskOrder: 0, workflowStepId: 10,
+            phaseId: 10, phaseTitle: "Discovery", phaseStatus: "in_progress", phaseOrder: 0,
+            workflowTemplateStepId: 5,
+          },
+          {
+            taskId: 2, title: "Review findings", column: "in_progress", priority: "high",
+            assignedTo: "Shane", dueDate: null, groupName: null, taskType: null,
+            taskMetadata: null, taskOrder: 1, workflowStepId: 10,
+            phaseId: 10, phaseTitle: "Discovery", phaseStatus: "in_progress", phaseOrder: 0,
+            workflowTemplateStepId: 5,
+          },
+        ],
+        // Query 2: workflow_template_step_tasks for templateStepId=5
+        [
+          {
+            workflowTemplateStepId: 5, order: 0,
+            isCustomerTask: false, runbookId: null,
+            customerDownloadScriptId: null, triggersHealthScore: false,
+          },
+          {
+            workflowTemplateStepId: 5, order: 1,
+            isCustomerTask: true, runbookId: "run-uuid-1",
+            customerDownloadScriptId: "dl-uuid-1", triggersHealthScore: true,
+          },
+        ],
+      ],
+    );
+    await executeWorkflowRun(1);
+  });
+
+  it("output.projectId is the queried project", () => {
+    expect(capturedOutput().projectId).toBe(42);
+  });
+
+  it("output.taskCount equals total tasks", () => {
+    expect(capturedOutput().taskCount).toBe(2);
+  });
+
+  it("output.phases groups tasks under phases", () => {
+    const phases = capturedOutput().phases as Array<{ phaseId: number; phaseTitle: string; tasks: unknown[] }>;
+    expect(phases).toHaveLength(1);
+    expect(phases[0]!.phaseTitle).toBe("Discovery");
+    expect(phases[0]!.tasks).toHaveLength(2);
+  });
+
+  it("task metadata sourced from workflow_template_step_tasks join (not taskMetadata JSONB)", () => {
+    const phases = capturedOutput().phases as Array<{ tasks: Array<{
+      isCustomerTask: boolean | null;
+      linkedRunbookId: string | null;
+      customerDownloadScriptId: string | null;
+      triggersHealthScore: boolean | null;
+    }> }>;
+    // task at index 0: template says isCustomerTask=false
+    expect(phases[0]!.tasks[0]!.isCustomerTask).toBe(false);
+    // task at index 1: template says isCustomerTask=true, runbookId set
+    expect(phases[0]!.tasks[1]!.isCustomerTask).toBe(true);
+    expect(phases[0]!.tasks[1]!.linkedRunbookId).toBe("run-uuid-1");
+    expect(phases[0]!.tasks[1]!.customerDownloadScriptId).toBe("dl-uuid-1");
+    expect(phases[0]!.tasks[1]!.triggersHealthScore).toBe(true);
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// get_project_tasks — missing projectId (live)
+// =============================================================================
+
+describe("get_project_tasks — missing projectId (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("get_project_tasks", { projectId: "" }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error is set", () => {
+    expect(typeof capturedOutput().error).toBe("string");
+    expect((capturedOutput().error as string).length).toBeGreaterThan(0);
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
+  });
+});
+
+// =============================================================================
+// update_project_task — happy path (live)
+// =============================================================================
+
+describe("update_project_task — happy path (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    state.updateQueue = [[{ id: 7, column: "in_progress", title: "Deploy phase 1" }]];
+    seedDb(singleNodeGraph("update_project_task", {
+      taskId: "7",
+      column: "in_progress",
+    }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.updated is true", () => {
+    expect(capturedOutput().updated).toBe(true);
+  });
+
+  it("output.taskId matches the updated task", () => {
+    expect(capturedOutput().taskId).toBe(7);
+  });
+
+  it("output.column reflects the new column", () => {
+    expect(capturedOutput().column).toBe("in_progress");
+  });
+
+  it("node status is ok", () => {
+    expect(capturedStatus()).toBe("ok");
+  });
+});
+
+// =============================================================================
+// update_project_task — missing taskId (live)
+// =============================================================================
+
+describe("update_project_task — missing taskId (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    seedDb(singleNodeGraph("update_project_task", { taskId: "" }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error is set", () => {
+    expect(typeof capturedOutput().error).toBe("string");
+    expect((capturedOutput().error as string).length).toBeGreaterThan(0);
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
+  });
+});
+
+// =============================================================================
+// update_project_task — task not found (live)
+// =============================================================================
+
+describe("update_project_task — task not found (live)", () => {
+  beforeEach(async () => {
+    resetState();
+    state.updateQueue = [[]]; // empty returning() — no task matched
+    seedDb(singleNodeGraph("update_project_task", { taskId: "999", column: "completed" }));
+    await executeWorkflowRun(1);
+  });
+
+  it("output.error mentions the task id", () => {
+    expect((capturedOutput().error as string)).toContain("999");
+  });
+
+  it("node status is error", () => {
+    expect(capturedStatus()).toBe("error");
   });
 });

@@ -51,6 +51,8 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
+  get_project_tasks:   { bg: "#0D1020", border: "#818CF8", icon: "📋", label: "Get Project Tasks"    },
+  update_project_task: { bg: "#0D1020", border: "#A78BFA", icon: "✏️", label: "Update Project Task"  },
   generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
   publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
   topic_picker:              { bg: "#1A0D1A", border: "#E879F9", icon: "🎯", label: "Topic Picker"             },

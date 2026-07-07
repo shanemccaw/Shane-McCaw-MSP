@@ -69,6 +69,8 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   // ── Project Actions ──
   create_kanban_task:  { bg: "#0D1020", border: "#6366F1", icon: "🗂",  label: "Create Kanban Task"  },
+  get_project_tasks:   { bg: "#0D1020", border: "#818CF8", icon: "📋", label: "Get Project Tasks"    },
+  update_project_task: { bg: "#0D1020", border: "#A78BFA", icon: "✏️", label: "Update Project Task"  },
   // ── Content ──
   generate_article:          { bg: "#1A0D1A", border: "#C084FC", icon: "✍️", label: "Generate Article"        },
   publish_article:           { bg: "#0F1A12", border: "#4ADE80", icon: "📢", label: "Publish Article"          },
@@ -211,6 +213,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
   create_kanban_task:       [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
+  get_project_tasks:        [{ key: "phases", label: "Array of phase groups, each with phaseId, phaseTitle, phaseStatus, order, and tasks[]" }, { key: "taskCount", label: "Total number of tasks across all phases" }, { key: "projectId", label: "Project ID that was queried" }],
+  update_project_task:      [{ key: "updated", label: "true when the task was found and updated" }, { key: "taskId", label: "ID of the updated task" }, { key: "column", label: "Final column value after update" }, { key: "title", label: "Final title value after update" }],
   get_phases:               [{ key: "phases", label: "Array of selected phases (id, title, description, price, subtasks)" }, { key: "phaseCount", label: "Number of phases returned" }, { key: "presentationId", label: "Presentation DB ID the phases were read from" }],
   create_phase:             [{ key: "phaseId", label: "Created workflow_steps row ID" }, { key: "phaseTitle", label: "Phase title as saved" }],
   save_presentation_phases: [{ key: "saved", label: "true on success" }, { key: "phaseCount", label: "Number of phases saved" }, { key: "resolvedPhases", label: "Array of resolved phase objects with price allocation" }],
@@ -820,6 +824,8 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "create_phase",             label: "Create Phase",        description: "Insert a new project phase (workflow_steps row) for a given project. Wire inside a ForEach to create all phases from the SOW.",                         tags: ["phase", "project", "workflow step", "create"] },
       { type: "save_presentation_phases", label: "Save Phases",         description: "Persist AI-generated phases to a presentation (quick_win_presentations.sowPhases). Allocates prices by weight and saves to DB.",                         tags: ["phases", "sow", "presentation", "save"] },
       { type: "create_kanban_task",       label: "Create Kanban Task",  description: "Create a kanban card on a marketing board or a project board. Supports {{token}} interpolation for boardId so you can pass {{projectId}} dynamically.", tags: ["kanban", "task", "project", "board", "card", "create"] },
+      { type: "get_project_tasks",        label: "Get Project Tasks",   description: "Fetch all kanban tasks for a project, nested under their phases. Each task includes column, priority, assignedTo, and metadata. Use before a ForEach to iterate tasks.", tags: ["kanban", "task", "project", "read", "lookup", "phases"] },
+      { type: "update_project_task",      label: "Update Project Task", description: "Update a single kanban task by ID. Flip the column (progress state), rename it, change priority, assignee, or due date. All fields support {{token}} interpolation.", tags: ["kanban", "task", "project", "update", "edit", "column"] },
     ],
   },
   {
@@ -3575,6 +3581,22 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "get_project_tasks" && (
+          <GetProjectTasksPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
+        {nodeType === "update_project_task" && (
+          <UpdateProjectTaskPanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "create_phase" && (
           <CreatePhasePanel
             node={node}
@@ -5145,6 +5167,130 @@ function CreateKanbanTaskPanel({
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">Creates a Kanban card on the selected board and column. Title, description, board ID, and phase ID support <span className="font-mono text-[#7D8590]">{"{{tokens}}"}</span> from the workflow payload. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{taskId}}"} · {"{{boardId}}"} · {"{{columnId}}"} · {"{{title}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Get Project Tasks panel ───────────────────────────────────────────────────
+
+function GetProjectTasksPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Project ID"
+        hint="Numeric project ID whose kanban tasks to fetch. Supports {{projectId}} from upstream nodes."
+        value={(node.data.projectId as string) ?? "{{projectId}}"}
+        onChange={v => onChange(node.id, { ...node.data, projectId: v })}
+        placeholder="{{projectId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Fetches all kanban tasks for the project, grouped under their phases (workflow steps). Tasks with no phase go into an "Unassigned" bucket. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{phases}}"} · {"{{taskCount}}"} · {"{{projectId}}"}</p>
+        <p className="text-[10px] text-[#484F58]">Each task in <span className="font-mono text-[#7D8590]">phases[].tasks</span> includes: <span className="font-mono text-[#7D8590]">taskId, title, column, priority, assignedTo, dueDate, groupName, taskType, isCustomerTask, linkedRunbookId, customerDownloadScriptId, triggersHealthScore, taskMetadata</span></p>
+      </div>
+    </>
+  );
+}
+
+// ── Update Project Task panel ─────────────────────────────────────────────────
+
+function UpdateProjectTaskPanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Task ID"
+        hint="Numeric ID of the kanban task to update. Supports {{taskId}} from an upstream get_project_tasks or create_kanban_task node."
+        value={(node.data.taskId as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, taskId: v })}
+        placeholder="{{taskId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Column (optional)</label>
+          <FieldHint text="Move the task to a different column. Leave blank to keep the current column." />
+        </div>
+        <select
+          value={(node.data.column as string) ?? ""}
+          onChange={e => onChange(node.id, { ...node.data, column: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+        >
+          <option value="">(no change)</option>
+          {PROJECT_COLUMNS.map(c => (
+            <option key={c.id} value={c.id}>{c.label}</option>
+          ))}
+        </select>
+      </div>
+      <PayloadField
+        label="Title (optional)"
+        hint="Rename the task. Leave blank to keep the current title."
+        value={(node.data.title as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, title: v })}
+        placeholder="{{newTitle}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Description (optional)"
+        hint="Update the task description. Leave blank to keep the current description."
+        value={(node.data.description as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, description: v })}
+        placeholder="{{description}}"
+        multiline
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Priority (optional)</label>
+          <FieldHint text="Change the task priority. Leave blank to keep the current priority." />
+        </div>
+        <select
+          value={(node.data.priority as string) ?? ""}
+          onChange={e => onChange(node.id, { ...node.data, priority: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A78BFA]/60"
+        >
+          <option value="">(no change)</option>
+          {PRIORITY_OPTIONS.map(p => (
+            <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+          ))}
+        </select>
+      </div>
+      <PayloadField
+        label="Assigned To (optional)"
+        hint="Update the assignee. Supports {{token}} interpolation."
+        value={(node.data.assignedTo as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, assignedTo: v })}
+        placeholder="{{assignedTo}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <PayloadField
+        label="Due Date (optional)"
+        hint="ISO 8601 date string (e.g. 2025-12-31). Supports {{token}} interpolation. Leave blank to keep the current due date."
+        value={(node.data.dueDate as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, dueDate: v })}
+        placeholder="{{dueDate}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">Updates the specified task. Only non-blank fields are written — omitted fields are left unchanged. Errors if no task is found with the given ID. Outputs:</p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{updated}}"} · {"{{taskId}}"} · {"{{column}}"} · {"{{title}}"}</p>
       </div>
     </>
   );
