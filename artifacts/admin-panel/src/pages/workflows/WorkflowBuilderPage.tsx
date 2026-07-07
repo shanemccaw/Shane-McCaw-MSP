@@ -8662,6 +8662,17 @@ function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; 
 // sidebar tab and the global search palette share the same data and insertion path.
 import { PATTERNS as WORKFLOW_PATTERNS } from "./patternRegistry";
 
+function RibbonGroup({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`relative flex items-center gap-0.5 border border-[#30363D] bg-[#1C2128] rounded px-2 pt-1.5 pb-3 flex-shrink-0 ${className ?? ""}`}>
+      {children}
+      <span className="absolute bottom-0.5 left-0 right-0 text-center text-[9px] uppercase tracking-widest text-[#484F58] pointer-events-none select-none leading-none">
+        {label}
+      </span>
+    </div>
+  );
+}
+
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [location, navigate] = useLocation();
@@ -8776,6 +8787,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
   const preSplitReplayTabRef = useRef<"runoutput" | "errors" | "system" | "aioutput" | null>(null);
+  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">("node");
+  useEffect(() => { if (rightPanelTab !== null) lastRightPanelTabRef.current = rightPanelTab; }, [rightPanelTab]);
 
   // System log (replaces/complements toast notifications; max 200 entries)
   const sysLogIdRef = useRef(0);
@@ -11461,6 +11474,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </div>
               ) : null}
             </div>
+          </div>
+        )}
+        {/* Right: Collapsed panel strip — visible when panel is closed */}
+        {rightPanelTab === null && (
+          <div
+            className="w-6 flex-shrink-0 bg-[#0D1117] border-l border-[#30363D] flex items-center justify-center cursor-pointer hover:bg-[#161B22] transition-colors"
+            onClick={() => setRightPanelTab(lastRightPanelTabRef.current)}
+            title="Open panel"
+          >
+            <span className="text-[#484F58] text-sm select-none">›</span>
           </div>
         )}
         </div>{/* closes inner flex-1 flex overflow-hidden */}
