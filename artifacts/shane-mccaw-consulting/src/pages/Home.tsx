@@ -235,12 +235,15 @@ export default function Home() {
               Book a Discovery Call
             </CTAButton>
             <Link
-              href="/quick-wins"
+              href="/assessments"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
-              See Fixed-Price Packages <ArrowRight className="w-4 h-4" />
+              Start with the Free Copilot Snapshot <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
+          <p className="text-sm text-white/50 mt-3 text-center">
+            No call required — connect your tenant, watch the diagnosis run, get a scoped proposal.
+          </p>
           <div className="mt-14 pt-10 border-t border-white/10 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-white/50 text-sm font-medium">
             {[
               "Fractional M365 Architecture",
