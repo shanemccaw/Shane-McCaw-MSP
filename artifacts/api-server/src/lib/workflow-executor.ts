@@ -3933,7 +3933,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const grouped: Record<string, unknown[]> = {};
         let gbSkippedCount = 0;
         for (const item of gbArray) {
-          const tempPayload = { ...payload, currentItem: item };
+          // Spread the item's own properties into the payload so that a key expression like
+          // {{linkedRunbookId}} works directly, without requiring {{currentItem.linkedRunbookId}}.
+          // currentItem is still available for explicit dot-notation access.
+          const itemProps = (typeof item === "object" && item !== null) ? (item as Record<string, unknown>) : {};
+          const tempPayload = { ...payload, ...itemProps, currentItem: item };
           const rawKey = interp(gbKeyExpr, tempPayload);
           const isBlank = rawKey === null || rawKey === undefined || String(rawKey).trim() === "";
           if (isBlank) {
