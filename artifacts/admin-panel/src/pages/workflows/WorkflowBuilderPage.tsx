@@ -8514,11 +8514,12 @@ function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value:
   );
 }
 
-function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: string }) {
+function RunOutputDock({ runId, focusNodeId, sharedQueryKey }: { runId: number; focusNodeId?: string; sharedQueryKey?: readonly unknown[] }) {
   const { fetchWithAuth } = useAuth();
   const TERMINAL = new Set(["completed", "failed", "cancelled"]);
   const [expandedIo, setExpandedIo] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   // When replay steps, auto-expand and scroll to the focused node's I/O row
   useEffect(() => {
@@ -8532,7 +8533,9 @@ function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: st
   }, [focusNodeId]);
 
   const { data: runData } = useQuery<WfRunDetail>({
-    queryKey: ["wf-run-dock", runId],
+    // When sharedQueryKey is provided (split-pane live run) use it so React Query
+    // deduplicates with TestRunPanel's poll — zero extra network requests.
+    queryKey: sharedQueryKey ? [...sharedQueryKey] : ["wf-run-dock", runId],
     refetchInterval: (q) => {
       const s = q.state.data?.status;
       return s && TERMINAL.has(s) ? false : 2000;
@@ -8543,6 +8546,13 @@ function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: st
     },
   });
   const logs = (runData?.logs ?? []).filter(l => l.level !== "progress");
+  const isLive = !!runData?.status && !TERMINAL.has(runData.status);
+
+  // Auto-scroll to bottom when new log lines arrive during a live run
+  useEffect(() => {
+    if (!isLive || logs.length === 0) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [logs.length, isLive]); // eslint-disable-line react-hooks/exhaustive-deps
   // Build a nodeId → completed nodeOutput map for I/O sub-rows
   const nodeOutputMap = new Map(
     (runData?.nodeOutputs ?? []).map(no => [no.nodeId, no])
@@ -8576,7 +8586,7 @@ function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: st
         const isExpanded = expandedIo.has(ioKey);
         return (
           <React.Fragment key={log.id}>
-            <div className="flex items-start gap-2">
+            <div className={`flex items-start gap-2 rounded px-1 -mx-1 transition-colors ${log.nodeId && log.nodeId === focusNodeId ? "bg-[#0078D4]/15 ring-1 ring-[#0078D4]/30" : ""}`}>
               <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#484F58]"}`}>
                 {log.level === "error" ? "✕" : log.level === "warn" ? "⚠" : "·"}
               </span>
@@ -8642,6 +8652,8 @@ function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: st
           </React.Fragment>
         );
       })}
+      {/* Scroll anchor — auto-scrolled into view on each new log line during live run */}
+      <div ref={bottomRef} />
     </div>
   );
 }
@@ -9805,11 +9817,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       }
     }
   }, [splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Save/restore splitPaneTab on replay enter/exit while in split view
+  // Save/restore splitPaneTab on replay enter/exit while in split view.
+  // Watches replayMode (toolbar toggle = definitive entry) not just replayActive (step-click).
   useEffect(() => {
     if (!splitViewActive) return;
-    if (replayActive) {
-      // Entering replay — save current tab and switch to Run Output
+    if (replayMode) {
+      // Entering replay — save current tab and force Run Output
       if (preSplitReplayTabRef.current === null) {
         preSplitReplayTabRef.current = splitPaneTab;
       }
@@ -9821,7 +9834,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         preSplitReplayTabRef.current = null;
       }
     }
-  }, [replayActive, splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [replayMode, splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
   useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
@@ -10909,6 +10922,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       <RunOutputDock
                         runId={lastTestRunId}
                         focusNodeId={replayActive && replayNodeIds.length > 0 ? replayNodeIds[replayIndex] : undefined}
+                        sharedQueryKey={liveRunState ? ["wf-test-run-progress", lastTestRunId] : undefined}
                       />
                     )
                   ) : splitPaneTab === "errors" ? (
