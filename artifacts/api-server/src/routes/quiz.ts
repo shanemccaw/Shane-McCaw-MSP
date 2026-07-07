@@ -7,6 +7,7 @@ import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, users
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
 import { sendEmailWithAttachment, sendEmailWithAttachmentOrThrow, sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, brandedEmail, quizLeadNotificationEmail } from "../lib/mailer";
 
@@ -579,6 +580,18 @@ Respond ONLY with valid JSON in this exact shape:
   }
 
   if (leadId !== null) {
+    void emitWorkflowEvent("quiz.lead_submitted", {
+      quizLeadId: leadId,
+      name,
+      email,
+      company: company ?? null,
+      quizType,
+      totalScore,
+      tier,
+      recommendedService,
+      categoryScores: scores,
+    });
+
     void (async () => {
       try {
         const admins = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.role, "admin"));
