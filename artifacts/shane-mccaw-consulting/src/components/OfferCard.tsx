@@ -3,6 +3,7 @@ export { resolveIcon, badgeClass, BADGE_COLORS, type OfferCardData } from "@work
 import { CTAButton } from "@/components/CTAButton";
 import { type PublicService } from "@/hooks/useServices";
 import { AlertTriangle, Download } from "lucide-react";
+import { Link } from "wouter";
 
 interface OfferCardProps {
   offer: PublicService;
@@ -18,7 +19,7 @@ export function OfferCard({
   offer,
   index,
   ctaHref,
-  ctaLabel = "Get Started",
+  ctaLabel = "Buy Now",
   ctaOnClick,
   ctaDisabled,
   onDownloadOverview,
@@ -98,11 +99,25 @@ export function OfferCard({
       </div>
     ) : null;
 
+  const bookCallBtn = (
+    <Link
+      href="/book"
+      className={`w-full flex items-center justify-center text-sm font-semibold py-2.5 rounded border transition-colors ${
+        hl
+          ? "border-white/30 text-white/80 hover:border-white/60 hover:text-white"
+          : "border-[#0078D4]/40 text-[#0078D4] hover:border-[#0078D4] hover:bg-[#0078D4]/5"
+      }`}
+    >
+      Book a Discovery Call
+    </Link>
+  );
+
   const cta = (
     <div>
       {triggersSection}
       <div className="flex flex-col gap-2 mt-2">
         {primaryBtn}
+        {bookCallBtn}
         {downloadBtn}
         {learnMoreBtn}
       </div>

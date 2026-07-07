@@ -90,6 +90,18 @@ export default function MicroOffers() {
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
 
+          {/* How it works — info banner */}
+          <div className="mb-6 rounded-xl border border-[#0078D4]/40 bg-[#EBF4FF] p-5 flex gap-4">
+            <div className="flex-shrink-0 mt-0.5">
+              <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
+              </svg>
+            </div>
+            <p className="text-[#0A2540] text-sm leading-relaxed">
+              <span className="font-bold">No call required.</span> Purchase, connect your Microsoft 365 tenant (read-only access, takes 10 minutes), and watch the automated diagnostic run. Your scoped proposal is generated automatically when it completes.
+            </p>
+          </div>
+
           {/* Quick Win Quiz CTA */}
           <div className="mb-10 rounded-xl border border-[#0078D4]/30 bg-white p-6 flex flex-col sm:flex-row gap-4 shadow-sm">
             <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
