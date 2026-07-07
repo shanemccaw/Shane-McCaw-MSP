@@ -1484,11 +1484,18 @@ function PayloadField({
                           {group.outputs.map(o => {
                             const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
                             return (
-                              <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
-                                className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
-                                <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
-                                <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
-                              </button>
+                              <div key={o.key}>
+                                <button type="button" onClick={() => insertToken(tokenPath)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
+                                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                                </button>
+                                {o.enumValues && o.enumValues.length > 0 && (
+                                  <p className="px-3 pb-1.5 text-[9px] font-mono text-amber-500/60 leading-tight">
+                                    {o.enumValues.map(ev => `"${ev}"`).join(" · ")}
+                                  </p>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
@@ -1944,11 +1951,24 @@ function ExpressionField({
                             {group.outputs.map(o => {
                               const tokenPath = group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`;
                               return (
-                                <button key={o.key} type="button" onClick={() => insertToken(tokenPath)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
-                                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
-                                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
-                                </button>
+                                <div key={o.key}>
+                                  <button type="button" onClick={() => insertToken(tokenPath)}
+                                    className="w-full text-left px-3 py-1.5 hover:bg-[#0D1117] flex items-start justify-between gap-3">
+                                    <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${tokenPath}}}`}</span>
+                                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{o.label}</span>
+                                  </button>
+                                  {o.enumValues && o.enumValues.length > 0 && (
+                                    <div className="px-3 pb-1.5 flex flex-wrap gap-1">
+                                      {o.enumValues.map(ev => (
+                                        <button key={ev} type="button"
+                                          onClick={() => { onChange(`{{${tokenPath}}} == '${ev}'`); setPickerOpen(false); }}
+                                          className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors">
+                                          == &apos;{ev}&apos;
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
                               );
                             })}
                           </div>
