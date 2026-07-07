@@ -8427,6 +8427,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     try { return Math.max(260, Math.min(500, parseInt(localStorage.getItem("wf-panel-width") ?? "320", 10))); } catch { return 320; }
   });
   const panelResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const [libTab, setLibTab] = useState<"nodes" | "patterns">(() => {
+    try { return (localStorage.getItem("wf-lib-tab") as "nodes" | "patterns") ?? "nodes"; } catch { return "nodes"; }
+  });
+  const [replayMode, setReplayMode] = useState(false);
   const [settingsMaxDepth, setSettingsMaxDepth] = useState<number>(5);
   const [settingsDepthError, setSettingsDepthError] = useState<string | null>(null);
   const [testRunTrigger, setTestRunTrigger] = useState(0);
@@ -9109,10 +9113,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
-      // Escape — deselect
+      // Escape — deselect, close panel, exit replay
       if (e.key === "Escape" && !inInput) {
         setSelectedNodeId(null);
         setRightPanelTab(null);
+        setReplayMode(false);
         return;
       }
 
@@ -9186,6 +9191,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   // Persist layout preferences to localStorage
   useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
   useEffect(() => { localStorage.setItem("wf-panel-width", String(rightPanelWidth)); }, [rightPanelWidth]);
+  useEffect(() => { localStorage.setItem("wf-lib-tab", libTab); }, [libTab]);
 
   function startPanelResize(e: React.MouseEvent) {
     e.preventDefault();
@@ -9289,12 +9295,22 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
+          {/* Trends — placeholder; #2541 will wire this to the trends drawer */}
+          <button
+            className="p-1.5 rounded-lg border border-[#30363D] transition-colors text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#484F58]"
+            title="Trends — available after #2541 lands"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+            </svg>
+          </button>
+
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
-          {/* Group: Inspect */}
+          {/* Group: Inspect + Replay */}
           <div className="flex items-center gap-1">
             <button
-              onClick={() => { setInspectMode(v => !v); if (inspectMode) setInspectRunId(null); }}
+              onClick={() => { setInspectMode(v => !v); if (inspectMode) { setInspectRunId(null); setReplayMode(false); } }}
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg transition-colors ${inspectMode ? "bg-violet-600/20 border-violet-500/40 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
               title="Inspect a run — overlay execution results on each step card"
             >
@@ -9310,7 +9326,47 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 onChange={setInspectRunId}
               />
             )}
+            {/* Replay toggle — enabled only when a run is selected in Inspect mode */}
+            <button
+              onClick={() => setReplayMode(v => !v)}
+              disabled={!inspectRunId}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                replayMode
+                  ? "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
+                  : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"
+              }`}
+              title={inspectRunId ? "Toggle replay mode — step through run with ← →" : "Select a run first to enable replay"}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Replay
+            </button>
           </div>
+
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
+          {/* Health Score badge — populated by #2541 scoreWorkflow() after save */}
+          {(() => {
+            const score = (def as Record<string, unknown> | undefined)?.healthScore as number | undefined;
+            const band = score == null ? null : score >= 80 ? "green" : score >= 50 ? "amber" : "red";
+            const cls = band === "green" ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                       : band === "amber" ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                       : band === "red"   ? "bg-red-500/10 border-red-500/20 text-red-400"
+                       : "bg-[#30363D] border-[#484F58] text-[#7D8590]";
+            return (
+              <button
+                className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold border rounded-full transition-colors ${cls}`}
+                title={score != null ? `Workflow health score: ${score}/100` : "Health score — computed after save (requires #2541)"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+                {score != null ? `${score}` : "—"}
+              </button>
+            );
+          })()}
 
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
@@ -9377,12 +9433,55 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </button>
           )}
 
+          {/* Explain — triggers POST /api/admin/workflows/definitions/:id/explain (wired by #2541) */}
+          {nodes.length > 0 && (
+            <button
+              onClick={async () => {
+                try {
+                  await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, { method: "POST" });
+                } catch {
+                  // explain endpoint lands with #2541
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
+              title="Ask AI to explain what this workflow does (POST /explain — #2541)"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Explain
+            </button>
+          )}
+
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
           {/* Test Run → opens right panel Test Run tab */}
           <button
             onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
+          </button>
+
+          {/* Settings / History quick-open — icon-only for discoverability when panel is closed */}
+          <button
+            onClick={() => setRightPanelTab("settings")}
+            className={`p-1.5 rounded-lg border transition-colors ${rightPanelTab === "settings" ? "border-[#0078D4]/60 text-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] text-[#484F58] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
+            title="Workflow settings"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setRightPanelTab("history")}
+            className={`p-1.5 rounded-lg border transition-colors ${rightPanelTab === "history" ? "border-[#0078D4]/60 text-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] text-[#484F58] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
+            title="Version history"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
           </button>
 
           <button
@@ -9515,16 +9614,35 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </svg>
             </button>
           </div>
-          <div className="flex-shrink-0 px-3 py-2">
-            <input
-              value={libSearch}
-              onChange={e => setLibSearch(e.target.value)}
-              placeholder="Search nodes…"
-              className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
-            />
+
+          {/* Nodes / Patterns sub-tabs */}
+          <div className="flex-shrink-0 flex border-b border-[#1C2128]">
+            {(["nodes", "patterns"] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setLibTab(t)}
+                className={`flex-1 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors border-b-2 ${
+                  libTab === t
+                    ? "border-[#0078D4] text-[#E6EDF3]"
+                    : "border-transparent text-[#484F58] hover:text-[#7D8590]"
+                }`}
+              >
+                {t === "nodes" ? "Nodes" : "Patterns"}
+              </button>
+            ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-3">
+          {libTab === "nodes" ? (
+            <>
+              <div className="flex-shrink-0 px-3 py-2">
+                <input
+                  value={libSearch}
+                  onChange={e => setLibSearch(e.target.value)}
+                  placeholder="Search nodes…"
+                  className="w-full bg-[#161B22] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                />
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-3">
             {/* Recently Used */}
             {recentTypes.length > 0 && !libSearch && (
               <div>
@@ -9619,7 +9737,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </div>
               ))
             )}
-          </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
+              <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              <p className="text-xs text-[#484F58]">Reusable workflow patterns<br />— coming with #2541</p>
+            </div>
+          )}
         </div>
 
         {/* Center: Canvas */}
@@ -9697,6 +9824,30 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </svg>
               </button>
             </div>
+            {/* Breadcrumb: Workflow › node › tab */}
+            {(() => {
+              const tabLabels: Record<string, string> = {
+                node: "Node Config", testrun: "Test Run", metadata: "Metadata",
+                settings: "Settings", history: "History",
+              };
+              const nodeName = selectedNode ? String((selectedNode.data as Record<string, unknown>).label ?? selectedNode.id) : null;
+              const tabLabel = rightPanelTab ? tabLabels[rightPanelTab] : null;
+              const parts: string[] = [];
+              if (def?.name) parts.push(def.name);
+              if (rightPanelTab === "node" && nodeName) parts.push(nodeName);
+              if (tabLabel) parts.push(tabLabel);
+              if (parts.length < 2) return null;
+              return (
+                <div className="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 border-b border-[#1C2128] bg-[#0D1117]/60 overflow-hidden">
+                  {parts.map((p, i) => (
+                    <span key={i} className="flex items-center gap-1 min-w-0">
+                      {i > 0 && <span className="text-[#30363D] flex-shrink-0">›</span>}
+                      <span className={`text-[10px] truncate ${i === parts.length - 1 ? "text-[#7D8590]" : "text-[#484F58]"}`}>{p}</span>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
             {/* Panel content */}
             <div className="flex-1 overflow-hidden flex flex-col">
               {rightPanelTab === "node" && selectedNode ? (
@@ -9950,9 +10101,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 ["Ctrl+D", "Duplicate selected node"],
                 ["Ctrl+Enter", "Open Publish dialog"],
                 ["Delete / Backspace", "Delete selected node"],
-                ["Escape", "Deselect / close panels"],
+                ["Escape", "Deselect node / close panel / exit Replay"],
                 ["/", "Focus node library search"],
                 ["?", "Toggle this shortcuts panel"],
+                ["← / →", "Step backward / forward in Replay mode"],
+                ["Ctrl+\\", "Split view (coming with #2551)"],
               ] as [string, string][]).map(([key, desc]) => (
                 <div key={key} className="flex items-center justify-between gap-4 py-1.5 border-b border-[#1C2128] last:border-0">
                   <code className="text-xs text-[#0078D4] bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 font-mono whitespace-nowrap">{key}</code>
