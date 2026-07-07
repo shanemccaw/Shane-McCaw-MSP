@@ -401,7 +401,18 @@ router.get("/admin/workflows/definitions/:id/versions", requireAdmin, async (req
   if (isNaN(id)) return sendError(res, 400, "Invalid id");
   try {
     const versions = await db
-      .select()
+      .select({
+        id: wfVersionsTable.id,
+        definitionId: wfVersionsTable.definitionId,
+        versionNumber: wfVersionsTable.versionNumber,
+        label: wfVersionsTable.label,
+        status: wfVersionsTable.status,
+        graph: wfVersionsTable.graph,
+        isDefault: wfVersionsTable.isDefault,
+        createdAt: wfVersionsTable.createdAt,
+        updatedAt: wfVersionsTable.updatedAt,
+        runCount: sql<number>`(SELECT COUNT(*) FROM wf_runs WHERE wf_runs.version_id = ${wfVersionsTable.id})::int`,
+      })
       .from(wfVersionsTable)
       .where(eq(wfVersionsTable.definitionId, id))
       .orderBy(desc(wfVersionsTable.versionNumber));
@@ -534,7 +545,7 @@ router.post("/admin/workflows/definitions/:id/versions/:vid/publish", requireAdm
 
     const [published] = await db
       .update(wfVersionsTable)
-      .set({ status: "published", label: body.success ? (body.data.label ?? undefined) : undefined })
+      .set({ status: "published", label: body.success ? (body.data.label ?? undefined) : undefined, updatedAt: new Date() })
       .where(eq(wfVersionsTable.id, vid))
       .returning();
 

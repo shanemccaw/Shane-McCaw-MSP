@@ -8976,7 +8976,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     queryKey: ["wf-versions", defId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions`);
-      return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; isDefault: boolean; graph: { nodes: unknown[]; edges: unknown[] } }>>;
+      return res.json() as Promise<Array<{ id: number; versionNumber: number; label: string; status: string; isDefault: boolean; graph: { nodes: unknown[]; edges: unknown[] }; createdAt: string; updatedAt: string; runCount: number }>>;
     },
   });
 
@@ -11708,6 +11708,41 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full space-y-4" onClick={e => e.stopPropagation()}>
             <h2 className="font-semibold text-[#E6EDF3]">Publish Version</h2>
             <p className="text-sm text-[#7D8590]">Save first, then publish to make this the live version for all triggers.</p>
+
+            {/* Live version banner */}
+            {(() => {
+              const liveVer = versions.find(v => v.status === "published");
+              if (!liveVer) {
+                return (
+                  <div className="flex items-center gap-2 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#484F58] flex-shrink-0" />
+                    <span className="text-xs text-[#7D8590]">No published version — this will be the first</span>
+                  </div>
+                );
+              }
+              const name = liveVer.label?.trim() || `v${liveVer.versionNumber}`;
+              const publishedMs = liveVer.updatedAt ? new Date(liveVer.updatedAt).getTime() : new Date(liveVer.createdAt).getTime();
+              const diffMs = Date.now() - publishedMs;
+              const diffMins = Math.floor(diffMs / 60000);
+              const diffHrs = Math.floor(diffMins / 60);
+              const diffDays = Math.floor(diffHrs / 24);
+              const timeAgo = diffMins < 1 ? "just now"
+                : diffMins < 60 ? `${diffMins}m ago`
+                : diffHrs < 24 ? `${diffHrs}h ago`
+                : diffDays === 1 ? "1 day ago"
+                : `${diffDays} days ago`;
+              const rc = (liveVer as typeof liveVer & { runCount?: number }).runCount ?? 0;
+              return (
+                <div className="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
+                  <span className="text-xs text-[#E6EDF3]">
+                    Currently live: <span className="font-semibold text-emerald-400">{name}</span>
+                    <span className="text-[#7D8590]"> · published {timeAgo} · {rc.toLocaleString()} run{rc !== 1 ? "s" : ""}</span>
+                  </span>
+                </div>
+              );
+            })()}
+
             <input
               value={publishLabel}
               onChange={e => setPublishLabel(e.target.value)}
