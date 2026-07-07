@@ -653,7 +653,18 @@ export default function Home() {
               </div>
             ))}
           </div>
-          <div className="text-center">
+          <div className="text-center mt-10 mb-2">
+            <p className="text-white/60 max-w-2xl mx-auto text-sm leading-relaxed mb-3">
+              This is exactly what happens when you purchase any Tier 1 Quick Win — automated, read-only, and complete before you ever need to talk to Shane.
+            </p>
+            <a
+              href="/quick-wins"
+              className="inline-flex items-center gap-2 text-[#00B4D8] hover:text-white font-semibold text-sm transition-colors"
+            >
+              See Quick Win packages and pricing →
+            </a>
+          </div>
+          <div className="text-center mt-4">
             <a
               href="/how-it-works"
               className="inline-flex items-center gap-2 text-[#00B4D8] hover:text-white font-semibold text-sm transition-colors"
