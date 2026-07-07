@@ -176,6 +176,7 @@ const KNOWN_EVENTS: Array<{
   { category: "M365", name: "m365.diagnostic_failed",    description: "A Quick Win diagnostic run failed mid-way (Azure credentials absent or network error)", payloadFields: [{ key: "clientId", label: "Client user ID" }, { key: "failed", label: "Always true for this event" }, { key: "completedAt", label: "ISO timestamp of failure" }] },
   { category: "M365", name: "quiz.lead_submitted",      description: "A lead completed the M365 readiness quiz and their results were scored",  payloadFields: [{ key: "quizLeadId", label: "Quiz lead record ID" }, { key: "leadName", label: "Lead full name" }, { key: "leadEmail", label: "Lead email" }, { key: "company", label: "Company name" }, { key: "totalScore", label: "Overall quiz score 0–100" }, { key: "tier", label: "Score tier (Beginner/Intermediate/Advanced)", enumValues: ["Beginner", "Intermediate", "Advanced"] }, { key: "recommendedService", label: "Top recommended service" }] },
   { category: "M365", name: "customer.script_result",   description: "A customer ran a downloaded diagnostic script and the results were received by the server", payloadFields: [{ key: "scriptName", label: "Script title" }, { key: "scriptId", label: "Library script UUID" }, { key: "customerId", label: "Client user ID" }, { key: "kanbanTaskId", label: "Linked kanban task ID" }, { key: "projectId", label: "Linked project ID" }, { key: "resultId", label: "Script run result row ID" }, { key: "results", label: "Full results object returned by the script" }] },
+  { category: "M365", name: "customer.app_reg_complete", description: "A client successfully completed App Registration for a Quick Win project", payloadFields: [{ key: "userId", label: "Client user ID" }, { key: "projectId", label: "Linked Quick Win project ID" }, { key: "serviceType", label: "Quick Win service type (may be null)" }] },
   // ── Insights ──────────────────────────────────────────────────────────────────
   { category: "Insights", name: "document.generated",             description: "A document was successfully generated from the Insights area (report or consulting deliverable)", payloadFields: [{ key: "documentId", label: "Generated document ID" }, { key: "documentType", label: "Document type (e.g. sow, executive_summary)" }, { key: "clientId", label: "Client user ID" }, { key: "clientName", label: "Client name" }, { key: "generatedAt", label: "ISO timestamp of generation" }, { key: "priceCents", label: "Engagement total in cents (from Tier 02 pricing, 0 for non-SOW documents)" }] },
   { category: "Insights", name: "presentation.phases_requested", description: "Phase generation was triggered for a Quick Win presentation (fires every time 'Build Your Project Plan' is clicked, including forced regenerations)", payloadFields: [{ key: "presentationId", label: "Presentation ID" }, { key: "customerId", label: "Client user ID" }, { key: "projectId", label: "Linked project ID" }, { key: "totalPrice", label: "Total engagement price" }, { key: "sowDocId", label: "Consolidated / full SOW document ID (null if none)" }, { key: "scopedSowDocId", label: "Scoped SOW document ID (null if no scoped SOW exists)" }, { key: "projectTitle", label: "Project title" }, { key: "adjustmentsTotal", label: "Price adjustments total" }, { key: "force", label: "True if this is a forced regeneration" }] },
@@ -7800,7 +7801,6 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onL
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progressRunData?.status, (progressRunData?.nodeOutputs ?? []).length, (progressRunData as { activeNodeId?: string | null } | undefined)?.activeNodeId]);
 
-  const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
   return (
     <div className="flex flex-col h-full bg-[#161B22] overflow-hidden">
       {/* Header */}
@@ -8639,83 +8639,6 @@ import { WORKFLOW_PATTERNS } from "./patternRegistry";
 // Workflow health scoring — the canonical function that produces the unified issue list
 // consumed by both the Errors dock tab and the Health Report slide-over.
 // Covers structural validation + per-node schema validation (missing required fields).
-// When #2541 ships scoreWorkflow() it will append retry-coverage, timeout-guard,
-// and dead-branch scores to the same array — no changes needed in the component.
-function scoreWorkflow(
-  nodes: StoredNode[],
-  edges: StoredEdge[],
-): Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> {
-  const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
-
-  // ── Structural checks ────────────────────────────────────────────────────
-  if (nodes.length === 0) {
-    issues.push({ nodeId: null, severity: "high", message: "Workflow has no nodes — add at least one action node." });
-    return issues;
-  }
-  const startNodes = nodes.filter(n => ["start", "trigger"].includes((n.data.nodeType as string) ?? ""));
-  if (startNodes.length === 0) {
-    issues.push({ nodeId: null, severity: "high", message: "No trigger node found — every workflow needs a start/trigger." });
-  }
-  const connectedIds = new Set([...edges.map(e => e.source), ...edges.map(e => e.target)]);
-  nodes.forEach(n => {
-    const nt = (n.data.nodeType as string) ?? "";
-    if (!["start", "trigger"].includes(nt) && !connectedIds.has(n.id)) {
-      issues.push({ nodeId: n.id, severity: "medium", message: `"${(n.data.label as string) || n.id}" is disconnected — it will never be reached.` });
-    }
-  });
-  const unlabelledCount = nodes.filter(n => {
-    const lbl = (n.data.label as string | undefined) ?? "";
-    return !lbl || lbl === "New Step" || lbl === "Action";
-  }).length;
-  if (unlabelledCount > 0) {
-    issues.push({ nodeId: null, severity: "low", message: `${unlabelledCount} node${unlabelledCount > 1 ? "s have" : " has"} a generic label — rename for clarity.` });
-  }
-
-  // ── Per-node schema validation (required field checks) ───────────────────
-  nodes.forEach(n => {
-    const nt = (n.data.nodeType as string) ?? "";
-    const lbl = `"${(n.data.label as string) || n.id}"`;
-    switch (nt) {
-      case "send_email": {
-        if (!n.data.toEmail && !n.data.to) {
-          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (send_email) is missing a recipient — set the "To" field.` });
-        }
-        if (!n.data.subject) {
-          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (send_email) has no email subject.` });
-        }
-        break;
-      }
-      case "condition": {
-        if (!n.data.expression && !n.data.condition) {
-          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (condition) has no expression — it will always follow the default branch.` });
-        }
-        break;
-      }
-      case "delay": {
-        const dur = n.data.durationMs ?? n.data.delayMs ?? n.data.duration;
-        if (!dur) {
-          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (delay) has no duration configured.` });
-        }
-        break;
-      }
-      case "foreach": {
-        if (!n.data.arrayExpr && !n.data.array && !n.data.iterableExpression) {
-          issues.push({ nodeId: n.id, severity: "medium", message: `${lbl} (foreach) has no array expression — it will iterate over nothing.` });
-        }
-        break;
-      }
-      case "webhook": {
-        if (!n.data.url && !n.data.webhookUrl) {
-          issues.push({ nodeId: n.id, severity: "high", message: `${lbl} (webhook) is missing a target URL.` });
-        }
-        break;
-      }
-    }
-  });
-
-  return issues;
-}
-
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [location, navigate] = useLocation();
@@ -9244,7 +9167,6 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
   // ── Intelligence Layer state ──────────────────────────────────────────────
   const [showHealthPanel, setShowHealthPanel] = useState(false);
-  const [libTab, setLibTab] = useState<"nodes" | "patterns">("nodes");
 
   // Step-through replay (indices declared here; values filled after inspectRunData is available)
   const [replayActive, setReplayActive] = useState(false);
@@ -9828,9 +9750,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   }
 
   // Workflow issues — unified source of truth shared by the Errors tab and Health Report slide-over.
-  // Delegated to the module-level scoreWorkflow() function so the logic lives in one place
-  // and #2541 can extend it without touching the component.
-  const workflowIssues = useMemo(() => scoreWorkflow(nodes, edges), [nodes, edges]);
+  // scoreWorkflow() is imported from workflowHealth.ts (shipped with #2541).
+  // healthResult.issues and workflowIssues are the same array; workflowIssues is a named
+  // alias used by the Errors tab so the code reads clearly in both places.
+  const workflowIssues = useMemo(() => scoreWorkflow(nodes, edges).issues, [nodes, edges]);
 
   // Persist layout preferences to localStorage
   useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
@@ -10229,7 +10152,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           )}
 
           <button
-            onClick={() => { setShowTestRun(true); setTestRunTrigger(t => t + 1); }}
+            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
           >
             🧪 Test Run
@@ -12006,7 +11929,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   Copy
                 </button>
               </div>
-            }
+            )}
           </div>
         </div>
       )}

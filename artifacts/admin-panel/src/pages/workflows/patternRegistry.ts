@@ -343,3 +343,6 @@ export const PATTERNS: WorkflowPattern[] = [
     ],
   },
 ];
+
+/** Alias used by WorkflowBuilderPage — same array, exported under the legacy name. */
+export const WORKFLOW_PATTERNS = PATTERNS;
