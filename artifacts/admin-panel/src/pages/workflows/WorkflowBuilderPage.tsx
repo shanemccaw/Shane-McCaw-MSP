@@ -8540,14 +8540,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [canRedo, setCanRedo] = useState(false);
   // Snapshot current canvas state (max 10 entries); clears redo stack on any new mutation
   const undoLogIdRef = useRef(0);
-  const [undoHistoryLog, setUndoHistoryLog] = useState<Array<{ id: number; label: string; ts: number }>>([]);
+  const [undoHistoryLog, setUndoHistoryLog] = useState<Array<{ id: number; label: string; ts: number; nodeCount: number; edgeCount: number }>>([]);
   function pushHistory(label = "Canvas edit") {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     redoRef.current = [];
     setCanUndo(true);
     setCanRedo(false);
     const id = ++undoLogIdRef.current;
-    setUndoHistoryLog(prev => [...prev.slice(-29), { id, label, ts: Date.now() }]);
+    setUndoHistoryLog(prev => [...prev.slice(-29), { id, label, ts: Date.now(), nodeCount: nodes.length, edgeCount: edges.length }]);
   }
 
   // ── Bottom Dock ──────────────────────────────────────────────────────────
@@ -8577,6 +8577,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastTestRunId, setLastTestRunId] = useState<number | null>(null);
 
   // Metadata panel local state (synced from def on load)
+  const [metaName, setMetaName] = useState("");
   const [metaDesc, setMetaDesc] = useState("");
   const [metaOwner, setMetaOwner] = useState("");
   const [metaTags, setMetaTags] = useState("");
@@ -8621,6 +8622,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       return res.json() as Promise<{
         id: number; name: string; description?: string;
         concurrencyLimit: number; maxRunDepth: number;
+        updatedAt?: string;
+        healthScore?: number;
         metadata?: {
           category?: string; description?: string;
           owner?: string; tags?: string[]; riskLevel?: "low" | "medium" | "high";
@@ -8639,6 +8642,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   // Sync metadata panel from def on first load
   useEffect(() => {
     if (!def) return;
+    setMetaName(def.name ?? "");
     setMetaDesc(def.metadata?.description ?? def.description ?? "");
     setMetaOwner(def.metadata?.owner ?? "");
     setMetaTags((def.metadata?.tags ?? []).join(", "));
@@ -8661,7 +8665,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   });
 
   const metaPatchMut = useMutation({
-    mutationFn: async (patch: { description?: string; owner?: string; tags?: string[]; riskLevel?: "low" | "medium" | "high" }) => {
+    mutationFn: async (patch: { name?: string; description?: string; owner?: string; tags?: string[]; riskLevel?: "low" | "medium" | "high" }) => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -8679,6 +8683,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       setMetaSaveStatus("error");
     },
   });
+  const metaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Triggers — same cache key as StartNodeTriggers; React Query deduplicates the network request.
   const { data: pageTriggers = [] } = useQuery<WfTrigger[]>({
@@ -8817,6 +8822,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       setShowDraftBanner(false);
       setLocalDraft(null);
       setTimeout(() => setSaveStatus("idle"), 2000);
+      addSystemLog("success", `Workflow saved (${nodes.length} node${nodes.length !== 1 ? "s" : ""})`);
       if (data.autoDraftedFrom) {
         setCurrentVersionId(data.id);
         qc.invalidateQueries({ queryKey: ["wf-versions", defId] });
@@ -8824,7 +8830,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         qc.invalidateQueries({ queryKey: ["wf-version", currentVersionId] });
       }
     },
-    onError: () => setSaveStatus("error"),
+    onError: () => { setSaveStatus("error"); addSystemLog("error", "Save failed — check connection"); },
   });
 
   const publishMut = useMutation({
@@ -8843,15 +8849,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       qc.invalidateQueries({ queryKey: ["wf-definitions"] });
       setShowPublish(false);
       setPublishLabel("");
+      addSystemLog("success", `Published${publishLabel.trim() ? ` as "${publishLabel.trim()}"` : ""} — this version is now live`);
     },
+    onError: () => addSystemLog("error", "Publish failed — save the workflow first and retry"),
   });
 
 
   // Add a node from the library sidebar — appends to the end of the flat sequence.
   // Users can also insert at a specific position via the "+" buttons in FlowCanvas.
   function addNode(nodeType: string) {
-    pushHistory();
     const style = NODE_STYLES[nodeType] ?? NODE_STYLES.action;
+    pushHistory(`Added node: ${style.label}`);
 
     // Find a leaf node to connect after (node with no outgoing plain edge)
     const sourcesOfMainEdge = new Set(edges.filter(e => !e.sourceHandle).map(e => e.source));
@@ -9253,7 +9261,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           if (hasChildren && !window.confirm(`"${(node.data.label as string) || node.id}" has downstream steps connected to it. Delete it and disconnect them?`)) return;
           const newNodes = nodes.filter(n => n.id !== selectedNodeId);
           const newEdges = edges.filter(edge => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
-          pushHistory();
+          pushHistory(`Deleted node: ${(node.data.label as string) || node.id}`);
           handleGraphChange(newNodes, newEdges);
           setSelectedNodeId(null);
         }
@@ -9285,11 +9293,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
-      // / — focus library search
+      // / — open global search palette
       if (e.key === "/" && !inInput) {
         e.preventDefault();
-        const el = document.querySelector<HTMLInputElement>("input[placeholder='Search nodes…']");
-        el?.focus();
+        setShowSearch(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
         return;
       }
     }
@@ -10234,11 +10242,85 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 />
               ) : rightPanelTab === "metadata" ? (
                 <div className="overflow-y-auto p-4 space-y-4">
+                  {/* Risk Level Badge — derived from healthScore if available */}
+                  {(() => {
+                    const hs = def?.healthScore;
+                    let riskDerived: "critical" | "high" | "medium" | "low" | null = null;
+                    if (hs != null) {
+                      riskDerived = hs < 40 ? "critical" : hs < 60 ? "high" : hs < 80 ? "medium" : "low";
+                    }
+                    const display = riskDerived ?? metaRisk;
+                    const badge = display === "critical" ? "bg-red-600/20 border-red-600/40 text-red-400"
+                      : display === "high" ? "bg-red-500/20 border-red-500/40 text-red-400"
+                      : display === "medium" ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                      : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400";
+                    return (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk</span>
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-semibold rounded-full border capitalize ${badge}`}
+                          title={hs != null ? `Health score: ${hs}/100 (auto-derived)` : "Set manually — health score not yet available"}
+                        >
+                          {display}
+                          {hs != null && <span className="ml-1 opacity-60 text-[9px]">hs:{hs}</span>}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Read-only metadata */}
+                  {(def?.updatedAt || versions.some(v => v.status === "published")) && (
+                    <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-2.5 space-y-1">
+                      {def?.updatedAt && (
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-[#484F58]">Last modified</span>
+                          <span className="text-[#7D8590]">{new Date(def.updatedAt).toLocaleString()}</span>
+                        </div>
+                      )}
+                      {(() => {
+                        const pub = versions.find(v => v.status === "published");
+                        return pub ? (
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-[#484F58]">Last published</span>
+                            <span className="text-[#7D8590]">{pub.label ?? `v${pub.versionNumber}`}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Workflow name */}
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Workflow Name</label>
+                    <input
+                      value={metaName}
+                      onChange={e => {
+                        setMetaName(e.target.value);
+                        setMetaSaveStatus("saving");
+                        if (metaDebounceRef.current) clearTimeout(metaDebounceRef.current);
+                        metaDebounceRef.current = setTimeout(() => {
+                          const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
+                          metaPatchMut.mutate({ name: e.target.value || undefined, description: metaDesc || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
+                        }, 600);
+                      }}
+                      placeholder="e.g. Client Onboarding Workflow"
+                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
                     <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Description</label>
                     <textarea
                       value={metaDesc}
-                      onChange={e => setMetaDesc(e.target.value)}
+                      onChange={e => {
+                        setMetaDesc(e.target.value);
+                        setMetaSaveStatus("saving");
+                        if (metaDebounceRef.current) clearTimeout(metaDebounceRef.current);
+                        metaDebounceRef.current = setTimeout(() => {
+                          const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
+                          metaPatchMut.mutate({ name: metaName || undefined, description: e.target.value || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
+                        }, 600);
+                      }}
                       placeholder="Describe what this workflow does and when it runs…"
                       rows={3}
                       className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none resize-none"
@@ -10248,7 +10330,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Owner</label>
                     <input
                       value={metaOwner}
-                      onChange={e => setMetaOwner(e.target.value)}
+                      onChange={e => {
+                        setMetaOwner(e.target.value);
+                        setMetaSaveStatus("saving");
+                        if (metaDebounceRef.current) clearTimeout(metaDebounceRef.current);
+                        metaDebounceRef.current = setTimeout(() => {
+                          const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
+                          metaPatchMut.mutate({ name: metaName || undefined, description: metaDesc || undefined, owner: e.target.value || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
+                        }, 600);
+                      }}
                       placeholder="e.g. Shane McCaw"
                       className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
                     />
@@ -10257,7 +10347,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Tags <span className="text-[#484F58] normal-case font-normal">(comma-separated)</span></label>
                     <input
                       value={metaTags}
-                      onChange={e => setMetaTags(e.target.value)}
+                      onChange={e => {
+                        setMetaTags(e.target.value);
+                        setMetaSaveStatus("saving");
+                        if (metaDebounceRef.current) clearTimeout(metaDebounceRef.current);
+                        metaDebounceRef.current = setTimeout(() => {
+                          const tags = e.target.value.split(",").map(t => t.trim()).filter(Boolean);
+                          metaPatchMut.mutate({ name: metaName || undefined, description: metaDesc || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
+                        }, 600);
+                      }}
                       placeholder="e.g. onboarding, client, email"
                       className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
                     />
@@ -10271,40 +10369,47 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </div>
                     )}
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk Level</label>
-                    <div className="flex gap-2">
-                      {(["low", "medium", "high"] as const).map(level => (
-                        <button
-                          key={level}
-                          type="button"
-                          onClick={() => setMetaRisk(level)}
-                          className={`flex-1 py-1.5 text-[10px] font-semibold rounded-lg border capitalize transition-colors ${
-                            metaRisk === level
-                              ? level === "high" ? "bg-red-500/20 border-red-500/40 text-red-400"
-                                : level === "medium" ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
-                                : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                              : "bg-transparent border-[#30363D] text-[#484F58] hover:border-[#484F58]"
-                          }`}
-                        >
-                          {level}
-                        </button>
-                      ))}
+
+                  {/* Risk Level — manual override (only shown when no healthScore) */}
+                  {def?.healthScore == null && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk Level <span className="normal-case font-normal text-[#484F58]">(manual)</span></label>
+                      <div className="flex gap-2">
+                        {(["low", "medium", "high"] as const).map(level => (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => {
+                              setMetaRisk(level);
+                              setMetaSaveStatus("saving");
+                              if (metaDebounceRef.current) clearTimeout(metaDebounceRef.current);
+                              metaDebounceRef.current = setTimeout(() => {
+                                const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
+                                metaPatchMut.mutate({ name: metaName || undefined, description: metaDesc || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: level });
+                              }, 200);
+                            }}
+                            className={`flex-1 py-1.5 text-[10px] font-semibold rounded-lg border capitalize transition-colors ${
+                              metaRisk === level
+                                ? level === "high" ? "bg-red-500/20 border-red-500/40 text-red-400"
+                                  : level === "medium" ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                                  : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                                : "bg-transparent border-[#30363D] text-[#484F58] hover:border-[#484F58]"
+                            }`}
+                          >
+                            {level}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  )}
+
+                  {/* Save status indicator */}
+                  <div className={`flex items-center gap-1.5 text-[10px] transition-opacity ${metaSaveStatus === "idle" ? "opacity-0" : "opacity-100"}`}>
+                    {metaSaveStatus === "saving" && <span className="text-[#484F58]">Auto-saving…</span>}
+                    {metaSaveStatus === "saved" && <><span className="text-emerald-400">✓</span><span className="text-emerald-400">Saved</span></>}
+                    {metaSaveStatus === "error" && <span className="text-red-400">Save failed — retry</span>}
                   </div>
-                  <div className="pt-2 border-t border-[#30363D]">
-                    <button
-                      onClick={async () => {
-                        setMetaSaveStatus("saving");
-                        const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
-                        await metaPatchMut.mutateAsync({ description: metaDesc || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
-                      }}
-                      disabled={metaPatchMut.isPending}
-                      className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {metaSaveStatus === "saving" ? "Saving…" : metaSaveStatus === "saved" ? "✓ Saved" : metaSaveStatus === "error" ? "Error — retry" : "Save Metadata"}
-                    </button>
-                  </div>
+
                   {/* Issues summary */}
                   {workflowIssues.length > 0 && (
                     <div className="pt-2 border-t border-[#30363D] space-y-1.5">
@@ -10369,7 +10474,18 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </div>
               ) : rightPanelTab === "history" ? (
                 <div className="overflow-y-auto p-4 space-y-3">
-                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Undo History</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Undo History</p>
+                    {undoHistoryLog.length > 0 && (
+                      <button
+                        onClick={() => { setUndoHistoryLog([]); historyRef.current = []; redoRef.current = []; setCanUndo(false); setCanRedo(false); }}
+                        className="text-[10px] text-[#484F58] hover:text-red-400 transition-colors"
+                        title="Clear history"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
                   {undoHistoryLog.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
                       <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -10382,6 +10498,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       {[...undoHistoryLog].reverse().map((entry, idx) => {
                         const isLatest = idx === 0;
                         const stackPos = undoHistoryLog.length - idx;
+                        // Diff: compare this entry's nodeCount vs the previous entry (next in reversed order)
+                        const prevEntry = idx < undoHistoryLog.length - 1 ? [...undoHistoryLog].reverse()[idx + 1] : null;
+                        const nodeDelta = prevEntry != null ? entry.nodeCount - prevEntry.nodeCount : null;
+                        // Relative timestamp
+                        const relTs = (() => {
+                          const diff = Date.now() - entry.ts;
+                          if (diff < 5000) return "just now";
+                          if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+                          if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                          return new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                        })();
                         return (
                           <button
                             key={entry.id}
@@ -10401,6 +10528,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                               setUndoHistoryLog(prev => prev.slice(0, undoHistoryLog.length - idx));
                             }}
                             disabled={isLatest}
+                            title={nodeDelta != null ? `${nodeDelta > 0 ? "+" : ""}${nodeDelta} node${Math.abs(nodeDelta) !== 1 ? "s" : ""} · ${entry.nodeCount} total` : `${entry.nodeCount} node${entry.nodeCount !== 1 ? "s" : ""}`}
                             className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
                               isLatest
                                 ? "bg-[#0078D4]/10 border-[#0078D4]/30 cursor-default"
@@ -10410,9 +10538,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                             <span className="text-[10px] font-mono text-[#484F58] flex-shrink-0 w-4 text-right">{stackPos}</span>
                             <div className="min-w-0 flex-1">
                               <p className={`text-xs truncate ${isLatest ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{entry.label}</p>
-                              <p className="text-[9px] text-[#484F58]">
-                                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[9px] text-[#484F58]">{relTs}</p>
+                                {nodeDelta != null && nodeDelta !== 0 && (
+                                  <span className={`text-[9px] font-mono ${nodeDelta > 0 ? "text-emerald-500/60" : "text-red-500/60"}`}>
+                                    {nodeDelta > 0 ? "+" : ""}{nodeDelta}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             {isLatest && (
                               <span className="text-[9px] text-[#0078D4] flex-shrink-0">current</span>
@@ -10623,7 +10756,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   ? nodes.filter(n => {
                       const lbl = ((n.data.label as string) ?? "").toLowerCase();
                       const nt = ((n.data.nodeType as string) ?? "").toLowerCase();
-                      return lbl.includes(q) || nt.includes(q) || n.id.toLowerCase().includes(q);
+                      const annotation = ((n.data.annotation as string) ?? "").toLowerCase();
+                      // Also search stringified config values
+                      const configStr = JSON.stringify(n.data).toLowerCase();
+                      return lbl.includes(q) || nt.includes(q) || n.id.toLowerCase().includes(q) || annotation.includes(q) || configStr.includes(q);
                     })
                   : nodes;
                 if (filtered.length === 0) {
@@ -10803,7 +10939,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 ["Ctrl+Enter", "Open Publish dialog"],
                 ["Delete / Backspace", "Delete selected node"],
                 ["Escape", "Deselect node / close panel / exit Replay"],
-                ["/", "Focus node library search"],
+                ["/", "Open global search palette"],
                 ["?", "Toggle this shortcuts panel"],
                 ["← / →", "Step backward / forward in Replay mode"],
                 ["Ctrl+\\", "Split view (coming with #2551)"],
