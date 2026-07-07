@@ -20,6 +20,9 @@ import { AssetPickerModal } from "@/components/AssetPickerModal";
 import RunDetailContent, { type WfRunDetail } from "./RunDetailContent";
 import type { AncestorGroup } from "./ancestorOutputs";
 import { getAncestorOutputs as _getAncestorOutputs } from "./ancestorOutputs";
+import { scoreWorkflow } from "./workflowHealth";
+import { PATTERNS } from "./patternRegistry";
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -2349,6 +2352,7 @@ function NodeConfigPanel({
   nodes,
   edges,
   onGraphChange,
+  onTokenHighlight,
 }: {
   node: { id: string; data: Record<string, unknown> };
   onChange: (id: string, data: Record<string, unknown>) => void;
@@ -2358,6 +2362,7 @@ function NodeConfigPanel({
   nodes: Node[];
   edges: Edge[];
   onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
+  onTokenHighlight?: (nodeId: string | null) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const nodeType = (node.data.nodeType as string) ?? "action";
@@ -4911,6 +4916,58 @@ function NodeConfigPanel({
             )}
           </>
         )}
+      {/* Token Reference Tracer — scan all string config values for {{token}} patterns */}
+      {(() => {
+        const TOKEN_RE = /\{\{([^}]+)\}\}/g;
+        const allTokens = ancestorOutputs.flatMap(group =>
+          group.outputs.map(o => ({
+            tokenPath: group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`,
+            label: o.label,
+            groupName: group.nodeName,
+            nodeId: group.nodeId ?? null,
+          }))
+        );
+        const tokenMap = new Map(allTokens.map(t => [t.tokenPath, t]));
+        const refs: Array<{ tokenPath: string; label: string; groupName: string; nodeId: string | null }> = [];
+        const seen = new Set<string>();
+        function scanValue(v: unknown) {
+          if (typeof v !== "string") return;
+          let m: RegExpExecArray | null;
+          while ((m = TOKEN_RE.exec(v)) !== null) {
+            const key = m[1];
+            if (!seen.has(key)) { seen.add(key); const t = tokenMap.get(key); if (t) refs.push(t); }
+          }
+          TOKEN_RE.lastIndex = 0;
+        }
+        function scanObj(obj: unknown, depth = 0) {
+          if (depth > 5 || !obj || typeof obj !== "object") return;
+          for (const val of Object.values(obj as Record<string, unknown>)) {
+            if (typeof val === "string") scanValue(val);
+            else if (typeof val === "object") scanObj(val, depth + 1);
+          }
+        }
+        scanObj(node.data);
+        if (refs.length === 0) return null;
+        return (
+          <div className="pt-3 border-t border-[#30363D] space-y-1.5">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Token References</p>
+            <div className="flex flex-wrap gap-1">
+              {refs.map(ref => (
+                <span
+                  key={ref.tokenPath}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono bg-purple-500/10 border border-purple-500/20 text-purple-300 cursor-default transition-colors hover:bg-purple-500/20 hover:border-purple-500/40"
+                  title={`${ref.label} — from ${ref.groupName}`}
+                  onMouseEnter={() => ref.nodeId && onTokenHighlight?.(ref.nodeId)}
+                  onMouseLeave={() => onTokenHighlight?.(null)}
+                >
+                  {`{{${ref.tokenPath}}}`}
+                </span>
+              ))}
+            </div>
+            <p className="text-[8px] text-[#484F58]">Hover a token to highlight its source node on the canvas</p>
+          </div>
+        );
+      })()}
       </div>
     </div>
   );
@@ -7579,13 +7636,14 @@ function PreRunInputModal({
   );
 }
 
-function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted }: {
+function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted, onLiveRunUpdate }: {
   defId: number;
   nodes: Node[];
   edges: Edge[];
   onClose: () => void;
   trigger: number;
   onRunStarted?: (runId: number) => void;
+  onLiveRunUpdate?: (state: { activeNodeId: string | null; completedIds: Set<string>; failedIds: Set<string> } | null) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -7695,7 +7753,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted }: {
     enabled: runId !== null,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status && TERMINAL_STATUSES.has(status) ? false : 2000;
+      return status && TERMINAL_STATUSES.has(status) ? false : 1500;
     },
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}`);
@@ -7716,6 +7774,33 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted }: {
     return undefined;
   }, [runIsTerminal, progressLogs.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Emit live run state to parent so FlowCanvas can highlight executing nodes
+  useEffect(() => {
+    if (!onLiveRunUpdate) return;
+    if (!progressRunData) { onLiveRunUpdate(null); return; }
+    const completedIds = new Set(
+      (progressRunData.nodeOutputs ?? [])
+        .filter(o => (o.status as string) === "success" || (o.status as string) === "ok")
+        .map(o => o.nodeId),
+    );
+    const failedIds = new Set(
+      (progressRunData.nodeOutputs ?? [])
+        .filter(o => (o.status as string) !== "success" && (o.status as string) !== "ok" && (o.status as string) !== "skipped")
+        .map(o => o.nodeId),
+    );
+    if (runIsTerminal) {
+      onLiveRunUpdate(null);
+    } else {
+      onLiveRunUpdate({
+        activeNodeId: (progressRunData as { activeNodeId?: string | null }).activeNodeId ?? null,
+        completedIds,
+        failedIds,
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progressRunData?.status, (progressRunData?.nodeOutputs ?? []).length, (progressRunData as { activeNodeId?: string | null } | undefined)?.activeNodeId]);
+
+  const slideClass = !mounted || closing ? "translate-x-full" : "translate-x-0";
   return (
     <div className="flex flex-col h-full bg-[#161B22] overflow-hidden">
       {/* Header */}
@@ -8633,7 +8718,7 @@ function scoreWorkflow(
 
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const qc = useQueryClient();
 
   const [nodes, setNodes] = useState<StoredNode[]>([]);
@@ -8992,7 +9077,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/versions/${currentVersionId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ graph }),
+        body: JSON.stringify({ graph, healthScore: healthResult.score }),
       });
       if (!res.ok) throw new Error("Save failed");
       return res.json() as Promise<{ id: number; autoDraftedFrom?: number; status: string }>;
@@ -9156,7 +9241,118 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
   const [copiedStep, setCopiedStep] = useState<import("./flowTree").FlowStep | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // ── Intelligence Layer state ──────────────────────────────────────────────
+  const [showHealthPanel, setShowHealthPanel] = useState(false);
+  const [libTab, setLibTab] = useState<"nodes" | "patterns">("nodes");
+
+  // Step-through replay (indices declared here; values filled after inspectRunData is available)
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayIndex, setReplayIndex] = useState(0);
+
+  // Real-time node highlighting: populated by TestRunPanel callbacks
+  const [liveRunState, setLiveRunState] = useState<{
+    activeNodeId: string | null;
+    completedIds: Set<string>;
+    failedIds: Set<string>;
+  } | null>(null);
+
+  // Live-run elapsed timer
+  const [liveElapsedSecs, setLiveElapsedSecs] = useState(0);
+  const liveRunStartedAtRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!liveRunState) {
+      liveRunStartedAtRef.current = null;
+      setLiveElapsedSecs(0);
+      return;
+    }
+    if (liveRunStartedAtRef.current === null) {
+      liveRunStartedAtRef.current = Date.now();
+      setLiveElapsedSecs(0);
+    }
+    const id = setInterval(() => {
+      setLiveElapsedSecs(Math.floor((Date.now() - (liveRunStartedAtRef.current ?? Date.now())) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [liveRunState]);
+
+  // Token highlight: set when user hovers a {{token}} chip in the config panel
+  const [tokenHighlightNodeId, setTokenHighlightNodeId] = useState<string | null>(null);
+
+  // AI Narrative modal
+  const [showNarrative, setShowNarrative] = useState(false);
+  const [narrativeText, setNarrativeText] = useState("");
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+
+  async function fetchNarrative() {
+    setNarrativeLoading(true);
+    setNarrativeText("");
+    setShowNarrative(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/explain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nodes, edges }),
+      });
+      const data = await res.json() as { narrative?: string; error?: string };
+      setNarrativeText(data.narrative ?? data.error ?? "No narrative returned.");
+    } catch {
+      setNarrativeText("Failed to load narrative. Please try again.");
+    } finally {
+      setNarrativeLoading(false);
+    }
+  }
+
+  // Execution Trends drawer — also auto-opens when navigated from the list with ?trends=1
+  const [showTrends, setShowTrends] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get("trends") === "1"; } catch { return false; }
+  });
+  React.useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("trends") === "1") {
+      setShowTrends(true);
+      // Remove the query param from the URL without triggering a navigation
+      const url = window.location.pathname;
+      window.history.replaceState(null, "", url);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
+  const { data: trendsData } = useQuery<{
+    dailyStats: Array<{ date: string; runs: number; successRate: number; p50Ms: number | null; p95Ms: number | null }>;
+    topFailingNodes: Array<{ nodeId: string; nodeLabel: string; errorCount: number }>;
+  }>({
+    queryKey: ["wf-trends", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/trends`);
+      if (!res.ok) return { dailyStats: [], topFailingNodes: [] };
+      const raw = await res.json() as {
+        daily?: Array<{ day: string; total: number; success: number; failure: number; avgMs: number | null }>;
+        durations?: Array<{ day: string; p50Ms: number | null; p95Ms: number | null }>;
+        topFailingNodes?: Array<{ nodeId: string; failCount: number }>;
+      };
+      const durMap = Object.fromEntries((raw.durations ?? []).map(d => [d.day, d]));
+      const nodeMap = Object.fromEntries(nodes.map(n => [n.id, ((n.data as Record<string, unknown>)?.label as string | undefined) ?? (n.type ?? n.id)]));
+      return {
+        dailyStats: (raw.daily ?? []).map(d => ({
+          date: d.day,
+          runs: d.total,
+          successRate: d.total > 0 ? Math.round((d.success / d.total) * 100) : 0,
+          p50Ms: durMap[d.day]?.p50Ms ?? null,
+          p95Ms: durMap[d.day]?.p95Ms ?? null,
+        })),
+        topFailingNodes: (raw.topFailingNodes ?? []).map(n => ({
+          nodeId: n.nodeId,
+          nodeLabel: nodeMap[n.nodeId] ?? n.nodeId,
+          errorCount: n.failCount,
+        })),
+      };
+    },
+    enabled: showTrends,
+    staleTime: 5 * 60_000,
+  });
   const [publishAcknowledged, setPublishAcknowledged] = useState(false);
+
+  // ── Health Score ──────────────────────────────────────────────────────────
+  const healthResult = useMemo(() => scoreWorkflow(nodes, edges), [nodes, edges]);
 
   // ── Semantic Auto-Layout ────────────────────────────────────────────────────
   const runAutoLayout = useCallback(() => {
@@ -9386,7 +9582,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     status: string;
     nodeOutputs?: Array<{ nodeId: string; status: string; durationMs: number | null; errorMessage: string | null }>;
     logs?: Array<{ nodeId: string; message: string; timestamp: string; metadata?: Record<string, unknown> | null }>;
-    nodeResultMap?: Record<string, { status: "ok" | "error" | "skipped"; durationMs: number | null; errorMessage: string | null; logPreview: string | null }>;
+    nodeResultMap?: Record<string, { status: "ok" | "error" | "skipped"; durationMs: number | null; errorMessage: string | null; logPreview: string | null; input?: Record<string, unknown> | null; output?: Record<string, unknown> | null }>;
   }>({
     queryKey: ["wf-run-inspect", inspectRunId],
     queryFn: async () => {
@@ -9401,7 +9597,41 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     refetchOnWindowFocus: !replayMode,
   });
 
-  const stepResultMap = React.useMemo<Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null }>>(() => {
+  // Step-through replay state (depends on inspectRunData declared above)
+  const replayNodeIds = React.useMemo<string[]>(() => {
+    if (!inspectRunData?.nodeOutputs) return [];
+    return inspectRunData.nodeOutputs.map(o => o.nodeId);
+  }, [inspectRunData]);
+
+  const replayState = replayActive && replayNodeIds.length > 0
+    ? { nodeIds: replayNodeIds, activeIndex: replayIndex }
+    : null;
+
+  // Keyboard navigation for step-through replay (ArrowLeft / ArrowRight)
+  React.useEffect(() => {
+    if (!replayActive) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setReplayIndex(i => Math.max(0, i - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setReplayIndex(i => Math.min(replayNodeIds.length - 1, i + 1));
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [replayActive, replayNodeIds.length]);
+
+  // Auto-populate the right inspector panel as replay advances
+  React.useEffect(() => {
+    if (!replayActive || replayNodeIds.length === 0) return;
+    const nodeId = replayNodeIds[replayIndex];
+    if (nodeId) setSelectedNodeId(nodeId);
+  }, [replayActive, replayIndex, replayNodeIds]);
+
+  const stepResultMap = React.useMemo<Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null; input?: Record<string, unknown> | null; output?: Record<string, unknown> | null }>>(() => {
     if (!inspectMode) return {};
     // Build logsByNode from the full logs array for all paths
     const logsByNode: Record<string, string[]> = {};
@@ -9436,36 +9666,35 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       const t = e.target as HTMLElement;
       const inInput = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
 
-      // Ctrl+Z / Cmd+Z — undo
+      // Ctrl+Z / Cmd+Z — undo (blocked in read-only mode)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
         if (inInput) return;
         e.preventDefault();
-        if (e.shiftKey) handleRedo(); else handleUndo();
+        if (!isReadOnly) { if (e.shiftKey) handleRedo(); else handleUndo(); }
         return;
       }
 
-      // Ctrl+S / Cmd+S — save
+      // Ctrl+S / Cmd+S — save (blocked in read-only mode)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         if (inInput) return;
         e.preventDefault();
-        saveMut.mutate();
+        if (!isReadOnly) saveMut.mutate();
         return;
       }
 
-      // Ctrl+D / Cmd+D — duplicate selected
+      // Ctrl+D / Cmd+D — duplicate selected (blocked in read-only mode)
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
         if (inInput) return;
         e.preventDefault();
-        if (selectedNodeId) duplicateNode(selectedNodeId);
+        if (!isReadOnly && selectedNodeId) duplicateNode(selectedNodeId);
         return;
       }
 
-      // Ctrl+Enter — open publish dialog
+      // Ctrl+Enter — open publish dialog (blocked in read-only mode)
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         if (inInput) return;
         e.preventDefault();
-        setPublishAcknowledged(false);
-        setShowPublish(true);
+        if (!isReadOnly) { setPublishAcknowledged(false); setShowPublish(true); }
         return;
       }
 
@@ -9486,18 +9715,20 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
-      // Delete / Backspace — delete selected node (confirm if it has downstream connections)
+      // Delete / Backspace — delete selected node (blocked in read-only mode)
       if ((e.key === "Delete" || e.key === "Backspace") && !inInput && selectedNodeId) {
         e.preventDefault();
-        const node = nodes.find(n => n.id === selectedNodeId);
-        if (node && (node.data.nodeType as string) !== "start") {
-          const hasChildren = edges.some(edge => edge.source === selectedNodeId);
-          if (hasChildren && !window.confirm(`"${(node.data.label as string) || node.id}" has downstream steps connected to it. Delete it and disconnect them?`)) return;
-          const newNodes = nodes.filter(n => n.id !== selectedNodeId);
-          const newEdges = edges.filter(edge => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
-          pushHistory(`Deleted node: ${(node.data.label as string) || node.id}`);
-          handleGraphChange(newNodes, newEdges);
-          setSelectedNodeId(null);
+        if (!isReadOnly) {
+          const node = nodes.find(n => n.id === selectedNodeId);
+          if (node && (node.data.nodeType as string) !== "start") {
+            const hasChildren = edges.some(edge => edge.source === selectedNodeId);
+            if (hasChildren && !window.confirm(`"${(node.data.label as string) || node.id}" has downstream steps connected to it. Delete it and disconnect them?`)) return;
+            const newNodes = nodes.filter(n => n.id !== selectedNodeId);
+            const newEdges = edges.filter(edge => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
+            pushHistory(`Deleted node: ${(node.data.label as string) || node.id}`);
+            handleGraphChange(newNodes, newEdges);
+            setSelectedNodeId(null);
+          }
         }
         return;
       }
@@ -9582,6 +9813,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const isPublished = currentVersion?.status === "published";
   const isArchived  = currentVersion?.status === "archived";
   const isDraft     = currentVersion?.status === "draft";
+  // Centralized read-only guard: archived versions AND active replay are both immutable
+  const isReadOnly  = isArchived || replayActive;
 
   function draftAgeLabel(since: Date): string {
     const diffMs = Date.now() - since.getTime();
@@ -9689,6 +9922,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Live-run elapsed timer */}
+          {liveRunState && (
+            <span className="flex items-center gap-1 px-2 py-1 text-[10px] font-mono text-emerald-300 bg-emerald-500/10 border border-emerald-500/25 rounded-lg animate-pulse">
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" /></svg>
+              {String(Math.floor(liveElapsedSecs / 60)).padStart(2, "0")}:{String(liveElapsedSecs % 60).padStart(2, "0")}
+            </span>
+          )}
+
           {/* Undo / Redo */}
           <div className="flex items-center gap-0.5">
             <button
@@ -9728,7 +9969,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           </button>
 
           {/* Semantic auto-layout */}
-          {!isArchived && (
+          {!isReadOnly && (
             <button
               onClick={runAutoLayout}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
@@ -9894,7 +10135,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </span>
           )}
 
-          {!isArchived && (
+          {!isReadOnly && (
             <button
               onClick={() => saveMut.mutate()}
               disabled={saveMut.isPending}
@@ -9922,6 +10163,78 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               Publish
             </button>
           )}
+
+          {/* Health Score Badge */}
+          {nodes.length > 1 && (
+            <button
+              onClick={() => setShowHealthPanel(v => !v)}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium border rounded-lg transition-colors ${
+                healthResult.score >= 80
+                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20"
+                  : healthResult.score >= 60
+                  ? "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20"
+                  : "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20"
+              }`}
+              title="Workflow health score"
+            >
+              {healthResult.score >= 80 ? "✓" : healthResult.score >= 60 ? "⚠" : "✕"}
+              {healthResult.score}
+            </button>
+          )}
+
+          {/* Trends button */}
+          <button
+            onClick={() => setShowTrends(v => !v)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${showTrends ? "bg-[#0078D4]/20 border-[#0078D4]/40 text-[#4DA6F5]" : "text-[#7D8590] border-[#30363D] hover:text-[#E6EDF3] hover:border-[#484F58]"}`}
+            title="Execution trends"
+          >
+            📈 Trends
+          </button>
+
+          {/* AI Narrative */}
+          {nodes.length > 1 && (
+            <button
+              onClick={() => void fetchNarrative()}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 text-violet-400 rounded-lg transition-colors"
+              title="Generate an AI explanation of this workflow"
+            >
+              ✨ Explain
+            </button>
+          )}
+
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowAiModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
+              title="Describe a workflow and let AI build it on the canvas"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+              Build with AI
+            </button>
+          )}
+
+          {!isReadOnly && nodes.length > 0 && (
+            <button
+              onClick={() => setShowRefineModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-500/10 hover:bg-violet-500/20 border border-violet-500/30 hover:border-violet-500/50 text-violet-400 hover:text-violet-300 text-xs font-medium rounded-lg transition-colors"
+              title="Refine the current workflow with an AI instruction"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Refine…
+            </button>
+          )}
+
+          <button
+            onClick={() => { setShowTestRun(true); setTestRunTrigger(t => t + 1); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            🧪 Test Run
+          </button>
+
 
           <button
             onClick={() => void publishToProd()}
@@ -9979,6 +10292,59 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           </button>
         </div>
       </div>
+
+      {/* Step-through replay toolbar */}
+      {inspectMode && replayNodeIds.length > 0 && (
+        <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-violet-500/10 border-b border-violet-500/20">
+          <span className="text-[10px] font-semibold text-violet-300 flex-shrink-0">
+            Step Replay
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setReplayActive(true); setReplayIndex(0); }}
+              disabled={replayActive && replayIndex === 0}
+              className="px-2 py-0.5 text-[10px] border border-violet-500/30 rounded text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ⏮ Start
+            </button>
+            <button
+              onClick={() => { setReplayActive(true); setReplayIndex(i => Math.max(0, i - 1)); }}
+              disabled={!replayActive || replayIndex === 0}
+              className="px-2 py-0.5 text-[10px] border border-violet-500/30 rounded text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ◀ Prev
+            </button>
+            <span className="text-[10px] text-violet-200 px-1">
+              {replayActive ? `${replayIndex + 1} / ${replayNodeIds.length}` : "—"}
+            </span>
+            <button
+              onClick={() => { setReplayActive(true); setReplayIndex(i => Math.min(replayNodeIds.length - 1, i + 1)); }}
+              disabled={!replayActive || replayIndex >= replayNodeIds.length - 1}
+              className="px-2 py-0.5 text-[10px] border border-violet-500/30 rounded text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Next ▶
+            </button>
+            <button
+              onClick={() => { setReplayActive(true); setReplayIndex(replayNodeIds.length - 1); }}
+              disabled={!replayActive || replayIndex >= replayNodeIds.length - 1}
+              className="px-2 py-0.5 text-[10px] border border-violet-500/30 rounded text-violet-300 hover:bg-violet-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              End ⏭
+            </button>
+            <button
+              onClick={() => { setReplayActive(false); setReplayIndex(0); }}
+              className="px-2 py-0.5 text-[10px] border border-[#484F58] rounded text-[#7D8590] hover:text-[#E6EDF3] hover:border-[#7D8590] ml-1 transition-colors"
+            >
+              Exit
+            </button>
+          </div>
+          {replayActive && (
+            <span className="text-[9px] text-violet-200/60 ml-auto truncate">
+              Node: {replayNodeIds[replayIndex]}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Context banners */}
       {isPublished && (
@@ -10213,11 +10579,74 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 p-6 text-center">
-              <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-              </svg>
-              <p className="text-xs text-[#484F58]">Reusable workflow patterns<br />— coming with #2541</p>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {PATTERNS.map(pattern => (
+                <div key={pattern.id} className="rounded-lg border border-[#30363D] bg-[#161B22] p-2.5 space-y-1.5">
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{pattern.icon}</span>
+                      <p className="text-[11px] font-semibold text-[#E6EDF3] leading-snug">{pattern.name}</p>
+                    </div>
+                    {!isReadOnly && (
+                      <button
+                        className="flex-shrink-0 text-[9px] font-medium text-[#0078D4] hover:text-[#4DA6F5] border border-[#0078D4]/30 hover:border-[#0078D4]/60 rounded px-1.5 py-0.5 transition-colors"
+                        onClick={() => {
+                          const anchorNode = selectedNodeId
+                            ? nodes.find(n => n.id === selectedNodeId)
+                            : nodes.find(n => (n.data as { nodeType?: string }).nodeType === "start");
+                          const anchorPos = anchorNode?.position ?? { x: 0, y: 0 };
+                          let maxId = nodeIdCounter.current;
+                          const newNodes: StoredNode[] = pattern.nodes.map((pn, i) => {
+                            maxId++;
+                            return {
+                              id: `node-${maxId}`,
+                              type: "wfNode",
+                              position: { x: anchorPos.x, y: anchorPos.y + (i + 1) * 120 },
+                              data: { ...pn.data, nodeType: pn.type },
+                            };
+                          });
+                          nodeIdCounter.current = maxId;
+                          const newEdges: StoredEdge[] = pattern.edges.map((pe, i) => {
+                            const srcIdx = pattern.nodes.findIndex(n => n.id === pe.source);
+                            const tgtIdx = pattern.nodes.findIndex(n => n.id === pe.target);
+                            return {
+                              id: `edge-pat-${i}-${Date.now()}`,
+                              source: srcIdx >= 0 ? newNodes[srcIdx].id : pe.source,
+                              target: tgtIdx >= 0 ? newNodes[tgtIdx].id : pe.target,
+                              sourceHandle: pe.sourceHandle,
+                              style: { stroke: "#30363D", strokeWidth: 2 },
+                              animated: false,
+                            };
+                          });
+                          if (anchorNode) {
+                            newEdges.push({
+                              id: `edge-anchor-pat-${Date.now()}`,
+                              source: anchorNode.id,
+                              target: newNodes[0].id,
+                              style: { stroke: "#30363D", strokeWidth: 2 },
+                              animated: false,
+                            });
+                          }
+                          pushHistory();
+                          setNodes(prev => [...prev, ...newNodes]);
+                          setEdges(prev => [...prev, ...newEdges]);
+                          setIsDirty(true);
+                          setSelectedNodeId(newNodes[0].id);
+                        }}
+                        title="Insert this pattern after the selected node (or start node)"
+                      >
+                        Insert
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[9px] text-[#7D8590] leading-relaxed">{pattern.description}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {pattern.tags.map(t => (
+                      <span key={t} className="text-[8px] bg-[#0D1117] border border-[#30363D] text-[#484F58] rounded px-1 py-0.5">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -10246,7 +10675,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 nodes={nodes}
                 edges={edges}
                 selectedNodeId={selectedNodeId}
-                isArchived={isArchived}
+                isArchived={isArchived || replayActive}
                 isLoading={!versionsFetched || (currentVersionId != null && currentVersionPending)}
                 nodeStyles={NODE_STYLES}
                 libraryCategories={LIBRARY_CATEGORIES}
@@ -10263,6 +10692,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     ? Object.fromEntries(nodes.slice(0, replayStep).map(n => n.id).filter(id => stepResultMap[id]).map(id => [id, stepResultMap[id]]))
                     : stepResultMap
                 ) : undefined}
+                replayState={replayState}
+                liveRunState={liveRunState ?? undefined}
+                tokenHighlightNodeId={tokenHighlightNodeId}
               />
             </div>
           </div>
@@ -10456,6 +10888,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   nodes={nodes}
                   edges={edges}
                   onGraphChange={handleGraphChange}
+                  onTokenHighlight={setTokenHighlightNodeId}
                 />
               ) : rightPanelTab === "node" ? (
                 <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
@@ -10472,6 +10905,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   onClose={() => setRightPanelTab(null)}
                   trigger={testRunTrigger}
                   onRunStarted={(id) => { setLastTestRunId(id); setBottomDockOpen(true); setBottomDockTab("runoutput"); }}
+                  onLiveRunUpdate={setLiveRunState}
                 />
               ) : rightPanelTab === "metadata" ? (
                 <div className="overflow-y-auto p-4 space-y-4">
@@ -11301,41 +11735,54 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         />
       )}
 
-      {/* Trends drawer — slide over from the right; full analytics data arrives with #2541 */}
-      {showTrendsDrawer && (
-        <div className="fixed inset-0 z-50 flex" onClick={() => setShowTrendsDrawer(false)}>
-          <div className="flex-1" />
-          <div
-            className="w-80 h-full bg-[#161B22] border-l border-[#30363D] flex flex-col shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
+      {/* Health Panel drawer */}
+      {showHealthPanel && nodes.length > 1 && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-16" onClick={() => setShowHealthPanel(false)}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5 max-w-md w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                <span className="text-sm font-semibold text-[#E6EDF3]">Workflow Trends</span>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 ${healthResult.score >= 80 ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" : healthResult.score >= 60 ? "bg-amber-500/10 border-amber-500 text-amber-400" : "bg-red-500/10 border-red-500 text-red-400"}`}>
+                  {healthResult.score}
+                </div>
+                <div>
+                  <h2 className="font-semibold text-[#E6EDF3] text-sm">Workflow Health</h2>
+                  <p className="text-[10px] text-[#484F58]">
+                    {healthResult.score >= 80 ? "Good — minor improvements possible" : healthResult.score >= 60 ? "Fair — some issues detected" : "Poor — issues need attention"}
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => setShowTrendsDrawer(false)}
-                className="w-6 h-6 flex items-center justify-center text-[#484F58] hover:text-[#E6EDF3] transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <button onClick={() => setShowHealthPanel(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
             </div>
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 border border-[#0078D4]/20 flex items-center justify-center">
-                <svg className="w-5 h-5 text-[#0078D4]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
+
+            {healthResult.issues.length === 0 ? (
+              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-xs text-emerald-300">
+                No issues found — this workflow looks healthy!
               </div>
-              <p className="text-sm font-medium text-[#E6EDF3]">Trends coming in #2541</p>
-              <p className="text-xs text-[#7D8590] leading-relaxed">
-                Run-over-run success rates, avg duration, error hotspot detection, and step-level P95 latency charts will appear here once the analytics pipeline ships.
-              </p>
-            </div>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {healthResult.issues.map((issue, i) => (
+                  <div key={i} className={`rounded-lg border p-3 space-y-0.5 ${issue.severity === "high" ? "bg-red-500/5 border-red-500/20" : issue.severity === "medium" ? "bg-amber-500/5 border-amber-500/20" : "bg-[#0D1117] border-[#30363D]"}`}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px]">
+                        {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "ℹ"}
+                      </span>
+                      <span className={`flex-1 text-xs font-medium ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                        {issue.message}
+                      </span>
+                      {issue.nodeId && (
+                        <button
+                          onClick={() => { setSelectedNodeId(issue.nodeId!); setShowHealthPanel(false); }}
+                          className="flex-shrink-0 text-[10px] text-[#0078D4] hover:text-[#4DA6F5] underline-offset-2 hover:underline"
+                          title={`Jump to node ${issue.nodeId}`}
+                        >
+                          Jump ↗
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -11410,6 +11857,156 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 {workflowIssues.length > 0 ? "Click an issue to jump to the affected node." : "Full scoring engine arrives with #2541 scoreWorkflow()."}
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Trends drawer */}
+      {showTrends && (
+        <div className="fixed inset-y-0 right-0 w-96 bg-[#161B22] border-l border-[#30363D] z-40 flex flex-col shadow-2xl">
+          <div className="flex items-center justify-between p-4 border-b border-[#30363D]">
+            <h3 className="font-semibold text-[#E6EDF3] text-sm">Execution Trends (30d)</h3>
+            <button onClick={() => setShowTrends(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 space-y-5">
+            {(!trendsData || trendsData.dailyStats.length === 0) ? (
+              <div className="text-xs text-[#484F58] text-center pt-8">No run history yet for this workflow.</div>
+            ) : (
+              <>
+                {/* Run count chart */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Daily Runs</p>
+                  <ResponsiveContainer width="100%" height={100}>
+                    <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="runGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#0078D4" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#0078D4" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
+                      <YAxis tick={{ fontSize: 9, fill: "#484F58" }} />
+                      <Tooltip
+                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#7D8590" }}
+                        itemStyle={{ color: "#0078D4" }}
+                      />
+                      <Area type="monotone" dataKey="runs" stroke="#0078D4" fill="url(#runGrad)" strokeWidth={2} dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Success rate chart */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Success Rate %</p>
+                  <ResponsiveContainer width="100%" height={100}>
+                    <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="srGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#22C55E" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#22C55E" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
+                      <YAxis tick={{ fontSize: 9, fill: "#484F58" }} domain={[0, 100]} />
+                      <Tooltip
+                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#7D8590" }}
+                        itemStyle={{ color: "#22C55E" }}
+                        formatter={(v: number) => [`${v}%`, "Success"]}
+                      />
+                      <Area type="monotone" dataKey="successRate" stroke="#22C55E" fill="url(#srGrad)" strokeWidth={2} dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* p50 / p95 latency */}
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Latency (ms)</p>
+                  <ResponsiveContainer width="100%" height={100}>
+                    <AreaChart data={trendsData.dailyStats} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1C2128" />
+                      <XAxis dataKey="date" tick={{ fontSize: 9, fill: "#484F58" }} tickFormatter={d => d.slice(5)} />
+                      <YAxis tick={{ fontSize: 9, fill: "#484F58" }} />
+                      <Tooltip
+                        contentStyle={{ background: "#0D1117", border: "1px solid #30363D", borderRadius: 8, fontSize: 11 }}
+                        labelStyle={{ color: "#7D8590" }}
+                      />
+                      <Area type="monotone" dataKey="p50Ms" name="p50" stroke="#00B4D8" fill="none" strokeWidth={1.5} dot={false} />
+                      <Area type="monotone" dataKey="p95Ms" name="p95" stroke="#A855F7" fill="none" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className="flex items-center gap-1 text-[9px] text-[#00B4D8]"><span className="w-3 h-0.5 bg-[#00B4D8] inline-block" />p50</span>
+                    <span className="flex items-center gap-1 text-[9px] text-[#A855F7]"><span className="w-3 h-0.5 bg-[#A855F7] inline-block border-dashed" />p95</span>
+                  </div>
+                </div>
+
+                {/* Top failing nodes */}
+                {trendsData.topFailingNodes.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58] mb-2">Top Failing Nodes</p>
+                    <div className="space-y-1">
+                      {trendsData.topFailingNodes.map(n => (
+                        <div key={n.nodeId} className="flex items-center justify-between rounded-lg border border-red-500/15 bg-red-500/5 px-3 py-1.5">
+                          <span className="text-xs text-[#E6EDF3] truncate">{n.nodeLabel || n.nodeId}</span>
+                          <span className="text-xs font-semibold text-red-400 ml-2 flex-shrink-0">{n.errorCount} err{n.errorCount !== 1 ? "s" : ""}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* AI Narrative modal */}
+      {showNarrative && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => { if (!narrativeLoading) setShowNarrative(false); }}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full mx-4 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-sm">✨</div>
+                <h2 className="font-semibold text-[#E6EDF3]">AI Workflow Narrative</h2>
+              </div>
+              {!narrativeLoading && (
+                <button onClick={() => setShowNarrative(false)} className="text-[#484F58] hover:text-[#E6EDF3]">✕</button>
+              )}
+            </div>
+
+            {narrativeLoading ? (
+              <div className="flex items-center gap-3 py-6 justify-center">
+                <div className="w-5 h-5 border-2 border-violet-500/30 border-t-violet-400 rounded-full animate-spin" />
+                <span className="text-sm text-[#7D8590]">Generating narrative…</span>
+              </div>
+            ) : (
+              <div className="prose prose-invert prose-sm max-w-none">
+                <div className="bg-[#0D1117] border border-[#30363D] rounded-lg p-4 max-h-80 overflow-y-auto">
+                  <p className="text-sm text-[#E6EDF3] leading-relaxed whitespace-pre-wrap">{narrativeText}</p>
+                </div>
+              </div>
+            )}
+
+            {!narrativeLoading && narrativeText && (
+              <div className="flex justify-between items-center pt-1">
+                <button
+                  onClick={() => void fetchNarrative()}
+                  className="text-xs text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg px-3 py-1.5 transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(narrativeText).catch(() => {}); }}
+                  className="text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg px-3 py-1.5 transition-colors"
+                >
+                  Copy
+                </button>
+              </div>
+            }
           </div>
         </div>
       )}

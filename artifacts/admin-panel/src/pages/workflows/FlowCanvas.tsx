@@ -7,7 +7,7 @@
  * save format is never changed.
  */
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { createPortal } from "react-dom";
 import {
@@ -59,6 +59,10 @@ export type StepResult = {
   logPreview?: string | null;
   /** Full log lines for the step — shown in the expanded inline drawer */
   fullLogs?: string[];
+  /** Resolved input snapshot captured before the step executed */
+  input?: Record<string, unknown> | null;
+  /** Output object emitted by the step after execution */
+  output?: Record<string, unknown> | null;
 };
 
 export interface FlowCanvasProps {
@@ -78,6 +82,22 @@ export interface FlowCanvasProps {
   triggerCategories?: string[];
   /** Currently copied step (null when clipboard is empty). */
   copiedStep?: FlowStep | null;
+  /**
+   * Step-through replay state.  When set, steps AFTER activeIndex are dimmed,
+   * the step AT activeIndex is highlighted, and steps before it show as completed.
+   */
+  replayState?: { nodeIds: string[]; activeIndex: number } | null;
+  /**
+   * Live run state — streams real-time execution feedback onto the canvas.
+   * activeNodeId: currently executing step (blue pulse)
+   * completedIds: steps that have already finished successfully
+   * failedIds: steps that have failed
+   */
+  liveRunState?: {
+    activeNodeId: string | null;
+    completedIds: Set<string>;
+    failedIds: Set<string>;
+  } | null;
   /** Called when the user copies a step (via menu or Ctrl+C). */
   onCopyStep?: (step: FlowStep) => void;
   /**
@@ -85,6 +105,12 @@ export interface FlowCanvasProps {
    * Keys are node IDs, values are run outputs from the last inspect run.
    */
   stepResultMap?: Record<string, StepResult>;
+  /**
+   * When set, renders a purple highlight ring on this node — used when the
+   * user hovers a `{{token}}` reference in the config panel to trace back to
+   * the source node that produces that variable.
+   */
+  tokenHighlightNodeId?: string | null;
 }
 
 // ── Node Picker Popover ────────────────────────────────────────────────────────
@@ -532,6 +558,7 @@ function StepCard({
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [stepLogOpen, setStepLogOpen] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<"logs" | "data">("logs");
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuPortalRef = useRef<HTMLDivElement>(null);
@@ -607,6 +634,18 @@ function StepCard({
   const isContainer = isContainerNode(storedNode);
   const isDragging = ctx.draggedId === step.id;
   const isDropTarget = ctx.dropTargetId === step.id && !isDragging;
+
+  const isLiveActive = ctx.liveRunState?.activeNodeId === step.id;
+  const isLiveCompleted = ctx.liveRunState?.completedIds.has(step.id) ?? false;
+  const isLiveFailed = ctx.liveRunState?.failedIds.has(step.id) ?? false;
+  const isTokenHighlight = ctx.tokenHighlightNodeId === step.id;
+
+  const replayNodeIndex = ctx.replayState
+    ? ctx.replayState.nodeIds.indexOf(step.id)
+    : -1;
+  const isReplayActive = ctx.replayState !== null && replayNodeIndex === ctx.replayState.activeIndex;
+  const isReplayDimmed = ctx.replayState !== null &&
+    replayNodeIndex > ctx.replayState.activeIndex && replayNodeIndex !== -1;
 
   function handleDragStart(e: React.DragEvent) {
     e.stopPropagation();
@@ -752,12 +791,20 @@ function StepCard({
 
   return (
     <div
-      className={`relative rounded-xl border transition-all cursor-pointer select-none ${isDragging ? "opacity-40" : ""} ${
-        isSelected
+      className={`relative rounded-xl border transition-all cursor-pointer select-none
+        ${isDragging ? "opacity-40" : ""}
+        ${isReplayDimmed ? "opacity-30 pointer-events-none" : ""}
+        ${isLiveActive ? "ring-2 ring-[#0078D4] ring-offset-1 ring-offset-[#0D1117] shadow-[0_0_16px_4px_rgba(0,120,212,0.35)]" : ""}
+        ${isLiveCompleted && !isSelected ? "ring-1 ring-[#22C55E]/40" : ""}
+        ${isLiveFailed && !isSelected ? "ring-1 ring-[#EF4444]/40" : ""}
+        ${isReplayActive ? "ring-2 ring-violet-500/60 shadow-[0_0_12px_2px_rgba(139,92,246,0.3)]" : ""}
+        ${isTokenHighlight ? "ring-2 ring-purple-400 ring-offset-1 ring-offset-[#0D1117] shadow-[0_0_16px_4px_rgba(168,85,247,0.45)]" : ""}
+        ${isSelected
           ? "border-[#0078D4] ring-1 ring-[#0078D4]/40 shadow-[0_0_0_3px_rgba(0,120,212,0.12)]"
           : `hover:border-[#484F58]`
-      }`}
-      style={{ borderColor: isSelected ? "#0078D4" : style.border }}
+        }`}
+      style={{ borderColor: isSelected ? "#0078D4" : isLiveActive ? "#0078D4" : isLiveFailed ? "#EF4444" : isLiveCompleted ? "#22C55E" : style.border }}
+      data-node-id={step.id}
       onClick={e => { e.stopPropagation(); onSelect(); }}
       onContextMenu={handleContextMenu}
       onDragOver={handleDragOver}
@@ -949,42 +996,90 @@ function StepCard({
         );
       })()}
 
-      {/* Expandable step log drawer (inspect mode) — shows full log lines inline */}
+      {/* Expandable step log/data drawer (inspect mode) */}
       {stepLogOpen && ctx.stepResultMap[step.id] && (() => {
         const r = ctx.stepResultMap[step.id];
         const logs = r.fullLogs ?? (r.logPreview ? [r.logPreview] : []);
+        const hasData = (r.input != null && Object.keys(r.input).length > 0) || (r.output != null && Object.keys(r.output ?? {}).length > 0);
         return (
-          <div className="px-3 py-2 border-t border-[#30363D]/60 bg-[#0D1117]/60 text-[10px] font-mono">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className={`font-semibold ${r.status === "ok" ? "text-emerald-300" : r.status === "error" ? "text-red-300" : "text-amber-300"}`}>
-                {r.status === "ok" ? "✓ Succeeded" : r.status === "error" ? "✕ Failed" : "↷ Skipped"}
-                {r.durationMs != null && <span className="ml-2 font-normal opacity-60">{r.durationMs}ms</span>}
-                {logs.length > 0 && <span className="ml-2 font-normal opacity-40">{logs.length} log line{logs.length !== 1 ? "s" : ""}</span>}
-              </span>
+          <div className="border-t border-[#30363D]/60 bg-[#0D1117]/60 text-[10px] font-mono">
+            {/* Tab bar + close */}
+            <div className="flex items-center justify-between px-3 pt-2 pb-1 gap-2">
+              <div className="flex items-center gap-0.5">
+                <button
+                  className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "logs" ? "bg-[#30363D] text-[#E6EDF3]" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                  onClick={e => { e.stopPropagation(); setDrawerTab("logs"); }}
+                >
+                  Logs
+                </button>
+                {hasData && (
+                  <button
+                    className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-colors ${drawerTab === "data" ? "bg-[#30363D] text-[#E6EDF3]" : "text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                    onClick={e => { e.stopPropagation(); setDrawerTab("data"); }}
+                  >
+                    I/O Data
+                  </button>
+                )}
+                <span className={`ml-1 font-normal ${r.status === "ok" ? "text-emerald-300" : r.status === "error" ? "text-red-300" : "text-amber-300"}`}>
+                  {r.status === "ok" ? "✓" : r.status === "error" ? "✕" : "↷"}
+                  {r.durationMs != null && <span className="ml-1 opacity-60">{r.durationMs}ms</span>}
+                </span>
+              </div>
               <button
-                className="text-[#484F58] hover:text-[#7D8590] ml-2 text-[11px]"
+                className="text-[#484F58] hover:text-[#7D8590] text-[11px]"
                 onClick={e => { e.stopPropagation(); setStepLogOpen(false); }}
-                title="Close log"
+                title="Close"
               >✕</button>
             </div>
-            {r.errorMessage && (
-              <div className="text-red-300/80 break-words whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto mb-1 border-b border-[#30363D]/40 pb-1">
-                {r.errorMessage}
+
+            {/* Logs tab */}
+            {drawerTab === "logs" && (
+              <div className="px-3 pb-2">
+                {r.errorMessage && (
+                  <div className="text-red-300/80 break-words whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto mb-1 border-b border-[#30363D]/40 pb-1">
+                    {r.errorMessage}
+                  </div>
+                )}
+                {logs.length > 0 ? (
+                  <div className="max-h-40 overflow-y-auto space-y-0.5">
+                    {logs.map((line, li) => (
+                      <div key={li} className="text-[#7D8590] break-words whitespace-pre-wrap leading-relaxed">
+                        <span className="select-none text-[#484F58] mr-1.5">{li + 1}</span>{line}
+                      </div>
+                    ))}
+                  </div>
+                ) : r.status === "ok" ? (
+                  <div className="text-[#484F58] italic">Step completed without log output.</div>
+                ) : r.status === "skipped" ? (
+                  <div className="text-amber-200/60 italic">Skipped — all upstream branches were skipped.</div>
+                ) : null}
               </div>
             )}
-            {logs.length > 0 ? (
-              <div className="max-h-40 overflow-y-auto space-y-0.5">
-                {logs.map((line, li) => (
-                  <div key={li} className="text-[#7D8590] break-words whitespace-pre-wrap leading-relaxed">
-                    <span className="select-none text-[#484F58] mr-1.5">{li + 1}</span>{line}
+
+            {/* I/O Data tab */}
+            {drawerTab === "data" && (
+              <div className="px-3 pb-2 space-y-2">
+                {r.input != null && Object.keys(r.input).length > 0 && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-0.5">Input</p>
+                    <pre className="max-h-32 overflow-y-auto text-[9px] text-[#7D8590] bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+                      {JSON.stringify(r.input, null, 2)}
+                    </pre>
                   </div>
-                ))}
+                )}
+                {r.output != null && Object.keys(r.output).length > 0 && (
+                  <div>
+                    <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-0.5">Output</p>
+                    <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+                      {JSON.stringify(r.output, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {(!r.input || Object.keys(r.input).length === 0) && (!r.output || Object.keys(r.output).length === 0) && (
+                  <div className="text-[#484F58] italic">No I/O data recorded for this step.</div>
+                )}
               </div>
-            ) : r.status === "ok" ? (
-              <div className="text-[#484F58] italic">Step completed without log output.</div>
-            ) : r.status === "skipped" ? (
-              <div className="text-amber-200/60 italic">Skipped — all upstream branches were skipped.</div>
-            ) : null}
+            )}
           </div>
         );
       })()}
@@ -1916,6 +2011,16 @@ interface FlowCanvasCtx {
   onSetLastInteracted: (id: string) => void;
   /** Execution result map from the last inspected run (nodeId → StepResult). */
   stepResultMap: Record<string, StepResult>;
+  /** Step-through replay state (null when not replaying). */
+  replayState: { nodeIds: string[]; activeIndex: number } | null;
+  /** Live run state (null when no run is active). */
+  liveRunState: {
+    activeNodeId: string | null;
+    completedIds: Set<string>;
+    failedIds: Set<string>;
+  } | null;
+  /** Node ID being highlighted by a token hover in the config panel (null when none). */
+  tokenHighlightNodeId: string | null;
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -1941,6 +2046,9 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   lastInteractedId: null,
   onSetLastInteracted: () => {},
   stepResultMap: {},
+  replayState: null,
+  liveRunState: null,
+  tokenHighlightNodeId: null,
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -1962,8 +2070,35 @@ export default function FlowCanvas({
   copiedStep = null,
   onCopyStep,
   stepResultMap,
+  replayState = null,
+  liveRunState = null,
+  tokenHighlightNodeId = null,
 }: FlowCanvasProps) {
   const tree = React.useMemo(() => graphToTree(nodes, edges), [nodes, edges]);
+
+  // ── Token data-flow arc state ───────────────────────────────────────────────
+  // When a {{token}} chip is hovered in NodeConfigPanel, we draw a Bezier arc
+  // from the source node (tokenHighlightNodeId) to the selected/destination node.
+  type ArcCoords = { x1: number; y1: number; x2: number; y2: number } | null;
+  const [tokenArc, setTokenArc] = useState<ArcCoords>(null);
+
+  useEffect(() => {
+    if (!tokenHighlightNodeId || !selectedNodeId) {
+      setTokenArc(null);
+      return;
+    }
+    const srcEl = document.querySelector<HTMLElement>(`[data-node-id="${tokenHighlightNodeId}"]`);
+    const dstEl = document.querySelector<HTMLElement>(`[data-node-id="${selectedNodeId}"]`);
+    if (!srcEl || !dstEl) { setTokenArc(null); return; }
+    const sr = srcEl.getBoundingClientRect();
+    const dr = dstEl.getBoundingClientRect();
+    setTokenArc({
+      x1: sr.left + sr.width / 2,
+      y1: sr.top + sr.height / 2,
+      x2: dr.left + dr.width / 2,
+      y2: dr.top + dr.height / 2,
+    });
+  }, [tokenHighlightNodeId, selectedNodeId]);
 
   // ── Drag-to-reorder state ────────────────────────────────────────────────────
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -2213,7 +2348,10 @@ export default function FlowCanvas({
     lastInteractedId,
     onSetLastInteracted: handleSetLastInteracted,
     stepResultMap: stepResultMap ?? {},
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart, lastInteractedId, handleSetLastInteracted, stepResultMap]);
+    replayState: replayState ?? null,
+    liveRunState: liveRunState ?? null,
+    tokenHighlightNodeId: tokenHighlightNodeId ?? null,
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart, lastInteractedId, handleSetLastInteracted, stepResultMap, replayState, liveRunState, tokenHighlightNodeId]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);
@@ -2319,6 +2457,36 @@ export default function FlowCanvas({
           </div>
         </div>
       </div>
+
+      {/* Token data-flow arc — fixed SVG overlay drawn between source and destination nodes */}
+      {tokenArc && createPortal(
+        <svg
+          className="pointer-events-none fixed inset-0 z-[9999]"
+          style={{ width: "100vw", height: "100vh" }}
+        >
+          <defs>
+            <marker
+              id="token-arc-arrow"
+              markerWidth="8"
+              markerHeight="8"
+              refX="6"
+              refY="3"
+              orient="auto"
+            >
+              <path d="M0,0 L0,6 L8,3 z" fill="rgba(168,85,247,0.9)" />
+            </marker>
+          </defs>
+          <path
+            d={`M${tokenArc.x1},${tokenArc.y1} C${tokenArc.x1},${(tokenArc.y1 + tokenArc.y2) / 2} ${tokenArc.x2},${(tokenArc.y1 + tokenArc.y2) / 2} ${tokenArc.x2},${tokenArc.y2}`}
+            fill="none"
+            stroke="rgba(168,85,247,0.75)"
+            strokeWidth="2"
+            strokeDasharray="6 4"
+            markerEnd="url(#token-arc-arrow)"
+          />
+        </svg>,
+        document.body
+      )}
     </FlowCanvasContext.Provider>
   );
 }

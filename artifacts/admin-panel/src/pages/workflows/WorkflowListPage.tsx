@@ -1457,6 +1457,17 @@ export default function WorkflowListPage() {
             </button>
 
             <button
+              onClick={() => navigate(`/workflows/builder/${def.id}?trends=1`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1C2128] hover:bg-[#21262D] text-[#8B949E] hover:text-[#C9D1D9] text-xs font-medium rounded-lg border border-[#30363D] transition-colors"
+              title="Open execution trends for this workflow in the builder"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4v16" />
+              </svg>
+              Trends
+            </button>
+
+            <button
               onClick={() => publishToProdMut.mutate(def.id)}
               disabled={!prodDbConnected || def.publishedVersionNumber === null || publishToProdMut.isPending}
               title={

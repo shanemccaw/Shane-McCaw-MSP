@@ -464,6 +464,7 @@ router.put("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async
   const body = z.object({
     graph: z.object({ nodes: z.array(z.any()), edges: z.array(z.any()) }).optional(),
     label: z.string().optional(),
+    healthScore: z.number().int().min(0).max(100).optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
 
@@ -489,6 +490,13 @@ router.put("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async
         graph: (body.data.graph as WfGraph) ?? (existing.graph as WfGraph),
       }).returning();
 
+      // Persist health score to definition metadata when provided
+      if (body.data.healthScore !== undefined) {
+        const [defRow] = await db.select({ metadata: wfDefinitionsTable.metadata }).from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, defId)).limit(1);
+        const existingMeta = (defRow?.metadata ?? {}) as Record<string, unknown>;
+        await db.update(wfDefinitionsTable).set({ metadata: { ...existingMeta, healthScore: body.data.healthScore }, updatedAt: new Date() }).where(eq(wfDefinitionsTable.id, defId));
+      }
+
       return res.status(201).json({ ...newDraft, autoDraftedFrom: existing.id });
     }
 
@@ -497,6 +505,14 @@ router.put("/admin/workflows/definitions/:id/versions/:vid", requireAdmin, async
       .set({ graph: (body.data.graph as WfGraph) ?? existing.graph, label: body.data.label ?? existing.label, updatedAt: new Date() })
       .where(eq(wfVersionsTable.id, vid))
       .returning();
+
+    // Persist health score to definition metadata when provided
+    if (body.data.healthScore !== undefined) {
+      const [defRow] = await db.select({ metadata: wfDefinitionsTable.metadata }).from(wfDefinitionsTable).where(eq(wfDefinitionsTable.id, defId)).limit(1);
+      const existingMeta = (defRow?.metadata ?? {}) as Record<string, unknown>;
+      await db.update(wfDefinitionsTable).set({ metadata: { ...existingMeta, healthScore: body.data.healthScore }, updatedAt: new Date() }).where(eq(wfDefinitionsTable.id, defId));
+    }
+
     res.json(updated);
   } catch (err) {
     sendError(res, 500, "Failed to update version");
@@ -963,6 +979,8 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
       durationMs: number | null;
       errorMessage: string | null;
       logPreview: string | null;
+      input: Record<string, unknown> | null;
+      output: Record<string, unknown> | null;
     }> = {};
     for (const o of nodeOutputs) {
       const rawStatus = o.status as string;
@@ -974,6 +992,8 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
         durationMs: o.durationMs,
         errorMessage: o.errorMessage,
         logPreview: lastLogMsg ? lastLogMsg.slice(0, 120) : null,
+        input: (o.input as Record<string, unknown> | null) ?? null,
+        output: (o.output as Record<string, unknown> | null) ?? null,
       };
     }
 
@@ -1854,6 +1874,181 @@ Rules:
   } catch (err) {
     req.log.error({ err }, "synthesise-sound: AI call failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Sound synthesis failed" });
+  }
+});
+
+
+// ── Execution Trend Data ──────────────────────────────────────────────────────
+
+router.get("/admin/workflows/definitions/:id/trends", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(defId)) { sendError(res, 400, "Invalid definition ID"); return; }
+
+  const days = Math.min(90, Math.max(1, parseInt((req.query.days as string) ?? "30", 10) || 30));
+
+  try {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const dailyRows = await pool.query<{
+      day: string;
+      total: string;
+      success: string;
+      failure: string;
+      avg_ms: string | null;
+    }>(`
+      SELECT
+        date_trunc('day', started_at)::date::text AS day,
+        COUNT(*)::text AS total,
+        COUNT(*) FILTER (WHERE status = 'completed')::text AS success,
+        COUNT(*) FILTER (WHERE status = 'failed')::text AS failure,
+        AVG(EXTRACT(EPOCH FROM (finished_at - started_at)) * 1000)::text AS avg_ms
+      FROM wf_runs
+      WHERE definition_id = $1
+        AND started_at >= $2
+      GROUP BY date_trunc('day', started_at)
+      ORDER BY date_trunc('day', started_at)
+    `, [defId, cutoff]);
+
+    const failingNodesRows = await pool.query<{ node_id: string; fail_count: string }>(`
+      SELECT
+        nout.node_id,
+        COUNT(*)::text AS fail_count
+      FROM wf_run_node_outputs nout
+      JOIN wf_runs r ON r.id = nout.run_id
+      WHERE r.definition_id = $1
+        AND r.started_at >= $2
+        AND nout.status = 'error'
+      GROUP BY nout.node_id
+      ORDER BY fail_count DESC
+      LIMIT 3
+    `, [defId, cutoff]);
+
+    const p50p95Rows = await pool.query<{
+      day: string;
+      p50_ms: string | null;
+      p95_ms: string | null;
+    }>(`
+      SELECT
+        date_trunc('day', r.started_at)::date::text AS day,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY nout.duration_ms)::text AS p50_ms,
+        PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY nout.duration_ms)::text AS p95_ms
+      FROM wf_run_node_outputs nout
+      JOIN wf_runs r ON r.id = nout.run_id
+      WHERE r.definition_id = $1
+        AND r.started_at >= $2
+        AND nout.duration_ms IS NOT NULL
+      GROUP BY date_trunc('day', r.started_at)
+      ORDER BY date_trunc('day', r.started_at)
+    `, [defId, cutoff]);
+
+    res.json({
+      daily: dailyRows.rows.map(r => ({
+        day: r.day,
+        total: parseInt(r.total, 10),
+        success: parseInt(r.success, 10),
+        failure: parseInt(r.failure, 10),
+        avgMs: r.avg_ms ? Math.round(parseFloat(r.avg_ms)) : null,
+      })),
+      durations: p50p95Rows.rows.map(r => ({
+        day: r.day,
+        p50Ms: r.p50_ms ? Math.round(parseFloat(r.p50_ms)) : null,
+        p95Ms: r.p95_ms ? Math.round(parseFloat(r.p95_ms)) : null,
+      })),
+      topFailingNodes: failingNodesRows.rows.map(r => ({
+        nodeId: r.node_id,
+        failCount: parseInt(r.fail_count, 10),
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "trends: query failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Query failed" });
+  }
+});
+
+// ── AI Workflow Narrative ─────────────────────────────────────────────────────
+
+router.post("/admin/workflows/definitions/:id/explain", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(defId)) { sendError(res, 400, "Invalid definition ID"); return; }
+
+  const def = await db.query.wfDefinitionsTable.findFirst({
+    where: eq(wfDefinitionsTable.id, defId),
+  });
+  if (!def) { sendError(res, 404, "Workflow not found"); return; }
+
+  const latestVersion = await db.query.wfVersionsTable.findFirst({
+    where: eq(wfVersionsTable.definitionId, defId),
+    orderBy: [desc(wfVersionsTable.createdAt)],
+  });
+
+  // Prefer the current canvas state from request body (unsaved edits) over the persisted version
+  type GraphShape = {
+    nodes: Array<{ id: string; type: string; data: Record<string, unknown> }>;
+    edges: Array<{ id: string; source: string; target: string; sourceHandle?: string | null }>;
+  };
+  const bodyGraph = req.body as { nodes?: unknown; edges?: unknown } | null;
+  const graph = (Array.isArray(bodyGraph?.nodes) && Array.isArray(bodyGraph?.edges))
+    ? { nodes: bodyGraph.nodes, edges: bodyGraph.edges } as GraphShape
+    : (latestVersion?.graph ?? { nodes: [], edges: [] }) as GraphShape;
+
+  if (!graph.nodes?.length) {
+    res.json({ narrative: "This workflow has no steps yet." });
+    return;
+  }
+
+  const nodeLines = graph.nodes.map(n => {
+    const label = (n.data?.label as string | undefined) || n.type;
+    const extraKeys = Object.keys(n.data ?? {}).filter(k => k !== "label" && k !== "nodeType" && k !== "annotation");
+    const extras = extraKeys.slice(0, 4).map(k => {
+      const v = (n.data ?? {})[k];
+      if (typeof v === "object" || Array.isArray(v)) return null;
+      return `${k}=${JSON.stringify(v)}`;
+    }).filter(Boolean).join(", ");
+    return `  [${n.id}] ${n.type} "${label}"${extras ? ` (${extras})` : ""}`;
+  }).join("\n");
+
+  const edgeLines = graph.edges.map(e =>
+    `  ${e.source} → ${e.target}${e.sourceHandle ? ` [${e.sourceHandle}]` : ""}`
+  ).join("\n");
+
+  const systemPrompt = `You are a workflow documentation assistant. Your job is to read a structured workflow definition and write a concise plain-English narrative for a non-technical business user.
+
+Rules:
+- Write 3–7 sentences maximum.
+- Describe what the workflow DOES and WHY — not implementation details.
+- Mention the trigger, the main happy path, any branching, and the final outcome.
+- Do NOT mention node IDs (like "node-3") — use only the human-readable labels.
+- Write in present tense ("The workflow receives…", "It then sends…").
+- If there is an error handler, mention that failures are caught and handled gracefully.
+- Output only the narrative text — no JSON, no code fences, no preamble.`;
+
+  const userContent = `Workflow name: ${def.name}
+
+Nodes:
+${nodeLines}
+
+Edges (connections):
+${edgeLines}
+
+Write a plain-English narrative explaining what this workflow does.`;
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-haiku-4-5",
+      max_tokens: 512,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userContent }],
+    });
+
+    const narrative = message.content[0]?.type === "text"
+      ? message.content[0].text.trim()
+      : "Unable to generate narrative.";
+
+    req.log.info({ defId }, "explain: narrative generated");
+    res.json({ narrative });
+  } catch (err) {
+    req.log.error({ err }, "explain: AI call failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "AI call failed" });
   }
 });
 
