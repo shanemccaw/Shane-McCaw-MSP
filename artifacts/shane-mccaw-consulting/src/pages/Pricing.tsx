@@ -76,6 +76,21 @@ export default function Pricing() {
   const offersLoading = loading;
   const retainersLoading = loading;
 
+  const retainerPrices = retainers
+    .map((r) => parseFloat(r.price ?? ""))
+    .filter((n) => !isNaN(n))
+    .sort((a, b) => a - b);
+  const fmtPrice = (n: number) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const retainerRange = retainerPrices.length > 0
+    ? `${fmtPrice(retainerPrices[0])} \u2013 ${fmtPrice(retainerPrices[retainerPrices.length - 1])}/mo`
+    : null;
+  const retainerRangeMonth = retainerPrices.length > 0
+    ? `${fmtPrice(retainerPrices[0])} \u2013 ${fmtPrice(retainerPrices[retainerPrices.length - 1])}/month`
+    : null;
+  const retainerPriceList = retainerPrices.length > 0
+    ? `${retainerPrices.map(fmtPrice).join(" / ")} per month`
+    : null;
+
   const jsonLd = [
     {
       "@context": "https://schema.org",
@@ -269,7 +284,7 @@ export default function Pricing() {
                 label: "Track 03",
                 tier: "Strategic",
                 title: "Monthly Fractional Retainer",
-                range: "$2,500 \u2013 $11,000/mo",
+                range: retainerRange ?? "Contact for pricing",
                 desc: "Consistent, predictable access to Shane\u2019s expertise every month \u2014 for architecture reviews, ongoing governance, strategic planning, or Copilot rollout support. Cancel with 30 days\u2019 notice.",
                 bestFor: "Organizations in regulated industries, government contractors, or startups scaling into compliance that need a senior M365 architect available on a sustained basis — without full-time overhead.",
                 anchor: "#retainers",
@@ -529,7 +544,7 @@ export default function Pricing() {
                     label: "Price",
                     entry: "$3,000 – $18,000 fixed",
                     core: "$7,500 – $35,000+ fixed project fee",
-                    strategic: "$2,500 / $6,000 / $11,000 per month",
+                    strategic: retainerPriceList ?? "Contact for pricing",
                   },
                   {
                     label: "Key Deliverables",
@@ -618,7 +633,7 @@ export default function Pricing() {
                 icon: <Calendar className="w-5 h-5 text-[#0078D4]" />,
                 badge: "Track 03 — Strategic",
                 title: "Monthly Fractional Retainer",
-                price: "$2,500 – $11,000/month",
+                price: retainerRangeMonth ?? "Contact for pricing",
                 timeline: "Ongoing — month-to-month",
                 bestFor: "Continuous senior architect oversight and governance",
                 commitment: "Cancel with 30 days' notice at any time",
