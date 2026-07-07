@@ -456,8 +456,8 @@ export default function Pricing() {
                   <p className="text-2xl font-extrabold text-[#0078D4]">Starting from $3,000</p>
                   <p className="text-muted-foreground text-xs mt-1">Priced automatically after your Tier 1 assessment.</p>
                 </div>
-                <CTAButton href="/book" className="text-sm w-full justify-center" data-testid="project-cta">
-                  Book a Free Scoping Call
+                <CTAButton href="/quick-wins" className="text-sm w-full justify-center" data-testid="project-cta">
+                  Start with a Tier 1 Assessment
                 </CTAButton>
               </div>
             </div>
