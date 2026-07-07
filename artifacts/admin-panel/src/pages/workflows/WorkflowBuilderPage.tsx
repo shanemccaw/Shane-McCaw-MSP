@@ -8514,10 +8514,23 @@ function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value:
   );
 }
 
-function RunOutputDock({ runId }: { runId: number }) {
+function RunOutputDock({ runId, focusNodeId }: { runId: number; focusNodeId?: string }) {
   const { fetchWithAuth } = useAuth();
   const TERMINAL = new Set(["completed", "failed", "cancelled"]);
   const [expandedIo, setExpandedIo] = useState<Set<string>>(new Set());
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // When replay steps, auto-expand and scroll to the focused node's I/O row
+  useEffect(() => {
+    if (!focusNodeId) return;
+    setExpandedIo(prev => new Set([...prev, focusNodeId]));
+    setTimeout(() => {
+      const scrollEl = containerRef.current?.closest<HTMLElement>(".overflow-y-auto");
+      const target = containerRef.current?.querySelector<HTMLElement>(`[data-node-id="${focusNodeId}"]`);
+      if (scrollEl && target) target.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 60);
+  }, [focusNodeId]);
+
   const { data: runData } = useQuery<WfRunDetail>({
     queryKey: ["wf-run-dock", runId],
     refetchInterval: (q) => {
@@ -8539,7 +8552,7 @@ function RunOutputDock({ runId }: { runId: number }) {
   logs.forEach((log, idx) => { if (log.nodeId) lastLogIdxByNode.set(log.nodeId, idx); });
 
   return (
-    <div className="p-3 space-y-1">
+    <div ref={containerRef} className="p-3 space-y-1">
       {runData?.status && (
         <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#1C2128]">
           <span className={`text-[10px] font-bold font-sans ${
@@ -8579,6 +8592,7 @@ function RunOutputDock({ runId }: { runId: number }) {
               nodeOut ? (
                 <div className="ml-8 border border-[#1C2128] rounded-lg overflow-hidden font-sans">
                   <button
+                    data-node-id={log.nodeId}
                     onClick={() => setExpandedIo(prev => {
                       const next = new Set(prev);
                       next.has(ioKey) ? next.delete(ioKey) : next.add(ioKey);
@@ -8749,6 +8763,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [splitPaneTab, setSplitPaneTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
+  const preSplitReplayTabRef = useRef<"runoutput" | "errors" | "system" | "aioutput" | null>(null);
 
   // System log (replaces/complements toast notifications; max 200 entries)
   const sysLogIdRef = useRef(0);
@@ -9790,10 +9805,23 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       }
     }
   }, [splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Auto-switch split pane to Run Output when replay advances
+  // Save/restore splitPaneTab on replay enter/exit while in split view
   useEffect(() => {
-    if (splitViewActive && replayActive) setSplitPaneTab("runoutput");
-  }, [replayIndex, replayActive, splitViewActive]);
+    if (!splitViewActive) return;
+    if (replayActive) {
+      // Entering replay — save current tab and switch to Run Output
+      if (preSplitReplayTabRef.current === null) {
+        preSplitReplayTabRef.current = splitPaneTab;
+      }
+      setSplitPaneTab("runoutput");
+    } else {
+      // Exiting replay — restore saved tab
+      if (preSplitReplayTabRef.current !== null) {
+        setSplitPaneTab(preSplitReplayTabRef.current);
+        preSplitReplayTabRef.current = null;
+      }
+    }
+  }, [replayActive, splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
   useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
@@ -10878,7 +10906,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
                       </div>
                     ) : (
-                      <RunOutputDock runId={lastTestRunId} />
+                      <RunOutputDock
+                        runId={lastTestRunId}
+                        focusNodeId={replayActive && replayNodeIds.length > 0 ? replayNodeIds[replayIndex] : undefined}
+                      />
                     )
                   ) : splitPaneTab === "errors" ? (
                     <div className="p-3 space-y-1.5 font-sans">
@@ -11421,7 +11452,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>{/* closes inner flex-1 flex overflow-hidden */}
 
         {/* ── Bottom Dock ─────────────────────────────────────────────── */}
-        {bottomDockOpen && (
+        {!splitViewActive && bottomDockOpen && (
           <div
             className="flex-shrink-0 bg-[#0D1117] border-t border-[#30363D] flex flex-col"
             style={{ height: bottomDockHeight }}
