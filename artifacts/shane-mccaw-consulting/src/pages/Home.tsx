@@ -235,7 +235,7 @@ export default function Home() {
               Book a Discovery Call
             </CTAButton>
             <Link
-              href="/assessments"
+              href="/lp/copilot-readiness-lead-generation-campaign"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
               Start with the Free Copilot Snapshot <ArrowRight className="w-4 h-4" />
