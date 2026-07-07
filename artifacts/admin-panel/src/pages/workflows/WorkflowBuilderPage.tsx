@@ -7579,12 +7579,13 @@ function PreRunInputModal({
   );
 }
 
-function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
+function TestRunPanel({ defId, nodes, edges, onClose, trigger, onRunStarted }: {
   defId: number;
   nodes: Node[];
   edges: Edge[];
   onClose: () => void;
   trigger: number;
+  onRunStarted?: (runId: number) => void;
 }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -7685,7 +7686,7 @@ function TestRunPanel({ defId, nodes, edges, onClose, trigger }: {
       }
       return res.json() as Promise<{ runId: number }>;
     },
-    onSuccess: (data) => setRunId(data.runId),
+    onSuccess: (data) => { setRunId(data.runId); onRunStarted?.(data.runId); },
   });
 
   const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
@@ -8406,6 +8407,56 @@ function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value:
   );
 }
 
+function RunOutputDock({ runId }: { runId: number }) {
+  const { fetchWithAuth } = useAuth();
+  const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+  const { data: runData } = useQuery<WfRunDetail>({
+    queryKey: ["wf-run-dock", runId],
+    refetchInterval: (q) => {
+      const s = q.state.data?.status;
+      return s && TERMINAL.has(s) ? false : 2000;
+    },
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${runId}`);
+      return res.json() as Promise<WfRunDetail>;
+    },
+  });
+  const logs = (runData?.logs ?? []).filter(l => l.level !== "progress");
+  return (
+    <div className="p-3 space-y-1">
+      {runData?.status && (
+        <div className="flex items-center gap-2 mb-2 pb-2 border-b border-[#1C2128]">
+          <span className={`text-[10px] font-bold font-sans ${
+            runData.status === "completed" ? "text-emerald-400" :
+            runData.status === "failed" ? "text-red-400" :
+            "text-amber-400"
+          }`}>
+            Run #{runId} — {runData.status}
+          </span>
+          {!TERMINAL.has(runData.status) && (
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+          )}
+        </div>
+      )}
+      {logs.length === 0 ? (
+        <div className="text-[#484F58] py-2 font-sans">Waiting for log output…</div>
+      ) : logs.map(log => (
+        <div key={log.id} className="flex items-start gap-2">
+          <span className={`flex-shrink-0 ${log.level === "error" ? "text-red-400" : log.level === "warn" ? "text-amber-400" : "text-[#484F58]"}`}>
+            {log.level === "error" ? "✕" : log.level === "warn" ? "⚠" : "·"}
+          </span>
+          <span className="text-[#484F58] flex-shrink-0">
+            {new Date(log.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+          </span>
+          <span className={log.level === "error" ? "text-red-300" : log.level === "warn" ? "text-amber-300" : "text-[#7D8590]"}>
+            {log.message}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -8488,12 +8539,49 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   // Snapshot current canvas state (max 10 entries); clears redo stack on any new mutation
-  function pushHistory() {
+  const undoLogIdRef = useRef(0);
+  const [undoHistoryLog, setUndoHistoryLog] = useState<Array<{ id: number; label: string; ts: number }>>([]);
+  function pushHistory(label = "Canvas edit") {
     historyRef.current = [...historyRef.current.slice(-9), { nodes: [...nodes], edges: [...edges] }];
     redoRef.current = [];
     setCanUndo(true);
     setCanRedo(false);
+    const id = ++undoLogIdRef.current;
+    setUndoHistoryLog(prev => [...prev.slice(-29), { id, label, ts: Date.now() }]);
   }
+
+  // ── Bottom Dock ──────────────────────────────────────────────────────────
+  const [bottomDockOpen, setBottomDockOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem("wf-dock-open") === "true"; } catch { return false; }
+  });
+  const [bottomDockHeight, setBottomDockHeight] = useState<number>(() => {
+    try { return Math.max(120, Math.min(500, parseInt(localStorage.getItem("wf-dock-height") ?? "200", 10))); } catch { return 200; }
+  });
+  const [bottomDockTab, setBottomDockTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
+  const dockResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  // System log (replaces/complements toast notifications; max 200 entries)
+  const sysLogIdRef = useRef(0);
+  const [systemLog, setSystemLog] = useState<Array<{ id: number; ts: number; type: "info" | "success" | "warning" | "error"; message: string }>>([]);
+  function addSystemLog(type: "info" | "success" | "warning" | "error", message: string) {
+    const id = ++sysLogIdRef.current;
+    setSystemLog(prev => [...prev.slice(-199), { id, ts: Date.now(), type, message }]);
+  }
+
+  // Global node search
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Last test-run ID shared with bottom dock Run Output tab
+  const [lastTestRunId, setLastTestRunId] = useState<number | null>(null);
+
+  // Metadata panel local state (synced from def on load)
+  const [metaDesc, setMetaDesc] = useState("");
+  const [metaOwner, setMetaOwner] = useState("");
+  const [metaTags, setMetaTags] = useState("");
+  const [metaRisk, setMetaRisk] = useState<"low" | "medium" | "high">("low");
+  const [metaSaveStatus, setMetaSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   const { data: prodDbStatus } = useQuery<{ connected: boolean }>({
     queryKey: ["prod-db-status"],
@@ -8530,7 +8618,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     queryKey: ["wf-def", defId],
     queryFn: async () => {
       const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`);
-      return res.json() as Promise<{ id: number; name: string; description?: string; concurrencyLimit: number; maxRunDepth: number }>;
+      return res.json() as Promise<{
+        id: number; name: string; description?: string;
+        concurrencyLimit: number; maxRunDepth: number;
+        metadata?: {
+          category?: string; description?: string;
+          owner?: string; tags?: string[]; riskLevel?: "low" | "medium" | "high";
+        };
+      }>;
     },
   });
 
@@ -8540,6 +8635,15 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       setSettingsMaxDepth(def.maxRunDepth);
     }
   }, [def?.maxRunDepth]);
+
+  // Sync metadata panel from def on first load
+  useEffect(() => {
+    if (!def) return;
+    setMetaDesc(def.metadata?.description ?? def.description ?? "");
+    setMetaOwner(def.metadata?.owner ?? "");
+    setMetaTags((def.metadata?.tags ?? []).join(", "));
+    setMetaRisk(def.metadata?.riskLevel ?? "low");
+  }, [def?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const settingsMut = useMutation({
     mutationFn: async (updates: { maxRunDepth: number }) => {
@@ -8553,6 +8657,26 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["wf-def", defId] });
+    },
+  });
+
+  const metaPatchMut = useMutation({
+    mutationFn: async (patch: { description?: string; owner?: string; tags?: string[]; riskLevel?: "low" | "medium" | "high" }) => {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["wf-def", defId] });
+      setMetaSaveStatus("saved");
+      setTimeout(() => setMetaSaveStatus("idle"), 2500);
+    },
+    onError: () => {
+      setMetaSaveStatus("error");
     },
   });
 
@@ -9103,6 +9227,16 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
+      // Cmd/Ctrl+F — open global node search
+      if (e.key === "f" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setShowSearch(v => !v);
+        if (!showSearch) {
+          setTimeout(() => searchInputRef.current?.focus(), 50);
+        }
+        return;
+      }
+
       // ? — open keyboard shortcut cheatsheet
       if (e.key === "?" && !inInput) {
         e.preventDefault();
@@ -9140,11 +9274,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         }
       }
 
-      // Escape — deselect, close panel, exit replay
-      if (e.key === "Escape" && !inInput) {
-        setSelectedNodeId(null);
-        setRightPanelTab(null);
-        setReplayMode(false);
+      // Escape — close search first, then deselect/close panel
+      if (e.key === "Escape") {
+        if (showSearch) { setShowSearch(false); setSearchQuery(""); return; }
+        if (!inInput) {
+          setSelectedNodeId(null);
+          setRightPanelTab(null);
+          setReplayMode(false);
+        }
         return;
       }
 
@@ -9215,10 +9352,40 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     return `${diffHr} hr ago`;
   }
 
+  // Workflow issues — basic schema validation (scoreWorkflow from #2541 not yet available)
+  const workflowIssues = useMemo(() => {
+    const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
+    if (nodes.length === 0) {
+      issues.push({ nodeId: null, severity: "high", message: "Workflow has no nodes — add at least one action node." });
+      return issues;
+    }
+    const startNodes = nodes.filter(n => ["start", "trigger"].includes((n.data.nodeType as string) ?? ""));
+    if (startNodes.length === 0) {
+      issues.push({ nodeId: null, severity: "high", message: "No trigger node found — every workflow needs a start/trigger." });
+    }
+    const connectedIds = new Set([...edges.map(e => e.source), ...edges.map(e => e.target)]);
+    nodes.forEach(n => {
+      const nt = (n.data.nodeType as string) ?? "";
+      if (!["start", "trigger"].includes(nt) && !connectedIds.has(n.id)) {
+        issues.push({ nodeId: n.id, severity: "medium", message: `"${(n.data.label as string) || n.id}" is disconnected — it will never be reached.` });
+      }
+    });
+    const unlabelledCount = nodes.filter(n => {
+      const lbl = (n.data.label as string | undefined) ?? "";
+      return !lbl || lbl === "New Step" || lbl === "Action";
+    }).length;
+    if (unlabelledCount > 0) {
+      issues.push({ nodeId: null, severity: "low", message: `${unlabelledCount} node${unlabelledCount > 1 ? "s have" : " has"} a generic label — rename for clarity.` });
+    }
+    return issues;
+  }, [nodes, edges]);
+
   // Persist layout preferences to localStorage
   useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
   useEffect(() => { localStorage.setItem("wf-panel-width", String(rightPanelWidth)); }, [rightPanelWidth]);
   useEffect(() => { localStorage.setItem("wf-lib-tab", libTab); }, [libTab]);
+  useEffect(() => { localStorage.setItem("wf-dock-open", String(bottomDockOpen)); }, [bottomDockOpen]);
+  useEffect(() => { localStorage.setItem("wf-dock-height", String(bottomDockHeight)); }, [bottomDockHeight]);
   useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
   useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
@@ -9247,6 +9414,23 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     }
     function onUp() {
       panelResizeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startDockResize(e: React.MouseEvent) {
+    e.preventDefault();
+    dockResizeRef.current = { startY: e.clientY, startHeight: bottomDockHeight };
+    function onMove(ev: MouseEvent) {
+      if (!dockResizeRef.current) return;
+      const delta = dockResizeRef.current.startY - ev.clientY;
+      setBottomDockHeight(Math.max(120, Math.min(500, dockResizeRef.current.startHeight + delta)));
+    }
+    function onUp() {
+      dockResizeRef.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     }
@@ -9520,6 +9704,31 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {publishingToProd ? "Publishing…" : "Publish to Prod"}
           </button>
 
+          {/* Search (Cmd/Ctrl+F) */}
+          <button
+            onClick={() => { setShowSearch(v => !v); setTimeout(() => searchInputRef.current?.focus(), 50); }}
+            className={`p-1.5 rounded-lg border transition-colors ${showSearch ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+            title="Search nodes (Cmd/Ctrl+F)"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </button>
+
+          {/* Bottom dock toggle */}
+          <button
+            onClick={() => setBottomDockOpen(v => !v)}
+            className={`p-1.5 rounded-lg border transition-colors ${bottomDockOpen ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+            title={bottomDockOpen ? "Close output dock" : "Open output dock (console)"}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+              <rect x="13" y="14" width="7" height="5" rx="1" strokeWidth={2} />
+            </svg>
+          </button>
+
+          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
+
           {/* Test Run — far-right anchor */}
           <button
             onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
@@ -9620,7 +9829,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>
       )}
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+        <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Node library sidebar (collapsible) */}
         <div className={`flex-shrink-0 bg-[#0D1117] border-r border-[#30363D] flex flex-col overflow-hidden transition-[width] duration-200 ${leftCollapsed ? "w-0" : "w-52"}`}>
           {/* Header + collapse toggle */}
@@ -10020,13 +10230,93 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   edges={edges}
                   onClose={() => setRightPanelTab(null)}
                   trigger={testRunTrigger}
+                  onRunStarted={(id) => { setLastTestRunId(id); setBottomDockOpen(true); setBottomDockTab("runoutput"); }}
                 />
               ) : rightPanelTab === "metadata" ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-2 p-6 text-center">
-                  <svg className="w-8 h-8 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-xs text-[#484F58]">Workflow metadata<br />coming soon</p>
+                <div className="overflow-y-auto p-4 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Description</label>
+                    <textarea
+                      value={metaDesc}
+                      onChange={e => setMetaDesc(e.target.value)}
+                      placeholder="Describe what this workflow does and when it runs…"
+                      rows={3}
+                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none resize-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Owner</label>
+                    <input
+                      value={metaOwner}
+                      onChange={e => setMetaOwner(e.target.value)}
+                      placeholder="e.g. Shane McCaw"
+                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Tags <span className="text-[#484F58] normal-case font-normal">(comma-separated)</span></label>
+                    <input
+                      value={metaTags}
+                      onChange={e => setMetaTags(e.target.value)}
+                      placeholder="e.g. onboarding, client, email"
+                      className="w-full bg-[#0D1117] border border-[#30363D] focus:border-[#0078D4]/60 rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                    />
+                    {metaTags.trim() && (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {metaTags.split(",").map(t => t.trim()).filter(Boolean).map((tag, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-[#0078D4]/10 border border-[#0078D4]/20 text-[#0078D4] rounded-full text-[10px]">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Risk Level</label>
+                    <div className="flex gap-2">
+                      {(["low", "medium", "high"] as const).map(level => (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => setMetaRisk(level)}
+                          className={`flex-1 py-1.5 text-[10px] font-semibold rounded-lg border capitalize transition-colors ${
+                            metaRisk === level
+                              ? level === "high" ? "bg-red-500/20 border-red-500/40 text-red-400"
+                                : level === "medium" ? "bg-amber-500/20 border-amber-500/40 text-amber-400"
+                                : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
+                              : "bg-transparent border-[#30363D] text-[#484F58] hover:border-[#484F58]"
+                          }`}
+                        >
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="pt-2 border-t border-[#30363D]">
+                    <button
+                      onClick={async () => {
+                        setMetaSaveStatus("saving");
+                        const tags = metaTags.split(",").map(t => t.trim()).filter(Boolean);
+                        await metaPatchMut.mutateAsync({ description: metaDesc || undefined, owner: metaOwner || undefined, tags: tags.length ? tags : undefined, riskLevel: metaRisk });
+                      }}
+                      disabled={metaPatchMut.isPending}
+                      className="w-full px-3 py-1.5 text-xs font-medium bg-[#0078D4] hover:bg-[#006CBD] text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {metaSaveStatus === "saving" ? "Saving…" : metaSaveStatus === "saved" ? "✓ Saved" : metaSaveStatus === "error" ? "Error — retry" : "Save Metadata"}
+                    </button>
+                  </div>
+                  {/* Issues summary */}
+                  {workflowIssues.length > 0 && (
+                    <div className="pt-2 border-t border-[#30363D] space-y-1.5">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Workflow Issues ({workflowIssues.length})</p>
+                      {workflowIssues.map((issue, i) => (
+                        <div key={i} className={`text-[10px] flex items-start gap-1.5 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                          <span className="flex-shrink-0 mt-0.5">{issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}</span>
+                          <span>{issue.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : rightPanelTab === "settings" ? (
                 <div className="overflow-y-auto p-4 space-y-5">
@@ -10079,40 +10369,306 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 </div>
               ) : rightPanelTab === "history" ? (
                 <div className="overflow-y-auto p-4 space-y-3">
-                  {versions.map(v => (
-                    <div key={v.id} className="space-y-1">
-                      <button
-                        onClick={() => { setCurrentVersionId(v.id); setRightPanelTab(null); }}
-                        className={`w-full text-left p-3 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
-                      >
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
-                          {v.isDefault && (
-                            <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full font-medium">Default</span>
-                          )}
-                        </div>
-                        <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
-                      </button>
-                      {v.isDefault && v.id !== currentVersionId && (
-                        <button
-                          onClick={async () => {
-                            await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/revert-to-default`, { method: "POST" });
-                            setCurrentVersionId(v.id);
-                            setRightPanelTab(null);
-                          }}
-                          className="w-full text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg py-1.5 transition-colors"
-                        >
-                          Revert to default
-                        </button>
-                      )}
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Undo History</p>
+                  {undoHistoryLog.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+                      <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h10a8 8 0 018 8v2M3 10l6 6M3 10l6-6" />
+                      </svg>
+                      <p className="text-xs text-[#484F58]">No edits yet — make a change<br />and it'll appear here.</p>
                     </div>
-                  ))}
+                  ) : (
+                    <div className="space-y-1">
+                      {[...undoHistoryLog].reverse().map((entry, idx) => {
+                        const isLatest = idx === 0;
+                        const stackPos = undoHistoryLog.length - idx;
+                        return (
+                          <button
+                            key={entry.id}
+                            onClick={() => {
+                              const stepsBack = idx;
+                              if (stepsBack === 0) return;
+                              for (let i = 0; i < stepsBack; i++) {
+                                const prev = historyRef.current.pop();
+                                if (!prev) break;
+                                if (i === stepsBack - 1) {
+                                  setNodes(prev.nodes.map(n => ({ ...n, type: "wfNode" as const })));
+                                  setEdges(prev.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
+                                  setIsDirty(true);
+                                  setCanUndo(historyRef.current.length > 0);
+                                }
+                              }
+                              setUndoHistoryLog(prev => prev.slice(0, undoHistoryLog.length - idx));
+                            }}
+                            disabled={isLatest}
+                            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg border text-left transition-colors ${
+                              isLatest
+                                ? "bg-[#0078D4]/10 border-[#0078D4]/30 cursor-default"
+                                : "bg-[#0D1117] border-[#30363D] hover:border-[#484F58] cursor-pointer"
+                            }`}
+                          >
+                            <span className="text-[10px] font-mono text-[#484F58] flex-shrink-0 w-4 text-right">{stackPos}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-xs truncate ${isLatest ? "text-[#0078D4]" : "text-[#7D8590]"}`}>{entry.label}</p>
+                              <p className="text-[9px] text-[#484F58]">
+                                {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                              </p>
+                            </div>
+                            {isLatest && (
+                              <span className="text-[9px] text-[#0078D4] flex-shrink-0">current</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-[#30363D] space-y-2">
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Version History</p>
+                    {versions.map(v => (
+                      <div key={v.id} className="space-y-1">
+                        <button
+                          onClick={() => { setCurrentVersionId(v.id); setRightPanelTab(null); }}
+                          className={`w-full text-left p-2.5 rounded-lg border transition-colors ${v.id === currentVersionId ? "bg-[#0078D4]/10 border-[#0078D4]/30 text-[#0078D4]" : "bg-[#0D1117] border-[#30363D] text-[#7D8590] hover:border-[#484F58]"}`}
+                        >
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="text-xs font-semibold">{v.label ?? `v${v.versionNumber}`}</p>
+                            {v.isDefault && (
+                              <span className="text-[9px] bg-violet-500/10 border border-violet-500/20 text-violet-400 px-1.5 py-0.5 rounded-full font-medium">Default</span>
+                            )}
+                          </div>
+                          <p className="text-[10px] mt-0.5 capitalize">{v.status}</p>
+                        </button>
+                        {v.isDefault && v.id !== currentVersionId && (
+                          <button
+                            onClick={async () => {
+                              await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/revert-to-default`, { method: "POST" });
+                              setCurrentVersionId(v.id);
+                              setRightPanelTab(null);
+                            }}
+                            className="w-full text-[10px] text-violet-400 hover:text-violet-300 border border-violet-500/20 hover:border-violet-500/40 rounded-lg py-1.5 transition-colors"
+                          >
+                            Revert to default
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
             </div>
           </div>
         )}
-      </div>
+        </div>{/* closes inner flex-1 flex overflow-hidden */}
+
+        {/* ── Bottom Dock ─────────────────────────────────────────────── */}
+        {bottomDockOpen && (
+          <div
+            className="flex-shrink-0 bg-[#0D1117] border-t border-[#30363D] flex flex-col"
+            style={{ height: bottomDockHeight }}
+          >
+            {/* Drag-to-resize handle */}
+            <div
+              onMouseDown={startDockResize}
+              className="h-1.5 bg-[#1C2128] hover:bg-[#0078D4]/50 cursor-ns-resize flex-shrink-0 transition-colors"
+              title="Drag to resize dock"
+            />
+            {/* Tab bar */}
+            <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-[#30363D] bg-[#161B22]">
+              {([ 
+                { key: "runoutput", label: "Run Output" },
+                { key: "errors", label: "Errors" },
+                { key: "system", label: "System" },
+                { key: "aioutput", label: "AI Output" },
+              ] as const).map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setBottomDockTab(tab.key)}
+                  className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+                    bottomDockTab === tab.key ? "bg-[#1C2128] text-[#E6EDF3]" : "text-[#484F58] hover:text-[#7D8590]"
+                  }`}
+                >
+                  {tab.label}
+                  {tab.key === "errors" && workflowIssues.length > 0 && (
+                    <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold ${workflowIssues.some(i => i.severity === "high") ? "bg-red-500/80 text-white" : "bg-amber-500/80 text-white"}`}>
+                      {workflowIssues.length}
+                    </span>
+                  )}
+                  {tab.key === "system" && systemLog.length > 0 && (
+                    <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold bg-[#30363D] text-[#7D8590]">
+                      {systemLog.length > 99 ? "99+" : systemLog.length}
+                    </span>
+                  )}
+                </button>
+              ))}
+              <div className="ml-auto flex items-center gap-2">
+                {(bottomDockTab === "system" || bottomDockTab === "runoutput") && (
+                  <button
+                    onClick={() => { if (bottomDockTab === "system") setSystemLog([]); }}
+                    className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                    title="Clear log"
+                  >
+                    Clear
+                  </button>
+                )}
+                <button
+                  onClick={() => setBottomDockOpen(false)}
+                  className="text-[#484F58] hover:text-[#E6EDF3] text-lg leading-none px-1 transition-colors"
+                  title="Close dock"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto text-[11px] font-mono">
+              {bottomDockTab === "runoutput" ? (
+                lastTestRunId == null ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
+                    <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
+                  </div>
+                ) : (
+                  <RunOutputDock runId={lastTestRunId} />
+                )
+              ) : bottomDockTab === "errors" ? (
+                <div className="p-3 space-y-1.5 font-sans">
+                  {workflowIssues.length === 0 ? (
+                    <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
+                      <span className="text-emerald-400 text-base">✓</span>
+                      <span className="text-xs">No issues found in this workflow</span>
+                    </div>
+                  ) : workflowIssues.map((issue, i) => (
+                    <div
+                      key={i}
+                      onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); } }}
+                      className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
+                        issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
+                        issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
+                        "border-[#30363D] bg-[#0D1117]"
+                      }`}
+                    >
+                      <span className={`flex-shrink-0 mt-0.5 font-sans ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                        {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
+                      </span>
+                      <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
+                        {issue.message}
+                      </span>
+                      {issue.nodeId && (
+                        <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : bottomDockTab === "system" ? (
+                <div className="p-3 space-y-1">
+                  {systemLog.length === 0 ? (
+                    <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
+                  ) : [...systemLog].reverse().map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2">
+                      <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
+                        {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
+                      </span>
+                      <span className="text-[#484F58] flex-shrink-0">
+                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
+                        {entry.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
+                  <span className="text-2xl">🤖</span>
+                  <p className="text-xs text-center">AI generation output streams here.<br /><span className="text-[10px] text-[#30363D]">Full support arrives with task #2541.</span></p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>{/* closes outer flex-1 flex-col wrapper */}
+
+      {/* Global node search palette */}
+      {showSearch && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[60] flex items-start justify-center pt-24"
+          onClick={() => { setShowSearch(false); setSearchQuery(""); }}
+        >
+          <div
+            className="w-full max-w-xl bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#30363D]">
+              <svg className="w-4 h-4 text-[#484F58] flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                ref={searchInputRef}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search nodes by name or type… (Esc to close)"
+                className="flex-1 bg-transparent text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none"
+                autoFocus
+              />
+              <kbd className="text-[9px] text-[#484F58] border border-[#30363D] rounded px-1 py-0.5">Esc</kbd>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {(() => {
+                const q = searchQuery.toLowerCase().trim();
+                const filtered = q
+                  ? nodes.filter(n => {
+                      const lbl = ((n.data.label as string) ?? "").toLowerCase();
+                      const nt = ((n.data.nodeType as string) ?? "").toLowerCase();
+                      return lbl.includes(q) || nt.includes(q) || n.id.toLowerCase().includes(q);
+                    })
+                  : nodes;
+                if (filtered.length === 0) {
+                  return (
+                    <div className="py-8 text-center text-[#484F58] text-sm">
+                      {q ? `No nodes matching "${searchQuery}"` : "No nodes in this workflow yet"}
+                    </div>
+                  );
+                }
+                return filtered.map(n => {
+                  const label = (n.data.label as string) || n.id;
+                  const nt = (n.data.nodeType as string) ?? "action";
+                  const style = NODE_STYLES[nt] ?? NODE_STYLES.action;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => {
+                        setSelectedNodeId(n.id);
+                        setRightPanelTab("node");
+                        setShowSearch(false);
+                        setSearchQuery("");
+                        canvasScrollRef.current?.scrollTo({ top: Math.max(0, (n.position?.y ?? 0) - 100), behavior: "smooth" });
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-[#1C2128] transition-colors text-left"
+                    >
+                      <span className="text-base flex-shrink-0">{style.icon}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-[#E6EDF3] truncate">{label}</p>
+                        <p className="text-[10px] text-[#484F58]">{nt} · {n.id}</p>
+                      </div>
+                      <svg className="w-3 h-3 text-[#484F58] ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            <div className="px-4 py-2 border-t border-[#30363D] flex items-center justify-between">
+              <span className="text-[10px] text-[#484F58]">{nodes.length} node{nodes.length !== 1 ? "s" : ""} in workflow</span>
+              <span className="text-[10px] text-[#484F58]">↵ to select · Esc to close</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Publish dialog */}
       {showPublish && (

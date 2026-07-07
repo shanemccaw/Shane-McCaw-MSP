@@ -255,9 +255,14 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
   const body = z.object({
     category: z.string().max(100).nullable().optional(),
     name: z.string().min(1).max(200).optional(),
+    description: z.string().max(2000).nullable().optional(),
+    owner: z.string().max(200).nullable().optional(),
+    tags: z.array(z.string().max(50)).max(20).nullable().optional(),
+    riskLevel: z.enum(["low", "medium", "high"]).nullable().optional(),
   }).safeParse(req.body);
   if (!body.success) return sendError(res, 400, body.error.message);
-  if (body.data.category === undefined && !body.data.name) return sendError(res, 400, "Nothing to update");
+  const hasAnyField = Object.values(body.data).some(v => v !== undefined);
+  if (!hasAnyField) return sendError(res, 400, "Nothing to update");
 
   try {
     const [existing] = await db
@@ -274,12 +279,19 @@ router.patch("/admin/workflows/definitions/:id", requireAdmin, async (req: Reque
     };
     const updateFields: UpdateFields = { updatedAt: new Date() };
 
-    if (body.data.category !== undefined) {
+    const metaFields: Array<"category" | "description" | "owner" | "tags" | "riskLevel"> = ["category", "description", "owner", "tags", "riskLevel"];
+    const anyMetaField = metaFields.some(f => body.data[f] !== undefined);
+
+    if (anyMetaField) {
       const merged: Record<string, unknown> = { ...(existing.metadata ?? {}) };
-      if (body.data.category === null || body.data.category === "") {
-        delete merged.category;
-      } else {
-        merged.category = body.data.category;
+      for (const field of metaFields) {
+        const val = body.data[field];
+        if (val === undefined) continue;
+        if (val === null || val === "") {
+          delete merged[field];
+        } else {
+          merged[field] = val;
+        }
       }
       updateFields.metadata = merged;
     }
