@@ -1937,6 +1937,20 @@ export const wfTriggersTable = pgTable("wf_triggers", {
 export type InsertWfTrigger = typeof wfTriggersTable.$inferInsert;
 export type WfTrigger = typeof wfTriggersTable.$inferSelect;
 
+export const wfTriggerEventsTable = pgTable("wf_trigger_events", {
+  id: serial("id").primaryKey(),
+  triggerId: integer("trigger_id").notNull().references(() => wfTriggersTable.id, { onDelete: "cascade" }),
+  runId: integer("run_id").references(() => wfRunsTable.id, { onDelete: "set null" }),
+  firedAt: timestamp("fired_at").notNull().defaultNow(),
+  status: text("status", { enum: ["fired", "skipped", "error"] }).notNull().default("fired"),
+  durationMs: integer("duration_ms"),
+  payload: jsonb("payload").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+});
+
+export type InsertWfTriggerEvent = typeof wfTriggerEventsTable.$inferInsert;
+export type WfTriggerEvent = typeof wfTriggerEventsTable.$inferSelect;
+
 export const pendingApprovalsTable = pgTable("pending_approvals", {
   id: serial("id").primaryKey(),
   runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),

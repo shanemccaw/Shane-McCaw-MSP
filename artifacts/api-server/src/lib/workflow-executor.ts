@@ -21,6 +21,7 @@ import {
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
   wfTriggersTable,
+  wfTriggerEventsTable,
   pendingApprovalsTable,
   leadsTable,
   usersTable,
@@ -6767,10 +6768,20 @@ export async function triggerScheduledWorkflows(): Promise<void> {
           }
         }
       } else {
-        await fireWorkflowForDefinition(
+        const t0 = Date.now();
+        const runId = await fireWorkflowForDefinition(
           trigger.definition_id, "schedule", `trigger:${trigger.id}`,
           (trigger.config.payload as Record<string, unknown>) ?? {},
         );
+        const durationMs = Date.now() - t0;
+        // Record trigger event
+        await db.insert(wfTriggerEventsTable).values({
+          triggerId: trigger.id,
+          runId: runId ?? undefined,
+          status: runId ? "fired" : "skipped",
+          payload: (trigger.config.payload as Record<string, unknown>) ?? {},
+          durationMs,
+        }).catch((err: unknown) => { logger.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record trigger event (non-fatal)"); });
       }
     }
   } catch (err) {
@@ -6888,7 +6899,17 @@ export async function emitWorkflowEvent(
           _chainDefIds: srcDefId != null ? [...prevChainDefIds, srcDefId] : prevChainDefIds,
         };
         if (srcDefId != null) emitPayload._sourceDefinitionId = srcDefId;
-        await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, emitPayload);
+        const t0Evt = Date.now();
+        const runId = await fireWorkflowForDefinition(trigger.definitionId, "event", `event:${eventType}`, emitPayload);
+        const durationMsEvt = Date.now() - t0Evt;
+        // Record trigger event for observability
+        await db.insert(wfTriggerEventsTable).values({
+          triggerId: trigger.id,
+          runId: runId ?? undefined,
+          status: runId ? "fired" : "skipped",
+          payload: emitPayload,
+          durationMs: durationMsEvt,
+        }).catch((err: unknown) => { logger.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record event trigger event (non-fatal)"); });
       }
     }
   } catch (err) {

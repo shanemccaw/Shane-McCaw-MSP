@@ -22,6 +22,8 @@ export interface FlowStep {
    * switch_case:  { [caseId]: FlowStep[], __default__: FlowStep[] }
    */
   branches?: Record<string, FlowStep[]>;
+  /** Optional inline note visible on the canvas card (not executed). */
+  annotation?: string;
 }
 
 export interface StoredNode {

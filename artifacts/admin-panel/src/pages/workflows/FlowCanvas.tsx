@@ -52,6 +52,15 @@ interface LibraryCategory {
   nodes: LibraryNode[];
 }
 
+export type StepResult = {
+  status: "ok" | "error" | "skipped";
+  durationMs?: number | null;
+  errorMessage?: string | null;
+  logPreview?: string | null;
+  /** Full log lines for the step — shown in the expanded inline drawer */
+  fullLogs?: string[];
+};
+
 export interface FlowCanvasProps {
   nodes: StoredNode[];
   edges: StoredEdge[];
@@ -71,6 +80,11 @@ export interface FlowCanvasProps {
   copiedStep?: FlowStep | null;
   /** Called when the user copies a step (via menu or Ctrl+C). */
   onCopyStep?: (step: FlowStep) => void;
+  /**
+   * When set, renders a status badge on each step card that has a result.
+   * Keys are node IDs, values are run outputs from the last inspect run.
+   */
+  stepResultMap?: Record<string, StepResult>;
 }
 
 // ── Node Picker Popover ────────────────────────────────────────────────────────
@@ -429,6 +443,57 @@ function CategoryBadge({ category }: { category: string }) {
   );
 }
 
+// ── Step Annotation ────────────────────────────────────────────────────────────
+
+function StepAnnotation({
+  step, isSelected, isArchived, nodes, edges, onGraphChange,
+}: {
+  step: FlowStep;
+  isSelected: boolean;
+  isArchived: boolean;
+  nodes: StoredNode[];
+  edges: StoredEdge[];
+  onGraphChange: (nodes: StoredNode[], edges: StoredEdge[]) => void;
+}) {
+  const annotation = (step.data?.annotation as string | undefined) ?? "";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(annotation);
+  if (!isSelected && !annotation) return null;
+  return (
+    <div className="px-3 py-1.5 border-t border-[#30363D] flex items-start gap-1.5">
+      <svg className="w-3 h-3 text-amber-400/70 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+      </svg>
+      {editing ? (
+        <textarea
+          autoFocus
+          rows={2}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={() => {
+            setEditing(false);
+            if (draft !== annotation) {
+              const updated = nodes.map(n => n.id === step.id ? { ...n, data: { ...n.data, annotation: draft } } : n);
+              onGraphChange(updated, edges);
+            }
+          }}
+          onKeyDown={e => { if (e.key === "Escape") { setEditing(false); setDraft(annotation); } e.stopPropagation(); }}
+          onClick={e => e.stopPropagation()}
+          placeholder="Add a note…"
+          className="flex-1 bg-transparent text-[10px] text-amber-200/80 placeholder-[#484F58] outline-none resize-none leading-relaxed"
+        />
+      ) : (
+        <p
+          onClick={e => { if (!isArchived) { e.stopPropagation(); setEditing(true); setDraft(annotation); } }}
+          className={`flex-1 text-[10px] leading-relaxed ${annotation ? "text-amber-200/70" : "text-[#484F58] italic"} ${!isArchived ? "cursor-text hover:text-amber-200/90" : ""}`}
+        >
+          {annotation || (isSelected ? "Click to add a note…" : "")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Step Card ──────────────────────────────────────────────────────────────────
 
 function StepCard({
@@ -466,6 +531,7 @@ function StepCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const [collapsed, setCollapsed] = useState(false);
+  const [stepLogOpen, setStepLogOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuPortalRef = useRef<HTMLDivElement>(null);
@@ -734,6 +800,24 @@ function StepCard({
           <p className="text-xs font-semibold text-[#E6EDF3] truncate">{label}</p>
           <p className="text-[10px] text-[#7D8590] truncate">{step.id}</p>
         </div>
+
+        {/* Execution result badge (inspect mode overlay) — click to expand log */}
+        {ctx.stepResultMap[step.id] && (() => {
+          const r = ctx.stepResultMap[step.id];
+          const colors = { ok: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30", error: "bg-red-500/20 text-red-300 border-red-500/30", skipped: "bg-amber-500/20 text-amber-300 border-amber-500/30" };
+          const labels = { ok: "✓", error: "✕", skipped: "↷" };
+          return (
+            <button
+              className={`flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity ${colors[r.status]}`}
+              title={r.errorMessage ? `Click to expand: ${r.errorMessage}` : (r.logPreview ? `Click to expand log` : "Click to view step result")}
+              onClick={e => { e.stopPropagation(); setStepLogOpen(v => !v); }}
+            >
+              {labels[r.status]}
+              {r.durationMs != null && <span className="font-normal opacity-80">{r.durationMs}ms</span>}
+            </button>
+          );
+        })()}
+
         {step.nodeType === "start" && ctx.triggerCategories.length > 0 && (
           <span className="flex items-center gap-1 flex-wrap">
             {ctx.triggerCategories.map(cat => (
@@ -847,6 +931,73 @@ function StepCard({
           </span>
         </div>
       )}
+
+      {/* One-line inline preview (inspect mode) — always visible when result exists */}
+      {!stepLogOpen && ctx.stepResultMap[step.id] && (() => {
+        const r = ctx.stepResultMap[step.id];
+        const preview = r.errorMessage ?? r.logPreview;
+        if (!preview) return null;
+        const previewColors = { ok: "text-emerald-300/60", error: "text-red-400/70", skipped: "text-amber-300/60" };
+        return (
+          <div
+            className={`px-3 py-0.5 border-t border-[#30363D]/40 text-[10px] font-mono truncate cursor-pointer hover:opacity-80 ${previewColors[r.status]}`}
+            onClick={e => { e.stopPropagation(); setStepLogOpen(true); }}
+            title="Click to expand log"
+          >
+            {preview}
+          </div>
+        );
+      })()}
+
+      {/* Expandable step log drawer (inspect mode) — shows full log lines inline */}
+      {stepLogOpen && ctx.stepResultMap[step.id] && (() => {
+        const r = ctx.stepResultMap[step.id];
+        const logs = r.fullLogs ?? (r.logPreview ? [r.logPreview] : []);
+        return (
+          <div className="px-3 py-2 border-t border-[#30363D]/60 bg-[#0D1117]/60 text-[10px] font-mono">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className={`font-semibold ${r.status === "ok" ? "text-emerald-300" : r.status === "error" ? "text-red-300" : "text-amber-300"}`}>
+                {r.status === "ok" ? "✓ Succeeded" : r.status === "error" ? "✕ Failed" : "↷ Skipped"}
+                {r.durationMs != null && <span className="ml-2 font-normal opacity-60">{r.durationMs}ms</span>}
+                {logs.length > 0 && <span className="ml-2 font-normal opacity-40">{logs.length} log line{logs.length !== 1 ? "s" : ""}</span>}
+              </span>
+              <button
+                className="text-[#484F58] hover:text-[#7D8590] ml-2 text-[11px]"
+                onClick={e => { e.stopPropagation(); setStepLogOpen(false); }}
+                title="Close log"
+              >✕</button>
+            </div>
+            {r.errorMessage && (
+              <div className="text-red-300/80 break-words whitespace-pre-wrap leading-relaxed max-h-24 overflow-y-auto mb-1 border-b border-[#30363D]/40 pb-1">
+                {r.errorMessage}
+              </div>
+            )}
+            {logs.length > 0 ? (
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {logs.map((line, li) => (
+                  <div key={li} className="text-[#7D8590] break-words whitespace-pre-wrap leading-relaxed">
+                    <span className="select-none text-[#484F58] mr-1.5">{li + 1}</span>{line}
+                  </div>
+                ))}
+              </div>
+            ) : r.status === "ok" ? (
+              <div className="text-[#484F58] italic">Step completed without log output.</div>
+            ) : r.status === "skipped" ? (
+              <div className="text-amber-200/60 italic">Skipped — all upstream branches were skipped.</div>
+            ) : null}
+          </div>
+        );
+      })()}
+
+      {/* Step annotation row */}
+      <StepAnnotation
+        step={step}
+        isSelected={isSelected}
+        isArchived={isArchived}
+        nodes={nodes}
+        edges={edges}
+        onGraphChange={onGraphChange}
+      />
 
       {/* Container body — hidden when collapsed */}
       {isContainer && !collapsed && step.branches && (
@@ -1038,6 +1189,39 @@ function BranchColumn({
 
 // ── Container Body ─────────────────────────────────────────────────────────────
 
+/** Per-branch collapse: shows toggle button in header; collapsed branch shows a summary chip. */
+function CollapsibleBranchHeader({
+  label, color, stepCount, collapsed, onToggle,
+}: {
+  label: React.ReactNode;
+  color?: string;
+  stepCount: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="px-3 py-1.5 border-b border-[#30363D] flex items-center justify-between gap-2">
+      <span className="text-[9px] uppercase tracking-widest font-bold" style={color ? { color } : undefined}>
+        {label}
+      </span>
+      <button
+        onClick={e => { e.stopPropagation(); onToggle(); }}
+        className="flex items-center gap-1 text-[9px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+        title={collapsed ? "Expand branch" : "Collapse branch"}
+      >
+        {collapsed && stepCount > 0 && (
+          <span className="bg-[#1C2128] border border-[#30363D] rounded-full px-1.5 py-0.5 font-semibold text-[#7D8590]">
+            {stepCount} step{stepCount !== 1 ? "s" : ""}
+          </span>
+        )}
+        <svg className={`w-3 h-3 transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function ContainerBody({
   step,
   isArchived,
@@ -1063,6 +1247,16 @@ function ContainerBody({
 }) {
   const { nodeType, branches } = step;
   if (!branches) return null;
+
+  // Per-branch collapse state (Set of collapsed branch keys)
+  const [collapsedBranches, setCollapsedBranches] = React.useState<Set<string>>(new Set());
+  function toggleBranch(key: string) {
+    setCollapsedBranches(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }
 
   function lastNodeId(branchSteps: FlowStep[]): string {
     if (branchSteps.length === 0) return step.id;
@@ -1170,61 +1364,75 @@ function ContainerBody({
     );
   }
 
-  // ── Condition (Yes / No) — responsive: stacked on mobile, side-by-side on sm+ ──
+  // ── Condition (Yes / No) — Y-shape: two labeled arms, each independently collapsible ──
   if (nodeType === "condition") {
     const yesSteps = branches["yes"] ?? [];
     const noSteps  = branches["no"]  ?? [];
+    const yesCollapsed = collapsedBranches.has("yes");
+    const noCollapsed  = collapsedBranches.has("no");
     return (
       <div className="border-t border-[#F59E0B]/30 rounded-b-xl overflow-hidden">
         <div className="grid grid-cols-1 sm:grid-cols-2 sm:divide-x divide-[#30363D]">
-          {/* Yes branch */}
+          {/* Yes arm (true branch) */}
           <BranchColumn containerId={step.id} branchKey="yes" className="bg-emerald-500/5">
-            <div className="px-3 py-1.5 border-b border-[#30363D]">
-              <span className="text-[9px] uppercase tracking-widest font-bold text-emerald-400">✓ Yes</span>
-            </div>
-            <div className="px-2 pb-3 pt-1">
-              <BranchStepList
-                steps={yesSteps}
-                containerId={step.id}
-                containerHandle="yes"
-                lastNodeIdFn={lastNodeId}
-                branchKey="yes"
-                isArchived={isArchived}
-                nodeStyles={nodeStyles}
-                nodeIdCounter={nodeIdCounter}
-                libraryCategories={libraryCategories}
-                allLibraryNodes={allLibraryNodes}
-                nodes={nodes}
-                edges={edges}
-                onGraphChange={onGraphChange}
-                onDuplicateNode={onDuplicateNode}
-              />
-            </div>
+            <CollapsibleBranchHeader
+              label={<>✓ Yes — True</>}
+              color="#34D399"
+              stepCount={yesSteps.length}
+              collapsed={yesCollapsed}
+              onToggle={() => toggleBranch("yes")}
+            />
+            {!yesCollapsed && (
+              <div className="px-2 pb-3 pt-1">
+                <BranchStepList
+                  steps={yesSteps}
+                  containerId={step.id}
+                  containerHandle="yes"
+                  lastNodeIdFn={lastNodeId}
+                  branchKey="yes"
+                  isArchived={isArchived}
+                  nodeStyles={nodeStyles}
+                  nodeIdCounter={nodeIdCounter}
+                  libraryCategories={libraryCategories}
+                  allLibraryNodes={allLibraryNodes}
+                  nodes={nodes}
+                  edges={edges}
+                  onGraphChange={onGraphChange}
+                  onDuplicateNode={onDuplicateNode}
+                />
+              </div>
+            )}
           </BranchColumn>
 
-          {/* No branch */}
+          {/* No arm (false branch) */}
           <BranchColumn containerId={step.id} branchKey="no" className="bg-red-500/5 border-t sm:border-t-0 border-[#30363D]">
-            <div className="px-3 py-1.5 border-b border-[#30363D]">
-              <span className="text-[9px] uppercase tracking-widest font-bold text-red-400">✕ No</span>
-            </div>
-            <div className="px-2 pb-3 pt-1">
-              <BranchStepList
-                steps={noSteps}
-                containerId={step.id}
-                containerHandle="no"
-                lastNodeIdFn={lastNodeId}
-                branchKey="no"
-                isArchived={isArchived}
-                nodeStyles={nodeStyles}
-                nodeIdCounter={nodeIdCounter}
-                libraryCategories={libraryCategories}
-                allLibraryNodes={allLibraryNodes}
-                nodes={nodes}
-                edges={edges}
-                onGraphChange={onGraphChange}
-                onDuplicateNode={onDuplicateNode}
-              />
-            </div>
+            <CollapsibleBranchHeader
+              label={<>✕ No — False</>}
+              color="#F87171"
+              stepCount={noSteps.length}
+              collapsed={noCollapsed}
+              onToggle={() => toggleBranch("no")}
+            />
+            {!noCollapsed && (
+              <div className="px-2 pb-3 pt-1">
+                <BranchStepList
+                  steps={noSteps}
+                  containerId={step.id}
+                  containerHandle="no"
+                  lastNodeIdFn={lastNodeId}
+                  branchKey="no"
+                  isArchived={isArchived}
+                  nodeStyles={nodeStyles}
+                  nodeIdCounter={nodeIdCounter}
+                  libraryCategories={libraryCategories}
+                  allLibraryNodes={allLibraryNodes}
+                  nodes={nodes}
+                  edges={edges}
+                  onGraphChange={onGraphChange}
+                  onDuplicateNode={onDuplicateNode}
+                />
+              </div>
+            )}
           </BranchColumn>
         </div>
       </div>
@@ -1279,32 +1487,37 @@ function ContainerBody({
             const label = key === "__default__" ? "Default" : (caseData?.label || caseData?.matchValue || `Case ${bi + 1}`);
             const color = branchColors[bi % branchColors.length];
             const branchSteps = branches[key] ?? [];
+            const isBranchCollapsed = collapsedBranches.has(key);
 
             return (
               <BranchColumn key={key} containerId={step.id} branchKey={key} className="min-w-0">
-                <div className="px-2 py-1.5 border-b border-[#30363D]" style={{ background: `${color}08` }}>
-                  <span className="text-[9px] uppercase tracking-widest font-bold truncate block" style={{ color }}>
-                    {label}
-                  </span>
-                </div>
-                <div className="px-2 pb-3 pt-1">
-                  <BranchStepList
-                    steps={branchSteps}
-                    containerId={step.id}
-                    containerHandle={handleFor(key)}
-                    lastNodeIdFn={lastNodeId}
-                    branchKey={key}
-                    isArchived={isArchived}
-                    nodeStyles={nodeStyles}
-                    nodeIdCounter={nodeIdCounter}
-                    libraryCategories={libraryCategories}
-                    allLibraryNodes={allLibraryNodes}
-                    nodes={nodes}
-                    edges={edges}
-                    onGraphChange={onGraphChange}
-                    onDuplicateNode={onDuplicateNode}
-                  />
-                </div>
+                <CollapsibleBranchHeader
+                  label={<span className="truncate block">{label}</span>}
+                  color={color}
+                  stepCount={branchSteps.length}
+                  collapsed={isBranchCollapsed}
+                  onToggle={() => toggleBranch(key)}
+                />
+                {!isBranchCollapsed && (
+                  <div className="px-2 pb-3 pt-1">
+                    <BranchStepList
+                      steps={branchSteps}
+                      containerId={step.id}
+                      containerHandle={handleFor(key)}
+                      lastNodeIdFn={lastNodeId}
+                      branchKey={key}
+                      isArchived={isArchived}
+                      nodeStyles={nodeStyles}
+                      nodeIdCounter={nodeIdCounter}
+                      libraryCategories={libraryCategories}
+                      allLibraryNodes={allLibraryNodes}
+                      nodes={nodes}
+                      edges={edges}
+                      onGraphChange={onGraphChange}
+                      onDuplicateNode={onDuplicateNode}
+                    />
+                  </div>
+                )}
               </BranchColumn>
             );
           })}
@@ -1701,6 +1914,8 @@ interface FlowCanvasCtx {
   lastInteractedId: string | null;
   /** Update the last interacted step ID. */
   onSetLastInteracted: (id: string) => void;
+  /** Execution result map from the last inspected run (nodeId → StepResult). */
+  stepResultMap: Record<string, StepResult>;
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
@@ -1725,6 +1940,7 @@ const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
   onPasteAtBranchStart: () => {},
   lastInteractedId: null,
   onSetLastInteracted: () => {},
+  stepResultMap: {},
 });
 
 // ── Main Canvas ────────────────────────────────────────────────────────────────
@@ -1745,6 +1961,7 @@ export default function FlowCanvas({
   triggerCategories = [],
   copiedStep = null,
   onCopyStep,
+  stepResultMap,
 }: FlowCanvasProps) {
   const tree = React.useMemo(() => graphToTree(nodes, edges), [nodes, edges]);
 
@@ -1995,7 +2212,8 @@ export default function FlowCanvas({
     onPasteAtBranchStart: handlePasteAtBranchStart,
     lastInteractedId,
     onSetLastInteracted: handleSetLastInteracted,
-  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart, lastInteractedId, handleSetLastInteracted]);
+    stepResultMap: stepResultMap ?? {},
+  }), [selectedNodeId, onSelectNode, draggedId, dropTargetId, dropPosition, dropBranchContainerId, dropBranchKey, handleDragStart, handleDragOver, handleDrop, handleDragEnd, handleDropIntoBranch, handleDragOverBranchColumn, handleDragLeaveBranchColumn, triggerCategories, copiedStep, handleCopyStep, handlePasteAfterNode, handlePasteAtBranchStart, lastInteractedId, handleSetLastInteracted, stepResultMap]);
 
   function handleCanvasClick(e: React.MouseEvent) {
     if (e.target === e.currentTarget) onSelectNode(null);

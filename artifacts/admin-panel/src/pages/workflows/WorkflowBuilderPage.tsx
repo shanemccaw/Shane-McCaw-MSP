@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playSoundFromParams, type SoundParams } from "@/lib/playSound";
 import {
@@ -8411,6 +8411,38 @@ function AiRefineModal({
 
 // ── Main builder ──────────────────────────────────────────────────────────────
 
+// ── Run selector dropdown for inspect mode ────────────────────────────────────
+function RunSelectorDropdown({ defId, value, onChange }: { defId: number; value: number | null; onChange: (id: number | null) => void }) {
+  const { fetchWithAuth } = useAuth();
+  const { data: runs = [] } = useQuery<Array<{ id: number; status: string; startedAt: string; label?: string }>>({
+    // Distinct key from the parent page's auto-load query (which uses limit=1)
+    // so React Query does not merge these two different fetches into one cache entry
+    queryKey: ["wf-runs-recent", defId, "dropdown"],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs?definitionId=${defId}&limit=20`);
+      if (!res.ok) return [];
+      const body = await res.json();
+      // Server returns { runs: [...], total } — extract the array
+      return Array.isArray(body) ? body : (body?.runs ?? []);
+    },
+    refetchInterval: 30000,
+  });
+  return (
+    <select
+      value={value ?? ""}
+      onChange={e => onChange(e.target.value ? parseInt(e.target.value, 10) : null)}
+      className="text-[10px] bg-[#1C2128] border border-violet-500/30 text-violet-200 rounded-lg px-2 py-1.5 outline-none focus:border-violet-500/60 max-w-[160px] truncate"
+    >
+      <option value="">Select run…</option>
+      {runs.map(r => (
+        <option key={r.id} value={r.id}>
+          #{r.id} {r.status} · {new Date(r.startedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
@@ -8776,6 +8808,113 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   }
 
   const [copiedStep, setCopiedStep] = useState<import("./flowTree").FlowStep | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [publishAcknowledged, setPublishAcknowledged] = useState(false);
+
+  // ── Semantic Auto-Layout ────────────────────────────────────────────────────
+  const runAutoLayout = useCallback(() => {
+    if (!nodes.length) return;
+    const NODE_W = 240;
+    const NODE_H = 64;
+    const GAP_Y = 36;
+    const BRANCH_GAP_X = 32;
+    const FAN_EXTRA_H = 52;
+
+    // Build edge-aware adjacency (edges keyed by sourceHandle for fan-out nodes)
+    const children = new Map<string, string[]>();
+    const parents = new Map<string, string[]>();
+    const nodeMap = new Map<string, (typeof nodes)[number]>();
+    for (const n of nodes) {
+      children.set(n.id, []);
+      parents.set(n.id, []);
+      nodeMap.set(n.id, n);
+    }
+    for (const e of edges) {
+      children.get(e.source)?.push(e.target);
+      parents.get(e.target)?.push(e.source);
+    }
+
+    // Find root (no parents) — start node
+    const root = nodes.find(n => (parents.get(n.id)?.length ?? 0) === 0) ?? nodes[0];
+
+    const positioned = new Map<string, { x: number; y: number }>();
+    const visited = new Set<string>();
+
+    // Returns bounding height consumed by this subtree
+    function layoutNode(id: string, x: number, y: number): number {
+      if (visited.has(id)) return NODE_H; // back-edge (loop) — already placed
+      visited.add(id);
+      positioned.set(id, { x, y });
+
+      const node = nodeMap.get(id);
+      const nodeType = (node?.data?.nodeType as string | undefined) ?? "action";
+      const kids = children.get(id) ?? [];
+
+      // Fan-out node types: parallel, condition (Y-shape), switch (comb)
+      // These spread their children horizontally like a tree fan
+      const isFanOut = nodeType === "parallel" || nodeType === "condition" || nodeType === "switch";
+      if (isFanOut && kids.length > 1) {
+        // First pass: measure each subtree width
+        const subtreeWidths = kids.map(() => NODE_W);
+        const totalWidth = subtreeWidths.reduce((s, w) => s + w, 0) + (kids.length - 1) * BRANCH_GAP_X;
+        let branchX = x - totalWidth / 2 + NODE_W / 2;
+        let maxBranchH = 0;
+        for (let i = 0; i < kids.length; i++) {
+          const h = layoutNode(kids[i], branchX, y + NODE_H + FAN_EXTRA_H);
+          if (h > maxBranchH) maxBranchH = h;
+          branchX += subtreeWidths[i] + BRANCH_GAP_X;
+        }
+        return NODE_H + FAN_EXTRA_H + maxBranchH + GAP_Y;
+      }
+
+      // Join / merge: center horizontally over the average x of parent positions
+      // (This runs naturally since parents lay out before children in BFS; position
+      //  already set above. We refine x after all parents are visited.)
+      // NOTE: join re-centering is done in a post-pass below.
+
+      // Sequential — stack vertically
+      let curY = y + NODE_H + GAP_Y;
+      for (const kid of kids) {
+        const h = layoutNode(kid, x, curY);
+        curY += h + GAP_Y;
+      }
+      return kids.length > 0 ? curY - y - GAP_Y : NODE_H;
+    }
+
+    layoutNode(root.id, 0, 0);
+
+    // Post-pass: re-center join nodes (multiple parents) at the avg x of their parents
+    for (const n of nodes) {
+      const pids = parents.get(n.id) ?? [];
+      if (pids.length > 1) {
+        const pxs = pids.map(pid => positioned.get(pid)?.x ?? 0);
+        const avgX = pxs.reduce((s, v) => s + v, 0) / pxs.length;
+        const cur = positioned.get(n.id);
+        if (cur) positioned.set(n.id, { ...cur, x: avgX });
+      }
+    }
+
+    // Shift all x coords so minimum is 0 (left-align)
+    const allX = [...positioned.values()].map(p => p.x);
+    const minX = Math.min(...allX);
+
+    pushHistory();
+    setNodes(prev => prev.map(n => {
+      const pos = positioned.get(n.id);
+      return pos ? { ...n, position: { x: pos.x - minX, y: pos.y } } : n;
+    }));
+    setIsDirty(true);
+  }, [nodes, edges, pushHistory]);
+
+  // Auto-layout when node count changes (added, removed, or structural reorder)
+  const prevNodeCountRef = useRef(nodes.length);
+  useEffect(() => {
+    if (nodes.length !== prevNodeCountRef.current && nodes.length > 1) {
+      runAutoLayout();
+    }
+    prevNodeCountRef.current = nodes.length;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodes.length]);
 
   // Handle graph changes emitted by FlowCanvas (add/remove/reorder steps)
   function handleGraphChange(newNodes: StoredNode[], newEdges: StoredEdge[]) {
@@ -8871,22 +9010,155 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     setCanRedo(redoRef.current.length > 0);
   }, [nodes, edges, setNodes, setEdges]);
 
+  // ── Inspect mode (overlay run results on canvas) ──────────────────────────
+  const [inspectMode, setInspectMode] = useState(false);
+  const [inspectRunId, setInspectRunId] = useState<number | null>(null);
+
+  // Auto-load the most recent run when entering inspect mode
+  // NOTE: /runs returns { runs, total } — must extract .runs
+  // Uses distinct key suffix "autoload" so it never collides with the dropdown's "dropdown" cache entry
+  const { data: recentRunsForInspect = [] } = useQuery<Array<{ id: number; status: string; startedAt: string }>>({
+    queryKey: ["wf-runs-recent", defId, "autoload"],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs?definitionId=${defId}&limit=1`);
+      if (!res.ok) return [];
+      const body = await res.json();
+      return Array.isArray(body) ? body : (body?.runs ?? []);
+    },
+    enabled: inspectMode,
+    refetchInterval: false,
+  });
+  useEffect(() => {
+    if (inspectMode && inspectRunId == null && recentRunsForInspect.length > 0) {
+      setInspectRunId(recentRunsForInspect[0].id);
+    }
+  }, [inspectMode, inspectRunId, recentRunsForInspect]);
+
+  const { data: inspectRunData } = useQuery<{
+    id: number;
+    status: string;
+    nodeOutputs?: Array<{ nodeId: string; status: string; durationMs: number | null; errorMessage: string | null }>;
+    logs?: Array<{ nodeId: string; message: string; timestamp: string; metadata?: Record<string, unknown> | null }>;
+    nodeResultMap?: Record<string, { status: "ok" | "error" | "skipped"; durationMs: number | null; errorMessage: string | null; logPreview: string | null }>;
+  }>({
+    queryKey: ["wf-run-inspect", inspectRunId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs/${inspectRunId}`);
+      return res.json();
+    },
+    enabled: inspectMode && inspectRunId != null,
+    refetchInterval: false,
+  });
+
+  const stepResultMap = React.useMemo<Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null }>>(() => {
+    if (!inspectMode) return {};
+    // Build logsByNode from the full logs array for all paths
+    const logsByNode: Record<string, string[]> = {};
+    for (const l of inspectRunData?.logs ?? []) {
+      if (!logsByNode[l.nodeId]) logsByNode[l.nodeId] = [];
+      logsByNode[l.nodeId].push(l.message);
+    }
+    // Prefer the server-computed nodeResultMap (has persisted log_preview), then
+    // augment it with the full log lines so the inline drawer shows everything
+    if (inspectRunData?.nodeResultMap) {
+      const augmented: Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null; fullLogs?: string[] }> = {};
+      for (const [nodeId, r] of Object.entries(inspectRunData.nodeResultMap)) {
+        augmented[nodeId] = { ...r, fullLogs: logsByNode[nodeId] ?? [] };
+      }
+      return augmented;
+    }
+    // Fallback: derive from nodeOutputs + logs arrays
+    if (!inspectRunData?.nodeOutputs) return {};
+    const map: Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null; fullLogs?: string[] }> = {};
+    for (const o of inspectRunData.nodeOutputs) {
+      const s = (o.status === "success" || o.status === "ok") ? "ok" : o.status === "skipped" ? "skipped" : "error";
+      const nodeLogs = logsByNode[o.nodeId] ?? [];
+      const logPreview = nodeLogs.length > 0 ? nodeLogs[nodeLogs.length - 1].slice(0, 120) : null;
+      map[o.nodeId] = { status: s as "ok" | "error" | "skipped", durationMs: o.durationMs, errorMessage: o.errorMessage, logPreview, fullLogs: nodeLogs };
+    }
+    return map;
+  }, [inspectMode, inspectRunData]);
+
   // Ctrl+Z / Cmd+Z undo  |  Ctrl+Shift+Z / Cmd+Shift+Z redo
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "z") return;
       const t = e.target as HTMLElement;
-      if (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
-      e.preventDefault();
-      if (e.shiftKey) {
-        handleRedo();
-      } else {
-        handleUndo();
+      const inInput = t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable;
+
+      // Ctrl+Z / Cmd+Z — undo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        if (inInput) return;
+        e.preventDefault();
+        if (e.shiftKey) handleRedo(); else handleUndo();
+        return;
+      }
+
+      // Ctrl+S / Cmd+S — save
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        if (inInput) return;
+        e.preventDefault();
+        saveMut.mutate();
+        return;
+      }
+
+      // Ctrl+D / Cmd+D — duplicate selected
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d") {
+        if (inInput) return;
+        e.preventDefault();
+        if (selectedNodeId) duplicateNode(selectedNodeId);
+        return;
+      }
+
+      // Ctrl+Enter — open publish dialog
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        if (inInput) return;
+        e.preventDefault();
+        setPublishAcknowledged(false);
+        setShowPublish(true);
+        return;
+      }
+
+      // ? — open keyboard shortcut cheatsheet
+      if (e.key === "?" && !inInput) {
+        e.preventDefault();
+        setShowShortcuts(v => !v);
+        return;
+      }
+
+      // Delete / Backspace — delete selected node (confirm if it has downstream connections)
+      if ((e.key === "Delete" || e.key === "Backspace") && !inInput && selectedNodeId) {
+        e.preventDefault();
+        const node = nodes.find(n => n.id === selectedNodeId);
+        if (node && (node.data.nodeType as string) !== "start") {
+          const hasChildren = edges.some(edge => edge.source === selectedNodeId);
+          if (hasChildren && !window.confirm(`"${(node.data.label as string) || node.id}" has downstream steps connected to it. Delete it and disconnect them?`)) return;
+          const newNodes = nodes.filter(n => n.id !== selectedNodeId);
+          const newEdges = edges.filter(edge => edge.source !== selectedNodeId && edge.target !== selectedNodeId);
+          pushHistory();
+          handleGraphChange(newNodes, newEdges);
+          setSelectedNodeId(null);
+        }
+        return;
+      }
+
+      // Escape — deselect
+      if (e.key === "Escape" && !inInput) {
+        setSelectedNodeId(null);
+        setShowTestRun(false);
+        return;
+      }
+
+      // / — focus library search
+      if (e.key === "/" && !inInput) {
+        e.preventDefault();
+        const el = document.querySelector<HTMLInputElement>("input[placeholder='Search nodes…']");
+        el?.focus();
+        return;
       }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, selectedNodeId, nodes, edges, duplicateNode, handleGraphChange, pushHistory, saveMut, setShowPublish, setShowShortcuts]);
 
   // Warn on tab close / reload when there are unsaved changes
   useEffect(() => {
@@ -9010,6 +9282,41 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             View Runs
           </button>
 
+          {/* Semantic auto-layout */}
+          {!isArchived && (
+            <button
+              onClick={runAutoLayout}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors"
+              title="Auto-arrange nodes in a structured top-to-bottom layout"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h8m-8 6h16" />
+              </svg>
+              Auto Layout
+            </button>
+          )}
+
+          {/* Inspect run overlay — show execution results on canvas */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => { setInspectMode(v => !v); if (inspectMode) setInspectRunId(null); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs border rounded-lg transition-colors ${inspectMode ? "bg-violet-600/20 border-violet-500/40 text-violet-300 hover:bg-violet-600/30" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+              title="Inspect a run — overlay execution results on each step card"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18" />
+              </svg>
+              Inspect
+            </button>
+            {inspectMode && (
+              <RunSelectorDropdown
+                defId={defId}
+                value={inspectRunId}
+                onChange={setInspectRunId}
+              />
+            )}
+          </div>
+
           <button
             onClick={() => { setShowVersionHistory(false); setShowSettings(v => !v); }}
             className={`px-3 py-1.5 text-xs border rounded-lg transition-colors ${showSettings ? "text-[#E6EDF3] border-[#484F58] bg-[#1C2128]" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
@@ -9051,6 +9358,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               onClick={() => {
                 const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
                 setPublishLabel(lastPublished?.label ?? "");
+                setPublishAcknowledged(false);
                 setShowPublish(true);
               }}
               className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
@@ -9333,6 +9641,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           triggerCategories={canvasTriggerCategories}
           copiedStep={copiedStep}
           onCopyStep={setCopiedStep}
+          stepResultMap={inspectMode ? stepResultMap : undefined}
         />
 
         {/* Node config panel */}
@@ -9465,7 +9774,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
       {/* Publish dialog */}
       {showPublish && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowPublish(false)}>
-          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-sm w-full space-y-4" onClick={e => e.stopPropagation()}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-lg w-full space-y-4" onClick={e => e.stopPropagation()}>
             <h2 className="font-semibold text-[#E6EDF3]">Publish Version</h2>
             <p className="text-sm text-[#7D8590]">Save first, then publish to make this the live version for all triggers.</p>
             <input
@@ -9474,15 +9783,135 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               placeholder="Version label (e.g. v1.0 — Lead Qualification)"
               className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
             />
+
+            {/* Diff vs last published version */}
+            {(() => {
+              const publishedVersion = versions.find(v => v.status === "published" && v.id !== currentVersionId);
+              if (!publishedVersion) return null;
+              const pubNodes: StoredNode[] = [];
+              try {
+                const g = publishedVersion.graph as { nodes?: StoredNode[] };
+                if (g?.nodes) pubNodes.push(...g.nodes);
+              } catch { }
+              const currentIds = new Set(nodes.map(n => n.id));
+              const pubIds = new Set(pubNodes.map(n => n.id));
+              const added = nodes.filter(n => !pubIds.has(n.id));
+              const removed = pubNodes.filter(n => !currentIds.has(n.id));
+              const changed = nodes.filter(n => {
+                const prev = pubNodes.find(p => p.id === n.id);
+                return prev && JSON.stringify(prev.data) !== JSON.stringify(n.data);
+              });
+              if (!added.length && !removed.length && !changed.length) {
+                return (
+                  <div className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 text-xs text-[#7D8590]">
+                    No structural changes from the current published version.
+                  </div>
+                );
+              }
+              return (
+                <div className="bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2.5 space-y-1.5">
+                  <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Changes vs current live</p>
+                  {added.map(n => (
+                    <div key={n.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">+</span>
+                      <span className="text-emerald-300">{(n.data?.label as string) || n.id}</span>
+                      <span className="text-[#484F58] text-[10px]">{n.id}</span>
+                    </div>
+                  ))}
+                  {removed.map(n => (
+                    <div key={n.id} className="flex items-center gap-2 text-xs">
+                      <span className="w-3.5 h-3.5 rounded-full bg-red-500/20 text-red-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">−</span>
+                      <span className="text-red-300 line-through">{(n.data?.label as string) || n.id}</span>
+                      <span className="text-[#484F58] text-[10px]">{n.id}</span>
+                    </div>
+                  ))}
+                  {changed.map(n => {
+                    const prev = pubNodes.find(p => p.id === n.id);
+                    const changedKeys = Object.keys({ ...(prev?.data ?? {}), ...(n.data ?? {}) }).filter(k => {
+                      return k !== "label" && JSON.stringify((prev?.data ?? {} as Record<string,unknown>)[k]) !== JSON.stringify((n.data ?? {} as Record<string,unknown>)[k]);
+                    });
+                    return (
+                      <div key={n.id} className="space-y-0.5">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="w-3.5 h-3.5 rounded-full bg-amber-500/20 text-amber-400 text-[9px] flex items-center justify-center font-bold flex-shrink-0">~</span>
+                          <span className="text-amber-300">{(n.data?.label as string) || n.id}</span>
+                          <span className="text-[#484F58] text-[10px]">{changedKeys.length} key{changedKeys.length !== 1 ? "s" : ""} changed</span>
+                        </div>
+                        {changedKeys.slice(0, 5).map(k => {
+                          const oldV = JSON.stringify((prev?.data ?? {} as Record<string,unknown>)[k]);
+                          const newV = JSON.stringify((n.data ?? {} as Record<string,unknown>)[k]);
+                          const trim = (s: string) => s.length > 32 ? s.slice(0, 30) + "…" : s;
+                          return (
+                            <div key={k} className="ml-5 flex items-center gap-1 text-[10px] font-mono">
+                              <code className="text-[#7D8590] max-w-[60px] truncate">{k}</code>
+                              <span className="text-[#484F58]">:</span>
+                              <span className="text-red-400/70 line-through">{trim(oldV ?? "—")}</span>
+                              <span className="text-[#484F58]">→</span>
+                              <span className="text-emerald-400/70">{trim(newV ?? "—")}</span>
+                            </div>
+                          );
+                        })}
+                        {changedKeys.length > 5 && (
+                          <div className="ml-5 text-[10px] text-[#484F58]">+ {changedKeys.length - 5} more…</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Acknowledgment gate */}
+            <label className="flex items-center gap-2 text-xs text-[#7D8590] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={publishAcknowledged}
+                onChange={e => setPublishAcknowledged(e.target.checked)}
+                className="rounded accent-emerald-500"
+              />
+              I have reviewed the changes and am ready to publish this version
+            </label>
+
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowPublish(false)} className="px-4 py-2 text-sm text-[#7D8590]">Cancel</button>
+              <button onClick={() => { setShowPublish(false); setPublishAcknowledged(false); }} className="px-4 py-2 text-sm text-[#7D8590]">Cancel</button>
               <button
                 onClick={async () => { await saveMut.mutateAsync(); publishMut.mutate(); }}
-                disabled={publishMut.isPending || saveMut.isPending}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg"
+                disabled={publishMut.isPending || saveMut.isPending || !publishAcknowledged}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg"
+                title={!publishAcknowledged ? "Check the acknowledgment box above to enable publishing" : undefined}
               >
                 {publishMut.isPending ? "Publishing…" : "Save & Publish"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Keyboard shortcuts cheatsheet */}
+      {showShortcuts && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowShortcuts(false)}>
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-6 max-w-md w-full space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-[#E6EDF3]">Keyboard Shortcuts</h2>
+              <button onClick={() => setShowShortcuts(false)} className="text-[#484F58] hover:text-[#E6EDF3] text-sm">✕</button>
+            </div>
+            <div className="space-y-1">
+              {([
+                ["Ctrl+S", "Save current version"],
+                ["Ctrl+Z", "Undo"],
+                ["Ctrl+Shift+Z", "Redo"],
+                ["Ctrl+D", "Duplicate selected node"],
+                ["Ctrl+Enter", "Open Publish dialog"],
+                ["Delete / Backspace", "Delete selected node"],
+                ["Escape", "Deselect / close panels"],
+                ["/", "Focus node library search"],
+                ["?", "Toggle this shortcuts panel"],
+              ] as [string, string][]).map(([key, desc]) => (
+                <div key={key} className="flex items-center justify-between gap-4 py-1.5 border-b border-[#1C2128] last:border-0">
+                  <code className="text-xs text-[#0078D4] bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 font-mono whitespace-nowrap">{key}</code>
+                  <span className="text-xs text-[#7D8590]">{desc}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

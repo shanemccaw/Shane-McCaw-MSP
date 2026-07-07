@@ -1072,6 +1072,13 @@
       "when": 1783800000000,
       "tag": "0148_lead_stages_rename",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1783900000000,
+      "tag": "0149_add_wf_trigger_events",
+      "breakpoints": true
     }
   ]
 }

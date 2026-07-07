@@ -37,6 +37,7 @@ import {
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
   wfTriggersTable,
+  wfTriggerEventsTable,
   pendingApprovalsTable,
   type WfGraph,
 } from "@workspace/db";
@@ -557,8 +558,9 @@ router.post("/admin/workflows/definitions/:id/triggers", requireAdmin, async (re
 });
 
 router.patch("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
   const tid = parseInt(req.params.tid as string);
-  if (isNaN(tid)) return sendError(res, 400, "Invalid id");
+  if (isNaN(defId) || isNaN(tid)) return sendError(res, 400, "Invalid id");
 
   const body = z.object({
     config: z.record(z.unknown()).optional(),
@@ -574,7 +576,7 @@ router.patch("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, asy
     const [updated] = await db
       .update(wfTriggersTable)
       .set(updateSet)
-      .where(eq(wfTriggersTable.id, tid))
+      .where(and(eq(wfTriggersTable.id, tid), eq(wfTriggersTable.definitionId, defId)))
       .returning();
     if (!updated) return sendError(res, 404, "Not found");
     res.json(updated);
@@ -584,13 +586,124 @@ router.patch("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, asy
 });
 
 router.delete("/admin/workflows/definitions/:id/triggers/:tid", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
   const tid = parseInt(req.params.tid as string);
-  if (isNaN(tid)) return sendError(res, 400, "Invalid id");
+  if (isNaN(defId) || isNaN(tid)) return sendError(res, 400, "Invalid id");
   try {
-    await db.delete(wfTriggersTable).where(eq(wfTriggersTable.id, tid));
+    const result = await db.delete(wfTriggersTable).where(and(eq(wfTriggersTable.id, tid), eq(wfTriggersTable.definitionId, defId))).returning({ id: wfTriggersTable.id });
+    if (!result.length) return sendError(res, 404, "Not found");
     res.status(204).end();
   } catch (err) {
     sendError(res, 500, "Failed to delete trigger");
+  }
+});
+
+// ── Trigger event history ─────────────────────────────────────────────────────
+
+router.get("/admin/workflows/definitions/:id/triggers/:tid/events", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  const tid = parseInt(req.params.tid as string);
+  if (isNaN(defId) || isNaN(tid)) return sendError(res, 400, "Invalid id");
+  const limit = Math.min(parseInt(req.query.limit as string || "50", 10), 200);
+  try {
+    // Verify trigger belongs to this definition
+    const [trigger] = await db.select({ id: wfTriggersTable.id }).from(wfTriggersTable)
+      .where(and(eq(wfTriggersTable.id, tid), eq(wfTriggersTable.definitionId, defId))).limit(1);
+    if (!trigger) return sendError(res, 404, "Trigger not found");
+    const events = await db
+      .select()
+      .from(wfTriggerEventsTable)
+      .where(eq(wfTriggerEventsTable.triggerId, tid))
+      .orderBy(desc(wfTriggerEventsTable.firedAt))
+      .limit(limit);
+    res.json(events);
+  } catch (err) {
+    sendError(res, 500, "Failed to fetch events");
+  }
+});
+
+router.get("/admin/workflows/definitions/:id/triggers/:tid/stats", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  const tid = parseInt(req.params.tid as string);
+  if (isNaN(defId) || isNaN(tid)) return sendError(res, 400, "Invalid id");
+  try {
+    // Verify trigger belongs to this definition
+    const [trigger] = await db.select({ id: wfTriggersTable.id }).from(wfTriggersTable)
+      .where(and(eq(wfTriggersTable.id, tid), eq(wfTriggersTable.definitionId, defId))).limit(1);
+    if (!trigger) return sendError(res, 404, "Trigger not found");
+    // Last 30 days bucket counts
+    const buckets = await db.execute(sql`
+      SELECT
+        date_trunc('day', fired_at) AS day,
+        COUNT(*)::int AS total,
+        SUM(CASE WHEN status = 'fired' THEN 1 ELSE 0 END)::int AS fired,
+        SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END)::int AS errors
+      FROM wf_trigger_events
+      WHERE trigger_id = ${tid}
+        AND fired_at >= now() - interval '30 days'
+      GROUP BY 1
+      ORDER BY 1
+    `);
+    const [agg] = await db
+      .select({
+        total: count(),
+        avgDurationMs: sql<number>`AVG(duration_ms)::int`,
+      })
+      .from(wfTriggerEventsTable)
+      .where(eq(wfTriggerEventsTable.triggerId, tid));
+    const [latest] = await db
+      .select()
+      .from(wfTriggerEventsTable)
+      .where(eq(wfTriggerEventsTable.triggerId, tid))
+      .orderBy(desc(wfTriggerEventsTable.firedAt))
+      .limit(1);
+    res.json({
+      total: Number(agg?.total ?? 0),
+      avgDurationMs: agg?.avgDurationMs ?? null,
+      lastFiredAt: latest?.firedAt ?? null,
+      lastStatus: latest?.status ?? null,
+      dailyBuckets: (buckets.rows as Array<{ day: Date; total: number; fired: number; errors: number }>).map(r => ({
+        day: r.day,
+        total: Number(r.total),
+        fired: Number(r.fired),
+        errors: Number(r.errors),
+      })),
+    });
+  } catch (err) {
+    sendError(res, 500, "Failed to fetch stats");
+  }
+});
+
+// Test-fire a trigger — creates a manual run and records a trigger event
+router.post("/admin/workflows/definitions/:id/triggers/:tid/test-fire", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  const tid = parseInt(req.params.tid as string);
+  if (isNaN(defId) || isNaN(tid)) return sendError(res, 400, "Invalid id");
+  try {
+    const [trigger] = await db
+      .select()
+      .from(wfTriggersTable)
+      .where(and(eq(wfTriggersTable.id, tid), eq(wfTriggersTable.definitionId, defId)))
+      .limit(1);
+    if (!trigger) return sendError(res, 404, "Trigger not found");
+    const t0 = Date.now();
+    const runId = await fireWorkflowForDefinition(defId, "manual", `trigger:test:${tid}`, req.body?.payload ?? {});
+    const durationMs = Date.now() - t0;
+    const [evt] = await db.insert(wfTriggerEventsTable).values({
+      triggerId: tid,
+      runId: runId ?? undefined,
+      status: runId ? "fired" : "skipped",
+      durationMs,
+      payload: req.body?.payload ?? {},
+    }).returning();
+    res.json({ runId, eventId: evt.id });
+  } catch (err) {
+    await db.insert(wfTriggerEventsTable).values({
+      triggerId: tid,
+      status: "error",
+      errorMessage: err instanceof Error ? err.message : "Unknown error",
+    }).catch(() => {});
+    sendError(res, 500, "Failed to test-fire trigger");
   }
 });
 
@@ -818,6 +931,31 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
             )?.nodeId ?? null
         : null;
 
+    // Build per-node result map with server-computed log_preview (first 120 chars of last log line)
+    const logsByNode: Record<string, string[]> = {};
+    for (const l of logs) {
+      if (!logsByNode[l.nodeId]) logsByNode[l.nodeId] = [];
+      logsByNode[l.nodeId].push(l.message);
+    }
+    const nodeResultMap: Record<string, {
+      status: "ok" | "error" | "skipped";
+      durationMs: number | null;
+      errorMessage: string | null;
+      logPreview: string | null;
+    }> = {};
+    for (const o of nodeOutputs) {
+      const rawStatus = o.status as string;
+      const s: "ok" | "error" | "skipped" = (rawStatus === "success" || rawStatus === "ok") ? "ok" : rawStatus === "skipped" ? "skipped" : "error";
+      const nodeLogs = logsByNode[o.nodeId] ?? [];
+      const lastLogMsg = nodeLogs[nodeLogs.length - 1] ?? null;
+      nodeResultMap[o.nodeId] = {
+        status: s,
+        durationMs: o.durationMs,
+        errorMessage: o.errorMessage,
+        logPreview: lastLogMsg ? lastLogMsg.slice(0, 120) : null,
+      };
+    }
+
     res.json({
       ...row.run,
       definitionName: row.defName,
@@ -826,6 +964,7 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
       graph: row.graph,
       logs,
       nodeOutputs,
+      nodeResultMap,
       activeNodeId,
       durationMs: row.run.startedAt && row.run.finishedAt
         ? row.run.finishedAt.getTime() - row.run.startedAt.getTime()
@@ -1034,12 +1173,23 @@ router.post("/webhooks/workflow/:token", async (req: Request, res: Response) => 
 
     if (!trigger) return sendError(res, 404, "Invalid webhook token");
 
+    const t0 = Date.now();
     const runId = await fireWorkflowForDefinition(
       trigger.definitionId,
       "webhook",
       `webhook:${trigger.id}`,
       req.body ?? {},
     );
+    const durationMs = Date.now() - t0;
+
+    // Record trigger event for observability
+    await db.insert(wfTriggerEventsTable).values({
+      triggerId: trigger.id,
+      runId: runId ?? undefined,
+      status: runId ? "fired" : "skipped",
+      payload: req.body ?? {},
+      durationMs,
+    }).catch((err: unknown) => { req.log.warn({ err, triggerId: trigger.id }, "wf-engine: failed to record webhook trigger event (non-fatal)"); });
 
     if (!runId) return sendError(res, 422, "No published version or concurrency limit reached");
     res.status(202).json({ runId });
