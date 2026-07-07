@@ -87,20 +87,53 @@ export default function MicroOffers() {
         </div>
       </section>
 
+      {/* How It Works */}
+      <section className="bg-white border-b border-border py-16">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3 text-center">How It Works</p>
+          <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] text-center mb-12">
+            From Purchase to Proposal — Fully Automated
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-0">
+            {[
+              {
+                n: 1,
+                title: "Purchase",
+                body: "Buy the Quick Win package that matches your need. No call required.",
+              },
+              {
+                n: 2,
+                title: "Connect",
+                body: "Grant read-only access to your Microsoft 365 tenant. Takes 10 minutes; no changes are made to your environment.",
+              },
+              {
+                n: 3,
+                title: "Diagnose",
+                body: "Azure Runbooks run a complete read-only diagnostic. Takes 10–60 minutes depending on tenant size.",
+              },
+              {
+                n: 4,
+                title: "Signal Engine",
+                body: "Our Signal Engine automatically generates a scoped, priced Statement of Work in your client portal. Review findings, toggle phases, sign, and pay.",
+              },
+            ].map((step, idx, arr) => (
+              <div key={step.n} className="relative flex flex-col items-center text-center px-6 py-2">
+                <div className="w-10 h-10 rounded-full bg-[#0078D4] text-white font-extrabold text-lg flex items-center justify-center mb-4 flex-shrink-0 z-10">
+                  {step.n}
+                </div>
+                {idx < arr.length - 1 && (
+                  <span className="hidden md:block absolute top-7 left-[calc(50%+20px)] right-0 h-px border-t-2 border-dashed border-[#0078D4]/30" />
+                )}
+                <p className="font-bold text-[#0A2540] text-base mb-2">{step.title}</p>
+                <p className="text-muted-foreground text-sm leading-relaxed">{step.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
-
-          {/* How it works — info banner */}
-          <div className="mb-6 rounded-xl border border-[#0078D4]/40 bg-[#EBF4FF] p-5 flex gap-4">
-            <div className="flex-shrink-0 mt-0.5">
-              <svg className="w-5 h-5 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 110 20A10 10 0 0112 2z" />
-              </svg>
-            </div>
-            <p className="text-[#0A2540] text-sm leading-relaxed">
-              <span className="font-bold">No call required.</span> Purchase, connect your Microsoft 365 tenant (read-only access, takes 10 minutes), and watch the automated diagnostic run. Your scoped proposal is generated automatically when it completes.
-            </p>
-          </div>
 
           {/* Quick Win Quiz CTA */}
           <div className="mb-10 rounded-xl border border-[#0078D4]/30 bg-white p-6 flex flex-col sm:flex-row gap-4 shadow-sm">
