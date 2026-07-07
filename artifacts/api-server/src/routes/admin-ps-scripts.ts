@@ -837,21 +837,23 @@ Group these into logical PowerShell scripts.`;
       sendSSE({ type: "phase", label: `Generating ${allGroups.length} scripts…`, pct: 28 });
       logger.info({ groupCount: allGroups.length, service: service.name }, "generate-from-service: planning complete");
 
-      // ── Phase 2: generation calls ─────────────────────────────────────────────
+      // ── Phase 2: parallel generation calls ───────────────────────────────────
+      // All groups are generated concurrently so the total wall-clock time is
+      // one AI round-trip (~15-20 s) rather than N × 20 s (which exceeds the
+      // 5-minute proxy timeout for large services).
       const generatedModules: Array<{ filename: string; description: string; content: string; sourceTaskIds: number[] }> = [];
       const humanOnlyTasksAll: string[] = [];
       const mergedPerms: PsScriptPermissions = { appPermissions: [], delegatedPermissions: [], notes: "" };
 
-      for (let gi = 0; gi < allGroups.length; gi++) {
-        const group = allGroups[gi];
-        const genPct = 30 + Math.round((gi / allGroups.length) * 52);
-        sendSSE({ type: "phase", label: `Script ${gi + 1}/${allGroups.length}: ${group.description}…`, pct: genPct });
+      sendSSE({ type: "phase", label: `Generating ${allGroups.length} scripts in parallel…`, pct: 30 });
 
-        const taskLines = group.groupTasks.length > 0
-          ? group.groupTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")
-          : `  - Automate tasks for: ${group.description}`;
+      const genSettled = await Promise.allSettled(
+        allGroups.map(async (group) => {
+          const taskLines = group.groupTasks.length > 0
+            ? group.groupTasks.map((t) => `  - ${t.title}${typeNoteFn(t.taskType)}`).join("\n")
+            : `  - Automate tasks for: ${group.description}`;
 
-        const genUserMsg = `SERVICE: ${service.name}
+          const genUserMsg = `SERVICE: ${service.name}
 
 Write a PowerShell script that automates the following Microsoft 365 tasks using the Microsoft Graph API and/or Exchange Online PowerShell.
 
@@ -863,7 +865,6 @@ ${baseBlock}${detailedBlock}${customBlock}
 
 Required filename (FIRST LINE of your output): ${group.filename}`.trim();
 
-        try {
           const response = await anthropic.messages.create({
             model: "claude-haiku-4-5",
             max_tokens: 8000,
@@ -872,7 +873,7 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
           });
 
           const rawText = response.content[0]?.type === "text" ? response.content[0].text.trim() : "";
-          if (!rawText) continue;
+          if (!rawText) return null;
 
           // Raw-output strategy: the AI outputs the script directly (no fence).
           // Use the raw text as the script body. If the AI disobeyed and wrapped it
@@ -893,22 +894,31 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
           }
 
           if (content && hasPsKeywordsFullText(content)) {
-            generatedModules.push({
+            return {
               filename: group.filename,
               description: group.description,
               content,
               sourceTaskIds: group.groupTasks.map((t) => t.id),
-            });
-          } else {
-            logger.warn(
-              { description: group.description, filename: group.filename, textPreview: rawText.slice(0, 300) },
-              "generate-from-service: group script failed PS keyword check, skipping",
-            );
+            };
           }
-        } catch (err) {
-          logger.warn({ err, description: group.description }, "generate-from-service: generation call failed, skipping");
+
+          logger.warn(
+            { description: group.description, filename: group.filename, textPreview: rawText.slice(0, 300) },
+            "generate-from-service: group script failed PS keyword check, skipping",
+          );
+          return null;
+        }),
+      );
+
+      for (const result of genSettled) {
+        if (result.status === "fulfilled" && result.value) {
+          generatedModules.push(result.value);
+        } else if (result.status === "rejected") {
+          logger.warn({ err: result.reason }, "generate-from-service: generation call failed, skipping");
         }
       }
+
+      sendSSE({ type: "phase", label: "Parallel generation complete, saving package…", pct: 82 });
 
       // Deduplicate permissions
       {
