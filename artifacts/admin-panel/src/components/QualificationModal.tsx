@@ -7,7 +7,7 @@ interface QualificationRecord {
   leadId: number;
   newScore: number;
   previousScore: number;
-  stage: "AQL" | "SQL";
+  stage: "Warm" | "Hot";
   recommendedNextStep: string | null;
   workflowType: string | null;
   evidence: string[];
@@ -82,7 +82,7 @@ export default function QualificationModal() {
   if (!current) return null;
 
   const delta = current.newScore - current.previousScore;
-  const stageColor = current.stage === "SQL"
+  const stageColor = current.stage === "Hot"
     ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
     : "bg-blue-500/20 text-blue-300 border-blue-500/40";
 

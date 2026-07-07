@@ -83,7 +83,7 @@ interface LeadQualification {
   leadId: number;
   newScore: number;
   previousScore: number;
-  stage: "AQL" | "SQL";
+  stage: "Warm" | "Hot";
   recommendedNextStep: string | null;
   workflowType: string | null;
   evidence: string[];
@@ -312,8 +312,10 @@ function EmptyState({ icon, title, subtitle }: { icon: React.ReactNode; title: s
 }
 
 const STAGE_COLORS: Record<string, string> = {
-  SQL: "bg-purple-500/20 text-purple-300 border-purple-500/30",
-  AQL: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  Hot:  "bg-purple-500/20 text-purple-300 border-purple-500/30",
+  Warm: "bg-blue-500/20 text-blue-300 border-blue-500/30",
+  Cold: "bg-[#21262D] text-[#7D8590] border-[#30363D]",
+  Junk: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -372,8 +374,8 @@ function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
               itemStyle={{ color: "#0078D4" }}
               formatter={(value: number) => [`${value}/100`, "Score"]}
             />
-            <ReferenceLine y={60} stroke="#3B82F6" strokeDasharray="4 2" label={{ value: "AQL", fill: "#3B82F6", fontSize: 9, position: "right" }} />
-            <ReferenceLine y={75} stroke="#A855F7" strokeDasharray="4 2" label={{ value: "SQL", fill: "#A855F7", fontSize: 9, position: "right" }} />
+            <ReferenceLine y={60} stroke="#3B82F6" strokeDasharray="4 2" label={{ value: "Warm", fill: "#3B82F6", fontSize: 9, position: "right" }} />
+            <ReferenceLine y={75} stroke="#A855F7" strokeDasharray="4 2" label={{ value: "Hot", fill: "#A855F7", fontSize: 9, position: "right" }} />
             <Area type="monotone" dataKey="score" stroke="#0078D4" strokeWidth={2} fill="url(#scoreGrad)" dot={{ fill: "#0078D4", r: 3, strokeWidth: 0 }} activeDot={{ r: 5 }} />
           </AreaChart>
         </ResponsiveContainer>
@@ -390,8 +392,8 @@ function ScoreHistoryChart({ history }: { history: LeadQualification[] }) {
                 <div className="absolute left-3 top-6 bottom-0 w-px bg-border" />
               )}
               <div className={`absolute left-1.5 top-1.5 w-3 h-3 rounded-full border-2 ${
-                q.stage === "SQL" ? "bg-purple-500 border-purple-400" :
-                q.stage === "AQL" ? "bg-blue-500 border-blue-400" :
+                q.stage === "Hot"  ? "bg-purple-500 border-purple-400" :
+                q.stage === "Warm" ? "bg-blue-500 border-blue-400" :
                 "bg-[#0078D4] border-[#005A9E]"
               }`} />
               <div className="bg-[#1C2128] border border-border rounded-lg px-3.5 py-2.5 space-y-1.5">
@@ -960,13 +962,13 @@ export default function LeadDetailPage({ params }: { params: { id: string } }) {
             {lead.score > 0 && (
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${
-                  lead.stage === "SQL"
+                  lead.stage === "Hot"
                     ? "bg-purple-500/20 text-purple-300 border-purple-500/30"
-                    : lead.stage === "AQL"
+                    : lead.stage === "Warm"
                       ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
                       : "bg-[#30363D] text-[#7D8590] border-border"
                 }`}>
-                  {lead.stage ?? "Lead"}
+                  {lead.stage ?? "Cold"}
                 </span>
                 <span className="text-sm font-bold text-[#E6EDF3]">{lead.score}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
               </div>

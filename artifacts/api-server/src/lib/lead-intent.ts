@@ -36,7 +36,7 @@ export async function recomputeAndPersistHotScore(leadId: number): Promise<numbe
 
   const icpBonus =
     (lead.painPoints?.length ?? 0) * 2 +
-    (lead.stage === "SQL" ? 15 : lead.stage === "AQL" ? 8 : 0) +
+    (lead.stage === "Hot" ? 15 : lead.stage === "Warm" ? 8 : 0) +
     (lead.engagementSignals?.length ?? 0) * 3 +
     (lead.urgencySignals?.length ?? 0) * 4;
 

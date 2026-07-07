@@ -1340,7 +1340,7 @@ function KPIStrip({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: Reque
                       <p className="text-[10px] text-[#7D8590]">{l.email}</p>
                     </td>
                     <td className="px-3 py-2 text-xs text-[#7D8590]">{l.company ?? "—"}</td>
-                    <td className="px-3 py-2"><Badge text={l.stage} color={l.stage === "SQL" ? "green" : "yellow"} /></td>
+                    <td className="px-3 py-2"><Badge text={l.stage} color={l.stage === "Hot" ? "green" : l.stage === "Warm" ? "yellow" : l.stage === "Junk" ? "red" : "gray"} /></td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-1">
                         <div className="h-1.5 w-16 rounded-full bg-[#21262D] overflow-hidden">
@@ -1475,7 +1475,7 @@ function LeadFinderSection({ fetchWithAuth }: { fetchWithAuth: (url: string, opt
                       <Badge text={lead.status} color={lead.status === "converted" ? "green" : lead.status === "new" ? "blue" : lead.status === "archived" ? "gray" : "yellow"} />
                     </td>
                     <td className="px-4 py-2">
-                      <Badge text={lead.stage} color={lead.stage === "SQL" ? "green" : lead.stage === "AQL" ? "yellow" : "gray"} />
+                      <Badge text={lead.stage} color={lead.stage === "Hot" ? "green" : lead.stage === "Warm" ? "yellow" : lead.stage === "Junk" ? "red" : "gray"} />
                     </td>
                     <td className="px-4 py-2">
                       {lead.score >= 70 ? (

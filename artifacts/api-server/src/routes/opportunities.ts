@@ -151,10 +151,10 @@ router.post("/leads/qualification/:id/reject", requireAdmin, async (req: Request
     .set({ status: "rejected" })
     .where(eq(leadQualificationsTable.id, qualId));
 
-  // Reset lead stage to Lead, status back to contacted (nurture)
+  // Reset lead stage to Cold, status back to contacted (nurture)
   await db
     .update(leadsTable)
-    .set({ stage: "Lead", status: "contacted", updatedAt: new Date() })
+    .set({ stage: "Cold", status: "contacted", updatedAt: new Date() })
     .where(eq(leadsTable.id, qual.leadId));
 
   res.json({ ok: true });

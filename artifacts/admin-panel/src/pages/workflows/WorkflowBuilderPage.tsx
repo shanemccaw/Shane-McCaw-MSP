@@ -3391,7 +3391,7 @@ function NodeConfigPanel({
         {nodeType === "assign_pipeline_stage" && (() => {
           const tgt = (node.data.targetType as string | undefined) ?? "opportunity";
           const oppStages = ["DiscoveryCall","Proposal","QuickWin","Retainer","Onboarding","Closed Won","Closed Lost"];
-          const leadStages = ["Lead","AQL","SQL"];
+          const leadStages = ["Junk","Cold","Warm","Hot"];
           const stageList = tgt === "lead" ? leadStages : oppStages;
           const currentStage = (node.data.stage as string | undefined) ?? stageList[0];
           return (
@@ -3405,7 +3405,7 @@ function NodeConfigPanel({
                   {(["opportunity","lead"] as const).map(t => (
                     <button
                       key={t}
-                      onClick={() => onChange(node.id, { ...node.data, targetType: t, stage: t === "lead" ? "AQL" : "DiscoveryCall" })}
+                      onClick={() => onChange(node.id, { ...node.data, targetType: t, stage: t === "lead" ? "Warm" : "DiscoveryCall" })}
                       className={`flex-1 py-1.5 text-xs font-medium transition-colors ${tgt === t ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
                     >
                       {t === "opportunity" ? "Opportunity" : "Lead"}

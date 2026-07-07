@@ -58,7 +58,7 @@ export async function ensureLeadForClient(
           company: company?.trim() || undefined,
           source: "purchase",
           status: "converted",
-          stage: "Lead",
+          stage: "Cold",
         })
         .returning({ id: leadsTable.id });
       leadId = newLead!.id;

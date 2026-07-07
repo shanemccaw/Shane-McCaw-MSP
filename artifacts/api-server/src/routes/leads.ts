@@ -551,10 +551,10 @@ router.patch("/leads/:id", requireAdmin, async (req: Request, res: Response) => 
     const prevScore = currentLead.score ?? 0;
     const newScore = scoreResult.total;
 
-    // Determine if a threshold was crossed (60 = AQL, 75 = SQL)
-    const crossedAQL = prevScore < 60 && newScore >= 60;
-    const crossedSQL = prevScore < 75 && newScore >= 75;
-    const stage: "AQL" | "SQL" | null = crossedSQL ? "SQL" : crossedAQL ? "AQL" : null;
+    // Determine if a threshold was crossed (60 = Warm, 75 = Hot)
+    const crossedWarm = prevScore < 60 && newScore >= 60;
+    const crossedHot = prevScore < 75 && newScore >= 75;
+    const stage: "Warm" | "Hot" | null = crossedHot ? "Hot" : crossedWarm ? "Warm" : null;
 
     if (stage) {
       // 24-hour cooldown — check for existing pending or recent qualification

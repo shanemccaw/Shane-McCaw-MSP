@@ -53,7 +53,7 @@ function ScoreBadge({ score }: { score: number }) {
     score >= 75 ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
     score >= 60 ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
     "bg-[#30363D] text-[#7D8590]";
-  const label = score >= 75 ? "SQL" : score >= 60 ? "AQL" : "Lead";
+  const label = score >= 75 ? "Hot" : score >= 60 ? "Warm" : "Cold";
   return (
     <div className="flex items-center gap-2">
       <span className={`text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${color}`}>{label}</span>

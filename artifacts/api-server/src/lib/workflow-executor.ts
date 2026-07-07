@@ -514,7 +514,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "assign_pipeline_stage": {
       const dryTarget = (node.data.targetType as string | undefined) ?? "opportunity";
       return dryTarget === "lead"
-        ? { dryRun: true, targetType: "lead",        leadId: num("leadId"),             stage: str("stage", "AQL") }
+        ? { dryRun: true, targetType: "lead",        leadId: num("leadId"),             stage: str("stage", "Warm") }
         : { dryRun: true, targetType: "opportunity",  opportunityId: num("opportunityId"), stage: str("stage", "Proposal") };
     }
 
@@ -1962,10 +1962,10 @@ async function executeNode(
             if (lead.company) score += 20;
             if (lead.serviceArea) score += 20;
             if ((lead.message ?? "").length > 50) score += 20;
-            if (lead.stage !== "Lead") score += 20;
+            if (lead.stage !== "Cold") score += 20;
             const scoreLabel = score >= 80 ? "High" : score >= 50 ? "Medium" : "Low";
             const qualified = score >= threshold;
-            const stage = qualified ? "SQL" : "AQL";
+            const stage = qualified ? "Hot" : "Warm";
             await db.insert(leadQualificationsTable).values({
               leadId,
               newScore: score,
@@ -2007,7 +2007,7 @@ async function executeNode(
             output = { error: "assign_pipeline_stage (lead) requires a valid leadId" };
           } else {
             await db.update(leadsTable)
-              .set({ stage: stage as "Lead" | "AQL" | "SQL" })
+              .set({ stage: stage as "Junk" | "Cold" | "Warm" | "Hot" })
               .where(eq(leadsTable.id, leadId));
             output = { targetType: "lead", leadId, stage };
           }

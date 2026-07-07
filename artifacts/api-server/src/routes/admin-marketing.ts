@@ -376,7 +376,7 @@ router.post("/admin/marketing/recommended-leads/:id/convert", requireAdmin, asyn
       painPoints: rec.painPoints,
       source: "ai_recommended",
       status: "contacted",
-      stage: "AQL",
+      stage: "Warm",
       notes: noteParts.join(" | "),
     }).returning();
 

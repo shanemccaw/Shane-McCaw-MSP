@@ -177,7 +177,7 @@ export default function OpportunityDetailPage({ params }: { params: { id: string
   }
 
   const scoreColor = opportunity.scoreSnapshot >= 75 ? "text-purple-400" : "text-[#0078D4]";
-  const stageLabel = opportunity.scoreSnapshot >= 75 ? "SQL" : "AQL";
+  const stageLabel = opportunity.scoreSnapshot >= 75 ? "Hot" : "Warm";
   const stageBg = opportunity.scoreSnapshot >= 75 ? "bg-purple-500/20 text-purple-300 border-purple-500/30" : "bg-blue-500/20 text-blue-300 border-blue-500/30";
 
   const doneTasks = opportunity.tasks.filter(t => t.status === "done").length;

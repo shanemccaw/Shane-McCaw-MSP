@@ -84,7 +84,7 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
           <div className="w-14 h-14 rounded-2xl bg-emerald-900/30 border border-emerald-800/40 flex items-center justify-center text-2xl">🎯</div>
           <div className="text-center">
             <p className="text-sm font-semibold text-[#E6EDF3]">Opportunity Created!</p>
-            <p className="text-xs text-[#7D8590] mt-1">Lead upgraded to AQL · Workflow tasks generated · Email linked</p>
+            <p className="text-xs text-[#7D8590] mt-1">Lead upgraded to Warm · Workflow tasks generated · Email linked</p>
           </div>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function CreateOpportunityModal({ graphMessageId, subject, opport
             <p className="text-[10px] font-semibold text-[#7D8590] uppercase mb-2">What this will do</p>
             <ul className="space-y-1">
               {[
-                "Upgrade lead score +15 and stage → AQL",
+                "Upgrade lead score +15 and stage → Warm",
                 "Create an opportunity linked to the lead",
                 "Generate workflow tasks based on workflow type",
                 "Link this email to the opportunity",

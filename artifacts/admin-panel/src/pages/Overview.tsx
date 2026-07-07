@@ -15,7 +15,7 @@ interface OverviewData {
   leadCount: number;
   openLeadCount: number;
   staleLeadCount: number;
-  leadsByStage: { Lead: number; Qualified: number; Proposal: number; Negotiation: number; Won: number };
+  leadsByStage: { Cold: number; Warm: number; Proposal: number; Negotiation: number; Won: number };
   velocityTrend: Array<{ month: string; qualified: number; total: number }>;
   activeProjectCount: number;
   mrr: number;
@@ -457,7 +457,7 @@ function RevenueTrendsSection({ data, loading, error }: { data: OverviewData | n
 
 function PipelineSection({ data, loading, error }: { data: OverviewData | null; loading: boolean; error: string | null }) {
   const totalOpen = data
-    ? data.leadsByStage.Lead + data.leadsByStage.Qualified + data.leadsByStage.Proposal + data.leadsByStage.Negotiation
+    ? data.leadsByStage.Cold + data.leadsByStage.Warm + data.leadsByStage.Proposal + data.leadsByStage.Negotiation
     : 0;
 
   const winRate = data && data.leadCount > 0 ? Math.round((data.leadsByStage.Won / Math.max(data.leadCount, 1)) * 100) : 0;
@@ -475,8 +475,8 @@ function PipelineSection({ data, loading, error }: { data: OverviewData | null; 
 
   // Recharts FunnelChart data — each stage as a fill color + count
   const funnelData = data ? [
-    { name: "Lead", value: Math.max(data.leadsByStage.Lead, 0), fill: "#8B5CF6" },
-    { name: "Qualified", value: Math.max(data.leadsByStage.Qualified, 0), fill: "#0078D4" },
+    { name: "Cold", value: Math.max(data.leadsByStage.Cold, 0), fill: "#8B5CF6" },
+    { name: "Warm", value: Math.max(data.leadsByStage.Warm, 0), fill: "#0078D4" },
     { name: "Proposal", value: Math.max(data.leadsByStage.Proposal, 0), fill: "#14B8A6" },
     { name: "Negotiation", value: Math.max(data.leadsByStage.Negotiation, 0), fill: "#F59E0B" },
     { name: "Won", value: Math.max(data.leadsByStage.Won, 0), fill: "#10B981" },
@@ -491,7 +491,7 @@ function PipelineSection({ data, loading, error }: { data: OverviewData | null; 
         {/* Left: 5-stage Recharts FunnelChart */}
         <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5">
           <p className="text-xs font-bold text-[#E6EDF3] mb-0.5">CRM Pipeline Funnel</p>
-          <p className="text-[10px] text-[#7D8590] mb-4">Lead → Qualified → Proposal → Negotiation → Won</p>
+          <p className="text-[10px] text-[#7D8590] mb-4">Cold → Warm → Proposal → Negotiation → Won</p>
           {loading ? (
             <div className="h-48 bg-[#1C2128] rounded-lg animate-pulse" />
           ) : error ? (
@@ -520,7 +520,7 @@ function PipelineSection({ data, loading, error }: { data: OverviewData | null; 
         {/* Right: velocity trend line chart + 5-metric stats grid */}
         <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-5">
           <p className="text-xs font-bold text-[#E6EDF3] mb-0.5">Qualification Velocity Trend</p>
-          <p className="text-[10px] text-[#7D8590] mb-4">Leads qualified per month (AQL/SQL) — last 6 months</p>
+          <p className="text-[10px] text-[#7D8590] mb-4">Leads qualified per month (Warm/Hot) — last 6 months</p>
           {loading ? (
             <div className="h-36 bg-[#1C2128] rounded-lg animate-pulse mb-4" />
           ) : error ? (
@@ -532,7 +532,7 @@ function PipelineSection({ data, loading, error }: { data: OverviewData | null; 
                 <XAxis dataKey="month" tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 9, fill: "#7D8590" }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <RechartsTooltip contentStyle={{ fontSize: 11, borderRadius: 8, border: "1px solid #30363D", background: "#1C2128", color: "#E6EDF3" }} />
-                <Legend formatter={(v: string) => <span style={{ color: "#7D8590", fontSize: 10 }}>{v === "qualified" ? "AQL/SQL" : "All leads"}</span>} />
+                <Legend formatter={(v: string) => <span style={{ color: "#7D8590", fontSize: 10 }}>{v === "qualified" ? "Warm/Hot" : "All leads"}</span>} />
                 <Line type="monotone" dataKey="total" name="total" stroke="#30363D" strokeWidth={1.5} dot={false} />
                 <Line type="monotone" dataKey="qualified" name="qualified" stroke="#0078D4" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#0078D4" }} />
               </LineChart>
@@ -1179,8 +1179,8 @@ export default function OverviewPage() {
     },
     {
       label: "Pipeline Value",
-      value: fmt(data ? ((data.leadsByStage.Lead + data.leadsByStage.Qualified + data.leadsByStage.Proposal + data.leadsByStage.Negotiation) * Math.max(data.currQuarterAvgDeal, 500)) : 0),
-      sub: `${data?.openLeadCount ?? 0} open · ${(data?.leadsByStage.Proposal ?? 0) + (data?.leadsByStage.Negotiation ?? 0)} SQL`,
+      value: fmt(data ? ((data.leadsByStage.Cold + data.leadsByStage.Warm + data.leadsByStage.Proposal + data.leadsByStage.Negotiation) * Math.max(data.currQuarterAvgDeal, 500)) : 0),
+      sub: `${data?.openLeadCount ?? 0} open · ${(data?.leadsByStage.Proposal ?? 0) + (data?.leadsByStage.Negotiation ?? 0)} Hot`,
       sub2: `${data?.leadsByStage.Negotiation ?? 0} in negotiation`,
       sparkData: pipelineSparkData,
       sparkColor: "#0078D4",

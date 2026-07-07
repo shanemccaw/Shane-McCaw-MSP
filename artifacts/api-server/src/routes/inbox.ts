@@ -739,7 +739,7 @@ Return JSON: {
   "suggestScoreChange": true/false,
   "newScore": <number or null>,
   "suggestStageChange": true/false,
-  "newStage": "Lead" | "AQL" | "SQL" | null,
+  "newStage": "Junk" | "Cold" | "Warm" | "Hot" | null,
   "reasoning": "one-line explanation",
   "urgency": "high" | "medium" | "low"
 }
@@ -799,7 +799,7 @@ router.post("/inbox/messages/:id/create-opportunity", requireAdmin, async (req: 
     leadId,
     previousScore: lead.score ?? 0,
     newScore,
-    stage: "AQL",
+    stage: "Warm",
     scoreFit,
     scorePain,
     scoreMaturity,
@@ -844,7 +844,7 @@ router.post("/inbox/messages/:id/create-opportunity", requireAdmin, async (req: 
 
   // 4. Update lead score + stage
   await db.update(leadsTable)
-    .set({ score: newScore, stage: "AQL", status: "contacted" })
+    .set({ score: newScore, stage: "Warm", status: "contacted" })
     .where(eq(leadsTable.id, leadId));
 
   // 5. Approve the qualification
@@ -906,7 +906,7 @@ router.post("/inbox/messages/:id/create-opportunity", requireAdmin, async (req: 
     });
   }
 
-  res.json({ opportunity, lead: { ...lead, score: newScore, stage: "AQL" } });
+  res.json({ opportunity, lead: { ...lead, score: newScore, stage: "Warm" } });
 });
 
 // ─── Apply lead score/stage update from inbox ─────────────────────────────────
@@ -926,10 +926,10 @@ router.patch("/inbox/leads/:leadId/score-stage", requireAdmin, async (req: Reque
     // Build a strongly-typed set object — only include fields that are present
     const setVal: {
       score?: number;
-      stage?: "Lead" | "AQL" | "SQL";
+      stage?: "Junk" | "Cold" | "Warm" | "Hot";
     } = {};
     if (score !== undefined) setVal.score = score;
-    if (stage !== undefined) setVal.stage = stage as "Lead" | "AQL" | "SQL";
+    if (stage !== undefined) setVal.stage = stage as "Junk" | "Cold" | "Warm" | "Hot";
 
     const [updated] = await db
       .update(leadsTable)

@@ -1065,6 +1065,13 @@
       "when": 1783700000000,
       "tag": "0147_add_presentation_project_title",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1783800000000,
+      "tag": "0148_lead_stages_rename",
+      "breakpoints": true
     }
   ]
 }

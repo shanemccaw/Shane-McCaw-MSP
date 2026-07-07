@@ -154,17 +154,17 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   }
 
   // 5-stage pipeline funnel mapped from DB stages:
-  //   Lead → AQL (Qualified) → SQL without opp (Proposal) → SQL with opp (Negotiation) → Won (Clients)
-  const pipelineLead = openLeads.filter(l => l.stage === "Lead").length;
-  const pipelineQualified = openLeads.filter(l => l.stage === "AQL").length;
-  const sqlLeads = openLeads.filter(l => l.stage === "SQL");
-  const pipelineProposal = sqlLeads.filter(l => !oppByLeadId.has(l.id)).length;
-  const pipelineNegotiation = sqlLeads.filter(l => oppByLeadId.has(l.id)).length;
+  //   Cold → Warm (Qualified) → Hot without opp (Proposal) → Hot with opp (Negotiation) → Won (Clients)
+  const pipelineLead = openLeads.filter(l => l.stage === "Cold").length;
+  const pipelineQualified = openLeads.filter(l => l.stage === "Warm").length;
+  const hotLeads = openLeads.filter(l => l.stage === "Hot");
+  const pipelineProposal = hotLeads.filter(l => !oppByLeadId.has(l.id)).length;
+  const pipelineNegotiation = hotLeads.filter(l => oppByLeadId.has(l.id)).length;
   const pipelineWon = clientCount; // converted leads
 
   const leadsByStage = {
-    Lead: pipelineLead,
-    Qualified: pipelineQualified,
+    Cold: pipelineLead,
+    Warm: pipelineQualified,
     Proposal: pipelineProposal,
     Negotiation: pipelineNegotiation,
     Won: pipelineWon,
@@ -181,7 +181,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     });
     velocityTrend.push({
       month: d.toLocaleString("en-US", { month: "short", year: "2-digit" }),
-      qualified: monthLeads.filter(l => l.stage === "AQL" || l.stage === "SQL").length,
+      qualified: monthLeads.filter(l => l.stage === "Warm" || l.stage === "Hot").length,
       total: monthLeads.length,
     });
   }
@@ -613,12 +613,12 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
     const highScoreOpps = allOpportunities.filter(o =>
       (o.scoreSnapshot + o.scoreFit + o.scorePain + o.scoreIntent) > 60
     );
-    const sqlLeads = openLeads.filter(l => l.stage === "SQL");
-    const pipelineNegotiation = sqlLeads.filter(l => oppByLeadId.has(l.id)).length;
+    const hotLeads = openLeads.filter(l => l.stage === "Hot");
+    const pipelineNegotiation = hotLeads.filter(l => oppByLeadId.has(l.id)).length;
     const leadsByStage = {
-      Lead: openLeads.filter(l => l.stage === "Lead").length,
-      Qualified: openLeads.filter(l => l.stage === "AQL").length,
-      Proposal: sqlLeads.filter(l => !oppByLeadId.has(l.id)).length,
+      Cold: openLeads.filter(l => l.stage === "Cold").length,
+      Warm: openLeads.filter(l => l.stage === "Warm").length,
+      Proposal: hotLeads.filter(l => !oppByLeadId.has(l.id)).length,
       Negotiation: pipelineNegotiation,
     };
 
@@ -680,10 +680,10 @@ REVENUE:
 - Avg deal size this quarter: ${avgDealSize > 0 ? fmtN(avgDealSize) : "no closed deals yet"}
 
 PIPELINE (5-stage CRM funnel):
-- Lead (initial): ${leadsByStage.Lead}
-- Qualified (AQL): ${leadsByStage.Qualified}
-- Proposal (SQL): ${leadsByStage.Proposal}
-- Negotiation (SQL + scored opportunity): ${leadsByStage.Negotiation}
+- Cold (initial): ${leadsByStage.Cold}
+- Warm (scored ≥60): ${leadsByStage.Warm}
+- Proposal (Hot, no opp): ${leadsByStage.Proposal}
+- Negotiation (Hot + scored opportunity): ${leadsByStage.Negotiation}
 - Active clients: ${clientCount}
 - Open leads total: ${openLeads.length} (${staleLeads.length} stale >14 days)
 - High-score opportunities (>60): ${highScoreOpps.length}

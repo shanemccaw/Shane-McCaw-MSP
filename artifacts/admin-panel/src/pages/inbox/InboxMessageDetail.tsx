@@ -51,7 +51,7 @@ interface ScoreStageSuggestion {
   suggestScoreChange: boolean;
   newScore: number | null;
   suggestStageChange: boolean;
-  newStage: "Lead" | "AQL" | "SQL" | null;
+  newStage: "Junk" | "Cold" | "Warm" | "Hot" | null;
   reasoning: string;
   urgency: "high" | "medium" | "low";
 }

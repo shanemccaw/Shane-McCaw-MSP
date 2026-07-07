@@ -55,7 +55,7 @@ export const leadsTable = pgTable("leads", {
   // Qualification Engine — scoring fields
   score: integer("score").notNull().default(0),
   previousScore: integer("previous_score").notNull().default(0),
-  stage: text("stage", { enum: ["Lead", "AQL", "SQL"] }).notNull().default("Lead"),
+  stage: text("stage", { enum: ["Junk", "Cold", "Warm", "Hot"] }).notNull().default("Cold"),
   lastQualifiedAt: timestamp("last_qualified_at"),
   // Qualification Engine — profile fields
   industry: text("industry"),
@@ -1075,7 +1075,7 @@ export const leadQualificationsTable = pgTable("lead_qualifications", {
   leadId: integer("lead_id").notNull().references(() => leadsTable.id, { onDelete: "cascade" }),
   newScore: integer("new_score").notNull(),
   previousScore: integer("previous_score").notNull().default(0),
-  stage: text("stage", { enum: ["AQL", "SQL"] }).notNull(),
+  stage: text("stage", { enum: ["Warm", "Hot"] }).notNull(),
   recommendedNextStep: text("recommended_next_step"),
   workflowType: text("workflow_type"),
   evidence: jsonb("evidence").$type<string[]>().notNull().default([]),
