@@ -647,6 +647,7 @@ export default function Home() {
                   </svg>
                 ),
                 step: "04",
+                label: "Step 04 — Signal Engine",
                 title: "Your Proposal Is Generated Automatically",
                 body: "When your diagnostic completes, our Signal Engine evaluates every finding — security, compliance, governance, identity, and Copilot readiness — and automatically builds a scoped, priced Statement of Work in your client portal. You review the findings, toggle which phases you want included, and the price updates live. Sign with e-signature. Pay with Stripe. Shane begins work.",
               },
@@ -656,7 +657,7 @@ export default function Home() {
                   <div className="w-9 h-9 rounded-xl bg-[#0078D4]/20 flex items-center justify-center flex-shrink-0">
                     {item.icon}
                   </div>
-                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{item.step}</span>
+                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">{"label" in item ? item.label : item.step}</span>
                 </div>
                 <h3 className="text-white font-extrabold mb-2">{item.title}</h3>
                 <p className="text-white/55 text-sm leading-relaxed">{item.body}</p>
