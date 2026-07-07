@@ -2627,7 +2627,21 @@ async function executeNode(
           break;
         }
 
-        // Query 1: kanban_tasks left-joined to workflow_steps for phase metadata.
+        // Query 0: fetch ALL phases for the project so empty phases appear in the output.
+        // Starting from kanban_tasks would silently drop phases that have no tasks yet.
+        const gptPhases = await db
+          .select({
+            id:                     workflowStepsTable.id,
+            title:                  workflowStepsTable.title,
+            status:                 workflowStepsTable.status,
+            order:                  workflowStepsTable.order,
+            workflowTemplateStepId: workflowStepsTable.workflowTemplateStepId,
+          })
+          .from(workflowStepsTable)
+          .where(eq(workflowStepsTable.projectId, gptProjectId))
+          .orderBy(workflowStepsTable.order);
+
+        // Query 1: kanban_tasks left-joined to workflow_steps for per-task phase metadata.
         // Ordered so tasks within the same step appear in their creation order (kanban_tasks.order).
         const gptRows = await db
           .select({
@@ -2728,6 +2742,17 @@ async function executeNode(
         };
 
         const phaseMap = new Map<string, PhaseGroup>();
+
+        // Pre-seed phaseMap with ALL phases so empty phases appear in the output.
+        for (const phase of gptPhases) {
+          phaseMap.set(String(phase.id), {
+            phaseId:     phase.id,
+            phaseTitle:  phase.title,
+            phaseStatus: phase.status,
+            order:       phase.order,
+            tasks:       [],
+          });
+        }
 
         for (const row of gptRows) {
           const phaseKey = row.phaseId != null ? String(row.phaseId) : "__unassigned__";
