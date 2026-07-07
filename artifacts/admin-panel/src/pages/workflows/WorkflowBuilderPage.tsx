@@ -11709,8 +11709,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             <h2 className="font-semibold text-[#E6EDF3]">Publish Version</h2>
             <p className="text-sm text-[#7D8590]">Save first, then publish to make this the live version for all triggers.</p>
 
-            {/* Live version banner */}
-            {(() => {
+            {/* Live version banner — only rendered once versions have loaded to avoid misleading flicker */}
+            {versionsFetched && (() => {
               const liveVer = versions.find(v => v.status === "published");
               if (!liveVer) {
                 return (
@@ -11731,13 +11731,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 : diffHrs < 24 ? `${diffHrs}h ago`
                 : diffDays === 1 ? "1 day ago"
                 : `${diffDays} days ago`;
-              const rc = (liveVer as typeof liveVer & { runCount?: number }).runCount ?? 0;
               return (
                 <div className="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
                   <span className="text-xs text-[#E6EDF3]">
                     Currently live: <span className="font-semibold text-emerald-400">{name}</span>
-                    <span className="text-[#7D8590]"> · published {timeAgo} · {rc.toLocaleString()} run{rc !== 1 ? "s" : ""}</span>
+                    <span className="text-[#7D8590]"> · published {timeAgo} · {liveVer.runCount.toLocaleString()} run{liveVer.runCount !== 1 ? "s" : ""}</span>
                   </span>
                 </div>
               );
