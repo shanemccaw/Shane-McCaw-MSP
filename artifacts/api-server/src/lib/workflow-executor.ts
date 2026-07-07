@@ -5706,6 +5706,7 @@ async function executeItemSubgraph(
         const nIterStep: Record<string, unknown> = {
           ...(prevSteps[nodeId] as Record<string, unknown> ?? {}),
           item: nestedElem,
+          currentItem: nestedElem,
           itemIndex: ni,
           itemsTotal: nestedTotal,
           ...(nestedAlias ? { [nestedAlias]: nestedElem } : {}),
@@ -5713,6 +5714,7 @@ async function executeItemSubgraph(
         const nIterPayload: Record<string, unknown> = {
           ...currentPayload,
           item: nestedElem,
+          currentItem: nestedElem,
           ...(nestedAlias ? { [nestedAlias]: nestedElem } : {}),
           itemIndex: ni,
           itemsTotal: nestedTotal,
@@ -5999,6 +6001,7 @@ export async function executeWorkflowRun(
           const foreachIterStep = {
             ...(prevSteps[nodeId] as Record<string, unknown> ?? {}),
             item: element,
+            currentItem: element,
             itemIndex: i,
             itemsTotal,
             ...(itemAlias ? { [itemAlias]: element } : {}),
@@ -6006,6 +6009,7 @@ export async function executeWorkflowRun(
           const iterPayload: Record<string, unknown> = {
             ...payload,
             item: element,
+            currentItem: element,
             ...(itemAlias ? { [itemAlias]: element } : {}),
             itemIndex: i,
             itemsTotal,
