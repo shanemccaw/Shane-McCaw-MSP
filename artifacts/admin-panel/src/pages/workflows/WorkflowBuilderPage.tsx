@@ -3823,6 +3823,31 @@ function NodeConfigPanel({
               </div>
               <p className="text-[10px] text-[#7D8590]">Controls the order groups appear in the output array.</p>
             </div>
+            <div className="space-y-1">
+              <label className="text-xs text-[#E6EDF3] font-medium">Null key behaviour</label>
+              <div className="flex gap-2">
+                {(["collect", "skip", "error"] as const).map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => onChange(node.id, { ...node.data, nullKeyBehaviour: opt })}
+                    className={`px-3 py-1 rounded text-xs font-medium border transition-colors ${
+                      ((node.data.nullKeyBehaviour as string | undefined) ?? "collect") === opt
+                        ? "bg-[#818CF8] border-[#818CF8] text-white"
+                        : "bg-transparent border-[#30363D] text-[#7D8590] hover:border-[#818CF8] hover:text-[#E6EDF3]"
+                    }`}
+                  >
+                    {opt === "collect" ? "Collect" : opt === "skip" ? "Skip" : "Error"}
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#7D8590]">
+                What to do when an item's key resolves to blank or null.{" "}
+                <span className="font-medium text-[#E6EDF3]">Collect</span> puts them in a "(no key)" group (default),{" "}
+                <span className="font-medium text-[#E6EDF3]">Skip</span> silently omits them,{" "}
+                <span className="font-medium text-[#E6EDF3]">Error</span> fails the node immediately.
+              </p>
+            </div>
             <p className="text-[10px] text-[#7D8590] leading-relaxed">
               Outputs <span className="font-mono text-[#818CF8]">{"{{steps.<id>.groups}}"}</span> — an array of{" "}
               <span className="font-mono text-[#818CF8]">{"{ key, items }"}</span> objects.{" "}

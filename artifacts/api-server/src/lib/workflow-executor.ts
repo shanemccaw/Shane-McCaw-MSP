@@ -705,16 +705,25 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "group_by": {
       const dryKeyExpr = (node.data.keyExpression as string | undefined) ?? "{{currentItem.key}}";
       const drySort = (node.data.sortGroups as string | undefined) ?? "none";
+      const dryNullBehaviour = (node.data.nullKeyBehaviour as string | undefined) ?? "collect";
       const dryGroups = [
         { key: `<${dryKeyExpr}>`, items: [{ dryRunElement: 1 }, { dryRunElement: 2 }] },
         { key: `<${dryKeyExpr} — group 2>`, items: [{ dryRunElement: 3 }] },
       ];
       if (drySort === "asc") dryGroups.sort((a, b) => String(a.key).localeCompare(String(b.key)));
       else if (drySort === "desc") dryGroups.sort((a, b) => String(b.key).localeCompare(String(a.key)));
+      const dryNullNote =
+        dryNullBehaviour === "skip"
+          ? "items with a blank/null key will be skipped"
+          : dryNullBehaviour === "error"
+          ? "a blank/null key will fail the node"
+          : "items with a blank/null key are collected under '(no key)'";
       return {
         dryRun: true,
         groups: dryGroups,
         groupCount: dryGroups.length,
+        nullKeyBehaviour: dryNullBehaviour,
+        nullKeyNote: dryNullNote,
       };
     }
 
@@ -3842,18 +3851,39 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           output = { error: `Group By: arrayExpression did not resolve to an array (got ${Array.isArray(gbRaw) ? "array" : typeof gbRaw})` };
           break;
         }
+        const gbNullBehaviour = (node.data.nullKeyBehaviour as string | undefined) ?? "collect";
         const grouped: Record<string, unknown[]> = {};
+        let gbSkippedCount = 0;
         for (const item of gbArray) {
           const tempPayload = { ...payload, currentItem: item };
-          const key = interp(gbKeyExpr, tempPayload) ?? "(no key)";
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(item);
+          const rawKey = interp(gbKeyExpr, tempPayload);
+          const isBlank = rawKey === null || rawKey === undefined || String(rawKey).trim() === "";
+          if (isBlank) {
+            if (gbNullBehaviour === "error") {
+              nodeError = true;
+              output = { error: "Group By: one or more items resolved to a blank/null key — set 'Null key behaviour' to Collect or Skip to suppress this error" };
+              break;
+            }
+            if (gbNullBehaviour === "skip") {
+              gbSkippedCount++;
+              continue;
+            }
+            // collect (default)
+            const collectKey = "(no key)";
+            if (!grouped[collectKey]) grouped[collectKey] = [];
+            grouped[collectKey].push(item);
+          } else {
+            const key = String(rawKey);
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(item);
+          }
         }
+        if (nodeError) break;
         let groups = Object.entries(grouped).map(([key, items]) => ({ key, items }));
         const gbSort = (node.data.sortGroups as string | undefined) ?? "none";
         if (gbSort === "asc") groups.sort((a, b) => String(a.key).localeCompare(String(b.key)));
         else if (gbSort === "desc") groups.sort((a, b) => String(b.key).localeCompare(String(a.key)));
-        output = { groups, groupCount: groups.length };
+        output = { groups, groupCount: groups.length, ...(gbSkippedCount > 0 ? { skippedCount: gbSkippedCount } : {}) };
         break;
       }
 
