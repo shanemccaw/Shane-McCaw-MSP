@@ -8739,6 +8739,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [bottomDockTab, setBottomDockTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
   const dockResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
+  // Split view state
+  const [splitViewActive, setSplitViewActive] = useState<boolean>(() => {
+    try { return localStorage.getItem("wf-split-view") === "true"; } catch { return false; }
+  });
+  const [splitRatio, setSplitRatio] = useState<number>(() => {
+    try { return Math.max(30, Math.min(80, parseInt(localStorage.getItem("wf-split-ratio") ?? "60", 10))); } catch { return 60; }
+  });
+  const [splitPaneTab, setSplitPaneTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
+  const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
+  const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
+
   // System log (replaces/complements toast notifications; max 200 entries)
   const sysLogIdRef = useRef(0);
   const [systemLog, setSystemLog] = useState<Array<{ id: number; ts: number; type: "info" | "success" | "warning" | "error"; message: string }>>([]);
@@ -9617,6 +9628,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         return;
       }
 
+      // Ctrl+\ — toggle split view
+      if (e.key === "\\" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSplitViewActive(v => !v);
+        return;
+      }
+
       // Cmd/Ctrl+F — open global node search
       if (e.key === "f" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -9687,7 +9705,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [handleUndo, handleRedo, selectedNodeId, nodes, edges, duplicateNode, handleGraphChange, pushHistory, saveMut, setShowPublish, setShowShortcuts, replayMode, replayStep]);
+  }, [handleUndo, handleRedo, selectedNodeId, nodes, edges, duplicateNode, handleGraphChange, pushHistory, saveMut, setShowPublish, setShowShortcuts, replayMode, replayStep, setSplitViewActive]);
 
   // Warn on tab close / reload when there are unsaved changes
   useEffect(() => {
@@ -9758,6 +9776,24 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   useEffect(() => { localStorage.setItem("wf-lib-tab", libTab); }, [libTab]);
   useEffect(() => { localStorage.setItem("wf-dock-open", String(bottomDockOpen)); }, [bottomDockOpen]);
   useEffect(() => { localStorage.setItem("wf-dock-height", String(bottomDockHeight)); }, [bottomDockHeight]);
+  useEffect(() => { localStorage.setItem("wf-split-view", String(splitViewActive)); }, [splitViewActive]);
+  useEffect(() => { localStorage.setItem("wf-split-ratio", String(Math.round(splitRatio))); }, [splitRatio]);
+  // Preserve / restore bottom dock state when entering / exiting split view
+  useEffect(() => {
+    if (splitViewActive) {
+      preSplitDockRef.current = { open: bottomDockOpen, tab: bottomDockTab };
+    } else {
+      if (preSplitDockRef.current) {
+        setBottomDockOpen(preSplitDockRef.current.open);
+        setBottomDockTab(preSplitDockRef.current.tab);
+        preSplitDockRef.current = null;
+      }
+    }
+  }, [splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Auto-switch split pane to Run Output when replay advances
+  useEffect(() => {
+    if (splitViewActive && replayActive) setSplitPaneTab("runoutput");
+  }, [replayIndex, replayActive, splitViewActive]);
   useEffect(() => { if (!replayMode) setReplayStep(0); }, [replayMode]);
   useEffect(() => { setReplayStep(0); }, [inspectRunId]);
 
@@ -9803,6 +9839,26 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     }
     function onUp() {
       dockResizeRef.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
+
+  function startSplitResize(e: React.MouseEvent) {
+    e.preventDefault();
+    splitResizeRef.current = { startX: e.clientX, startRatio: splitRatio };
+    function onMove(ev: MouseEvent) {
+      if (!splitResizeRef.current) return;
+      const container = document.getElementById("wf-split-container");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const rawRatio = ((ev.clientX - rect.left) / rect.width) * 100;
+      setSplitRatio(Math.max(30, Math.min(80, rawRatio)));
+    }
+    function onUp() {
+      splitResizeRef.current = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
     }
@@ -10201,6 +10257,17 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             </svg>
           </button>
 
+          {/* Split view toggle */}
+          <button
+            onClick={() => setSplitViewActive(v => !v)}
+            className={`p-1.5 rounded-lg border transition-colors ${splitViewActive ? "text-[#0078D4] border-[#0078D4]/40 bg-[#0078D4]/10" : "text-[#7D8590] hover:text-[#E6EDF3] border-[#30363D] hover:border-[#484F58]"}`}
+            title={splitViewActive ? "Exit split view (Ctrl+\\)" : "Split view — canvas + console side by side (Ctrl+\\)"}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3H5a2 2 0 00-2 2v14a2 2 0 002 2h4M9 3h10a2 2 0 012 2v14a2 2 0 01-2 2H9M9 3v18" />
+            </svg>
+          </button>
+
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
           {/* Test Run — far-right anchor */}
@@ -10571,8 +10638,18 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
           )}
         </div>
 
-        {/* Center: Canvas */}
-        <div className="flex-1 overflow-hidden relative">
+        {/* Center: Canvas (+ optional split view console pane) */}
+        <div
+          id="wf-split-container"
+          className={`flex-1 overflow-hidden ${splitViewActive ? "flex flex-row" : "relative"}`}
+        >
+          {/* Canvas pane */}
+          <div
+            className="relative overflow-hidden"
+            style={splitViewActive
+              ? { flexBasis: `${splitRatio}%`, flexShrink: 0, minWidth: 400 }
+              : { position: "absolute" as const, inset: 0 }}
+          >
           {leftCollapsed && (
             <button
               onClick={() => setLeftCollapsed(false)}
@@ -10727,6 +10804,158 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               Replay mode — step {replayStep} / {nodes.length} &nbsp;
               <span className="text-amber-500/70">← →</span>
             </div>
+          )}
+          </div>{/* closes canvas pane */}
+
+          {/* Split view: drag handle + console pane */}
+          {splitViewActive && (
+            <>
+              <div
+                onMouseDown={startSplitResize}
+                className="flex-shrink-0 w-1 cursor-col-resize bg-[#30363D] hover:bg-[#0078D4]/50 transition-colors select-none"
+                title="Drag to resize panes"
+              />
+              <div className="flex-1 flex flex-col min-w-0 overflow-hidden bg-[#0D1117] border-l border-[#30363D]">
+                {/* Split pane tab bar */}
+                <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-[#30363D] bg-[#161B22]">
+                  {([
+                    { key: "runoutput" as const, label: "Run Output" },
+                    { key: "errors" as const, label: "Errors" },
+                    { key: "system" as const, label: "System" },
+                    { key: "aioutput" as const, label: "AI Output" },
+                  ]).map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setSplitPaneTab(tab.key)}
+                      className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium rounded transition-colors ${
+                        splitPaneTab === tab.key ? "bg-[#1C2128] text-[#E6EDF3]" : "text-[#484F58] hover:text-[#7D8590]"
+                      }`}
+                    >
+                      {tab.label}
+                      {tab.key === "errors" && workflowIssues.length > 0 && (
+                        <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold ${workflowIssues.some(i => i.severity === "high") ? "bg-red-500/80 text-white" : "bg-amber-500/80 text-white"}`}>
+                          {workflowIssues.length}
+                        </span>
+                      )}
+                      {tab.key === "system" && systemLog.length > 0 && (
+                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold bg-[#30363D] text-[#7D8590]">
+                          {systemLog.length > 99 ? "99+" : systemLog.length}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  <div className="ml-auto flex items-center gap-2">
+                    {(splitPaneTab === "system" || splitPaneTab === "aioutput") && (
+                      <button
+                        onClick={() => {
+                          if (splitPaneTab === "system") setSystemLog([]);
+                          else if (splitPaneTab === "aioutput") setAiOutputLog([]);
+                        }}
+                        className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                        title="Clear log"
+                      >
+                        Clear
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setSplitViewActive(false)}
+                      className="text-[#484F58] hover:text-[#E6EDF3] text-lg leading-none px-1 transition-colors"
+                      title="Close split view (Ctrl+\\)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+                {/* Split pane console content */}
+                <div className="flex-1 overflow-y-auto text-[11px] font-mono">
+                  {splitPaneTab === "runoutput" ? (
+                    lastTestRunId == null ? (
+                      <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
+                        <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
+                      </div>
+                    ) : (
+                      <RunOutputDock runId={lastTestRunId} />
+                    )
+                  ) : splitPaneTab === "errors" ? (
+                    <div className="p-3 space-y-1.5 font-sans">
+                      {workflowIssues.length === 0 ? (
+                        <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
+                          <span className="text-emerald-400 text-base">✓</span>
+                          <span className="text-xs">No issues found in this workflow</span>
+                        </div>
+                      ) : workflowIssues.map((issue, i) => (
+                        <div
+                          key={i}
+                          onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); } }}
+                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
+                            issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
+                            issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
+                            "border-[#30363D] bg-[#0D1117]"
+                          }`}
+                        >
+                          <span className={`flex-shrink-0 mt-0.5 font-sans ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                            {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
+                          </span>
+                          <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
+                            {issue.message}
+                          </span>
+                          {issue.nodeId && (
+                            <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : splitPaneTab === "system" ? (
+                    <div className="p-3 space-y-1">
+                      {systemLog.length === 0 ? (
+                        <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
+                      ) : [...systemLog].reverse().map(entry => (
+                        <div key={entry.id} className="flex items-start gap-2">
+                          <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
+                            {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
+                          </span>
+                          <span className="text-[#484F58] flex-shrink-0">
+                            {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                          <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
+                            {entry.message}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 space-y-1">
+                      {aiOutputLog.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
+                          <span className="text-2xl">🤖</span>
+                          <p className="text-xs text-center">AI generation output appears here.<br />Open <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
+                        </div>
+                      ) : [...aiOutputLog].reverse().map(entry => (
+                        <div key={entry.id} className="flex items-start gap-2">
+                          <span className="text-[#484F58] flex-shrink-0">
+                            {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                          </span>
+                          <span className={
+                            entry.line.startsWith("✓") ? "text-emerald-300" :
+                            entry.line.startsWith("✕") ? "text-red-300" :
+                            entry.line.startsWith("⚠") ? "text-amber-300" :
+                            entry.line.startsWith("💡") ? "text-violet-300" :
+                            entry.line.startsWith("🤖") ? "text-[#0078D4]" :
+                            "text-[#7D8590]"
+                          }>
+                            {entry.line}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -11612,7 +11841,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 ["/", "Open global search palette"],
                 ["?", "Toggle this shortcuts panel"],
                 ["← / →", "Step backward / forward in Replay mode"],
-                ["Ctrl+\\", "Split view (coming with #2551)"],
+                ["Ctrl+\\", "Toggle split view — canvas + console side by side"],
               ] as [string, string][]).map(([key, desc]) => (
                 <div key={key} className="flex items-center justify-between gap-4 py-1.5 border-b border-[#1C2128] last:border-0">
                   <code className="text-xs text-[#0078D4] bg-[#0D1117] border border-[#30363D] rounded px-2 py-0.5 font-mono whitespace-nowrap">{key}</code>
