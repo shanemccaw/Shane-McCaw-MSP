@@ -9029,6 +9029,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     },
     enabled: inspectMode && inspectRunId != null,
     refetchInterval: false,
+    // Mutual exclusion: when Replay mode is active, treat the snapshot as immutable
+    // so no background refetch overwrites the step-by-step walk-through.
+    staleTime: replayMode ? Infinity : 0,
+    refetchOnWindowFocus: !replayMode,
   });
 
   const stepResultMap = React.useMemo<Record<string, { status: "ok" | "error" | "skipped"; durationMs?: number | null; errorMessage?: string | null; logPreview?: string | null }>>(() => {
@@ -9411,45 +9415,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
-          {/* Group: Save / Publish */}
-          {lastDraftSavedAt && saveStatus !== "saved" && (
-            <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
-              Auto-saved {draftAgeLabel(lastDraftSavedAt)}
-            </span>
-          )}
-
-          {!isArchived && (
-            <button
-              onClick={() => saveMut.mutate()}
-              disabled={saveMut.isPending}
-              className="px-3 py-1.5 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
-              title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
-            >
-              {saveStatus === "saving" ? "Saving…"
-               : saveStatus === "saved" ? "✓ Saved"
-               : saveStatus === "error" ? "Error"
-               : isPublished ? "Save as Draft"
-               : "Save"}
-            </button>
-          )}
-
-          {isDraft && (
-            <button
-              onClick={() => {
-                const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
-                setPublishLabel(lastPublished?.label ?? "");
-                setPublishAcknowledged(false);
-                setShowPublish(true);
-              }}
-              className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
-            >
-              Publish
-            </button>
-          )}
-
-          <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
-
-          {/* Group: AI */}
+          {/* Group: AI — Build with AI | Refine… | Explain */}
           <button
             onClick={() => setShowAiModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium rounded-lg transition-colors"
@@ -9496,13 +9462,41 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
 
           <span className="w-px h-4 bg-[#30363D] flex-shrink-0" />
 
-          {/* Test Run → opens right panel Test Run tab */}
-          <button
-            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
-          >
-            🧪 Test Run
-          </button>
+          {/* Group: Save · Publish (right-anchored) */}
+          {lastDraftSavedAt && saveStatus !== "saved" && (
+            <span className="text-[11px] text-[#484F58] whitespace-nowrap" title={lastDraftSavedAt.toLocaleTimeString()}>
+              Auto-saved {draftAgeLabel(lastDraftSavedAt)}
+            </span>
+          )}
+
+          {!isArchived && (
+            <button
+              onClick={() => saveMut.mutate()}
+              disabled={saveMut.isPending}
+              className="px-3 py-1.5 text-xs border border-[#30363D] hover:border-[#484F58] rounded-lg transition-colors disabled:opacity-50 text-[#E6EDF3]"
+              title={isPublished ? "Saves as a new draft — live version is unaffected" : undefined}
+            >
+              {saveStatus === "saving" ? "Saving…"
+               : saveStatus === "saved" ? "✓ Saved"
+               : saveStatus === "error" ? "Error"
+               : isPublished ? "Save as Draft"
+               : "Save"}
+            </button>
+          )}
+
+          {isDraft && (
+            <button
+              onClick={() => {
+                const lastPublished = versions.filter(v => v.status === "published").sort((a, b) => b.id - a.id)[0];
+                setPublishLabel(lastPublished?.label ?? "");
+                setPublishAcknowledged(false);
+                setShowPublish(true);
+              }}
+              className="px-3 py-1.5 bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors"
+            >
+              Publish
+            </button>
+          )}
 
           <button
             onClick={() => void publishToProd()}
@@ -9524,6 +9518,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               </svg>
             )}
             {publishingToProd ? "Publishing…" : "Publish to Prod"}
+          </button>
+
+          {/* Test Run — far-right anchor */}
+          <button
+            onClick={() => { setRightPanelTab("testrun"); setTestRunTrigger(t => t + 1); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] hover:bg-[#006CBD] text-white text-xs font-medium rounded-lg transition-colors"
+          >
+            🧪 Test Run
           </button>
         </div>
       </div>
