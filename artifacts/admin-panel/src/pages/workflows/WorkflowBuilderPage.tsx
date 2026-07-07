@@ -8547,65 +8547,43 @@ function RunOutputDock({ runId }: { runId: number }) {
   );
 }
 
-// ── Static workflow pattern registry ─────────────────────────────────────────
-// Pre-built patterns users can insert as sub-trees. Each entry is a named,
-// searchable snippet of nodes + edges that gets grafted onto the canvas.
-const WORKFLOW_PATTERNS = [
-  {
-    name: "Error Handler Guard",
-    description: "Wraps an action with an on-error branch that logs the failure and sends an admin notification.",
-    tags: ["error", "guard", "resilience", "handler"],
-    nodes: [
-      { id: "p-action", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Main Action" } },
-      { id: "p-error", type: "error", position: { x: 180, y: 0 }, data: { nodeType: "error", label: "On Error" } },
-    ],
-    edges: [{ id: "p-e1", source: "p-action", target: "p-error", sourceHandle: "error" }],
-  },
-  {
-    name: "Approval Gate",
-    description: "Pauses execution and waits for human approval before continuing downstream steps.",
-    tags: ["approval", "human-in-the-loop", "review", "gate"],
-    nodes: [
-      { id: "p-req", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Request Approval" } },
-      { id: "p-cond", type: "condition", position: { x: 0, y: 120 }, data: { nodeType: "condition", label: "Approved?" } },
-    ],
-    edges: [{ id: "p-e1", source: "p-req", target: "p-cond" }],
-  },
-  {
-    name: "Scheduled Digest",
-    description: "Runs on a schedule, iterates over an array, and sends a summary email for each item.",
-    tags: ["schedule", "email", "digest", "foreach", "loop"],
-    nodes: [
-      { id: "p-loop", type: "foreach", position: { x: 0, y: 0 }, data: { nodeType: "foreach", label: "For Each Item" } },
-      { id: "p-send", type: "action", position: { x: 0, y: 120 }, data: { nodeType: "send_email", label: "Send Digest Email" } },
-    ],
-    edges: [{ id: "p-e1", source: "p-loop", target: "p-send", sourceHandle: "body" }],
-  },
-  {
-    name: "Lead Intake → Proposal",
-    description: "Triggered on lead creation: sends a welcome email, delays 2 days, then creates a CRM presentation.",
-    tags: ["lead", "crm", "proposal", "onboarding", "email"],
-    nodes: [
-      { id: "p-email", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "send_email", label: "Welcome Email" } },
-      { id: "p-delay", type: "delay", position: { x: 0, y: 120 }, data: { nodeType: "delay", label: "Wait 2 Days" } },
-      { id: "p-pres", type: "action", position: { x: 0, y: 240 }, data: { nodeType: "create_presentation", label: "Create Presentation" } },
-    ],
-    edges: [
-      { id: "p-e1", source: "p-email", target: "p-delay" },
-      { id: "p-e2", source: "p-delay", target: "p-pres" },
-    ],
-  },
-  {
-    name: "Retry with Backoff",
-    description: "Tries an action up to 3 times with a delay between attempts before hitting a final error handler.",
-    tags: ["retry", "backoff", "resilience", "error"],
-    nodes: [
-      { id: "p-try", type: "action", position: { x: 0, y: 0 }, data: { nodeType: "action", label: "Attempt Action", retryLimit: 3, retryDelayMs: 5000 } },
-      { id: "p-err", type: "error", position: { x: 180, y: 0 }, data: { nodeType: "error", label: "Final Failure" } },
-    ],
-    edges: [{ id: "p-e1", source: "p-try", target: "p-err", sourceHandle: "error" }],
-  },
-] as const;
+// Pattern registry — imported from the canonical module so both the Patterns
+// sidebar tab and the global search palette share the same data and insertion path.
+import { WORKFLOW_PATTERNS } from "./patternRegistry";
+
+// Workflow health scoring — the canonical function that produces the issue list
+// consumed by both the Errors dock tab and the Health Report slide-over.
+// Structural checks live here today; when scoreWorkflow() ships in #2541 it
+// will augment this list with retry-coverage, timeout-guard, and dead-branch scores.
+function scoreWorkflow(
+  nodes: StoredNode[],
+  edges: StoredEdge[],
+): Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> {
+  const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
+  if (nodes.length === 0) {
+    issues.push({ nodeId: null, severity: "high", message: "Workflow has no nodes — add at least one action node." });
+    return issues;
+  }
+  const startNodes = nodes.filter(n => ["start", "trigger"].includes((n.data.nodeType as string) ?? ""));
+  if (startNodes.length === 0) {
+    issues.push({ nodeId: null, severity: "high", message: "No trigger node found — every workflow needs a start/trigger." });
+  }
+  const connectedIds = new Set([...edges.map(e => e.source), ...edges.map(e => e.target)]);
+  nodes.forEach(n => {
+    const nt = (n.data.nodeType as string) ?? "";
+    if (!["start", "trigger"].includes(nt) && !connectedIds.has(n.id)) {
+      issues.push({ nodeId: n.id, severity: "medium", message: `"${(n.data.label as string) || n.id}" is disconnected — it will never be reached.` });
+    }
+  });
+  const unlabelledCount = nodes.filter(n => {
+    const lbl = (n.data.label as string | undefined) ?? "";
+    return !lbl || lbl === "New Step" || lbl === "Action";
+  }).length;
+  if (unlabelledCount > 0) {
+    issues.push({ nodeId: null, severity: "low", message: `${unlabelledCount} node${unlabelledCount > 1 ? "s have" : " has"} a generic label — rename for clarity.` });
+  }
+  return issues;
+}
 
 export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewRuns }: { defId: number; versionId?: number; onClose?: () => void; onViewRuns?: () => void }) {
   const { fetchWithAuth } = useAuth();
@@ -8705,7 +8683,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     try { return localStorage.getItem("wf-dock-open") === "true"; } catch { return false; }
   });
   const [bottomDockHeight, setBottomDockHeight] = useState<number>(() => {
-    try { return Math.max(120, Math.min(500, parseInt(localStorage.getItem("wf-dock-height") ?? "200", 10))); } catch { return 200; }
+    try { return Math.max(120, Math.min(Math.round(window.innerHeight * 0.5), parseInt(localStorage.getItem("wf-dock-height") ?? "200", 10))); } catch { return 200; }
   });
   const [bottomDockTab, setBottomDockTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
   const dockResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -9571,34 +9549,9 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   }
 
   // Workflow issues — unified source of truth shared by the Errors tab and Health Report slide-over.
-  // Covers structural/schema validation today; scoring dimensions (retry coverage, timeout guards, etc.)
-  // will be appended here when scoreWorkflow() ships in #2541.
-  const workflowIssues = useMemo(() => {
-    const issues: Array<{ nodeId: string | null; severity: "high" | "medium" | "low"; message: string }> = [];
-    if (nodes.length === 0) {
-      issues.push({ nodeId: null, severity: "high", message: "Workflow has no nodes — add at least one action node." });
-      return issues;
-    }
-    const startNodes = nodes.filter(n => ["start", "trigger"].includes((n.data.nodeType as string) ?? ""));
-    if (startNodes.length === 0) {
-      issues.push({ nodeId: null, severity: "high", message: "No trigger node found — every workflow needs a start/trigger." });
-    }
-    const connectedIds = new Set([...edges.map(e => e.source), ...edges.map(e => e.target)]);
-    nodes.forEach(n => {
-      const nt = (n.data.nodeType as string) ?? "";
-      if (!["start", "trigger"].includes(nt) && !connectedIds.has(n.id)) {
-        issues.push({ nodeId: n.id, severity: "medium", message: `"${(n.data.label as string) || n.id}" is disconnected — it will never be reached.` });
-      }
-    });
-    const unlabelledCount = nodes.filter(n => {
-      const lbl = (n.data.label as string | undefined) ?? "";
-      return !lbl || lbl === "New Step" || lbl === "Action";
-    }).length;
-    if (unlabelledCount > 0) {
-      issues.push({ nodeId: null, severity: "low", message: `${unlabelledCount} node${unlabelledCount > 1 ? "s have" : " has"} a generic label — rename for clarity.` });
-    }
-    return issues;
-  }, [nodes, edges]);
+  // Delegated to the module-level scoreWorkflow() function so the logic lives in one place
+  // and #2541 can extend it without touching the component.
+  const workflowIssues = useMemo(() => scoreWorkflow(nodes, edges), [nodes, edges]);
 
   // Persist layout preferences to localStorage
   useEffect(() => { localStorage.setItem("wf-lib-collapsed", String(leftCollapsed)); }, [leftCollapsed]);
@@ -9647,7 +9600,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
     function onMove(ev: MouseEvent) {
       if (!dockResizeRef.current) return;
       const delta = dockResizeRef.current.startY - ev.clientY;
-      setBottomDockHeight(Math.max(120, Math.min(500, dockResizeRef.current.startHeight + delta)));
+      setBottomDockHeight(Math.max(120, Math.min(Math.round(window.innerHeight * 0.5), dockResizeRef.current.startHeight + delta)));
     }
     function onUp() {
       dockResizeRef.current = null;
@@ -10747,19 +10700,27 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                           <button
                             key={entry.id}
                             onClick={() => {
-                              const stepsBack = idx;
-                              if (stepsBack === 0) return;
-                              for (let i = 0; i < stepsBack; i++) {
-                                const prev = historyRef.current.pop();
-                                if (!prev) break;
-                                if (i === stepsBack - 1) {
-                                  setNodes(prev.nodes.map(n => ({ ...n, type: "wfNode" as const })));
-                                  setEdges(prev.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
-                                  setIsDirty(true);
-                                  setCanUndo(historyRef.current.length > 0);
-                                }
-                              }
-                              setUndoHistoryLog(prev => prev.slice(0, undoHistoryLog.length - idx));
+                              if (idx === 0) return; // already viewing the current state
+                              // Non-destructive snapshot jump: look up the target snapshot by index
+                              // without popping or truncating the history stack.
+                              // historyRef stores pre-edit states; the snapshot for reversed-idx N
+                              // is at historyRef.current[historyRef.current.length - idx].
+                              const targetIdx = historyRef.current.length - idx;
+                              const target = historyRef.current[targetIdx];
+                              if (!target) return;
+                              setNodes(target.nodes.map(n => ({ ...n, type: "wfNode" as const })));
+                              setEdges(target.edges.map(e => ({ ...e, style: { stroke: "#30363D", strokeWidth: 2 }, animated: false })));
+                              setIsDirty(true);
+                              // Add a new log entry (non-destructive: don't truncate existing history)
+                              const jumpId = ++undoLogIdRef.current;
+                              setUndoHistoryLog(prev => [...prev.slice(-29), {
+                                id: jumpId,
+                                label: `Jumped to: ${entry.label}`,
+                                ts: Date.now(),
+                                nodeCount: target.nodes.length,
+                                edgeCount: target.edges.length,
+                              }]);
+                              setCanUndo(historyRef.current.length > 0);
                             }}
                             disabled={isLatest}
                             title={nodeDelta != null ? `${nodeDelta > 0 ? "+" : ""}${nodeDelta} node${Math.abs(nodeDelta) !== 1 ? "s" : ""} · ${entry.nodeCount} total` : `${entry.nodeCount} node${entry.nodeCount !== 1 ? "s" : ""}`}
