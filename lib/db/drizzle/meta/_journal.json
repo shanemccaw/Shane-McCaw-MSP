@@ -1079,6 +1079,13 @@
       "when": 1783900000000,
       "tag": "0149_add_wf_trigger_events",
       "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1784000000000,
+      "tag": "0150_add_required_app_permissions",
+      "breakpoints": true
     }
   ]
 }
