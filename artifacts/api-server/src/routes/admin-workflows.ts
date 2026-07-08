@@ -1030,7 +1030,7 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
       const s: "ok" | "error" | "skipped" = (rawStatus === "success" || rawStatus === "ok") ? "ok" : rawStatus === "skipped" ? "skipped" : "error";
       const nodeLogs = logsByNode[o.nodeId] ?? [];
       const lastLogMsg = nodeLogs[nodeLogs.length - 1] ?? null;
-      nodeResultMap[o.nodeId] = {
+      const entry = {
         status: s,
         durationMs: o.durationMs,
         errorMessage: o.errorMessage,
@@ -1038,6 +1038,17 @@ router.get("/admin/workflows/runs/:id", requireAdmin, async (req: Request, res: 
         input: (o.input as Record<string, unknown> | null) ?? null,
         output: (o.output as Record<string, unknown> | null) ?? null,
       };
+      // For nodes that run multiple times (e.g. inside a For loop body), the plain
+      // nodeId record is written once per iteration. Always keep the FIRST occurrence
+      // so the canvas shows iteration-[0] data, which is consistent with the For
+      // node's forItems[0] display. Indexed records (node-104[0], node-104[1], …)
+      // are preserved separately and provide full per-iteration detail in the viewer.
+      if (!nodeResultMap[o.nodeId]) {
+        nodeResultMap[o.nodeId] = entry;
+      } else if (o.nodeId.includes("[")) {
+        // Always store indexed records (e.g. node-104[1]) — they never clash.
+        nodeResultMap[o.nodeId] = entry;
+      }
     }
 
     res.json({
