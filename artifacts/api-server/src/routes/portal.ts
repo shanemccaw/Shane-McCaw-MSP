@@ -634,6 +634,7 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
 //     IDs — no personal data; acceptable public-ish metadata for the purchase funnel)
 // Returns { permissions: Array<{ scope: string; reason: string }> }
 router.get("/portal/required-permissions", async (req: Request, res: Response) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     let serviceIds: number[] = [];
 
