@@ -18,6 +18,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useLocation, useRoute } from "wouter";
 import { AssetPickerModal } from "@/components/AssetPickerModal";
 import RunDetailContent, { type WfRunDetail } from "./RunDetailContent";
+import { JsonViewerContent } from "./JsonViewer";
 import type { AncestorGroup } from "./ancestorOutputs";
 import { getAncestorOutputs as _getAncestorOutputs } from "./ancestorOutputs";
 import { VariableChipPanel } from "./VariableChipPanel";
@@ -9191,13 +9192,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(() => {
+  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | "jsonviewer" | null>(() => {
     try {
       const saved = localStorage.getItem("wf-panel-tab");
       // Only restore persistent tabs; action-triggered ones should not auto-open on load
-      const persistent = ["settings", "history", "metadata"];
+      const persistent = ["settings", "history", "metadata", "jsonviewer"];
       if (saved && persistent.includes(saved)) {
-        return saved as "settings" | "history" | "metadata";
+        return saved as "settings" | "history" | "metadata" | "jsonviewer";
       }
     } catch { /* ignore */ }
     return null;
@@ -9301,12 +9302,12 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [splitPaneTab, setSplitPaneTab] = useState<"runoutput" | "activity">("runoutput");
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const preSplitReplayTabRef = useRef<"runoutput" | "activity" | null>(null);
-  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">(
+  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata" | "jsonviewer">(
     (() => {
       try {
         const saved = localStorage.getItem("wf-panel-tab");
-        if (saved && (["node", "testrun", "settings", "history", "metadata"] as const).includes(saved as "node")) {
-          return saved as "node" | "testrun" | "settings" | "history" | "metadata";
+        if (saved && (["node", "testrun", "settings", "history", "metadata", "jsonviewer"] as const).includes(saved as "node")) {
+          return saved as "node" | "testrun" | "settings" | "history" | "metadata" | "jsonviewer";
         }
       } catch { /* ignore */ }
       return "node";
@@ -11446,7 +11447,8 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 { id: "metadata" as const, label: "Metadata" },
                 { id: "settings" as const, label: "Settings" },
                 { id: "history" as const, label: `History (${versions.length})` },
-              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history"; label: string }[]).map(tab => (
+                { id: "jsonviewer" as const, label: "JSON Viewer" },
+              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history" | "jsonviewer"; label: string }[]).map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setRightPanelTab(tab.id)}
@@ -11473,7 +11475,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
             {(() => {
               const tabLabels: Record<string, string> = {
                 node: "Node Config", testrun: "Test Run", metadata: "Metadata",
-                settings: "Settings", history: "History",
+                settings: "Settings", history: "History", jsonviewer: "JSON Viewer",
               };
               const nodeName = selectedNode ? String((selectedNode.data as Record<string, unknown>).label ?? selectedNode.id) : null;
               const tabLabel = rightPanelTab ? tabLabels[rightPanelTab] : null;
@@ -11881,6 +11883,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </div>
                     ))}
                   </div>
+                </div>
+              ) : rightPanelTab === "jsonviewer" ? (
+                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+                  <JsonViewerContent />
                 </div>
               ) : null}
             </div>
