@@ -35,7 +35,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
+import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, findActiveJobForRunbook } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
 import { broadcastKanbanChange } from "./sse-broadcast";
@@ -421,11 +421,35 @@ async function resolveSiblingIds(taskId: number, projectId: number, azureRunbook
   return ids;
 }
 
+// How long a job may stay in Queued/New/Activating before we give up.
+// Stuck-Queued almost always means the runbook isn't Published in Azure
+// Automation or the Automation account has no available workers.
+const STUCK_QUEUED_MS = 2 * 60 * 1_000;
+
 async function pollJobToCompletion(jobId: string): Promise<{ success: boolean; lastStatus: string; output: string }> {
   const deadline = Date.now() + JOB_TIMEOUT_MS;
+  let firstQueuedAt: number | null = null;
+
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     const status = await getJobStatus(jobId);
+
+    // Fast-fail: if the job is stuck in a pre-execution status for too long
+    // it will never start — bail early with a recognisable "StuckQueued" status
+    // rather than waiting the full 10-minute timeout.
+    if (status.status === "New" || status.status === "Queued" || status.status === "Activating") {
+      if (!firstQueuedAt) firstQueuedAt = Date.now();
+      if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
+        logger.warn(
+          { jobId, status: status.status },
+          "kanban-auto-fire: job stuck in queued state — runbook may not be Published in Azure Automation",
+        );
+        return { success: false, lastStatus: "StuckQueued", output: "" };
+      }
+    } else {
+      firstQueuedAt = null; // reset if it transitions out of queued state
+    }
+
     if (isTerminalStatus(status.status)) {
       const outputLines = await getJobOutput(jobId).catch(() => [] as Array<{ text: string }>);
       const output = outputLines.map((l: { text: string }) => l.text).join("\n");
@@ -1428,17 +1452,31 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       for (const t of inProgressRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
     }
 
+    // Dedup: if Azure already has a Queued/Running job for this runbook,
+    // adopt it instead of stacking another one on the queue.
+    const existingJobId = await findActiveJobForRunbook(card.linkedRunbook.azureRunbookName).catch(() => null);
+    if (existingJobId) {
+      logger.info(
+        { clientUserId, existingJobId, runbook: card.linkedRunbook.azureRunbookName },
+        "kanban-auto-fire: adopting existing active Azure job — skipping duplicate submission",
+      );
+    }
+
     // Stamp runningJobRef placeholder so the "Running…" badge appears if admin reloads
     let jobId: string;
     try {
-      ({ jobId } = await createRunbookJob({
-        runbookName: card.linkedRunbook.azureRunbookName,
-        parameters: {
-          TenantId:     appReg.tenantId,
-          ClientId:     appReg.azureClientId,
-          ClientSecret: clientSecret,
-        },
-      }));
+      if (existingJobId) {
+        jobId = existingJobId;
+      } else {
+        ({ jobId } = await createRunbookJob({
+          runbookName: card.linkedRunbook.azureRunbookName,
+          parameters: {
+            TenantId:     appReg.tenantId,
+            ClientId:     appReg.azureClientId,
+            ClientSecret: clientSecret,
+          },
+        }));
+      }
     } catch (azErr) {
       // Azure job creation failed (unreachable, auth error, etc.).
       // Apply the same retry-budget semantics as other failure paths:

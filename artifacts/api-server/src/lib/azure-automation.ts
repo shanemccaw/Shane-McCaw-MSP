@@ -277,9 +277,40 @@ export async function getJobOutput(jobId: string): Promise<JobOutputLine[]> {
 
 export type JobTerminalStatus = "Completed" | "Failed" | "Stopped" | "Suspended";
 const TERMINAL_STATUSES = new Set<string>(["Completed", "Failed", "Stopped", "Suspended"]);
+const ACTIVE_JOB_STATUSES = new Set<string>(["New", "Activating", "Queued", "Running"]);
 
 export function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status);
+}
+
+/**
+ * Find an already-active (New/Activating/Queued/Running) job for a runbook.
+ *
+ * Used to avoid submitting duplicate jobs when a prior submission is still
+ * sitting in the Azure queue. Returns the existing job ID if one is found, or
+ * null if the runbook has no currently-active jobs.
+ *
+ * Non-fatal: errors are swallowed so callers can fall through to normal job
+ * creation if the query itself fails.
+ */
+export async function findActiveJobForRunbook(runbookName: string): Promise<string | null> {
+  const { client, cfg } = buildClient();
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const res = (client.job as any).listByAutomationAccount(
+      cfg.resourceGroup,
+      cfg.accountName,
+      { filter: `properties/runbook/name eq '${runbookName}'` },
+    ) as AsyncIterable<{ name?: string; status?: string }>;
+    for await (const job of res) {
+      if (job.name && job.status && ACTIVE_JOB_STATUSES.has(job.status)) {
+        return job.name;
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, runbookName }, "azure-automation: findActiveJobForRunbook query failed (non-fatal)");
+  }
+  return null;
 }
 
 /**

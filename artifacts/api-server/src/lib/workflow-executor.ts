@@ -59,7 +59,7 @@ import {
   type WfNode,
 } from "@workspace/db";
 
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveRunbookNameById } from "./azure-automation";
+import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveRunbookNameById, findActiveJobForRunbook } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
@@ -1602,8 +1602,12 @@ async function executeNode(
               // Poll until the job reaches a terminal status (max 10 minutes).
               const POLL_INTERVAL_MS = 5_000;
               const TIMEOUT_MS = 10 * 60 * 1_000;
+              // Bail early if the job never leaves Queued/New/Activating —
+              // that almost always means the runbook isn't Published in Azure.
+              const STUCK_QUEUED_MS = 2 * 60 * 1_000;
               const deadline = Date.now() + TIMEOUT_MS;
               let finalStatus = job.status;
+              let firstQueuedAt: number | null = null;
               while (!isTerminalStatus(finalStatus)) {
                 if (Date.now() >= deadline) {
                   nodeError = true;
@@ -1613,6 +1617,21 @@ async function executeNode(
                 await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
                 const statusResult = await getJobStatus(job.jobId);
                 finalStatus = statusResult.status;
+                // Stuck-Queued detection: if the job stays pre-execution for
+                // 2+ minutes it will likely never start.
+                if (finalStatus === "New" || finalStatus === "Queued" || finalStatus === "Activating") {
+                  if (!firstQueuedAt) firstQueuedAt = Date.now();
+                  if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
+                    nodeError = true;
+                    output = {
+                      error: `Azure job stuck in "${finalStatus}" for 2+ minutes — ensure the runbook "${runbookName}" is Published (not Draft) in Azure Automation and the account has available workers`,
+                      jobId: job.jobId,
+                    };
+                    break;
+                  }
+                } else {
+                  firstQueuedAt = null;
+                }
               }
               if (!nodeError) {
                 const streams = await getJobOutput(job.jobId);
