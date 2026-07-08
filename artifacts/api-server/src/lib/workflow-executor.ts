@@ -51,6 +51,7 @@ import {
   workflowTemplateStepTasksTable,
   quickWinPresentationsTable,
   powershellScriptsTable,
+  scriptModulesTable,
   servicesTable,
   type PsScriptPermissions,
   type WfGraph,
@@ -1213,6 +1214,51 @@ const PROMOTED_ACTION_TYPES = new Set([
   "calculate_pricing", "run_workflow",
 ]);
 
+// ── Runbook ID resolution ─────────────────────────────────────────────────────
+// The Execute Runbook node's "Runbook ID" field is populated from two very
+// different ID spaces depending on where it came from:
+//   1. An internal script-library UUID (workflow_template_step_tasks.runbook_id
+//      is a FK to powershell_scripts.id or script_modules.id — see
+//      admin-ps-scripts.ts "single source of truth" comments and the same
+//      resolution pattern in kanban-auto-fire.ts's resolveRunbook()).
+//   2. A literal Azure Automation ARM resource ID, if the user typed/piped one
+//      in manually via the builder's Runbook ID field.
+// Internal UUIDs never match Azure's ARM-style `rb.id` values, so they must be
+// resolved against our own tables FIRST; only fall back to the Azure ARM-ID
+// lookup (resolveRunbookNameById) when the value isn't one of our UUIDs.
+const RUNBOOK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function resolveExecuteRunbookId(runbookId: string): Promise<string> {
+  if (RUNBOOK_UUID_RE.test(runbookId)) {
+    const [script] = await db
+      .select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
+      .from(powershellScriptsTable)
+      .where(eq(powershellScriptsTable.id, runbookId))
+      .limit(1);
+    if (script) {
+      if (!script.azureRunbookName) {
+        throw new Error(`Script "${runbookId}" has not been pushed to Azure Automation yet — no linked runbook name`);
+      }
+      return script.azureRunbookName;
+    }
+
+    const [mod] = await db
+      .select({ azureRunbookName: scriptModulesTable.azureRunbookName })
+      .from(scriptModulesTable)
+      .where(eq(scriptModulesTable.id, runbookId))
+      .limit(1);
+    if (mod) {
+      if (!mod.azureRunbookName) {
+        throw new Error(`Script module "${runbookId}" has not been pushed to Azure Automation yet — no linked runbook name`);
+      }
+      return mod.azureRunbookName;
+    }
+    // Not a known internal script/module UUID — fall through to the Azure
+    // ARM-ID lookup below in case it happens to also look like a UUID.
+  }
+  return resolveRunbookNameById(runbookId);
+}
+
 // ── Node execution ────────────────────────────────────────────────────────────
 
 async function executeNode(
@@ -1493,7 +1539,7 @@ async function executeNode(
             // the "overrides name" hint shown in the builder UI).
             if (runbookId) {
               try {
-                runbookName = await resolveRunbookNameById(runbookId);
+                runbookName = await resolveExecuteRunbookId(runbookId);
               } catch (err) {
                 nodeError = true;
                 output = { error: (err as Error).message ?? `Could not resolve runbook ID "${runbookId}"` };
