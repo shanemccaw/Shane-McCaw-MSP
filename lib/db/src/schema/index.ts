@@ -1876,7 +1876,14 @@ export const wfVersionsTable = pgTable("wf_versions", {
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (t) => [
+  // Structural guarantee: Postgres will reject any INSERT/UPDATE that would
+  // create a second "published" row for the same definition, regardless of
+  // which code path attempts it.
+  uniqueIndex("wf_versions_one_published_per_def")
+    .on(t.definitionId)
+    .where(sql`status = 'published'`),
+]);
 
 export type InsertWfVersion = typeof wfVersionsTable.$inferInsert;
 export type WfVersion = typeof wfVersionsTable.$inferSelect;

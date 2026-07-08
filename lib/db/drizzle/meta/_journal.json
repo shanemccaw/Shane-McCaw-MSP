@@ -1086,6 +1086,13 @@
       "when": 1784000000000,
       "tag": "0150_add_required_app_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1784100000000,
+      "tag": "0151_add_wf_versions_one_published_uidx",
+      "breakpoints": true
     }
   ]
 }
