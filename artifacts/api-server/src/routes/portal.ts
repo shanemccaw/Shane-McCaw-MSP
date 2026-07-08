@@ -1017,37 +1017,6 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     permissionCheck,
   });
 
-  // For Tier 01 Quick Win projects: emit customer.app_reg_complete so the
-  // Workflow Engine can subscribe and take over execution.
-  (async () => {
-    try {
-      const [quickWinProject] = await db
-        .select({
-          projectId: projectsTable.id,
-          serviceType: servicesTable.serviceType,
-        })
-        .from(projectsTable)
-        .leftJoin(clientServicesTable, eq(clientServicesTable.projectId, projectsTable.id))
-        .leftJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-        .where(
-          and(
-            eq(projectsTable.clientUserId, userId),
-            eq(projectsTable.projectType, "quick_win"),
-          ),
-        )
-        .limit(1);
-
-      if (quickWinProject) {
-        void fireWorkflowsForEvent("customer.app_reg_complete", {
-          userId,
-          projectId: quickWinProject.projectId,
-          serviceType: quickWinProject.serviceType ?? null,
-        });
-      }
-    } catch (err) {
-      req.log.warn({ err, userId }, "portal/app-registration: quick-win event firing failed (non-fatal)");
-    }
-  })();
 });
 
 // ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
@@ -1273,10 +1242,15 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
     .from(clientM365ProfilesTable)
     .where(eq(clientM365ProfilesTable.clientId, userId));
 
-  // Check whether the client has submitted Azure App Registration credentials
+  // Check whether the client has VERIFIED Azure App Registration credentials.
+  // A "pending" row (submitted but not yet verified) does not count — the client
+  // must complete the App Registration step before accessing the diagnostic page.
   const [appReg] = await db.select({ id: clientAppRegistrationsTable.id })
     .from(clientAppRegistrationsTable)
-    .where(eq(clientAppRegistrationsTable.clientUserId, userId));
+    .where(and(
+      eq(clientAppRegistrationsTable.clientUserId, userId),
+      eq(clientAppRegistrationsTable.status, "verified"),
+    ));
 
   // hasActiveEngagement: any active NON-quick-win project or active/paused client service.
   // quick_win projects do not lift the gate — clients with only a quick-win project
