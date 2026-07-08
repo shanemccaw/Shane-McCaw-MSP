@@ -710,6 +710,42 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       }
     }
 
+    // 3. Workflow template linked runbooks — permissions from scripts/modules assigned as
+    //    runbooks on template tasks for the given services.  runbook_id is a text column that
+    //    holds either a powershell_scripts UUID or a script_modules UUID.
+    {
+      const runbookResult = await db.execute(sql`
+        SELECT DISTINCT wtst.runbook_id
+        FROM workflow_templates wt
+        JOIN workflow_template_steps wts ON wts.workflow_template_id = wt.id
+        JOIN workflow_template_step_tasks wtst ON wtst.workflow_template_step_id = wts.id
+        WHERE wt.service_id = ANY(${serviceIds})
+          AND wtst.runbook_id IS NOT NULL
+      `);
+
+      const runbookIds: string[] = ((runbookResult as unknown as { rows: Array<{ runbook_id: string }> }).rows ?? [])
+        .map(r => r.runbook_id)
+        .filter(Boolean);
+
+      if (runbookIds.length > 0) {
+        // Match against powershell_scripts (standalone scripts)
+        const psResult = await db.execute(sql`
+          SELECT permissions FROM powershell_scripts WHERE id::text = ANY(${runbookIds})
+        `);
+        for (const row of ((psResult as unknown as { rows: Array<{ permissions: unknown }> }).rows ?? [])) {
+          addPerms(row.permissions as RawPerms);
+        }
+
+        // Match against script_modules (package-based runbooks)
+        const smResult = await db.execute(sql`
+          SELECT permissions FROM script_modules WHERE id::text = ANY(${runbookIds})
+        `);
+        for (const row of ((smResult as unknown as { rows: Array<{ permissions: unknown }> }).rows ?? [])) {
+          addPerms(row.permissions as RawPerms);
+        }
+      }
+    }
+
     const permissions: PermEntry[] = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
     res.json({ permissions });
   } catch (err) {
