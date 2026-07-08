@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
@@ -204,6 +204,7 @@ export default function PortalAppRegistration() {
   const [loading, setLoading] = useState(true);
   const [dynamicPermissions, setDynamicPermissions] = useState<DynamicPermission[] | null>(null);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
+  const [permissionsRefreshing, setPermissionsRefreshing] = useState(false);
 
   const [tenantId, setTenantId] = useState("");
   const [azureClientId, setAzureClientId] = useState("");
@@ -215,6 +216,18 @@ export default function PortalAppRegistration() {
   const [updateMode, setUpdateMode] = useState(false);
   const [rechecking, setRechecking] = useState(false);
   const [recheckError, setRecheckError] = useState<string | null>(null);
+
+  const fetchPermissions = useCallback((isManual = false) => {
+    if (isManual) setPermissionsRefreshing(true);
+    return fetchWithAuth("/api/portal/required-permissions")
+      .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
+      .then(d => setDynamicPermissions(d?.permissions ?? null))
+      .catch(() => setDynamicPermissions(null))
+      .finally(() => {
+        setPermissionsLoading(false);
+        if (isManual) setPermissionsRefreshing(false);
+      });
+  }, [fetchWithAuth]);
 
   useEffect(() => {
     fetchWithAuth("/api/portal/app-registration")
@@ -229,12 +242,14 @@ export default function PortalAppRegistration() {
       .catch(() => null)
       .finally(() => setLoading(false));
 
-    fetchWithAuth("/api/portal/required-permissions")
-      .then(r => r.ok ? r.json() as Promise<{ permissions: { scope: string; reason: string }[] }> : null)
-      .then(d => setDynamicPermissions(d?.permissions ?? null))
-      .catch(() => setDynamicPermissions(null))
-      .finally(() => setPermissionsLoading(false));
-  }, [fetchWithAuth]);
+    fetchPermissions();
+  }, [fetchWithAuth, fetchPermissions]);
+
+  useEffect(() => {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const id = setInterval(() => fetchPermissions(), FIVE_MINUTES);
+    return () => clearInterval(id);
+  }, [fetchPermissions]);
 
   function enterUpdateMode() {
     setClientSecret("");
@@ -383,9 +398,28 @@ export default function PortalAppRegistration() {
 
         {/* ── Required permissions ────────────────────────────────────────────── */}
         <div className="bg-white border border-border rounded-xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC]">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Required API Permissions</p>
-            <p className="text-xs text-gray-500 mt-0.5">Grant all of these as <strong>Application</strong> permissions (not delegated) in your App Registration</p>
+          <div className="px-5 py-3.5 border-b border-border bg-[#F7F9FC] flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Required API Permissions</p>
+              <p className="text-xs text-gray-500 mt-0.5">Grant all of these as <strong>Application</strong> permissions (not delegated) in your App Registration</p>
+            </div>
+            <button
+              onClick={() => fetchPermissions(true)}
+              disabled={permissionsRefreshing || permissionsLoading}
+              className="flex-shrink-0 flex items-center gap-1.5 text-xs font-medium text-[#0078D4] hover:text-[#005a9e] disabled:opacity-50 disabled:cursor-not-allowed mt-0.5"
+              title="Refresh permission list"
+            >
+              <svg
+                className={`w-3.5 h-3.5 ${permissionsRefreshing ? "animate-spin" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {permissionsRefreshing ? "Refreshing…" : "Refresh"}
+            </button>
           </div>
           {permissionsLoading ? (
             <div className="px-5 py-6 flex justify-center">
