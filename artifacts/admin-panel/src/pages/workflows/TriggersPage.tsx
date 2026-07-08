@@ -116,9 +116,15 @@ function TriggerCard({
   const [copying, setCopying] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [showTestPayloadEditor, setShowTestPayloadEditor] = useState(false);
-  const [customPayloadText, setCustomPayloadText] = useState("{}");
+  const [customPayloadText, setCustomPayloadText] = useState<string>(
+    () => localStorage.getItem(`wf-trigger-payload-${t.id}`) ?? "{}",
+  );
   const [payloadError, setPayloadError] = useState<string | null>(null);
-  const [payloadPrefilled, setPayloadPrefilled] = useState(false);
+  // If there's already a saved payload in localStorage, mark as prefilled
+  // so the "auto-fill from last event" logic doesn't override the user's entry.
+  const [payloadPrefilled, setPayloadPrefilled] = useState<boolean>(
+    () => !!localStorage.getItem(`wf-trigger-payload-${t.id}`),
+  );
 
   const { data: events = [], isLoading: eventsLoading } = useQuery<TriggerEvent[]>({
     queryKey: ["wf-trigger-events", t.id],
@@ -337,7 +343,11 @@ function TriggerCard({
           <p className="text-[10px] uppercase tracking-widest font-bold text-[#484F58]">Test Payload (JSON)</p>
           <textarea
             value={customPayloadText}
-            onChange={e => { setCustomPayloadText(e.target.value); setPayloadError(null); }}
+            onChange={e => {
+              setCustomPayloadText(e.target.value);
+              localStorage.setItem(`wf-trigger-payload-${t.id}`, e.target.value);
+              setPayloadError(null);
+            }}
             rows={5}
             spellCheck={false}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] font-mono resize-y outline-none focus:border-[#0078D4]/60 placeholder-[#484F58]"
@@ -346,7 +356,12 @@ function TriggerCard({
           {payloadError && <p className="text-[10px] text-red-400">{payloadError}</p>}
           <div className="flex gap-2 justify-end">
             <button
-              onClick={() => { setCustomPayloadText("{}"); setPayloadError(null); }}
+              onClick={() => {
+                setCustomPayloadText("{}");
+                localStorage.removeItem(`wf-trigger-payload-${t.id}`);
+                setPayloadPrefilled(false);
+                setPayloadError(null);
+              }}
               className="px-3 py-1.5 text-xs text-[#7D8590] hover:text-[#E6EDF3] transition-colors"
             >
               Reset
