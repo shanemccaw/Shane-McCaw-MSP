@@ -11884,11 +11884,11 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     ))}
                   </div>
                 </div>
-              ) : rightPanelTab === "jsonviewer" ? (
-                <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                  <JsonViewerContent />
-                </div>
               ) : null}
+              {/* JSON Viewer — always mounted to preserve state across tab switches */}
+              <div className={`flex-1 overflow-hidden flex flex-col min-h-0 ${rightPanelTab === "jsonviewer" ? "" : "hidden"}`}>
+                <JsonViewerContent />
+              </div>
             </div>
           </div>
         )}
