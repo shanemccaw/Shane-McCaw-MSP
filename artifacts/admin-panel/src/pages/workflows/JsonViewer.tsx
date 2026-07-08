@@ -791,7 +791,7 @@ export function JsonViewerContent({ initialJson }: { initialJson?: unknown } = {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         {activeTab === "viewer" ? <ViewerTab initialJson={initialJson} /> : <DiffTab />}
       </div>
     </div>
