@@ -714,16 +714,20 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
     // 3. Workflow template linked runbooks — permissions from scripts/modules assigned as
     //    runbooks on template tasks for the given services.  runbook_id is a text column that
     //    holds either a powershell_scripts UUID or a script_modules UUID.
+    //    NOTE: the authoritative service→template link lives on services.workflow_template_id
+    //    (not workflow_templates.service_id which is legacy/unused — always NULL).
     {
       // Step 1: gather runbook IDs via Drizzle typed joins (avoids ANY($1) array-literal bug)
+      // Join through services.workflow_template_id — the authoritative link used by the UI.
       const runbookRows = await db
         .selectDistinct({ runbookId: workflowTemplateStepTasksTable.runbookId })
-        .from(workflowTemplatesTable)
+        .from(servicesTable)
+        .innerJoin(workflowTemplatesTable, eq(workflowTemplatesTable.id, servicesTable.workflowTemplateId))
         .innerJoin(workflowTemplateStepsTable, eq(workflowTemplateStepsTable.workflowTemplateId, workflowTemplatesTable.id))
         .innerJoin(workflowTemplateStepTasksTable, eq(workflowTemplateStepTasksTable.workflowTemplateStepId, workflowTemplateStepsTable.id))
         .where(
           and(
-            inArray(workflowTemplatesTable.serviceId, serviceIds),
+            inArray(servicesTable.id, serviceIds),
             isNotNull(workflowTemplateStepTasksTable.runbookId),
           )
         );
