@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Copy, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
@@ -536,9 +537,32 @@ export function JsonBlock({ data, label }: { data: Record<string, unknown>; labe
     ? Object.fromEntries(Object.entries(data).filter(([k]) => k !== "htmlContent"))
     : data;
 
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {});
+  }, [data]);
+
   return (
     <div className="space-y-1">
-      <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
+        <button
+          onClick={handleCopy}
+          title={copied ? "Copied!" : "Copy JSON"}
+          className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
+        >
+          {copied
+            ? <Check className="w-3 h-3 text-emerald-400" />
+            : <Copy className="w-3 h-3" />}
+        </button>
+      </div>
       <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-40 whitespace-pre-wrap">
         {JSON.stringify(displayData, null, 2)}
       </pre>
