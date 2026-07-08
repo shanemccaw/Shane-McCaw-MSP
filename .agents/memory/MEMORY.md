@@ -17,3 +17,4 @@
 - [Start node output must carry payload](workflow-start-node-output.md) — start node's output was hardcoded to {started:true}; must spread the run's payload in so {{steps.<startId>.*}} and the run viewer show trigger data
 - [Workflow executor template resolution](workflow-executor-template-resolution.md) — interp() always stringifies arrays/objects; use resolveExprNative() when a field must preserve native type (e.g. run_workflow inputMapping)
 - [Run Workflow node child payload isolation](run-workflow-child-payload-isolation.md) — child workflow payload starts clean (not spread from parent); only inputMapping keys + _parentRunId/_depth are passed through
+- [run_workflow/kanban-auto-fire treat empty child graphs as success](workflow-empty-child-success.md) — a draft sub-workflow with no real action node "completes" instantly, making callers wired into it look auto-completed
