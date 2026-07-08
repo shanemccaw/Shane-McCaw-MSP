@@ -501,7 +501,7 @@ function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
   }, [toast]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-shrink-0 p-4 border-b border-[#21262D] space-y-3">
         <textarea
           value={raw}
@@ -772,7 +772,7 @@ export function JsonViewerContent({ initialJson }: { initialJson?: unknown } = {
   const [activeTab, setActiveTab] = useState<"viewer" | "diff">("viewer");
 
   return (
-    <div className="flex flex-col h-full bg-[#0D1117]">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#0D1117]">
       <div className="flex-shrink-0 border-b border-[#21262D] px-4 pt-3">
         <div className="flex items-center gap-1">
           {(["viewer", "diff"] as const).map(tab => (

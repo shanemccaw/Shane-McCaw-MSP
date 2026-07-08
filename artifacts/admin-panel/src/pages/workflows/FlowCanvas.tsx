@@ -28,6 +28,7 @@ import {
   deepCloneStep,
 } from "./flowTree";
 import type { FlowStep, StoredNode, StoredEdge } from "./flowTree";
+import { JsonViewerDialog } from "./JsonViewerDialog";
 
 // ── Re-exported types so WorkflowBuilderPage can import from one place ────────
 export type { StoredNode, StoredEdge };
@@ -2040,27 +2041,39 @@ interface FlowCanvasCtx {
 function IoDataPanel({ input, output }: { input: Record<string, unknown> | null | undefined; output: Record<string, unknown> | null | undefined }) {
   const [inputCopied, copyInput] = useCopyToClipboard();
   const [outputCopied, copyOutput] = useCopyToClipboard();
+  const [viewerDialog, setViewerDialog] = useState<{ open: boolean; json: unknown; title: string }>({ open: false, json: null, title: "" });
   const hasInput = input != null && Object.keys(input).length > 0;
   const hasOutput = output != null && Object.keys(output).length > 0;
   if (!hasInput && !hasOutput) return <div className="text-[#484F58] italic">No I/O data recorded for this step.</div>;
   return (
+    <>
     <div className="space-y-2">
       {hasInput && (
         <div>
           <div className="flex items-center justify-between mb-0.5">
             <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Input</p>
-            <button
-              onClick={() => copyInput(JSON.stringify(input, null, 2))}
-              className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
-              title="Copy input JSON"
-            >
-              {inputCopied ? (
-                <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              ) : (
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-              )}
-              {inputCopied ? "Copied" : "Copy"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewerDialog({ open: true, json: input, title: "Input JSON" })}
+                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#0078D4] transition-colors"
+                title="Open in JSON Viewer"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                Viewer
+              </button>
+              <button
+                onClick={() => copyInput(JSON.stringify(input, null, 2))}
+                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                title="Copy input JSON"
+              >
+                {inputCopied ? (
+                  <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                )}
+                {inputCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
           </div>
           <pre className="max-h-32 overflow-y-auto text-[9px] text-[#7D8590] bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
             {JSON.stringify(input, null, 2)}
@@ -2071,18 +2084,28 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
         <div>
           <div className="flex items-center justify-between mb-0.5">
             <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Output</p>
-            <button
-              onClick={() => copyOutput(JSON.stringify(output, null, 2))}
-              className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
-              title="Copy output JSON"
-            >
-              {outputCopied ? (
-                <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-              ) : (
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-              )}
-              {outputCopied ? "Copied" : "Copy"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setViewerDialog({ open: true, json: output, title: "Output JSON" })}
+                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#0078D4] transition-colors"
+                title="Open in JSON Viewer"
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
+                Viewer
+              </button>
+              <button
+                onClick={() => copyOutput(JSON.stringify(output, null, 2))}
+                className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+                title="Copy output JSON"
+              >
+                {outputCopied ? (
+                  <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                )}
+                {outputCopied ? "Copied" : "Copy"}
+              </button>
+            </div>
           </div>
           <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
             {JSON.stringify(output, null, 2)}
@@ -2090,6 +2113,13 @@ function IoDataPanel({ input, output }: { input: Record<string, unknown> | null 
         </div>
       )}
     </div>
+    <JsonViewerDialog
+      open={viewerDialog.open}
+      onOpenChange={open => setViewerDialog(v => ({ ...v, open }))}
+      initialJson={viewerDialog.json}
+      title={viewerDialog.title}
+    />
+    </>
   );
 }
 
