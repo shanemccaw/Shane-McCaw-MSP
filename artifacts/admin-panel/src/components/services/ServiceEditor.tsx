@@ -249,6 +249,12 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
   const [scriptSetAddId, setScriptSetAddId] = useState("");
   const [scriptSetSaving, setScriptSetSaving] = useState(false);
 
+  interface RequiredScriptItem { scriptId: string; title: string; category: string; tags: string[]; }
+  const [requiredScripts, setRequiredScripts] = useState<RequiredScriptItem[]>([]);
+  const [allPsScripts, setAllPsScripts] = useState<{ id: string; title: string; category: string }[]>([]);
+  const [reqScriptAddId, setReqScriptAddId] = useState("");
+  const [reqScriptSaving, setReqScriptSaving] = useState(false);
+
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
   const [assignForm, setAssignForm] = useState({ clientUserId: "", serviceId: id ? String(id) : "", startDate: "", nextMilestone: "", nextMilestoneDate: "" });
@@ -319,14 +325,21 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     if (!id) return;
     void (async () => {
       try {
-        const [sr, pr] = await Promise.all([
+        const [sr, pr, rsr, psr] = await Promise.all([
           fetchWithAuth(`/api/admin/services/${id}/script-sets`),
           fetchWithAuth("/api/admin/ps-scripts/packages"),
+          fetchWithAuth(`/api/admin/services/${id}/required-scripts`),
+          fetchWithAuth("/api/admin/ps-scripts"),
         ]);
         if (sr.ok) setScriptSets(await sr.json() as ScriptSetItem[]);
         if (pr.ok) {
           const d = await pr.json() as { id: string; title: string; category: string }[];
           setAllPackages(d.map(p => ({ id: p.id, title: p.title, category: p.category })));
+        }
+        if (rsr.ok) setRequiredScripts(await rsr.json() as RequiredScriptItem[]);
+        if (psr.ok) {
+          const d = await psr.json() as { id: string; title: string; category: string }[];
+          setAllPsScripts(d.map(p => ({ id: p.id, title: p.title, category: p.category })));
         }
       } catch { /* ignore */ }
     })();
@@ -455,6 +468,26 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     const res = await fetchWithAuth(`/api/admin/services/${id}/script-sets/${scriptPackageId}`, { method: "DELETE" });
     if (res.ok) setScriptSets(prev => prev.filter(s => s.scriptPackageId !== scriptPackageId));
     else toast({ title: "Failed to remove script set", variant: "destructive" });
+  };
+
+  const handleRequiredScriptAdd = async () => {
+    if (!id || !reqScriptAddId) return;
+    setReqScriptSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/services/${id}/required-scripts`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scriptId: reqScriptAddId }),
+      });
+      if (res.ok) { setRequiredScripts(await res.json() as RequiredScriptItem[]); setReqScriptAddId(""); }
+      else toast({ title: "Failed to add required script", variant: "destructive" });
+    } finally { setReqScriptSaving(false); }
+  };
+
+  const handleRequiredScriptRemove = async (scriptId: string) => {
+    if (!id) return;
+    const res = await fetchWithAuth(`/api/admin/services/${id}/required-scripts/${scriptId}`, { method: "DELETE" });
+    if (res.ok) setRequiredScripts(prev => prev.filter(s => s.scriptId !== scriptId));
+    else toast({ title: "Failed to remove required script", variant: "destructive" });
   };
 
   const handleAssign = async (e: React.FormEvent) => {
@@ -954,6 +987,37 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
                 <button type="button" onClick={() => void handleScriptSetAdd()} disabled={!scriptSetAddId || scriptSetSaving}
                   className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors">
                   {scriptSetSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}Add
+                </button>
+              </div>
+            </div>
+
+            {/* Required Scripts (for App Registration permissions on agreement) */}
+            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
+              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-1">Required Scripts</p>
+              <p className="text-xs text-[#7D8590] mb-3">Scripts whose App Registration permissions appear on the client agreement. Select each script that runs automatically for this service.</p>
+              {requiredScripts.length > 0 ? (
+                <div className="space-y-1.5 mb-3">
+                  {requiredScripts.map(rs => (
+                    <div key={rs.scriptId} className="flex items-center justify-between gap-2 bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
+                      <div>
+                        <p className="text-xs font-medium text-[#E6EDF3]">{rs.title}</p>
+                        <p className="text-[10px] text-[#7D8590]">{rs.category}</p>
+                      </div>
+                      <button type="button" onClick={() => void handleRequiredScriptRemove(rs.scriptId)} className="text-[#484F58] hover:text-red-400 transition-colors flex-shrink-0">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-xs text-[#7D8590] mb-3">No required scripts linked.</p>}
+              <div className="flex gap-2">
+                <select value={reqScriptAddId} onChange={e => setReqScriptAddId(e.target.value)} className="flex-1 border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3]">
+                  <option value="">— Add script —</option>
+                  {allPsScripts.filter(p => !requiredScripts.find(s => s.scriptId === p.id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+                <button type="button" onClick={() => void handleRequiredScriptAdd()} disabled={!reqScriptAddId || reqScriptSaving}
+                  className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors">
+                  {reqScriptSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}Add
                 </button>
               </div>
             </div>

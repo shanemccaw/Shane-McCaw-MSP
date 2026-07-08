@@ -748,6 +748,21 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       }
     }
 
+    // 4. Direct service → required scripts mapping (service_required_scripts table)
+    //    Populated via the Admin Panel service editor "Required Scripts" section.
+    if (serviceIds.length > 0) {
+      const inClause = sql.join(serviceIds.map(id => sql`${id}`), sql`, `);
+      const srsResult = await db.execute(sql`
+        SELECT ps.permissions
+        FROM service_required_scripts srs
+        JOIN powershell_scripts ps ON ps.id = srs.script_id
+        WHERE srs.service_id IN (${inClause})
+      `);
+      for (const row of ((srsResult as unknown as { rows: Array<{ permissions: unknown }> }).rows ?? [])) {
+        addPerms(row.permissions as RawPerms);
+      }
+    }
+
     const permissions: PermEntry[] = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
     res.json({ permissions });
   } catch (err) {

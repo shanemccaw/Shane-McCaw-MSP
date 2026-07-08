@@ -3233,6 +3233,71 @@ router.delete("/admin/services/:id/script-sets/:packageId", requireAdmin, async 
   }
 });
 
+// ─── GET /api/admin/services/:id/required-scripts ────────────────────────────
+// Returns the list of standalone powershell_scripts directly required by a service.
+
+router.get("/admin/services/:id/required-scripts", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(serviceId)) { res.status(400).json({ error: "Invalid service id" }); return; }
+  try {
+    const rows = await pool.query<{ id: string; title: string; category: string; tags: string[] }>(
+      `SELECT ps.id, ps.title, ps.category, ps.tags
+       FROM service_required_scripts srs
+       JOIN powershell_scripts ps ON ps.id = srs.script_id
+       WHERE srs.service_id = $1
+       ORDER BY ps.title`,
+      [serviceId]
+    );
+    res.json(rows.rows.map(r => ({ scriptId: r.id, title: r.title, category: r.category, tags: r.tags })));
+  } catch (err) {
+    logger.error({ err, serviceId }, "admin-ps-scripts: failed to list required scripts");
+    res.status(500).json({ error: "Failed to list required scripts" });
+  }
+});
+
+// ─── POST /api/admin/services/:id/required-scripts ───────────────────────────
+
+router.post("/admin/services/:id/required-scripts", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id ?? ""), 10);
+  const { scriptId } = req.body as { scriptId?: string };
+  if (isNaN(serviceId) || !scriptId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  try {
+    await pool.query(
+      `INSERT INTO service_required_scripts (service_id, script_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [serviceId, scriptId]
+    );
+    const rows = await pool.query<{ id: string; title: string; category: string; tags: string[] }>(
+      `SELECT ps.id, ps.title, ps.category, ps.tags
+       FROM service_required_scripts srs
+       JOIN powershell_scripts ps ON ps.id = srs.script_id
+       WHERE srs.service_id = $1 ORDER BY ps.title`,
+      [serviceId]
+    );
+    res.json(rows.rows.map(r => ({ scriptId: r.id, title: r.title, category: r.category, tags: r.tags })));
+  } catch (err) {
+    logger.error({ err, serviceId, scriptId }, "admin-ps-scripts: failed to add required script");
+    res.status(500).json({ error: "Failed to link script to service" });
+  }
+});
+
+// ─── DELETE /api/admin/services/:id/required-scripts/:scriptId ───────────────
+
+router.delete("/admin/services/:id/required-scripts/:scriptId", requireAdmin, async (req: Request, res: Response) => {
+  const serviceId = parseInt(String(req.params.id ?? ""), 10);
+  const scriptId = String(req.params.scriptId ?? "");
+  if (isNaN(serviceId) || !scriptId) { res.status(400).json({ error: "Invalid ids" }); return; }
+  try {
+    await pool.query(
+      `DELETE FROM service_required_scripts WHERE service_id = $1 AND script_id = $2`,
+      [serviceId, scriptId]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, serviceId, scriptId }, "admin-ps-scripts: failed to remove required script");
+    res.status(500).json({ error: "Failed to unlink script from service" });
+  }
+});
+
 // ─── POST /api/admin/ps-scripts/generate-from-document ───────────────────────
 // Fetches an insights document by ID, strips HTML, and generates a PowerShell
 // script from its contents using the same SSE streaming protocol as /generate.

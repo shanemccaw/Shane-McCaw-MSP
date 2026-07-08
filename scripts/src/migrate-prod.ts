@@ -290,6 +290,18 @@ const legacyMigrations = [
       END $$;
     `,
   },
+  {
+    name: "0013_service_required_scripts",
+    sql: `
+      CREATE TABLE IF NOT EXISTS "service_required_scripts" (
+        "service_id" integer NOT NULL,
+        "script_id"  uuid    NOT NULL,
+        PRIMARY KEY ("service_id", "script_id"),
+        CONSTRAINT "fk_srs_service" FOREIGN KEY ("service_id") REFERENCES "services"("id") ON DELETE CASCADE,
+        CONSTRAINT "fk_srs_script"  FOREIGN KEY ("script_id")  REFERENCES "powershell_scripts"("id") ON DELETE CASCADE
+      );
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------
