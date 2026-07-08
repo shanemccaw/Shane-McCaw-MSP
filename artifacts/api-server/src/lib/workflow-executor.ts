@@ -6338,6 +6338,7 @@ export async function executeWorkflowRun(
 
         const iterLimit  = maxIter !== null ? Math.min(forItems.length, maxIter) : forItems.length;
         const startIds   = bodyEdges.map(e => e.target).filter(id => bodySubgraphIds.has(id));
+        const forCollectedResults: Record<string, unknown>[] = [];
 
         logger.info({ runId, nodeId, iterLimit, subgraphSize: bodySubgraphIds.size },
           "wf-executor: for — starting iterations");
@@ -6390,9 +6391,16 @@ export async function executeWorkflowRun(
             return;
           }
 
+          // Accumulate per-iteration output so {{collectedResults}} is available downstream.
+          forCollectedResults.push(iterResult.lastOutput);
+
           logger.info({ runId, nodeId, iteration: i, iterLimit },
             "wf-executor: for iteration complete");
         }
+
+        // Update main payload with collected results so downstream nodes (e.g. Group By)
+        // receive the fresh per-iteration outputs rather than the pre-loop payload.
+        payload = { ...payload, collectedResults: forCollectedResults, itemsTotal: iterLimit };
 
         // Prevent the main BFS from executing body-subgraph nodes again.
         for (const nId of bodySubgraphIds) {
