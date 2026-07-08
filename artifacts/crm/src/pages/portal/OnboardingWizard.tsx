@@ -1,9 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-
-import { useQuickWinMode } from "@/context/QuickWinModeContext";
-import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import { ManualScriptUploadCard, type ManualScriptRecord } from "@/components/ManualScriptUploadCard";
 // ── Outer wizard steps ────────────────────────────────────────────────────────
 
@@ -385,108 +382,33 @@ function WizardManualScripts({ onAnyCompleted }: { onAnyCompleted?: () => void }
 
 // ── Step: Quick Win Diagnostic ────────────────────────────────────────────────
 
-function StepQuickWin({
-  onComplete,
-  onSavePartial,
-}: {
-  onComplete: () => void;
-  onSavePartial: () => void;
-}) {
-  const { state, dispatch } = useQuickWinMode();
-  const hasLaunchedRef = useRef(false);
-  // Prevent duplicate partial-save calls if the mode flickers
-  const partialSavedRef = useRef(false);
-
-  // Auto-launch the overlay immediately when this step mounts
-  useEffect(() => {
-    if (hasLaunchedRef.current) return;
-    hasLaunchedRef.current = true;
-    dispatch({
-      type: "SELECT_QUICK_WIN",
-      payload: {
-        id: "qw-onboarding-security",
-        title: "Security Baseline Diagnostic",
-        description: "Automated scan of your M365 security posture with actionable findings.",
-        category: "Security",
-        steps: [],
-      },
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // As soon as an error occurs, save a partial result (score=0) so
-  // wizardResultsReady is set. This prevents the RequireEngagement gate
-  // from looping the client back to the wizard if they close the tab or
-  // the network stays down after the diagnostic failure.
-  useEffect(() => {
-    if (hasLaunchedRef.current && state.mode === "Error" && !partialSavedRef.current) {
-      partialSavedRef.current = true;
-      onSavePartial();
-    }
-  }, [state.mode, onSavePartial]);
-
-  // When the overlay closes (mode → Idle) after launch, auto-advance the wizard
-  useEffect(() => {
-    if (hasLaunchedRef.current && state.mode === "Idle") {
-      onComplete();
-    }
-  }, [state.mode, onComplete]);
-
-  // Show a recovery UI within the wizard when the diagnostic errors.
-  // The FullScreenWrapper also shows Retry/Exit, but this provides a
-  // visible fallback in case the overlay somehow closed without setting Idle.
-  if (hasLaunchedRef.current && state.mode === "Error") {
-    return (
-      <div className="h-full overflow-y-auto px-8 py-10">
-        <div className="max-w-xl mx-auto flex flex-col items-center text-center">
-          <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-5 flex-shrink-0">
-            <svg className="w-8 h-8 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold text-[#0A2540] mb-2">Diagnostic encountered an issue</h2>
-          <p className="text-sm text-gray-500 mb-1 max-w-xs leading-relaxed">
-            {state.errorMessage ?? "An unexpected error occurred during the automated step."}
-          </p>
-          <p className="text-xs text-gray-400 mb-6 max-w-xs leading-relaxed">
-            Your progress has been saved. If a manual script was generated you can run it below, or retry the diagnostic.
-          </p>
-          <div className="flex flex-col gap-3 w-full max-w-xs mb-8">
-            <button
-              type="button"
-              onClick={() => {
-                partialSavedRef.current = false;
-                dispatch({ type: "RETRY_STEP" });
-              }}
-              className="flex items-center justify-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Retry diagnostic
-            </button>
-            <button
-              type="button"
-              onClick={onComplete}
-              className="flex items-center justify-center gap-2 border border-gray-200 text-gray-600 hover:bg-gray-50 text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors"
-            >
-              Continue without results
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Manual script card — full-width, centered, prominent */}
-        <WizardManualScripts onAnyCompleted={onComplete} />
+function StepQuickWin({ onGoToPortal }: { onGoToPortal: () => void }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center px-8 py-12 text-center">
+      <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center mb-6">
+        <svg className="w-10 h-10 text-[#0078D4]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
       </div>
-    );
-  }
-
-  // During normal diagnostic flow the Quick Win overlay takes the full screen.
-  // The wizard sidebar remains visible behind it (z-9999 < overlay z-10000).
-  return null;
+      <h2 className="text-2xl font-bold text-[#0A2540] mb-3">Your setup is underway</h2>
+      <p className="text-sm text-gray-500 max-w-md mb-2 leading-relaxed">
+        Shane has been notified and your diagnostic will begin shortly.
+      </p>
+      <p className="text-xs text-gray-400 max-w-sm mb-8 leading-relaxed">
+        You can monitor progress from the portal. The assessment runs automatically — no action is needed on your part.
+      </p>
+      <button
+        type="button"
+        onClick={onGoToPortal}
+        className="flex items-center gap-2 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white text-sm font-semibold px-8 py-3 rounded-xl transition-colors"
+      >
+        Go to your portal
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
 }
 
 // ── Complete step (success) ───────────────────────────────────────────────────
@@ -662,33 +584,17 @@ function StepReviewResults({ onFinish }: { onFinish: () => void }) {
 
 // ── Main wizard ───────────────────────────────────────────────────────────────
 
-const WIZARD_STEP_KEY = "onboarding-wizard-step";
-
 export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onboarding" | "update" }) {
   const { fetchWithAuth, logout } = useAuth();
   const [, navigate] = useLocation();
 
-  // Whether the client already has Azure credentials saved — used to auto-skip
-  // the app-reg step and to show the "Update credentials" link.
+  // Whether the client already has Azure credentials saved — used to show
+  // the "Update credentials" link in the sidebar.
   const [hasCredentials, setHasCredentials] = useState(false);
 
-  // Restore last step from sessionStorage so a page refresh lands back on the
-  // Quick Win progress screen without forcing the user to re-enter App Reg.
-  // Only applies in onboarding mode — update mode always starts at app-reg.
-  const [currentStep, setCurrentStep] = useState<StepId | "done">(() => {
-    if (mode !== "onboarding") return "app-reg";
-    const saved = sessionStorage.getItem(WIZARD_STEP_KEY);
-    if (saved === "quick-win" || saved === "review-results") return saved as StepId;
-    return "app-reg";
-  });
+  // Always start at app-reg — only "Begin Assessment" can advance the wizard.
+  const [currentStep, setCurrentStep] = useState<StepId | "done">("app-reg");
 
-  // True while the server credential check is in flight (onboarding mode only).
-  // We hide the App Registration form during this window so returning customers
-  // who already submitted credentials never see a flash of the app-reg step
-  // before the auto-advance to "quick-win" fires.
-  const [credentialChecking, setCredentialChecking] = useState(mode === "onboarding");
-
-  const [completing, setCompleting] = useState(false);
   const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
 
   const [dynamicPermissions, setDynamicPermissions] = useState<DynamicPermission[] | null>(null);
@@ -705,8 +611,8 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep]);
 
-  // On mount in onboarding mode, check if credentials already exist so we can
-  // auto-skip the App Registration step and go straight to the diagnostic.
+  // On mount in onboarding mode, fetch credentials status to populate the
+  // "Update credentials" sidebar link. We never auto-advance based on this.
   const credentialCheckRef = useRef(false);
   useEffect(() => {
     if (mode !== "onboarding") return;
@@ -715,70 +621,10 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
 
     fetchWithAuth("/api/portal/onboarding/wizard-status")
       .then(r => r.ok ? (r.json() as Promise<{ hasCredentials?: boolean }>) : { hasCredentials: false })
-      .then(data => {
-        const creds = !!data.hasCredentials;
-        setHasCredentials(creds);
-        setCurrentStep(prev => {
-          // Auto-advance past app-reg if credentials already exist
-          if (prev === "app-reg" && creds) return "quick-win";
-          // Guard: if sessionStorage put us at quick-win/review-results but the
-          // server says there are no credentials, reset to app-reg. This prevents
-          // a stale sessionStorage value from skipping the App Registration step
-          // on a subsequent login in the same browser tab.
-          if ((prev === "quick-win" || prev === "review-results") && !creds) return "app-reg";
-          return prev;
-        });
-      })
-      .catch(() => { /* non-fatal — keep showing app-reg */ })
-      .finally(() => { setCredentialChecking(false); });
+      .then(data => { setHasCredentials(!!data.hasCredentials); })
+      .catch(() => { /* non-fatal */ });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Keep sessionStorage in sync with the current step.
-  useEffect(() => {
-    if (mode !== "onboarding") return;
-    if (currentStep === "done") {
-      sessionStorage.removeItem(WIZARD_STEP_KEY);
-    } else {
-      sessionStorage.setItem(WIZARD_STEP_KEY, currentStep);
-    }
-  }, [currentStep, mode]);
-
-  // Save a partial/error result so wizardResultsReady is set in the database
-  // immediately when the diagnostic fails. This is fire-and-forget — we don't
-  // gate the UI on its success. Calling it multiple times is idempotent since
-  // the endpoint only sets quickWinCompletedAt if not already set.
-  const savePartialResult = useCallback(() => {
-    void fetchWithAuth("/api/portal/onboarding/quick-win-complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ failed: true }),
-    }).catch(() => {
-      // Silently ignore — the user is already stuck; best effort only.
-    });
-  }, [fetchWithAuth]);
-
-  const completeWizard = useCallback(async () => {
-    if (completing) return;
-    setCompleting(true);
-    sessionStorage.removeItem(WIZARD_STEP_KEY);
-    try {
-      // Mark the quick-win diagnostic as complete — this sets wizardResultsReady
-      // so the RequireEngagement gate knows to send the client to the results page.
-      await fetchWithAuth("/api/portal/onboarding/quick-win-complete", { method: "POST" });
-      // Also mark the overall wizard complete
-      await fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" });
-    } catch {
-      // non-fatal — advance to review step regardless
-    }
-    if (mode === "update") {
-      setCurrentStep("done");
-    } else {
-      // In onboarding mode advance to the inline results review step
-      setCurrentStep("review-results");
-    }
-    setCompleting(false);
-  }, [fetchWithAuth, completing, mode]);
 
   function handleFinish() {
     navigate("/portal/onboarding/results");
@@ -795,10 +641,16 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       throw new Error(err.error ?? "Could not save credentials.");
     }
     setHasCredentials(true);
-    // In onboarding mode advance to step 2; in update mode finish immediately
+    // In onboarding mode: mark wizard complete so needsOnboarding becomes false,
+    // then advance to the passive "Setup underway" step.
+    // In update mode: finish immediately (done screen).
     if (mode === "update") {
-      await completeWizard();
+      setCurrentStep("done");
     } else {
+      // Fire-and-forget — the client is already advancing; if this fails the
+      // RequireEngagement gate will still route them correctly once the server
+      // sets wizardCompletedAt in a subsequent visit.
+      void fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" }).catch(() => {});
       setCurrentStep("quick-win");
     }
   }
@@ -1086,23 +938,14 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
         {/* Step content */}
         <div className="flex-1 min-h-0 bg-[#F7F9FC]">
           {currentStep === "app-reg" && (
-            credentialChecking ? (
-              <div className="flex h-full items-center justify-center">
-                <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : (
-              <StepAppRegistration
-                onSaveAndContinue={handleAppRegSaveAndContinue}
-                dynamicPermissions={dynamicPermissions}
-                permissionsLoading={permissionsLoading}
-              />
-            )
+            <StepAppRegistration
+              onSaveAndContinue={handleAppRegSaveAndContinue}
+              dynamicPermissions={dynamicPermissions}
+              permissionsLoading={permissionsLoading}
+            />
           )}
           {currentStep === "quick-win" && (
-            <StepQuickWin
-              onComplete={completeWizard}
-              onSavePartial={savePartialResult}
-            />
+            <StepQuickWin onGoToPortal={handleGoToDashboard} />
           )}
           {currentStep === "review-results" && (
             <StepReviewResults onFinish={handleFinish} />

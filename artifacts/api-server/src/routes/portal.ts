@@ -1017,57 +1017,8 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     permissionCheck,
   });
 
-  // ── Step 4: Fire-and-forget sequential script run ─────────────────────────
-  // Insert a run record first so the progress endpoint has something to show
-  // before the sequence starts. Then look up the client's linked 'script'-type
-  // Kanban card (if any) so the sequence can write results back to it.
-  db.insert(clientAutomationRunsTable)
-    .values({ clientUserId: userId, status: "pending" })
-    .returning({ id: clientAutomationRunsTable.id })
-    .then(async ([run]) => {
-      if (!run) return;
-
-      // Find the client's projects, then look for a linked 'script' kanban task
-      let kanbanTaskId: number | undefined;
-      try {
-        const clientProjects = await db
-          .select({ id: projectsTable.id })
-          .from(projectsTable)
-          .where(eq(projectsTable.clientUserId, userId));
-
-        if (clientProjects.length > 0) {
-          const projectIds = clientProjects.map(p => p.id);
-          const scriptTasks = await db
-            .select({ id: kanbanTasksTable.id, column: kanbanTasksTable.column })
-            .from(kanbanTasksTable)
-            .where(
-              and(
-                inArray(kanbanTasksTable.projectId, projectIds),
-                eq(kanbanTasksTable.taskType, "script"),
-              ),
-            )
-            .orderBy(asc(kanbanTasksTable.id));
-
-          // Prefer an active (non-completed) card; fall back to the first script card
-          const active = scriptTasks.find(t => t.column !== "completed");
-          const chosen = active ?? scriptTasks[0];
-          if (chosen) kanbanTaskId = chosen.id;
-        }
-      } catch (lookupErr) {
-        req.log.warn({ lookupErr, userId }, "portal/app-registration: kanban task lookup failed — running without card link");
-      }
-
-      runClientScriptSequence(userId, run.id, kanbanTaskId).catch(err => {
-        req.log.error({ err, userId, runId: run.id, kanbanTaskId }, "portal/app-registration: script sequence error");
-      });
-    })
-    .catch(err => {
-      req.log.error({ err, userId }, "portal/app-registration: failed to insert automation run record");
-    });
-
   // For Tier 01 Quick Win projects: emit customer.app_reg_complete so the
   // Workflow Engine can subscribe and take over execution.
-  // For all other project types: fall back to the three legacy autoFire* helpers.
   (async () => {
     try {
       const [quickWinProject] = await db
@@ -1092,22 +1043,9 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
           projectId: quickWinProject.projectId,
           serviceType: quickWinProject.serviceType ?? null,
         });
-      } else {
-        autoFireFirstBacklogScript(userId).catch(err => {
-          req.log.warn({ err, userId }, "portal/app-registration: autoFireFirstBacklogScript error (non-fatal)");
-        });
-        autoFireDocumentCard(userId).catch(err => {
-          req.log.warn({ err, userId }, "portal/app-registration: autoFireDocumentCard error (non-fatal)");
-        });
-        autoFireRunWorkflowCards(userId).catch(err => {
-          req.log.warn({ err, userId }, "portal/app-registration: autoFireRunWorkflowCards error (non-fatal)");
-        });
       }
     } catch (err) {
-      req.log.warn({ err, userId }, "portal/app-registration: quick-win check failed — falling back to autoFire helpers");
-      autoFireFirstBacklogScript(userId).catch(() => {});
-      autoFireDocumentCard(userId).catch(() => {});
-      autoFireRunWorkflowCards(userId).catch(() => {});
+      req.log.warn({ err, userId }, "portal/app-registration: quick-win event firing failed (non-fatal)");
     }
   })();
 });

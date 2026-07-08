@@ -78,6 +78,49 @@ interface EngagementStatus {
   wizardResultsReady: boolean;
 }
 
+// RequireCredentials: lightweight gate for routes that must not be reachable
+// without App Registration credentials but that are themselves the destination
+// that RequireEngagement redirects to (e.g. /portal/diagnostic). Using
+// RequireEngagement on those routes would create an infinite redirect loop.
+// This guard only enforces the credentials check — no other redirects.
+function RequireCredentials({ children }: { children: ReactNode }) {
+  const { user, fetchWithAuth } = useAuth();
+  const [location] = useLocation();
+  const [checked, setChecked] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
+  const fetchingRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || user.role !== "client") return;
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+    setChecked(false);
+
+    fetchWithAuth("/api/portal/onboarding/wizard-status")
+      .then(r => {
+        if (!r.ok) { setHasCredentials(false); return; }
+        return r.json().then((data: EngagementStatus) => setHasCredentials(!!data.hasCredentials));
+      })
+      .catch(() => { setHasCredentials(false); })
+      .finally(() => { setChecked(true); fetchingRef.current = false; });
+  // Re-run on location changes so the gate re-evaluates on navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, location]);
+
+  if (!user || user.role !== "client") return <>{children}</>;
+
+  if (!checked) {
+    return (
+      <div className="min-h-screen bg-[#F7F9FC] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (!hasCredentials) return <Redirect to="/portal/onboarding/wizard" />;
+  return <>{children}</>;
+}
+
 // RequireEngagement: the main portal gate.
 // - If client has an active engagement → render full portal (children)
 // - If no engagement + results ready → redirect to /portal/onboarding/results
@@ -129,6 +172,11 @@ function RequireEngagement({ children }: { children: ReactNode }) {
 
   // Gate lifted — full portal accessible
   if (status?.hasActiveEngagement) return <>{children}</>;
+
+  // Credentials not yet submitted — must complete App Registration first
+  if (!status?.hasCredentials) {
+    return <Redirect to="/portal/onboarding/wizard" />;
+  }
 
   // Results ready (scan done + no active quick_win project) → show results
   if (status?.wizardResultsReady) {
@@ -249,10 +297,10 @@ function Router() {
         <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/diagnostic/:projectId">
-        <RequireAuth role="client"><PortalDiagnostic /></RequireAuth>
+        <RequireAuth role="client"><RequireCredentials><PortalDiagnostic /></RequireCredentials></RequireAuth>
       </Route>
       <Route path="/portal/diagnostic">
-        <RequireAuth role="client"><PortalDiagnostic /></RequireAuth>
+        <RequireAuth role="client"><RequireCredentials><PortalDiagnostic /></RequireCredentials></RequireAuth>
       </Route>
       <Route path="/portal/presentation/:id">
         <PortalPresentation />
