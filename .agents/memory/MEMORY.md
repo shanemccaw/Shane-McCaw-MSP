@@ -18,3 +18,4 @@
 - [Workflow executor template resolution](workflow-executor-template-resolution.md) — interp() always stringifies arrays/objects; use resolveExprNative() when a field must preserve native type (e.g. run_workflow inputMapping)
 - [Run Workflow node child payload isolation](run-workflow-child-payload-isolation.md) — child workflow payload starts clean (not spread from parent); only inputMapping keys + _parentRunId/_depth are passed through
 - [run_workflow/kanban-auto-fire treat empty child graphs as success](workflow-empty-child-success.md) — a draft sub-workflow with no real action node "completes" instantly, making callers wired into it look auto-completed
+- [Stale published workflow version](workflow-stale-published-version.md) — published-version lookups need ORDER BY versionNumber DESC; archive-old+publish-new must be one DB transaction

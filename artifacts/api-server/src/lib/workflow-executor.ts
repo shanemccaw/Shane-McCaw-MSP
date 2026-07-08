@@ -1993,9 +1993,15 @@ async function executeNode(
             subPayload._parentRunId = runId;
             subPayload._depth = currentDepth + 1;
 
+            // ORDER BY versionNumber DESC guards against ever picking a stale
+            // published row — e.g. if the archive-old/publish-new pair of
+            // updates in the publish endpoint is not atomic, or any other edge
+            // case leaves more than one version momentarily marked
+            // "published" for this definition, the latest one always wins.
             const subVersionRows = await db.select()
               .from(wfVersionsTable)
               .where(and(eq(wfVersionsTable.definitionId, subDefId), eq(wfVersionsTable.status, "published")))
+              .orderBy(desc(wfVersionsTable.versionNumber))
               .limit(1);
             const subVersion = subVersionRows[0];
 
@@ -7465,7 +7471,7 @@ export async function fireWorkflowForDefinition(
       : await db.select().from(wfVersionsTable).where(and(
           eq(wfVersionsTable.definitionId, definitionId),
           eq(wfVersionsTable.status, "published"),
-        )).limit(1);
+        )).orderBy(desc(wfVersionsTable.versionNumber)).limit(1);
     const version = versionRows[0];
     if (!version) { logger.warn({ definitionId, versionId: opts.versionId }, "wf-executor: no version found"); return null; }
 

@@ -33,7 +33,7 @@ import {
   wfVersionsTable,
   wfRunsTable,
 } from "@workspace/db";
-import { eq, and, asc, inArray, isNotNull, sql, count } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
@@ -1137,6 +1137,7 @@ async function fireRunWorkflowCard(clientUserId: number, card: RunWorkflowCard):
       eq(wfVersionsTable.definitionId, card.runWorkflow.workflowId),
       eq(wfVersionsTable.status, "published"),
     ))
+    .orderBy(desc(wfVersionsTable.versionNumber))
     .limit(1);
 
   if (!versionRow) {

@@ -538,16 +538,23 @@ router.post("/admin/workflows/definitions/:id/versions/:vid/publish", requireAdm
   const body = z.object({ label: z.string().optional() }).safeParse(req.body);
 
   try {
-    await db
-      .update(wfVersionsTable)
-      .set({ status: "archived" })
-      .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
+    // Archive-old + publish-new run in a single transaction so the two updates
+    // are atomic — otherwise a concurrent read (e.g. run_workflow resolving
+    // the "published" version for this definition) could observe zero or two
+    // published rows mid-flight and pick a stale version.
+    const published = await db.transaction(async (tx) => {
+      await tx
+        .update(wfVersionsTable)
+        .set({ status: "archived" })
+        .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
 
-    const [published] = await db
-      .update(wfVersionsTable)
-      .set({ status: "published", label: body.success ? (body.data.label ?? undefined) : undefined, updatedAt: new Date() })
-      .where(eq(wfVersionsTable.id, vid))
-      .returning();
+      const [row] = await tx
+        .update(wfVersionsTable)
+        .set({ status: "published", label: body.success ? (body.data.label ?? undefined) : undefined, updatedAt: new Date() })
+        .where(eq(wfVersionsTable.id, vid))
+        .returning();
+      return row;
+    });
 
     if (!published) return sendError(res, 404, "Version not found");
     res.json(published);
@@ -1086,18 +1093,21 @@ router.post("/admin/workflows/definitions/:id/revert-to-default", requireAdmin, 
 
     if (!v1) return sendError(res, 404, "No default version (v1) found for this workflow");
 
-    // Archive currently published version
-    await db
-      .update(wfVersionsTable)
-      .set({ status: "archived" })
-      .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
+    // Archive-old + publish-new in a single transaction (see publish endpoint
+    // above for why this must be atomic).
+    const published = await db.transaction(async (tx) => {
+      await tx
+        .update(wfVersionsTable)
+        .set({ status: "archived" })
+        .where(and(eq(wfVersionsTable.definitionId, defId), eq(wfVersionsTable.status, "published")));
 
-    // Publish v1
-    const [published] = await db
-      .update(wfVersionsTable)
-      .set({ status: "published" })
-      .where(eq(wfVersionsTable.id, v1.id))
-      .returning();
+      const [row] = await tx
+        .update(wfVersionsTable)
+        .set({ status: "published" })
+        .where(eq(wfVersionsTable.id, v1.id))
+        .returning();
+      return row;
+    });
 
     req.log.info({ defId, versionId: v1.id }, "workflows: reverted to default v1");
     res.json(published);
