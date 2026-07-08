@@ -20,7 +20,7 @@ export function JsonViewerDialog({ open, onOpenChange, initialJson, title }: Jso
             {title ?? "JSON Viewer"}
           </DialogTitle>
         </DialogHeader>
-        <div className="flex-1 min-h-0 overflow-hidden" key={JSON.stringify(initialJson)}>
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col" key={JSON.stringify(initialJson)}>
           <JsonViewerContent initialJson={initialJson} />
         </div>
       </DialogContent>
