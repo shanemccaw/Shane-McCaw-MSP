@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Copy, Check } from "lucide-react";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
@@ -537,24 +538,14 @@ export function JsonBlock({ data, label }: { data: Record<string, unknown>; labe
     ? Object.fromEntries(Object.entries(data).filter(([k]) => k !== "htmlContent"))
     : data;
 
-  const [copied, setCopied] = useState(false);
-  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleCopy = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    navigator.clipboard.writeText(JSON.stringify(data, null, 2)).then(() => {
-      setCopied(true);
-      if (copyTimer.current) clearTimeout(copyTimer.current);
-      copyTimer.current = setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {});
-  }, [data]);
+  const [copied, handleCopy] = useCopyToClipboard();
 
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
         <button
-          onClick={handleCopy}
+          onClick={(e) => { e.stopPropagation(); handleCopy(JSON.stringify(data, null, 2)); }}
           title={copied ? "Copied!" : "Copy JSON"}
           className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
         >
@@ -581,17 +572,10 @@ export function JsonBlock({ data, label }: { data: Record<string, unknown>; labe
  */
 function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
   const [, navigate] = useLocation();
-  const [copied, setCopied] = useState(false);
+  const [copied, handleCopy] = useCopyToClipboard();
   const signals     = Array.isArray(output.signals) ? (output.signals as string[]) : [];
   const hasSignals  = Boolean(output.hasSignals);
   const signalCount = typeof output.signalCount === "number" ? (output.signalCount as number) : signals.length;
-
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(JSON.stringify(output, null, 2)).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [output]);
 
   return (
     <div className="space-y-2">
@@ -599,7 +583,7 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
       <div className="flex items-center gap-2">
         <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider flex-1">Signals Output</p>
         <button
-          onClick={handleCopy}
+          onClick={() => handleCopy(JSON.stringify(output, null, 2))}
           title={copied ? "Copied!" : "Copy JSON"}
           className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
         >
@@ -670,18 +654,11 @@ function TenantSignalsPanel({ output }: { output: Record<string, unknown> }) {
  * AI outcome sentence and collapsible raw output.
  */
 function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, handleCopy] = useCopyToClipboard();
   const passed      = typeof output.passed === "boolean" ? (output.passed as boolean) : null;
   const outcome     = typeof output.outcome === "string" ? (output.outcome as string) : null;
   const sensitivity = typeof output.sensitivity === "string" ? (output.sensitivity as string) : null;
   const sensitivityLabel = sensitivity ? (SENSITIVITY_LABELS[sensitivity] ?? sensitivity) : null;
-
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(JSON.stringify(output, null, 2)).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [output]);
 
   return (
     <div className="space-y-2">
@@ -691,7 +668,7 @@ function ScriptCheckOutputPanel({ output }: { output: Record<string, unknown> })
           Script Output Check{sensitivityLabel ? ` (${sensitivityLabel})` : ""}
         </p>
         <button
-          onClick={handleCopy}
+          onClick={() => handleCopy(JSON.stringify(output, null, 2))}
           title={copied ? "Copied!" : "Copy JSON"}
           className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
         >
