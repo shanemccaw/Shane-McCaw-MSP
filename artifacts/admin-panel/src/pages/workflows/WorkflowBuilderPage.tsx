@@ -8765,7 +8765,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | "runoutput" | "errors" | "system" | "aioutput" | null>(() => {
+  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(() => {
     try {
       const saved = localStorage.getItem("wf-panel-tab");
       // Only restore persistent tabs; action-triggered ones should not auto-open on load
@@ -8872,11 +8872,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [splitRatio, setSplitRatio] = useState<number>(() => {
     try { return Math.max(30, Math.min(80, parseInt(localStorage.getItem("wf-split-ratio") ?? "60", 10))); } catch { return 60; }
   });
-  const [splitPaneTab, setSplitPaneTab] = useState<"runoutput" | "errors" | "system" | "aioutput">("runoutput");
+  const [splitPaneTab, setSplitPaneTab] = useState<"runoutput" | "activity">("runoutput");
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
-  const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
-  const preSplitReplayTabRef = useRef<"runoutput" | "errors" | "system" | "aioutput" | null>(null);
-  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata" | "runoutput" | "errors" | "system" | "aioutput">(
+  const preSplitReplayTabRef = useRef<"runoutput" | "activity" | null>(null);
+  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">(
     (() => {
       try {
         const saved = localStorage.getItem("wf-panel-tab");
@@ -9630,6 +9629,19 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   // ── Inspect mode (overlay run results on canvas) ──────────────────────────
   const [inspectMode, setInspectMode] = useState(false);
   const [inspectRunId, setInspectRunId] = useState<number | null>(null);
+
+  // Recent runs for the Activity tab in split view
+  const { data: activityRuns = [] } = useQuery<Array<{ id: number; status: string; startedAt: string; finishedAt?: string | null; durationMs?: number | null }>>({
+    queryKey: ["wf-runs-activity", defId],
+    queryFn: async () => {
+      const res = await fetchWithAuth(`/api/admin/workflows/runs?definitionId=${defId}&limit=10`);
+      if (!res.ok) return [];
+      const body = await res.json() as { runs?: unknown[] } | unknown[];
+      return (Array.isArray(body) ? body : ((body as { runs?: unknown[] })?.runs ?? [])) as Array<{ id: number; status: string; startedAt: string; finishedAt?: string | null; durationMs?: number | null }>;
+    },
+    enabled: splitViewActive && splitPaneTab === "activity",
+    refetchInterval: splitViewActive && splitPaneTab === "activity" ? 15000 : false,
+  });
 
   // Auto-load the most recent run when entering inspect mode
   // NOTE: /runs returns { runs, total } — must extract .runs
@@ -10740,7 +10752,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 libraryCategories={LIBRARY_CATEGORIES}
                 allLibraryNodes={ALL_LIBRARY_NODES}
                 nodeIdCounter={nodeIdCounter}
-                onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab(prev => prev !== null ? "node" : prev); }}
+                onSelectNode={id => { setSelectedNodeId(id); if (id) setRightPanelTab("node"); }}
                 onGraphChange={handleGraphChange}
                 onDuplicateNode={duplicateNode}
                 triggerCategories={canvasTriggerCategories}
@@ -10882,9 +10894,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                 <div className="flex-shrink-0 flex items-center gap-0.5 px-3 py-1 border-b border-[#30363D] bg-[#161B22]">
                   {([
                     { key: "runoutput" as const, label: "Run Output" },
-                    { key: "errors" as const, label: "Errors" },
-                    { key: "system" as const, label: "System" },
-                    { key: "aioutput" as const, label: "AI Output" },
+                    { key: "activity" as const, label: "Activity" },
                   ]).map(tab => (
                     <button
                       key={tab.key}
@@ -10894,41 +10904,19 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       }`}
                     >
                       {tab.label}
-                      {tab.key === "errors" && workflowIssues.length > 0 && (
-                        <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold ${workflowIssues.some(i => i.severity === "high") ? "bg-red-500/80 text-white" : "bg-amber-500/80 text-white"}`}>
-                          {workflowIssues.length}
-                        </span>
-                      )}
-                      {tab.key === "system" && systemLog.length > 0 && (
-                        <span className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[8px] font-bold bg-[#30363D] text-[#7D8590]">
-                          {systemLog.length > 99 ? "99+" : systemLog.length}
-                        </span>
-                      )}
                     </button>
                   ))}
-                  <div className="ml-auto flex items-center gap-2">
-                    {(splitPaneTab === "system" || splitPaneTab === "aioutput") && (
-                      <button
-                        onClick={() => {
-                          if (splitPaneTab === "system") setSystemLog([]);
-                          else if (splitPaneTab === "aioutput") setAiOutputLog([]);
-                        }}
-                        className="text-[10px] text-[#484F58] hover:text-[#7D8590] transition-colors"
-                        title="Clear log"
-                      >
-                        Clear
-                      </button>
-                    )}
+                  <div className="ml-auto flex items-center gap-1">
                     <button
                       onClick={() => setSplitViewActive(false)}
                       className="text-[#484F58] hover:text-[#E6EDF3] text-lg leading-none px-1 transition-colors"
-                      title="Close split view (Ctrl+\\)"
+                      title="Close split view (Ctrl+\)"
                     >
                       ×
                     </button>
                   </div>
                 </div>
-                {/* Split pane console content */}
+                {/* Split pane content */}
                 <div className="flex-1 overflow-y-auto text-[11px] font-mono">
                   {splitPaneTab === "runoutput" ? (
                     lastTestRunId == null ? (
@@ -10946,77 +10934,65 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                         sharedQueryKey={liveRunState ? ["wf-test-run-progress", lastTestRunId] : undefined}
                       />
                     )
-                  ) : splitPaneTab === "errors" ? (
-                    <div className="p-3 space-y-1.5 font-sans">
-                      {workflowIssues.length === 0 ? (
-                        <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
-                          <span className="text-emerald-400 text-base">✓</span>
-                          <span className="text-xs">No issues found in this workflow</span>
-                        </div>
-                      ) : workflowIssues.map((issue, i) => (
-                        <div
-                          key={i}
-                          onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); } }}
-                          className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
-                            issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
-                            issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
-                            "border-[#30363D] bg-[#0D1117]"
-                          }`}
-                        >
-                          <span className={`flex-shrink-0 mt-0.5 font-sans ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
-                            {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
-                          </span>
-                          <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
-                            {issue.message}
-                          </span>
-                          {issue.nodeId && (
-                            <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : splitPaneTab === "system" ? (
-                    <div className="p-3 space-y-1">
-                      {systemLog.length === 0 ? (
-                        <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
-                      ) : [...systemLog].reverse().map(entry => (
-                        <div key={entry.id} className="flex items-start gap-2">
-                          <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
-                            {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
-                          </span>
-                          <span className="text-[#484F58] flex-shrink-0">
-                            {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                          </span>
-                          <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
-                            {entry.message}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
                   ) : (
-                    <div className="p-3 space-y-1">
-                      {aiOutputLog.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
-                          <span className="text-2xl">🤖</span>
-                          <p className="text-xs text-center">AI generation output appears here.<br />Open <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
-                        </div>
-                      ) : [...aiOutputLog].reverse().map(entry => (
-                        <div key={entry.id} className="flex items-start gap-2">
-                          <span className="text-[#484F58] flex-shrink-0">
-                            {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                          </span>
-                          <span className={
-                            entry.line.startsWith("✓") ? "text-emerald-300" :
-                            entry.line.startsWith("✕") ? "text-red-300" :
-                            entry.line.startsWith("⚠") ? "text-amber-300" :
-                            entry.line.startsWith("💡") ? "text-violet-300" :
-                            entry.line.startsWith("🤖") ? "text-[#0078D4]" :
-                            "text-[#7D8590]"
-                          }>
-                            {entry.line}
-                          </span>
-                        </div>
-                      ))}
+                    /* Activity tab — recent runs list */
+                    <div className="flex flex-col h-full font-sans">
+                      <div className="px-4 pt-4 pb-2 flex-shrink-0">
+                        <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Recent Runs</p>
+                      </div>
+                      <div className="flex-1 overflow-y-auto px-3 space-y-1 pb-3">
+                        {activityRuns.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-12 gap-2 text-[#484F58]">
+                            <svg className="w-6 h-6 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-xs text-center">No runs yet</p>
+                          </div>
+                        ) : activityRuns.map(run => {
+                          const isOk = run.status === "completed" || run.status === "success";
+                          const isFail = run.status === "failed" || run.status === "error";
+                          const isRunning = run.status === "running" || run.status === "in_progress";
+                          const dotColor = isOk ? "bg-emerald-400" : isFail ? "bg-red-400" : isRunning ? "bg-blue-400 animate-pulse" : "bg-[#484F58]";
+                          const relTs = (() => {
+                            const diff = Date.now() - new Date(run.startedAt).getTime();
+                            if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+                            if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+                            if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+                            return `${Math.floor(diff / 86400000)}d ago`;
+                          })();
+                          const dur = run.durationMs != null
+                            ? run.durationMs >= 1000 ? `${(run.durationMs / 1000).toFixed(1)}s` : `${run.durationMs}ms`
+                            : run.finishedAt ? (() => {
+                              const ms = new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime();
+                              return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+                            })() : null;
+                          return (
+                            <button
+                              key={run.id}
+                              onClick={() => navigate(`/workflows/runs/${run.id}`)}
+                              className="w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg hover:bg-[#1C2128] transition-colors text-left group"
+                            >
+                              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs text-[#E6EDF3] capitalize">{run.status}</p>
+                                <p className="text-[9px] text-[#484F58]">{relTs}</p>
+                              </div>
+                              {dur && <span className="text-[9px] text-[#484F58] flex-shrink-0">{dur}</span>}
+                              <svg className="w-3 h-3 text-[#30363D] group-hover:text-[#7D8590] flex-shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex-shrink-0 border-t border-[#1C2128] px-4 py-3">
+                        <button
+                          onClick={() => navigate(`/workflows/runs?definitionId=${defId}`)}
+                          className="text-[11px] text-[#0078D4] hover:text-[#0086F0] transition-colors"
+                        >
+                          View all runs →
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -11041,14 +11017,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               {([
                 { id: "node" as const, label: "Node Config" },
                 { id: "testrun" as const, label: "Test Run" },
-                { id: "runoutput" as const, label: "Run Output" },
-                { id: "errors" as const, label: workflowIssues.length > 0 ? `Errors (${workflowIssues.length})` : "Errors" },
-                { id: "system" as const, label: "System" },
-                { id: "aioutput" as const, label: "AI Output" },
                 { id: "metadata" as const, label: "Metadata" },
                 { id: "settings" as const, label: "Settings" },
                 { id: "history" as const, label: `History (${versions.length})` },
-              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history" | "runoutput" | "errors" | "system" | "aioutput"; label: string }[]).map(tab => (
+              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history"; label: string }[]).map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setRightPanelTab(tab.id)}
@@ -11123,7 +11095,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   edges={edges}
                   onClose={() => setRightPanelTab(null)}
                   trigger={testRunTrigger}
-                  onRunStarted={(id) => { setLastTestRunId(id); if (rightPanelTab !== null) { setRightPanelTab("runoutput"); } else { setBottomDockOpen(true); setBottomDockTab("runoutput"); } }}
+                  onRunStarted={(id) => { setLastTestRunId(id); setBottomDockOpen(true); setBottomDockTab("runoutput"); }}
                   onLiveRunUpdate={(state) => { setLiveRunState(state); if (state) setReplayMode(false); }}
                 />
               ) : rightPanelTab === "metadata" ? (
@@ -11483,92 +11455,6 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                       </div>
                     ))}
                   </div>
-                </div>
-              ) : rightPanelTab === "runoutput" ? (
-                <div className="flex-1 overflow-y-auto text-[11px] font-mono">
-                  {lastTestRunId == null ? (
-                    <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
-                      <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
-                    </div>
-                  ) : (
-                    <RunOutputDock runId={lastTestRunId} />
-                  )}
-                </div>
-              ) : rightPanelTab === "errors" ? (
-                <div className="overflow-y-auto p-3 space-y-1.5 font-sans text-[11px]">
-                  {workflowIssues.length === 0 ? (
-                    <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
-                      <span className="text-emerald-400 text-base">✓</span>
-                      <span className="text-xs">No issues found in this workflow</span>
-                    </div>
-                  ) : workflowIssues.map((issue, i) => (
-                    <div
-                      key={i}
-                      onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); } }}
-                      className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
-                        issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
-                        issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
-                        "border-[#30363D] bg-[#0D1117]"
-                      }`}
-                    >
-                      <span className={`flex-shrink-0 mt-0.5 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
-                        {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
-                      </span>
-                      <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
-                        {issue.message}
-                      </span>
-                      {issue.nodeId && (
-                        <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : rightPanelTab === "system" ? (
-                <div className="overflow-y-auto p-3 space-y-1 text-[11px] font-mono">
-                  {systemLog.length === 0 ? (
-                    <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
-                  ) : [...systemLog].reverse().map(entry => (
-                    <div key={entry.id} className="flex items-start gap-2">
-                      <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
-                        {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
-                      </span>
-                      <span className="text-[#484F58] flex-shrink-0 text-[10px]">
-                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
-                        {entry.message}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : rightPanelTab === "aioutput" ? (
-                <div className="overflow-y-auto p-3 space-y-1 text-[11px] font-mono">
-                  {aiOutputLog.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
-                      <span className="text-2xl">🤖</span>
-                      <p className="text-xs text-center">AI generation output appears here.<br />Use <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
-                    </div>
-                  ) : [...aiOutputLog].reverse().map(entry => (
-                    <div key={entry.id} className="flex items-start gap-2">
-                      <span className="text-[#484F58] flex-shrink-0 text-[10px]">
-                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-                      </span>
-                      <span className={
-                        entry.line.startsWith("✓") ? "text-emerald-300" :
-                        entry.line.startsWith("✕") ? "text-red-300" :
-                        entry.line.startsWith("⚠") ? "text-amber-300" :
-                        entry.line.startsWith("💡") ? "text-violet-300" :
-                        entry.line.startsWith("🤖") ? "text-[#0078D4]" :
-                        "text-[#7D8590]"
-                      }>
-                        {entry.line}
-                      </span>
-                    </div>
-                  ))}
                 </div>
               ) : null}
             </div>
