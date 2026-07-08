@@ -1489,8 +1489,9 @@ async function executeNode(
             nodeError = true;
             output = { error: "Azure Automation is not configured — add the required secrets" };
           } else {
-            // Resolve runbook name from ID when only the ID is supplied.
-            if (!runbookName && runbookId) {
+            // Runbook ID takes priority over name when both are set (matches
+            // the "overrides name" hint shown in the builder UI).
+            if (runbookId) {
               try {
                 runbookName = await resolveRunbookNameById(runbookId);
               } catch (err) {

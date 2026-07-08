@@ -3363,7 +3363,14 @@ function NodeConfigPanel({
         {/* ── Promoted Azure nodes ──────────────────────────── */}
 
         {nodeType === "execute_runbook" && (() => {
-          const isMulti = !!((node.data.runbooks as string | undefined)?.trim());
+          // Explicit mode flag — falls back to the "runbooks has content" heuristic
+          // for nodes saved before runbookMode existed, so old data still opens
+          // in the right tab. Deriving isMulti purely from `runbooks` being
+          // non-empty meant clicking "Multiple" on a fresh node (empty
+          // runbookName) produced runbooks="" and silently failed to switch tabs.
+          const isMulti = node.data.runbookMode
+            ? node.data.runbookMode === "multiple"
+            : !!((node.data.runbooks as string | undefined)?.trim());
           return (
           <>
             <div className="space-y-1.5">
@@ -3375,10 +3382,10 @@ function NodeConfigPanel({
                     type="button"
                     onClick={() => {
                       if (mode === "Multiple" && !isMulti) {
-                        onChange(node.id, { ...node.data, runbooks: (node.data.runbookName as string) ?? "", runbookName: "", runbookId: "" });
+                        onChange(node.id, { ...node.data, runbookMode: "multiple", runbooks: (node.data.runbookName as string) ?? "", runbookName: "", runbookId: "" });
                         setRunbookManualMode(false);
                       } else if (mode === "Single" && isMulti) {
-                        onChange(node.id, { ...node.data, runbooks: "", runbookName: "", runbookId: "" });
+                        onChange(node.id, { ...node.data, runbookMode: "single", runbooks: "", runbookName: "", runbookId: "" });
                       }
                     }}
                     className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
@@ -3426,6 +3433,14 @@ function NodeConfigPanel({
                     )}
                   </>
                 )}
+                <PayloadField
+                  label="Runbook ID (optional — overrides name)"
+                  value={(node.data.runbookId as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, runbookId: v })}
+                  placeholder="{{runbookId}} or a literal Automation runbook ID"
+                  ancestorOutputs={ancestorOutputs}
+                  hint="If set, the runbook is resolved by ID instead of by the name above."
+                />
               </div>
             ) : (
               <>
