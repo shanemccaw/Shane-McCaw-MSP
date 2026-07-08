@@ -48,6 +48,7 @@ export interface ServiceRow {
   workflowTemplateId: number | null;
   overviewPdfKey: string | null;
   overviewPdfGeneratedAt: string | null;
+  requiredAppPermissions: { scope: string; reason: string }[] | null;
 }
 
 export type ServiceUpdate = Omit<ServiceRow, "id" | "createdAt" | "orderWorkflow" | "overviewPdfKey" | "overviewPdfGeneratedAt">;

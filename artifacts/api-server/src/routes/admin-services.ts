@@ -70,6 +70,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       billingType, isPublic, visibility, slug,
       serviceType, tagline, targetAudience, inclusions, features, badge,
       highlighted, hoursPerMonth, iconName, pageHref, sortOrder, workflowTemplateId, tier,
+      requiredAppPermissions,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -107,6 +108,9 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         sortOrder: sortOrder != null ? Number(sortOrder) : 0,
         tier: (tier as string | null) ?? null,
         workflowTemplateId: workflowTemplateId != null ? Number(workflowTemplateId) : null,
+        requiredAppPermissions: Array.isArray(requiredAppPermissions)
+          ? (requiredAppPermissions as { scope: string; reason: string }[])
+          : null,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))

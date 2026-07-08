@@ -124,6 +124,9 @@ export const servicesTable = pgTable("services", {
   // Marketing / discovery fields
   bestFor: text("best_for"),
   triggers: jsonb("triggers").$type<string[]>(),
+  // App Registration permissions required from the client before automation can run.
+  // Shown in the contract agreement as a numbered section the client must acknowledge.
+  requiredAppPermissions: jsonb("required_app_permissions").$type<{ scope: string; reason: string }[]>(),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

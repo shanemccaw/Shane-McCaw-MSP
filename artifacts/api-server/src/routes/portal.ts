@@ -694,6 +694,21 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       }
     };
 
+    // 0. Direct service-level required app permissions (fastest path — no joins needed).
+    //    Set via the Service Editor "App Registration Permissions" section.
+    {
+      const svcRows = await db
+        .select({ perms: servicesTable.requiredAppPermissions })
+        .from(servicesTable)
+        .where(inArray(servicesTable.id, serviceIds));
+      for (const row of svcRows) {
+        if (!row.perms) continue;
+        for (const p of row.perms) {
+          if (p?.scope && !seen.has(p.scope)) seen.set(p.scope, p.reason ?? "");
+        }
+      }
+    }
+
     // 1. Package-level permissions (legacy fallback)
     for (const row of pkgRows) {
       addPerms(row.permissions as RawPerms);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -78,6 +78,7 @@ const serviceSchema = z.object({
   deliverables: z.array(z.string()),
   inclusions: z.array(z.string()),
   features: z.array(z.string()),
+  requiredAppPermissions: z.array(z.object({ scope: z.string(), reason: z.string() })),
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
@@ -298,6 +299,7 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     deliverables: service?.deliverables ?? [],
     inclusions: service?.inclusions ?? [],
     features: service?.features ?? [],
+    requiredAppPermissions: (service?.requiredAppPermissions as { scope: string; reason: string }[] | undefined) ?? [],
   }), [service]);
 
   const { register, handleSubmit, control, watch, reset, formState: { errors, isDirty } } = useForm<ServiceFormValues>({
@@ -308,6 +310,7 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
   useEffect(() => { if (service) reset(defaultValues); }, [service, reset, defaultValues]);
 
   const formWatch = watch();
+  const { fields: appPermFields, append: appendAppPerm, remove: removeAppPerm } = useFieldArray({ control, name: "requiredAppPermissions" });
 
   useEffect(() => {
     void (async () => {
@@ -376,6 +379,7 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
           deliverables: values.deliverables.length > 0 ? values.deliverables : null,
           inclusions: values.inclusions.length > 0 ? values.inclusions : null,
           features: values.features.length > 0 ? values.features : null,
+          requiredAppPermissions: values.requiredAppPermissions.length > 0 ? values.requiredAppPermissions : null,
         },
       });
       toast({ title: "Service saved" });
@@ -989,6 +993,48 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
                   {scriptSetSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}Add
                 </button>
               </div>
+            </div>
+
+            {/* App Registration Permissions */}
+            <div className="bg-[#161B22] rounded-xl border border-amber-600/30 p-6 mt-5">
+              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">App Registration Permissions</p>
+              <p className="text-xs text-[#7D8590] mb-4">These appear in the client contract as permissions the client must grant in their Azure AD App Registration. Add one row per permission scope.</p>
+              {appPermFields.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  <div className="grid grid-cols-[1fr_1.5fr_auto] gap-2 mb-1">
+                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider px-1">Scope</p>
+                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider px-1">Reason (shown to client)</p>
+                    <span />
+                  </div>
+                  {appPermFields.map((field, idx) => (
+                    <div key={field.id} className="grid grid-cols-[1fr_1.5fr_auto] gap-2 items-center">
+                      <input
+                        {...register(`requiredAppPermissions.${idx}.scope`)}
+                        placeholder="e.g. User.Read.All"
+                        className="border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] font-mono"
+                      />
+                      <input
+                        {...register(`requiredAppPermissions.${idx}.reason`)}
+                        placeholder="e.g. Enumerate users and licenses"
+                        className="border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58]"
+                      />
+                      <button type="button" onClick={() => removeAppPerm(idx)} className="text-[#484F58] hover:text-red-400 transition-colors p-1">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => appendAppPerm({ scope: "", reason: "" })}
+                className="flex items-center gap-1.5 text-xs bg-amber-600/20 text-amber-400 border border-amber-600/30 px-3 py-2 rounded-lg hover:bg-amber-600/30 transition-colors"
+              >
+                <Plus className="w-3 h-3" />Add Permission
+              </button>
+              {appPermFields.length > 0 && (
+                <p className="text-[10px] text-amber-400/60 mt-2">Click Save to persist changes to the contract.</p>
+              )}
             </div>
 
             {/* Required Scripts (for App Registration permissions on agreement) */}
