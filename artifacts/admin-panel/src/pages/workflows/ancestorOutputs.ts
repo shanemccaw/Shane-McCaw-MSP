@@ -111,6 +111,58 @@ function nestedForeachBodyIds(
   return nested;
 }
 
+// ── resolveItemSubfields ──────────────────────────────────────────────────────
+
+/**
+ * Derives the expanded sub-field list for a ForEach node's loop variable.
+ *
+ * Priority:
+ *  1. manualItemFields (declared by user on the ForEach config panel)
+ *  2. Bracket-notation entries in nodeOutputs, e.g. `flatTasks[].linkedWorkflowId`
+ *  3. Empty array (graceful fallback for unknown schemas)
+ *
+ * Returns keys as `item.{subfield}` or `{alias}.{subfield}` when itemAlias is set.
+ */
+export function resolveItemSubfields(
+  arrayPath: string,
+  nodes: AncestorNode[],
+  nodeOutputs: NodeOutputRegistry,
+  itemAlias?: string,
+  manualItemFields?: Array<{ key: string; label: string }>,
+): Array<{ key: string; label: string }> {
+  const prefix = itemAlias?.trim() || "item";
+
+  if (manualItemFields && manualItemFields.length > 0) {
+    return manualItemFields
+      .filter(f => f.key.trim())
+      .map(f => ({ key: `${prefix}.${f.key.trim()}`, label: f.label || f.key }));
+  }
+
+  // Parse {{steps.nodeId.fieldName}} from arrayPath
+  const match = (arrayPath ?? "").match(/\{\{steps\.([^.]+)\.([^}]+)\}\}/);
+  if (!match) return [];
+
+  const [, sourceNodeId, fieldName] = match;
+
+  const sourceNode = nodes.find(n => n.id === sourceNodeId);
+  if (!sourceNode) return [];
+
+  const srcType = (sourceNode.data.nodeType as string) ?? "action";
+  const srcActionType = sourceNode.data.actionType as string | undefined;
+  const registryKey = srcActionType || srcType;
+
+  const outputs = nodeOutputs[registryKey] ?? [];
+  const bracketPrefix = `${fieldName}[].`;
+  const subfields = outputs.filter(o => o.key.startsWith(bracketPrefix));
+
+  if (subfields.length === 0) return [];
+
+  return subfields.map(o => ({
+    key: `${prefix}.${o.key.slice(bracketPrefix.length)}`,
+    label: o.label,
+  }));
+}
+
 // ── getAncestorOutputs ────────────────────────────────────────────────────────
 
 /**
@@ -296,6 +348,24 @@ export function getAncestorOutputs(
                 });
               }
             }
+          }
+
+          // Expand item sub-fields from the array source so loop body nodes
+          // see {{item.fieldName}} chips rather than just {{item}}.
+          const arrayPath = (node.data.arrayPath as string) ?? "";
+          const itemAlias = (node.data.itemAlias as string | undefined)?.trim();
+          const manualItemFields = node.data.itemFields as
+            | Array<{ key: string; label: string }>
+            | undefined;
+          const subfields = resolveItemSubfields(
+            arrayPath,
+            nodes,
+            nodeOutputs,
+            itemAlias,
+            manualItemFields,
+          );
+          if (subfields.length > 0) {
+            outputs = [...outputs, ...subfields];
           }
         }
       }

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import React, { useState, useCallback, useEffect, useRef, useMemo, useContext, createContext } from "react";
 import { createPortal } from "react-dom";
 import { playSoundFromParams, type SoundParams } from "@/lib/playSound";
 import {
@@ -20,9 +20,34 @@ import { AssetPickerModal } from "@/components/AssetPickerModal";
 import RunDetailContent, { type WfRunDetail } from "./RunDetailContent";
 import type { AncestorGroup } from "./ancestorOutputs";
 import { getAncestorOutputs as _getAncestorOutputs } from "./ancestorOutputs";
+import { VariableChipPanel } from "./VariableChipPanel";
 import { scoreWorkflow } from "./workflowHealth";
 import { PATTERNS } from "./patternRegistry";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+
+// ── Focus tracker context ─────────────────────────────────────────────────────
+// Allows VariableChipPanel to insert tokens into whichever PayloadField /
+// ExpressionField was most recently focused — without threading props through
+// every call site.
+
+interface FocusedFieldInfo {
+  el: HTMLInputElement | HTMLTextAreaElement;
+  /** React state setter — called with the new string value after insertion. */
+  setValue: (v: string) => void;
+}
+
+interface FocusTrackerCtx {
+  /** Called on `onFocus` — always overrides the current focus target. */
+  setFocus: (info: FocusedFieldInfo) => void;
+  /**
+   * Called on mount — registers a field as the default append target.
+   * Only takes effect when no default target has been set yet (first mount wins).
+   * Cleared on node change.
+   */
+  setDefault: (info: FocusedFieldInfo) => void;
+}
+
+const FocusTrackerContext = createContext<FocusTrackerCtx | null>(null);
 
 // ── Node type colours ─────────────────────────────────────────────────────────
 
@@ -1352,12 +1377,17 @@ function PayloadField({
   ancestorOutputs: AncestorGroup[];
   hint?: string;
 }) {
+  const focusCtx = useContext(FocusTrackerContext);
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  // Register as default append target on mount (first-mounted field wins)
+  useEffect(() => {
+    if (inputRef.current) focusCtx?.setDefault({ el: inputRef.current, setValue: onChange });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerPos, setPickerPos] = useState<{ top: number; right: number } | null>(null);
   const [suggest, setSuggest] = useState<{ openAt: number; filter: string } | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
-  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const pickerBtnRef = useRef<HTMLButtonElement>(null);
 
   // Flat list of all tokens across ancestor groups
@@ -1544,6 +1574,7 @@ function PayloadField({
             onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             rows={3}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
@@ -1556,6 +1587,7 @@ function PayloadField({
             onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
           />
@@ -1769,13 +1801,18 @@ function ExpressionField({
   expressionType?: "boolean" | "value";
   fetchWithAuth: (url: string, init?: RequestInit) => Promise<Response>;
 }) {
+  const focusCtx = useContext(FocusTrackerContext);
+  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
+  // Register as default append target on mount (first-mounted ExpressionField wins as fallback)
+  useEffect(() => {
+    if (inputRef.current) focusCtx?.setDefault({ el: inputRef.current, setValue: onChange });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // ── Variable picker state (mirrors PayloadField) ──
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [pickerPos, setPickerPos] = useState<{ top: number; right: number } | null>(null);
   const [suggest, setSuggest] = useState<{ openAt: number; filter: string } | null>(null);
   const [activeIdx, setActiveIdx] = useState(0);
-  const inputRef = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const pickerBtnRef = useRef<HTMLButtonElement>(null);
 
   // ── Validator state ──
@@ -2069,6 +2106,7 @@ function ExpressionField({
             onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             rows={3}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-none font-mono"
@@ -2081,6 +2119,7 @@ function ExpressionField({
             onChange={e => handleChange(e.target.value, e.target.selectionStart ?? e.target.value.length)}
             onKeyDown={handleKeyDown}
             onBlur={() => setTimeout(() => setSuggest(null), 150)}
+            onFocus={() => { if (inputRef.current) focusCtx?.setFocus({ el: inputRef.current, setValue: onChange }); }}
             placeholder={placeholder}
             className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
           />
@@ -2421,6 +2460,157 @@ function PlaySoundPanel({
 
 // ── Config panel ──────────────────────────────────────────────────────────────
 
+// ── ForeachItemFields ─────────────────────────────────────────────────────────
+// "Declare item fields" collapsible section inside the ForEach config panel.
+// Lets users name the sub-fields of a dynamically-shaped array (e.g. SQL rows,
+// webhook payloads) so they appear as {{item.fieldName}} chips in the loop body.
+
+interface ItemField { id: string; key: string; label: string; }
+
+function ForeachItemFields({
+  node,
+  onChange,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const fields = ((node.data.itemFields as ItemField[] | undefined) ?? []);
+
+  function update(next: ItemField[]) {
+    onChange(node.id, { ...node.data, itemFields: next });
+  }
+
+  const inputCls =
+    "w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-2.5 py-1.5 text-xs text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#A855F7]/60";
+
+  return (
+    <div className="rounded-lg border border-[#30363D] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-[#0D1117] hover:bg-[#161B22] transition-colors"
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-medium text-[#7D8590]">
+            Item fields <span className="text-[#484F58] font-normal">(optional)</span>
+          </span>
+          {fields.length > 0 && (
+            <span className="text-[9px] bg-[#1C2128] border border-[#30363D] text-[#A855F7] rounded-full px-1.5 py-0.5 leading-none">
+              {fields.length}
+            </span>
+          )}
+        </div>
+        <svg
+          className={`w-3 h-3 text-[#484F58] transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="p-2.5 border-t border-[#30363D] space-y-2 bg-[#0D1117]">
+          <p className="text-[10px] text-[#484F58] leading-snug">
+            Add fields when the array schema isn&apos;t known — e.g. after a SQL query or webhook. Each field you name here becomes{" "}
+            <span className="font-mono text-[#7D8590]">{"{{item.fieldName}}"}</span> inside the loop body.
+          </p>
+
+          {fields.map(f => (
+            <div key={f.id} className="grid grid-cols-2 gap-1.5">
+              <div className="space-y-1">
+                <label className="text-[10px] text-[#7D8590]">Field name</label>
+                <input
+                  type="text"
+                  value={f.key}
+                  onChange={e =>
+                    update(fields.map(x => x.id === f.id ? { ...x, key: e.target.value.replace(/\s/g, "") } : x))
+                  }
+                  placeholder="projectId"
+                  className={inputCls}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] text-[#7D8590]">Label</label>
+                <div className="flex gap-1">
+                  <input
+                    type="text"
+                    value={f.label}
+                    onChange={e =>
+                      update(fields.map(x => x.id === f.id ? { ...x, label: e.target.value } : x))
+                    }
+                    placeholder="Project ID"
+                    className={inputCls}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => update(fields.filter(x => x.id !== f.id))}
+                    className="text-[#484F58] hover:text-red-400 transition-colors px-1 flex-shrink-0 text-xs"
+                  >✕</button>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="button"
+            onClick={() => update([...fields, { id: crypto.randomUUID(), key: "", label: "" }])}
+            className="text-[10px] font-medium px-2 py-0.5 rounded bg-[#A855F7]/10 text-[#A855F7] border border-[#A855F7]/30 hover:bg-[#A855F7]/20 transition-colors"
+          >
+            + Add field
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── buildStarterTemplate ──────────────────────────────────────────────────────
+// Generates a starter Inputs string for a Compose node from the in-scope chips.
+
+/** Loop sentinel keys — same set used by VariableChipPanel.isForeachGroup. */
+const BUILD_LOOP_SENTINELS = new Set(["item", "itemIndex", "itemsTotal", "collectedResults"]);
+
+function buildStarterTemplate(ancestorOutputs: AncestorGroup[]): string {
+  // Detect foreach groups via explicit sentinel keys (not generic dot-notation).
+  // Alias sub-fields (alias.*) always live in the same group as `item`, `itemIndex`, etc.,
+  // so the sentinel check reliably identifies loop groups regardless of itemAlias.
+  const foreachGroup = ancestorOutputs.find(g =>
+    g.outputs.some(o => BUILD_LOOP_SENTINELS.has(o.key))
+  );
+
+  if (foreachGroup) {
+    // Find sub-field outputs (item.* or alias.*) co-located in the same group
+    const subfields = foreachGroup.outputs.filter(o => o.key.includes("."));
+    if (subfields.length > 0) {
+      // Derive loop prefix from the first dotted sub-field key
+      const loopPrefix = subfields[0].key.split(".")[0];
+      const obj: Record<string, string> = {};
+      for (const sf of subfields) {
+        const subKey = sf.key.slice(loopPrefix.length + 1);
+        const tokenPath = foreachGroup.isStartNode
+          ? sf.key
+          : `steps.${foreachGroup.nodeId}.${sf.key}`;
+        obj[subKey] = `{{${tokenPath}}}`;
+      }
+      return JSON.stringify(obj, null, 2);
+    }
+  }
+
+  // Fallback: join ALL in-scope groups' tokens as an interpolation string.
+  if (ancestorOutputs.length === 0) return "";
+  return ancestorOutputs
+    .flatMap(g =>
+      g.outputs.map(o => {
+        const tokenPath = g.isStartNode ? o.key : `steps.${g.nodeId}.${o.key}`;
+        return `{{${tokenPath}}}`;
+      })
+    )
+    .join(" ");
+}
+
+// ── NodeConfigPanel ───────────────────────────────────────────────────────────
+
 function NodeConfigPanel({
   node,
   onChange,
@@ -2458,6 +2648,47 @@ function NodeConfigPanel({
     },
   });
   const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges, triggers);
+
+  // ── Focus tracker (chip insert target) ──────────────────────────────────
+  const focusedFieldRef  = useRef<FocusedFieldInfo | null>(null); // last focused field
+  const defaultTargetRef = useRef<FocusedFieldInfo | null>(null); // first-mounted field (fallback)
+  const [chipNoTargetHint, setChipNoTargetHint] = useState(false);
+  const [overwriteConfirmPending, setOverwriteConfirmPending] = useState(false);
+
+  // Clear both refs whenever the selected node changes to prevent stale cross-node writes
+  useEffect(() => {
+    focusedFieldRef.current  = null;
+    defaultTargetRef.current = null;
+  }, [node.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const focusTrackerCtx = useCallback((): FocusTrackerCtx => ({
+    setFocus: (info) => { focusedFieldRef.current = info; },
+    setDefault: (info) => { if (!defaultTargetRef.current) defaultTargetRef.current = info; },
+  }), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Stable reference — reuse the same object across renders
+  const focusTrackerCtxRef = useRef<FocusTrackerCtx>(focusTrackerCtx());
+
+  function handleChipInsert(tokenPath: string) {
+    // Prefer last-focused field; fall back to first-mounted field (default target)
+    const info = focusedFieldRef.current ?? defaultTargetRef.current;
+    const tokenStr = `{{${tokenPath}}}`;
+    if (!info) {
+      // No field mounted yet (panel just opened) — show a brief hint
+      setChipNoTargetHint(true);
+      setTimeout(() => setChipNoTargetHint(false), 2500);
+      return;
+    }
+    const el = info.el;
+    // Append at end if selection info is unavailable
+    const start = el.selectionStart ?? el.value.length;
+    const end   = el.selectionEnd   ?? el.value.length;
+    const newVal = el.value.slice(0, start) + tokenStr + el.value.slice(end);
+    info.setValue(newVal);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + tokenStr.length, start + tokenStr.length);
+    });
+  }
 
   // ── generate_script: service/document searchable lists ──────────────────
   const gsSourceMode = ((node.data.sourceMode as string | undefined) ?? "service") as "service" | "document";
@@ -2512,6 +2743,7 @@ function NodeConfigPanel({
   }, [nodeType, gsSourceMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
+    <FocusTrackerContext.Provider value={focusTrackerCtxRef.current}>
     <div className="flex flex-col h-full bg-[#161B22] overflow-y-auto">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[#30363D]">
         <div className="flex items-center gap-2">
@@ -2559,6 +2791,15 @@ function NodeConfigPanel({
           onChange={v => onChange(node.id, { ...node.data, description: v })}
           multiline
         />
+
+        {/* Available Variables chip panel — visible for all non-start nodes */}
+        {nodeType !== "start" && ancestorOutputs.length > 0 && (
+          <VariableChipPanel
+            ancestorOutputs={ancestorOutputs}
+            onInsert={handleChipInsert}
+            noTargetHint={chipNoTargetHint}
+          />
+        )}
 
         {nodeType === "start" && (
           <>
@@ -3815,6 +4056,46 @@ function NodeConfigPanel({
 
         {nodeType === "compose" && (
           <>
+            {/* Build starter template / overwrite button (two-click confirm) */}
+            {ancestorOutputs.length > 0 && (
+              <div className="flex items-center justify-end gap-2">
+                {overwriteConfirmPending && (
+                  <span className="text-[10px] text-amber-400">This will replace the current value.</span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const hasContent = Boolean(node.data.inputs as string);
+                    if (hasContent && !overwriteConfirmPending) {
+                      // First click: ask for confirmation
+                      setOverwriteConfirmPending(true);
+                      setTimeout(() => setOverwriteConfirmPending(false), 4000);
+                      return;
+                    }
+                    // No content, or second click confirming overwrite
+                    setOverwriteConfirmPending(false);
+                    const tpl = buildStarterTemplate(ancestorOutputs);
+                    if (tpl) onChange(node.id, { ...node.data, inputs: tpl });
+                  }}
+                  title={
+                    (node.data.inputs as string)
+                      ? overwriteConfirmPending
+                        ? "Click once more to confirm overwrite"
+                        : "Generate a starter Inputs template — replaces current value"
+                      : "Generate a starter Inputs template from in-scope variables"
+                  }
+                  className={`text-[10px] font-medium px-2 py-1 rounded border transition-colors ${
+                    overwriteConfirmPending
+                      ? "bg-amber-950/50 text-amber-300 border-amber-600/50 hover:bg-amber-900/60"
+                      : "bg-[#2DD4BF]/10 text-[#2DD4BF] border-[#2DD4BF]/30 hover:bg-[#2DD4BF]/20"
+                  }`}
+                >
+                  {overwriteConfirmPending
+                    ? "⚠ Confirm overwrite"
+                    : (node.data.inputs as string) ? "⟳ Overwrite with template" : "✦ Build starter template"}
+                </button>
+              </div>
+            )}
             <ExpressionField
               label="Inputs"
               hint="Any value, expression, or JSON. Reference upstream data with {{steps.nodeId.key}}. The result is exposed downstream as {{steps.<thisNodeId>.value}}."
@@ -4228,6 +4509,7 @@ function NodeConfigPanel({
                 If set, each element is also injected as <span className="font-mono text-[#7D8590]">{"{{<alias>}}"}</span> alongside <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>.
               </p>
             </div>
+            <ForeachItemFields node={node} onChange={onChange} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
               <p className="text-[10px] text-[#484F58] leading-relaxed">
                 Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Loop</span> handle to the first node of the loop body — downstream nodes receive <span className="font-mono text-[#7D8590]">{"{{item}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{itemIndex}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{itemsTotal}}"}</span> per iteration.
@@ -5048,6 +5330,7 @@ function NodeConfigPanel({
       })()}
       </div>
     </div>
+    </FocusTrackerContext.Provider>
   );
 }
 
