@@ -1978,7 +1978,23 @@ async function executeNode(
         if (Array.isArray(forResolved)) {
           forItems = forResolved;
         } else if (typeof forResolved === "string" && forResolved.trim().length > 0) {
-          forItems = forResolved.split(",").map(s => s.trim()).filter(s => s.length > 0);
+          const trimmed = forResolved.trim();
+          let parsedJson: unknown = undefined;
+          try {
+            parsedJson = JSON.parse(trimmed);
+          } catch {
+            // not valid JSON — fall through to comma-split
+          }
+          if (parsedJson !== undefined) {
+            if (Array.isArray(parsedJson)) {
+              forItems = parsedJson;
+            } else {
+              logger.warn({ runId, arraySource: forArraySource, resolvedType: typeof parsedJson },
+                "workflow-executor: for loop arraySource resolved to a non-array JSON value — skipping all iterations");
+            }
+          } else {
+            forItems = trimmed.split(",").map(s => s.trim()).filter(s => s.length > 0);
+          }
         }
         if (!forItems) {
           logger.warn({ runId, arraySource: forArraySource, resolvedType: typeof forResolved },
