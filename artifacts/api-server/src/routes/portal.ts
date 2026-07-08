@@ -1026,6 +1026,10 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     permissionsMissing: permissionCheck?.missing.length ?? 0,
   });
 
+  autoFireFirstBacklogScript(userId).catch(err => {
+    req.log.warn({ err, userId }, "app-reg submit: autoFireFirstBacklogScript error (non-fatal)");
+  });
+
 });
 
 // ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
