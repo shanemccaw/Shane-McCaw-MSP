@@ -8711,10 +8711,10 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const [lastDraftSavedAt, setLastDraftSavedAt] = useState<Date | null>(null);
   const [, setTickNow] = useState(0);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | null>(() => {
+  const [rightPanelTab, setRightPanelTab] = useState<"node" | "testrun" | "settings" | "history" | "metadata" | "runoutput" | "errors" | "system" | "aioutput" | null>(() => {
     try {
       const saved = localStorage.getItem("wf-panel-tab");
-      // Only restore persistent tabs; "node" and "testrun" are action-triggered and should not auto-open on load
+      // Only restore persistent tabs; action-triggered ones should not auto-open on load
       const persistent = ["settings", "history", "metadata"];
       if (saved && persistent.includes(saved)) {
         return saved as "settings" | "history" | "metadata";
@@ -8822,7 +8822,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   const splitResizeRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const preSplitDockRef = useRef<{ open: boolean; tab: "runoutput" | "errors" | "system" | "aioutput" } | null>(null);
   const preSplitReplayTabRef = useRef<"runoutput" | "errors" | "system" | "aioutput" | null>(null);
-  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata">(
+  const lastRightPanelTabRef = useRef<"node" | "testrun" | "settings" | "history" | "metadata" | "runoutput" | "errors" | "system" | "aioutput">(
     (() => {
       try {
         const saved = localStorage.getItem("wf-panel-tab");
@@ -9868,18 +9868,13 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
   useEffect(() => { localStorage.setItem("wf-dock-height", String(bottomDockHeight)); }, [bottomDockHeight]);
   useEffect(() => { localStorage.setItem("wf-split-view", String(splitViewActive)); }, [splitViewActive]);
   useEffect(() => { localStorage.setItem("wf-split-ratio", String(Math.round(splitRatio))); }, [splitRatio]);
-  // Preserve / restore bottom dock state when entering / exiting split view
+  // Split view and right panel are mutually exclusive — opening one closes the other
   useEffect(() => {
-    if (splitViewActive) {
-      preSplitDockRef.current = { open: bottomDockOpen, tab: bottomDockTab };
-    } else {
-      if (preSplitDockRef.current) {
-        setBottomDockOpen(preSplitDockRef.current.open);
-        setBottomDockTab(preSplitDockRef.current.tab);
-        preSplitDockRef.current = null;
-      }
-    }
+    if (splitViewActive && rightPanelTab !== null) setRightPanelTab(null);
   }, [splitViewActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (rightPanelTab !== null && splitViewActive) setSplitViewActive(false);
+  }, [rightPanelTab]); // eslint-disable-line react-hooks/exhaustive-deps
   // Save/restore splitPaneTab on replay enter/exit while in split view.
   // Watches replayMode (toolbar toggle = definitive entry) not just replayActive (step-click).
   useEffect(() => {
@@ -10992,10 +10987,14 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               {([
                 { id: "node" as const, label: "Node Config" },
                 { id: "testrun" as const, label: "Test Run" },
+                { id: "runoutput" as const, label: "Run Output" },
+                { id: "errors" as const, label: workflowIssues.length > 0 ? `Errors (${workflowIssues.length})` : "Errors" },
+                { id: "system" as const, label: "System" },
+                { id: "aioutput" as const, label: "AI Output" },
                 { id: "metadata" as const, label: "Metadata" },
                 { id: "settings" as const, label: "Settings" },
                 { id: "history" as const, label: `History (${versions.length})` },
-              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history"; label: string }[]).map(tab => (
+              ] as { id: "node" | "testrun" | "metadata" | "settings" | "history" | "runoutput" | "errors" | "system" | "aioutput"; label: string }[]).map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setRightPanelTab(tab.id)}
@@ -11070,7 +11069,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                   edges={edges}
                   onClose={() => setRightPanelTab(null)}
                   trigger={testRunTrigger}
-                  onRunStarted={(id) => { setLastTestRunId(id); setBottomDockOpen(true); setBottomDockTab("runoutput"); }}
+                  onRunStarted={(id) => { setLastTestRunId(id); if (rightPanelTab !== null) { setRightPanelTab("runoutput"); } else { setBottomDockOpen(true); setBottomDockTab("runoutput"); } }}
                   onLiveRunUpdate={(state) => { setLiveRunState(state); if (state) setReplayMode(false); }}
                 />
               ) : rightPanelTab === "metadata" ? (
@@ -11431,6 +11430,92 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
                     ))}
                   </div>
                 </div>
+              ) : rightPanelTab === "runoutput" ? (
+                <div className="flex-1 overflow-y-auto text-[11px] font-mono">
+                  {lastTestRunId == null ? (
+                    <div className="flex flex-col items-center justify-center h-full gap-2 text-[#484F58] font-sans">
+                      <svg className="w-7 h-7 text-[#30363D]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-xs">No run yet — click <strong className="text-[#E6EDF3]">Test Run</strong> to see output here.</p>
+                    </div>
+                  ) : (
+                    <RunOutputDock runId={lastTestRunId} />
+                  )}
+                </div>
+              ) : rightPanelTab === "errors" ? (
+                <div className="overflow-y-auto p-3 space-y-1.5 font-sans text-[11px]">
+                  {workflowIssues.length === 0 ? (
+                    <div className="flex items-center gap-2 text-[#484F58] py-6 justify-center">
+                      <span className="text-emerald-400 text-base">✓</span>
+                      <span className="text-xs">No issues found in this workflow</span>
+                    </div>
+                  ) : workflowIssues.map((issue, i) => (
+                    <div
+                      key={i}
+                      onClick={() => { if (issue.nodeId) { setSelectedNodeId(issue.nodeId); setRightPanelTab("node"); } }}
+                      className={`flex items-start gap-2 px-2.5 py-2 rounded-lg border ${
+                        issue.severity === "high" ? "border-red-500/30 bg-red-500/5 cursor-pointer hover:bg-red-500/10" :
+                        issue.severity === "medium" ? "border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10" :
+                        "border-[#30363D] bg-[#0D1117]"
+                      }`}
+                    >
+                      <span className={`flex-shrink-0 mt-0.5 ${issue.severity === "high" ? "text-red-400" : issue.severity === "medium" ? "text-amber-400" : "text-[#7D8590]"}`}>
+                        {issue.severity === "high" ? "✕" : issue.severity === "medium" ? "⚠" : "·"}
+                      </span>
+                      <span className={`text-xs ${issue.severity === "high" ? "text-red-300" : issue.severity === "medium" ? "text-amber-300" : "text-[#7D8590]"}`}>
+                        {issue.message}
+                      </span>
+                      {issue.nodeId && (
+                        <span className="ml-auto text-[9px] font-mono text-[#484F58] flex-shrink-0">{issue.nodeId}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : rightPanelTab === "system" ? (
+                <div className="overflow-y-auto p-3 space-y-1 text-[11px] font-mono">
+                  {systemLog.length === 0 ? (
+                    <div className="flex items-center justify-center py-8 text-[#484F58] text-xs font-sans">System log is empty</div>
+                  ) : [...systemLog].reverse().map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2">
+                      <span className={`flex-shrink-0 ${entry.type === "error" ? "text-red-400" : entry.type === "warning" ? "text-amber-400" : entry.type === "success" ? "text-emerald-400" : "text-[#484F58]"}`}>
+                        {entry.type === "error" ? "✕" : entry.type === "warning" ? "⚠" : entry.type === "success" ? "✓" : "·"}
+                      </span>
+                      <span className="text-[#484F58] flex-shrink-0 text-[10px]">
+                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span className={entry.type === "error" ? "text-red-300" : entry.type === "warning" ? "text-amber-300" : entry.type === "success" ? "text-emerald-300" : "text-[#7D8590]"}>
+                        {entry.message}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : rightPanelTab === "aioutput" ? (
+                <div className="overflow-y-auto p-3 space-y-1 text-[11px] font-mono">
+                  {aiOutputLog.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2 text-[#484F58] font-sans">
+                      <span className="text-2xl">🤖</span>
+                      <p className="text-xs text-center">AI generation output appears here.<br />Use <strong className="text-[#E6EDF3]">Build with AI</strong> or <strong className="text-[#E6EDF3]">Refine</strong> to start.</p>
+                    </div>
+                  ) : [...aiOutputLog].reverse().map(entry => (
+                    <div key={entry.id} className="flex items-start gap-2">
+                      <span className="text-[#484F58] flex-shrink-0 text-[10px]">
+                        {new Date(entry.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                      </span>
+                      <span className={
+                        entry.line.startsWith("✓") ? "text-emerald-300" :
+                        entry.line.startsWith("✕") ? "text-red-300" :
+                        entry.line.startsWith("⚠") ? "text-amber-300" :
+                        entry.line.startsWith("💡") ? "text-violet-300" :
+                        entry.line.startsWith("🤖") ? "text-[#0078D4]" :
+                        "text-[#7D8590]"
+                      }>
+                        {entry.line}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
           </div>
@@ -11448,7 +11533,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
         </div>{/* closes inner flex-1 flex overflow-hidden */}
 
         {/* ── Bottom Dock ─────────────────────────────────────────────── */}
-        {!splitViewActive && bottomDockOpen && (
+        {bottomDockOpen && (
           <div
             className="flex-shrink-0 bg-[#0D1117] border-t border-[#30363D] flex flex-col"
             style={{ height: bottomDockHeight }}
