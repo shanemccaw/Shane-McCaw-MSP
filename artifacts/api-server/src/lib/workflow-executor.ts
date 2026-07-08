@@ -346,6 +346,58 @@ function interpOrNull(template: string | undefined, payload: Record<string, unkn
   return result?.trim() ? result : null;
 }
 
+/**
+ * Resolve a template expression to its NATIVE value instead of a string.
+ *
+ * `interp()` always returns a string — it JSON.stringifies arrays/objects so
+ * they can be embedded inside a larger template string (e.g. "Hello {{name}}").
+ * That's correct for string interpolation, but wrong whenever the ENTIRE
+ * expression is a single `{{...}}` placeholder that should preserve its
+ * original type (e.g. passing an array of tasks into a Run Workflow node's
+ * inputMapping — the child should receive a real array, not the string
+ * "[{...}]").
+ *
+ * If `expr` is exactly one placeholder (no surrounding text), this resolves
+ * the path directly off `payload` and returns the raw value untouched.
+ * Otherwise it falls back to `interp()`'s string-interpolation behaviour.
+ */
+function resolveExprNative(expr: string | undefined, payload: Record<string, unknown>): unknown {
+  if (!expr) return undefined;
+  const trimmed = expr.trim();
+  const soleMatch = trimmed.match(/^\{\{([\w.\-\[\]]+)\}\}$/);
+  if (!soleMatch) return interp(expr, payload);
+
+  const path = soleMatch[1]!;
+  const key = path.startsWith("payload.") ? path.slice(8) : path;
+  const parts = key.split(".");
+  let cur: unknown = payload;
+  for (const part of parts) {
+    if (cur == null || typeof cur !== "object") return undefined;
+    const bracketIdx = part.indexOf("[");
+    if (bracketIdx !== -1) {
+      const propName = part.slice(0, bracketIdx);
+      const rawIndex = part.slice(bracketIdx + 1, part.endsWith("]") ? part.length - 1 : part.length);
+      if (propName) {
+        cur = (cur as Record<string, unknown>)[propName];
+        if (cur == null || !Array.isArray(cur)) return undefined;
+      }
+      let idx: number;
+      if (/^\d+$/.test(rawIndex)) {
+        idx = parseInt(rawIndex, 10);
+      } else {
+        const lookedUp = (payload as Record<string, unknown>)[rawIndex];
+        const asStr = String(lookedUp ?? "");
+        if (!/^\d+$/.test(asStr)) return undefined;
+        idx = parseInt(asStr, 10);
+      }
+      cur = (cur as unknown[])[idx];
+    } else {
+      cur = (cur as Record<string, unknown>)[part];
+    }
+  }
+  return cur;
+}
+
 // ── Content helpers ───────────────────────────────────────────────────────────
 
 /** Extract the first JSON object from an AI response that may contain prose. */
@@ -1804,7 +1856,7 @@ async function executeNode(
             const subPayload: Record<string, unknown> = {};
             if (rawMapping) {
               for (const { key, expr } of rawMapping) {
-                if (key) subPayload[key] = interp(expr, payload) ?? expr;
+                if (key) subPayload[key] = resolveExprNative(expr, payload) ?? expr;
               }
             }
             subPayload._parentRunId = runId;
