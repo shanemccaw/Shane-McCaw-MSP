@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
 import { useToast } from "@/hooks/use-toast";
 import { createPortal } from "react-dom";
 import {
@@ -1058,26 +1059,8 @@ function StepCard({
 
             {/* I/O Data tab */}
             {drawerTab === "data" && (
-              <div className="px-3 pb-2 space-y-2">
-                {r.input != null && Object.keys(r.input).length > 0 && (
-                  <div>
-                    <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-0.5">Input</p>
-                    <pre className="max-h-32 overflow-y-auto text-[9px] text-[#7D8590] bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
-                      {JSON.stringify(r.input, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {r.output != null && Object.keys(r.output).length > 0 && (
-                  <div>
-                    <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58] mb-0.5">Output</p>
-                    <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
-                      {JSON.stringify(r.output, null, 2)}
-                    </pre>
-                  </div>
-                )}
-                {(!r.input || Object.keys(r.input).length === 0) && (!r.output || Object.keys(r.output).length === 0) && (
-                  <div className="text-[#484F58] italic">No I/O data recorded for this step.</div>
-                )}
+              <div className="px-3 pb-2">
+                <IoDataPanel input={r.input} output={r.output} />
               </div>
             )}
           </div>
@@ -2021,6 +2004,62 @@ interface FlowCanvasCtx {
   } | null;
   /** Node ID being highlighted by a token hover in the config panel (null when none). */
   tokenHighlightNodeId: string | null;
+}
+
+function IoDataPanel({ input, output }: { input: Record<string, unknown> | null | undefined; output: Record<string, unknown> | null | undefined }) {
+  const [inputCopied, copyInput] = useCopyToClipboard();
+  const [outputCopied, copyOutput] = useCopyToClipboard();
+  const hasInput = input != null && Object.keys(input).length > 0;
+  const hasOutput = output != null && Object.keys(output).length > 0;
+  if (!hasInput && !hasOutput) return <div className="text-[#484F58] italic">No I/O data recorded for this step.</div>;
+  return (
+    <div className="space-y-2">
+      {hasInput && (
+        <div>
+          <div className="flex items-center justify-between mb-0.5">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Input</p>
+            <button
+              onClick={() => copyInput(JSON.stringify(input, null, 2))}
+              className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+              title="Copy input JSON"
+            >
+              {inputCopied ? (
+                <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              )}
+              {inputCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <pre className="max-h-32 overflow-y-auto text-[9px] text-[#7D8590] bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+            {JSON.stringify(input, null, 2)}
+          </pre>
+        </div>
+      )}
+      {hasOutput && (
+        <div>
+          <div className="flex items-center justify-between mb-0.5">
+            <p className="text-[9px] uppercase tracking-widest font-bold text-[#484F58]">Output</p>
+            <button
+              onClick={() => copyOutput(JSON.stringify(output, null, 2))}
+              className="flex items-center gap-0.5 text-[8px] text-[#484F58] hover:text-[#7D8590] transition-colors"
+              title="Copy output JSON"
+            >
+              {outputCopied ? (
+                <svg className="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth={2}/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              )}
+              {outputCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+          <pre className="max-h-32 overflow-y-auto text-[9px] text-emerald-300/60 bg-[#0A0E13] rounded-lg p-2 border border-[#1C2128] whitespace-pre-wrap break-all leading-relaxed">
+            {JSON.stringify(output, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 const FlowCanvasContext = React.createContext<FlowCanvasCtx>({
