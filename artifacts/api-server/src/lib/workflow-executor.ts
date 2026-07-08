@@ -1795,7 +1795,13 @@ async function executeNode(
               logger.warn({ runId, subDefId, currentDepth, maxDepth: RUN_WORKFLOW_MAX_DEPTH }, "wf-executor: run_workflow depth limit reached — aborting to prevent infinite loop");
             } else {
             const rawMapping = node.data.inputMapping as Array<{ key: string; expr: string }> | undefined;
-            const subPayload: Record<string, unknown> = { ...payload };
+            // Start with a clean payload for the child workflow — do NOT spread the
+            // parent payload.  Inheriting the parent's `item`, `index`, `depth`,
+            // `nodes`, `steps`, `collectedResults`, etc. pollutes the child's
+            // context (especially when the Run Workflow node is inside a For/ForEach
+            // loop).  The caller explicitly controls what the child sees via
+            // inputMapping; everything else stays in the parent.
+            const subPayload: Record<string, unknown> = {};
             if (rawMapping) {
               for (const { key, expr } of rawMapping) {
                 if (key) subPayload[key] = interp(expr, payload) ?? expr;
