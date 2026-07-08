@@ -167,6 +167,7 @@ const SECTION_LABELS: Record<string, { group: string; label: string }> = {
   // Workflows
   "/workflows/list":          { group: "Workflows", label: "Workflows" },
   "/workflows/runs":          { group: "Workflows", label: "Run History" },
+  "/workflows/json-viewer":   { group: "Workflows", label: "JSON Viewer" },
 };
 
 // Prefix-based labels for detail pages that don't match exact paths
