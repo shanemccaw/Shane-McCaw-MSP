@@ -12212,6 +12212,15 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       req.log.warn({ err: notifyErr }, "onboarding claim-free: post-provision notification failed (non-fatal)");
     }
 
+    void fireWorkflowsForEvent("onboarding.free_claimed", {
+      clientId: resolvedUserId,
+      clientEmail: buyer.email,
+      clientName: buyer.name ?? "",
+      projectId: project.id,
+      projectTitle,
+      serviceIds,
+    });
+
     res.json({ ok: true, sentSetupEmail });
   } catch (err) {
     req.log.error({ err }, "portal: failed to process free onboarding claim");

@@ -24,6 +24,7 @@ const EVENT_CATALOG: Array<{ category: string; name: string }> = [
   { category: "M365",       name: "m365.diagnostic_failed" },
   { category: "M365",       name: "quiz.lead_submitted" },
   { category: "M365",       name: "customer.script_result" },
+  { category: "Payments",   name: "onboarding.free_claimed" },
 ];
 
 const EVENT_CATEGORIES = ["CRM", "Payments", "Scheduling", "M365"] as const;
