@@ -1017,6 +1017,15 @@ router.put("/portal/app-registration", requireAuth, async (req: Request, res: Re
     permissionCheck,
   });
 
+  void fireWorkflowsForEvent("customer.app_reg_complete", {
+    clientId: userId,
+    tenantId: tenantId.trim(),
+    azureClientId: azureClientId.trim(),
+    verifiedAt: now.toISOString(),
+    permissionsGranted: permissionCheck?.granted.length ?? 0,
+    permissionsMissing: permissionCheck?.missing.length ?? 0,
+  });
+
 });
 
 // ─── CLIENT: Re-check permissions using stored Key Vault credentials ──────────
