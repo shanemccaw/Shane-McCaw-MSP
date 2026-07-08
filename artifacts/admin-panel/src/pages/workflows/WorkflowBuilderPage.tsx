@@ -155,9 +155,10 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   charge_stripe_invoice:           { bg: "#041A1A", border: "#EF4444", icon: "⚡", label: "Charge Invoice"          },
   edit_stripe_invoice:             { bg: "#041A1A", border: "#818CF8", icon: "✏️", label: "Edit Invoice"            },
   // ── Project Phase Actions ──
-  get_phases:               { bg: "#0A1A10", border: "#34D399", icon: "🔍", label: "Get Phases"   },
-  create_phase:             { bg: "#0A1A10", border: "#6EE7B7", icon: "📌", label: "Create Phase" },
-  save_presentation_phases: { bg: "#0A1A10", border: "#10B981", icon: "💾", label: "Save Phases"  },
+  update_milestone:         { bg: "#0A1A10", border: "#22C55E", icon: "🏁", label: "Update Milestone" },
+  get_phases:               { bg: "#0A1A10", border: "#34D399", icon: "🔍", label: "Get Phases"       },
+  create_phase:             { bg: "#0A1A10", border: "#6EE7B7", icon: "📌", label: "Create Phase"     },
+  save_presentation_phases: { bg: "#0A1A10", border: "#10B981", icon: "💾", label: "Save Phases"      },
   // ── Variables ──
   set_variable:    { bg: "#0A1A10", border: "#34D399", icon: "📦", label: "Set Variable"    },
   update_variable: { bg: "#1A0E00", border: "#F97316", icon: "✏️", label: "Update Variable" },
@@ -250,6 +251,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   create_kanban_task:       [{ key: "taskId", label: "Created task ID" }, { key: "boardId", label: "Board used (marketing / project ID)" }, { key: "columnId", label: "Column/status the task was placed in" }, { key: "title", label: "Rendered task title" }],
   get_project_tasks:        [{ key: "phases", label: "Array of phase groups, each with phaseId, phaseTitle, phaseStatus, order, and tasks[]" }, { key: "flatTasks", label: "All tasks across all phases in a single flat array — each task includes phaseId, phaseTitle, phaseStatus, and phaseOrder. Use with a single ForEach instead of nested loops." }, { key: "flatTasks[].linkedWorkflowId", label: "Integer definition ID of the sub-workflow linked to this task (run_workflow tasks only; null for all other task types)" }, { key: "flatTasks[].linkedWorkflowName", label: "Human-readable name of the linked sub-workflow (run_workflow tasks only; null for all other task types)" }, { key: "taskCount", label: "Total number of tasks across all phases" }, { key: "projectId", label: "Project ID that was queried" }],
   update_project_task:      [{ key: "updated", label: "true when the task was found and updated" }, { key: "taskId", label: "ID of the updated task" }, { key: "column", label: "Final column value after update" }, { key: "title", label: "Final title value after update" }],
+  update_milestone:         [{ key: "milestoneId", label: "ID of the updated milestone (workflow step)" }, { key: "previousStatus", label: "Status before this node ran", enumValues: ["pending", "in_progress", "completed", "blocked"] }, { key: "newStatus", label: "Status after this node ran", enumValues: ["pending", "in_progress", "completed", "blocked"] }, { key: "kanbanCardsSeeded", label: "true if new Kanban cards were seeded for this phase (only possible when status is in_progress and no cards existed yet)" }],
   get_phases:               [{ key: "phases", label: "Array of selected phases (id, title, description, price, subtasks)" }, { key: "phaseCount", label: "Number of phases returned" }, { key: "presentationId", label: "Presentation DB ID the phases were read from" }],
   create_phase:             [{ key: "phaseId", label: "Created workflow_steps row ID" }, { key: "phaseTitle", label: "Phase title as saved" }],
   save_presentation_phases: [{ key: "saved", label: "true on success" }, { key: "phaseCount", label: "Number of phases saved" }, { key: "resolvedPhases", label: "Array of resolved phase objects with price allocation" }],
@@ -862,6 +864,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "create_kanban_task",       label: "Create Kanban Task",  description: "Create a kanban card on a marketing board or a project board. Supports {{token}} interpolation for boardId so you can pass {{projectId}} dynamically.", tags: ["kanban", "task", "project", "board", "card", "create"] },
       { type: "get_project_tasks",        label: "Get Project Tasks",   description: "Fetch all kanban tasks for a project. Returns phases[] (nested) and flatTasks[] (all tasks in one array, each with phase info embedded). Pipe flatTasks into a single ForEach to process every task individually.", tags: ["kanban", "task", "project", "read", "lookup", "phases", "flat", "iterate"] },
       { type: "update_project_task",      label: "Update Project Task", description: "Update a single kanban task by ID. Flip the column (progress state), rename it, change priority, assignee, or due date. All fields support {{token}} interpolation.", tags: ["kanban", "task", "project", "update", "edit", "column"] },
+      { type: "update_milestone",         label: "Update Milestone",    description: "Change a project phase/milestone status and optional delivery date. When status is set to in_progress, Kanban cards are automatically seeded from the phase template (no script auto-fire).", tags: ["milestone", "phase", "project", "status", "delivery", "kanban", "seed", "update"] },
     ],
   },
   {
@@ -3931,6 +3934,14 @@ function NodeConfigPanel({
           />
         )}
 
+        {nodeType === "update_milestone" && (
+          <UpdateMilestonePanel
+            node={node}
+            onChange={onChange}
+            ancestorOutputs={ancestorOutputs}
+          />
+        )}
+
         {nodeType === "create_phase" && (
           <CreatePhasePanel
             node={node}
@@ -5796,6 +5807,68 @@ function UpdateProjectTaskPanel({
       <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
         <p className="text-[10px] text-[#484F58]">Updates the specified task. Only non-blank fields are written — omitted fields are left unchanged. Errors if no task is found with the given ID. Outputs:</p>
         <p className="text-[10px] font-mono text-[#7D8590]">{"{{updated}}"} · {"{{taskId}}"} · {"{{column}}"} · {"{{title}}"}</p>
+      </div>
+    </>
+  );
+}
+
+// ── Update Milestone panel ────────────────────────────────────────────────────
+
+const MILESTONE_STATUSES = [
+  { value: "pending",     label: "Pending" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed",   label: "Completed" },
+  { value: "blocked",     label: "Blocked" },
+] as const;
+
+function UpdateMilestonePanel({
+  node,
+  onChange,
+  ancestorOutputs,
+}: {
+  node: { id: string; data: Record<string, unknown> };
+  onChange: (id: string, data: Record<string, unknown>) => void;
+  ancestorOutputs: AncestorGroup[];
+}) {
+  return (
+    <>
+      <PayloadField
+        label="Milestone / Phase ID"
+        hint="Numeric workflow_steps row ID. Supports {{token}} interpolation — e.g. {{phaseId}} from a create_phase node."
+        value={(node.data.milestoneIdExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, milestoneIdExpr: v })}
+        placeholder="{{phaseId}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-1">
+          <label className="text-xs font-medium text-[#7D8590]">Status (optional)</label>
+          <FieldHint text="New status for the phase. Leave blank to keep the current status. Setting to 'In Progress' seeds Kanban cards from the phase template (no script auto-fire)." />
+        </div>
+        <select
+          value={(node.data.statusExpr as string) ?? ""}
+          onChange={e => onChange(node.id, { ...node.data, statusExpr: e.target.value })}
+          className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#22C55E]/60"
+        >
+          <option value="">(no change)</option>
+          {MILESTONE_STATUSES.map(s => (
+            <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+      </div>
+      <PayloadField
+        label="Expected Delivery Date (optional)"
+        hint="ISO 8601 date string (e.g. 2025-12-31). Supports {{token}} interpolation. Leave blank to keep the current due date."
+        value={(node.data.deliveryDateExpr as string) ?? ""}
+        onChange={v => onChange(node.id, { ...node.data, deliveryDateExpr: v })}
+        placeholder="{{deliveryDate}}"
+        ancestorOutputs={ancestorOutputs}
+      />
+      <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+        <p className="text-[10px] text-[#484F58]">
+          Updates the milestone status and/or due date. When status is <span className="font-mono text-[#22C55E]">in_progress</span>, Kanban cards are seeded from the phase template if none exist yet — no script auto-fire. Outputs:
+        </p>
+        <p className="text-[10px] font-mono text-[#7D8590]">{"{{milestoneId}}"} · {"{{previousStatus}}"} · {"{{newStatus}}"} · {"{{kanbanCardsSeeded}}"}</p>
       </div>
     </>
   );

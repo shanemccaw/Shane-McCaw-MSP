@@ -77,6 +77,7 @@ import { handleSystemAction } from "./system-action-handlers";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
+import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
 
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
@@ -630,6 +631,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         taskId: num("taskId") || 1,
         column: str("column", "in_progress"),
         title: str("titleExpr", "Updated task"),
+      };
+
+    case "update_milestone":
+      return {
+        dryRun: true,
+        milestoneId: num("milestoneIdExpr") || 1,
+        previousStatus: "pending",
+        newStatus: interp((node.data.statusExpr as string | undefined) ?? "in_progress", p) || "in_progress",
+        kanbanCardsSeeded: false,
       };
 
     case "get_phases":
@@ -2969,6 +2979,82 @@ async function executeNode(
           break;
         }
         output = { updated: true, taskId: uptUpdated.id, column: uptUpdated.column, title: uptUpdated.title };
+        break;
+      }
+
+      case "update_milestone": {
+        const umMilestoneIdRaw = interp(node.data.milestoneIdExpr as string | undefined, payload);
+        if (!umMilestoneIdRaw?.trim()) {
+          nodeError = true;
+          output = { error: "update_milestone: milestoneIdExpr is required" };
+          break;
+        }
+        const umMilestoneId = parseInt(umMilestoneIdRaw, 10);
+        if (isNaN(umMilestoneId)) {
+          nodeError = true;
+          output = { error: `update_milestone: invalid milestoneId '${umMilestoneIdRaw}'` };
+          break;
+        }
+
+        const umStatusRaw = interp(node.data.statusExpr as string | undefined, payload)?.trim();
+        const validStatuses = ["pending", "in_progress", "completed", "blocked"] as const;
+        type StepStatus = typeof validStatuses[number];
+        if (umStatusRaw && !(validStatuses as readonly string[]).includes(umStatusRaw)) {
+          nodeError = true;
+          output = { error: `update_milestone: invalid status '${umStatusRaw}' — must be one of ${validStatuses.join(", ")}` };
+          break;
+        }
+
+        const [umExistingStep] = await db
+          .select({ id: workflowStepsTable.id, status: workflowStepsTable.status, projectId: workflowStepsTable.projectId })
+          .from(workflowStepsTable)
+          .where(eq(workflowStepsTable.id, umMilestoneId))
+          .limit(1);
+
+        if (!umExistingStep) {
+          nodeError = true;
+          output = { error: `update_milestone: no milestone found with id ${umMilestoneId}` };
+          break;
+        }
+
+        const umPatch: Record<string, unknown> = {};
+        if (umStatusRaw) umPatch.status = umStatusRaw as StepStatus;
+
+        const umDeliveryDateRaw = interp(node.data.deliveryDateExpr as string | undefined, payload)?.trim();
+        if (umDeliveryDateRaw) {
+          const umDate = new Date(umDeliveryDateRaw);
+          if (!isNaN(umDate.getTime())) umPatch.dueDate = umDate;
+        }
+
+        if (Object.keys(umPatch).length === 0) {
+          output = {
+            milestoneId: umExistingStep.id,
+            previousStatus: umExistingStep.status,
+            newStatus: umExistingStep.status,
+            kanbanCardsSeeded: false,
+          };
+          break;
+        }
+
+        const [umUpdated] = await db
+          .update(workflowStepsTable)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .set(umPatch as any)
+          .where(eq(workflowStepsTable.id, umMilestoneId))
+          .returning({ id: workflowStepsTable.id, status: workflowStepsTable.status, projectId: workflowStepsTable.projectId });
+
+        let umKanbanCardsSeeded = false;
+        if (umStatusRaw === "in_progress" && umUpdated?.id) {
+          const seedResult = await seedKanbanCardsForPhase(umUpdated.id, logger);
+          umKanbanCardsSeeded = seedResult.seeded;
+        }
+
+        output = {
+          milestoneId: umMilestoneId,
+          previousStatus: umExistingStep.status,
+          newStatus: umUpdated?.status ?? umExistingStep.status,
+          kanbanCardsSeeded: umKanbanCardsSeeded,
+        };
         break;
       }
 

@@ -15,7 +15,7 @@ import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, type SowPricingLine } from "../lib/sow-pricing.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
-import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib } from "../lib/kanban-phase-advance.ts";
+import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
@@ -683,17 +683,6 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
     type PermEntry = { scope: string; reason: string };
     const seen = new Map<string, string>();
 
-    const addPerms = (perms: RawPerms) => {
-      if (!perms?.appPermissions) return;
-      for (const entry of perms.appPermissions) {
-        if (typeof entry === "string") {
-          if (!seen.has(entry)) seen.set(entry, "");
-        } else if (entry && typeof entry.scope === "string") {
-          if (!seen.has(entry.scope)) seen.set(entry.scope, entry.reason ?? "");
-        }
-      }
-    };
-
     // 0. Direct service-level required app permissions (fastest path — no joins needed).
     //    Set via the Service Editor "App Registration Permissions" section.
     {
@@ -708,6 +697,17 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
         }
       }
     }
+
+    const addPerms = (perms: RawPerms) => {
+      if (!perms?.appPermissions) return;
+      for (const entry of perms.appPermissions) {
+        if (typeof entry === "string") {
+          if (!seen.has(entry)) seen.set(entry, "");
+        } else if (entry && typeof entry.scope === "string") {
+          if (!seen.has(entry.scope)) seen.set(entry.scope, entry.reason ?? "");
+        }
+      }
+    };
 
     // 1. Package-level permissions (legacy fallback)
     for (const row of pkgRows) {
@@ -6351,38 +6351,8 @@ router.patch("/admin/workflow-steps/:id", requireAdmin, async (req: Request, res
   }
 
   // When a phase is moved to in_progress, auto-populate its template tasks into the Kanban backlog
-  if (status === "in_progress" && updated.workflowTemplateStepId && updated.projectId) {
-    const [existingCount] = await db
-      .select({ n: count() })
-      .from(kanbanTasksTable)
-      .where(eq(kanbanTasksTable.workflowStepId, updated.id));
-
-    if ((Number(existingCount?.n) ?? 0) === 0) {
-      const templateTasks = await db
-        .select()
-        .from(workflowTemplateStepTasksTable)
-        .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, updated.workflowTemplateStepId))
-        .orderBy(asc(workflowTemplateStepTasksTable.order));
-
-      if (templateTasks.length > 0) {
-        const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
-        await db.insert(kanbanTasksTable).values(
-          templateTasks.map((t, idx) => ({
-            projectId: updated.projectId!,
-            workflowStepId: updated.id,
-            groupName: t.groupName ?? null,
-            title: t.title,
-            description: t.description ?? null,
-            column: (t.isCustomerTask ? "waiting_on_customer" : "backlog") as "backlog" | "waiting_on_customer",
-            order: idx,
-            taskType: t.taskType ?? null,
-            taskMetadata: resolvedMetadata[idx],
-          }))
-        );
-        await syncProjectProgress(updated.projectId);
-        req.log.info({ stepId: updated.id, projectId: updated.projectId, taskCount: templateTasks.length }, "Seeded kanban tasks for phase moved to in_progress");
-      }
-    }
+  if (status === "in_progress") {
+    await seedKanbanCardsForPhase(updated.id, req.log);
   }
 
   res.json(updated);

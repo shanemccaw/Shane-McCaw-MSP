@@ -143,6 +143,88 @@ async function resolveTemplateTaskMetadata(
 }
 
 /**
+ * Seed kanban cards for a workflow step that has just been moved to `in_progress`.
+ *
+ * Logic:
+ *  1. Look up the workflow_step to resolve its workflowTemplateStepId and projectId.
+ *  2. Check whether kanban tasks already exist for that step — if so, skip (idempotent).
+ *  3. Fetch the matching workflow_template_step_tasks, resolve FK-linked metadata, and
+ *     bulk-insert into kanban_tasks.
+ *  4. Sync project progress.
+ *
+ * Intentionally does NOT call autoFireFirstBacklogScript, autoFireDocumentCard, or
+ * autoFireRunWorkflowCards — those automations are only triggered from the existing
+ * route handler path and must remain excluded here.
+ *
+ * Returns { seeded: boolean; taskCount: number }.
+ * Never throws — all errors are caught and logged.
+ */
+export async function seedKanbanCardsForPhase(
+  stepId: number,
+  log: { info: (obj: Record<string, unknown>, msg: string) => void; warn: (obj: Record<string, unknown>, msg: string) => void },
+): Promise<{ seeded: boolean; taskCount: number }> {
+  try {
+    const [step] = await db
+      .select({
+        id: workflowStepsTable.id,
+        projectId: workflowStepsTable.projectId,
+        workflowTemplateStepId: workflowStepsTable.workflowTemplateStepId,
+      })
+      .from(workflowStepsTable)
+      .where(eq(workflowStepsTable.id, stepId))
+      .limit(1);
+
+    if (!step?.projectId || !step?.workflowTemplateStepId) {
+      log.warn({ stepId }, "seedKanbanCardsForPhase: step not found or missing projectId/templateStepId");
+      return { seeded: false, taskCount: 0 };
+    }
+
+    const [existingCount] = await db
+      .select({ n: count() })
+      .from(kanbanTasksTable)
+      .where(eq(kanbanTasksTable.workflowStepId, stepId));
+
+    if (Number(existingCount?.n ?? 0) > 0) {
+      log.info({ stepId, projectId: step.projectId }, "seedKanbanCardsForPhase: tasks already exist, skipping");
+      return { seeded: false, taskCount: 0 };
+    }
+
+    const templateTasks = await db
+      .select()
+      .from(workflowTemplateStepTasksTable)
+      .where(eq(workflowTemplateStepTasksTable.workflowTemplateStepId, step.workflowTemplateStepId))
+      .orderBy(asc(workflowTemplateStepTasksTable.order));
+
+    if (templateTasks.length === 0) {
+      log.info({ stepId, projectId: step.projectId }, "seedKanbanCardsForPhase: no template tasks found");
+      return { seeded: false, taskCount: 0 };
+    }
+
+    const resolvedMetadata = await resolveTemplateTaskMetadata(templateTasks);
+    await db.insert(kanbanTasksTable).values(
+      templateTasks.map((t, idx) => ({
+        projectId:      step.projectId!,
+        workflowStepId: step.id,
+        groupName:      t.groupName ?? null,
+        title:          t.title,
+        description:    t.description ?? null,
+        column:         (t.isCustomerTask ? "waiting_on_customer" : "backlog") as "backlog" | "waiting_on_customer",
+        order:          idx,
+        taskType:       t.taskType ?? null,
+        taskMetadata:   resolvedMetadata[idx],
+      })),
+    );
+
+    await syncProjectProgress(step.projectId);
+    log.info({ stepId, projectId: step.projectId, taskCount: templateTasks.length }, "seedKanbanCardsForPhase: seeded kanban tasks");
+    return { seeded: true, taskCount: templateTasks.length };
+  } catch (err) {
+    log.warn({ err, stepId }, "seedKanbanCardsForPhase: failed (non-fatal)");
+    return { seeded: false, taskCount: 0 };
+  }
+}
+
+/**
  * Recompute project progress percentage and persist it.
  * Mirrors syncProjectProgress in portal.ts.
  */

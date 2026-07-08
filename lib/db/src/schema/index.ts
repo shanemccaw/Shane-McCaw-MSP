@@ -1778,6 +1778,7 @@ export interface WfNode {
     | "create_kanban_task"
     | "get_project_tasks"
     | "update_project_task"
+    | "update_milestone"
     | "get_phases"
     | "create_phase"
     | "save_presentation_phases"
