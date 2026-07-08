@@ -1272,7 +1272,12 @@ async function executeNode(
       output = makeDryRunOutput(node, payload);
     } else switch (node.type) {
       case "start":
-        output = { started: true };
+        // Expose the run's incoming trigger/input payload as the Start node's
+        // output (in addition to top-level access) so workflow authors can
+        // reference it as {{steps.<startNodeId>.<field>}} and so the run
+        // viewer shows what actually kicked off the run instead of just a
+        // static marker. Top-level payload fields remain unaffected either way.
+        output = { started: true, ...payload };
         break;
 
       case "end":
