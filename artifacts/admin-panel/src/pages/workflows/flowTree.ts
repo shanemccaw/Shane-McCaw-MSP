@@ -42,7 +42,7 @@ export interface StoredEdge {
   animated?: boolean;
 }
 
-export const CONTAINER_TYPES = new Set(["foreach", "condition", "switch_case", "parallel"]);
+export const CONTAINER_TYPES = new Set(["foreach", "for", "condition", "switch_case", "parallel"]);
 
 /**
  * Data-aware container check.
@@ -159,6 +159,22 @@ export function graphToTree(rawNodes: StoredNode[], rawEdges: StoredEdge[]): Flo
 
     // ── ForEach ──────────────────────────────────────────────────────────────
     if (type === "foreach") {
+      const bodyEdge = out.find(e => e.sourceHandle === "body");
+      const doneEdge =
+        out.find(e => e.sourceHandle === "done") ??
+        out.find(e => !e.sourceHandle && e.target !== bodyEdge?.target);
+
+      step.branches = { body: bodyEdge ? buildSequence(bodyEdge.target, stopSet) : [] };
+
+      const result: FlowStep[] = [step];
+      if (doneEdge && !visited.has(doneEdge.target) && !stopSet?.has(doneEdge.target)) {
+        result.push(...buildSequence(doneEdge.target, stopSet));
+      }
+      return result;
+    }
+
+    // ── For (index-based loop) ────────────────────────────────────────────────
+    if (type === "for") {
       const bodyEdge = out.find(e => e.sourceHandle === "body");
       const doneEdge =
         out.find(e => e.sourceHandle === "done") ??
@@ -477,6 +493,14 @@ export function treeToGraph(steps: FlowStep[], startX = 320, startY = 80): { nod
         const { nextY: afterBody } = doLayout(bodySteps, x + BRANCH_W, y, [{ id: step.id, handle: "body" }]);
         y = afterBody + 40;
         // Continuation from foreach uses "done" handle
+        feeders_ = [{ id: step.id, handle: "done" }];
+      }
+
+      // ── For (index-based loop) ─────────────────────────────────────────────
+      else if (step.nodeType === "for") {
+        const bodySteps = step.branches["body"] ?? [];
+        const { nextY: afterBody } = doLayout(bodySteps, x + BRANCH_W, y, [{ id: step.id, handle: "body" }]);
+        y = afterBody + 40;
         feeders_ = [{ id: step.id, handle: "done" }];
       }
 

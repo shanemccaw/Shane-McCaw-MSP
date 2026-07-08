@@ -857,6 +857,16 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
     }
 
+    case "for": {
+      return {
+        dryRun: true,
+        forItems: [],
+        item: null,
+        index: 0,
+        arraySource: (node.data.arraySource as string | undefined) ?? "",
+      };
+    }
+
     case "parallel": {
       const branchCount  = (node.data.branchCount  as number   | undefined) ?? 2;
       const branchLabels = (node.data.branchLabels as string[] | undefined) ?? [];
@@ -1931,6 +1941,30 @@ async function executeNode(
           arrayPath: feCleanPath,
           itemAlias: feAlias,
           collectedResults: [],
+        };
+        break;
+      }
+
+      case "for": {
+        // Resolve the array from the payload using a token expression (e.g. {{steps.n1.items}}).
+        const forArraySource = (node.data.arraySource as string | undefined) ?? "";
+        const forResolved = interp(forArraySource, payload);
+        let forItems: unknown[] | null = null;
+        if (Array.isArray(forResolved)) {
+          forItems = forResolved;
+        } else if (typeof forResolved === "string" && forResolved.trim().length > 0) {
+          forItems = forResolved.split(",").map(s => s.trim()).filter(s => s.length > 0);
+        }
+        if (!forItems) {
+          logger.warn({ runId, arraySource: forArraySource, resolvedType: typeof forResolved },
+            "workflow-executor: for loop arraySource did not resolve to an array — skipping all iterations");
+        }
+        const forMaxIter = (node.data.maxIterations as number | undefined) ?? null;
+        output = {
+          forItems: forItems ?? [],
+          forSkipped: !forItems,
+          arraySource: forArraySource,
+          maxIterations: forMaxIter,
         };
         break;
       }
@@ -6225,6 +6259,102 @@ export async function executeWorkflowRun(
         // Setting resolvedCount above inDegree means any future resolveEdge call
         // on these nodes increments past inDegree and never re-queues them.
         for (const nId of itemSubgraphIds) {
+          resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
+        }
+
+        // Route done edges as active (post-loop continuation)
+        for (const e of doneEdges) resolveEdge(e.target, true);
+
+        await db.update(wfRunsTable)
+          .set({ branchPath: branchPath as unknown as string[] })
+          .where(eq(wfRunsTable.id, runId));
+
+        continue;
+      }
+
+      // For: sequential index-based loop — mirrors foreach but injects item + index
+      if (node.type === "for") {
+        const forItems    = (output.forItems as unknown[]) ?? [];
+        const maxIter     = (output.maxIterations as number | null) ?? null;
+        const outEdges    = graph.edges.filter(e => e.source === nodeId);
+        const bodyEdges   = outEdges.filter(e => e.sourceHandle === "body");
+        const doneEdges   = outEdges.filter(e => e.sourceHandle === "done");
+
+        // Collect body subgraph nodes via DFS from body-handle targets.
+        const doneTargetIds    = new Set(doneEdges.map(e => e.target));
+        const bodySubgraphIds  = new Set<string>();
+        const dfsStack         = bodyEdges.map(e => e.target);
+        while (dfsStack.length > 0) {
+          const nId = dfsStack.pop()!;
+          if (bodySubgraphIds.has(nId) || doneTargetIds.has(nId)) continue;
+          bodySubgraphIds.add(nId);
+          for (const e of graph.edges.filter(e => e.source === nId)) {
+            if (!bodySubgraphIds.has(e.target) && !doneTargetIds.has(e.target)) {
+              dfsStack.push(e.target);
+            }
+          }
+        }
+
+        const iterLimit  = maxIter !== null ? Math.min(forItems.length, maxIter) : forItems.length;
+        const startIds   = bodyEdges.map(e => e.target).filter(id => bodySubgraphIds.has(id));
+
+        logger.info({ runId, nodeId, iterLimit, subgraphSize: bodySubgraphIds.size },
+          "wf-executor: for — starting iterations");
+
+        for (let i = 0; i < iterLimit; i++) {
+          const element = forItems[i];
+          const prevSteps = (payload.steps as Record<string, unknown>) ?? {};
+          const prevNodes = (payload.nodes as Record<string, unknown>) ?? {};
+          const forIterStep = {
+            ...(prevSteps[nodeId] as Record<string, unknown> ?? {}),
+            item:  element,
+            index: i,
+          };
+          const iterPayload: Record<string, unknown> = {
+            ...payload,
+            item:  element,
+            index: i,
+            steps: { ...prevSteps, [nodeId]: forIterStep },
+            nodes: { ...prevNodes, [nodeId]: forIterStep },
+          };
+
+          const iterResult = await executeItemSubgraph(
+            graph, bodySubgraphIds, startIds, iterPayload,
+            runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId,
+            i,
+          );
+          branchPath.push(...startIds.map(id => `${id}[${i}]`));
+
+          if (iterResult.cancelRun) {
+            await db.update(wfRunsTable).set({
+              status: "cancelled", finishedAt: new Date(),
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            await db.insert(wfRunNodeLogsTable).values({
+              runId, nodeId, level: "info",
+              message: `Run cancelled by cancel_workflow inside for iteration ${i}`,
+            }).catch(() => { });
+            return;
+          }
+
+          if (iterResult.nodeError) {
+            const errMsg = (iterResult.errorOutput?.error as string | undefined)
+              ?? `for: node ${iterResult.failedNodeId ?? "unknown"} failed at iteration ${i}`;
+            await db.update(wfRunsTable).set({
+              status: "failed", finishedAt: new Date(), errorMessage: errMsg,
+              branchPath: branchPath as unknown as string[],
+            }).where(eq(wfRunsTable.id, runId));
+            logger.warn({ runId, nodeId, iteration: i, failedNodeId: iterResult.failedNodeId },
+              "wf-executor: for — node error in loop body, no handler — run failed");
+            return;
+          }
+
+          logger.info({ runId, nodeId, iteration: i, iterLimit },
+            "wf-executor: for iteration complete");
+        }
+
+        // Prevent the main BFS from executing body-subgraph nodes again.
+        for (const nId of bodySubgraphIds) {
           resolvedCount.set(nId, (inDegree.get(nId) ?? 0) + 1);
         }
 

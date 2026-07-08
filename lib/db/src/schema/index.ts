@@ -1801,6 +1801,7 @@ export interface WfNode {
     | "switch_case"
     // Control Flow
     | "foreach"
+    | "for"
     | "parallel"
     | "join"
     | "retry"

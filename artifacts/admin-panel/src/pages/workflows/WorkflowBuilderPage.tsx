@@ -135,6 +135,7 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   // ── Control Flow ──
   foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  for:             { bg: "#160A2E", border: "#A855F7", icon: "⟳",  label: "For"                 },
   retry:           { bg: "#1A1100", border: "#F59E0B", icon: "🔁",  label: "Retry"               },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },
   report_progress: { bg: "#061A1A", border: "#00B4D8", icon: "📶", label: "Report Progress"     },
@@ -404,6 +405,11 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
     { key: "itemsTotal",       label: "Total number of elements in the array" },
     { key: "collectedResults", label: "Array of last payload from each iteration (available on done handle)" },
   ],
+  // For — outputs available inside the loop body (via body handle)
+  for: [
+    { key: "item",  label: "Current array element for this iteration" },
+    { key: "index", label: "0-based index of the current iteration" },
+  ],
   // Retry — outputs available inside the exhausted subgraph
   retry: [
     { key: "_retry.<id>.count",     label: "Number of attempts made (equals maxAttempts when exhausted)" },
@@ -605,6 +611,25 @@ function WfNode(props: NodeProps) {
             <span className="text-emerald-400">Done</span>
           </div>
         </>
+      ) : nodeType === "for" ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="body"
+            style={{ left: "30%", background: "#A855F7", border: "none" }}
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            id="done"
+            style={{ left: "70%", background: "#22C55E", border: "none" }}
+          />
+          <div className="flex justify-between text-[9px] font-semibold mt-1 px-4">
+            <span style={{ color: "#A855F7" }}>Body</span>
+            <span className="text-emerald-400">Done</span>
+          </div>
+        </>
       ) : nodeType === "retry" ? (
         <>
           <Handle
@@ -750,6 +775,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "ask_for_input", label: "Ask for Input", description: "Prompt the operator for values before the run starts", tags: ["input", "manual", "form", "prompt", "interactive"] },
       { type: "switch_case",   label: "Switch",        description: "Route to one of many branches based on an expression value", tags: ["logic", "switch", "case", "branch", "route", "multi"] },
       { type: "foreach",       label: "For Each",      description: "Iterate over an array, running a subgraph for each element", tags: ["loop", "iterate", "array", "for-each", "foreach", "control flow"] },
+      { type: "for",           label: "For",           description: "Sequential index-based loop over an array — injects {{item}} and {{index}} per iteration", tags: ["loop", "for", "iterate", "array", "index", "sequential", "control flow"] },
     ],
   },
   {
@@ -881,6 +907,7 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     name: "Control Flow",
     nodes: [
       { type: "foreach",         label: "For Each",        description: "Iterate over an array and run nodes for each element",         tags: ["loop", "iterate", "foreach", "array", "control"] },
+      { type: "for",             label: "For",             description: "Sequential index-based loop — injects {{item}} and {{index}} per iteration", tags: ["loop", "for", "iterate", "index", "sequential", "array", "control"] },
       { type: "parallel",        label: "Parallel",        description: "Split into multiple branches that run concurrently; awaited branches are merged at a Join node", tags: ["parallel", "concurrent", "branch", "split", "fan-out", "control"] },
       { type: "retry",           label: "Retry",           description: "Re-run a failed node automatically; wire graceful error handling in the Exhausted body.", tags: ["retry", "error", "loop", "control", "recover", "resilience"] },
       { type: "approval_gate",   label: "Approval Gate",   description: "Pause the run until an admin approves or rejects to continue", tags: ["approval", "gate", "pause", "human", "control", "review"] },
@@ -4534,6 +4561,44 @@ function NodeConfigPanel({
               </p>
               <p className="text-[10px] text-[#484F58] leading-relaxed">
                 Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete — they receive <span className="font-mono text-[#7D8590]">{"{{collectedResults}}"}</span>.
+              </p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "for" && (
+          <>
+            <PayloadField
+              label="Array source"
+              hint="Token expression resolving to the array to loop over — e.g. {{steps.n1.items}}. Each element is injected as {{item}} and its position as {{index}} into the loop body."
+              value={(node.data.arraySource as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, arraySource: v })}
+              placeholder="{{steps.n1.items}}"
+              ancestorOutputs={ancestorOutputs}
+            />
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1">
+                <label className="text-xs font-medium text-[#7D8590]">Max iterations <span className="text-[#484F58] font-normal">(optional safety cap)</span></label>
+                <FieldHint text="If set, the loop stops after this many iterations even if the array is longer — useful to prevent runaway loops in production." />
+              </div>
+              <input
+                type="number"
+                min={1}
+                value={(node.data.maxIterations as number | undefined) ?? ""}
+                onChange={e => {
+                  const v = e.target.value.trim();
+                  onChange(node.id, { ...node.data, maxIterations: v === "" ? undefined : Math.max(1, Number(v)) });
+                }}
+                placeholder="unlimited"
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#E6EDF3] outline-none focus:border-[#A855F7]/60 placeholder-[#484F58]"
+              />
+            </div>
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-3 space-y-1.5">
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold" style={{ color: "#A855F7" }}>Body</span> handle to the first node of the loop body — each iteration injects <span className="font-mono text-[#7D8590]">{"{{item}}"}</span> (the element) and <span className="font-mono text-[#7D8590]">{"{{index}}"}</span> (0-based position).
+              </p>
+              <p className="text-[10px] text-[#484F58] leading-relaxed">
+                Connect the <span className="font-semibold text-emerald-400">Done</span> handle to nodes that run after all iterations complete. Iterations are <span className="font-semibold">sequential</span> — each one finishes before the next starts.
               </p>
             </div>
           </>

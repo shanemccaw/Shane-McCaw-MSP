@@ -1344,6 +1344,7 @@ function ContainerBody({
 
   function handleFor(branchKey: string) {
     if (nodeType === "foreach") return "body";
+    if (nodeType === "for") return "body";
     if (nodeType === "condition") return branchKey;
     if (nodeType === "switch_case") return branchKey === "__default__" ? "default" : `case-${branchKey}`;
     if (nodeType === "fetch_news_headlines") return branchKey; // "hot" or "notHot"
@@ -1353,6 +1354,36 @@ function ContainerBody({
 
   // ── ForEach ──
   if (nodeType === "foreach") {
+    const bodySteps = branches["body"] ?? [];
+    return (
+      <div className="border-t border-[#A855F7]/30 rounded-b-xl overflow-hidden bg-[#A855F7]/5">
+        <div className="px-3 py-1.5 flex items-center gap-1.5">
+          <span className="text-[9px] uppercase tracking-widest font-bold text-[#A855F7]">Loop body</span>
+        </div>
+        <div className="px-4 pb-3">
+          <BranchStepList
+            steps={bodySteps}
+            containerId={step.id}
+            containerHandle="body"
+            lastNodeIdFn={lastNodeId}
+            branchKey="body"
+            isArchived={isArchived}
+            nodeStyles={nodeStyles}
+            nodeIdCounter={nodeIdCounter}
+            libraryCategories={libraryCategories}
+            allLibraryNodes={allLibraryNodes}
+            nodes={nodes}
+            edges={edges}
+            onGraphChange={onGraphChange}
+            onDuplicateNode={onDuplicateNode}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ── For (index-based loop) ──
+  if (nodeType === "for") {
     const bodySteps = branches["body"] ?? [];
     return (
       <div className="border-t border-[#A855F7]/30 rounded-b-xl overflow-hidden bg-[#A855F7]/5">
@@ -2476,8 +2507,8 @@ export default function FlowCanvas({
                     {step.nodeType !== "fetch_news_headlines" && (
                       <AddButton
                         afterNodeId={step.id}
-                        sourceHandle={step.nodeType === "foreach" ? "done" : undefined}
-                        label={step.nodeType === "foreach" ? "After loop" : undefined}
+                        sourceHandle={(step.nodeType === "foreach" || step.nodeType === "for") ? "done" : undefined}
+                        label={(step.nodeType === "foreach" || step.nodeType === "for") ? "After loop" : undefined}
                         isArchived={isArchived}
                         nodeIdCounter={nodeIdCounter}
                         nodeStyles={nodeStyles}

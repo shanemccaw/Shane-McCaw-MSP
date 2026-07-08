@@ -77,6 +77,7 @@ const NODE_STYLES: Record<string, NodeStyle> = {
   ask_for_input: { bg: "#1A0E00", border: "#F97316", icon: "⌨",  label: "Ask for Input"       },
   switch_case:   { bg: "#180D00", border: "#FB923C", icon: "⇶",  label: "Switch"              },
   foreach:         { bg: "#160A2E", border: "#A855F7", icon: "↻",  label: "For Each"            },
+  for:             { bg: "#160A2E", border: "#A855F7", icon: "⟳",  label: "For"                 },
   parallel:        { bg: "#041620", border: "#06B6D4", icon: "⇉",  label: "Parallel"            },
   join:            { bg: "#041620", border: "#06B6D4", icon: "⤤",  label: "Join"                },
   approval_gate:   { bg: "#1A1200", border: "#F59E0B", icon: "⏸",  label: "Approval Gate"       },

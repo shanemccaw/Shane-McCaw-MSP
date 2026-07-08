@@ -294,7 +294,7 @@ export function getAncestorOutputs(
     //
     // This is what makes {{myVar}} visible in Condition and Switch-Case expression
     // fields when a sibling Set Variable node lives in the same foreach body.
-    if (type === "foreach") {
+    if (type === "foreach" || type === "for") {
       const itemHandleTargets = edges
         .filter(
           e =>
