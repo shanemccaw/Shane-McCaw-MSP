@@ -440,7 +440,7 @@ function DiffNodeView({ keyName, node, depth }: DiffNodeViewProps) {
 
 // ─── ViewerTab ────────────────────────────────────────────────────────────────
 
-function ViewerTab() {
+function ViewerTab({ initialJson }: { initialJson?: unknown } = {}) {
   const { toast } = useToast();
   const [raw, setRaw] = useState("");
   const [parsed, setParsed] = useState<JsonValue | null>(null);
@@ -448,6 +448,16 @@ function ViewerTab() {
   const [search, setSearch] = useState("");
   const [expandSignal, setExpandSignal] = useState<boolean | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (initialJson === undefined) return;
+    const text = JSON.stringify(initialJson, null, 2);
+    setRaw(text);
+    setError(null);
+    setParsed(initialJson as JsonValue);
+    setSearch("");
+    setExpandSignal(null);
+  }, [initialJson]);
 
   function handleInput(text: string) {
     setRaw(text);
@@ -756,9 +766,9 @@ function DiffTab() {
   );
 }
 
-// ─── JsonViewer (main export) ─────────────────────────────────────────────────
+// ─── JsonViewerContent (shared, accepts initialJson) ─────────────────────────
 
-export default function JsonViewer() {
+export function JsonViewerContent({ initialJson }: { initialJson?: unknown } = {}) {
   const [activeTab, setActiveTab] = useState<"viewer" | "diff">("viewer");
 
   return (
@@ -782,8 +792,14 @@ export default function JsonViewer() {
       </div>
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {activeTab === "viewer" ? <ViewerTab /> : <DiffTab />}
+        {activeTab === "viewer" ? <ViewerTab initialJson={initialJson} /> : <DiffTab />}
       </div>
     </div>
   );
+}
+
+// ─── JsonViewer (page-level default export) ───────────────────────────────────
+
+export default function JsonViewer() {
+  return <JsonViewerContent />;
 }

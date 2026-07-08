@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Copy, Check } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard";
+import { JsonViewerDialog } from "./JsonViewerDialog";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLocation } from "wouter";
@@ -533,7 +534,7 @@ export function DiffViewer({ before, after }: { before: Record<string, unknown>;
   );
 }
 
-export function JsonBlock({ data, label }: { data: Record<string, unknown>; label: string }) {
+export function JsonBlock({ data, label, onOpenInViewer }: { data: Record<string, unknown>; label: string; onOpenInViewer?: (json: Record<string, unknown>) => void }) {
   const htmlContent = typeof data.htmlContent === "string" ? data.htmlContent : null;
   const displayData = htmlContent !== null
     ? Object.fromEntries(Object.entries(data).filter(([k]) => k !== "htmlContent"))
@@ -545,15 +546,29 @@ export function JsonBlock({ data, label }: { data: Record<string, unknown>; labe
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">{label}</p>
-        <button
-          onClick={(e) => { e.stopPropagation(); handleCopy(JSON.stringify(data, null, 2)); }}
-          title={copied ? "Copied!" : "Copy JSON"}
-          className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
-        >
-          {copied
-            ? <Check className="w-3 h-3 text-emerald-400" />
-            : <Copy className="w-3 h-3" />}
-        </button>
+        <div className="flex items-center gap-1">
+          {onOpenInViewer && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onOpenInViewer(data); }}
+              title="Open in JSON Viewer"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+              </svg>
+              Viewer
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); handleCopy(JSON.stringify(data, null, 2)); }}
+            title={copied ? "Copied!" : "Copy JSON"}
+            className="flex items-center justify-center w-5 h-5 rounded hover:bg-[#30363D] transition-colors text-[#484F58] hover:text-[#E6EDF3]"
+          >
+            {copied
+              ? <Check className="w-3 h-3 text-emerald-400" />
+              : <Copy className="w-3 h-3" />}
+          </button>
+        </div>
       </div>
       <pre className="bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-[10px] font-mono text-[#E6EDF3] overflow-auto max-h-40 whitespace-pre-wrap">
         {JSON.stringify(displayData, null, 2)}
@@ -1280,6 +1295,8 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   const { fetchWithAuth } = useAuth();
   const [activeTab, setActiveTab] = useState<"replay" | "timeline" | "payload">("replay");
   const [replayStep, setReplayStep] = useState(0);
+  const [jsonViewer, setJsonViewer] = useState<{ open: boolean; json: unknown; title: string }>({ open: false, json: null, title: "" });
+  const openJsonViewer = useCallback((json: unknown, title: string) => setJsonViewer({ open: true, json, title }), []);
 
   useEffect(() => {
     setActiveTab("replay");
@@ -1392,6 +1409,7 @@ export default function RunDetailContent({ runId }: { runId: number }) {
     .filter(id => !branchSet.has(id));
 
   return (
+    <>
     <div className="h-full flex flex-col overflow-hidden">
       {/* Tabs */}
       <div className="flex-shrink-0 flex border-b border-[#30363D] px-4">
@@ -1735,13 +1753,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                           <span className="text-[10px] text-amber-400 font-medium">JSON parse failed — output is a raw string, not a structured object. Downstream nodes expecting an object may behave unexpectedly.</span>
                         </div>
                       )}
-                      <JsonBlock data={currentOutput.input} label="Input" />
+                      <JsonBlock data={currentOutput.input} label="Input" onOpenInViewer={j => openJsonViewer(j, `${currentNodeId} — Input`)} />
                       {currentNodeType === "get_tenant_signals" ? (
                         <TenantSignalsPanel output={currentOutput.output} />
                       ) : currentNodeType === "check_script_output" ? (
                         <ScriptCheckOutputPanel output={currentOutput.output} />
                       ) : (
-                        <JsonBlock data={currentOutput.output} label="Output" />
+                        <JsonBlock data={currentOutput.output} label="Output" onOpenInViewer={j => openJsonViewer(j, `${currentNodeId} — Output`)} />
                       )}
                       {/* Depth-limit abort: depth+maxDepth present but no child was created */}
                       {currentOutput.status === "error"
@@ -1952,7 +1970,29 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                       <JoinNodeSummary nodeId={output.nodeId} graph={run.graph} />
                     ) : (
                     <div className="space-y-2">
-                      <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Payload diff (input → output)</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">Payload diff (input → output)</p>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openJsonViewer(output.input, `${output.nodeId} — Input`)}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                            Input
+                          </button>
+                          <button
+                            onClick={() => openJsonViewer(output.output, `${output.nodeId} — Output`)}
+                            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium text-[#484F58] hover:text-[#58A6FF] hover:bg-[#1C2128] transition-colors"
+                          >
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.25 6.75L22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3l-4.5 16.5" />
+                            </svg>
+                            Output
+                          </button>
+                        </div>
+                      </div>
                       <DiffViewer before={output.input} after={output.output} />
                       {typeof output.output.imageUploadWarning === "string" && (
                         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 mt-1">
@@ -2039,5 +2079,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
         )}
       </div>
     </div>
+
+    <JsonViewerDialog
+      open={jsonViewer.open}
+      onOpenChange={open => setJsonViewer(v => ({ ...v, open }))}
+      initialJson={jsonViewer.json}
+      title={jsonViewer.title}
+    />
+    </>
   );
 }
