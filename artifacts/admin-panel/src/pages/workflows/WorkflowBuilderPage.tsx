@@ -222,7 +222,7 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   convert_to_opportunity: [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   create_client:          [{ key: "clientId", label: "Created client user ID" }, { key: "clientEmail", label: "Client email" }],
   create_project:         [{ key: "projectId", label: "Created project ID" }, { key: "projectTitle", label: "Project title" }],
-  execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Final job status (Completed / Failed / Stopped)" }, { key: "runbookName", label: "Runbook name" }, { key: "jobOutput", label: "Script output text (newline-joined stdout lines)" }],
+  execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID (single mode)" }, { key: "jobStatus", label: "Final job status (single mode)" }, { key: "runbookName", label: "Runbook name (single mode)" }, { key: "jobOutput", label: "Script output text (single mode)" }, { key: "allSucceeded", label: "true when every runbook succeeded (multi mode)" }, { key: "results", label: "Array of per-runbook result objects (multi mode)" }, { key: "succeeded", label: "Array of runbook names that succeeded (multi mode)" }, { key: "failed", label: "Array of runbook names that failed (multi mode)" }],
   update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
   generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }, { key: "htmlContent", label: "Full HTML of the generated document (task_execution_guide only)" }],
   run_workflow:           [{ key: "childRunId", label: "Child run ID" }],
@@ -3069,23 +3069,61 @@ function NodeConfigPanel({
               </>
             )}
 
-            {(node.data.actionType as string) === "execute_runbook" && (
+            {(node.data.actionType as string) === "execute_runbook" && (() => {
+              const isMulti = !!((node.data.runbooks as string | undefined)?.trim());
+              return (
               <>
-                <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v, runbookId: "" })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
-                <div className="flex items-center gap-2 my-0.5">
-                  <div className="flex-1 h-px bg-[#30363D]" />
-                  <span className="text-[10px] text-[#484F58] uppercase tracking-widest">or</span>
-                  <div className="flex-1 h-px bg-[#30363D]" />
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Execution Mode</label>
+                  <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                    {(["Single", "Multiple"] as const).map(mode => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          if (mode === "Multiple" && !isMulti) {
+                            onChange(node.id, { ...node.data, runbooks: (node.data.runbookName as string) ?? "", runbookName: "", runbookId: "" });
+                          } else if (mode === "Single" && isMulti) {
+                            onChange(node.id, { ...node.data, runbooks: "", runbookName: "", runbookId: "" });
+                          }
+                        }}
+                        className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
+                      >
+                        {mode}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <PayloadField label="Runbook ID" value={(node.data.runbookId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookId: v, runbookName: "" })} placeholder="/subscriptions/.../runbooks/My-Runbook" ancestorOutputs={ancestorOutputs} />
+                {!isMulti ? (
+                  <>
+                    <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v, runbookId: "" })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
+                    <div className="flex items-center gap-2 my-0.5">
+                      <div className="flex-1 h-px bg-[#30363D]" />
+                      <span className="text-[10px] text-[#484F58] uppercase tracking-widest">or</span>
+                      <div className="flex-1 h-px bg-[#30363D]" />
+                    </div>
+                    <PayloadField label="Runbook ID" value={(node.data.runbookId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookId: v, runbookName: "" })} placeholder="/subscriptions/.../runbooks/My-Runbook" ancestorOutputs={ancestorOutputs} />
+                  </>
+                ) : (
+                  <>
+                    <PayloadField label="Multiple Runbooks" value={(node.data.runbooks as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbooks: v })} placeholder={"Runbook-A, Runbook-B, Runbook-C\nor a {{variable}} that resolves to a JSON array"} multiline ancestorOutputs={ancestorOutputs} />
+                    <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-0.5">
+                      <p className="text-[10px] text-[#484F58]">Runs all in parallel — outputs <span className="font-mono text-[#7D8590]">{"{{results}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{succeeded}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{failed}}"}</span>.</p>
+                      <p className="text-[10px] text-[#484F58]">Branch on <span className="font-mono text-[#7D8590]">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-[#7D8590]">{"{{results}}"}</span> has <span className="font-mono text-[#7D8590]">runbook</span>, <span className="font-mono text-[#7D8590]">status</span>, <span className="font-mono text-[#7D8590]">output</span>, and <span className="font-mono text-[#7D8590]">jobId</span>.</p>
+                    </div>
+                  </>
+                )}
                 <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Client ID (optional)" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
-                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Provide Runbook Name <span className="italic">or</span> Runbook ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{runbookName}}"}</span>.</p>
-                </div>
+                {!isMulti && (
+                  <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                    <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Provide Runbook Name <span className="italic">or</span> Runbook ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{runbookName}}"}</span>.</p>
+                  </div>
+                )}
               </>
-            )}
+              );
+            })()}
 
             {(node.data.actionType as string) === "calculate_pricing" && (
               <>
@@ -3324,54 +3362,100 @@ function NodeConfigPanel({
 
         {/* ── Promoted Azure nodes ──────────────────────────── */}
 
-        {nodeType === "execute_runbook" && (
+        {nodeType === "execute_runbook" && (() => {
+          const isMulti = !!((node.data.runbooks as string | undefined)?.trim());
+          return (
           <>
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
-              {runbooksLoading ? (
-                <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
-                  <option>Loading runbooks…</option>
-                </select>
-              ) : runbookNames.length > 0 && !runbookManualMode ? (
-                <>
-                  <select
-                    value={(node.data.runbookName as string) ?? ""}
-                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+              <label className="text-xs font-medium text-[#7D8590]">Execution Mode</label>
+              <div className="flex rounded-lg overflow-hidden border border-[#30363D]">
+                {(["Single", "Multiple"] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => {
+                      if (mode === "Multiple" && !isMulti) {
+                        onChange(node.id, { ...node.data, runbooks: (node.data.runbookName as string) ?? "", runbookName: "", runbookId: "" });
+                        setRunbookManualMode(false);
+                      } else if (mode === "Single" && isMulti) {
+                        onChange(node.id, { ...node.data, runbooks: "", runbookName: "", runbookId: "" });
+                      }
+                    }}
+                    className={`flex-1 py-1.5 text-xs font-medium transition-colors ${(isMulti ? mode === "Multiple" : mode === "Single") ? "bg-[#0078D4] text-white" : "bg-[#0D1117] text-[#7D8590] hover:text-[#E6EDF3]"}`}
                   >
-                    <option value="">— select a runbook —</option>
-                    {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                  <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
-                    use a variable instead
+                    {mode}
                   </button>
-                </>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    value={(node.data.runbookName as string) ?? ""}
-                    onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
-                    placeholder="My-Runbook-Name"
-                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
-                  />
-                  {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
-                  {runbookNames.length > 0 && !runbooksLoading && (
-                    <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
-                      choose from list
-                    </button>
-                  )}
-                </>
-              )}
+                ))}
+              </div>
             </div>
+            {!isMulti ? (
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-[#7D8590]">Runbook Name</label>
+                {runbooksLoading ? (
+                  <select disabled className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#484F58] outline-none">
+                    <option>Loading runbooks…</option>
+                  </select>
+                ) : runbookNames.length > 0 && !runbookManualMode ? (
+                  <>
+                    <select
+                      value={(node.data.runbookName as string) ?? ""}
+                      onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] outline-none focus:border-[#0078D4]/60"
+                    >
+                      <option value="">— select a runbook —</option>
+                      {runbookNames.map(name => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setRunbookManualMode(true)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                      use a variable instead
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={(node.data.runbookName as string) ?? ""}
+                      onChange={e => onChange(node.id, { ...node.data, runbookName: e.target.value })}
+                      placeholder="My-Runbook-Name"
+                      className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60"
+                    />
+                    {runbooksError && <p className="text-[10px] text-amber-400/80">Could not load runbooks — enter name manually.</p>}
+                    {runbookNames.length > 0 && !runbooksLoading && (
+                      <button type="button" onClick={() => setRunbookManualMode(false)} className="text-[10px] text-[#484F58] hover:text-[#7D8590] hover:underline underline-offset-2 transition-colors">
+                        choose from list
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-[#7D8590]">Multiple Runbooks</label>
+                  <textarea
+                    value={(node.data.runbooks as string) ?? ""}
+                    onChange={e => onChange(node.id, { ...node.data, runbooks: e.target.value })}
+                    placeholder={"Runbook-A, Runbook-B, Runbook-C\nor a {{variable}} that resolves to a JSON array"}
+                    rows={3}
+                    className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-sm text-[#E6EDF3] placeholder-[#484F58] outline-none focus:border-[#0078D4]/60 resize-y font-mono"
+                  />
+                </div>
+                <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-0.5">
+                  <p className="text-[10px] text-[#484F58]">Runs all in parallel — outputs <span className="font-mono text-[#7D8590]">{"{{results}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{succeeded}}"}</span>, and <span className="font-mono text-[#7D8590]">{"{{failed}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Branch on <span className="font-mono text-[#7D8590]">{"{{allSucceeded}}"}</span> to route errors. Each entry in <span className="font-mono text-[#7D8590]">{"{{results}}"}</span> has <span className="font-mono text-[#7D8590]">runbook</span>, <span className="font-mono text-[#7D8590]">status</span>, <span className="font-mono text-[#7D8590]">output</span>, and <span className="font-mono text-[#7D8590]">jobId</span>.</p>
+                </div>
+              </>
+            )}
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Client ID (optional)" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
             <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
-            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>.</p>
-            </div>
+            {!isMulti && (
+              <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
+                <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>.</p>
+              </div>
+            )}
           </>
-        )}
+          );
+        })()}
 
         {nodeType === "update_m365_profile" && (
           <>

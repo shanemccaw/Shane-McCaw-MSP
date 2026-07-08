@@ -552,6 +552,30 @@ function coerceToType(raw: string, type: string, varName: string): unknown {
   }
 }
 
+// ── Runbook array coercion ────────────────────────────────────────────────────
+/**
+ * Coerce a resolved string to an array of runbook names.
+ * Accepts:
+ *   - A JSON array string:    '["Runbook A", "Runbook B"]'
+ *   - A comma-separated list: "Runbook A, Runbook B"
+ * Returns null if the input is empty/blank.
+ */
+function coerceToRunbookArray(resolved: string): string[] | null {
+  const trimmed = resolved.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        const names = parsed.map(v => String(v).trim()).filter(Boolean);
+        return names.length > 0 ? names : null;
+      }
+    } catch { /* fall through to comma-split */ }
+  }
+  const names = trimmed.split(",").map(s => s.trim()).filter(Boolean);
+  return names.length > 0 ? names : null;
+}
+
 // ── Dry-run synthetic outputs ─────────────────────────────────────────────────
 // Returns a realistic-looking output for every DB-touching node type without
 // actually reading or writing the database.  Keys match real node outputs so
@@ -578,8 +602,16 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       if (at === "convert_to_opportunity") return { dryRun: true, opportunityId: 1, leadId: num("leadId") };
       if (at === "create_client")        return { dryRun: true, clientId: 1, clientEmail: str("email", "test@example.com") };
       if (at === "create_project")       return { dryRun: true, projectId: 1, projectTitle: str("title", "Test Project") };
-      if (at === "execute_runbook")
+      if (at === "execute_runbook") {
+        const runbooksRaw = node.data.runbooks as string | undefined;
+        const resolvedRunbooks = runbooksRaw ? interp(runbooksRaw, payload) : undefined;
+        const runbookList = resolvedRunbooks ? coerceToRunbookArray(resolvedRunbooks) : null;
+        if (runbookList && runbookList.length > 0) {
+          const results = runbookList.map(name => ({ runbook: name, status: "succeeded", output: "", jobId: "dry-run-job" }));
+          return { dryRun: true, allSucceeded: true, results, succeeded: runbookList, failed: [] };
+        }
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Completed", runbookName: node.data.runbookName ?? "runbook", jobOutput: "" };
+      }
       if (at === "update_m365_profile")
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
@@ -1350,6 +1382,99 @@ async function executeNode(
             }
           }
         } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {
+          // ── Multiple-runbook parallel path (execute_runbook only) ────────────
+          const runbooksParam = actionType === "execute_runbook"
+            ? (node.data.runbooks as string | undefined)
+            : undefined;
+          const resolvedRunbooksStr = runbooksParam ? interp(runbooksParam, payload) : undefined;
+          const runbookList = resolvedRunbooksStr ? coerceToRunbookArray(resolvedRunbooksStr) : null;
+
+          if (runbookList && runbookList.length > 0) {
+            // Parallel fan-out: fire all runbooks simultaneously via Promise.allSettled
+            if (!isAzureConfigured()) {
+              nodeError = true;
+              output = { error: "Azure Automation is not configured — add the required secrets" };
+            } else {
+              const POLL_INTERVAL_MS = 5_000;
+              const TIMEOUT_MS = 10 * 60 * 1_000;
+
+              let sharedParameters: Record<string, string> = {};
+              const rawParams = node.data.runbookParams as string | undefined;
+              if (rawParams?.trim()) {
+                try { sharedParameters = JSON.parse(interp(rawParams, payload) ?? "{}") as Record<string, string>; }
+                catch { /* ignore bad JSON — run with no params */ }
+              }
+              const mClientId = interp(node.data.clientId as string | undefined, payload);
+              if (mClientId) sharedParameters["ClientId"] = mClientId;
+              const mProjectId = interp(node.data.projectId as string | undefined, payload);
+              if (mProjectId) sharedParameters["ProjectId"] = mProjectId;
+
+              type SingleResult = {
+                runbook: string;
+                status: "succeeded" | "failed";
+                jobId: string;
+                output?: string;
+                error?: string;
+              };
+
+              const pollSingle = async (runbookName: string, jobId: string): Promise<SingleResult> => {
+                const deadline = Date.now() + TIMEOUT_MS;
+                let finalStatus = "New";
+                while (!isTerminalStatus(finalStatus)) {
+                  if (Date.now() >= deadline) {
+                    return { runbook: runbookName, status: "failed", jobId, error: "Timed out after 10 minutes" };
+                  }
+                  await new Promise<void>(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+                  try {
+                    const statusResult = await getJobStatus(jobId);
+                    finalStatus = statusResult.status;
+                  } catch (e) {
+                    return { runbook: runbookName, status: "failed", jobId, error: (e as Error).message };
+                  }
+                }
+                const streams = await getJobOutput(jobId).catch(() => [] as Array<{ streamType: string; text: string }>);
+                const jobOutput = streams.filter(s => s.streamType === "Output").map(s => s.text).join("\n");
+                return {
+                  runbook: runbookName,
+                  status: finalStatus === "Completed" ? "succeeded" : "failed",
+                  jobId,
+                  output: jobOutput,
+                  ...(finalStatus !== "Completed" ? { error: `Azure status: ${finalStatus}` } : {}),
+                };
+              };
+
+              // Create all jobs in parallel (allSettled so one creation failure doesn't abort the rest)
+              const jobSettled = await Promise.allSettled(
+                runbookList.map(name => createRunbookJob({ runbookName: name, parameters: { ...sharedParameters } })),
+              );
+
+              // Poll all created jobs in parallel; map creation failures to immediate failed results
+              const pollPromises = runbookList.map((name, i) => {
+                const settled = jobSettled[i]!;
+                if (settled.status === "rejected") {
+                  return Promise.resolve<SingleResult>({
+                    runbook: name,
+                    status: "failed",
+                    jobId: "n/a",
+                    error: String((settled as PromiseRejectedResult).reason),
+                  });
+                }
+                const { jobId } = (settled as PromiseFulfilledResult<{ jobId: string; status: string }>).value;
+                return pollSingle(name, jobId);
+              });
+
+              const results = await Promise.all(pollPromises);
+              const succeeded = results.filter(r => r.status === "succeeded").map(r => r.runbook);
+              const failed    = results.filter(r => r.status !== "succeeded").map(r => r.runbook);
+
+              output = { allSucceeded: failed.length === 0, results, succeeded, failed };
+              logger.info(
+                { runId, nodeId: node.id, total: runbookList.length, succeeded: succeeded.length, failed: failed.length },
+                "wf-executor: execute_runbook multi-runbook fan-out complete",
+              );
+            }
+          } else {
+          // ── Single-runbook path (existing behaviour, unchanged) ───────────────
           let runbookName = interp(node.data.runbookName as string | undefined, payload);
           const runbookId = actionType === "execute_runbook" ? interp(node.data.runbookId as string | undefined, payload) : undefined;
           if (!runbookName && !runbookId) {
@@ -1415,6 +1540,7 @@ async function executeNode(
             }
             } // end if (!nodeError)
           }
+          } // end single-runbook path
         } else if (actionType === "generate_document") {
           // Mirrors POST /api/admin/insights/documents/generate exactly.
           // clientId and projectId are resolved from payload first, then from
