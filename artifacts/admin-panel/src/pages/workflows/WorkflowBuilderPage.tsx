@@ -3039,12 +3039,18 @@ function NodeConfigPanel({
 
             {(node.data.actionType as string) === "execute_runbook" && (
               <>
-                <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
+                <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v, runbookId: "" })} placeholder="My-Runbook-Name" ancestorOutputs={ancestorOutputs} />
+                <div className="flex items-center gap-2 my-0.5">
+                  <div className="flex-1 h-px bg-[#30363D]" />
+                  <span className="text-[10px] text-[#484F58] uppercase tracking-widest">or</span>
+                  <div className="flex-1 h-px bg-[#30363D]" />
+                </div>
+                <PayloadField label="Runbook ID" value={(node.data.runbookId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookId: v, runbookName: "" })} placeholder="/subscriptions/.../runbooks/My-Runbook" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"Param1": "value"}' multiline ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Client ID (optional)" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Provide Runbook Name <span className="italic">or</span> Runbook ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{runbookName}}"}</span>.</p>
                 </div>
               </>
             )}

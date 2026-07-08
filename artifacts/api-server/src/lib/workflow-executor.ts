@@ -57,7 +57,7 @@ import {
   type WfNode,
 } from "@workspace/db";
 
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured } from "./azure-automation";
+import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveRunbookNameById } from "./azure-automation";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
@@ -1253,14 +1253,25 @@ async function executeNode(
             }
           }
         } else if (actionType === "execute_runbook" || actionType === "update_m365_profile") {
-          const runbookName = interp(node.data.runbookName as string | undefined, payload);
-          if (!runbookName) {
+          let runbookName = interp(node.data.runbookName as string | undefined, payload);
+          const runbookId = actionType === "execute_runbook" ? interp(node.data.runbookId as string | undefined, payload) : undefined;
+          if (!runbookName && !runbookId) {
             nodeError = true;
-            output = { error: "execute_runbook requires runbookName" };
+            output = { error: "execute_runbook requires either runbookName or runbookId" };
           } else if (!isAzureConfigured()) {
             nodeError = true;
             output = { error: "Azure Automation is not configured — add the required secrets" };
           } else {
+            // Resolve runbook name from ID when only the ID is supplied.
+            if (!runbookName && runbookId) {
+              try {
+                runbookName = await resolveRunbookNameById(runbookId);
+              } catch (err) {
+                nodeError = true;
+                output = { error: (err as Error).message ?? `Could not resolve runbook ID "${runbookId}"` };
+              }
+            }
+            if (!nodeError) {
             let parameters: Record<string, string> = {};
             const rawParams = node.data.runbookParams as string | undefined;
             if (rawParams?.trim()) {
@@ -1277,7 +1288,7 @@ async function executeNode(
               const projectId = interp(node.data.projectId as string | undefined, payload);
               if (projectId) parameters["ProjectId"] = projectId;
             }
-            const job = await createRunbookJob({ runbookName, parameters });
+            const job = await createRunbookJob({ runbookName: runbookName!, parameters });
             if (actionType === "execute_runbook") {
               // Poll until the job reaches a terminal status (max 10 minutes).
               const POLL_INTERVAL_MS = 5_000;
@@ -1305,6 +1316,7 @@ async function executeNode(
             } else {
               output = { jobId: job.jobId, jobStatus: job.status, runbookName };
             }
+            } // end if (!nodeError)
           }
         } else if (actionType === "generate_document") {
           // Mirrors POST /api/admin/insights/documents/generate exactly.

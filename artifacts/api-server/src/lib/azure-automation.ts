@@ -44,6 +44,7 @@ function buildClient() {
 }
 
 export interface RunbookSummary {
+  id?: string;
   name: string;
   description?: string;
   runbookType?: string;
@@ -56,7 +57,8 @@ export interface RunbookSummary {
 export async function listRunbooks(): Promise<RunbookSummary[]> {
   const { client, cfg } = buildClient();
   const res = await client.runbook.listByAutomationAccount(cfg.resourceGroup, cfg.accountName);
-  const results: RunbookSummary[] = ([...res] as Array<{ name?: string; description?: string; runbookType?: string; state?: string }>).map(rb => ({
+  const results: RunbookSummary[] = ([...res] as Array<{ id?: string; name?: string; description?: string; runbookType?: string; state?: string }>).map(rb => ({
+    id: rb.id ?? undefined,
     name: rb.name ?? "(unnamed)",
     description: rb.description ?? undefined,
     runbookType: rb.runbookType ?? undefined,
@@ -66,8 +68,9 @@ export async function listRunbooks(): Promise<RunbookSummary[]> {
   let nextLink = res.nextLink;
   while (nextLink) {
     const page = await client.runbook.listByAutomationAccountNext(nextLink);
-    for (const rb of [...page] as Array<{ name?: string; description?: string; runbookType?: string; state?: string }>) {
+    for (const rb of [...page] as Array<{ id?: string; name?: string; description?: string; runbookType?: string; state?: string }>) {
       results.push({
+        id: rb.id ?? undefined,
         name: rb.name ?? "(unnamed)",
         description: rb.description ?? undefined,
         runbookType: rb.runbookType ?? undefined,
@@ -78,6 +81,19 @@ export async function listRunbooks(): Promise<RunbookSummary[]> {
   }
 
   return results;
+}
+
+/**
+ * Resolve a runbook's display name from its Azure resource ID.
+ * Throws if no runbook with the given ID is found in the Automation account.
+ */
+export async function resolveRunbookNameById(id: string): Promise<string> {
+  const runbooks = await listRunbooks();
+  const match = runbooks.find(rb => rb.id === id);
+  if (!match) {
+    throw new Error(`No runbook found with ID "${id}" in the configured Automation account`);
+  }
+  return match.name;
 }
 
 export interface CreateJobParams {
