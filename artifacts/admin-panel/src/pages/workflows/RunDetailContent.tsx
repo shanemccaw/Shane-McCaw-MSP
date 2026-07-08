@@ -1364,9 +1364,20 @@ export default function RunDetailContent({ runId }: { runId: number }) {
   const maxStep = branchPath.length - 1;
   const currentNodeId = branchPath[replayStep] ?? null;
 
+  // ForEach iteration nodes appear in branchPath as "node-103[0]", "node-103[1]", etc.
+  // Strip the "[N]" suffix to get the base graph nodeId for lookups that don't yet
+  // have indexed rows (e.g. old completed runs or non-start subgraph nodes).
+  const currentBaseNodeId = currentNodeId != null
+    ? currentNodeId.replace(/\[\d+\]$/, "")
+    : null;
+
   // Build O(1) lookups — avoids O(n²) .find() inside render loops
   const nodeOutputMap = new Map(run.nodeOutputs.map(o => [o.nodeId, o]));
-  const currentOutput = currentNodeId != null ? nodeOutputMap.get(currentNodeId) : undefined;
+  // Prefer the exact indexed key (written by new server code); fall back to bare
+  // nodeId for old runs where only the base key was stored.
+  const currentOutput = currentNodeId != null
+    ? (nodeOutputMap.get(currentNodeId) ?? nodeOutputMap.get(currentBaseNodeId ?? ""))
+    : undefined;
 
   // Build a lookup: nodeId → graph node data
   const graphNodeMap = new Map(
@@ -1452,12 +1463,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                                 {/* Steps inside the group */}
                                 <div className="p-3 space-y-1">
                                   {entry.items.map(({ nodeId, idx }, i) => {
-                                    const graphNode = graphNodeMap.get(nodeId);
+                                    const baseNodeId = nodeId.replace(/\[\d+\]$/, "");
+                                    const graphNode = graphNodeMap.get(nodeId) ?? graphNodeMap.get(baseNodeId);
                                     const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                                     const label = (graphNode?.data?.label as string) ?? nodeType;
                                     const inPath = idx <= replayStep;
                                     const isCurrent = nodeId === currentNodeId;
-                                    const nodeOutput = nodeOutputMap.get(nodeId);
+                                    const nodeOutput = nodeOutputMap.get(nodeId) ?? nodeOutputMap.get(baseNodeId);
                                     const hasError = nodeOutput?.status === "error";
                                     const isMutated = !hasError && nodeOutput != null
                                       && Object.keys(nodeOutput.output).length > 0
@@ -1522,12 +1534,13 @@ export default function RunDetailContent({ runId }: { runId: number }) {
 
                         // ── Regular step ──────────────────────────────────────
                         const { nodeId, idx } = entry;
-                        const graphNode = graphNodeMap.get(nodeId);
+                        const baseNodeId = nodeId.replace(/\[\d+\]$/, "");
+                        const graphNode = graphNodeMap.get(nodeId) ?? graphNodeMap.get(baseNodeId);
                         const nodeType = (graphNode?.data?.nodeType as string) ?? graphNode?.type ?? "action";
                         const label = (graphNode?.data?.label as string) ?? nodeType;
                         const inPath = idx <= replayStep;
                         const isCurrent = nodeId === currentNodeId;
-                        const nodeOutput = nodeOutputMap.get(nodeId);
+                        const nodeOutput = nodeOutputMap.get(nodeId) ?? nodeOutputMap.get(baseNodeId);
                         const hasError = nodeOutput?.status === "error";
                         const isMutated = !hasError && nodeOutput != null
                           && Object.keys(nodeOutput.output).length > 0
@@ -1665,7 +1678,9 @@ export default function RunDetailContent({ runId }: { runId: number }) {
                   {/* Sidebar: Input / Output / status for the selected step */}
                   {(() => {
                     if (!currentNodeId) return null;
-                    const currentGraphNode = graphNodeMap.get(currentNodeId);
+                    // ForEach iteration nodes (e.g. "node-103[0]") are not in the graph;
+                    // fall back to the base nodeId so we still resolve type/label.
+                    const currentGraphNode = graphNodeMap.get(currentNodeId) ?? graphNodeMap.get(currentBaseNodeId ?? "");
                     const currentNodeType  = (currentGraphNode?.data?.nodeType as string) ?? currentGraphNode?.type ?? "";
                     const isParallelNode   = currentNodeType === "parallel";
                     const isJoinNode       = currentNodeType === "join";

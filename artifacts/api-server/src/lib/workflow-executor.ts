@@ -5710,6 +5710,7 @@ async function executeItemSubgraph(
   dryRun: boolean,
   inputValues: Record<string, string | string[]>,
   definitionId?: number,
+  iterationIndex?: number,
 ): Promise<{
   payload: Record<string, unknown>;
   lastOutput: Record<string, unknown>;
@@ -5766,10 +5767,27 @@ async function executeItemSubgraph(
       continue;
     }
 
+    const nodeInputPayload = currentPayload;
     const { output, nextPayload, cancelRun, nodeError, conditionResult, switchChosenHandle } =
       await executeNode(node, currentPayload, runId, dryRun, inputValues, definitionId);
     currentPayload = nextPayload;
     lastOutput = output;
+
+    // Write a per-iteration indexed output row (e.g. "node-103[0]") so the run
+    // detail page can show distinct Input/Output for each ForEach iteration.
+    // Only written for start nodes (which are the ones pushed into branchPath
+    // with the [i] suffix by the main BFS forEach block).
+    if (iterationIndex !== undefined && startNodeIds.includes(nodeId)) {
+      await db.insert(wfRunNodeOutputsTable).values({
+        runId,
+        nodeId: `${node.id}[${iterationIndex}]`,
+        input: nodeInputPayload,
+        output,
+        durationMs: null,
+        status: nodeError ? "error" : "ok",
+        errorMessage: nodeError ? (output.error as string ?? "node error") : null,
+      }).catch(() => { });
+    }
 
     // cancel_workflow inside the loop body must bubble up to cancel the whole run
     if (cancelRun) return { payload: currentPayload, lastOutput, cancelRun: true, nodeError: false };
@@ -6162,6 +6180,7 @@ export async function executeWorkflowRun(
           const iterResult = await executeItemSubgraph(
             graph, itemSubgraphIds, startIds, iterPayload,
             runId, opts.dryRun ?? false, opts.inputValues ?? {}, run.definitionId,
+            i,
           );
           branchPath.push(...startIds.map(id => `${id}[${i}]`));
 
