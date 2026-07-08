@@ -11496,7 +11496,7 @@ export default function WorkflowBuilderPage({ defId, versionId, onClose, onViewR
               );
             })()}
             {/* Panel content */}
-            <div className="flex-1 overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-hidden flex flex-col min-h-0">
               {rightPanelTab === "node" && selectedNode ? (
                 <NodeConfigPanel
                   node={{ id: selectedNode.id, data: selectedNode.data as Record<string, unknown> }}
