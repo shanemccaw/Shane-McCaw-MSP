@@ -1329,6 +1329,16 @@ function FieldHint({ text }: { text: string }) {
   );
 }
 
+// ── Shared type for inline autocomplete suggestions ────────────────────────────
+
+type InlineSuggestion = {
+  key: string;
+  tokenPath: string;
+  label: string;
+  insertText: string;
+  enumValue?: string;
+};
+
 // ── Payload field (label + variable picker + input/textarea) ──────────────────
 
 function PayloadField({
@@ -1356,11 +1366,28 @@ function PayloadField({
       tokenPath: group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`,
       label: o.label,
       groupName: group.nodeName,
+      enumValues: o.enumValues,
     }))
   );
 
-  const filteredTokens = suggest
-    ? allTokens.filter(t => t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase()))
+  const filteredTokens: InlineSuggestion[] = suggest
+    ? allTokens.flatMap(t => {
+        if (!t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase())) return [];
+        const base: InlineSuggestion = {
+          key: t.tokenPath,
+          tokenPath: t.tokenPath,
+          label: t.label,
+          insertText: `{{${t.tokenPath}}}`,
+        };
+        const enumItems: InlineSuggestion[] = (t.enumValues ?? []).map(ev => ({
+          key: `${t.tokenPath}::${ev}`,
+          tokenPath: t.tokenPath,
+          label: t.label,
+          insertText: `{{${t.tokenPath}}} == '${ev}'`,
+          enumValue: ev,
+        }));
+        return [base, ...enumItems];
+      })
     : [];
 
   function insertToken(key: string) {
@@ -1377,11 +1404,11 @@ function PayloadField({
     setPickerOpen(false);
   }
 
-  function pickSuggestion(tokenPath: string) {
+  function pickSuggestion(item: InlineSuggestion) {
     if (!suggest) return;
     const el = inputRef.current;
     const cursorPos = el ? (el.selectionStart ?? value.length) : value.length;
-    const replacement = `{{${tokenPath}}}`;
+    const replacement = item.insertText;
     const newVal = value.slice(0, suggest.openAt) + replacement + value.slice(cursorPos);
     onChange(newVal);
     const pos = suggest.openAt + replacement.length;
@@ -1413,7 +1440,7 @@ function PayloadField({
       setActiveIdx(i => (i - 1 + filteredTokens.length) % filteredTokens.length);
     } else if (e.key === "Enter" || e.key === "Tab") {
       e.preventDefault();
-      pickSuggestion(filteredTokens[activeIdx].tokenPath);
+      pickSuggestion(filteredTokens[activeIdx]!);
     } else if (e.key === "Escape") {
       setSuggest(null);
     }
@@ -1538,13 +1565,18 @@ function PayloadField({
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredTokens.map((t, i) => (
                 <button
-                  key={t.tokenPath}
+                  key={t.key}
                   type="button"
-                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t.tokenPath); }}
-                  className={`w-full text-left px-3 py-1.5 flex items-start justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t); }}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
                 >
-                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${t.tokenPath}}}`}</span>
-                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0 truncate">{t.insertText}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {t.enumValue !== undefined && (
+                      <span className="px-1 py-0.5 rounded text-[9px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/25">enum</span>
+                    )}
+                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -1762,11 +1794,28 @@ function ExpressionField({
       tokenPath: group.isStartNode ? o.key : `steps.${group.nodeId}.${o.key}`,
       label: o.label,
       groupName: group.nodeName,
+      enumValues: o.enumValues,
     }))
   );
 
-  const filteredTokens = suggest
-    ? allTokens.filter(t => t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase()))
+  const filteredTokens: InlineSuggestion[] = suggest
+    ? allTokens.flatMap(t => {
+        if (!t.tokenPath.toLowerCase().includes(suggest.filter.toLowerCase())) return [];
+        const base: InlineSuggestion = {
+          key: t.tokenPath,
+          tokenPath: t.tokenPath,
+          label: t.label,
+          insertText: `{{${t.tokenPath}}}`,
+        };
+        const enumItems: InlineSuggestion[] = (t.enumValues ?? []).map(ev => ({
+          key: `${t.tokenPath}::${ev}`,
+          tokenPath: t.tokenPath,
+          label: t.label,
+          insertText: `{{${t.tokenPath}}} == '${ev}'`,
+          enumValue: ev,
+        }));
+        return [base, ...enumItems];
+      })
     : [];
 
   // Debounced validator
@@ -1793,11 +1842,11 @@ function ExpressionField({
     setPickerOpen(false);
   }
 
-  function pickSuggestion(tokenPath: string) {
+  function pickSuggestion(item: InlineSuggestion) {
     if (!suggest) return;
     const el = inputRef.current;
     const cursorPos = el ? (el.selectionStart ?? value.length) : value.length;
-    const replacement = `{{${tokenPath}}}`;
+    const replacement = item.insertText;
     const newVal = value.slice(0, suggest.openAt) + replacement + value.slice(cursorPos);
     onChange(newVal);
     const pos = suggest.openAt + replacement.length;
@@ -1823,7 +1872,7 @@ function ExpressionField({
     if (!suggest || filteredTokens.length === 0) return;
     if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx(i => (i + 1) % filteredTokens.length); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx(i => (i - 1 + filteredTokens.length) % filteredTokens.length); }
-    else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSuggestion(filteredTokens[activeIdx]!.tokenPath); }
+    else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSuggestion(filteredTokens[activeIdx]!); }
     else if (e.key === "Escape") setSuggest(null);
   }
 
@@ -2041,13 +2090,18 @@ function ExpressionField({
             <div className="max-h-48 overflow-y-auto py-1">
               {filteredTokens.map((t, i) => (
                 <button
-                  key={t.tokenPath}
+                  key={t.key}
                   type="button"
-                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t.tokenPath); }}
-                  className={`w-full text-left px-3 py-1.5 flex items-start justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
+                  onMouseDown={e => { e.preventDefault(); pickSuggestion(t); }}
+                  className={`w-full text-left px-3 py-1.5 flex items-center justify-between gap-3 ${i === activeIdx ? "bg-[#0078D4]/20" : "hover:bg-[#0D1117]"}`}
                 >
-                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0">{`{{${t.tokenPath}}}`}</span>
-                  <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                  <span className="font-mono text-[11px] text-[#2E9EFF] shrink-0 truncate">{t.insertText}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {t.enumValue !== undefined && (
+                      <span className="px-1 py-0.5 rounded text-[9px] font-mono bg-amber-500/15 text-amber-400 border border-amber-500/25">enum</span>
+                    )}
+                    <span className="text-[10px] text-[#484F58] text-right leading-tight">{t.label}</span>
+                  </div>
                 </button>
               ))}
             </div>
