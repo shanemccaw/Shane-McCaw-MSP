@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { REQUIRED_PERMISSIONS } from "@/lib/requiredPermissions";
+
 import { useQuickWinMode } from "@/context/QuickWinModeContext";
 import { DEFAULT_QUICK_WIN_STEPS } from "@/lib/quickWinCopy";
 import { ManualScriptUploadCard, type ManualScriptRecord } from "@/components/ManualScriptUploadCard";
@@ -81,7 +81,17 @@ function CopyButton({ text }: { text: string }) {
 
 // ── Step: App Registration ────────────────────────────────────────────────────
 
-function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenantId: string, clientId: string, secret: string) => Promise<void> }) {
+type DynamicPermission = { scope: string; reason: string };
+
+function StepAppRegistration({
+  onSaveAndContinue,
+  dynamicPermissions,
+  permissionsLoading,
+}: {
+  onSaveAndContinue: (tenantId: string, clientId: string, secret: string) => Promise<void>;
+  dynamicPermissions: DynamicPermission[] | null;
+  permissionsLoading: boolean;
+}) {
   const [tenantId, setTenantId] = useState("");
   const [azureClientId, setAzureClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
@@ -168,24 +178,29 @@ function StepAppRegistration({ onSaveAndContinue }: { onSaveAndContinue: (tenant
             </svg>
           </button>
           {permissionsExpanded && (
-            <div className="border-t border-gray-100 divide-y divide-gray-50">
-              {REQUIRED_PERMISSIONS.map(group => (
-                <div key={group.category}>
-                  <div className="px-5 py-2 bg-[#0A2540]/[0.03]">
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#0A2540]/50">{group.category}</span>
-                  </div>
-                  {group.permissions.map(({ permission, reason }) => (
-                    <div key={permission} className="px-5 py-2.5 flex items-start justify-between gap-3">
+            <div className="border-t border-gray-100">
+              {permissionsLoading ? (
+                <div className="px-5 py-6 flex justify-center">
+                  <div className="w-5 h-5 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : dynamicPermissions && dynamicPermissions.length > 0 ? (
+                <div className="divide-y divide-gray-50">
+                  {dynamicPermissions.map((p, i) => (
+                    <div key={p.scope} className="px-5 py-2.5 flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded break-all">{permission}</code>
-                        <p className="text-xs text-gray-500 mt-1">{reason}</p>
+                        <code className="text-xs font-mono font-semibold text-[#0078D4] bg-[#0078D4]/8 px-2 py-0.5 rounded break-all">{p.scope}</code>
+                        {p.reason && <p className="text-xs text-gray-500 mt-1">{p.reason}</p>}
                       </div>
-                      <CopyButton text={permission} />
+                      <CopyButton text={p.scope} />
                     </div>
                   ))}
                 </div>
-              ))}
-              <div className="px-5 py-3 bg-amber-50">
+              ) : (
+                <div className="px-5 py-4 text-sm text-gray-500">
+                  No specific permissions have been configured for your active services yet. Your consultant will provide the exact list when automation is set up for your account.
+                </div>
+              )}
+              <div className="px-5 py-3 bg-amber-50 border-t border-gray-100">
                 <p className="text-xs text-amber-700">
                   <strong>After granting permissions:</strong> click <strong>Grant admin consent</strong> in the Azure portal.
                 </p>
@@ -676,6 +691,18 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   const [completing, setCompleting] = useState(false);
   const [stepsDrawerOpen, setStepsDrawerOpen] = useState(false);
 
+  const [dynamicPermissions, setDynamicPermissions] = useState<DynamicPermission[] | null>(null);
+  const [permissionsLoading, setPermissionsLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth("/api/portal/required-permissions")
+      .then(r => r.ok ? r.json() as Promise<{ permissions: DynamicPermission[] }> : null)
+      .then(d => setDynamicPermissions(d?.permissions ?? null))
+      .catch(() => setDynamicPermissions(null))
+      .finally(() => setPermissionsLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // On mount in onboarding mode, check if credentials already exist so we can
   // auto-skip the App Registration step and go straight to the diagnostic.
   const credentialCheckRef = useRef(false);
@@ -1064,6 +1091,8 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
             ) : (
               <StepAppRegistration
                 onSaveAndContinue={handleAppRegSaveAndContinue}
+                dynamicPermissions={dynamicPermissions}
+                permissionsLoading={permissionsLoading}
               />
             )
           )}
