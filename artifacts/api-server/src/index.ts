@@ -6,7 +6,7 @@ import { graphCredentialsPresent } from "./lib/graph";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { pool } from "@workspace/db";
-import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts } from "./lib/workflow-executor";
+import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
@@ -98,6 +98,13 @@ app.listen(port, (err) => {
     .where(inArray(wfRunsTable.status, ["running", "pending"]))
     .then((res) => { if (res.rowCount) logger.warn({ count: res.rowCount }, "wf-engine: marked zombie runs as failed on startup"); })
     .catch((err) => logger.warn({ err }, "wf-engine: zombie run cleanup failed (non-fatal)"));
+
+  // Any wf_versions row left with more than one "published" version for the
+  // same definition (e.g. from a pre-fix race) would make published-version
+  // lookups non-deterministic. Detect and auto-resolve on every boot.
+  reconcileDuplicatePublishedVersions().catch((err) => {
+    logger.warn({ err }, "wf-engine: duplicate published version reconciliation failed (non-fatal)");
+  });
 
   seedArticles().catch((err) => {
     logger.warn({ err }, "Article seed failed (non-fatal)");

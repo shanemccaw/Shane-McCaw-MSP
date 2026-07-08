@@ -68,7 +68,7 @@ import { computeTenantSignals, resolveSignalsOverride } from "./tenant-signals";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
-import { eq, and, count, desc, inArray } from "drizzle-orm";
+import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
@@ -7622,4 +7622,63 @@ export function computeNextCronRun(cron: string): Date | null {
     }
     return null;
   } catch { return null; }
+}
+
+// ── Safety check: duplicate "published" versions ────────────────────────────
+// Under normal operation exactly one wf_versions row per definition should
+// ever have status = 'published'. Historically the publish endpoint archived
+// the old version and published the new one as two separate non-transactional
+// UPDATEs, which left a window where a crash/race could leave two (or zero)
+// rows marked "published" for the same definition. That bad state, combined
+// with an unordered lookup, is what let a Run Workflow node silently execute
+// a stale (e.g. stub) version instead of the latest one.
+//
+// The publish endpoints now wrap archive+publish in a single db.transaction()
+// and every "get published version" lookup orders by versionNumber DESC, so
+// new bad state should not occur — but this scans for and repairs any rows
+// left over from before that fix (or from any other future non-transactional
+// write path) by keeping only the highest versionNumber as "published" and
+// archiving the rest. Safe to call repeatedly; a no-op when data is clean.
+export async function reconcileDuplicatePublishedVersions(): Promise<void> {
+  try {
+    const dupRows = await db.execute<{ definition_id: number; published_count: number }>(sql`
+      SELECT definition_id, COUNT(*)::int AS published_count
+      FROM   wf_versions
+      WHERE  status = 'published'
+      GROUP  BY definition_id
+      HAVING COUNT(*) > 1
+    `);
+
+    if (dupRows.rows.length === 0) return;
+
+    logger.warn(
+      { definitionIds: dupRows.rows.map(r => r.definition_id) },
+      "wf-engine: found workflow definitions with more than one published version — auto-resolving to the highest version number",
+    );
+
+    for (const row of dupRows.rows) {
+      const versions = await db
+        .select({ id: wfVersionsTable.id, versionNumber: wfVersionsTable.versionNumber })
+        .from(wfVersionsTable)
+        .where(and(eq(wfVersionsTable.definitionId, row.definition_id), eq(wfVersionsTable.status, "published")))
+        .orderBy(desc(wfVersionsTable.versionNumber));
+
+      const [keep, ...archive] = versions;
+      if (!keep || archive.length === 0) continue;
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(wfVersionsTable)
+          .set({ status: "archived", updatedAt: new Date() })
+          .where(inArray(wfVersionsTable.id, archive.map(v => v.id)));
+      });
+
+      logger.warn(
+        { definitionId: row.definition_id, keptVersionId: keep.id, keptVersionNumber: keep.versionNumber, archivedVersionIds: archive.map(v => v.id) },
+        "wf-engine: resolved duplicate published versions for definition",
+      );
+    }
+  } catch (err) {
+    logger.warn({ err }, "wf-engine: duplicate published version reconciliation failed (non-fatal)");
+  }
 }
