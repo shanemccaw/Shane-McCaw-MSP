@@ -695,13 +695,15 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
   const [permissionsLoading, setPermissionsLoading] = useState(true);
 
   useEffect(() => {
+    if (currentStep !== "app-reg") return;
+    setPermissionsLoading(true);
     fetchWithAuth("/api/portal/required-permissions")
       .then(r => r.ok ? r.json() as Promise<{ permissions: DynamicPermission[] }> : null)
       .then(d => setDynamicPermissions(d?.permissions ?? null))
       .catch(() => setDynamicPermissions(null))
       .finally(() => setPermissionsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentStep]);
 
   // On mount in onboarding mode, check if credentials already exist so we can
   // auto-skip the App Registration step and go straight to the diagnostic.
