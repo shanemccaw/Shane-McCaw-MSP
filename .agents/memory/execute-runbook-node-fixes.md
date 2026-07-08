@@ -49,3 +49,14 @@ must resolve it the same way `kanban-auto-fire.ts` does — check
 `azure_runbook_name`, and only fall back to Azure's ARM-ID lookup
 (`resolveRunbookNameById`) for literal Azure resource IDs. `workflow-executor.ts`
 now does this via `resolveExecuteRunbookId()`.
+
+**Runbook parameters — App Registration credentials (not raw DB IDs):**
+The execute_runbook node's `clientId` field is a numeric internal user ID. The
+runbooks themselves expect `TenantId`, `ClientId` (Azure AD app client ID), and
+`ClientSecret` — the App Registration credentials stored in Key Vault. Passing
+the raw numeric user ID as `ClientId` is wrong; the node must look up
+`client_app_registrations` (status = "verified") for that user, then fetch the
+secret via `getSecretValue(appReg.keyVaultSecretName)`, and send `{ TenantId,
+ClientId: appReg.azureClientId, ClientSecret }` — exactly the same parameters
+`kanban-auto-fire.ts` sends. If no verified App Reg exists, the node errors
+with a clear message rather than sending garbage parameters to Azure.

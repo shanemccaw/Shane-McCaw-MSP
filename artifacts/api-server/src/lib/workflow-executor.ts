@@ -52,6 +52,7 @@ import {
   quickWinPresentationsTable,
   powershellScriptsTable,
   scriptModulesTable,
+  clientAppRegistrationsTable,
   servicesTable,
   type PsScriptPermissions,
   type WfGraph,
@@ -59,6 +60,7 @@ import {
 } from "@workspace/db";
 
 import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveRunbookNameById } from "./azure-automation";
+import { getSecretValue } from "./azure-keyvault";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
@@ -1557,11 +1559,44 @@ async function executeNode(
               if (clientId) parameters["ClientId"] = clientId;
             }
             if (actionType === "execute_runbook") {
-              const clientId = interp(node.data.clientId as string | undefined, payload);
-              if (clientId) parameters["ClientId"] = clientId;
-              const projectId = interp(node.data.projectId as string | undefined, payload);
-              if (projectId) parameters["ProjectId"] = projectId;
+              // Resolve App Registration credentials from Key Vault so the
+              // runbook receives the real Azure AD TenantId, ClientId (app
+              // registration client ID), and ClientSecret — not raw DB integers.
+              // This mirrors the exact same pattern used in kanban-auto-fire.ts.
+              const clientIdRaw = interp(node.data.clientId as string | undefined, payload);
+              const clientUserId = clientIdRaw ? parseInt(clientIdRaw, 10) : NaN;
+              if (!isNaN(clientUserId)) {
+                const [appReg] = await db
+                  .select()
+                  .from(clientAppRegistrationsTable)
+                  .where(
+                    and(
+                      eq(clientAppRegistrationsTable.clientUserId, clientUserId),
+                      eq(clientAppRegistrationsTable.status, "verified"),
+                    ),
+                  )
+                  .limit(1);
+
+                if (!appReg) {
+                  nodeError = true;
+                  output = { error: `No verified App Registration found for client #${clientUserId}` };
+                } else {
+                  let clientSecret: string;
+                  try {
+                    clientSecret = await getSecretValue(appReg.keyVaultSecretName);
+                  } catch (kvErr) {
+                    nodeError = true;
+                    output = { error: `Key Vault fetch failed for client #${clientUserId}: ${(kvErr as Error).message}` };
+                  }
+                  if (!nodeError) {
+                    parameters["TenantId"]     = appReg.tenantId;
+                    parameters["ClientId"]     = appReg.azureClientId;
+                    parameters["ClientSecret"] = clientSecret!;
+                  }
+                }
+              }
             }
+            if (!nodeError) {
             const job = await createRunbookJob({ runbookName: runbookName!, parameters });
             if (actionType === "execute_runbook") {
               // Poll until the job reaches a terminal status (max 10 minutes).
@@ -1590,7 +1625,8 @@ async function executeNode(
             } else {
               output = { jobId: job.jobId, jobStatus: job.status, runbookName };
             }
-            } // end if (!nodeError)
+            } // end inner if (!nodeError) — app reg lookup guard
+            } // end outer if (!nodeError) — runbook ID resolution guard
           }
           } // end single-runbook path
         } else if (actionType === "generate_document") {
