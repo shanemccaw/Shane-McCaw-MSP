@@ -52,7 +52,7 @@ import { eq, desc, and, sql, inArray, isNull, notInArray, ne } from "drizzle-orm
 import { requireAdmin } from "../middlewares/requireAuth";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "../lib/logger";
-import { getPrompt, getDocumentStylePrefix } from "../lib/prompt-loader";
+import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "../lib/prompt-loader";
 import { sendMessage } from "../lib/graphEmail";
 import {
   graphCredentialsPresent,
@@ -865,8 +865,9 @@ function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tier02" | 
   return "Tier04";
 }
 
-// Tier pricing formula — embedded verbatim in every SOW prompt
-const TIER_02_PRICING_FORMULA_BLOCK = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
+// Tier pricing formula fallback — only used if the "insights-consulting-sow_pricing_formula"
+// DB prompt row is missing. The live value is editable via getSowPricingFormulaBlock().
+const TIER_02_PRICING_FORMULA_BLOCK_FALLBACK = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
 
 STEP 1 — READ TENANT TIER: use the "Computed Tenant Tier" line from the TENANT FACTS block directly. Do NOT re-derive or override it from any other source (including user counts, company size, or catalogue prices). The tier has already been determined server-side from the live script data.
 
@@ -1522,6 +1523,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
     let sowResolvedKeys: WorkstreamKey[] = [];
     let sowServerForcedExclude: string[] = [];
     if (isSowType) {
+      const pricingFormulaBlock = await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
       const engProjects = await db.select({
         title:       engagementProjectsTable.title,
         priceRange:  engagementProjectsTable.priceRange,
@@ -1562,7 +1564,7 @@ router.post("/admin/insights/consulting/generate", requireAdmin, async (req: Req
           " Pricing Adjustments table. Mention Copilot only as a future-state recommendation" +
           " in the narrative — never as a billable workstream or adjustment in this engagement."
         : "");
-      pricingAppendix = `\n\n${sowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      pricingAppendix = `\n\n${sowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE (use these as Base Ceiling starting points):\n${catalogueBlock}\n\nPRICING FORMULA:\n${pricingFormulaBlock}`;
     }
 
     // Fallback injects per-type section hints for the case where the DB row is absent
@@ -1926,6 +1928,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
 
       const CONSOLIDATED_SOW_FALLBACK_PREVIEW = `You are Shane McCaw, a senior Microsoft 365 Architect. Generate a comprehensive Consolidated SOW in HTML format.\n\nClient: {{clientName}}\nTitle: {{title}}\nDate: {{date}}\nENGAGEMENT START DATE: {{engagementStart}} (first Business Monday after document generation — use as baseline for delivery date calculations)\n\nEXISTING DOCUMENTS:\n{{existingDocs}}\n\nENGAGEMENT PROJECTS:\n{{engagementProjects}}\n\nTENANT TELEMETRY:\n{{tenantTelemetry}}\n\nINSTRUCTIONS FOR PRICING TABLE:\n- Per-workstream table columns: Project/Workstream | Scope | Base Ceiling | Duration (Weeks) | Delivery Date | Final Price (USD) | Reasoning\n- Duration (Weeks): assign realistic integer weeks per phase formatted as "N weeks"\n- Delivery Date: cumulative from ENGAGEMENT START DATE — Phase 1 = start + Phase 1 weeks, Phase 2 = Phase 1 date + Phase 2 weeks, etc. Format as "Mon DD, YYYY"\n- Pricing Adjustments: list ONLY the adjustments permitted for the workstreams present per the ADJUSTMENT MAP in the TIER 02 PRICING FORMULA appended below — each adjustment once only, never on individual workstream rows`;
       const rawTemplate = await getPrompt("insights-consulting-consolidated_sow", CONSOLIDATED_SOW_FALLBACK_PREVIEW, ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"]);
+      const previewPricingFormulaBlock = await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
       const previewRawTitles = signalFilteredProjects.map((p: { title: string }) => p.title);
       const { resolvedKeys: previewResolvedKeys, unresolvedTitles: previewUnresolvedTitles } =
         resolveWorkstreamKeys(previewRawTitles);
@@ -1938,7 +1941,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         .replace(/\{\{engagementStart\}\}/g, previewEngagementStartLabel)
         .replace(/\{\{existingDocs\}\}/g, docsBlock).replace(/\{\{engagementProjects\}\}/g, projectsBlock)
         .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-        + `\n\n${previewWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+        + `\n\n${previewWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFacts}\n\nTIER 02 PRICING FORMULA:\n${previewPricingFormulaBlock}`;
 
       const stylePrefix = await getDocumentStylePrefix();
       const healthHistoryRows = scoresRow as { category: string; score: number }[];
@@ -1962,7 +1965,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         recommendations: allRecs.slice(0, 10),
         profileSample: Object.entries(mergedSowProfile).slice(0, 30).map(([k, v]) => [k, String(v)]),
         tenantFacts: sowTenantFacts,
-        pricingFormula: TIER_02_PRICING_FORMULA_BLOCK,
+        pricingFormula: previewPricingFormulaBlock,
         signalFilter: signalFilterInfo,
       });
     }
@@ -2021,7 +2024,9 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       : "";
 
     let pricingAppendix = "";
+    let pricingFormulaBlock = "";
     if (isSowType) {
+      pricingFormulaBlock = await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
       const engProjects = await db.select({ title: engagementProjectsTable.title, priceRange: engagementProjectsTable.priceRange, description: engagementProjectsTable.description, sowItems: engagementProjectsTable.sowItems })
         .from(engagementProjectsTable).where(eq(engagementProjectsTable.isVisible, true)).orderBy(engagementProjectsTable.sortOrder);
       const catalogueBlock = engProjects.length > 0
@@ -2041,7 +2046,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       }
       const sowTier = computeTenantTier(mergedForSow.totalUserCount);
       const sowTenantFactsForSow = `Computed Tenant Tier:        ${sowTier}  ← server-derived from Total Users in Tenant (${mergedForSow.totalUserCount ?? "unknown"}); use this tier for all pricing — do NOT override\nTotal Users in Tenant:       ${mergedForSow.totalUserCount ?? "unknown"}\nLicensed Users:              ${mergedForSow.licensedUserCount ?? "unknown"}`;
-      pricingAppendix = `\n\n${previewSowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${TIER_02_PRICING_FORMULA_BLOCK}`;
+      pricingAppendix = `\n\n${previewSowWorkstreamContextBlock}\n\nCRITICAL — TENANT FACTS:\n${sowTenantFactsForSow}\n\nENGAGEMENT PROJECTS CATALOGUE:\n${catalogueBlock}\n\nPRICING FORMULA:\n${pricingFormulaBlock}`;
     }
 
     const consultingFallback = substituteTokens(INSIGHTS_CONSULTING_PROMPT_FALLBACK, {
@@ -2072,7 +2077,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       recommendations: recommendations.slice(0, 10),
       profileSample: profileSamplePairs.map(([k, v]) => [k, String(v)]),
     };
-    if (isSowType) result["pricingFormula"] = TIER_02_PRICING_FORMULA_BLOCK;
+    if (isSowType) result["pricingFormula"] = pricingFormulaBlock;
 
     return res.json(result);
   } catch (err) {

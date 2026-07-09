@@ -14,7 +14,7 @@ import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatche
 import { detectRuleConflicts } from "./signal-conflict-detector";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
-import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
+import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "./prompt-loader";
 import {
   extractAiHtml,
   parseSowAllPricing,
@@ -47,7 +47,10 @@ export function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tie
   return "Tier04";
 }
 
-export const TIER_02_PRICING_FORMULA_BLOCK = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
+// Fallback used only if the "insights-consulting-sow_pricing_formula" DB prompt
+// row is missing or the lookup fails. The live value is editable in the AI
+// Prompts admin UI — see getPrompt() call near the prompt assembly below.
+export const TIER_02_PRICING_FORMULA_BLOCK_FALLBACK = `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
 
 STEP 1 — READ TENANT TIER: use the "Computed Tenant Tier" line from the TENANT FACTS block directly. Do NOT re-derive or override it from any other source (including user counts, company size, or catalogue prices). The tier has already been determined server-side from the live script data.
 
@@ -602,6 +605,7 @@ export async function generateConsolidatedSowDocument(
     CONSOLIDATED_SOW_FALLBACK,
     ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"],
   );
+  const pricingFormulaBlock = await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
   // ── Adjustment signal constraint block ────────────────────────────────────────
   // When adj:* rules are configured, inject a hard constraint that overrides the
   // ADJUSTMENT MAP's workstream-scoped logic with telemetry-derived results.
@@ -637,7 +641,7 @@ export async function generateConsolidatedSowDocument(
     .replace(/\{\{existingDocs\}\}/g, docsBlock)
     .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
     .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
-    + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${TIER_02_PRICING_FORMULA_BLOCK}`
+    + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${pricingFormulaBlock}`
     + (adjConstraintBlock ? `\n\n${adjConstraintBlock}` : "");
 
   // Find prior completed doc to replace on success

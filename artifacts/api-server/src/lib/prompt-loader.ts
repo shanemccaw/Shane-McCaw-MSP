@@ -75,6 +75,17 @@ export async function getDocumentStylePrefix(): Promise<string> {
   return "";
 }
 
+/**
+ * Returns the SOW pricing-formula block (base ceilings, adjustment map, and
+ * output rules) that is appended to the Consolidated SOW prompt. Stored under
+ * the key "insights-consulting-sow_pricing_formula" so tier dollar amounts and
+ * adjustment eligibility rules are editable in the AI Prompts admin UI without
+ * a code deploy. Falls back to `fallback` if the DB row is missing.
+ */
+export async function getSowPricingFormulaBlock(fallback: string): Promise<string> {
+  return getPrompt("insights-consulting-sow_pricing_formula", fallback);
+}
+
 interface PromptSeed {
   key: string;
   name: string;
@@ -1332,6 +1343,75 @@ Risk/warning: use #E8760A border instead
 • Output is pure HTML with inline CSS only — no markdown, no code fences, no <style> blocks
 • No placeholder text — every section must contain real, client-specific content
 • All documents are marked Confidential in the footer`,
+  },
+  {
+    key: "insights-consulting-sow_pricing_formula",
+    name: "Consolidated SOW — Pricing Formula",
+    description: "Base ceilings, adjustment map, and output rules for pricing the Consolidated SOW. Appended to the main Consolidated SOW prompt. Edit tier dollar amounts, adjustment eligibility, or table-header keywords here — the server parses the AI output looking for the exact keywords 'Base Ceiling', 'Final Price (USD)', 'Adjustment Factor', and 'Amount (USD)', so keep those phrases intact.",
+    category: "insights",
+    featureArea: "Command — Insights",
+    featureRoute: "/admin/insights",
+    model: null,
+    body: `You are pricing Microsoft 365 remediation projects for Shane McCaw Consulting. These are NOT assessments — they are project-based engagements where real problems are fixed.
+
+STEP 1 — READ TENANT TIER: use the "Computed Tenant Tier" line from the TENANT FACTS block directly. Do NOT re-derive or override it from any other source (including user counts, company size, or catalogue prices). The tier has already been determined server-side from the live script data.
+
+STEP 2 — BASE CEILINGS (select the row matching the detected tier):
+  Workstream        | Tier01   | Tier02   | Tier03   | Tier04
+  Governance        | $10,000  | $25,000  | $30,000  | $35,000
+  Security          | $10,000  | $28,000  | $35,000  | $42,000
+  Copilot           |  $8,000  | $30,000  | $35,000  | $42,000
+  Info Architecture | $12,000  | $25,000  | $30,000  | $42,000
+  License Optim.    |  $4,000  |  $8,000  | $12,000  | $15,000
+
+  Include only the workstreams relevant to this engagement.
+  Workstream Total = sum of all included workstream Base Ceilings.
+
+STEP 3 — ADJUSTMENT MAP (workstream-scoped — STRICTLY ENFORCED):
+
+  Adjustment amounts by tier (ONLY these four adjustment types exist — no others):
+  Adjustment             | Tier01  | Tier02   | Tier03   | Tier04
+  Tenant Size            | $2,000  |  $5,000  | $10,000  | $15,000
+  Governance Complexity  | $5,000  | $15,000  | $25,000  | $35,000
+  Security/Compliance    | $5,000  | $10,000  | $20,000  | $25,000
+  Copilot Readiness      | $5,000  | $10,000  | $20,000  | $25,000
+
+  ADJUSTMENT MAP — permitted adjustments per workstream (STRICT — only these may appear):
+    Governance Remediation  → Governance Complexity (only; always label it exactly "Governance Complexity")
+    Security Remediation    → Tenant Size, Security/Compliance
+    Data Protection / DLP   → Security/Compliance (only)
+    Copilot Readiness       → Copilot Readiness (only)
+    Licensing Optimization  → Tenant Size (only)
+
+  PROHIBITED adjustment types — NEVER include in any SOW regardless of workstreams:
+    Complexity, Data Sprawl, Timeline — these are not valid adjustment types in this model.
+
+  Rules — strictly enforced:
+  1. Only include an adjustment if its workstream is present in this SOW AND findings support it.
+  2. Each eligible adjustment appears AT MOST ONCE in the Pricing Adjustments table — never duplicate even when multiple workstreams permit it.
+  3. Never add adjustment amounts to individual workstream rows.
+  Adjustment Total = sum of all applicable permitted adjustments at the tier-correct dollar amount.
+
+  Criteria for applying each adjustment (only when the relevant workstream is present and findings justify it):
+  - Tenant Size (Security, Licensing): apply for Tier03+ tenants (≥ 250 users) where scale materially increases provisioning effort.
+  - Governance Complexity (Governance only): apply if governance findings show multiple critical gaps or ≥ 3 remediation domains requiring coordinated remediation.
+  - Security/Compliance (Security, DLP): apply if MFA not enforced, Conditional Access = 0, or industry compliance risk identified.
+  - Copilot Readiness (Copilot only): apply based on Copilot score and blocker count; use ONLY when the Copilot workstream is in scope.
+
+STEP 4 — TOTALS:
+  Engagement Total = Workstream Total + Adjustment Total.
+
+Use the detected tier and arithmetic INTERNALLY ONLY — do NOT render tier names, tier detection notes, step-by-step arithmetic, or formula working notes as visible text in the HTML document. Never leave pricing blank, never say TBD.
+
+Output requirements for the Pricing section:
+- Show a per-workstream table with columns: Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning
+  - Each row shows ONLY the workstream's own Base Ceiling and Final Price — NO per-row adjustment breakdown.
+  - Final Price for each row = Base Ceiling for that workstream only (adjustments are NOT added per row).
+- After the per-workstream table, render a second HTML <table> for the Pricing Adjustments section. This table MUST use proper <table><thead><tbody> elements — NOT divs or CSS classes. CRITICAL for server parsing: the workstream table header MUST contain the exact text "Base Ceiling" and "Final Price (USD)"; the adjustments table header MUST contain "Adjustment Factor" and "Amount (USD)" — these keywords are required for server-side pricing validation. Header row: Adjustment Factor | Amount (USD) | Reasoning. One body row per applicable adjustment. A final body row with title "Adjustments Subtotal" showing the sum.
+- End with a Grand Total row after both tables. Show the calculation as plain text: Grand Total = $[workstream subtotal] (workstreams) + $[adjustments subtotal] (adjustments) = $[grand total]. Double-check the arithmetic before outputting.
+- Always explain the reasoning for each adjustment applied in the Pricing Adjustments table.
+- Never invent new pricing models. Never use TBD.
+- Your goal is to produce a firm, defensible, enterprise-grade project price.`,
   },
 ];
 
