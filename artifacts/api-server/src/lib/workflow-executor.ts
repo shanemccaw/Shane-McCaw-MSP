@@ -4187,31 +4187,55 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
                 const foDocIds = (foPres.documentsIncluded ?? []) as number[];
                 let foPricingLines: FoPricingLine[] | null = null;
 
-                // Step 1 — check the included documents
+                // A scoped SOW (docType "scoped_sow") reflects a client-approved scope
+                // reduction and, when present, is authoritative over the full/consolidated
+                // SOW — otherwise workflows would surface the pre-reduction pricing/phases
+                // even after the client scoped down (mirrors resolveScopeAwarePrice in
+                // portal.ts, which fixes the same class of bug on the payment endpoints).
+                const foHasScopeReduction =
+                  Array.isArray(foPres.scopedPhaseIds) && (foPres.scopedPhaseIds as unknown[]).length > 0;
+
+                // Step 1 — check the included documents, preferring scoped_sow over consolidated_sow/sow
                 if (foDocIds.length > 0) {
                   const foIncludedDocs = await db.select({
                     docType: insightsGeneratedDocumentsTable.docType,
                     sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
                   }).from(insightsGeneratedDocumentsTable)
                     .where(inArray(insightsGeneratedDocumentsTable.id, foDocIds));
-                  const foSowDoc = foIncludedDocs.find(
+                  const foScopedDoc = foHasScopeReduction
+                    ? foIncludedDocs.find(
+                        d => d.docType === "scoped_sow" &&
+                             Array.isArray(d.sowPricingLines) && (d.sowPricingLines as unknown[]).length > 0,
+                      )
+                    : undefined;
+                  const foSowDoc = foScopedDoc ?? foIncludedDocs.find(
                     d => (d.docType === "consolidated_sow" || d.docType === "sow") &&
                          Array.isArray(d.sowPricingLines) && (d.sowPricingLines as unknown[]).length > 0,
                   );
                   if (foSowDoc) foPricingLines = foSowDoc.sowPricingLines as FoPricingLine[];
                 }
 
-                // Step 2 — fall back to project's most recent approved SOW
+                // Step 2 — fall back to project's most recent approved SOW, again preferring
+                // a scoped_sow document if one exists and a scope reduction is active.
                 if (!foPricingLines && foPres.projectId) {
+                  const foDocTypesToTry = foHasScopeReduction
+                    ? ["scoped_sow", "consolidated_sow", "sow"]
+                    : ["consolidated_sow", "sow"];
                   const [foProjectSow] = await db.select({
+                    docType: insightsGeneratedDocumentsTable.docType,
                     sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
                   }).from(insightsGeneratedDocumentsTable)
                     .where(and(
                       eq(insightsGeneratedDocumentsTable.projectId, foPres.projectId),
-                      inArray(insightsGeneratedDocumentsTable.docType, ["consolidated_sow", "sow"]),
+                      inArray(insightsGeneratedDocumentsTable.docType, foDocTypesToTry),
                       inArray(insightsGeneratedDocumentsTable.status, ["approved", "delivered"]),
                     ))
-                    .orderBy(desc(insightsGeneratedDocumentsTable.createdAt))
+                    .orderBy(
+                      foHasScopeReduction
+                        ? sql`CASE WHEN ${insightsGeneratedDocumentsTable.docType} = 'scoped_sow' THEN 0 ELSE 1 END`
+                        : sql`0`,
+                      desc(insightsGeneratedDocumentsTable.createdAt),
+                    )
                     .limit(1);
                   if (foProjectSow && Array.isArray(foProjectSow.sowPricingLines) && (foProjectSow.sowPricingLines as unknown[]).length > 0) {
                     foPricingLines = foProjectSow.sowPricingLines as FoPricingLine[];

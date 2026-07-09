@@ -29,6 +29,12 @@ interface SowSelectorPanelProps {
   scopedCalculated?: boolean;
   /** Full-scope total (all phases + all adjustments) — shown in the toggle header when viewing the Full SOW */
   originalTotalPrice?: number;
+  /** Document id of the scoped SOW (docType "scoped_sow"), when one is active and matches the current selection */
+  scopedSowDocId?: number | null;
+  /** Document id of the full/consolidated SOW (docType "consolidated_sow" or "sow") */
+  fullSowDocId?: number | null;
+  /** Authenticated fetch — used to request the PDF export of whichever SOW document is currently in view */
+  fetchFn?: (url: string, opts?: RequestInit) => Promise<Response>;
 }
 
 function formatCurrency(n: number): string {
@@ -48,8 +54,12 @@ export default function SowSelectorPanel({
   adjustmentsTotal = 0,
   scopedCalculated = false,
   originalTotalPrice,
+  scopedSowDocId = null,
+  fullSowDocId = null,
+  fetchFn,
 }: SowSelectorPanelProps) {
   const [mobileTab, setMobileTab] = useState<"scope" | "doc">("scope");
+  const [downloading, setDownloading] = useState(false);
   // Separate heights for each document so toggling never resets the layout.
   const [scopedIframeHeight, setScopedIframeHeight] = useState(600);
   const [fullIframeHeight, setFullIframeHeight] = useState(600);
@@ -92,6 +102,32 @@ export default function SowSelectorPanel({
   //   a) the client has deselected at least one phase (interactive scoping), or
   //   b) the panel is in read-only mode (post-sign) — the scope was already committed.
   const showToggle = !!scopedSowHtml && (readOnly || hasScopeReduction);
+
+  // Which document PDF to download follows whichever version is currently in
+  // view — the scoped SOW when the toggle is on "Scoped SOW" (or no toggle is
+  // shown but a scoped doc is active), otherwise the full/consolidated SOW.
+  const activeDownloadDocId = showToggle
+    ? (viewMode === "scoped" ? scopedSowDocId : fullSowDocId)
+    : (scopedSowDocId ?? fullSowDocId);
+
+  const handleDownloadPdf = async () => {
+    if (!activeDownloadDocId || !fetchFn || downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetchFn(`/api/portal/insights-documents/${activeDownloadDocId}/pdf`);
+      if (!res.ok) throw new Error(`PDF generation failed: ${res.status}`);
+      const ab = await res.arrayBuffer();
+      const blob = new Blob([ab], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Statement-of-Work${viewMode === "scoped" ? "-Scoped" : ""}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   // When the toggle is not active, show whichever document is available.
   const fallbackHtml = originalSowHtml ?? null;
@@ -376,11 +412,30 @@ export default function SowSelectorPanel({
                     Full SOW
                   </button>
                 </div>
-                <span className="text-xs font-bold text-[#0078D4]">
-                  {viewMode === "full" && originalTotalPrice !== undefined
-                    ? formatCurrency(originalTotalPrice)
-                    : formatCurrency(displayTotal)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-[#0078D4]">
+                    {viewMode === "full" && originalTotalPrice !== undefined
+                      ? formatCurrency(originalTotalPrice)
+                      : formatCurrency(displayTotal)}
+                  </span>
+                  {activeDownloadDocId && fetchFn && (
+                    <button
+                      onClick={handleDownloadPdf}
+                      disabled={downloading}
+                      className="flex items-center gap-1 px-2 py-1 rounded-full bg-white/70 border border-[#0078D4]/20 text-[#0078D4] text-xs font-bold hover:bg-white transition-all disabled:opacity-50"
+                      title="Download PDF"
+                    >
+                      {downloading ? (
+                        <div className="w-3 h-3 border border-[#0078D4]/30 border-t-[#0078D4] rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                      )}
+                      PDF
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -393,9 +448,28 @@ export default function SowSelectorPanel({
                     Full Statement of Work
                   </span>
                 </div>
-                <span className="text-xs font-bold text-slate-500">
-                  {formatCurrency(displayTotal)}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500">
+                    {formatCurrency(displayTotal)}
+                  </span>
+                  {activeDownloadDocId && fetchFn && (
+                    <button
+                      onClick={handleDownloadPdf}
+                      disabled={downloading}
+                      className="flex items-center gap-1 px-2 py-1 rounded-full bg-white border border-slate-200 text-slate-500 text-xs font-bold hover:text-[#0078D4] hover:border-[#0078D4]/30 transition-all disabled:opacity-50"
+                      title="Download PDF"
+                    >
+                      {downloading ? (
+                        <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin" />
+                      ) : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                      )}
+                      PDF
+                    </button>
+                  )}
+                </div>
               </div>
             )
           )}

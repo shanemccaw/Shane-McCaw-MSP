@@ -10199,6 +10199,62 @@ async function deriveEffectiveSowData(
   };
 }
 
+/**
+ * Scope-aware effective price resolver.
+ *
+ * `deriveEffectiveSowData` always derives its total from the full/consolidated
+ * SOW pricing lines (or AI-generated phases) — it has no concept of a scoped
+ * SOW. When a client has reduced scope, the binding price is the *scoped*
+ * total (`pres.scopedTotalPrice`), not the consolidated total. Any endpoint
+ * that charges, signs, or displays a binding price MUST go through this
+ * helper instead of using `deriveEffectiveSowData`'s totals directly, or it
+ * will silently charge/sign/display the full-SOW price even when a scope
+ * reduction is active — mirroring the same validity checks used by the GET
+ * presentation endpoint (sowVersion drift + total-price drift) so a stale
+ * scoped SOW is never trusted.
+ */
+async function resolveScopeAwarePrice(
+  pres: {
+    scopedPhaseIds: unknown;
+    scopedTotalPrice: number | null;
+    scopedSowVersion: string | null;
+    documentsIncluded: unknown;
+    sowPhases: unknown;
+    selectedPhaseIds: unknown;
+    totalPrice: unknown;
+    projectId?: number | null;
+  },
+): Promise<{ effectiveTotalPrice: number; usedScopedSow: boolean }> {
+  const { effectiveSowPhases, adjustmentsTotal, sowVersion, effectiveTotalPrice: fullTotalPrice } =
+    await deriveEffectiveSowData(pres);
+
+  const allLivePhaseIds = effectiveSowPhases.map(p => p.id);
+  const hasScopeReduction =
+    Array.isArray(pres.scopedPhaseIds) &&
+    pres.scopedPhaseIds.length > 0 &&
+    pres.scopedPhaseIds.length < allLivePhaseIds.length;
+
+  if (!hasScopeReduction) {
+    return { effectiveTotalPrice: fullTotalPrice, usedScopedSow: false };
+  }
+
+  const storedIds = pres.scopedPhaseIds as string[];
+  const primaryMismatch = pres.scopedSowVersion != null && pres.scopedSowVersion !== sowVersion;
+  const expectedDollars =
+    effectiveSowPhases.filter(p => storedIds.includes(p.id)).reduce((s, p) => s + p.price, 0) + adjustmentsTotal;
+  const storedDollars = pres.scopedTotalPrice ? pres.scopedTotalPrice / 100 : null;
+  const secondaryMismatch =
+    pres.scopedSowVersion == null && storedDollars != null && Math.abs(expectedDollars - storedDollars) > 0.005;
+
+  const scopedSowIsValid = !primaryMismatch && !secondaryMismatch && storedDollars != null;
+
+  if (!scopedSowIsValid) {
+    return { effectiveTotalPrice: fullTotalPrice, usedScopedSow: false };
+  }
+
+  return { effectiveTotalPrice: storedDollars as number, usedScopedSow: true };
+}
+
 // GET /portal/presentations/latest — fetch the most recent presentation for the logged-in client
 router.get("/portal/presentations/latest", requireAuth, async (req: Request, res: Response) => {
   try {
@@ -11016,7 +11072,8 @@ router.get("/portal/presentations/:id/offer", async (req: Request, res: Response
     const expiresAt = new Date(firstVisitedAt.getTime() + OFFER_WINDOW_MS);
     if (new Date() > expiresAt) { res.json({ active: false }); return; }
 
-    const { effectiveTotalPrice, adjustmentsTotal } = await deriveEffectiveSowData(pres);
+    const { adjustmentsTotal } = await deriveEffectiveSowData(pres);
+    const { effectiveTotalPrice } = await resolveScopeAwarePrice(pres);
 
     // Use cents-based arithmetic throughout so displayed amounts exactly match
     // what Stripe will charge (same rounding path as the checkout handler).
@@ -11734,7 +11791,7 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
     // Derive the effective price at signing time — this is the binding amount.
     // If a scoped SOW was generated and matches the current selection, it's
     // the scoped price; otherwise it's the full SOW total.
-    const { effectiveTotalPrice: effectivePriceCents } = await deriveEffectiveSowData(pres);
+    const { effectiveTotalPrice: effectivePriceCents } = await resolveScopeAwarePrice(pres);
 
     // New flow: Agreement is signed BEFORE Stripe payment.
     // The checkout step (which follows contract signing) handles the payment gate.
@@ -11793,9 +11850,12 @@ router.post("/portal/presentations/:id/checkout", requireAuth, async (req: Reque
 
     // Use live SOW pricing so the Stripe charge always matches what the client
     // saw on page 3, even if the SOW was regenerated after presentation creation.
-    const { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal } =
+    // Line items (phases/adjustments) still come from the full SOW breakdown, but
+    // the charged total must respect an active, valid scope reduction — otherwise
+    // the client is charged the full consolidated SOW price instead of the scoped one.
+    const { effectiveSowPhases, effectiveSelectedPhaseIds, adjustmentsTotal } =
       await deriveEffectiveSowData(pres);
-    const totalPrice = effectiveTotalPrice;
+    const { effectiveTotalPrice: totalPrice } = await resolveScopeAwarePrice(pres);
     if (totalPrice <= 0) { res.status(400).json({ error: "Invalid total price" }); return; }
 
     let stripeKey: string;
@@ -12256,7 +12316,7 @@ router.post("/portal/presentations/:id/claim-free", requireAuth, async (req: Req
     }
 
     // Server-side price guard — never trust the client
-    const { effectiveTotalPrice } = await deriveEffectiveSowData(pres);
+    const { effectiveTotalPrice } = await resolveScopeAwarePrice(pres);
     if (effectiveTotalPrice > 0) {
       res.status(400).json({ error: "This offer has a non-zero price — use the standard checkout" }); return;
     }

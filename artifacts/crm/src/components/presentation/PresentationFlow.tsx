@@ -2125,6 +2125,9 @@ export default function PresentationFlow({
                   adjustmentsTotal={data.adjustmentsTotal}
                   scopedCalculated={scopedDocMatchesSelection}
                   originalTotalPrice={data.totalPrice + (data.adjustmentsTotal ?? 0)}
+                  scopedSowDocId={scopedDocMatchesSelection ? sortedDocs.find(d => d.docType === "scoped_sow")?.id ?? null : null}
+                  fullSowDocId={sortedDocs.find(d => d.docType === "consolidated_sow" || d.docType === "sow")?.id ?? null}
+                  fetchFn={fetchFn}
                 />
               </div>
             )}
