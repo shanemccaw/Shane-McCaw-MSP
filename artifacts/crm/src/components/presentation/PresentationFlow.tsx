@@ -1396,6 +1396,15 @@ export default function PresentationFlow({
   const checkoutStepIndex    = steps.findIndex(s => s.kind === "checkout");
   const confirmationStepIndex = steps.findIndex(s => s.kind === "confirmation");
 
+  // The Overview screen's teaser cards must not let the client skip ahead of
+  // where they've actually walked to in the linear presentation. A step only
+  // unlocks once maxVisitedStep has reached it via normal forward navigation
+  // (goNext / navigateToStep) — jumping straight there from Overview before
+  // that happens is blocked here.
+  const sowLocked      = sowStepIndex >= 0 && maxVisitedStep < sowStepIndex;
+  const paymentLocked  = paymentStepIndex >= 0 && maxVisitedStep < paymentStepIndex;
+  const contractLocked = contractStepIndex >= 0 && maxVisitedStep < contractStepIndex;
+
   // Note: no auto-advance on the payment step. When already paid, PaymentOptionsPanel
   // renders "Payment Confirmed!" with a "Continue to Agreement →" button (onContinue).
   // Auto-advancing was removed because it also fired on deliberate forward navigation
@@ -1932,10 +1941,10 @@ export default function PresentationFlow({
                           {/* 2 — Scope & Investment */}
                           {sowStepIndex >= 0 && (
                             <button
-                              onClick={() => !hasSowDocument ? undefined : jumpToStep(sowStepIndex, "scope")}
-                              disabled={!hasSowDocument}
-                              title={!hasSowDocument ? "Statement of Work not yet available" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${!hasSowDocument ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              onClick={() => (!hasSowDocument || sowLocked) ? undefined : jumpToStep(sowStepIndex, "scope")}
+                              disabled={!hasSowDocument || sowLocked}
+                              title={sowLocked ? "Continue through the presentation to unlock this section" : !hasSowDocument ? "Statement of Work not yet available" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowLocked) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${(scopeStale || !hasSowDocument) ? "bg-amber-400" : sowVisited ? "bg-emerald-500" : "bg-[#0078D4]"}`} />
                               {sowVisited && !scopeStale && hasSowDocument && <ReviewedBadge />}
@@ -1994,10 +2003,10 @@ export default function PresentationFlow({
                           {/* 3 — Payment */}
                           {paymentStepIndex >= 0 && (
                             <button
-                              onClick={() => (!hasSowDocument || sowResetBlocked || needsRegeneration) ? undefined : jumpToStep(paymentStepIndex, "payment")}
-                              disabled={!hasSowDocument || sowResetBlocked || needsRegeneration}
-                              title={!hasSowDocument ? "Statement of Work not yet available" : (sowResetBlocked || needsRegeneration) ? "Regenerate your scoped SOW before paying" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked || needsRegeneration) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              onClick={() => (!hasSowDocument || sowResetBlocked || needsRegeneration || paymentLocked) ? undefined : jumpToStep(paymentStepIndex, "payment")}
+                              disabled={!hasSowDocument || sowResetBlocked || needsRegeneration || paymentLocked}
+                              title={paymentLocked ? "Continue through the presentation to unlock this section" : !hasSowDocument ? "Statement of Work not yet available" : (sowResetBlocked || needsRegeneration) ? "Regenerate your scoped SOW before paying" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked || needsRegeneration || paymentLocked) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${(sowResetBlocked || needsRegeneration) ? "bg-amber-400" : paymentVisited ? "bg-emerald-500" : "bg-purple-500"}`} />
                               {paymentVisited && !(sowResetBlocked || needsRegeneration) && <ReviewedBadge />}
@@ -2062,10 +2071,10 @@ export default function PresentationFlow({
                           {/* 4 — Agreement */}
                           {contractStepIndex >= 0 && (
                             <button
-                              onClick={() => (!hasSowDocument || sowResetBlocked || needsRegeneration) ? undefined : jumpToStep(contractStepIndex, "agreement")}
-                              disabled={!hasSowDocument || sowResetBlocked || needsRegeneration}
-                              title={!hasSowDocument ? "Statement of Work not yet available" : (sowResetBlocked || needsRegeneration) ? "Regenerate your scoped SOW before signing" : undefined}
-                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked || needsRegeneration) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
+                              onClick={() => (!hasSowDocument || sowResetBlocked || needsRegeneration || contractLocked) ? undefined : jumpToStep(contractStepIndex, "agreement")}
+                              disabled={!hasSowDocument || sowResetBlocked || needsRegeneration || contractLocked}
+                              title={contractLocked ? "Continue through the presentation to unlock this section" : !hasSowDocument ? "Statement of Work not yet available" : (sowResetBlocked || needsRegeneration) ? "Regenerate your scoped SOW before signing" : undefined}
+                              className={`group relative bg-white rounded-xl border border-border p-5 text-left transition-all overflow-hidden ${(!hasSowDocument || sowResetBlocked || needsRegeneration || contractLocked) ? "opacity-40 cursor-not-allowed" : "hover:shadow-md hover:-translate-y-0.5"}`}
                             >
                               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-xl ${(sowResetBlocked || needsRegeneration) ? "bg-amber-400" : contractVisited ? "bg-emerald-500" : "bg-slate-400"}`} />
                               {contractVisited && !(sowResetBlocked || needsRegeneration) && <ReviewedBadge />}
