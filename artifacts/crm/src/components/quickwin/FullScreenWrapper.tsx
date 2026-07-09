@@ -1064,9 +1064,16 @@ export default function FullScreenWrapper() {
               </div>
 
               {/* Title */}
-              <h1 className="text-[26px] font-bold text-[#191c1e] tracking-tight leading-tight text-center">
-                {resolvedProjectName ?? "Your Project"}
-              </h1>
+              {resolvedProjectName ? (
+                <h1 className="text-[26px] font-bold text-[#191c1e] tracking-tight leading-tight text-center">
+                  {resolvedProjectName}
+                </h1>
+              ) : (
+                <div
+                  className="h-[26px] w-48 rounded-md bg-black/10 animate-pulse"
+                  aria-hidden="true"
+                />
+              )}
 
               {/* Phase stepper — real WorkflowStep records */}
               <div className="w-full">
@@ -1503,9 +1510,16 @@ export default function FullScreenWrapper() {
                   </div>
 
                   {/* Title = active Quick Win project name */}
-                  <h1 className="text-[28px] font-bold text-[#191c1e] tracking-tight leading-tight">
-                    {resolvedProjectName ?? "M365 Diagnostic"}
-                  </h1>
+                  {resolvedProjectName ? (
+                    <h1 className="text-[28px] font-bold text-[#191c1e] tracking-tight leading-tight">
+                      {resolvedProjectName}
+                    </h1>
+                  ) : (
+                    <div
+                      className="h-[28px] w-52 rounded-md bg-black/10 animate-pulse"
+                      aria-hidden="true"
+                    />
+                  )}
 
                   {/* Phase stepper — kanban group names as phases */}
                   <PhaseStepperBar
