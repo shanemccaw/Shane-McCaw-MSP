@@ -1633,6 +1633,49 @@ router.get("/admin/clients/:id/app-registration", requireAdmin, async (req: Requ
   });
 });
 
+// ─── ADMIN: Delete client App Registration ────────────────────────────────────
+// Removes the client-submitted Azure App Registration credentials. Because the
+// onboarding gate (RequireEngagement / RequireCredentials) derives hasCredentials
+// from the presence of a "verified" row in clientAppRegistrationsTable, deleting
+// this row automatically routes the client's diagnostics page back to
+// /portal/onboarding/wizard (step 1: App Registration) on their next navigation.
+router.delete("/admin/clients/:id/app-registration", requireAdmin, async (req: Request, res: Response) => {
+  const clientId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(clientId)) { res.status(400).json({ error: "Invalid client ID" }); return; }
+
+  const [existing] = await db.select().from(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  if (!existing) { res.status(404).json({ error: "No App Registration found for this client" }); return; }
+
+  const [clientUser] = await db.select({ name: usersTable.name, email: usersTable.email })
+    .from(usersTable).where(eq(usersTable.id, clientId)).limit(1);
+  const clientLabel = clientUser?.name ?? clientUser?.email ?? String(clientId);
+
+  await db.delete(clientAppRegistrationsTable)
+    .where(eq(clientAppRegistrationsTable.clientUserId, clientId));
+
+  void createAuditLog({
+    actorUserId: req.user!.id,
+    actorName: req.user!.name ?? req.user!.email,
+    actorRole: "admin",
+    actionType: "app_registration_deleted",
+    entityType: "app_registration",
+    entityId: clientId,
+    entityLabel: clientLabel,
+    clientId,
+    metadata: {
+      tenantId: existing.tenantId,
+      azureClientId: existing.azureClientId,
+      previousStatus: existing.status,
+    },
+  });
+
+  req.log.info({ clientId }, "app-registration: deleted by admin");
+
+  res.json({ ok: true });
+});
+
 // ─── CLIENT: Dashboard summary ───────────────────────────────────────────────
 router.get("/portal/dashboard", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
