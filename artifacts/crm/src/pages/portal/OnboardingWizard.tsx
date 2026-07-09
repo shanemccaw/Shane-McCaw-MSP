@@ -656,7 +656,13 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       // PortalDiagnostic checks this flag once to skip its own ensure-auto-fire
       // call on the very next landing, avoiding a duplicate-job race.
       try { sessionStorage.setItem("appRegJustSubmitted", "true"); } catch { /* ignore */ }
-      setCurrentStep("review-results");
+      // Send the client to the live Diagnostics page (running-scan experience)
+      // rather than straight into this wizard's "review results" step — that
+      // step assumes results already exist and shows the manual-fallback error
+      // card whenever the scan is still in progress. PortalDiagnostic polls for
+      // completion and the RequireEngagement gate will route them to results
+      // automatically once quickWinCompletedAt is set.
+      navigate("/portal/diagnostic");
     }
   }
 
