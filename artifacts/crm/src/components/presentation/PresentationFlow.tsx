@@ -947,50 +947,6 @@ export default function PresentationFlow({
     selectedPhaseIds,
   ]);
 
-  // Clears phases AND signature server-side, then navigates back to Scope & Pricing.
-  // Blocked server-side if the presentation is already paid.
-  const handleResetForRescope = async () => {
-    if (!presentationId) return;
-    const tokenParam = shareToken ? `?token=${encodeURIComponent(shareToken)}` : "";
-    try {
-      const resp = await fetchFn(`/api/portal/presentations/${presentationId}/reset-for-rescope${tokenParam}`, {
-        method: "POST",
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({})) as { error?: string };
-        alert(body.error ?? "Failed to reset presentation");
-        return;
-      }
-    } catch {
-      alert("Couldn't reach the server. Please try again.");
-      return;
-    }
-    // Clear all downstream state locally so the wizard reflects the reset immediately.
-    setData(prev => ({
-      ...prev,
-      sowPhases: [],
-      selectedPhaseIds: [],
-      signatureData: null,
-      signerName: null,
-      signedAt: null,
-      status: "draft",
-      paymentPlan: null,
-      scopedSowHtml: null,
-      scopedTotalPrice: null,
-      scopedPhaseIds: null,
-      payTodayDiscountApplied: false,
-      discountedTotalCents: null,
-    }));
-    setIsPhaseGenRunning(false);
-    setPhaseGenEvent(null);
-    // Navigate to Scope & Pricing
-    const sowIdx = steps.findIndex(s => s.kind === "sow");
-    if (sowIdx >= 0) {
-      directionRef.current = "back";
-      applyStepChange(sowIdx);
-    }
-  };
-
   const handlePhaseGenComplete = (phases: PhaseGenPhase[]) => {
     setIsPhaseGenRunning(false);
     // Apply phases optimistically so Scope & Pricing renders immediately.
@@ -2338,19 +2294,6 @@ export default function PresentationFlow({
                   </svg>
                   Back
                 </button>
-                {/* Reset — clears phases + signature and returns to Scope & Pricing */}
-                {(data.sowPhases.length > 0 || !!data.signedAt) && data.status !== "paid" && (
-                  <button
-                    onClick={() => void handleResetForRescope()}
-                    title="Clear phases and signature — go back to Scope & Pricing"
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-orange-300 text-orange-500 text-xs font-semibold hover:bg-orange-50 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Reset phases
-                  </button>
-                )}
               </div>
 
               <p className="text-xs text-muted-foreground hidden sm:block">
