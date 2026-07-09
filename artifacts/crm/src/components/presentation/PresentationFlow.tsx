@@ -1013,6 +1013,40 @@ export default function PresentationFlow({
     }
   };
 
+  // Consume phase_gen_complete/error events fired by the silent background
+  // auto-fire (see the effect above) while the client is still on Scope &
+  // Pricing. PhaseGeneratingCard's onComplete/onError handlers only run once
+  // the client has navigated to the "phase_gen" step, so without this effect
+  // a background completion/error left `isPhaseGenRunning` stuck `true`
+  // forever — permanently blocking the auto-fire guard on every future visit
+  // to Scope & Pricing (including after a full page reload, since the stuck
+  // flag would otherwise never recover). This mirrors handlePhaseGenComplete's
+  // data update but deliberately does NOT navigate, since the client should
+  // keep reviewing Scope & Pricing undisturbed.
+  useEffect(() => {
+    if (!phaseGenEvent) return;
+    if (phaseGenEvent.type !== "phase_gen_complete" && phaseGenEvent.type !== "phase_gen_error") return;
+    if (currentStep?.kind === "phase_gen") return; // handled by PhaseGeneratingCard instead
+    if (!isPhaseGenRunning) return; // already consumed
+    setIsPhaseGenRunning(false);
+    if (phaseGenEvent.type === "phase_gen_complete" && phaseGenEvent.phases && phaseGenEvent.phases.length > 0) {
+      const phases = phaseGenEvent.phases;
+      setData(prev => ({
+        ...prev,
+        sowPhases: phases.map(p => ({
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          price: p.price,
+          selected: true,
+          subtasks: p.subtasks,
+        })),
+        selectedPhaseIds: phases.map(p => p.id),
+      }));
+      setPhaseGenScopeIds(phases.map(p => p.id));
+    }
+  }, [phaseGenEvent, currentStep?.kind, isPhaseGenRunning]);
+
   // Polling fallback for phase gen completion.
   // If the SSE event fires during a connection gap (e.g. EventSource is
   // reconnecting after an error), the client will miss the phase_gen.complete
