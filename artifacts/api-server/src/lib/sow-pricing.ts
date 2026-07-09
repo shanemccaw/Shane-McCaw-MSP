@@ -717,9 +717,49 @@ export function injectMissingWorkstreams(
   }
 
   if (!workstreamTableMatch) {
-    // No workstream table to inject into — return the injected lines so the
-    // caller treats this as an unrecoverable generation failure.
-    return { html, injected };
+    // No workstream table exists anywhere in the AI output at all (the AI
+    // omitted the pricing section, malformed it, or hit some other failure
+    // mode where none of "final price" / "base ceiling" / "fixed price"
+    // appear in any table header). Rather than give up and force the entire
+    // generation to fail — which previously caused an infinite regenerate
+    // loop, since a deterministic prompt/response failure repeats identically
+    // on every retry — synthesize a complete, compliant workstream table from
+    // the signal-authoritative catalog and inject it directly into the
+    // document. This guarantees every fired-signal phase reaches the client
+    // even when the AI drops the pricing table entirely.
+    const allRows = missing
+      .map(p => {
+        const priceUsd = midpointFromPriceRange(p.priceRange);
+        return `<tr><td>${p.title}</td><td>${p.priceRange}</td><td>$${priceUsd.toLocaleString("en-US")}</td><td>$${priceUsd.toLocaleString("en-US")}</td><td>Auto-included: this phase's triggering signal fired but the generated document omitted the pricing table.</td></tr>`;
+      })
+      .join("");
+    const synthesizedTable =
+      `<table><thead><tr><th>Project/Workstream</th><th>Scope</th><th>Base Ceiling</th><th>Final Price (USD)</th><th>Reasoning</th></tr></thead><tbody>${allRows}</tbody></table>`;
+
+    // Insert right after the last </h2> heading whose text mentions "pricing"
+    // (matching the prompt's expected section structure), or after the last
+    // </table> in the document, or — as a last resort — at the very end of
+    // the HTML body.
+    const headingRegex = /<h2[^>]*>[^<]*pricing[^<]*<\/h2>/gi;
+    const headingMatches = [...html.matchAll(headingRegex)];
+    let result: string;
+    if (headingMatches.length > 0) {
+      const lastHeading = headingMatches[headingMatches.length - 1]![0];
+      const idx = html.lastIndexOf(lastHeading);
+      const insertAt = idx + lastHeading.length;
+      result = html.slice(0, insertAt) + synthesizedTable + html.slice(insertAt);
+    } else if (tableMatches.length > 0) {
+      const lastTable = tableMatches[tableMatches.length - 1]![0];
+      const idx = html.lastIndexOf(lastTable);
+      const insertAt = idx + lastTable.length;
+      result = html.slice(0, insertAt) + synthesizedTable + html.slice(insertAt);
+    } else if (/<\/body>/i.test(html)) {
+      result = html.replace(/<\/body>/i, `${synthesizedTable}</body>`);
+    } else {
+      result = html + synthesizedTable;
+    }
+
+    return { html: result, injected };
   }
 
   const tableHtml = workstreamTableMatch[0];
