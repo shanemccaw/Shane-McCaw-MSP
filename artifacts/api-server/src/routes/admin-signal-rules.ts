@@ -697,6 +697,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
     const body = (req.body ?? {}) as Record<string, unknown>;
     const importedRules = body.rules;
     const importedGroups = body.groups;
+    const projectAssociations = body.projectAssociations as Record<string, number[]> | undefined;
     if (!Array.isArray(importedRules)) {
       res.status(400).json({ error: "Body must contain a 'rules' array" }); return;
     }
@@ -709,6 +710,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
 
     let ruleCount = 0;
     let groupCount = 0;
+    let projectLinkCount = 0;
 
     await db.transaction(async (tx) => {
       await tx.execute(sql`DELETE FROM signal_derivation_rules`);
@@ -743,14 +745,41 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
         ruleCount++;
       }
 
+      // Reconcile engagement-project ↔ signal associations (engagement_projects.triggered_by)
+      // for every signal key present in the export, so importing a bundle restores which
+      // projects are linked to each signal, not just the rule logic.
+      if (projectAssociations && typeof projectAssociations === "object") {
+        const signalKeysInExport = new Set(Object.keys(projectAssociations));
+        const allProjects = await tx.execute(sql`
+          SELECT id, triggered_by AS "triggeredBy" FROM engagement_projects
+        `);
+        for (const proj of allProjects.rows as Array<{ id: number; triggeredBy: string[] | null }>) {
+          const current = new Set(proj.triggeredBy ?? []);
+          let changed = false;
+          for (const signalKey of signalKeysInExport) {
+            const shouldHave = (projectAssociations[signalKey] ?? []).includes(proj.id);
+            const has = current.has(signalKey);
+            if (shouldHave && !has) { current.add(signalKey); changed = true; }
+            else if (!shouldHave && has) { current.delete(signalKey); changed = true; }
+          }
+          if (changed) {
+            const updated = Array.from(current);
+            await tx.execute(sql`
+              UPDATE engagement_projects SET triggered_by = ${updated} WHERE id = ${proj.id}
+            `);
+            projectLinkCount++;
+          }
+        }
+      }
+
       await tx.execute(sql`
         INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
         VALUES ('import', null, null, null, null, ${adminId},
-                ${`Imported ${ruleCount} rules across ${groupCount} groups. Pre-import snapshot saved as ID ${snapshotId}.`})
+                ${`Imported ${ruleCount} rules across ${groupCount} groups (${projectLinkCount} project link(s) updated). Pre-import snapshot saved as ID ${snapshotId}.`})
       `);
     });
 
-    res.json({ imported: ruleCount, snapshotId });
+    res.json({ imported: ruleCount, snapshotId, projectLinksUpdated: projectLinkCount });
   } catch (err) {
     logger.error({ err }, "POST /admin/signal-rules/import failed");
     res.status(500).json({ error: "Import failed" });

@@ -660,8 +660,25 @@ export default function TenantSignalsPage() {
     else toast({ title: "Failed to update group", variant: "destructive" });
   }
 
-  function handleExport() {
-    const data = JSON.stringify({ rules, groups }, null, 2);
+  async function handleExport() {
+    let projectsForExport = allEngagementProjects;
+    if (projectsForExport.length === 0) {
+      try {
+        const res = await fetchWithAuth("/api/admin/engagement-projects");
+        if (res.ok) projectsForExport = await res.json() as EngagementProject[];
+      } catch {
+        // fall through with whatever we have (possibly empty) rather than blocking export
+      }
+    }
+
+    const projectAssociations: Record<string, number[]> = {};
+    for (const p of projectsForExport) {
+      for (const key of p.triggeredBy ?? []) {
+        (projectAssociations[key] ??= []).push(p.id);
+      }
+    }
+
+    const data = JSON.stringify({ rules, groups, projectAssociations }, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -683,8 +700,9 @@ export default function TenantSignalsPage() {
         body: JSON.stringify(body),
       });
       if (res.ok) {
-        const data = await res.json() as { imported: number; snapshotId: number };
-        toast({ title: `Imported ${data.imported} rules. Previous rules saved as snapshot.` });
+        const data = await res.json() as { imported: number; snapshotId: number; projectLinksUpdated?: number };
+        const linkSuffix = data.projectLinksUpdated ? ` ${data.projectLinksUpdated} project link(s) updated.` : "";
+        toast({ title: `Imported ${data.imported} rules. Previous rules saved as snapshot.${linkSuffix}` });
         setShowImportModal(false);
         setImportJson("");
         await loadAll();
