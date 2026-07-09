@@ -241,6 +241,23 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     },
   },
   {
+    name: "__system__: Late Auto-Fire Reconciliation",
+    description: "Runs every 5 minutes to correct kanban cards that were falsely marked failed by the stuck-queued bail-out if Azure has since completed the job.",
+    triggerType: "schedule",
+    cron: "*/5 * * * *",
+    graph: {
+      nodes: [
+        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
+        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Reconcile Late Stuck-Queued", task: "reconcile_late_stuck_queued" } },
+        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "act" },
+        { id: "e2", source: "act",   target: "end" },
+      ],
+    },
+  },
+  {
     name: "__system__: Workflow Cleanup",
     description: "Nightly job (03:00 UTC) that deletes workflow runs older than 90 days.",
     triggerType: "schedule",

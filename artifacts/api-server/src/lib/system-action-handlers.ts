@@ -11,7 +11,7 @@ import { insightsAutomationsTable, quickWinPresentationsTable, workflowStepsTabl
 import { eq, and, isNotNull, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger.ts";
-import { reconcileOrphanedRuns, reconcileStalledPhases, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire.ts";
+import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire.ts";
 import { executeAutomation, nextRunFromCron } from "../routes/admin-insights.ts";
 import { checkManualScriptEscalations } from "./manual-script-escalation.ts";
 
@@ -24,7 +24,14 @@ export async function handleSystemAction(
     case "reconcile_orphaned_runs": {
       await reconcileOrphanedRuns();
       await reconcileStalledPhases();
+      await reconcileLateStuckQueuedCompletions();
       logger.info("system_action: reconcile_orphaned_runs completed");
+      return { reconciled: true };
+    }
+
+    case "reconcile_late_stuck_queued": {
+      await reconcileLateStuckQueuedCompletions();
+      logger.info("system_action: reconcile_late_stuck_queued completed");
       return { reconciled: true };
     }
 

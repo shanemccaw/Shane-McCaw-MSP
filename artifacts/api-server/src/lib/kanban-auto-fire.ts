@@ -422,9 +422,20 @@ async function resolveSiblingIds(taskId: number, projectId: number, azureRunbook
 }
 
 // How long a job may stay in Queued/New/Activating before we give up.
-// Stuck-Queued almost always means the runbook isn't Published in Azure
-// Automation or the Automation account has no available workers.
-const STUCK_QUEUED_MS = 2 * 60 * 1_000;
+// Azure Automation's own queue delay under normal load can regularly run
+// several minutes (observed: ~2 min queued, then ran and completed around
+// the 8-minute mark) — a short threshold here misclassifies perfectly
+// healthy, just-slow-to-start jobs as failed. This is only a "give up early"
+// diagnostic for the common misconfiguration case (unpublished runbook, no
+// available workers); genuinely stuck jobs are still caught by the outer
+// JOB_TIMEOUT_MS deadline below, and any bail-out here is further corrected
+// later if Azure did in fact complete the job — see
+// reconcileLateStuckQueuedCompletions(). Configurable via
+// KANBAN_STUCK_QUEUED_MINUTES for environments with heavier Azure queuing.
+const STUCK_QUEUED_MS = (() => {
+  const minutes = Number(process.env.KANBAN_STUCK_QUEUED_MINUTES);
+  return (Number.isFinite(minutes) && minutes > 0 ? minutes : 7) * 60 * 1_000;
+})();
 
 async function pollJobToCompletion(jobId: string): Promise<{ success: boolean; lastStatus: string; output: string }> {
   const deadline = Date.now() + JOB_TIMEOUT_MS;
@@ -441,8 +452,8 @@ async function pollJobToCompletion(jobId: string): Promise<{ success: boolean; l
       if (!firstQueuedAt) firstQueuedAt = Date.now();
       if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
         logger.warn(
-          { jobId, status: status.status },
-          "kanban-auto-fire: job stuck in queued state — runbook may not be Published in Azure Automation",
+          { jobId, status: status.status, queuedForMinutes: Math.round((Date.now() - firstQueuedAt) / 60_000) },
+          "kanban-auto-fire: job still queued after grace period — giving up early (will be reconciled automatically if Azure later completes it)",
         );
         return { success: false, lastStatus: "StuckQueued", output: "" };
       }
@@ -638,7 +649,9 @@ async function runInBackground(
             // Return to backlog so the reconcile loop or the next trigger can retry
             column:           "backlog",
             completionStatus: failCompletionStatus,
-            completionNotes:  `Script run failed — status: ${lastStatus} (job ${jobId}). Attempt ${newFailureCount}/${MAX_AUTO_FIRE_FAILURES}.${notesBody}`,
+            completionNotes:  lastStatus === "StuckQueued"
+              ? `Still queued in Azure after ${Math.round(STUCK_QUEUED_MS / 60_000)} minutes — giving up early (job ${jobId}). Attempt ${newFailureCount}/${MAX_AUTO_FIRE_FAILURES}. If Azure completes this job later it will be corrected automatically.${notesBody}`
+              : `Script run failed — status: ${lastStatus} (job ${jobId}). Attempt ${newFailureCount}/${MAX_AUTO_FIRE_FAILURES}.${notesBody}`,
             taskMetadata: {
               ...meta,
               runningJobRef:        null,
@@ -1751,6 +1764,183 @@ export async function reconcileOrphanedRuns(): Promise<void> {
     }
   } catch (err) {
     logger.warn({ err }, "kanban-auto-fire: reconcileOrphanedRuns failed (non-fatal)");
+  }
+}
+
+/**
+ * Corrects false failures produced by the "stuck queued" bail-out in
+ * pollJobToCompletion(). That bail-out gives up early on jobs that sit in
+ * New/Queued/Activating too long and reverts their card(s) to backlog with
+ * completionStatus "auto_fire_failed"/"auto_fire_exhausted" and
+ * lastJobStatus "StuckQueued" — but Azure may still run that same job
+ * (tracked via the stored lastJobId) to a real, successful completion
+ * afterwards.
+ *
+ * This reconciler finds any such card, re-checks the real Azure job status,
+ * and if it has since completed successfully, replays the normal success
+ * path (script results, profile updates, health snapshot, card → completed,
+ * phase advance, and continuing the auto-fire chain) so the card and the
+ * actual Azure outcome never permanently disagree. Jobs that are still
+ * pending, or that genuinely failed in Azure, are left untouched.
+ *
+ * Safe to call repeatedly — designed to run both at startup and on a
+ * recurring schedule (see the "__system__: Late Auto-Fire Reconciliation"
+ * seeded workflow) since a stuck-queued job can resolve at any time of day,
+ * not just around a server restart.
+ */
+export async function reconcileLateStuckQueuedCompletions(): Promise<void> {
+  if (!isAzureConfigured()) return;
+
+  try {
+    const candidates = await db
+      .select({
+        id:               kanbanTasksTable.id,
+        projectId:        kanbanTasksTable.projectId,
+        workflowStepId:   kanbanTasksTable.workflowStepId,
+        taskMetadata:     kanbanTasksTable.taskMetadata,
+        clientUserId:     projectsTable.clientUserId,
+        jobId:            sql<string>`(task_metadata->>'lastJobId')`,
+      })
+      .from(kanbanTasksTable)
+      .innerJoin(projectsTable, eq(projectsTable.id, kanbanTasksTable.projectId))
+      .where(
+        and(
+          eq(kanbanTasksTable.column, "backlog"),
+          inArray(kanbanTasksTable.completionStatus, ["auto_fire_failed", "auto_fire_exhausted"]),
+          sql`task_metadata->>'lastJobStatus' = 'StuckQueued'`,
+          isNotNull(sql`task_metadata->>'lastJobId'`),
+        ),
+      );
+
+    if (candidates.length === 0) return;
+
+    logger.info({ count: candidates.length }, "kanban-auto-fire: checking late-arriving completions for stuck-queued failures");
+
+    const byJob = new Map<string, typeof candidates>();
+    for (const card of candidates) {
+      if (!card.jobId) continue;
+      const group = byJob.get(card.jobId) ?? [];
+      group.push(card);
+      byJob.set(card.jobId, group);
+    }
+
+    const processedClientIds = new Set<number>();
+
+    for (const [jobId, cards] of byJob) {
+      try {
+        const { status } = await getJobStatus(jobId);
+        // Still pending (Azure hasn't resolved it yet) or a genuine terminal
+        // failure — nothing to correct. Leave the existing failure state as-is;
+        // this jobId will be re-checked on the next pass if still pending.
+        if (status !== "Completed") continue;
+
+        const cardIds = cards.map(c => c.id);
+        const { projectId, workflowStepId, clientUserId } = cards[0];
+        if (projectId == null || clientUserId == null) continue;
+
+        const outputLines = await getJobOutput(jobId).catch(() => [] as Array<{ text: string }>);
+        const output       = outputLines.map((l: { text: string }) => l.text).join("\n");
+        const summary      = output.split("\n").filter(Boolean).slice(-10).join("\n");
+        const notesBody    = summary ? `\n\nOutput:\n${summary}` : "";
+
+        let aiResult: Awaited<ReturnType<typeof runAiAnalyzer>> | null = null;
+        if (output.trim()) {
+          try {
+            aiResult = await runAiAnalyzer({
+              scriptOutput: output,
+              aiInstructions: "Analyze the output of this runbook for security, governance, and Copilot readiness findings.",
+              packageContext: "Automated M365 analysis triggered by client App Registration (late-arriving reconciliation)",
+            });
+          } catch (aiErr) {
+            logger.warn({ aiErr, jobId }, "kanban-auto-fire: late-completion AI analysis failed (non-fatal)");
+          }
+        }
+        const deterministicUpdates = parseM365ScriptOutput(output);
+        const mergedProfileUpdates = { ...(aiResult?.profileUpdates ?? {}), ...deterministicUpdates };
+
+        try {
+          await applyProfileUpdates(clientUserId, mergedProfileUpdates);
+          await snapshotHealthFromProfile(clientUserId);
+        } catch (profileErr) {
+          logger.warn({ profileErr, clientUserId, jobId }, "kanban-auto-fire: late-completion profile update failed (non-fatal)");
+        }
+
+        const [runRow] = await db
+          .select({ id: scriptRunResultsTable.id })
+          .from(scriptRunResultsTable)
+          .where(eq(scriptRunResultsTable.jobId, jobId))
+          .limit(1);
+        if (runRow) {
+          await db.update(scriptRunResultsTable)
+            .set({
+              status:           "completed",
+              rawOutput:        { text: output, azureStatus: status },
+              parsedFindings:   aiResult?.findings ?? [],
+              recommendations:  aiResult?.recommendations ?? [],
+              scoreImpact:      aiResult?.scoreImpact ?? {},
+              profileUpdates:   mergedProfileUpdates,
+            })
+            .where(eq(scriptRunResultsTable.id, runRow.id));
+        }
+
+        const cardRows = await db.select({ id: kanbanTasksTable.id, taskMetadata: kanbanTasksTable.taskMetadata })
+          .from(kanbanTasksTable)
+          .where(inArray(kanbanTasksTable.id, cardIds));
+        for (const row of cardRows) {
+          const meta = (row.taskMetadata ?? {}) as Record<string, unknown>;
+          // Clear the failure-tracking fields the bail-out stamped — this card
+          // is now a genuine success, not a retry-in-progress failure.
+          const {
+            autoFireFailureCount: _autoFireFailureCount,
+            autoFireExhaustedAt:  _autoFireExhaustedAt,
+            lastFailureReason:    _lastFailureReason,
+            lastFailedAt:         _lastFailedAt,
+            ...restMeta
+          } = meta;
+          await db.update(kanbanTasksTable)
+            .set({
+              column:           "completed",
+              completionStatus: "script_completed",
+              completionNotes:  `Script run completed late (job ${jobId}) — corrected from a false "stuck queued" failure.${notesBody}`,
+              taskMetadata: {
+                ...restMeta,
+                scriptOutput:  output.slice(0, 50_000),
+                lastJobId:     jobId,
+                lastJobStatus: "Completed",
+                runningJobRef: null,
+                ...(aiResult ? { aiAnalysis: aiResult } : {}),
+                completedAt: new Date().toISOString(),
+              },
+              updatedAt: new Date(),
+            })
+            .where(eq(kanbanTasksTable.id, row.id));
+        }
+
+        const updatedRows = await db.select().from(kanbanTasksTable).where(inArray(kanbanTasksTable.id, cardIds));
+        for (const t of updatedRows) broadcastKanbanChange(projectId, { action: "updated", task: t });
+
+        if (workflowStepId != null) {
+          await advancePhaseIfComplete(workflowStepId, projectId);
+        }
+        await syncProjectProgress(projectId);
+        processedClientIds.add(clientUserId);
+
+        logger.info(
+          { cardIds, jobId },
+          "kanban-auto-fire: late-arriving completion corrected a false stuck-queued failure",
+        );
+      } catch (err) {
+        logger.warn({ err, jobId }, "kanban-auto-fire: could not reconcile late stuck-queued job (non-fatal)");
+      }
+    }
+
+    for (const clientUserId of processedClientIds) {
+      void autoFireFirstBacklogScript(clientUserId);
+      void autoFireDocumentCard(clientUserId);
+      void autoFireRunWorkflowCards(clientUserId);
+    }
+  } catch (err) {
+    logger.warn({ err }, "kanban-auto-fire: reconcileLateStuckQueuedCompletions failed (non-fatal)");
   }
 }
 
