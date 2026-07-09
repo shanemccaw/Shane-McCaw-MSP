@@ -1093,6 +1093,13 @@
       "when": 1784100000000,
       "tag": "0151_add_wf_versions_one_published_uidx",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1784200000000,
+      "tag": "0152_add_email_templates_customized",
+      "breakpoints": true
     }
   ]
 }

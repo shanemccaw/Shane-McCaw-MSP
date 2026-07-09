@@ -1,5 +1,5 @@
 import { db, emailTemplatesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 interface TemplateDefinition {
@@ -754,15 +754,66 @@ const TEMPLATES: TemplateDefinition[] = [
   },
 ];
 
+function variablesEqual(
+  a: Array<{ name: string; description: string }>,
+  b: Array<{ name: string; description: string }>,
+): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
 export async function seedEmailTemplates(): Promise<void> {
+  // Ensure the `is_customized` column exists before we rely on it below.
+  // This is redundant with the startup migration in index.ts but makes this
+  // function safe to call standalone/first, regardless of boot ordering.
+  await db.execute(sql`
+    ALTER TABLE email_templates
+    ADD COLUMN IF NOT EXISTS is_customized BOOLEAN NOT NULL DEFAULT false
+  `);
+
   for (const tpl of TEMPLATES) {
     const [existing] = await db
-      .select({ slug: emailTemplatesTable.slug })
+      .select({
+        slug: emailTemplatesTable.slug,
+        subject: emailTemplatesTable.subject,
+        bodyHtml: emailTemplatesTable.bodyHtml,
+        variables: emailTemplatesTable.variables,
+        recipientType: emailTemplatesTable.recipientType,
+        isCustomized: emailTemplatesTable.isCustomized,
+      })
       .from(emailTemplatesTable)
       .where(eq(emailTemplatesTable.slug, tpl.slug))
       .limit(1);
 
     if (existing) {
+      if (existing.isCustomized) {
+        logger.debug({ slug: tpl.slug }, "Email template skipped by seeder — customized via Admin Panel");
+        continue;
+      }
+
+      // Backfill: rows created before the `is_customized` flag existed have
+      // no reliable marker for prior Admin Panel edits. If the stored content
+      // no longer matches the code-level baseline, treat it as customized
+      // (preserve it, don't overwrite) rather than risk clobbering an edit
+      // that predates this fix. Rows that still match the baseline are kept
+      // in sync as before.
+      const matchesBaseline =
+        existing.subject === tpl.subject &&
+        existing.bodyHtml === tpl.bodyHtml &&
+        existing.recipientType === tpl.recipientType &&
+        variablesEqual(existing.variables, tpl.variables);
+
+      if (!matchesBaseline) {
+        await db
+          .update(emailTemplatesTable)
+          .set({ isCustomized: true })
+          .where(eq(emailTemplatesTable.slug, tpl.slug));
+        logger.info(
+          { slug: tpl.slug },
+          "Email template differs from code baseline — marking as customized and preserving existing content",
+        );
+        continue;
+      }
+
       await db
         .update(emailTemplatesTable)
         .set({ subject: tpl.subject, bodyHtml: tpl.bodyHtml, variables: tpl.variables, recipientType: tpl.recipientType })
@@ -778,6 +829,7 @@ export async function seedEmailTemplates(): Promise<void> {
       bodyHtml: tpl.bodyHtml,
       variables: tpl.variables,
       recipientType: tpl.recipientType,
+      isCustomized: false,
     });
     logger.info({ slug: tpl.slug }, "Email template seeded");
   }

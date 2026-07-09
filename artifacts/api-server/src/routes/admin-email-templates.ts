@@ -187,8 +187,9 @@ router.put("/admin/email-templates/:slug", requireAdmin, async (req: Request, re
 
   if (!existing) { res.status(404).json({ error: "Template not found" }); return; }
 
-  const updates: Partial<{ subject: string; bodyHtml: string; updatedAt: Date }> = {
+  const updates: Partial<{ subject: string; bodyHtml: string; updatedAt: Date; isCustomized: boolean }> = {
     updatedAt: new Date(),
+    isCustomized: true,
   };
   if (subject !== undefined) updates.subject = subject.trim();
   if (bodyHtml !== undefined) updates.bodyHtml = bodyHtml;

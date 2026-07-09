@@ -34,69 +34,54 @@ function relativeTime(iso: string): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-const PREVIEW_WRAPPER = `
+// Fallback wrapper — only used if the real `branded-layout` DB template can't
+// be fetched (e.g. offline, 404). Mirrors the hardcoded fallback in
+// artifacts/api-server/src/lib/mailer.ts so preview never crashes.
+const FALLBACK_WRAPPER = `
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: #f1f5f9;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-    font-size: 14px;
-    color: #1e293b;
-    line-height: 1.6;
-  }
-  .outer {
-    max-width: 600px;
-    margin: 24px auto;
-    background: #ffffff;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0,0,0,.12);
-  }
-  .header {
-    background: #0A2540;
-    padding: 24px 32px;
-    text-align: center;
-  }
-  .header span {
-    color: #ffffff;
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: -0.3px;
-  }
-  .header span em {
-    color: #0078D4;
-    font-style: normal;
-  }
-  .body {
-    padding: 32px;
-    color: #1e293b;
-    font-size: 15px;
-    line-height: 1.7;
-  }
-  .body a { color: #0078D4; }
-  .footer {
-    background: #f8fafc;
-    border-top: 1px solid #e2e8f0;
-    padding: 16px 32px;
-    text-align: center;
-    font-size: 12px;
-    color: #94a3b8;
-  }
-</style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shane McCaw Consulting</title>
 </head>
-<body>
-<div class="outer">
-  <div class="header"><span>Shane McCaw <em>Consulting</em></span></div>
-  <div class="body">{{BODY}}</div>
-  <div class="footer">Shane McCaw Consulting · NASA Lead Microsoft 365 Architect · info@shanemccaw.com</div>
-</div>
+<body style="margin:0;padding:0;background:#F7F9FC;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FC;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#0A2540;padding:24px 32px;">
+            <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.3px;">Shane McCaw Consulting</p>
+            <p style="margin:4px 0 0;color:#94a3b8;font-size:12px;">Lead Microsoft 365 Architect</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#1e293b;font-size:15px;line-height:1.6;">
+            {{body}}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f1f5f9;padding:20px 32px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">
+              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.com" style="color:#0078D4;text-decoration:none;">shanemccaw.com</a><br/>
+              You're receiving this because you have an account or made a purchase with us.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
 </body>
-</html>
+</html>`;
+
+// Placeholder body used when previewing the `branded-layout` template itself,
+// so editing the wrapper shows a representative body instead of the raw
+// wrapper HTML (which would otherwise be nested inside its own {{body}} slot).
+const SAMPLE_BODY_FOR_LAYOUT_PREVIEW = `
+  <p>Hi Sarah,</p>
+  <p>This is sample email content used to preview the branded layout — header, footer, colors, and spacing.</p>
+  <p style="margin:24px 0 0;"><a href="#" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Sample Button →</a></p>
+  <p style="margin-top:24px;">— Shane McCaw</p>
 `;
 
 const SAMPLE_DATA: Record<string, string> = {
@@ -175,22 +160,26 @@ function PreviewPane({
   bodyHtml,
   subject,
   isSample,
+  wrapperHtml,
 }: {
   bodyHtml: string;
   subject: string;
   isSample?: boolean;
+  wrapperHtml: string;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const frame = iframeRef.current;
     if (!frame) return;
-    const html = PREVIEW_WRAPPER.replace("{{BODY}}", bodyHtml);
+    const html = wrapperHtml.includes("{{body}}")
+      ? wrapperHtml.replace("{{body}}", () => bodyHtml)
+      : `${wrapperHtml}${bodyHtml}`;
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     frame.src = url;
     return () => URL.revokeObjectURL(url);
-  }, [bodyHtml]);
+  }, [bodyHtml, wrapperHtml]);
 
   return (
     <div className="flex flex-col h-full">
@@ -381,6 +370,24 @@ export default function EmailTemplatesPage() {
     },
     enabled: !!selected,
   });
+
+  // Real branded-layout wrapper — used in preview so it matches the actual
+  // email that gets sent. Falls back to a hardcoded wrapper if unavailable.
+  const { data: brandedLayout } = useQuery<TemplateDetail>({
+    queryKey: ["email-template", "branded-layout"],
+    queryFn: async () => {
+      const r = await fetchWithAuth(`/api/admin/email-templates/branded-layout`);
+      if (!r.ok) throw new Error("Failed to load branded layout");
+      return r.json() as Promise<TemplateDetail>;
+    },
+    staleTime: 30_000,
+  });
+  // When editing the branded-layout template itself, preview it directly as
+  // the wrapper (with a sample body dropped into its {{body}} slot) instead
+  // of wrapping it inside itself.
+  const wrapperHtml = selected === "branded-layout"
+    ? editBody
+    : (brandedLayout?.bodyHtml ?? FALLBACK_WRAPPER);
 
   useEffect(() => {
     if (detail) {
@@ -690,14 +697,15 @@ export default function EmailTemplatesPage() {
                   )}
                 </div>
               ) : (() => {
+                const isBrandedLayout = selected === "branded-layout";
                 const { filledHtml, filledSubject } = fillSampleData(
-                  editBody,
+                  isBrandedLayout ? SAMPLE_BODY_FOR_LAYOUT_PREVIEW : editBody,
                   editSubject,
                   detail.variables,
                 );
                 return (
                   <div className="flex-1 overflow-hidden">
-                    <PreviewPane bodyHtml={filledHtml} subject={filledSubject} isSample />
+                    <PreviewPane bodyHtml={filledHtml} subject={filledSubject} wrapperHtml={wrapperHtml} isSample />
                   </div>
                 );
               })()}

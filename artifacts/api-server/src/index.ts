@@ -296,6 +296,15 @@ app.listen(port, (err) => {
   });
 
   pool.query(`
+    ALTER TABLE email_templates
+    ADD COLUMN IF NOT EXISTS is_customized BOOLEAN NOT NULL DEFAULT false
+  `).then(() => {
+    logger.info("Migration: email_templates.is_customized column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: email_templates.is_customized failed (non-fatal)");
+  });
+
+  pool.query(`
     CREATE TABLE IF NOT EXISTS next_best_actions (
       id SERIAL PRIMARY KEY,
       entity_type TEXT NOT NULL DEFAULT 'general',

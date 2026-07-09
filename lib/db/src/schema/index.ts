@@ -857,6 +857,7 @@ export const emailTemplatesTable = pgTable("email_templates", {
   bodyHtml: text("body_html").notNull(),
   variables: jsonb("variables").$type<Array<{ name: string; description: string }>>().notNull().default([]),
   recipientType: text("recipient_type", { enum: ["client", "admin"] }).notNull().default("client"),
+  isCustomized: boolean("is_customized").notNull().default(false),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
