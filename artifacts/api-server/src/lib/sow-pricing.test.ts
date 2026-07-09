@@ -16,7 +16,7 @@
  * matching the intent of the integration path tests.
  */
 import { describe, it, expect } from "vitest";
-import { stripMarkdownFence, extractAiHtml, validateSowPricing, parseSowAllPricing, purgeAdjustmentsByTitle, type SowPricingLine } from "./sow-pricing.ts";
+import { stripMarkdownFence, extractAiHtml, validateSowPricing, parseSowAllPricing, purgeAdjustmentsByTitle, purgeHallucinatedWorkstreams, canonicalizeWorkstreamTitles, injectMissingWorkstreams, detectSowPhaseDrift, type SowPricingLine } from "./sow-pricing.ts";
 
 // ---------------------------------------------------------------------------
 // Unit tests — stripMarkdownFence()
@@ -643,5 +643,235 @@ describe("purgeAdjustmentsByTitle()", () => {
     // Data Sprawl and Copilot Readiness are not permitted — removed
     expect(removedTitles.some(t => /data\s+sprawl/i.test(t))).toBe(true);
     expect(removedTitles.some(t => /copilot\s+readiness/i.test(t))).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Signal-authoritative phase alignment — purgeHallucinatedWorkstreams() / detectSowPhaseDrift()
+// ---------------------------------------------------------------------------
+
+describe("purgeHallucinatedWorkstreams()", () => {
+  it("removes a workstream row whose title matches no fired-signal catalogue project", () => {
+    const html = `
+      <table>
+        <thead><tr><th>Project/Workstream</th><th>Base Ceiling</th><th>Final Price (USD)</th></tr></thead>
+        <tbody>
+          <tr><td>Governance Modernization</td><td>$20,000</td><td>$18,000</td></tr>
+          <tr><td>Copilot Readiness</td><td>$15,000</td><td>$15,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+      { title: "Copilot Readiness", scope: "", priceUsd: 15000, notes: "" },
+    ];
+    // Only Governance Modernization was signal-fired — Copilot Readiness is hallucinated.
+    const { html: result, removedTitles } = purgeHallucinatedWorkstreams(html, workstreamLines, ["Governance Modernization"]);
+
+    expect(removedTitles).toEqual(["Copilot Readiness"]);
+    expect(result).toMatch(/Governance Modernization/);
+    expect(result).not.toMatch(/Copilot Readiness/);
+  });
+
+  it("is a no-op when every workstream row matches a catalogue title", () => {
+    const html = `<table><tr><td>Security Hardening</td><td>$10,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Security Hardening", scope: "", priceUsd: 10000, notes: "" },
+    ];
+    const { html: result, removedTitles } = purgeHallucinatedWorkstreams(html, workstreamLines, ["Security Hardening"]);
+
+    expect(removedTitles).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+
+  it("skips purging entirely when the catalogue is empty (never wipes out a whole SOW)", () => {
+    const html = `<table><tr><td>Anything</td><td>$5,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Anything", scope: "", priceUsd: 5000, notes: "" },
+    ];
+    const { html: result, removedTitles } = purgeHallucinatedWorkstreams(html, workstreamLines, []);
+
+    expect(removedTitles).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+
+  it("tolerates minor AI title rewording via substring matching", () => {
+    const html = `<table><tr><td>Governance Modernization Phase</td><td>$10,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization Phase", scope: "", priceUsd: 10000, notes: "" },
+    ];
+    const { removedTitles } = purgeHallucinatedWorkstreams(html, workstreamLines, ["Governance Modernization"]);
+
+    expect(removedTitles).toHaveLength(0);
+  });
+});
+
+describe("detectSowPhaseDrift()", () => {
+  it("reports no drift when workstream titles exactly match the catalogue", () => {
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+      { title: "Security Hardening", scope: "", priceUsd: 12000, notes: "" },
+    ];
+    const result = detectSowPhaseDrift(workstreamLines, ["Governance Modernization", "Security Hardening"]);
+
+    expect(result.ok).toBe(true);
+    expect(result.missingPhases).toHaveLength(0);
+    expect(result.hallucinatedPhases).toHaveLength(0);
+  });
+
+  it("flags a catalogue project with no matching workstream row as missing", () => {
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+    ];
+    const result = detectSowPhaseDrift(workstreamLines, ["Governance Modernization", "Compliance & Regulatory Alignment"]);
+
+    expect(result.ok).toBe(false);
+    expect(result.missingPhases).toEqual(["Compliance & Regulatory Alignment"]);
+    expect(result.hallucinatedPhases).toHaveLength(0);
+  });
+
+  it("flags a workstream row with no matching catalogue project as hallucinated", () => {
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+      { title: "Bonus Consulting Hours", scope: "", priceUsd: 5000, notes: "" },
+    ];
+    const result = detectSowPhaseDrift(workstreamLines, ["Governance Modernization"]);
+
+    expect(result.ok).toBe(false);
+    expect(result.hallucinatedPhases).toEqual(["Bonus Consulting Hours"]);
+    expect(result.missingPhases).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hard enforcement — canonicalizeWorkstreamTitles() / injectMissingWorkstreams()
+// ---------------------------------------------------------------------------
+
+describe("canonicalizeWorkstreamTitles()", () => {
+  it("rewrites a reworded AI title to the exact catalogue title in the HTML", () => {
+    const html = `<table><tr><td>Governance Modernization Phase</td><td>$18,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization Phase", scope: "", priceUsd: 18000, notes: "" },
+    ];
+    const { html: result, renamedTitles } = canonicalizeWorkstreamTitles(html, workstreamLines, ["Governance Modernization"]);
+
+    expect(renamedTitles).toEqual([{ from: "Governance Modernization Phase", to: "Governance Modernization" }]);
+    expect(result).toContain("<td>Governance Modernization</td>");
+    expect(result).not.toContain("Governance Modernization Phase");
+  });
+
+  it("is a no-op when the title already exactly matches the catalogue", () => {
+    const html = `<table><tr><td>Security Hardening</td><td>$10,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Security Hardening", scope: "", priceUsd: 10000, notes: "" },
+    ];
+    const { html: result, renamedTitles } = canonicalizeWorkstreamTitles(html, workstreamLines, ["Security Hardening"]);
+
+    expect(renamedTitles).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+
+  it("is a no-op when the catalogue is empty", () => {
+    const html = `<table><tr><td>Anything</td><td>$5,000</td></tr></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Anything", scope: "", priceUsd: 5000, notes: "" },
+    ];
+    const { html: result, renamedTitles } = canonicalizeWorkstreamTitles(html, workstreamLines, []);
+
+    expect(renamedTitles).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+});
+
+describe("injectMissingWorkstreams()", () => {
+  it("injects a synthetic row for a fired-signal catalogue project the AI omitted", () => {
+    const html = `
+      <table>
+        <thead><tr><th>Project/Workstream</th><th>Base Ceiling</th><th>Final Price (USD)</th></tr></thead>
+        <tbody>
+          <tr><td>Governance Modernization</td><td>$8,000–$25,000</td><td>$18,000</td></tr>
+        </tbody>
+      </table>
+    `;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+    ];
+    const catalogProjects = [
+      { title: "Governance Modernization", priceRange: "$8,000–$25,000" },
+      { title: "Security Hardening", priceRange: "$9,000–$28,000" },
+    ];
+    const { html: result, injected } = injectMissingWorkstreams(html, workstreamLines, catalogProjects);
+
+    expect(injected).toHaveLength(1);
+    expect(injected[0]!.title).toBe("Security Hardening");
+    expect(injected[0]!.priceUsd).toBe(18500);
+    expect(result).toContain("Security Hardening");
+
+    const reparsed = parseSowAllPricing(result);
+    expect(reparsed.workstreamLines.map(l => l.title)).toEqual(
+      expect.arrayContaining(["Governance Modernization", "Security Hardening"]),
+    );
+  });
+
+  it("is a no-op when every catalogue project already has a matching row", () => {
+    const html = `<table><thead><tr><th>Workstream</th><th>Final Price (USD)</th></tr></thead><tbody><tr><td>Governance Modernization</td><td>$18,000</td></tr></tbody></table>`;
+    const workstreamLines: SowPricingLine[] = [
+      { title: "Governance Modernization", scope: "", priceUsd: 18000, notes: "" },
+    ];
+    const catalogProjects = [{ title: "Governance Modernization", priceRange: "$8,000–$25,000" }];
+    const { html: result, injected } = injectMissingWorkstreams(html, workstreamLines, catalogProjects);
+
+    expect(injected).toHaveLength(0);
+    expect(result).toBe(html);
+  });
+
+  it("returns the injected list even when no workstream table can be located, so callers can fail loudly", () => {
+    const html = `<p>No table here at all.</p>`;
+    const workstreamLines: SowPricingLine[] = [];
+    const catalogProjects = [{ title: "Governance Modernization", priceRange: "$8,000–$25,000" }];
+    const { html: result, injected } = injectMissingWorkstreams(html, workstreamLines, catalogProjects);
+
+    expect(injected).toHaveLength(1);
+    expect(result).toBe(html);
+  });
+});
+
+describe("full enforcement pipeline — canonicalize + inject guarantees zero drift", () => {
+  it("purge -> canonicalize -> inject -> detectSowPhaseDrift always reports ok:true against a real catalogue shape", () => {
+    const catalogProjects = [
+      { title: "Copilot for Microsoft 365 Deployment Project", priceRange: "$12,000–$30,000" },
+      { title: "Governance Remediation & Architecture Hardening", priceRange: "$8,000–$25,000" },
+      { title: "Security & Compliance Hardening for Microsoft 365", priceRange: "$9,000–$28,000" },
+    ];
+    const catalogTitles = catalogProjects.map(p => p.title);
+
+    // AI output: hallucinates one extra phase, reworks one title, and omits one required phase.
+    const html = `
+      <table>
+        <thead><tr><th>Project/Workstream</th><th>Base Ceiling</th><th>Final Price (USD)</th></tr></thead>
+        <tbody>
+          <tr><td>Copilot for Microsoft 365 Deployment</td><td>$12,000–$30,000</td><td>$20,000</td></tr>
+          <tr><td>Governance Remediation & Architecture Hardening</td><td>$8,000–$25,000</td><td>$18,000</td></tr>
+          <tr><td>Bonus Executive Workshop Series</td><td>$5,000–$10,000</td><td>$5,000</td></tr>
+        </tbody>
+      </table>
+    `;
+
+    const { workstreamLines: rawWs } = parseSowAllPricing(html);
+    const { html: h1 } = purgeHallucinatedWorkstreams(html, rawWs, catalogTitles);
+    const { workstreamLines: wsAfterPurge } = parseSowAllPricing(h1);
+    const { html: h2 } = canonicalizeWorkstreamTitles(h1, wsAfterPurge, catalogTitles);
+    const { html: h3 } = injectMissingWorkstreams(h2, wsAfterPurge, catalogProjects);
+
+    const final = parseSowAllPricing(h3);
+    const drift = detectSowPhaseDrift(final.workstreamLines, catalogTitles);
+
+    expect(drift.ok).toBe(true);
+    expect(drift.missingPhases).toHaveLength(0);
+    expect(drift.hallucinatedPhases).toHaveLength(0);
+    // Canonical title must appear verbatim, not the AI's reworded version.
+    expect(h3).toContain("Copilot for Microsoft 365 Deployment Project");
+    expect(h3).not.toContain("Bonus Executive Workshop Series");
+    expect(h3).toContain("Security & Compliance Hardening for Microsoft 365");
   });
 });

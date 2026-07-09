@@ -486,6 +486,261 @@ export interface SowValidationResult {
   issues: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Signal-authoritative phase alignment
+// ---------------------------------------------------------------------------
+
+/** Normalize a phase/project title for tolerant comparison (case, punctuation, whitespace). */
+function normalizePhaseTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/**
+ * Determine whether an AI-parsed workstream title refers to the same phase as
+ * a catalogue (signal-filtered engagement project) title. Uses normalized
+ * exact match first, then a tolerant substring match in either direction so
+ * that minor AI rewording ("Governance Modernization Phase" vs "Governance
+ * Modernization") doesn't cause a false "hallucinated phase" flag.
+ */
+function phaseTitlesMatch(aiTitle: string, catalogTitle: string): boolean {
+  const a = normalizePhaseTitle(aiTitle);
+  const c = normalizePhaseTitle(catalogTitle);
+  if (a === c) return true;
+  if (a.length === 0 || c.length === 0) return false;
+  return a.includes(c) || c.includes(a);
+}
+
+export interface PhaseDriftResult {
+  ok: boolean;
+  /** Catalogue (signal-fired) titles with no matching workstream row in the AI output. */
+  missingPhases: string[];
+  /** Workstream rows the AI produced that do not correspond to any fired-signal catalogue project. */
+  hallucinatedPhases: string[];
+  issues: string[];
+}
+
+/**
+ * Runtime guard for signal → phase determinism.
+ *
+ * `catalogTitles` MUST be the exact `signalFilteredProjects` title list used to
+ * build the SOW prompt (the deterministic, signal-gated project list from
+ * `tenant-signals.ts`). This function never mutates output — callers should
+ * log the returned issues loudly (e.g. `logger.error`) so drift between the
+ * signal engine and the AI's actual phase output is always visible, even
+ * though generation is allowed to proceed with the purge helpers correcting
+ * what they can.
+ */
+export function detectSowPhaseDrift(
+  workstreamLines: SowPricingLine[],
+  catalogTitles: string[],
+): PhaseDriftResult {
+  const issues: string[] = [];
+
+  const missingPhases = catalogTitles.filter(
+    catalogTitle => !workstreamLines.some(l => phaseTitlesMatch(l.title, catalogTitle)),
+  );
+  const hallucinatedPhases = workstreamLines
+    .map(l => l.title)
+    .filter(aiTitle => !catalogTitles.some(catalogTitle => phaseTitlesMatch(aiTitle, catalogTitle)));
+
+  for (const title of missingPhases) {
+    issues.push(`Signal-driven phase "${title}" is required (its triggering signal fired) but is missing from the generated SOW.`);
+  }
+  for (const title of hallucinatedPhases) {
+    issues.push(`Workstream "${title}" appears in the generated SOW but does not correspond to any fired-signal catalogue project — remove it.`);
+  }
+
+  return { ok: issues.length === 0, missingPhases, hallucinatedPhases, issues };
+}
+
+/**
+ * Strip workstream rows that don't correspond to any fired-signal catalogue
+ * project (`catalogTitles`). This is the phase-table analogue of
+ * `purgeSowAdjustments` — it removes AI-hallucinated phases from the stored
+ * HTML so a phase whose triggering signal never fired can never reach the
+ * client, even if the AI invented it.
+ *
+ * When `catalogTitles` is empty, purging is skipped entirely (nothing to
+ * validate against) so an empty catalogue never wipes out an entire SOW.
+ */
+export function purgeHallucinatedWorkstreams(
+  html: string,
+  workstreamLines: SowPricingLine[],
+  catalogTitles: string[],
+): { html: string; removedTitles: string[] } {
+  if (catalogTitles.length === 0) return { html, removedTitles: [] };
+
+  const hallucinated = workstreamLines.filter(
+    l => !catalogTitles.some(catalogTitle => phaseTitlesMatch(l.title, catalogTitle)),
+  );
+  if (hallucinated.length === 0) return { html, removedTitles: [] };
+
+  const removedTitles = hallucinated.map(l => l.title);
+  const removedKeys = new Set(removedTitles.map(t => t.toLowerCase().trim()));
+
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  const result = html.replace(
+    /(<tr[^>]*>)([\s\S]*?)(<\/tr>)/gi,
+    (match, _open, inner) => {
+      const cells = [...inner.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+        .map(m => stripTags(m[1]));
+      const rowTitle = (cells[0] ?? "").toLowerCase().trim();
+      return removedKeys.has(rowTitle) ? "" : match;
+    },
+  );
+
+  return { html: result, removedTitles };
+}
+
+/**
+ * Rewrite each matched workstream row's title cell to the EXACT canonical
+ * catalogue title, closing the gap where tolerant substring matching in
+ * `phaseTitlesMatch` would otherwise let a slightly-reworded AI title
+ * ("Governance Modernization Phase") reach the client instead of the
+ * catalogue's canonical title ("Governance Modernization"). This guarantees
+ * the persisted `sowPricingLines` — and therefore the client-facing
+ * checklist — always uses the exact signal-catalogue title, never an AI
+ * paraphrase.
+ *
+ * No-ops when `catalogTitles` is empty.
+ */
+export function canonicalizeWorkstreamTitles(
+  html: string,
+  workstreamLines: SowPricingLine[],
+  catalogTitles: string[],
+): { html: string; renamedTitles: Array<{ from: string; to: string }> } {
+  if (catalogTitles.length === 0) return { html, renamedTitles: [] };
+
+  const renames = new Map<string, string>(); // lowercased AI title -> canonical title
+  const renamedTitles: Array<{ from: string; to: string }> = [];
+  for (const line of workstreamLines) {
+    const canonical = catalogTitles.find(catalogTitle => phaseTitlesMatch(line.title, catalogTitle));
+    if (canonical && normalizePhaseTitle(canonical) !== normalizePhaseTitle(line.title)) {
+      const key = line.title.toLowerCase().trim();
+      if (!renames.has(key)) {
+        renames.set(key, canonical);
+        renamedTitles.push({ from: line.title, to: canonical });
+      }
+    }
+  }
+  if (renames.size === 0) return { html, renamedTitles: [] };
+
+  const stripTags = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/\s{2,}/g, " ").trim();
+
+  const result = html.replace(
+    /<tr[^>]*>([\s\S]*?)<\/tr>/gi,
+    (match, inner) => {
+      const firstCellMatch = inner.match(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/i);
+      if (!firstCellMatch) return match;
+      const rowTitle = stripTags(firstCellMatch[1]).toLowerCase().trim();
+      const canonical = renames.get(rowTitle);
+      if (!canonical) return match;
+      return match.replace(firstCellMatch[0], firstCellMatch[0].replace(firstCellMatch[1], canonical));
+    },
+  );
+
+  return { html: result, renamedTitles };
+}
+
+/**
+ * Parse a `priceRange` string like `"$8,000–$25,000+"` or `"$3,000 - $12,000"`
+ * into a representative dollar amount for a synthetic injected phase row.
+ * Uses the midpoint of the low/high bounds; falls back to the single parsed
+ * number when only one is found, and to 0 when nothing parses (caller should
+ * then skip injection for that project rather than inject a $0 row).
+ */
+function midpointFromPriceRange(priceRange: string): number {
+  const nums = [...priceRange.matchAll(/\$?([0-9][0-9,]*)/g)].map(m => parseFloat(m[1]!.replace(/,/g, "")));
+  if (nums.length === 0) return 0;
+  if (nums.length === 1) return nums[0]!;
+  return Math.round((nums[0]! + nums[1]!) / 2);
+}
+
+export interface CatalogProjectForInjection {
+  title: string;
+  priceRange: string;
+}
+
+/**
+ * HARD ENFORCEMENT for signal → phase determinism: for every fired-signal
+ * catalogue project with no matching workstream row in the AI's output,
+ * inject a synthetic `<tr>` row (priced at the midpoint of that project's
+ * base `priceRange`) into the workstream table so the phase reaches the
+ * client regardless of what the AI produced.
+ *
+ * This closes the gap where `detectSowPhaseDrift()` could only detect and
+ * log a missing phase — every fired boolean signal now deterministically
+ * produces its mapped phase in the persisted document, with no AI discretion
+ * over inclusion.
+ *
+ * If the workstream table cannot be located in the HTML (e.g. a totally
+ * malformed AI response with no table at all), the catalogue project list
+ * is still returned as `injected` so the caller can fail generation loudly
+ * rather than silently persist an incomplete SOW.
+ */
+export function injectMissingWorkstreams(
+  html: string,
+  workstreamLines: SowPricingLine[],
+  catalogProjects: CatalogProjectForInjection[],
+): { html: string; injected: SowPricingLine[] } {
+  const missing = catalogProjects.filter(
+    p => !workstreamLines.some(l => phaseTitlesMatch(l.title, p.title)),
+  );
+  if (missing.length === 0) return { html, injected: [] };
+
+  const injected: SowPricingLine[] = missing.map(p => ({
+    title: p.title,
+    scope: "",
+    priceUsd: midpointFromPriceRange(p.priceRange),
+    notes: "Auto-included: this phase's triggering signal fired but the generated document omitted it.",
+  }));
+
+  // Find the workstream table — identified the same way parseSowAllPricing
+  // identifies it (header contains "final price" / "base ceiling" / "fixed price").
+  const tableMatches = [...html.matchAll(/<table[\s\S]*?<\/table>/gi)];
+  let workstreamTableMatch: RegExpMatchArray | undefined;
+  for (const m of tableMatches) {
+    const theadMatch = m[0].match(/<thead[\s\S]*?<\/thead>/i);
+    const firstTrMatch = m[0].match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+    const headerText = (theadMatch?.[0] ?? firstTrMatch?.[0] ?? "").toLowerCase();
+    if (headerText.includes("final price") || headerText.includes("base ceiling") || headerText.includes("fixed price")) {
+      workstreamTableMatch = m;
+      break;
+    }
+  }
+
+  if (!workstreamTableMatch) {
+    // No workstream table to inject into — return the injected lines so the
+    // caller treats this as an unrecoverable generation failure.
+    return { html, injected };
+  }
+
+  const tableHtml = workstreamTableMatch[0];
+  const newRows = missing
+    .map(p => {
+      const priceUsd = midpointFromPriceRange(p.priceRange);
+      return `<tr><td>${p.title}</td><td>${p.priceRange}</td><td>$${priceUsd.toLocaleString("en-US")}</td></tr>`;
+    })
+    .join("");
+
+  let newTableHtml: string;
+  if (/<\/tbody>/i.test(tableHtml)) {
+    newTableHtml = tableHtml.replace(/<\/tbody>/i, `${newRows}</tbody>`);
+  } else {
+    newTableHtml = tableHtml.replace(/<\/table>/i, `${newRows}</table>`);
+  }
+
+  const result = html.replace(tableHtml, newTableHtml);
+  return { html: result, injected };
+}
+
 /**
  * Validate parsed SOW pricing data for three categories of issue:
  *

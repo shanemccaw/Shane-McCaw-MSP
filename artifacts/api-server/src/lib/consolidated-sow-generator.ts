@@ -21,6 +21,10 @@ import {
   patchSowGrandTotal,
   purgeSowAdjustments,
   purgeAdjustmentsByTitle,
+  purgeHallucinatedWorkstreams,
+  canonicalizeWorkstreamTitles,
+  injectMissingWorkstreams,
+  detectSowPhaseDrift,
   validateSowPricing,
   nextBusinessMonday,
   assignDeliveryDates,
@@ -114,7 +118,16 @@ ENGAGEMENT START DATE: {{engagementStart}} (the first Monday that is at least on
 EXISTING DOCUMENTS GENERATED FOR THIS CLIENT (synthesize all findings, recommendations, and remediation items from these into the SOW):
 {{existingDocs}}
 
-ENGAGEMENT PROJECT PRICING CATALOGUE (MANDATORY — every project listed below IS the defined scope for this engagement. You MUST include EVERY project in the pricing table. Do not omit any project, even if tenant telemetry does not specifically call it out — the catalogue defines the full agreed scope):
+ENGAGEMENT PROJECT PRICING CATALOGUE — SIGNAL-AUTHORITATIVE, DETERMINISTIC (READ CAREFULLY):
+This list has ALREADY been filtered by the tenant signal engine. Each project below is included ONLY because its triggering signal(s) fired for this tenant. This is not a suggestion — it is the complete and exact set of phases this SOW MUST contain.
+
+RULES (non-negotiable):
+1. You MUST create EXACTLY ONE phase / workstream row per project listed below — using its EXACT title, verbatim. Do not rename, merge, split, or paraphrase a title.
+2. You MUST NOT add any phase, workstream, or project that is not listed below, no matter what the tenant telemetry or documents suggest. If a document mentions a gap whose project isn't listed here, that signal did not fire — do not invent a phase for it.
+3. You MUST NOT omit any project listed below, even if telemetry doesn't specifically call it out — the catalogue below is the complete, deterministic scope. Price it from its base ceiling if telemetry is silent.
+4. For each phase, explicitly cite its "Triggering signal(s)" (shown below) in the "Why This Phase Is Required" / Reasoning text — e.g. "This phase is required because the hasGovernanceGaps signal fired for this tenant."
+5. adj:* signals (shown separately below in the SIGNAL-GATED PRICING ADJUSTMENTS block, when present) NEVER create a phase — they only ever adjust price. Never turn an adj:* signal into its own workstream row.
+
 {{engagementProjects}}
 
 TENANT TELEMETRY (live M365 health profile flags, scores, and script findings — use this data to scope the work accurately and to justify pricing decisions):
@@ -465,9 +478,11 @@ export async function generateConsolidatedSowDocument(
   } // end else (signalsOverride == null)
 
   const projectsBlock = signalFilteredProjects.length > 0
-    ? signalFilteredProjects.map(p =>
-        `• ${p.title} — ${p.priceRange}${p.meaning ? `\n  ${p.meaning}` : ""}${p.description ? `\n  ${p.description}` : ""}${(p.sowItems as string[] | null)?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`
-      ).join("\n\n")
+    ? signalFilteredProjects.map(p => {
+        const triggers = (Array.isArray(p.triggeredBy) ? p.triggeredBy : []) as string[];
+        const signalCite = triggers.length > 0 ? `\n  Triggering signal(s): ${triggers.join(", ")}` : "";
+        return `• ${p.title} — ${p.priceRange}${signalCite}${p.meaning ? `\n  ${p.meaning}` : ""}${p.description ? `\n  ${p.description}` : ""}${(p.sowItems as string[] | null)?.length ? `\n  Deliverables: ${(p.sowItems as string[]).join(", ")}` : ""}`;
+      }).join("\n\n")
     : "No engagement project pricing configured.";
 
   const rawProjectTitles = signalFilteredProjects.map(p => p.title);
@@ -657,29 +672,89 @@ export async function generateConsolidatedSowDocument(
   const rawHtmlContent = extractAiHtml(aiResponse);
   const { workstreamLines: rawWs, adjustmentLines: rawAdj } = parseSowAllPricing(rawHtmlContent);
 
+  // ── Signal-authoritative phase purge ────────────────────────────────────────
+  // signalFilteredProjects is the deterministic, signal-gated project list used
+  // to build the prompt. Any workstream row the AI produced that does not map to
+  // one of these titles is a hallucinated phase — its triggering signal either
+  // never fired or doesn't exist — and must never reach the client.
+  const catalogTitles = signalFilteredProjects.map(p => p.title);
+  const { html: htmlNoHallucinated, removedTitles: removedHallucinatedTitles } = purgeHallucinatedWorkstreams(
+    rawHtmlContent, rawWs, catalogTitles,
+  );
+  if (removedHallucinatedTitles.length > 0) {
+    logger.error(
+      { ...logCtx, docId, removedHallucinatedTitles, catalogTitles },
+      "consolidated-sow-generator: SIGNAL/PHASE DRIFT — purged AI-hallucinated workstream phase(s) not backed by any fired signal",
+    );
+  }
+
   const { html: purgedHtml, removedTitles } = purgeSowAdjustments(
-    rawHtmlContent, rawAdj, rawWs.map(l => l.title), consolidatedSowForcedExclude,
+    htmlNoHallucinated, rawAdj, rawWs.map(l => l.title), consolidatedSowForcedExclude,
     hasAdjSignalRules ? firedAdjSignalKeys : undefined,
   );
   if (removedTitles.length > 0) {
     logger.warn({ ...logCtx, docId, removedTitles }, "consolidated-sow-generator: purged non-permitted adjustments");
   }
 
-  const { html: purgedHtmlFinal, removedTitles: removedByTitle } = purgeAdjustmentsByTitle(
+  const { html: purgedHtmlTitle, removedTitles: removedByTitle } = purgeAdjustmentsByTitle(
     purgedHtml, rawWs.map(l => l.title),
   );
   if (removedByTitle.length > 0) {
     logger.warn({ ...logCtx, docId, removedTitles: removedByTitle }, "consolidated-sow-generator: title-purge removed additional adjustments");
   }
-  const anyPurged = removedTitles.length > 0 || removedByTitle.length > 0;
+  const anyPurged = removedTitles.length > 0 || removedByTitle.length > 0 || removedHallucinatedTitles.length > 0;
 
-  const { workstreamLines, adjustmentLines, computedTotal } = anyPurged
-    ? parseSowAllPricing(purgedHtmlFinal)
-    : {
-        workstreamLines: rawWs,
-        adjustmentLines: rawAdj,
-        computedTotal: rawWs.reduce((s, l) => s + l.priceUsd, 0) + rawAdj.reduce((s, l) => s + l.priceUsd, 0),
-      };
+  const { workstreamLines: wsAfterPurge } = anyPurged
+    ? parseSowAllPricing(purgedHtmlTitle)
+    : { workstreamLines: rawWs };
+
+  // ── Canonical title enforcement ─────────────────────────────────────────────
+  // Rewrite any AI-reworded workstream title to the EXACT catalogue title so
+  // the persisted sowPricingLines — and therefore the client-facing phase
+  // checklist — never shows an AI paraphrase, only the deterministic
+  // signal-catalogue title.
+  const { html: canonicalizedHtml, renamedTitles } = canonicalizeWorkstreamTitles(
+    purgedHtmlTitle, wsAfterPurge, catalogTitles,
+  );
+  if (renamedTitles.length > 0) {
+    logger.warn({ ...logCtx, docId, renamedTitles }, "consolidated-sow-generator: canonicalized reworded workstream title(s) to match signal catalogue");
+  }
+
+  // ── HARD ENFORCEMENT — inject any fired-signal phase the AI omitted ────────
+  // detectSowPhaseDrift() alone can only observe and log a missing phase; it
+  // cannot guarantee that every fired boolean signal deterministically
+  // produces its mapped phase. injectMissingWorkstreams() closes that gap by
+  // synthesizing the missing row(s) directly into the persisted HTML, so no
+  // AI discretion over inclusion ever reaches the client.
+  const catalogProjectsForInjection = signalFilteredProjects.map(p => ({ title: p.title, priceRange: p.priceRange }));
+  const { html: htmlWithInjected, injected } = injectMissingWorkstreams(
+    canonicalizedHtml, wsAfterPurge, catalogProjectsForInjection,
+  );
+  if (injected.length > 0) {
+    logger.error(
+      { ...logCtx, docId, injectedTitles: injected.map(l => l.title) },
+      "consolidated-sow-generator: SIGNAL/PHASE DRIFT — AI omitted fired-signal phase(s); injected deterministic row(s) so they still reach the client",
+    );
+  }
+
+  const purgedHtmlFinal = htmlWithInjected;
+  const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(purgedHtmlFinal);
+
+  // Runtime drift guard — this MUST be a no-op after canonicalization +
+  // injection above. If it still reports drift, the workstream table could
+  // not be located/repaired (e.g. a malformed AI response with no table at
+  // all) — fail generation loudly rather than silently persist an incomplete
+  // or non-deterministic SOW to the client.
+  const phaseDrift = detectSowPhaseDrift(workstreamLines, catalogTitles);
+  if (!phaseDrift.ok) {
+    logger.error(
+      { ...logCtx, docId, missingPhases: phaseDrift.missingPhases, hallucinatedPhases: phaseDrift.hallucinatedPhases },
+      "consolidated-sow-generator: SIGNAL/PHASE DRIFT — unrecoverable after canonicalization + injection; failing generation",
+    );
+    throw new Error(
+      `SOW generation failed: signal/phase drift could not be reconciled — missing: [${phaseDrift.missingPhases.join(", ")}], hallucinated: [${phaseDrift.hallucinatedPhases.join(", ")}]`,
+    );
+  }
 
   const sowValidation = validateSowPricing(
     workstreamLines, adjustmentLines, purgedHtmlFinal,
