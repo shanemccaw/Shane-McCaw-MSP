@@ -1179,7 +1179,7 @@ Events are emitted by server-side handlers and workflow nodes. Any enabled workf
 
 | Event | Emitted By | Key Payload Fields | Common Use |
 |---|---|---|---|
-| `presentation.phases_requested` | Client advances past SOW step | `projectTitle`, `totalPrice`, `selectedPhases`, `sowHtml`, `presentationId`, `clientName` | Fire Presentation Phase Generator |
+| `presentation.phases_requested` | Client lands on the Scope & Pricing step (fires automatically in the background as soon as a valid scope is ready; also fires if the client changes their scope selection before generation completes) | `projectTitle`, `totalPrice`, `selectedPhases`, `sowHtml`, `presentationId`, `clientName` | Fire Presentation Phase Generator |
 | `sow.generate` | Server when presentation enters `pending_sow` | `clientUserId`, `projectId`, `title`, `presentationId` | Trigger SOW Generation |
 | `sow.generation_stalled` | Portal client after 2 min on `pending_sow` with no document | `projectId`, `presentationId`, `customerId` | Trigger SOW Generation Auto-Retry |
 | `sow.generation_retried` | SOW Auto-Retry on successful retry | `presentationId` | Audit trail; chain to notifications |

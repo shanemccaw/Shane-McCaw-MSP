@@ -204,6 +204,11 @@ export default function PresentationFlow({
   // Guard so the auto-refresh on the SOW step only fires once per staleness event
   const autoRefreshedRef = useRef(false);
 
+  // Tracks the selectedPhaseIds signature for which we've already auto-fired
+  // background phase generation while the client is reviewing Scope & Pricing.
+  // Null means no auto-fire has happened yet for the current scope.
+  const autoPhaseGenFiredForRef = useRef<string | null>(null);
+
   const computeInitialStep = () => {
     // Docs hidden from the left nav: SOW documents (shown in the Scope step) and
     // task execution guides (internal-only; never surfaced to clients).
@@ -835,8 +840,22 @@ export default function PresentationFlow({
 
   // ── Phase generation handlers ──────────────────────────────────────────────
 
-  const handleStartPhaseGen = async (force = false) => {
+  const handleStartPhaseGen = async (force = false, options: { navigate?: boolean } = {}) => {
+    const { navigate = true } = options;
     if (!hasSowDocument || readOnly) return;
+    // Avoid firing a duplicate request if one is already in flight (e.g. the
+    // background auto-fire on landing already kicked this off).
+    if (isPhaseGenRunning && !force) {
+      if (navigate) {
+        const pgIdx = steps.findIndex(s => s.kind === "phase_gen");
+        if (pgIdx >= 0) {
+          directionRef.current = "forward";
+          setMaxVisitedStep(m => Math.max(m, pgIdx));
+          applyStepChange(pgIdx);
+        }
+      }
+      return;
+    }
 
     // Reset any previous phase-gen event so the card starts fresh
     setPhaseGenEvent(null);
@@ -849,14 +868,17 @@ export default function PresentationFlow({
       setData(prev => ({ ...prev, sowPhases: [], selectedPhaseIds: [] }));
     }
 
-    // Advance to the phase_gen step
-    const pgIdx = steps.findIndex(s => s.kind === "phase_gen");
-    if (pgIdx >= 0) {
-      directionRef.current = "forward";
-      setMaxVisitedStep(m => Math.max(m, pgIdx));
-      applyStepChange(pgIdx);
-      setIsPhaseGenRunning(true);
+    // Advance to the phase_gen step (skipped for the silent background auto-fire
+    // that runs while the client is still reviewing Scope & Pricing).
+    if (navigate) {
+      const pgIdx = steps.findIndex(s => s.kind === "phase_gen");
+      if (pgIdx >= 0) {
+        directionRef.current = "forward";
+        setMaxVisitedStep(m => Math.max(m, pgIdx));
+        applyStepChange(pgIdx);
+      }
     }
+    setIsPhaseGenRunning(true);
 
     // Fire the workflow. If the POST fails (network error or non-2xx), immediately
     // inject a phase_gen_error event so the locked screen shows the escape-hatch card.
@@ -895,6 +917,35 @@ export default function PresentationFlow({
       setPhaseGenEvent({ type: "phase_gen_error", message: "Couldn't reach the server. You can continue to Payment Options." });
     }
   };
+
+  // Auto-fire phase generation in the background as soon as the client lands on
+  // Scope & Pricing, instead of waiting for them to click "Build Your Project Plan".
+  // This fires `presentation.phases_requested` immediately on arrival (subject to
+  // the same guards as the manual trigger) so the plan is often already built by
+  // the time the client is ready to continue — `hasSavedPhasesForCurrentScope`
+  // then lets them skip straight to Payment. Runs silently (no navigation, no
+  // visible loading state) and re-fires if the client changes their scope
+  // selection before phases finish generating for the prior selection.
+  useEffect(() => {
+    if (currentStep?.kind !== "sow") return;
+    if (!hasSowDocument || readOnly) return;
+    if (isPhaseGenRunning) return;
+    if (hasSavedPhasesForCurrentScope) return;
+    if (sowResetBlocked || needsRegeneration) return;
+    const scopeSignature = [...selectedPhaseIds].sort().join(",");
+    if (autoPhaseGenFiredForRef.current === scopeSignature) return;
+    autoPhaseGenFiredForRef.current = scopeSignature;
+    void handleStartPhaseGen(false, { navigate: false });
+  }, [
+    currentStep?.kind,
+    hasSowDocument,
+    readOnly,
+    isPhaseGenRunning,
+    hasSavedPhasesForCurrentScope,
+    sowResetBlocked,
+    needsRegeneration,
+    selectedPhaseIds,
+  ]);
 
   // Clears phases AND signature server-side, then navigates back to Scope & Pricing.
   // Blocked server-side if the presentation is already paid.
