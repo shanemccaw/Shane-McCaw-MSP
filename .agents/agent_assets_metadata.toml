@@ -17,3 +17,9 @@ id = "1W0K36USQX4rFWQVYOgYb"
 uri = "file://docs/marketing-command-center.md"
 type = "text"
 title = "Marketing Command Center Specification"
+
+[[outputs]]
+id = "qeDj8iwVfJK5duuHtpIc3"
+uri = "file://.local/tasks/email-sending-paths-audit.md"
+type = "text"
+title = "Email Sending Paths & Templates Audit"
