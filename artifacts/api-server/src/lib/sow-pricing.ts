@@ -763,10 +763,45 @@ export function injectMissingWorkstreams(
   }
 
   const tableHtml = workstreamTableMatch[0];
+
+  // Determine the real column layout of the table we're injecting into so the
+  // synthesized rows line up with whatever column index parseSowAllPricing
+  // will later read the price (and, if present, duration) from. Building a
+  // fixed 3-cell row regardless of the AI's actual column count silently
+  // breaks re-parsing whenever the table has more columns than that (e.g. the
+  // prompt-specified 5-column "Project/Workstream | Scope | Base Ceiling |
+  // Final Price (USD) | Reasoning" layout) — the price would land past the
+  // end of the short row and never be found.
+  const stripTagsLocal = (s: string) =>
+    s.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/&#[0-9]+;/g, " ").replace(/\s{2,}/g, " ").trim();
+  const theadMatchForCols = tableHtml.match(/<thead[\s\S]*?<\/thead>/i);
+  const firstTrMatchForCols = tableHtml.match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+  const headerHtmlForCols = theadMatchForCols?.[0] ?? firstTrMatchForCols?.[0] ?? "";
+  const headerCellsForCols = [...headerHtmlForCols.matchAll(/<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi)]
+    .map(m => stripTagsLocal(m[1]).toLowerCase());
+  const colCount = Math.max(headerCellsForCols.length, 2);
+  const priceColIdx = (() => {
+    const idx = headerCellsForCols.findIndex(
+      h => h.includes("final price") || h.includes("amount") || h.includes("value") || h.includes("usd") || h.includes("price") || h.includes("cost"),
+    );
+    return idx >= 0 ? idx : colCount - 1;
+  })();
+  const scopeColIdx = headerCellsForCols.findIndex(h => h.includes("scope"));
+  const baseCeilingColIdx = headerCellsForCols.findIndex(h => h.includes("base ceiling"));
+  const reasoningColIdx = headerCellsForCols.findIndex(h => h.includes("reasoning"));
+
   const newRows = missing
     .map(p => {
       const priceUsd = midpointFromPriceRange(p.priceRange);
-      return `<tr><td>${p.title}</td><td>${p.priceRange}</td><td>$${priceUsd.toLocaleString("en-US")}</td></tr>`;
+      const cells: string[] = new Array(colCount).fill("");
+      cells[0] = p.title;
+      if (scopeColIdx >= 0) cells[scopeColIdx] = "";
+      if (baseCeilingColIdx >= 0) cells[baseCeilingColIdx] = p.priceRange;
+      cells[priceColIdx] = `$${priceUsd.toLocaleString("en-US")}`;
+      if (reasoningColIdx >= 0) {
+        cells[reasoningColIdx] = "Auto-included: this phase's triggering signal fired but the generated document omitted it.";
+      }
+      return `<tr>${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
     })
     .join("");
 

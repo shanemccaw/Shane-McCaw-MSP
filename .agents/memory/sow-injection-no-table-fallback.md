@@ -29,3 +29,20 @@ existing table" branch, using the same table-header keywords the parser looks
 for so re-validation succeeds. Insert the synthesized block near a relevant
 heading if one exists, else after the last existing table, else at the end of
 the document — don't require a pre-existing anchor to exist.
+
+**Second, sneakier variant of the same bug class:** even the "insert into
+existing table" branch can silently fail the same way if the injected `<tr>`
+has fewer `<td>` cells than the real table's column count. The parser finds
+the price column by header-derived index (e.g. column 3 of a 5-column
+`Project/Workstream | Scope | Base Ceiling | Final Price (USD) | Reasoning`
+table); a hardcoded 3-cell synthetic row puts the price at `cells[2]` while
+the re-parser reads `cells[3]`, which is `undefined` — so the injected row is
+silently dropped on re-parse and the caller sees the exact same "still
+missing" failure as if injection never ran. Always derive the synthetic row's
+cell count/positions from the real header, not from an assumed fixed layout.
+Root cause of the original AI mismatch in this case: the AI used the generic
+category names from the pricing-formula instructions (e.g. "Security
+Remediation") as row titles instead of the exact signal-catalogue project
+titles (e.g. "Security & Compliance Hardening for Microsoft 365") it was told
+to copy verbatim — a prompt-following drift, not a parsing bug, but it only
+surfaced because the injection repair path was itself broken.
