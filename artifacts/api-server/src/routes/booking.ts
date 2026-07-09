@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { logger } from "../lib/logger";
 import { graphCredentialsPresent, getCalendarView, createCalendarEvent } from "../lib/graph";
-import { sendEmail, brandedEmail } from "../lib/mailer";
+import { sendEmailFromTemplate } from "../lib/mailer";
 
 const router: IRouter = Router();
 
@@ -241,41 +241,60 @@ router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
   }
 
   // Confirmation email to the customer
-  const joinButton = joinUrl
+  const joinButtonHtml = joinUrl
     ? `<p style="margin:20px 0;"><a href="${joinUrl}" style="display:inline-block;background:#0078D4;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 24px;border-radius:6px;">Join Microsoft Teams Meeting</a></p>`
     : "";
-  const customerHtml = `
+  const companyRowHtml = company
+    ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>`
+    : "";
+  const calendarNoticeHtml = hasGraph
+    ? "<p>You should receive a calendar invite shortly. If you don't see it, check your spam folder.</p>"
+    : "";
+  const defaultCustomerHtml = `
     <p>Hi ${name.split(" ")[0]},</p>
     <p>Your discovery call with Shane McCaw is confirmed. Here are the details:</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Date &amp; time</td><td style="padding:4px 0;font-weight:600;">${slotLabel}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Duration</td><td style="padding:4px 0;">30 minutes</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Format</td><td style="padding:4px 0;">Microsoft Teams</td></tr>
-      ${company ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>` : ""}
+      ${companyRowHtml}
     </table>
-    ${joinButton}
-    ${hasGraph ? "<p>You should receive a calendar invite shortly. If you don't see it, check your spam folder.</p>" : ""}
+    ${joinButtonHtml}
+    ${calendarNoticeHtml}
     <p>Please come prepared with your most pressing Microsoft 365 questions. Shane will be ready to dig in.</p>
     <p style="margin-top:24px;">— Shane McCaw</p>
   `;
-  await sendEmail(email, `Discovery Call Confirmed — ${slotLabel}`, customerHtml);
+  await sendEmailFromTemplate(
+    "discovery-call-confirmation",
+    email,
+    { name: name.split(" ")[0], slotLabel, companyRowHtml, joinButtonHtml, calendarNoticeHtml },
+    `Discovery Call Confirmed — ${slotLabel}`,
+    defaultCustomerHtml,
+  );
 
   // Notification email to Shane
   const shaneEmail = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL ?? "info@shanemccaw.com";
-  const shaneHtml = `
+  const topicHtml = `<blockquote style="margin:0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${topic.replace(/\n/g, "<br/>")}</blockquote>`;
+  const defaultShaneHtml = `
     <p>Hi Shane,</p>
     <p>A new discovery call has been booked.</p>
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Name</td><td style="padding:4px 0;font-weight:600;">${name}</td></tr>
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:${email}" style="color:#0078D4;">${email}</a></td></tr>
-      ${company ? `<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Company</td><td style="padding:4px 0;">${company}</td></tr>` : ""}
+      ${companyRowHtml}
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Date &amp; time</td><td style="padding:4px 0;font-weight:600;">${slotLabel}</td></tr>
     </table>
     <p style="font-weight:600;margin-bottom:4px;">Topic / Agenda:</p>
-    <blockquote style="margin:0;padding:12px 16px;background:#f8fafc;border-left:4px solid #0078D4;border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">${topic.replace(/\n/g, "<br/>")}</blockquote>
+    ${topicHtml}
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
   `;
-  await sendEmail(shaneEmail, `New Booking: ${name} — ${slotLabel}`, shaneHtml);
+  await sendEmailFromTemplate(
+    "admin-discovery-call-notification",
+    shaneEmail,
+    { name, email, slotLabel, companyRowHtml, topicHtml },
+    `New Booking: ${name} — ${slotLabel}`,
+    defaultShaneHtml,
+  );
 
   res.json({ ok: true, slotLabel });
 });

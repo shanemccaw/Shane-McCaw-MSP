@@ -10,7 +10,13 @@ const NAVY = "#0A2540";
 const BLUE = "#0078D4";
 
 // ─── HTML email wrapper ───────────────────────────────────────────────────────
-export function brandedEmail(bodyHtml: string): string {
+
+/**
+ * Hardcoded fallback wrapper — used only if the `branded-layout` DB template
+ * row is missing or the DB is unavailable. Keep this in sync in spirit (not
+ * literally) with the DB row seeded in seed-email-templates.ts.
+ */
+function hardcodedBrandedLayout(bodyHtml: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -49,6 +55,31 @@ export function brandedEmail(bodyHtml: string): string {
   </table>
 </body>
 </html>`;
+}
+
+/**
+ * Wraps a raw HTML body in the branded header/footer layout. Loads the wrapper
+ * from the `branded-layout` DB template (slug) via getEmailTemplateOrFallback,
+ * substituting `{{body}}`. Falls back to the hardcoded wrapper above if the DB
+ * row is missing or the DB is unavailable.
+ *
+ * Note: the body HTML itself is injected verbatim (not entity-escaped) since
+ * it is always trusted, pre-rendered HTML produced by our own template helpers.
+ */
+export async function brandedEmail(bodyHtml: string): Promise<string> {
+  try {
+    const [row] = await db
+      .select({ bodyHtml: emailTemplatesTable.bodyHtml })
+      .from(emailTemplatesTable)
+      .where(eq(emailTemplatesTable.slug, "branded-layout"))
+      .limit(1);
+    if (row) {
+      return row.bodyHtml.replace("{{body}}", () => bodyHtml);
+    }
+  } catch (err) {
+    logger.warn({ err }, "branded-layout template DB lookup failed — using hardcoded fallback wrapper");
+  }
+  return hardcodedBrandedLayout(bodyHtml);
 }
 
 // ─── Button helper ────────────────────────────────────────────────────────────
@@ -124,7 +155,7 @@ export async function sendEmailOrThrow(
   if (!sender) {
     throw new Error("No email transport configured — Exchange Online credentials (GRAPH_MAIL_USER_ID) are required");
   }
-  const html = opts?.skipWrapper ? bodyHtml : brandedEmail(bodyHtml);
+  const html = opts?.skipWrapper ? bodyHtml : await brandedEmail(bodyHtml);
   await sender(to, subject, html);
   logger.info({ to, subject }, "Email sent");
   db.insert(emailEventsTable).values({

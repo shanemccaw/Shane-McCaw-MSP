@@ -698,7 +698,7 @@ Respond ONLY with valid JSON in this exact shape:
       await sendEmailWithAttachment(
         email,
         emailSubject,
-        brandedEmail(bodyHtml),
+        await brandedEmail(bodyHtml),
         [{ filename: cfg.pdfFilename, content: pdfBuffer }],
       );
     } catch (err) {
@@ -804,7 +804,7 @@ router.post("/quiz/resend-pdf", resendLimiter, async (req, res) => {
     await sendEmailWithAttachmentOrThrow(
       email,
       emailSubject,
-      brandedEmail(bodyHtml),
+      await brandedEmail(bodyHtml),
       [{ filename: cfg.pdfFilename, content: pdfBuffer }],
     );
 

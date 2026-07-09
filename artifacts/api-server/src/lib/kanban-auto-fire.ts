@@ -43,7 +43,7 @@ import { runAiAnalyzer } from "./ai-analyzer";
 import { generateAndDeliverDocument, type DocumentGenerationConfig } from "./document-generator";
 import { executeWorkflowRun } from "./workflow-executor";
 import { sendWebPushToAdmins } from "./web-push";
-import { sendEmailOrThrow, brandedEmail } from "./mailer";
+import { getEmailTemplateOrFallback, sendEmailOrThrow } from "./mailer";
 import { MAX_AUTO_FIRE_FAILURES, computeNextFailureState } from "./kanban-auto-fire-retry-utils";
 import { parseM365ScriptOutput } from "./parse-m365-script-output";
 import { applyProfileUpdates, snapshotHealthFromProfile } from "./m365-profile-update";
@@ -106,7 +106,8 @@ async function alertAutoFireExhausted(opts: {
     logger.warn({ pushErr }, "kanban-auto-fire: push notification failed (non-fatal)");
   }
 
-  const bodyHtml = `
+  const defaultSubject = `⚠️ Kanban auto-fire exhausted — "${scriptTitle}" (${failureCount} failures)`;
+  const defaultBodyHtml = `
     <p>Hi Shane,</p>
     <p>The Kanban auto-fire workflow has exhausted its retry budget (<strong>${failureCount} consecutive failures</strong>) for the following script card and can no longer automatically recover.</p>
     <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
@@ -141,11 +142,21 @@ async function alertAutoFireExhausted(opts: {
   `;
 
   try {
-    await sendEmailOrThrow(
-      shaneEmail,
-      `⚠️ Kanban auto-fire exhausted — "${scriptTitle}" (${failureCount} failures)`,
-      brandedEmail(bodyHtml),
+    const { subject, bodyHtml } = await getEmailTemplateOrFallback(
+      "kanban-script-exhausted",
+      {
+        scriptTitle,
+        cardIds: cardIds.join(", "),
+        lastStatus,
+        jobId,
+        failureCount: String(failureCount),
+        maxFailures: String(MAX_AUTO_FIRE_FAILURES),
+        projectUrl,
+      },
+      defaultSubject,
+      defaultBodyHtml,
     );
+    await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
     logger.info({ shaneEmail, cardIds, scriptTitle }, "kanban-auto-fire: exhaustion alert email sent");
   } catch (emailErr) {
     logger.warn({ emailErr, cardIds }, "kanban-auto-fire: exhaustion alert email failed (non-fatal)");
@@ -180,7 +191,8 @@ async function alertDocumentAutoFireExhausted(opts: {
     logger.warn({ pushErr }, "kanban-auto-fire: document push notification failed (non-fatal)");
   }
 
-  const bodyHtml = `
+  const defaultSubject = `⚠️ Document auto-fire exhausted — "${docTitle}" (${failureCount} failures)`;
+  const defaultBodyHtml = `
     <p>Hi Shane,</p>
     <p>The Kanban document-generation auto-fire has exhausted its retry budget (<strong>${failureCount} consecutive failures</strong>) for the following card and can no longer automatically recover.</p>
     <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
@@ -215,11 +227,21 @@ async function alertDocumentAutoFireExhausted(opts: {
   `;
 
   try {
-    await sendEmailOrThrow(
-      shaneEmail,
-      `⚠️ Document auto-fire exhausted — "${docTitle}" (${failureCount} failures)`,
-      brandedEmail(bodyHtml),
+    const { subject, bodyHtml } = await getEmailTemplateOrFallback(
+      "kanban-document-exhausted",
+      {
+        docTitle,
+        docType,
+        cardId: String(cardId),
+        lastError,
+        failureCount: String(failureCount),
+        maxFailures: String(MAX_AUTO_FIRE_FAILURES),
+        projectUrl,
+      },
+      defaultSubject,
+      defaultBodyHtml,
     );
+    await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
     logger.info({ shaneEmail, cardId, docTitle }, "kanban-auto-fire: document exhaustion alert email sent");
   } catch (emailErr) {
     logger.warn({ emailErr, cardId }, "kanban-auto-fire: document exhaustion alert email failed (non-fatal)");

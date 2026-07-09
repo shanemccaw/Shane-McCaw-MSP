@@ -226,7 +226,7 @@ router.post("/admin/email-templates/:slug/test", requireAdmin, async (req: Reque
   const subjectWithVars = substituteVars(row.subject, sampleVars);
 
   try {
-    const fullHtml = brandedEmail(bodyWithVars);
+    const fullHtml = await brandedEmail(bodyWithVars);
     await sendEmailOrThrow(adminEmail, `[TEST] ${subjectWithVars}`, fullHtml, { skipWrapper: true });
     logger.info({ slug, to: adminEmail }, "Test email sent for template");
     res.json({ ok: true, sentTo: adminEmail });

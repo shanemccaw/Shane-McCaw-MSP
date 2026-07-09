@@ -42,7 +42,7 @@ import {
   isAzureConfigured,
 } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
-import { sendEmail } from "./mailer";
+import { sendEmail, sendEmailFromTemplate } from "./mailer";
 import { logger } from "./logger";
 import { broadcastKanbanChange } from "./sse-broadcast";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -480,8 +480,16 @@ export async function runClientScriptSequence(
 
           const adminEmail = process.env.CRM_ADMIN_EMAIL;
           if (adminEmail) {
-            await sendEmail(
+            await sendEmailFromTemplate(
+              "script-run-failed",
               adminEmail,
+              {
+                clientLabel,
+                moduleFilename: mod.filename,
+                packageTitle: pkg.title,
+                lastStatus: result.lastStatus,
+                runId: String(runId),
+              },
               `Script run failed — ${clientLabel}`,
               `<p>Hi Shane,</p>
                <p>An automated script run for <strong>${clientLabel}</strong> failed at module <strong>${mod.filename}</strong> (package: <em>${pkg.title}</em>).</p>

@@ -467,6 +467,248 @@ const TEMPLATES: TemplateDefinition[] = [
     <p>— Shane McCaw</p>
   `,
   },
+  {
+    slug: "branded-layout",
+    recipientType: "admin",
+    name: "Branded Email Layout (Wrapper)",
+    subject: "",
+    variables: [
+      { name: "body", description: "Raw inner HTML body content to render inside the branded header/footer wrapper. Do not remove this placeholder." },
+    ],
+    bodyHtml: `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Shane McCaw Consulting</title>
+</head>
+<body style="margin:0;padding:0;background:#F7F9FC;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FC;padding:32px 16px;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#0A2540;padding:24px 32px;">
+            <p style="margin:0;color:#ffffff;font-size:18px;font-weight:700;letter-spacing:-0.3px;">Shane McCaw Consulting</p>
+            <p style="margin:4px 0 0;color:#94a3b8;font-size:12px;">Lead Microsoft 365 Architect</p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#1e293b;font-size:15px;line-height:1.6;">
+            {{body}}
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#f1f5f9;padding:20px 32px;border-top:1px solid #e2e8f0;">
+            <p style="margin:0;color:#64748b;font-size:12px;line-height:1.6;">
+              Shane McCaw Consulting LLC &nbsp;|&nbsp; <a href="https://shanemccaw.com" style="color:${BLUE};text-decoration:none;">shanemccaw.com</a><br/>
+              You're receiving this because you have an account or made a purchase with us.
+            </p>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+  },
+  {
+    slug: "discovery-call-confirmation",
+    recipientType: "client",
+    name: "Discovery Call Confirmation (to Client)",
+    subject: "Discovery Call Confirmed — {{slotLabel}}",
+    variables: [
+      { name: "name", description: "Customer's first name" },
+      { name: "slotLabel", description: "Human-readable date/time label for the booked slot" },
+      { name: "companyRowHtml", description: "Pre-rendered table row HTML for the company field, or empty string if none was provided" },
+      { name: "joinButtonHtml", description: "Pre-rendered HTML for the Join Microsoft Teams Meeting button, or empty string if no calendar event was created" },
+      { name: "calendarNoticeHtml", description: "Pre-rendered HTML notice about receiving a calendar invite, or empty string if Graph calendar integration is not configured" },
+    ],
+    bodyHtml: `
+    <p>Hi {{name}},</p>
+    <p>Your discovery call with Shane McCaw is confirmed. Here are the details:</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Date &amp; time</td><td style="padding:4px 0;font-weight:600;">{{slotLabel}}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Duration</td><td style="padding:4px 0;">30 minutes</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Format</td><td style="padding:4px 0;">Microsoft Teams</td></tr>
+      {{companyRowHtml}}
+    </table>
+    {{joinButtonHtml}}
+    {{calendarNoticeHtml}}
+    <p>Please come prepared with your most pressing Microsoft 365 questions. Shane will be ready to dig in.</p>
+    <p style="margin-top:24px;">— Shane McCaw</p>
+  `,
+  },
+  {
+    slug: "admin-discovery-call-notification",
+    recipientType: "admin",
+    name: "New Discovery Call Booking (Admin)",
+    subject: "New Booking: {{name}} — {{slotLabel}}",
+    variables: [
+      { name: "name", description: "Customer's full name" },
+      { name: "email", description: "Customer's email address" },
+      { name: "slotLabel", description: "Human-readable date/time label for the booked slot" },
+      { name: "companyRowHtml", description: "Pre-rendered table row HTML for the company field, or empty string if none was provided" },
+      { name: "topicHtml", description: "Pre-rendered HTML blockquote containing the customer's topic/agenda (line breaks converted to <br/>)" },
+    ],
+    bodyHtml: `
+    <p>Hi Shane,</p>
+    <p>A new discovery call has been booked.</p>
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Name</td><td style="padding:4px 0;font-weight:600;">{{name}}</td></tr>
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Email</td><td style="padding:4px 0;"><a href="mailto:{{email}}" style="color:${BLUE};">{{email}}</a></td></tr>
+      {{companyRowHtml}}
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Date &amp; time</td><td style="padding:4px 0;font-weight:600;">{{slotLabel}}</td></tr>
+    </table>
+    <p style="font-weight:600;margin-bottom:4px;">Topic / Agenda:</p>
+    {{topicHtml}}
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated notification)</p>
+  `,
+  },
+  {
+    slug: "kanban-script-exhausted",
+    recipientType: "admin",
+    name: "Kanban Script Auto-Fire Exhausted (Admin)",
+    subject: "⚠️ Kanban auto-fire exhausted — \"{{scriptTitle}}\" ({{failureCount}} failures)",
+    variables: [
+      { name: "scriptTitle", description: "Title of the script that failed" },
+      { name: "cardIds", description: "Comma-separated Kanban card IDs affected" },
+      { name: "lastStatus", description: "Last Azure Automation job status" },
+      { name: "jobId", description: "Azure Automation job ID" },
+      { name: "failureCount", description: "Number of consecutive failures" },
+      { name: "maxFailures", description: "Configured maximum retry budget" },
+      { name: "projectUrl", description: "URL to the project in the Admin Panel" },
+    ],
+    bodyHtml: `
+    <p>Hi Shane,</p>
+    <p>The Kanban auto-fire workflow has exhausted its retry budget (<strong>{{failureCount}} consecutive failures</strong>) for the following script card and can no longer automatically recover.</p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
+      <tbody>
+        <tr style="background:#fef2f2;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;white-space:nowrap;">Script</td>
+          <td style="padding:10px 16px;font-size:14px;">{{scriptTitle}}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Card IDs</td>
+          <td style="padding:10px 16px;font-size:14px;">{{cardIds}}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Last Azure status</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">{{lastStatus}}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Job ID</td>
+          <td style="padding:10px 16px;font-size:14px;font-family:monospace;">{{jobId}}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Failures</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">{{failureCount}} / {{maxFailures}}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The cards have been left in backlog with status <strong>auto_fire_exhausted</strong>. Please review the Azure Automation account and then manually trigger the script from the Admin Panel.</p>
+    <p style="margin-top:24px;">
+      <a href="{{projectUrl}}" style="background:#0078D4;color:#ffffff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View project in Admin Panel →</a>
+    </p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `,
+  },
+  {
+    slug: "kanban-document-exhausted",
+    recipientType: "admin",
+    name: "Kanban Document Auto-Fire Exhausted (Admin)",
+    subject: "⚠️ Document auto-fire exhausted — \"{{docTitle}}\" ({{failureCount}} failures)",
+    variables: [
+      { name: "docTitle", description: "Title of the document that failed to generate" },
+      { name: "docType", description: "Document type key" },
+      { name: "cardId", description: "Kanban card ID affected" },
+      { name: "lastError", description: "Last error message" },
+      { name: "failureCount", description: "Number of consecutive failures" },
+      { name: "maxFailures", description: "Configured maximum retry budget" },
+      { name: "projectUrl", description: "URL to the project in the Admin Panel" },
+    ],
+    bodyHtml: `
+    <p>Hi Shane,</p>
+    <p>The Kanban document-generation auto-fire has exhausted its retry budget (<strong>{{failureCount}} consecutive failures</strong>) for the following card and can no longer automatically recover.</p>
+    <table cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;width:100%;">
+      <tbody>
+        <tr style="background:#fef2f2;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;white-space:nowrap;">Document</td>
+          <td style="padding:10px 16px;font-size:14px;">{{docTitle}}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Doc type</td>
+          <td style="padding:10px 16px;font-size:14px;font-family:monospace;">{{docType}}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Card ID</td>
+          <td style="padding:10px 16px;font-size:14px;">{{cardId}}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Last error</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">{{lastError}}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 16px;font-size:13px;color:#64748b;font-weight:600;">Failures</td>
+          <td style="padding:10px 16px;font-size:14px;font-weight:700;color:#dc2626;">{{failureCount}} / {{maxFailures}}</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>The card has been left in backlog with status <strong>auto_fire_exhausted</strong>. Please review the AI / document-generation configuration and then manually trigger the document from the Admin Panel.</p>
+    <p style="margin-top:24px;">
+      <a href="{{projectUrl}}" style="background:#0078D4;color:#ffffff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;">View project in Admin Panel →</a>
+    </p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `,
+  },
+  {
+    slug: "manual-script-escalation",
+    recipientType: "admin",
+    name: "Manual Script Escalation Alert (Admin)",
+    subject: "⚠️ {{cardCount}} manual script card(s) have been waiting >{{thresholdDays}} business days",
+    variables: [
+      { name: "cardCount", description: "Number of overdue cards" },
+      { name: "thresholdDays", description: "Escalation threshold in business days" },
+      { name: "rowsHtml", description: "Pre-rendered HTML table rows — one row per overdue card (client, task, wait time, link)" },
+    ],
+    bodyHtml: `
+    <p>Hi Shane,</p>
+    <p>The following manual script card(s) have been waiting on the client for more than {{thresholdDays}} business days without action. You may want to follow up.</p>
+    <table cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;margin:20px 0;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <th style="padding:10px 8px;text-align:left;font-size:13px;color:#64748b;font-weight:600;">Client</th>
+          <th style="padding:10px 8px;text-align:left;font-size:13px;color:#64748b;font-weight:600;">Task</th>
+          <th style="padding:10px 8px;text-align:left;font-size:13px;color:#64748b;font-weight:600;">Waiting</th>
+          <th style="padding:10px 8px;text-align:left;font-size:13px;color:#64748b;font-weight:600;">Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{rowsHtml}}
+      </tbody>
+    </table>
+    <p style="font-size:13px;color:#64748b;margin-top:16px;">Each card will only appear in this alert once per 24 hours.</p>
+    <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `,
+  },
+  {
+    slug: "script-run-failed",
+    recipientType: "admin",
+    name: "Script Run Failed (Admin)",
+    subject: "Script run failed — {{clientLabel}}",
+    variables: [
+      { name: "clientLabel", description: "Client name/label the script run was for" },
+      { name: "moduleFilename", description: "Filename of the script module that failed" },
+      { name: "packageTitle", description: "Title of the script package" },
+      { name: "lastStatus", description: "Last Azure Automation job status" },
+      { name: "runId", description: "Internal run ID for the client script sequence" },
+    ],
+    bodyHtml: `
+    <p>Hi Shane,</p>
+    <p>An automated script run for <strong>{{clientLabel}}</strong> failed at module <strong>{{moduleFilename}}</strong> (package: <em>{{packageTitle}}</em>).</p>
+    <p>Job status: <strong>{{lastStatus}}</strong></p>
+    <p>Run ID: {{runId}} — check the CRM portal for details.</p>
+  `,
+  },
 ];
 
 export async function seedEmailTemplates(): Promise<void> {

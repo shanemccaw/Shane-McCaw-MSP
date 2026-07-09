@@ -21,7 +21,7 @@
 import { db, kanbanTasksTable, projectsTable, usersTable } from "@workspace/db";
 import { eq, and, lt } from "drizzle-orm";
 import { logger } from "./logger";
-import { sendEmailOrThrow } from "./mailer";
+import { getEmailTemplateOrFallback, sendEmailOrThrow } from "./mailer";
 
 const ESCALATION_THRESHOLD_BUSINESS_DAYS = 5;
 const ALERT_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -219,8 +219,8 @@ function escapeHtml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function buildEscalationEmail(cards: OverdueCard[]): string {
-  const rows = cards
+function buildEscalationRowsHtml(cards: OverdueCard[]): string {
+  return cards
     .map(
       (c) => `
     <tr style="border-bottom:1px solid #e2e8f0;">
@@ -238,7 +238,9 @@ function buildEscalationEmail(cards: OverdueCard[]): string {
     </tr>`,
     )
     .join("\n");
+}
 
+function defaultEscalationEmailHtml(cards: OverdueCard[], rowsHtml: string): string {
   return `
     <p>Hi Shane,</p>
     <p>The following manual script card${cards.length !== 1 ? "s have" : " has"} been waiting on the client for more than ${ESCALATION_THRESHOLD_BUSINESS_DAYS} business days without action. You may want to follow up.</p>
@@ -252,7 +254,7 @@ function buildEscalationEmail(cards: OverdueCard[]): string {
         </tr>
       </thead>
       <tbody>
-        ${rows}
+        ${rowsHtml}
       </tbody>
     </table>
     <p style="font-size:13px;color:#64748b;margin-top:16px;">Each card will only appear in this alert once per 24 hours.</p>
@@ -305,14 +307,27 @@ export async function checkManualScriptEscalations(): Promise<EscalationResult> 
     "escalation: found overdue manual script cards — sending alert",
   );
 
-  const subject =
+  const defaultSubject =
     overdueCards.length === 1
       ? `⚠️ 1 manual script card has been waiting >5 business days`
       : `⚠️ ${overdueCards.length} manual script cards have been waiting >5 business days`;
 
+  const rowsHtml = buildEscalationRowsHtml(overdueCards);
+  const defaultBodyHtml = defaultEscalationEmailHtml(overdueCards, rowsHtml);
+
   // sendEmailOrThrow: throws on transport failure, so cards are only marked
   // as alerted after confirmed delivery — no silent suppression of retries.
-  await sendEmailOrThrow(shaneEmail, subject, buildEscalationEmail(overdueCards));
+  const { subject, bodyHtml } = await getEmailTemplateOrFallback(
+    "manual-script-escalation",
+    {
+      cardCount: String(overdueCards.length),
+      thresholdDays: String(ESCALATION_THRESHOLD_BUSINESS_DAYS),
+      rowsHtml,
+    },
+    defaultSubject,
+    defaultBodyHtml,
+  );
+  await sendEmailOrThrow(shaneEmail, subject, bodyHtml);
 
   logger.info(
     { to: shaneEmail, count: overdueCards.length },

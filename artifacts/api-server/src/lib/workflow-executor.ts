@@ -2950,7 +2950,7 @@ async function executeNode(
         const renderedBody    = renderTemplate(bodyHtml, payload);
         const renderedSubject = renderTemplate(subject, payload);
         const { sendEmail, brandedEmail } = await import("./mailer");
-        const fullHtml = brandedEmail(renderedBody);
+        const fullHtml = await brandedEmail(renderedBody);
         await sendEmail(recipient, renderedSubject, fullHtml, { skipWrapper: true });
         // Emit sourceRef plus backward-compat templateSlug for existing workflows
         output = {

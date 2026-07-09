@@ -1592,21 +1592,26 @@ router.patch("/admin/clients/:id/app-registration", requireAdmin, async (req: Re
               ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
               : "http://localhost:80";
             const adminPanelUrl = `${adminPanelOrigin}/admin-panel/crm/clients/${clientId}`;
-            void sendEmail(
-              adminEmail,
-              daysLeft <= 0
-                ? `⚠️ App Registration secret EXPIRED — ${clientLabel}`
-                : `⚠️ App Registration secret expiring in ${daysLeft} day${daysLeft !== 1 ? "s" : ""} — ${clientLabel}`,
-              brandedEmail(appRegExpiryAlertEmail({
+            const expiresOn = meta.expiresOn;
+            void (async () => {
+              const html = await brandedEmail(appRegExpiryAlertEmail({
                 clientName: clientUser?.name ?? "",
                 clientEmail: clientUser?.email ?? "",
                 tenantId: existing.tenantId,
                 azureClientId: existing.azureClientId,
-                expiresOn: meta.expiresOn,
+                expiresOn,
                 daysLeft,
                 adminPanelUrl,
-              })),
-            );
+              }));
+              await sendEmail(
+                adminEmail,
+                daysLeft <= 0
+                  ? `⚠️ App Registration secret EXPIRED — ${clientLabel}`
+                  : `⚠️ App Registration secret expiring in ${daysLeft} day${daysLeft !== 1 ? "s" : ""} — ${clientLabel}`,
+                html,
+                { skipWrapper: true },
+              );
+            })();
             req.log.info({ clientId, daysLeft }, "app-registration: sent expiry alert email to admin");
           }
         }

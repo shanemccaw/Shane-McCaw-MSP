@@ -124,7 +124,7 @@ router.post("/leads", async (req: Request, res: Response) => {
         );
 
         if (attachments) {
-          await sendEmailWithAttachment(trimmedEmail, subject, brandedEmail(bodyHtml), attachments);
+          await sendEmailWithAttachment(trimmedEmail, subject, await brandedEmail(bodyHtml), attachments);
         } else {
           await sendEmail(trimmedEmail, subject, bodyHtml);
         }

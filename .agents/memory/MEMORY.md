@@ -21,3 +21,4 @@
 - [Stale published workflow version](workflow-stale-published-version.md) — published-version lookups need ORDER BY versionNumber DESC; archive-old+publish-new must be one DB transaction
 - [Execute Runbook node fixes](execute-runbook-node-fixes.md) — mode toggles derived from field content are fragile; use an explicit mode flag with heuristic fallback for old data
 - [Kanban stuck-queued reconciliation](kanban-stuck-queued-reconciliation.md) — async job bail-out timeouts are heuristics, not real failures; must pair with a recurring reconciler that corrects false failures if the job later completes
+- [Email templates DB migration pattern](email-templates-db-migration.md) — sendEmailFromTemplate/getEmailTemplateOrFallback pattern; always verify a new seeder is actually called from index.ts startup
