@@ -7,17 +7,17 @@ interface PhaseStepperBarProps {
 export default function PhaseStepperBar({ steps, activeIndex, completedCount }: PhaseStepperBarProps) {
   return (
     <div className="w-full select-none">
-      {/* Track row */}
-      <div className="flex items-center w-full">
+      {/* Track row — items-start so connector alignment isn't affected by label height */}
+      <div className="flex items-start w-full">
         {steps.map((label, i) => {
           const isCompleted = i < completedCount;
           const isActive    = i === activeIndex && !isCompleted;
           const isLast      = i === steps.length - 1;
 
           return (
-            <div key={i} className="flex items-center flex-1 min-w-0 last:flex-none">
-              {/* Node */}
-              <div className="relative flex-shrink-0 flex flex-col items-center">
+            <div key={i} className="flex items-start flex-1 min-w-0 last:flex-none">
+              {/* Node: circle + label stacked */}
+              <div className="flex-shrink-0 flex flex-col items-center w-14 sm:w-20">
                 {/* Circle */}
                 {isCompleted ? (
                   <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
@@ -35,30 +35,23 @@ export default function PhaseStepperBar({ steps, activeIndex, completedCount }: 
                   </div>
                 )}
 
-                {/* Label shown below active node only */}
-                {isActive && (
-                  <div
-                    className="absolute top-full mt-1.5 whitespace-nowrap text-[11px] font-semibold text-[#0078D4] leading-snug"
-                    style={{ transform: "translateX(-50%)", left: "50%" }}
-                  >
-                    {label}
-                  </div>
-                )}
-
-                {/* Subtle label on hover for completed */}
-                {isCompleted && (
-                  <div
-                    className="absolute top-full mt-1.5 whitespace-nowrap text-[11px] font-medium text-emerald-600 leading-snug opacity-0 group-hover:opacity-100 pointer-events-none"
-                    style={{ transform: "translateX(-50%)", left: "50%" }}
-                  >
-                    {label}
-                  </div>
-                )}
+                {/* Label shown below every node */}
+                <div
+                  className={`mt-1.5 w-full text-center text-[11px] leading-snug line-clamp-2 break-words px-0.5 ${
+                    isCompleted
+                      ? "font-medium text-emerald-600"
+                      : isActive
+                        ? "font-semibold text-[#0078D4]"
+                        : "font-medium text-black/40"
+                  }`}
+                >
+                  {label}
+                </div>
               </div>
 
-              {/* Connector line — fills remaining space, coloured if completed */}
+              {/* Connector line — anchored to circle center, unaffected by label height below */}
               {!isLast && (
-                <div className="flex-1 h-[2px] mx-1.5 rounded-full overflow-hidden bg-black/10">
+                <div className="flex-1 h-[2px] mx-1.5 mt-[13px] rounded-full overflow-hidden bg-black/10">
                   <div
                     className="h-full rounded-full transition-all duration-500"
                     style={{
@@ -72,9 +65,6 @@ export default function PhaseStepperBar({ steps, activeIndex, completedCount }: 
           );
         })}
       </div>
-
-      {/* Reserve space so the active label doesn't collapse the layout */}
-      <div className="h-5 mt-0.5" />
     </div>
   );
 }
