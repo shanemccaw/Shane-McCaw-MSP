@@ -44,6 +44,15 @@ export interface DocumentGenerationConfig {
 export interface GenerateAndDeliverResult {
   documentId: number;
   title: string;
+  /** Only populated when called with testMode — the generated HTML, never persisted. */
+  htmlContent?: string;
+}
+
+export interface GenerateAndDeliverOptions {
+  /** Substitutes for the DB-stored prompt body for this document's key — used by the Test Draft flow. */
+  promptOverride?: string;
+  /** When true, skips all persistence (no document row, no workflow events, no opportunity promotion) and just returns the generated HTML. */
+  testMode?: boolean;
 }
 
 // ── Document type labels (mirrors admin-insights.ts) ──────────────────────────
@@ -498,7 +507,9 @@ export async function generateAndDeliverDocument(
   clientUserId: number,
   projectId: number,
   config: DocumentGenerationConfig,
+  options: GenerateAndDeliverOptions = {},
 ): Promise<GenerateAndDeliverResult> {
+  const { promptOverride, testMode = false } = options;
   const { category, docType, title } = config;
   const isSowDoc = docType === "sow" || docType === "consolidated_sow";
 
@@ -548,7 +559,7 @@ export async function generateAndDeliverDocument(
     const findingsBlock = findings.slice(0, 15).map((f, i) => `${i + 1}. ${f}`).join("\n") || "No findings recorded yet — assessment runs pending.";
     const recommendationsBlock = recommendations.slice(0, 10).map((r, i) => `${i + 1}. ${r}`).join("\n") || "No recommendations recorded yet.";
 
-    const rawTemplate = await getPrompt(`insights-report-${docType}`, REPORT_PROMPT_FALLBACK);
+    const rawTemplate = promptOverride ?? await getPrompt(`insights-report-${docType}`, REPORT_PROMPT_FALLBACK);
     prompt = substituteTokens(rawTemplate, {
       docLabel,
       clientName,
@@ -567,7 +578,7 @@ export async function generateAndDeliverDocument(
     const taskList = formatTaskList(projectTasks);
     const findingsInline = findings.slice(0, 10).join("; ") || "Pending assessment runs";
     const priorDocsSummary = await fetchPriorDocuments(clientUserId, projectId, docType);
-    const rawTemplate = await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_PROMPT);
+    const rawTemplate = promptOverride ?? await getPrompt("insights-consulting-task_execution_guide", TASK_EXECUTION_GUIDE_PROMPT);
     prompt = substituteTokens(rawTemplate, {
       clientName,
       projectDesc,
@@ -633,7 +644,7 @@ export async function generateAndDeliverDocument(
     }
 
     const consultingFallback = substituteTokens(CONSULTING_PROMPT_FALLBACK, { sectionHints });
-    const rawTemplate = await getPrompt(`insights-consulting-${docType}`, consultingFallback);
+    const rawTemplate = promptOverride ?? await getPrompt(`insights-consulting-${docType}`, consultingFallback);
     prompt = substituteTokens(rawTemplate, {
       typeLabel,
       clientName,
@@ -674,6 +685,14 @@ export async function generateAndDeliverDocument(
   );
 
   const { lines: sowLines, totalPrice: sowTotal } = isSowDoc ? parseSowPricing(htmlContent) : { lines: [], totalPrice: 0 };
+
+  if (testMode) {
+    logger.info(
+      { clientUserId, projectId, category, docType },
+      "document-generator: test-draft generation complete (no persistence)",
+    );
+    return { documentId: -1, title, htmlContent };
+  }
 
   const doc = await upsertDocument(clientUserId, projectId, {
     category,

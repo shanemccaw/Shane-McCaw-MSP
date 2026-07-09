@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -13,7 +13,17 @@ interface AiPrompt {
   model: string | null;
   promptBody: string;
   defaultBody: string;
+  draftBody: string | null;
   updatedAt: string;
+}
+
+interface AiPromptVersion {
+  id: number;
+  promptId: number;
+  versionNumber: number;
+  body: string;
+  action: "draft" | "publish" | "reset";
+  createdAt: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -23,42 +33,90 @@ const CATEGORY_COLORS: Record<string, string> = {
   inbox:          "bg-teal-500/15 text-teal-400 border-teal-500/25",
   classification: "bg-orange-500/15 text-orange-400 border-orange-500/25",
   artifacts:      "bg-green-500/15 text-green-400 border-green-500/25",
+  insights:       "bg-cyan-500/15 text-cyan-400 border-cyan-500/25",
 };
+
+const ACTION_LABELS: Record<AiPromptVersion["action"], string> = {
+  draft: "Draft saved",
+  publish: "Published",
+  reset: "Reset to default",
+};
+
+const ACTION_COLORS: Record<AiPromptVersion["action"], string> = {
+  draft: "text-[#00B4D8]",
+  publish: "text-green-400",
+  reset: "text-amber-400",
+};
+
+// Prompt keys backed by a real document/SOW generation flow — these are the
+// only keys that support the Test Draft feature.
+function supportsTestDraft(key: string): boolean {
+  return key === "insights-consulting-consolidated_sow"
+    || key.startsWith("insights-report-")
+    || key.startsWith("insights-consulting-");
+}
 
 export default function PromptCenterEdit({ params }: { params: { id?: string } }) {
   const { fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const [prompt, setPrompt] = useState<AiPrompt | null>(null);
+  const [versions, setVersions] = useState<AiPromptVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [revertingId, setRevertingId] = useState<number | null>(null);
+
+  // Test Draft state
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testClientUserId, setTestClientUserId] = useState("");
+  const [testProjectId, setTestProjectId] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{ htmlContent: string; sowTotal?: number } | null>(null);
 
   const id = params?.id;
 
-  useEffect(() => {
+  const loadPrompt = useCallback(async () => {
     if (!id) return;
-    void (async () => {
-      try {
-        const res = await fetchWithAuth(`/api/admin/ai-prompts/${id}`);
-        if (!res.ok) throw new Error("Prompt not found");
-        const data = await res.json() as { prompt: AiPrompt };
-        setPrompt(data.prompt);
-        setBody(data.prompt.promptBody);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load prompt");
-      } finally {
-        setLoading(false);
-      }
-    })();
+    try {
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${id}`);
+      if (!res.ok) throw new Error("Prompt not found");
+      const data = await res.json() as { prompt: AiPrompt };
+      setPrompt(data.prompt);
+      // Default the editor to the draft if one exists, otherwise the published body.
+      setBody(data.prompt.draftBody ?? data.prompt.promptBody);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load prompt");
+    } finally {
+      setLoading(false);
+    }
   }, [id, fetchWithAuth]);
 
-  const isDirty = prompt ? body !== prompt.promptBody : false;
-  const isModifiedFromDefault = prompt ? prompt.promptBody !== prompt.defaultBody : false;
+  const loadVersions = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${id}/versions`);
+      if (!res.ok) return;
+      const data = await res.json() as { versions: AiPromptVersion[] };
+      setVersions(data.versions);
+    } catch {
+      // non-fatal — history is a secondary affordance
+    }
+  }, [id, fetchWithAuth]);
+
+  useEffect(() => { void loadPrompt(); }, [loadPrompt]);
+  useEffect(() => { void loadVersions(); }, [loadVersions]);
+
+  const hasDraft = !!prompt?.draftBody;
+  const isDirty = prompt ? body !== (prompt.draftBody ?? prompt.promptBody) : false;
+  const isModifiedFromDefault = prompt ? prompt.promptBody !== prompt.defaultBody || hasDraft : false;
 
   useEffect(() => {
     if (!isDirty) return;
@@ -82,7 +140,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
     [isDirty, navigate],
   );
 
-  const handleSave = useCallback(async () => {
+  const handleSaveDraft = useCallback(async () => {
     if (!prompt) return;
     setSaving(true);
     setSaveError(null);
@@ -98,15 +156,44 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       }
       const data = await res.json() as { prompt: AiPrompt };
       setPrompt(data.prompt);
-      setBody(data.prompt.promptBody);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setBody(data.prompt.draftBody ?? data.prompt.promptBody);
+      setSaved("Draft saved — publish when you're ready");
+      setTimeout(() => setSaved(null), 3000);
+      void loadVersions();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Save failed");
     } finally {
       setSaving(false);
     }
-  }, [prompt, body, fetchWithAuth]);
+  }, [prompt, body, fetchWithAuth, loadVersions]);
+
+  const handlePublish = useCallback(async () => {
+    if (!prompt) return;
+    setPublishing(true);
+    setSaveError(null);
+    try {
+      // If the editor has unsaved text, publish it directly; otherwise publish the saved draft.
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${prompt.id}/publish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ promptBody: body }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? "Publish failed");
+      }
+      const data = await res.json() as { prompt: AiPrompt };
+      setPrompt(data.prompt);
+      setBody(data.prompt.promptBody);
+      setSaved("Published — live for the next AI call");
+      setTimeout(() => setSaved(null), 3000);
+      void loadVersions();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Publish failed");
+    } finally {
+      setPublishing(false);
+    }
+  }, [prompt, body, fetchWithAuth, loadVersions]);
 
   const handleReset = useCallback(async () => {
     if (!prompt) return;
@@ -125,21 +212,77 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       setPrompt(data.prompt);
       setBody(data.prompt.promptBody);
       setShowResetConfirm(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2500);
+      setSaved("Reset to default and published");
+      setTimeout(() => setSaved(null), 3000);
+      void loadVersions();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Reset failed");
     } finally {
       setResetting(false);
     }
-  }, [prompt, fetchWithAuth]);
+  }, [prompt, fetchWithAuth, loadVersions]);
+
+  const handleRevert = useCallback(async (versionId: number) => {
+    if (!prompt) return;
+    setRevertingId(versionId);
+    setSaveError(null);
+    try {
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${prompt.id}/revert/${versionId}`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? "Revert failed");
+      }
+      const data = await res.json() as { prompt: AiPrompt };
+      setPrompt(data.prompt);
+      setBody(data.prompt.draftBody ?? data.prompt.promptBody);
+      setSaved("Version staged as draft — review and publish when ready");
+      setTimeout(() => setSaved(null), 3500);
+      void loadVersions();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Revert failed");
+    } finally {
+      setRevertingId(null);
+    }
+  }, [prompt, fetchWithAuth, loadVersions]);
+
+  const handleTestDraft = useCallback(async () => {
+    if (!prompt) return;
+    setTesting(true);
+    setTestError(null);
+    setTestResult(null);
+    try {
+      const clientUserId = parseInt(testClientUserId, 10);
+      if (!clientUserId) throw new Error("Enter a valid client user ID");
+      const projectId = testProjectId.trim() ? parseInt(testProjectId, 10) : undefined;
+
+      const res = await fetchWithAuth(`/api/admin/ai-prompts/${prompt.id}/test-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientUserId, projectId, body }),
+      });
+      if (!res.ok) {
+        const data = await res.json() as { error?: string };
+        throw new Error(data.error ?? "Test generation failed");
+      }
+      const data = await res.json() as { htmlContent: string; sowTotal?: number };
+      setTestResult(data);
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : "Test generation failed");
+    } finally {
+      setTesting(false);
+    }
+  }, [prompt, testClientUserId, testProjectId, body, fetchWithAuth]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "s") {
       e.preventDefault();
-      void handleSave();
+      void handleSaveDraft();
     }
-  }, [handleSave]);
+  }, [handleSaveDraft]);
+
+  const canTestDraft = useMemo(() => prompt ? supportsTestDraft(prompt.key) : false, [prompt]);
 
   if (loading) {
     return (
@@ -196,6 +339,12 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
                   Customised
                 </span>
               )}
+              {hasDraft && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#00B4D8]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#00B4D8] inline-block" />
+                  Draft pending
+                </span>
+              )}
             </div>
             <p className="text-sm text-[#7D8590] mt-1">{prompt.description}</p>
           </div>
@@ -223,10 +372,18 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
             <span className="font-semibold text-[#C9D1D9]">Note:</span> This prompt uses <code className="font-mono text-[#00B4D8]">{"{{placeholders}}"}</code> to document where dynamic content (lead names, email bodies, etc.) is injected at call time. Keep the same placeholders in any edits.
           </div>
         )}
+
+        {hasDraft && (
+          <div className="bg-[#00B4D8]/10 border border-[#00B4D8]/25 rounded-lg px-3 py-2 text-xs text-[#7EE0F2]">
+            This prompt has an unpublished draft. The <span className="font-semibold">live/published body</span> is still what runs in production until you click Publish.
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-semibold text-[#E6EDF3]">Prompt Body</label>
+        <label className="block text-sm font-semibold text-[#E6EDF3]">
+          {hasDraft ? "Draft Body" : "Prompt Body"}
+        </label>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -236,7 +393,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           placeholder="Enter the prompt body…"
         />
         <p className="text-xs text-[#484F58]">
-          {body.length.toLocaleString()} characters · Changes take effect immediately on the next AI call · <kbd className="px-1 py-0.5 bg-[#1C2128] rounded text-[10px]">Ctrl+S</kbd> to save
+          {body.length.toLocaleString()} characters · Save Draft stages changes without affecting live traffic · Publish makes it live · <kbd className="px-1 py-0.5 bg-[#1C2128] rounded text-[10px]">Ctrl+S</kbd> to save draft
         </p>
       </div>
 
@@ -249,12 +406,12 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
-          Saved — next AI call will use the updated prompt
+          {saved}
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 pt-1 border-t border-[#21262D]">
-        <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-[#21262D]">
+        <div className="flex items-center gap-3 flex-wrap">
           {isModifiedFromDefault && !showResetConfirm && (
             <button
               onClick={() => setShowResetConfirm(true)}
@@ -265,7 +422,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
           )}
           {showResetConfirm && (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-[#7D8590]">This will overwrite your edits with the original. Continue?</span>
+              <span className="text-xs text-[#7D8590]">This will overwrite the published body and any draft with the original. Continue?</span>
               <button
                 onClick={() => void handleReset()}
                 disabled={resetting}
@@ -281,6 +438,27 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
               </button>
             </div>
           )}
+          <button
+            onClick={() => setShowHistory((v) => !v)}
+            className="text-xs text-[#7D8590] hover:text-[#C9D1D9] px-3 py-1.5 rounded hover:bg-[#1C2128] transition-colors inline-flex items-center gap-1.5"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            {showHistory ? "Hide version history" : `Version history (${versions.length})`}
+          </button>
+          {canTestDraft && (
+            <button
+              onClick={() => setShowTestPanel((v) => !v)}
+              className="text-xs text-[#00B4D8] hover:text-[#7EE0F2] px-3 py-1.5 rounded hover:bg-[#00B4D8]/10 transition-colors inline-flex items-center gap-1.5"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {showTestPanel ? "Hide Test Draft" : "Test Draft"}
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Link href="/prompt-center">
@@ -289,9 +467,9 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
             </span>
           </Link>
           <button
-            onClick={() => void handleSave()}
+            onClick={() => void handleSaveDraft()}
             disabled={!isDirty || saving}
-            className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 bg-[#1C2128] border border-[#30363D] text-[#E6EDF3] text-xs font-semibold px-4 py-1.5 rounded-lg hover:border-[#484F58] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {saving ? (
               <>
@@ -299,16 +477,128 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
                 Saving…
               </>
             ) : (
+              "Save draft"
+            )}
+          </button>
+          <button
+            onClick={() => void handlePublish()}
+            disabled={publishing || (!isDirty && !hasDraft)}
+            className="flex items-center gap-1.5 bg-[#0078D4] text-white text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#006CBE] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {publishing ? (
+              <>
+                <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Publishing…
+              </>
+            ) : (
               <>
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Save changes
+                Publish
               </>
             )}
           </button>
         </div>
       </div>
+
+      {showHistory && (
+        <div className="bg-[#161B22] border border-[#30363D] rounded-xl p-4 space-y-2">
+          <h2 className="text-sm font-semibold text-[#E6EDF3] mb-1">Version history</h2>
+          {versions.length === 0 ? (
+            <p className="text-xs text-[#7D8590]">No saved versions yet — save a draft or publish to create the first one.</p>
+          ) : (
+            <div className="divide-y divide-[#21262D]">
+              {versions.map((v) => (
+                <div key={v.id} className="py-2.5 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-[#E6EDF3]">v{v.versionNumber}</span>
+                      <span className={`text-[10px] font-medium ${ACTION_COLORS[v.action]}`}>{ACTION_LABELS[v.action]}</span>
+                      <span className="text-[10px] text-[#484F58]">{new Date(v.createdAt).toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-[#7D8590] mt-0.5 truncate font-mono">
+                      {v.body.slice(0, 140)}{v.body.length > 140 ? "…" : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => void handleRevert(v.id)}
+                    disabled={revertingId === v.id}
+                    className="shrink-0 text-xs text-[#0078D4] hover:text-[#006CBE] px-2 py-1 rounded hover:bg-[#0078D4]/10 transition-colors disabled:opacity-50"
+                  >
+                    {revertingId === v.id ? "Reverting…" : "Revert to this"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showTestPanel && canTestDraft && (
+        <div className="bg-[#161B22] border border-[#00B4D8]/25 rounded-xl p-4 space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-[#E6EDF3]">Test Draft</h2>
+            <p className="text-xs text-[#7D8590] mt-1">
+              Runs the real generation flow using the text currently in the editor above — nothing is saved to the client's documents.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Client User ID</label>
+              <input
+                type="number"
+                value={testClientUserId}
+                onChange={(e) => setTestClientUserId(e.target.value)}
+                placeholder="e.g. 42"
+                className="w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#00B4D8]"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider mb-1">Project ID (optional)</label>
+              <input
+                type="number"
+                value={testProjectId}
+                onChange={(e) => setTestProjectId(e.target.value)}
+                placeholder="e.g. 7"
+                className="w-32 bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-1.5 text-sm text-[#E6EDF3] focus:outline-none focus:border-[#00B4D8]"
+              />
+            </div>
+            <button
+              onClick={() => void handleTestDraft()}
+              disabled={testing || !testClientUserId.trim()}
+              className="flex items-center gap-1.5 bg-[#00B4D8] text-[#0A2540] text-xs font-semibold px-4 py-1.5 rounded-lg hover:bg-[#22C6E8] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {testing ? (
+                <>
+                  <div className="w-3 h-3 border-2 border-[#0A2540]/30 border-t-[#0A2540] rounded-full animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                "Run Test Draft"
+              )}
+            </button>
+          </div>
+
+          {testError && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2.5 text-sm text-red-400">{testError}</div>
+          )}
+
+          {testResult && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-[#E6EDF3] uppercase tracking-wider">Result</h3>
+                {typeof testResult.sowTotal === "number" && testResult.sowTotal > 0 && (
+                  <span className="text-xs text-[#00B4D8] font-semibold">Computed total: ${testResult.sowTotal.toLocaleString()}</span>
+                )}
+              </div>
+              <div className="bg-white rounded-lg p-4 max-h-[600px] overflow-y-auto text-black text-sm">
+                <div dangerouslySetInnerHTML={{ __html: testResult.htmlContent }} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

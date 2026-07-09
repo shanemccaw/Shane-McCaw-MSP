@@ -1652,13 +1652,33 @@ export const aiPromptsTable = pgTable("ai_prompts", {
   featureArea: text("feature_area").notNull().default(""),
   featureRoute: text("feature_route").notNull().default(""),
   model: text("model"),
+  // Published body — this is what getPrompt()/runtime generation flows read.
   promptBody: text("prompt_body").notNull(),
   defaultBody: text("default_body").notNull(),
+  // Unpublished draft body. Null when there is no pending draft (i.e. the
+  // published body is the latest saved content). Never read by runtime
+  // generation flows — only surfaced in the admin editor and the Test Draft flow.
+  draftBody: text("draft_body"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
 
 export type AiPrompt = typeof aiPromptsTable.$inferSelect;
 export type InsertAiPrompt = typeof aiPromptsTable.$inferInsert;
+
+// ── AI Prompt version history ──────────────────────────────────────────────
+// Every save (draft save, publish, or reset) creates one row here so admins
+// can review and revert to any prior version of a prompt.
+export const aiPromptVersionsTable = pgTable("ai_prompt_versions", {
+  id: serial("id").primaryKey(),
+  promptId: integer("prompt_id").notNull().references(() => aiPromptsTable.id, { onDelete: "cascade" }),
+  versionNumber: integer("version_number").notNull(),
+  body: text("body").notNull(),
+  action: text("action", { enum: ["draft", "publish", "reset"] }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type AiPromptVersion = typeof aiPromptVersionsTable.$inferSelect;
+export type InsertAiPromptVersion = typeof aiPromptVersionsTable.$inferInsert;
 
 // Web push subscriptions (browser-level push notifications for admin)
 export const pushSubscriptionsTable = pgTable("push_subscriptions", {

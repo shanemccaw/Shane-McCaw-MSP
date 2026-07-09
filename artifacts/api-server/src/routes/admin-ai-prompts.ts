@@ -1,11 +1,30 @@
 import { Router, type Request, type Response } from "express";
-import { db, aiPromptsTable } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { db, aiPromptsTable, aiPromptVersionsTable } from "@workspace/db";
+import { eq, asc, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { getDefaultPromptMeta } from "../lib/prompt-loader";
+import { generateAndDeliverDocument } from "../lib/document-generator";
+import { generateConsolidatedSowDocument } from "../lib/consolidated-sow-generator";
 
 const router = Router();
+
+// ── Version history helper ───────────────────────────────────────────────────
+async function recordVersion(promptId: number, body: string, action: "draft" | "publish" | "reset"): Promise<void> {
+  const [last] = await db
+    .select({ versionNumber: aiPromptVersionsTable.versionNumber })
+    .from(aiPromptVersionsTable)
+    .where(eq(aiPromptVersionsTable.promptId, promptId))
+    .orderBy(desc(aiPromptVersionsTable.versionNumber))
+    .limit(1);
+  const nextVersion = (last?.versionNumber ?? 0) + 1;
+  await db.insert(aiPromptVersionsTable).values({
+    promptId,
+    versionNumber: nextVersion,
+    body,
+    action,
+  });
+}
 
 router.get("/admin/ai-prompts", requireAdmin, async (_req: Request, res: Response) => {
   const prompts = await db
@@ -29,6 +48,23 @@ router.get("/admin/ai-prompts/:id", requireAdmin, async (req: Request, res: Resp
   res.json({ prompt });
 });
 
+// ── GET /admin/ai-prompts/:id/versions ───────────────────────────────────────
+router.get("/admin/ai-prompts/:id/versions", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const versions = await db
+    .select()
+    .from(aiPromptVersionsTable)
+    .where(eq(aiPromptVersionsTable.promptId, id))
+    .orderBy(desc(aiPromptVersionsTable.versionNumber));
+
+  res.json({ versions });
+});
+
+// ── PUT /admin/ai-prompts/:id — saves a DRAFT (kept at this path for backward compatibility) ──
+// Historically this endpoint published directly. It now always stages a draft so a
+// save can never silently overwrite the live/published prompt without an explicit Publish.
 router.put("/admin/ai-prompts/:id", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
@@ -38,16 +74,52 @@ router.put("/admin/ai-prompts/:id", requireAdmin, async (req: Request, res: Resp
     res.status(400).json({ error: "promptBody is required" });
     return;
   }
+  const trimmed = promptBody.trim();
 
   const [updated] = await db
     .update(aiPromptsTable)
-    .set({ promptBody: promptBody.trim(), updatedAt: new Date() })
+    .set({ draftBody: trimmed, updatedAt: new Date() })
     .where(eq(aiPromptsTable.id, id))
     .returning();
 
   if (!updated) { res.status(404).json({ error: "Prompt not found" }); return; }
 
-  logger.info({ id, key: updated.key }, "admin-ai-prompts: prompt updated");
+  await recordVersion(id, trimmed, "draft");
+
+  logger.info({ id, key: updated.key }, "admin-ai-prompts: draft saved");
+  res.json({ prompt: updated });
+});
+
+// ── POST /admin/ai-prompts/:id/publish — promote a body to the live/published body ──
+// Body: { promptBody?: string } — if omitted, publishes the currently-saved draftBody.
+router.post("/admin/ai-prompts/:id/publish", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { promptBody } = req.body as { promptBody?: string };
+
+  const [row] = await db
+    .select({ draftBody: aiPromptsTable.draftBody })
+    .from(aiPromptsTable)
+    .where(eq(aiPromptsTable.id, id))
+    .limit(1);
+  if (!row) { res.status(404).json({ error: "Prompt not found" }); return; }
+
+  const bodyToPublish = (promptBody?.trim() || row.draftBody?.trim() || "");
+  if (!bodyToPublish) {
+    res.status(400).json({ error: "No draft or body to publish" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(aiPromptsTable)
+    .set({ promptBody: bodyToPublish, draftBody: null, updatedAt: new Date() })
+    .where(eq(aiPromptsTable.id, id))
+    .returning();
+
+  await recordVersion(id, bodyToPublish, "publish");
+
+  logger.info({ id, key: updated!.key }, "admin-ai-prompts: prompt published");
   res.json({ prompt: updated });
 });
 
@@ -65,12 +137,115 @@ router.post("/admin/ai-prompts/:id/reset", requireAdmin, async (req: Request, re
 
   const [updated] = await db
     .update(aiPromptsTable)
-    .set({ promptBody: row.defaultBody, updatedAt: new Date() })
+    .set({ promptBody: row.defaultBody, draftBody: null, updatedAt: new Date() })
     .where(eq(aiPromptsTable.id, id))
     .returning();
 
+  await recordVersion(id, row.defaultBody, "reset");
+
   logger.info({ id }, "admin-ai-prompts: prompt reset to default");
   res.json({ prompt: updated });
+});
+
+// ── POST /admin/ai-prompts/:id/revert/:versionId — stage a prior version's body as the draft ──
+// This does NOT publish — it stages the historical body as the current draft so the
+// admin can review it (and optionally run Test Draft) before publishing.
+router.post("/admin/ai-prompts/:id/revert/:versionId", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  const versionId = parseInt(String(req.params["versionId"] ?? ""), 10);
+  if (isNaN(id) || isNaN(versionId)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const [version] = await db
+    .select()
+    .from(aiPromptVersionsTable)
+    .where(eq(aiPromptVersionsTable.id, versionId))
+    .limit(1);
+  if (!version || version.promptId !== id) { res.status(404).json({ error: "Version not found" }); return; }
+
+  const [updated] = await db
+    .update(aiPromptsTable)
+    .set({ draftBody: version.body, updatedAt: new Date() })
+    .where(eq(aiPromptsTable.id, id))
+    .returning();
+  if (!updated) { res.status(404).json({ error: "Prompt not found" }); return; }
+
+  await recordVersion(id, version.body, "draft");
+
+  logger.info({ id, versionId }, "admin-ai-prompts: reverted to prior version (staged as draft)");
+  res.json({ prompt: updated });
+});
+
+// ── POST /admin/ai-prompts/:id/test-draft — run the real generation flow using the draft body ──
+// Only supported for document-generation and SOW-generation prompt keys.
+// Never persists anything to insights_generated_documents.
+router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Request, res: Response) => {
+  const id = parseInt(String(req.params["id"] ?? ""), 10);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+  const { clientUserId, projectId, body } = req.body as {
+    clientUserId?: number;
+    projectId?: number;
+    body?: string;
+  };
+  if (!clientUserId) { res.status(400).json({ error: "clientUserId is required" }); return; }
+
+  const [prompt] = await db
+    .select()
+    .from(aiPromptsTable)
+    .where(eq(aiPromptsTable.id, id))
+    .limit(1);
+  if (!prompt) { res.status(404).json({ error: "Prompt not found" }); return; }
+
+  const testBody = (body ?? prompt.draftBody ?? "").trim();
+  if (!testBody) {
+    res.status(400).json({ error: "No draft body to test — save a draft first" });
+    return;
+  }
+
+  const key = prompt.key;
+
+  try {
+    if (key === "insights-consulting-consolidated_sow") {
+      const result = await generateConsolidatedSowDocument({
+        clientUserId,
+        projectId: projectId ?? null,
+        title: `Test Draft — ${prompt.name}`,
+        promptOverride: testBody,
+        testMode: true,
+      });
+      res.json({ htmlContent: result.htmlContent, sowTotal: result.sowTotal, clientName: result.clientName });
+      return;
+    }
+
+    if (key.startsWith("insights-report-")) {
+      if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
+      const docType = key.replace("insights-report-", "");
+      const result = await generateAndDeliverDocument(clientUserId, projectId, {
+        category: "report",
+        docType,
+        title: `Test Draft — ${prompt.name}`,
+      }, { promptOverride: testBody, testMode: true });
+      res.json({ htmlContent: result.htmlContent });
+      return;
+    }
+
+    if (key.startsWith("insights-consulting-")) {
+      if (!projectId) { res.status(400).json({ error: "projectId is required to test this prompt" }); return; }
+      const docType = key.replace("insights-consulting-", "");
+      const result = await generateAndDeliverDocument(clientUserId, projectId, {
+        category: "consulting",
+        docType,
+        title: `Test Draft — ${prompt.name}`,
+      }, { promptOverride: testBody, testMode: true });
+      res.json({ htmlContent: result.htmlContent });
+      return;
+    }
+
+    res.status(400).json({ error: "This prompt does not support Test Draft — it isn't used by a document or SOW generation flow" });
+  } catch (err) {
+    logger.error({ id, key, err }, "admin-ai-prompts: test-draft generation failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Test generation failed" });
+  }
 });
 
 // ── GET /api/admin/ai-prompts/by-key/:key ────────────────────────────────────
@@ -104,6 +279,7 @@ router.get("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request, r
       model: meta.model ?? null,
       promptBody: meta.body,
       defaultBody: meta.body,
+      draftBody: null,
       updatedAt: null,
     },
     fromDb: false,
@@ -111,7 +287,7 @@ router.get("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request, r
 });
 
 // ── PATCH /api/admin/ai-prompts/by-key/:key ──────────────────────────────────
-// Update promptBody for a key; creates the row (upsert) if it doesn't exist.
+// Update the published promptBody for a key; creates the row (upsert) if it doesn't exist.
 // Body: { promptBody: string, defaultBody?: string }
 router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request, res: Response) => {
   const key = String(req.params["key"] ?? "").trim();
@@ -125,11 +301,12 @@ router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request,
   // Try update first
   const [updated] = await db
     .update(aiPromptsTable)
-    .set({ promptBody: trimmedBody, updatedAt: new Date() })
+    .set({ promptBody: trimmedBody, draftBody: null, updatedAt: new Date() })
     .where(eq(aiPromptsTable.key, key))
     .returning();
 
   if (updated) {
+    await recordVersion(updated.id, trimmedBody, "publish");
     logger.info({ key }, "admin-ai-prompts: prompt updated by key");
     res.json({ prompt: updated });
     return;
@@ -157,6 +334,8 @@ router.patch("/admin/ai-prompts/by-key/:key", requireAdmin, async (req: Request,
       defaultBody: fallbackDefault,
     })
     .returning();
+
+  await recordVersion(inserted!.id, trimmedBody, "publish");
 
   logger.info({ key }, "admin-ai-prompts: prompt created via by-key upsert");
   res.json({ prompt: inserted });

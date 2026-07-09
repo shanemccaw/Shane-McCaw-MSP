@@ -13,6 +13,7 @@ interface AiPrompt {
   model: string | null;
   promptBody: string;
   defaultBody: string;
+  draftBody: string | null;
   updatedAt: string;
 }
 
@@ -163,14 +164,22 @@ export default function PromptCenter() {
                     </div>
                   </td>
                   <td className="px-4 py-3 hidden xl:table-cell">
-                    {isModified(prompt) ? (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
-                        Customised
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-[#484F58]">Default</span>
-                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {isModified(prompt) ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                          Customised
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-[#484F58]">Default</span>
+                      )}
+                      {prompt.draftBody && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#00B4D8]" title="Has an unpublished draft">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#00B4D8] inline-block" />
+                          Draft pending
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link href={`/prompt-center/${prompt.id}`}>

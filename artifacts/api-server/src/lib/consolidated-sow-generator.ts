@@ -234,18 +234,25 @@ export interface GenerateConsolidatedSowParams {
    *  When provided, the internal computeTenantSignals DB evaluation is skipped entirely
    *  and these signals are used directly to gate engagement project inclusion. */
   signalsOverride?: Set<string>;
+  /** Substitutes for the DB-stored consolidated_sow prompt body — used by the Test Draft flow. */
+  promptOverride?: string;
+  /** When true, skips all persistence (no "generating" row, no final update, no prior-doc deletion,
+   *  no presentation sync) and just returns the generated HTML. */
+  testMode?: boolean;
 }
 
 export interface GenerateConsolidatedSowResult {
   docId: number;
   clientName: string;
   sowTotal: number;
+  /** Only populated when called with testMode — the generated HTML, never persisted. */
+  htmlContent?: string;
 }
 
 export async function generateConsolidatedSowDocument(
   params: GenerateConsolidatedSowParams,
 ): Promise<GenerateConsolidatedSowResult> {
-  const { clientUserId, projectId, title, runId, signalsOverride } = params;
+  const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, testMode = false } = params;
   const logCtx = { clientUserId, projectId, title, runId };
 
   const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
@@ -335,20 +342,24 @@ export async function generateConsolidatedSowDocument(
 
   // Insert the "generating" row and notify caller BEFORE signal eval and AI generation.
   // This ensures the row always exists so it can be marked "failed" if anything goes wrong.
-  const [genSowRowEarly] = await db.insert(insightsGeneratedDocumentsTable).values({
-    customerId: clientUserId,
-    projectId:  projectId ?? null,
-    category:   "consulting",
-    docType:    "consolidated_sow",
-    title,
-    htmlContent: "",
-    status:     "generating",
-    pdfUrl:     null,
-  }).returning({ id: insightsGeneratedDocumentsTable.id });
-  const docId = genSowRowEarly!.id;
+  // In testMode we skip persistence entirely — nothing should reach insights_generated_documents.
+  let docId = -1;
+  if (!testMode) {
+    const [genSowRowEarly] = await db.insert(insightsGeneratedDocumentsTable).values({
+      customerId: clientUserId,
+      projectId:  projectId ?? null,
+      category:   "consulting",
+      docType:    "consolidated_sow",
+      title,
+      htmlContent: "",
+      status:     "generating",
+      pdfUrl:     null,
+    }).returning({ id: insightsGeneratedDocumentsTable.id });
+    docId = genSowRowEarly!.id;
 
-  // Notify caller synchronously so HTTP routes can send the docId before the slow AI step.
-  params.onRowCreated?.(docId);
+    // Notify caller synchronously so HTTP routes can send the docId before the slow AI step.
+    params.onRowCreated?.(docId);
+  }
 
   logger.info(
     { ...logCtx, docId, engagementProjectCount: allEngagementProjects.length },
@@ -472,10 +483,12 @@ export async function generateConsolidatedSowDocument(
     }
   } catch (signalErr) {
     logger.error({ ...logCtx, docId, signalErr }, "consolidated-sow-generator: signal evaluation failed — aborting SOW generation");
-    await db.update(insightsGeneratedDocumentsTable)
-      .set({ status: "failed", errorMessage: ("Signal evaluation failed: " + (signalErr instanceof Error ? signalErr.message : String(signalErr))).slice(0, 500), updatedAt: new Date() })
-      .where(eq(insightsGeneratedDocumentsTable.id, docId))
-      .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
+    if (!testMode) {
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", errorMessage: ("Signal evaluation failed: " + (signalErr instanceof Error ? signalErr.message : String(signalErr))).slice(0, 500), updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, docId))
+        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after signal eval error"));
+    }
     throw new Error("SOW generation failed: could not evaluate tenant signals — please retry");
   }
   } // end else (signalsOverride == null)
@@ -600,7 +613,7 @@ export async function generateConsolidatedSowDocument(
   const engagementStart = nextBusinessMonday(new Date());
   const engagementStartLabel = engagementStart.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
-  const rawTemplate = await getPrompt(
+  const rawTemplate = promptOverride ?? await getPrompt(
     "insights-consulting-consolidated_sow",
     CONSOLIDATED_SOW_FALLBACK,
     ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"],
@@ -783,6 +796,11 @@ export async function generateConsolidatedSowDocument(
     logger.warn({ ...logCtx, docId, issues: sowLinesValidation.error.issues }, "consolidated-sow-generator: sowPricingLines schema warning — persisting anyway");
   }
 
+  if (testMode) {
+    logger.info({ ...logCtx, sowTotal }, "consolidated-sow-generator: test-draft generation complete (no persistence)");
+    return { docId: -1, clientName, sowTotal, htmlContent };
+  }
+
   await db.update(insightsGeneratedDocumentsTable)
     .set({
       htmlContent,
@@ -814,10 +832,12 @@ export async function generateConsolidatedSowDocument(
   return { docId, clientName, sowTotal };
   } catch (err) {
     logger.error({ ...logCtx, docId, err }, "consolidated-sow-generator: AI generation failed");
-    await db.update(insightsGeneratedDocumentsTable)
-      .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
-      .where(eq(insightsGeneratedDocumentsTable.id, docId))
-      .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed"));
+    if (!testMode) {
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, docId))
+        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed"));
+    }
     throw err;
   }
 }
