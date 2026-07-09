@@ -651,7 +651,7 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       // RequireEngagement gate will still route them correctly once the server
       // sets wizardCompletedAt in a subsequent visit.
       void fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" }).catch(() => {});
-      setCurrentStep("quick-win");
+      setCurrentStep("review-results");
     }
   }
 
