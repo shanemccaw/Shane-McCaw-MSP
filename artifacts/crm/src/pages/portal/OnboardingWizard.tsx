@@ -651,6 +651,11 @@ export default function OnboardingWizard({ mode = "onboarding" }: { mode?: "onbo
       // RequireEngagement gate will still route them correctly once the server
       // sets wizardCompletedAt in a subsequent visit.
       void fetchWithAuth("/api/portal/onboarding/complete", { method: "POST" }).catch(() => {});
+      // Flag that this session just submitted App Registration and the server
+      // already fired auto-fire directly (see /api/portal/app-registration).
+      // PortalDiagnostic checks this flag once to skip its own ensure-auto-fire
+      // call on the very next landing, avoiding a duplicate-job race.
+      try { sessionStorage.setItem("appRegJustSubmitted", "true"); } catch { /* ignore */ }
       setCurrentStep("review-results");
     }
   }

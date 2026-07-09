@@ -51,6 +51,21 @@ export default function PortalDiagnostic() {
     dispatchedRef.current = true;
     dispatch({ type: "BIND_PROJECT", payload: { projectId: resolvedId } });
     setHasBound(true);
+
+    // Ensure auto-fire kicked off for this project's first backlog script card,
+    // in case it stalled (e.g. never fired, or the initial job silently died).
+    // Skip the very first landing right after an App Registration submission —
+    // the submit endpoint already fires this directly, and calling it again
+    // immediately risks a duplicate-job race before the first call's DB update
+    // lands.
+    let justSubmitted = false;
+    try { justSubmitted = sessionStorage.getItem("appRegJustSubmitted") === "true"; } catch { /* ignore */ }
+    if (justSubmitted) {
+      try { sessionStorage.removeItem("appRegJustSubmitted"); } catch { /* ignore */ }
+    } else {
+      void fetchWithAuth("/api/portal/onboarding/ensure-auto-fire", { method: "POST" }).catch(() => { /* non-fatal */ });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlProjectId, projects, dispatch]);
 
   // Navigate back when the overlay is closed (mode returns to Idle after having been bound)

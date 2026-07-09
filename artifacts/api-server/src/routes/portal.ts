@@ -1331,6 +1331,26 @@ router.get("/portal/onboarding/wizard-status", requireAuth, async (req: Request,
   });
 });
 
+// ─── Ensure auto-fire (client-safe, idempotent) ───────────────────────────────
+// Called by the diagnostic landing page after binding to an existing quick-win
+// project. autoFireFirstBacklogScript() only ever acts on a card that is still
+// sitting in "backlog" with an unexhausted retry budget — cards that are
+// already in_progress, completed, or have hit MAX_AUTO_FIRE_FAILURES are
+// excluded by findFirstBacklogScriptCard() and this call becomes a no-op.
+// It also dedups against any already-running Azure job via
+// findActiveJobForRunbook(), so this can never stack a duplicate job even if
+// called more than once (e.g. by both the app-reg submit flow and this route
+// in quick succession).
+router.post("/portal/onboarding/ensure-auto-fire", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+
+  autoFireFirstBacklogScript(userId).catch(err => {
+    req.log.warn({ err, userId }, "ensure-auto-fire: autoFireFirstBacklogScript error (non-fatal)");
+  });
+
+  res.json({ ok: true });
+});
+
 // ─── Onboarding wizard complete ───────────────────────────────────────────────
 router.post("/portal/onboarding/complete", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
