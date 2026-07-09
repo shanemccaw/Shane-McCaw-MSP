@@ -1,3 +1,63 @@
+// ─── Tenant health block vars (used by email templates) ──────────────────────
+//
+// Single source of truth for turning a client's latest per-category health
+// scores into the string vars consumed by the `tenant-health-block` email
+// template. Category keys match `clientHealthHistoryTable.category` /
+// `ALL_CATEGORY_LABELS` in admin-clients.ts: security, compliance, copilot,
+// governance, productivity (used here as "adoption").
+export interface TenantHealthVars {
+  tenantScore: string;
+  tenantScoreBand: string;
+  complianceScore: string;
+  securityScore: string;
+  governanceScore: string;
+  adoptionScore: string;
+  copilotScore: string;
+  tenantHealthIsZero: string;
+  tenantHealthIsLow: string;
+  tenantHealthIsHigh: string;
+}
+
+/**
+ * Pure computation — takes the client's latest score per category (as
+ * produced by a DB lookup) and returns the vars for the tenant-health-block
+ * template. Returns `null` when there is no usable score data at all, so
+ * callers can skip rendering the block entirely rather than showing zeros.
+ */
+export function computeTenantHealthVars(
+  categoryScores: Partial<Record<"security" | "compliance" | "copilot" | "governance" | "productivity", number>> | null | undefined,
+): TenantHealthVars | null {
+  if (!categoryScores) return null;
+
+  const entries = Object.entries(categoryScores).filter(
+    (e): e is [string, number] => typeof e[1] === "number" && !isNaN(e[1]),
+  );
+  if (entries.length === 0) return null;
+
+  const scoreOf = (key: string): number | null => {
+    const val = categoryScores[key as keyof typeof categoryScores];
+    return typeof val === "number" && !isNaN(val) ? val : null;
+  };
+
+  const overall = Math.round(entries.reduce((sum, [, v]) => sum + v, 0) / entries.length);
+  const band = overall === 0 ? "zero" : overall < 60 ? "low" : overall >= 80 ? "high" : "medium";
+
+  const fmt = (v: number | null): string => (v === null ? "" : String(v));
+
+  return {
+    tenantScore: String(overall),
+    tenantScoreBand: band,
+    complianceScore: fmt(scoreOf("compliance")),
+    securityScore: fmt(scoreOf("security")),
+    governanceScore: fmt(scoreOf("governance")),
+    adoptionScore: fmt(scoreOf("productivity")),
+    copilotScore: fmt(scoreOf("copilot")),
+    tenantHealthIsZero: band === "zero" ? "true" : "",
+    tenantHealthIsLow: band === "low" ? "true" : "",
+    tenantHealthIsHigh: band === "high" ? "true" : "",
+  };
+}
+
 export interface RecommendedRule {
   ruleType: string;
   sourceKey: string;

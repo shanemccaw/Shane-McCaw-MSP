@@ -24,6 +24,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "serviceName", description: "Name of the purchased service" },
       { name: "amountDollars", description: "Amount paid in USD (digits only, e.g. 1497)" },
       { name: "portalLink", description: "Full URL to the client portal" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -34,6 +35,7 @@ const TEMPLATES: TemplateDefinition[] = [
     </table>
     <p>Shane will be in touch within <strong>1–2 business days</strong> to kick things off. In the meantime, you can check your project status in your client portal.</p>
     <p style="margin:24px 0 0;"><a href="{{portalLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View your portal →</a></p>
+    {{tenantHealthBlock}}
     <p style="margin-top:24px;">Questions? Just reply to this email or message Shane directly in the portal.</p>
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
@@ -48,6 +50,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "serviceName", description: "Name of the service" },
       { name: "amountDollars", description: "Amount paid in USD" },
       { name: "projectUrl", description: "Full URL to the new project workspace" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -62,6 +65,7 @@ const TEMPLATES: TemplateDefinition[] = [
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Amount paid</td><td style="padding:4px 0;font-weight:600;">\${{amountDollars}} USD</td></tr>
     </table>
     <p style="margin:24px 0 0;"><a href="{{projectUrl}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View your project workspace →</a></p>
+    {{tenantHealthBlock}}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
   },
@@ -140,6 +144,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "clientName", description: "Client's full name" },
       { name: "projectTitle", description: "Title of the project" },
       { name: "projectUrl", description: "Full URL to the project sign-off page" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -149,6 +154,7 @@ const TEMPLATES: TemplateDefinition[] = [
     <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
       <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:140px;">Project</td><td style="padding:4px 0;font-weight:600;">{{projectTitle}}</td></tr>
     </table>
+    {{tenantHealthBlock}}
     <p style="margin-top:8px;font-size:13px;color:#64748b;">Your feedback is entirely optional, but it's genuinely valued — it helps us serve the next client better.</p>
     <p style="margin-top:8px;font-size:13px;color:#64748b;">By signing off you confirm that the deliverables were received and you grant permission to publish your feedback as a testimonial (you can opt out at any time).</p>
     <p style="margin:20px 0 0;"><a href="{{projectUrl}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">Review &amp; Sign Off →</a></p>
@@ -166,6 +172,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "reportTitle", description: "Title of the status report" },
       { name: "adminReply", description: "Shane's reply text" },
       { name: "projectUrl", description: "URL to the project portal page" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -173,6 +180,7 @@ const TEMPLATES: TemplateDefinition[] = [
     <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid ${BLUE};border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">{{adminReply}}</blockquote>
     <p>You can view the full report and mark the question as resolved in your client portal.</p>
     <p style="margin:24px 0 0;"><a href="{{projectUrl}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View your project →</a></p>
+    {{tenantHealthBlock}}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
   },
@@ -206,6 +214,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "reportTitle", description: "Title of the status report" },
       { name: "replyContent", description: "Shane's reply message" },
       { name: "projectUrl", description: "URL to the client portal project page" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -213,6 +222,7 @@ const TEMPLATES: TemplateDefinition[] = [
     <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid ${BLUE};border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">{{replyContent}}</blockquote>
     <p>You can continue the conversation or mark it as resolved in your client portal.</p>
     <p style="margin:24px 0 0;"><a href="{{projectUrl}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View your project →</a></p>
+    {{tenantHealthBlock}}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
   },
@@ -226,6 +236,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "serviceName", description: "Name of the retainer service" },
       { name: "nextBillingDate", description: "Next billing date" },
       { name: "portalLink", description: "Full URL to the client portal" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hi {{clientName}},</p>
@@ -236,6 +247,7 @@ const TEMPLATES: TemplateDefinition[] = [
     </table>
     <p>If you didn't intend to resume this retainer, or if you have any questions, please reach out via your client portal.</p>
     <p style="margin:24px 0 0;"><a href="{{portalLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View your portal →</a></p>
+    {{tenantHealthBlock}}
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
   },
@@ -359,12 +371,14 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "clientName", description: "Client's full name" },
       { name: "messageBody", description: "The message text sent by Shane" },
       { name: "portalLink", description: "URL to the client's message inbox in the portal" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available" },
     ],
     bodyHtml: `
     <p>Hello {{clientName}},</p>
     <p>You have a new message from Shane McCaw Consulting:</p>
     <blockquote style="margin:16px 0;padding:12px 16px;background:#f8fafc;border-left:4px solid ${BLUE};border-radius:0 6px 6px 0;color:#1e293b;font-size:15px;line-height:1.6;">{{messageBody}}</blockquote>
     <p style="margin:24px 0 0;"><a href="{{portalLink}}" style="display:inline-block;background:${BLUE};color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 24px;border-radius:6px;">View in your portal →</a></p>
+    {{tenantHealthBlock}}
   `,
   },
   {
@@ -522,6 +536,7 @@ const TEMPLATES: TemplateDefinition[] = [
       { name: "companyRowHtml", description: "Pre-rendered table row HTML for the company field, or empty string if none was provided" },
       { name: "joinButtonHtml", description: "Pre-rendered HTML for the Join Microsoft Teams Meeting button, or empty string if no calendar event was created" },
       { name: "calendarNoticeHtml", description: "Pre-rendered HTML notice about receiving a calendar invite, or empty string if Graph calendar integration is not configured" },
+      { name: "tenantHealthBlock", description: "Pre-rendered tenant-health-block HTML, or empty string when no health data is available (e.g. a new lead with no client record yet)" },
     ],
     bodyHtml: `
     <p>Hi {{name}},</p>
@@ -534,6 +549,7 @@ const TEMPLATES: TemplateDefinition[] = [
     </table>
     {{joinButtonHtml}}
     {{calendarNoticeHtml}}
+    {{tenantHealthBlock}}
     <p>Please come prepared with your most pressing Microsoft 365 questions. Shane will be ready to dig in.</p>
     <p style="margin-top:24px;">— Shane McCaw</p>
   `,
@@ -688,6 +704,33 @@ const TEMPLATES: TemplateDefinition[] = [
     </table>
     <p style="font-size:13px;color:#64748b;margin-top:16px;">Each card will only appear in this alert once per 24 hours.</p>
     <p style="margin-top:24px;">— Shane McCaw Consulting (automated alert)</p>
+  `,
+  },
+  {
+    slug: "tenant-health-block",
+    recipientType: "client",
+    name: "Tenant Health Block (reusable snippet)",
+    subject: "",
+    variables: [
+      { name: "tenantScore", description: "Overall tenant health score (0-100), averaged across available sub-scores" },
+      { name: "tenantScoreBand", description: "Overall band: \"zero\", \"low\", \"medium\", or \"high\"" },
+      { name: "complianceScore", description: "Compliance coverage sub-score (0-100), or empty string if not yet computed" },
+      { name: "securityScore", description: "Security posture sub-score (0-100), or empty string if not yet computed" },
+      { name: "governanceScore", description: "Governance maturity sub-score (0-100), or empty string if not yet computed" },
+      { name: "adoptionScore", description: "Adoption sub-score (0-100), or empty string if not yet computed" },
+      { name: "copilotScore", description: "Copilot readiness sub-score (0-100), or empty string if not yet computed" },
+      { name: "tenantHealthIsZero", description: "\"true\" when the overall score is exactly 0, else empty string" },
+      { name: "tenantHealthIsLow", description: "\"true\" when the overall score is below 60, else empty string" },
+      { name: "tenantHealthIsHigh", description: "\"true\" when the overall score is 80 or above, else empty string" },
+    ],
+    // Intentionally left minimal — this is a reusable snippet embedded via
+    // {{tenantHealthBlock}} into other client-facing templates, not a
+    // standalone email. Final visual design is out of scope for this change;
+    // edit this row from the Admin Panel to build out the real layout.
+    bodyHtml: `
+    <table cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:16px 20px;margin:16px 0;width:100%;">
+      <tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Tenant Health Score</td><td style="padding:4px 0;font-weight:600;">{{tenantScore}} / 100</td></tr>
+    </table>
   `,
   },
   {

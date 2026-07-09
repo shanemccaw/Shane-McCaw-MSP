@@ -3,7 +3,7 @@ import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTab
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
-import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
 import { sendPushNotifications } from "../lib/push.ts";
 import { sendWebPushToAdmins } from "../lib/web-push.ts";
@@ -3533,7 +3533,7 @@ router.post("/portal/billing/subscriptions/:id/resume", requireAuth, async (req:
   void sendEmailFromTemplate(
     "retainer-resumed",
     req.user!.email,
-    { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL },
+    { clientName: req.user!.name ?? "", serviceName, nextBillingDate, portalLink: PORTAL_URL, tenantHealthBlock: await getTenantHealthBlockHtml(req.user!.id) },
     `Your ${serviceName} retainer is back on`,
     retainerResumedEmail({ clientName: req.user!.name ?? "", serviceName, nextBillingDate }),
   );
@@ -4396,6 +4396,7 @@ async function provisionOnboardingProject(
         serviceName: primaryServiceName,
         amountDollars: totalAmountDollars,
         projectUrl: `${PORTAL_URL}/projects/${project.id}`,
+        tenantHealthBlock: await getTenantHealthBlockHtml(buyer.id),
         ...(hasDiscount ? { couponCode, originalAmountDollars, discountAmountDollars } : {}),
       },
       `Your ${primaryServiceName} project is ready — next steps inside`,
@@ -4854,6 +4855,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             serviceName,
             amountDollars: finalAmountDollars,
             portalLink: PORTAL_URL,
+            tenantHealthBlock: await getTenantHealthBlockHtml(buyer.id),
             ...(hasDiscount ? { couponCode, originalAmountDollars: amountDollars, discountAmountDollars } : {}),
           },
           `Your purchase of "${serviceName}" is confirmed`,
@@ -5129,6 +5131,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
                 serviceName: serviceLabel,
                 amountDollars: session.amount_total ? String(Math.round(session.amount_total / 100)) : "0",
                 projectUrl: clientBaseUrl,
+                tenantHealthBlock: await getTenantHealthBlockHtml(buyer.id),
               },
               "Your project workspace is ready — Shane McCaw Consulting",
               `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceLabel}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${clientBaseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
@@ -5368,6 +5371,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
           clientName: clientUser.name ?? "",
           messageBody: body.trim(),
           portalLink: "https://shanemccaw.consulting/crm/portal/messages",
+          tenantHealthBlock: await getTenantHealthBlockHtml(clientUserId),
         },
         "New message from Shane McCaw Consulting",
         `
@@ -7189,6 +7193,7 @@ router.post("/admin/status-reports/:id/reply", requireAdmin, async (req: Request
           reportTitle: report.title,
           adminReply: reply.trim(),
           projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
+          tenantHealthBlock: await getTenantHealthBlockHtml(report.clientUserId),
         },
         `Reply to your question on: ${report.title}`,
         statusReportReplyEmail({ clientName: client.name ?? "", reportTitle: report.title, adminReply: reply.trim(), projectId: report.projectId }),
@@ -7259,6 +7264,7 @@ router.post("/admin/status-reports/:id/thread", requireAdmin, async (req: Reques
           clientName: client.name ?? "",
           reportTitle: report.title,
           replyContent: content.trim(),
+          tenantHealthBlock: await getTenantHealthBlockHtml(report.clientUserId),
           projectUrl: report.projectId ? `${PORTAL_URL}/projects/${report.projectId}` : PORTAL_URL,
         },
         `Reply to your follow-up on: ${report.title}`,
@@ -8427,7 +8433,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
     // We do NOT return the token in the JSON response (which is a public endpoint keyed
     // only by session_id) — the email ensures only the account owner can use it.
     const [provUser] = await db
-      .select({ passwordHash: usersTable.passwordHash, email: usersTable.email, name: usersTable.name })
+      .select({ id: usersTable.id, passwordHash: usersTable.passwordHash, email: usersTable.email, name: usersTable.name })
       .from(usersTable)
       .where(eq(usersTable.id, resolvedUserId))
       .limit(1);
@@ -8471,6 +8477,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
           serviceName,
           amountDollars,
           projectUrl: baseUrl,
+          tenantHealthBlock: await getTenantHealthBlockHtml(provUser.id),
         },
         "Your project workspace is ready — Shane McCaw Consulting",
         `<p>Hi ${provUser.name ?? ""},</p><p>Your <strong>${serviceName}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
@@ -9176,7 +9183,7 @@ router.post("/admin/projects/:id/closure-request", requireAdmin, async (req: Req
       await sendEmailFromTemplate(
         "closure-request",
         client.email,
-        { clientName: client.name ?? "", projectTitle: project.title, projectUrl: `${PORTAL_URL}/projects/${projectId}` },
+        { clientName: client.name ?? "", projectTitle: project.title, projectUrl: `${PORTAL_URL}/projects/${projectId}`, tenantHealthBlock: await getTenantHealthBlockHtml(project.clientUserId) },
         `Project Sign-Off: ${project.title}`,
         closureRequestEmail({ clientName: client.name ?? "", projectTitle: project.title, projectId }),
       );
@@ -12136,7 +12143,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       void sendEmailFromTemplate(
         "onboarding-confirmation",
         buyer.email,
-        { clientName: buyer.name ?? buyer.email, serviceName: serviceNames.join(", "), amountDollars: "0", projectUrl: baseUrl },
+        { clientName: buyer.name ?? buyer.email, serviceName: serviceNames.join(", "), amountDollars: "0", projectUrl: baseUrl, tenantHealthBlock: await getTenantHealthBlockHtml(buyer.id) },
         "Your project workspace is ready — Shane McCaw Consulting",
         `<p>Hi ${buyer.name ?? ""},</p><p>Your <strong>${serviceNames.join(", ")}</strong> project workspace is ready. Log in to your portal to track progress.</p><p><a href="${baseUrl}" style="color:#0078D4;">View your portal →</a></p><p>— Shane McCaw</p>`,
       ).catch((e) => req.log.warn({ err: e, userId: resolvedUserId, template: "onboarding-confirmation" }, "claim-free: onboarding-confirmation email failed (non-fatal)"));

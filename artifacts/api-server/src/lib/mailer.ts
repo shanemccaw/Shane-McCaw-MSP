@@ -1,7 +1,8 @@
-import { db, emailTemplatesTable, emailEventsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable } from "@workspace/db";
+import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
 import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
+import { computeTenantHealthVars } from "./tenant-signals";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
@@ -608,6 +609,51 @@ export async function getEmailTemplateOrFallback(
     logger.warn({ err, slug }, "Email template DB lookup failed — using hardcoded fallback");
   }
   return { subject: defaultSubject, bodyHtml: defaultBodyHtml };
+}
+
+/**
+ * Renders the reusable `tenant-health-block` DB template for a given client,
+ * using their latest per-category health scores. Returns an empty string
+ * (never throws) when:
+ *  - `clientUserId` is null/undefined (no client to look up, e.g. a lead)
+ *  - the client has no health score history yet
+ *  - the DB lookup fails for any reason
+ * This is the single call site client-facing emails should use to populate
+ * `vars.tenantHealthBlock` — admin-only emails should never call this and
+ * should instead set `vars.tenantHealthBlock = ""` explicitly.
+ */
+export async function getTenantHealthBlockHtml(clientUserId: number | null | undefined): Promise<string> {
+  if (clientUserId === null || clientUserId === undefined) return "";
+
+  try {
+    const rows = await db
+      .select({ category: clientHealthHistoryTable.category, score: clientHealthHistoryTable.score })
+      .from(clientHealthHistoryTable)
+      .where(eq(clientHealthHistoryTable.clientId, clientUserId))
+      .orderBy(desc(clientHealthHistoryTable.recordedAt));
+
+    if (rows.length === 0) return "";
+
+    // Keep only the most recent score per category.
+    const latestByCategory: Record<string, number> = {};
+    for (const row of rows) {
+      if (!(row.category in latestByCategory)) latestByCategory[row.category] = row.score;
+    }
+
+    const healthVars = computeTenantHealthVars(latestByCategory);
+    if (!healthVars) return "";
+
+    const { bodyHtml } = await getEmailTemplateOrFallback(
+      "tenant-health-block",
+      healthVars as unknown as Record<string, string>,
+      "",
+      "",
+    );
+    return bodyHtml.trim();
+  } catch (err) {
+    logger.warn({ err, clientUserId }, "Failed to render tenant-health-block — omitting from email");
+    return "";
+  }
 }
 
 /**
