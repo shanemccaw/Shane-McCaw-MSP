@@ -1100,6 +1100,13 @@
       "when": 1784200000000,
       "tag": "0152_add_email_templates_customized",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1784300000000,
+      "tag": "0153_add_ai_prompt_versioning",
+      "breakpoints": true
     }
   ]
 }

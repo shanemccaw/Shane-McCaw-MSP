@@ -236,6 +236,9 @@ export interface GenerateConsolidatedSowParams {
   signalsOverride?: Set<string>;
   /** Substitutes for the DB-stored consolidated_sow prompt body — used by the Test Draft flow. */
   promptOverride?: string;
+  /** Substitutes for the DB-stored sow_pricing_formula prompt body — used by the Test Draft flow
+   *  when testing the "insights-consulting-sow_pricing_formula" prompt specifically. */
+  pricingFormulaOverride?: string;
   /** When true, skips all persistence (no "generating" row, no final update, no prior-doc deletion,
    *  no presentation sync) and just returns the generated HTML. */
   testMode?: boolean;
@@ -252,7 +255,7 @@ export interface GenerateConsolidatedSowResult {
 export async function generateConsolidatedSowDocument(
   params: GenerateConsolidatedSowParams,
 ): Promise<GenerateConsolidatedSowResult> {
-  const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, testMode = false } = params;
+  const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, pricingFormulaOverride, testMode = false } = params;
   const logCtx = { clientUserId, projectId, title, runId };
 
   const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
@@ -618,7 +621,7 @@ export async function generateConsolidatedSowDocument(
     CONSOLIDATED_SOW_FALLBACK,
     ["{{scores}}", "{{findings}}", "{{typeLabel}}", "{{sectionHints}}"],
   );
-  const pricingFormulaBlock = await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
+  const pricingFormulaBlock = pricingFormulaOverride ?? await getSowPricingFormulaBlock(TIER_02_PRICING_FORMULA_BLOCK_FALLBACK);
   // ── Adjustment signal constraint block ────────────────────────────────────────
   // When adj:* rules are configured, inject a hard constraint that overrides the
   // ADJUSTMENT MAP's workstream-scoped logic with telemetry-derived results.

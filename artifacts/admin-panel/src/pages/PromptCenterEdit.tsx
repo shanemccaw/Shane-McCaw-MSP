@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Link, useLocation } from "wouter";
+import DOMPurify from "dompurify";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface AiPrompt {
@@ -237,7 +238,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
       const data = await res.json() as { prompt: AiPrompt };
       setPrompt(data.prompt);
       setBody(data.prompt.draftBody ?? data.prompt.promptBody);
-      setSaved("Version staged as draft — review and publish when ready");
+      setSaved("Reverted and published — this is now the live prompt");
       setTimeout(() => setSaved(null), 3500);
       void loadVersions();
     } catch (err) {
@@ -593,7 +594,7 @@ export default function PromptCenterEdit({ params }: { params: { id?: string } }
                 )}
               </div>
               <div className="bg-white rounded-lg p-4 max-h-[600px] overflow-y-auto text-black text-sm">
-                <div dangerouslySetInnerHTML={{ __html: testResult.htmlContent }} />
+                <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(testResult.htmlContent) }} />
               </div>
             </div>
           )}

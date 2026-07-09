@@ -46,6 +46,7 @@
     "@tailwindcss/typography": "^0.5.15",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query": "catalog:",
+    "@types/dompurify": "^3.2.0",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -90,6 +91,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "@uiw/react-codemirror": "^4.25.10",
     "@xyflow/react": "^12.11.1",
+    "dompurify": "^3.4.11",
     "fflate": "^0.8.3"
   }
 }

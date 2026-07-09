@@ -147,9 +147,9 @@ router.post("/admin/ai-prompts/:id/reset", requireAdmin, async (req: Request, re
   res.json({ prompt: updated });
 });
 
-// ── POST /admin/ai-prompts/:id/revert/:versionId — stage a prior version's body as the draft ──
-// This does NOT publish — it stages the historical body as the current draft so the
-// admin can review it (and optionally run Test Draft) before publishing.
+// ── POST /admin/ai-prompts/:id/revert/:versionId — revert to a prior version and publish it ──
+// Reverting immediately becomes the new live/published body (and clears any pending
+// draft), recorded as its own "publish" version so history stays a linear, auditable trail.
 router.post("/admin/ai-prompts/:id/revert/:versionId", requireAdmin, async (req: Request, res: Response) => {
   const id = parseInt(String(req.params["id"] ?? ""), 10);
   const versionId = parseInt(String(req.params["versionId"] ?? ""), 10);
@@ -164,14 +164,14 @@ router.post("/admin/ai-prompts/:id/revert/:versionId", requireAdmin, async (req:
 
   const [updated] = await db
     .update(aiPromptsTable)
-    .set({ draftBody: version.body, updatedAt: new Date() })
+    .set({ promptBody: version.body, draftBody: null, updatedAt: new Date() })
     .where(eq(aiPromptsTable.id, id))
     .returning();
   if (!updated) { res.status(404).json({ error: "Prompt not found" }); return; }
 
-  await recordVersion(id, version.body, "draft");
+  await recordVersion(id, version.body, "publish");
 
-  logger.info({ id, versionId }, "admin-ai-prompts: reverted to prior version (staged as draft)");
+  logger.info({ id, versionId }, "admin-ai-prompts: reverted to prior version and published it");
   res.json({ prompt: updated });
 });
 
@@ -211,6 +211,21 @@ router.post("/admin/ai-prompts/:id/test-draft", requireAdmin, async (req: Reques
         projectId: projectId ?? null,
         title: `Test Draft — ${prompt.name}`,
         promptOverride: testBody,
+        testMode: true,
+      });
+      res.json({ htmlContent: result.htmlContent, sowTotal: result.sowTotal, clientName: result.clientName });
+      return;
+    }
+
+    // The pricing-formula prompt is only meaningful when exercised through the
+    // real consolidated SOW pipeline (it's interpolated into the SOW prompt, not
+    // used standalone) — route it through the same generator with the formula override.
+    if (key === "insights-consulting-sow_pricing_formula") {
+      const result = await generateConsolidatedSowDocument({
+        clientUserId,
+        projectId: projectId ?? null,
+        title: `Test Draft — ${prompt.name}`,
+        pricingFormulaOverride: testBody,
         testMode: true,
       });
       res.json({ htmlContent: result.htmlContent, sowTotal: result.sowTotal, clientName: result.clientName });
