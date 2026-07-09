@@ -238,6 +238,21 @@ const GENERATE_SCRIPT_GRAPH: WfGraph = {
   edges: [],
 };
 
+// Document-source graph with a piped {{documentId}} expression instead of a
+// literal targetId — mirrors what the builder UI now allows the user to type
+// into the "Or Enter Document ID (piped)" field.
+const GENERATE_SCRIPT_PIPED_DOC_GRAPH: WfGraph = {
+  nodes: [
+    {
+      id: "gs-node-1",
+      type: "generate_script",
+      data: { sourceMode: "document", targetId: "{{documentId}}", outputMode: "auto" },
+      position: { x: 0, y: 0 },
+    },
+  ],
+  edges: [],
+};
+
 // ── Suite 1: Prose-only AI response → executor must fail the run ──────────────
 //
 // When generateScriptFromService() throws (no valid JSON/PS in AI response),
@@ -298,6 +313,41 @@ describe("executor: generate_script node — valid PowerShell AI response comple
   });
 
   it("does NOT mark the run as failed when PS generation succeeds", () => {
+    const failedUpdate = dbState.capturedUpdates.find(
+      (u) => (u as Record<string, unknown>).status === "failed",
+    );
+    expect(failedUpdate).toBeUndefined();
+  });
+});
+
+// ── Suite 3: Piped {{documentId}} targetId ("From Document" mode) ─────────────
+//
+// The builder now lets the user type a piped expression (e.g. {{documentId}})
+// into targetId when sourceMode === "document" instead of picking a document
+// from the static list. The executor already runs interp() on targetId before
+// parsing it as a number — this confirms that path resolves correctly against
+// the run's payload and reaches generateScriptFromDocument() with the resolved
+// numeric ID, completing the run successfully.
+
+describe("executor: generate_script node — piped {{documentId}} targetId (From Document mode)", () => {
+  beforeEach(async () => {
+    psState.shouldThrow = false;
+    dbState.capturedUpdates = [];
+    // Payload simulates an upstream generate_document/find_object node having
+    // already populated {{documentId}} before this node runs.
+    const runWithDocumentId = { ...FAKE_RUN, payload: { documentId: 77 } };
+    dbState.selectQueue = [[runWithDocumentId], [FAKE_VERSION], [{ status: "running" }]];
+    await executeWorkflowRun(1, { inlineGraph: GENERATE_SCRIPT_PIPED_DOC_GRAPH });
+  });
+
+  it("resolves the piped documentId and completes the run", () => {
+    const completedUpdate = dbState.capturedUpdates.find(
+      (u) => (u as Record<string, unknown>).status === "completed",
+    );
+    expect(completedUpdate).toBeDefined();
+  });
+
+  it("does NOT fail the run due to an unresolved targetId", () => {
     const failedUpdate = dbState.capturedUpdates.find(
       (u) => (u as Record<string, unknown>).status === "failed",
     );

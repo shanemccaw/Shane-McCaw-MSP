@@ -3742,6 +3742,21 @@ function NodeConfigPanel({
               )}
             </div>
 
+            {gsSourceMode === "document" && (
+              <>
+                <PayloadField
+                  label="Or Enter Document ID (piped)"
+                  value={(node.data.targetId as string) ?? ""}
+                  onChange={v => onChange(node.id, { ...node.data, targetId: v, targetName: "" })}
+                  placeholder="{{documentId}}"
+                  ancestorOutputs={ancestorOutputs}
+                />
+                <div className="rounded-lg bg-amber-950/30 border border-amber-800/40 p-2.5">
+                  <p className="text-[10px] text-amber-400/80">Pipe a document ID produced by an upstream <span className="font-mono">generate_document</span> or <span className="font-mono">find_object</span> node using <span className="font-mono">{"{{documentId}}"}</span> — useful when the target document doesn't exist yet at design time. Picking from the list above will overwrite this field.</p>
+                </div>
+              </>
+            )}
+
             <PayloadField
               label="Custom Instructions (optional)"
               value={(node.data.customInstructions as string) ?? ""}
