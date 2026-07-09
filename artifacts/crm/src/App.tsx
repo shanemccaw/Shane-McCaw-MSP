@@ -107,6 +107,26 @@ function RequireCredentials({ children }: { children: ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, location]);
 
+  // Poll while parked on this route so a client already on the diagnostics
+  // page gets redirected immediately if an admin deletes their App
+  // Registration, without needing to navigate or refresh first.
+  useEffect(() => {
+    if (!user || user.role !== "client") return;
+    const interval = setInterval(() => {
+      if (fetchingRef.current) return;
+      fetchingRef.current = true;
+      fetchWithAuth("/api/portal/onboarding/wizard-status")
+        .then(r => {
+          if (!r.ok) { setHasCredentials(false); return; }
+          return r.json().then((data: EngagementStatus) => setHasCredentials(!!data.hasCredentials));
+        })
+        .catch(() => { setHasCredentials(false); })
+        .finally(() => { fetchingRef.current = false; });
+    }, 10000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   if (!user || user.role !== "client") return <>{children}</>;
 
   if (!checked) {
