@@ -13,7 +13,8 @@ import { listDriveItems, graphCredentialsPresent, createProjectFolder, uploadFil
 import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
-import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, type SowPricingLine } from "../lib/sow-pricing.ts";
+import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, ADJ_SIGNAL_PATTERNS, type SowPricingLine } from "../lib/sow-pricing.ts";
+import { computeTenantSignals, ADJUSTMENT_SIGNALS, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
@@ -9984,6 +9985,95 @@ function guardAgainstSignedPresentation(
   return true;
 }
 
+/**
+ * Signal-authoritative adjustment sourcing.
+ *
+ * The client's fired tenant signals (the same evaluation used when the SOW was
+ * generated) are the authoritative answer to *which* Price Adjustments belong
+ * in the total. This function recomputes those signals from the client's live
+ * M365 profile + script-run findings, then matches each fired `adj:*` signal
+ * to its priced row in the SOW's stored `sowPricingLines` (line_type
+ * "adjustment") via `ADJ_SIGNAL_PATTERNS` — never via HTML scraping or a
+ * grand-total-minus-workstreams guess.
+ *
+ * Returns `success: false` only when the signal computation itself fails
+ * (e.g. DB error) — callers should treat that as "signals unavailable" and
+ * fall back to a legacy method, clearly logged. A successful computation that
+ * yields zero fired adjustment signals is NOT a failure — it correctly means
+ * $0 in adjustments.
+ */
+async function computeSignalDrivenAdjustments(
+  clientUserId: number | null | undefined,
+  pricingLines: unknown,
+): Promise<{
+  success: boolean;
+  firedAdjKeys: string[];
+  adjustmentsTotal: number;
+  namedAdjustmentLines: Array<{ title: string; description: string; price: number }>;
+}> {
+  if (!clientUserId) {
+    return { success: false, firedAdjKeys: [], adjustmentsTotal: 0, namedAdjustmentLines: [] };
+  }
+  try {
+    const [profileRow] = await db.select({ profile: clientM365ProfilesTable.profile })
+      .from(clientM365ProfilesTable)
+      .where(eq(clientM365ProfilesTable.clientId, clientUserId))
+      .limit(1);
+
+    const scriptRuns = await db.select({
+      parsedFindings: scriptRunResultsTable.parsedFindings,
+      profileUpdates: scriptRunResultsTable.profileUpdates,
+    })
+      .from(scriptRunResultsTable)
+      .where(and(eq(scriptRunResultsTable.customerId, clientUserId), eq(scriptRunResultsTable.status, "completed")))
+      .orderBy(desc(scriptRunResultsTable.createdAt))
+      .limit(50);
+
+    const mergedProfile: Record<string, unknown> = { ...((profileRow?.profile as Record<string, unknown> | null) ?? {}) };
+    for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
+    const allFindings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
+
+    const [signalRulesRes, signalGroupsRes] = await Promise.all([
+      db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
+      db.execute(sql`SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt" FROM signal_rule_groups ORDER BY signal_key, sort_order, id`),
+    ]);
+
+    const { firedSignals } = computeTenantSignals(
+      mergedProfile,
+      allFindings,
+      signalRulesRes.rows as unknown as SignalDerivationRule[],
+      signalGroupsRes.rows as unknown as SignalRuleGroup[],
+    );
+
+    const firedAdjKeys = ADJUSTMENT_SIGNALS.map(s => s.key).filter(k => firedSignals.has(k));
+
+    const adjustmentLines = (Array.isArray(pricingLines) ? pricingLines : [])
+      .filter((l): l is { title: string; scope?: string; priceUsd: number; notes?: string; line_type?: string } =>
+        !!l && typeof l === "object" && (l as { line_type?: string }).line_type === "adjustment");
+
+    const namedAdjustmentLines: Array<{ title: string; description: string; price: number }> = [];
+    let adjustmentsTotal = 0;
+    for (const key of firedAdjKeys) {
+      const entry = ADJ_SIGNAL_PATTERNS[key];
+      const match = entry ? adjustmentLines.find(l => entry.pattern.test(l.title)) : undefined;
+      if (match) {
+        adjustmentsTotal += match.priceUsd;
+        namedAdjustmentLines.push({ title: match.title, description: match.scope || match.notes || "", price: match.priceUsd });
+      } else {
+        logger.warn(
+          { clientUserId, signalKey: key, label: entry?.label },
+          "deriveEffectiveSowData: adjustment signal fired but no matching priced row found in SOW pricing lines — adjustment omitted from total",
+        );
+      }
+    }
+
+    return { success: true, firedAdjKeys, adjustmentsTotal, namedAdjustmentLines };
+  } catch (err) {
+    logger.warn({ err, clientUserId }, "deriveEffectiveSowData: failed to compute signal-driven adjustments — falling back to legacy method");
+    return { success: false, firedAdjKeys: [], adjustmentsTotal: 0, namedAdjustmentLines: [] };
+  }
+}
+
 async function deriveEffectiveSowData(
   pres: {
     documentsIncluded: unknown;
@@ -9991,6 +10081,7 @@ async function deriveEffectiveSowData(
     selectedPhaseIds: unknown;
     totalPrice: unknown;
     projectId?: number | null;
+    clientUserId?: number | null;
   },
   storedSelectedIds?: string[],
 ): Promise<{
@@ -10001,38 +10092,10 @@ async function deriveEffectiveSowData(
   namedAdjustmentLines: Array<{ title: string; description: string; price: number }>;
   sowVersion: string;
 }> {
-  // ── Priority 1: AI-generated phases from save_presentation_phases ────────────
-  // When the Building Plan workflow has run, save_presentation_phases writes the
-  // AI phases (with pre-distributed prices) into pres.sowPhases.  These are the
-  // authoritative source — return them directly without touching the SOW document
-  // pricing lines, which represent the full-SOW workstream breakdown, not the
-  // execution phases shown on Scope & Pricing.
-  const aiPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
-  const hasAiGeneratedPhases = aiPhases.length > 0 && aiPhases.every(p => typeof p.id === "string" && (p.id as string).startsWith("sow-"));
-  if (hasAiGeneratedPhases) {
-    const storedIds = ((storedSelectedIds ?? pres.selectedPhaseIds) ?? []) as string[];
-    const allAiIds  = aiPhases.map(p => p.id);
-    const intersection = storedIds.filter(id => allAiIds.includes(id));
-    // Default to all selected when stored IDs don't match (e.g. stale sow-0 pointer)
-    const effectiveSelectedPhaseIds = intersection.length > 0 ? intersection : allAiIds;
-    const effectiveSowPhases = aiPhases.map(p => ({
-      ...p,
-      selected: effectiveSelectedPhaseIds.includes(p.id),
-    }));
-    const selectedTotal = effectiveSowPhases
-      .filter(p => p.selected)
-      .reduce((s, p) => s + p.price, 0);
-    return {
-      effectiveSowPhases,
-      effectiveSelectedPhaseIds,
-      effectiveTotalPrice: selectedTotal,
-      adjustmentsTotal: 0,
-      namedAdjustmentLines: [],
-      sowVersion: computeSowVersion(effectiveSowPhases),
-    };
-  }
-
-  // ── Priority 2: SOW document pricing lines ────────────────────────────────────
+  // ── SOW document pricing lines lookup ──────────────────────────────────────
+  // Fetched up front because both the AI-generated-phases path (Priority 1) and
+  // the SOW-document path (Priority 2) need the stored adjustment line amounts
+  // to resolve the signal-driven adjustments total — neither path may skip this.
   const docIds = (pres.documentsIncluded ?? []) as number[];
 
   const docsWithPricing = docIds.length > 0
@@ -10077,6 +10140,50 @@ async function deriveEffectiveSowData(
     }
   }
 
+  // ── Signal-authoritative adjustments ────────────────────────────────────────
+  // The client's fired tenant signals decide *which* adjustments count; their
+  // dollar amounts still come from the SOW's stored, signal-tagged pricing lines.
+  const signalAdjustments = await computeSignalDrivenAdjustments(pres.clientUserId, sowDoc?.sowPricingLines);
+
+  // ── Priority 1: AI-generated phases from save_presentation_phases ────────────
+  // When the Building Plan workflow has run, save_presentation_phases writes the
+  // AI phases (with pre-distributed prices) into pres.sowPhases.  These are the
+  // authoritative source for workstream phases — but adjustments must still be
+  // resolved from the client's fired signals rather than hardcoded to zero.
+  const aiPhases = (pres.sowPhases ?? []) as SowPhaseObj[];
+  const hasAiGeneratedPhases = aiPhases.length > 0 && aiPhases.every(p => typeof p.id === "string" && (p.id as string).startsWith("sow-"));
+  if (hasAiGeneratedPhases) {
+    const storedIds = ((storedSelectedIds ?? pres.selectedPhaseIds) ?? []) as string[];
+    const allAiIds  = aiPhases.map(p => p.id);
+    const intersection = storedIds.filter(id => allAiIds.includes(id));
+    // Default to all selected when stored IDs don't match (e.g. stale sow-0 pointer)
+    const effectiveSelectedPhaseIds = intersection.length > 0 ? intersection : allAiIds;
+    const effectiveSowPhases = aiPhases.map(p => ({
+      ...p,
+      selected: effectiveSelectedPhaseIds.includes(p.id),
+    }));
+    const selectedTotal = effectiveSowPhases
+      .filter(p => p.selected)
+      .reduce((s, p) => s + p.price, 0);
+    const adjustmentsTotal = signalAdjustments.success ? signalAdjustments.adjustmentsTotal : 0;
+    const namedAdjustmentLines = signalAdjustments.success ? signalAdjustments.namedAdjustmentLines : [];
+    if (!signalAdjustments.success) {
+      logger.warn(
+        { projectId: pres.projectId },
+        "deriveEffectiveSowData: signal-driven adjustments unavailable for AI-generated-phases path — adjustments defaulted to 0",
+      );
+    }
+    return {
+      effectiveSowPhases,
+      effectiveSelectedPhaseIds,
+      effectiveTotalPrice: selectedTotal + adjustmentsTotal,
+      adjustmentsTotal,
+      namedAdjustmentLines,
+      sowVersion: computeSowVersion(effectiveSowPhases),
+    };
+  }
+
+  // ── Priority 2: SOW document pricing lines ────────────────────────────────────
   if (sowDoc && Array.isArray(sowDoc.sowPricingLines) && sowDoc.sowPricingLines.length > 0) {
     const livelines = sowDoc.sowPricingLines as Array<{ title: string; scope: string; priceUsd: number; notes: string; line_type?: string; weeks?: number; deliveryDate?: string | null }>;
 
@@ -10106,71 +10213,68 @@ async function deriveEffectiveSowData(
       selected: effectiveSelectedPhaseIds.includes(p.id),
     }));
 
-    // Strip aggregation rows (subtotals, grand totals) that were accidentally stored.
-    const realAdjustmentLines = adjustmentLivelines.filter(l => {
-      const t = l.title.toLowerCase();
-      return !t.includes("subtotal") && !t.includes("grand total") && t !== "total";
-    });
-
-    // Apply workstream-scoped ADJUSTMENT MAP — only include adjustments permitted
-    // for the workstream types present in this SOW.  This enforces the pricing rules
-    // regardless of how old the stored sowPricingLines are and fixes any adjustments
-    // that were generated before the workstream-scoped rules were introduced.
-    // If no workstream titles match a canonical pattern, skip filtering to be safe.
-    // WORKSTREAM_ADJ_MAP is imported from sow-pricing.ts — single source of truth.
-    //
-    // IMPORTANT: use only SELECTED phase titles. Using allPhases would allow
-    // adjustments for deselected workstreams (e.g. Copilot Readiness appearing when
-    // the Copilot workstream is unchecked by the client).
-    const workstreamTitles = effectiveSowPhases.filter(p => p.selected).map(p => p.title);
-    let anyWorkstreamMatched = false;
-    const allowedAdjPatterns: RegExp[] = [];
-    for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
-      if (workstreamTitles.some(t => ws.test(t))) {
-        allowedAdjPatterns.push(...allowed);
-        anyWorkstreamMatched = true;
-      }
-    }
-    // Three-way decision:
-    //  • No workstream matched any canonical pattern → truly unknown engagement type;
-    //    pass all adjustments through to avoid silently breaking unrecognised SOWs.
-    //  • At least one matched AND there are allowed patterns → filter to permitted only.
-    //  • At least one matched BUT allowedAdjPatterns is empty → recognised workstream(s)
-    //    that permit NO adjustments (e.g. Information Architecture alone); return zero.
-    const scopedAdjustmentLines = !anyWorkstreamMatched
-      ? realAdjustmentLines
-      : allowedAdjPatterns.length > 0
-        ? realAdjustmentLines.filter(l => allowedAdjPatterns.some(p => p.test(l.title)))
-        : [];
-
     // Adjustments are mandatory for the selected scope — always applied regardless of
     // which phases are toggled on/off (phase selection only removes workstream rows,
-    // never adjustment rows).
-    // If tagged lines exist, sum them directly; otherwise fall back to the gap method.
+    // never adjustment rows). The client's fired tenant signals are the authoritative
+    // source for which adjustments count; only fall back to the legacy
+    // workstream-scoped/gap-based method when signal computation itself failed.
     let adjustmentsTotal: number;
-    if (scopedAdjustmentLines.length > 0) {
-      adjustmentsTotal = scopedAdjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
-    } else if (adjustmentLivelines.length > 0) {
-      // All tagged lines were aggregation rows or filtered out — treat as 0.
-      adjustmentsTotal = 0;
+    let namedAdjustmentLines: Array<{ title: string; description: string; price: number }>;
+
+    if (signalAdjustments.success) {
+      adjustmentsTotal = signalAdjustments.adjustmentsTotal;
+      namedAdjustmentLines = signalAdjustments.namedAdjustmentLines;
     } else {
-      const allPhasesSum = livelines.reduce((s, l) => s + l.priceUsd, 0);
-      const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
-      adjustmentsTotal = Math.max(0, sowGrandTotal - allPhasesSum);
+      logger.warn(
+        { projectId: pres.projectId },
+        "deriveEffectiveSowData: signal-driven adjustments unavailable — using legacy workstream-scoped/gap fallback for this (likely pre-signal) SOW",
+      );
+
+      // Strip aggregation rows (subtotals, grand totals) that were accidentally stored.
+      const realAdjustmentLines = adjustmentLivelines.filter(l => {
+        const t = l.title.toLowerCase();
+        return !t.includes("subtotal") && !t.includes("grand total") && t !== "total";
+      });
+
+      // Apply workstream-scoped ADJUSTMENT MAP — only include adjustments permitted
+      // for the workstream types present in this SOW.
+      const workstreamTitles = effectiveSowPhases.filter(p => p.selected).map(p => p.title);
+      let anyWorkstreamMatched = false;
+      const allowedAdjPatterns: RegExp[] = [];
+      for (const { ws, allowed } of WORKSTREAM_ADJ_MAP) {
+        if (workstreamTitles.some(t => ws.test(t))) {
+          allowedAdjPatterns.push(...allowed);
+          anyWorkstreamMatched = true;
+        }
+      }
+      const scopedAdjustmentLines = !anyWorkstreamMatched
+        ? realAdjustmentLines
+        : allowedAdjPatterns.length > 0
+          ? realAdjustmentLines.filter(l => allowedAdjPatterns.some(p => p.test(l.title)))
+          : [];
+
+      if (scopedAdjustmentLines.length > 0) {
+        adjustmentsTotal = scopedAdjustmentLines.reduce((s, l) => s + l.priceUsd, 0);
+      } else if (adjustmentLivelines.length > 0) {
+        // All tagged lines were aggregation rows or filtered out — treat as 0.
+        adjustmentsTotal = 0;
+      } else {
+        const allPhasesSum = livelines.reduce((s, l) => s + l.priceUsd, 0);
+        const sowGrandTotal = sowDoc.sowTotalPrice ? parseFloat(String(sowDoc.sowTotalPrice)) : allPhasesSum;
+        adjustmentsTotal = Math.max(0, sowGrandTotal - allPhasesSum);
+      }
+
+      namedAdjustmentLines = scopedAdjustmentLines.map(l => ({
+        title: l.title,
+        description: l.scope || l.notes || "",
+        price: l.priceUsd,
+      }));
     }
 
     const selectedPhasesTotal = effectiveSowPhases
       .filter(p => p.selected)
       .reduce((sum, p) => sum + p.price, 0);
     const effectiveTotalPrice = selectedPhasesTotal + adjustmentsTotal;
-
-    // Build the named adjustment lines array for the frontend so it can display
-    // each factor individually (title + description + amount) rather than a single total.
-    const namedAdjustmentLines = scopedAdjustmentLines.map(l => ({
-      title: l.title,
-      description: l.scope || l.notes || "",
-      price: l.priceUsd,
-    }));
 
     return { effectiveSowPhases, effectiveSelectedPhaseIds, effectiveTotalPrice, adjustmentsTotal, namedAdjustmentLines, sowVersion: computeSowVersion(effectiveSowPhases) };
   }
