@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useSearch } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import DocumentPanel from "./DocumentPanel";
 import SowSelectorPanel from "./SowSelectorPanel";
 import ContractSignPanel from "./ContractSignPanel";
@@ -182,9 +183,11 @@ export default function PresentationFlow({
 }: PresentationFlowProps) {
   const { fetchWithAuth, user, getAuthHeader, accessToken, logout } = useAuth();
   const search = useSearch();
+  const { toast } = useToast();
 
   const [data, setData] = useState<PresentationData>(initialData);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   // Track the SOW version that was in effect when the page first loaded.
   // If a poll or SSE push reveals a different version the stale-scope banner appears.
@@ -1429,6 +1432,27 @@ export default function PresentationFlow({
   const isLast = stepIndex === steps.length - 1;
   const isConfirmation = currentStep?.kind === "confirmation";
 
+  // Share link: prefer the shareToken already resolved from the server (data.shareToken),
+  // falling back to the one passed via the guest-access URL/prop.
+  const effectiveShareToken = data.shareToken ?? shareToken ?? null;
+
+  const handleCopyShareLink = useCallback(() => {
+    if (!effectiveShareToken) {
+      toast({ title: "Share link unavailable", description: "This presentation doesn't have a share link yet.", variant: "destructive" });
+      return;
+    }
+    const url = `${window.location.origin}/portal/presentation/${presentationId}?token=${encodeURIComponent(effectiveShareToken)}`;
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setShareCopied(true);
+        toast({ title: "Link copied", description: "Anyone with this link can view your presentation." });
+        setTimeout(() => setShareCopied(false), 2000);
+      })
+      .catch(() => {
+        toast({ title: "Couldn't copy link", description: "Please copy the URL manually.", variant: "destructive" });
+      });
+  }, [effectiveShareToken, toast]);
+
   const SidebarContent = () => (
     <div className="flex flex-col h-full min-h-0">
       {/* Sidebar header */}
@@ -1449,15 +1473,33 @@ export default function PresentationFlow({
               )}
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
-            aria-label="Close"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={handleCopyShareLink}
+              className="w-7 h-7 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+              aria-label="Share"
+              title="Copy share link"
+            >
+              {shareCopied ? (
+                <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-7 h-7 flex-shrink-0 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1680,15 +1722,33 @@ export default function PresentationFlow({
             {stepLabel(currentStep, navDocs)}
           </p>
 
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
-            aria-label="Close"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={handleCopyShareLink}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+              aria-label="Share"
+              title="Copy share link"
+            >
+              {shareCopied ? (
+                <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              )}
+            </button>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white/60 hover:bg-white/20 hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Timeout notice — outside the scroll area so it doesn't add scrollable height */}
