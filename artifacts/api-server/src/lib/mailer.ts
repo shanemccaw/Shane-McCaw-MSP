@@ -619,8 +619,8 @@ export async function getEmailTemplateOrFallback(
  *  - the client has no health score history yet
  *  - the DB lookup fails for any reason
  * This is the single call site client-facing emails should use to populate
- * `vars.tenantHealthBlock` — admin-only emails should never call this and
- * should instead set `vars.tenantHealthBlock = ""` explicitly.
+ * `vars.tenantHealthBlockHtml` — admin-only emails should never call this and
+ * should instead set `vars.tenantHealthBlockHtml = ""` explicitly.
  */
 export async function getTenantHealthBlockHtml(clientUserId: number | null | undefined): Promise<string> {
   if (clientUserId === null || clientUserId === undefined) return "";

@@ -267,7 +267,7 @@ router.post("/booking", bookingLimiter, async (req: Request, res: Response) => {
   await sendEmailFromTemplate(
     "discovery-call-confirmation",
     email,
-    { name: name.split(" ")[0], slotLabel, companyRowHtml, joinButtonHtml, calendarNoticeHtml, tenantHealthBlock: "" },
+    { name: name.split(" ")[0], slotLabel, companyRowHtml, joinButtonHtml, calendarNoticeHtml, tenantHealthBlockHtml: "" },
     `Discovery Call Confirmed — ${slotLabel}`,
     defaultCustomerHtml,
   );
