@@ -197,6 +197,22 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: insights_generated_documents table failed (non-fatal)");
   });
 
+  // Migration 0133 added 'generating' to the status CHECK constraint but
+  // forgot 'failed' (which the app code has always written on generation
+  // errors). Every attempt to mark a document failed was silently rejected
+  // by Postgres (23514), leaving the row stuck in 'generating' forever and
+  // causing the SOW auto-retry workflow to loop indefinitely without ever
+  // recording a real failure.
+  pool.query(`
+    ALTER TABLE insights_generated_documents DROP CONSTRAINT IF EXISTS insights_generated_documents_status_check;
+    ALTER TABLE insights_generated_documents ADD CONSTRAINT insights_generated_documents_status_check
+      CHECK (status IN ('draft', 'approved', 'delivered', 'archived', 'generating', 'failed'));
+  `).then(() => {
+    logger.info("Migration: insights_generated_documents.status_check constraint includes 'failed'");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: insights_generated_documents status_check fix failed (non-fatal)");
+  });
+
   // ── Stale 'generating' document cleanup (one-shot on startup) ────────────
   // If the server restarted while an AI generation was in progress the DB row
   // is left permanently in 'generating'. Clean them up immediately so the

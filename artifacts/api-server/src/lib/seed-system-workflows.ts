@@ -375,7 +375,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
             nodeType: "action",
             actionType: "sql_query",
             label: "Fetch Latest SOW Row",
-            query: "SELECT status, EXTRACT(EPOCH FROM (NOW() - created_at)) * 1000 AS age_ms FROM insights_generated_documents WHERE project_id = {{projectId}} AND doc_type = 'consolidated_sow' ORDER BY created_at DESC LIMIT 1",
+            query: "SELECT latest.status, EXTRACT(EPOCH FROM (NOW() - latest.created_at)) * 1000 AS age_ms, (SELECT COUNT(*) FROM insights_generated_documents f WHERE f.project_id = {{projectId}} AND f.doc_type = 'consolidated_sow' AND f.status = 'failed' AND f.created_at > NOW() - INTERVAL '60 minutes') AS fail_count FROM insights_generated_documents latest WHERE latest.project_id = {{projectId}} AND latest.doc_type = 'consolidated_sow' ORDER BY latest.created_at DESC LIMIT 1",
           },
         },
         {
@@ -385,7 +385,34 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
           data: {
             nodeType: "condition",
             label: "Should Retry?",
-            expression: "status != 'generating' || age_ms > 300000",
+            // Circuit breaker: never fire another regeneration attempt once this
+            // project has racked up 3+ failed consolidated_sow rows in the last
+            // hour — a deterministic AI/data problem won't fix itself by retrying,
+            // and without this cap the stall-check + this workflow retry forever
+            // (see "regenerating and regenerating but never producing" reports).
+            expression: "(status != 'generating' || age_ms > 300000) && fail_count < 3",
+          },
+        },
+        {
+          id: "exhausted",
+          type: "condition",
+          position: { x: 480, y: 330 },
+          data: {
+            nodeType: "condition",
+            label: "Retry Budget Exhausted?",
+            expression: "fail_count >= 3",
+          },
+        },
+        {
+          id: "notify_exhausted",
+          type: "create_notification",
+          position: { x: 620, y: 470 },
+          data: {
+            nodeType: "create_notification",
+            label: "Notify: SOW Auto-Retry Exhausted",
+            title: "Consolidated SOW generation stuck (project {{projectId}})",
+            body: "Automatic retries were stopped after 3 consecutive failures in the last hour. Investigate and regenerate manually from the Insights & Outputs admin panel.",
+            type: "general",
           },
         },
         {
@@ -434,18 +461,27 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         {
           id: "end_active",
           type: "end",
-          position: { x: 480, y: 470 },
+          position: { x: 340, y: 470 },
           data: { nodeType: "end", label: "Already generating — skip" },
+        },
+        {
+          id: "end_exhausted",
+          type: "end",
+          position: { x: 620, y: 610 },
+          data: { nodeType: "end", label: "Retry budget exhausted — admin notified" },
         },
       ],
       edges: [
-        { id: "e1", source: "start",        target: "check"       },
-        { id: "e2", source: "check",        target: "branch"      },
-        { id: "e3", source: "branch",       target: "generate",   sourceHandle: "true"  },
-        { id: "e4", source: "branch",       target: "end_active", sourceHandle: "false" },
-        { id: "e5", source: "generate",     target: "calc_pricing" },
-        { id: "e7", source: "calc_pricing", target: "emit"        },
-        { id: "e6", source: "emit",         target: "end_retried" },
+        { id: "e1", source: "start",           target: "check"           },
+        { id: "e2", source: "check",           target: "branch"          },
+        { id: "e3", source: "branch",          target: "generate",       sourceHandle: "true"  },
+        { id: "e4", source: "branch",          target: "exhausted",      sourceHandle: "false" },
+        { id: "e8", source: "exhausted",       target: "notify_exhausted", sourceHandle: "true"  },
+        { id: "e9", source: "exhausted",       target: "end_active",       sourceHandle: "false" },
+        { id: "e10", source: "notify_exhausted", target: "end_exhausted" },
+        { id: "e5", source: "generate",        target: "calc_pricing"    },
+        { id: "e7", source: "calc_pricing",    target: "emit"            },
+        { id: "e6", source: "emit",            target: "end_retried"     },
       ],
     },
   },
@@ -879,6 +915,93 @@ export async function seedSystemWorkflows(): Promise<void> {
           ],
         );
         logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — inserted calc_pricing node");
+
+        // Patch v4: circuit breaker. Without this, a deterministically-failing
+        // generation (e.g. AI/signal drift that can never self-resolve) retries
+        // forever every time the client's stall-check fires — this is the root
+        // cause of "the SOW just keeps regenerating and never finishes" reports.
+        // Adds a fail_count column to the sql_query, tightens the retry branch
+        // to require fail_count < 3, and adds an "exhausted" sub-branch that
+        // notifies an admin instead of retrying once the budget is spent.
+        // Guard: fires only when the old two-column SELECT (no fail_count) is
+        // still present.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                jsonb_set(
+                  jsonb_set(
+                    graph,
+                    '{nodes}',
+                    (
+                      SELECT jsonb_agg(
+                        CASE
+                          WHEN node->'data'->>'actionType' = 'sql_query'
+                          THEN jsonb_set(node, '{data,query}', $2::jsonb)
+                          WHEN node->>'id' = 'branch'
+                          THEN jsonb_set(node, '{data,expression}', $3::jsonb)
+                          ELSE node
+                        END
+                      )
+                      FROM jsonb_array_elements(graph->'nodes') AS node
+                    )
+                  ),
+                  '{nodes}',
+                  (graph->'nodes') || $4::jsonb
+                ),
+                '{edges}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN edge->>'source' = 'branch' AND edge->>'sourceHandle' = 'false'
+                      THEN jsonb_build_object('id', 'e4', 'source', 'branch', 'target', 'exhausted', 'sourceHandle', 'false')
+                      ELSE edge
+                    END
+                  ) || $5::jsonb
+                  FROM jsonb_array_elements(graph->'edges') AS edge
+                )
+              )
+           WHERE definition_id = $1
+             AND NOT graph->'nodes' @> '[{"id":"exhausted"}]'`,
+          [
+            defId,
+            JSON.stringify(
+              "SELECT latest.status, EXTRACT(EPOCH FROM (NOW() - latest.created_at)) * 1000 AS age_ms, (SELECT COUNT(*) FROM insights_generated_documents f WHERE f.project_id = {{projectId}} AND f.doc_type = 'consolidated_sow' AND f.status = 'failed' AND f.created_at > NOW() - INTERVAL '60 minutes') AS fail_count FROM insights_generated_documents latest WHERE latest.project_id = {{projectId}} AND latest.doc_type = 'consolidated_sow' ORDER BY latest.created_at DESC LIMIT 1",
+            ),
+            JSON.stringify("(status != 'generating' || age_ms > 300000) && fail_count < 3"),
+            JSON.stringify([
+              {
+                id: "exhausted",
+                type: "condition",
+                position: { x: 480, y: 330 },
+                data: { nodeType: "condition", label: "Retry Budget Exhausted?", expression: "fail_count >= 3" },
+              },
+              {
+                id: "notify_exhausted",
+                type: "create_notification",
+                position: { x: 620, y: 470 },
+                data: {
+                  nodeType: "create_notification",
+                  label: "Notify: SOW Auto-Retry Exhausted",
+                  title: "Consolidated SOW generation stuck (project {{projectId}})",
+                  body: "Automatic retries were stopped after 3 consecutive failures in the last hour. Investigate and regenerate manually from the Insights & Outputs admin panel.",
+                  type: "general",
+                },
+              },
+              {
+                id: "end_exhausted",
+                type: "end",
+                position: { x: 620, y: 610 },
+                data: { nodeType: "end", label: "Retry budget exhausted — admin notified" },
+              },
+            ]),
+            JSON.stringify([
+              { id: "e8", source: "exhausted", target: "notify_exhausted", sourceHandle: "true" },
+              { id: "e9", source: "exhausted", target: "end_active", sourceHandle: "false" },
+              { id: "e10", source: "notify_exhausted", target: "end_exhausted" },
+            ]),
+          ],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched SOW Auto-Retry — added fail-count circuit breaker");
       } else if (seed.name === "SOW Generation") {
         // Patch v1: fix contract mismatches between the original seeded graph and the
         // workflow executor field conventions. Guard fires when gen_sow still uses
