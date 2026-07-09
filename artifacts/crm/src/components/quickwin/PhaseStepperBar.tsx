@@ -17,7 +17,7 @@ export default function PhaseStepperBar({ steps, activeIndex, completedCount }: 
           return (
             <div key={i} className="flex items-start flex-1 min-w-0 last:flex-none">
               {/* Node: circle + label stacked */}
-              <div className="flex-shrink-0 flex flex-col items-center w-14 sm:w-20">
+              <div className="flex-shrink-0 flex flex-col items-center w-20 sm:w-28">
                 {/* Circle */}
                 {isCompleted ? (
                   <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
@@ -37,7 +37,7 @@ export default function PhaseStepperBar({ steps, activeIndex, completedCount }: 
 
                 {/* Label shown below every node */}
                 <div
-                  className={`mt-1.5 w-full text-center text-[11px] leading-snug line-clamp-2 break-words px-0.5 ${
+                  className={`mt-1.5 w-full text-center text-[11px] leading-snug break-words px-0.5 ${
                     isCompleted
                       ? "font-medium text-emerald-600"
                       : isActive

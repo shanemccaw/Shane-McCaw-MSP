@@ -51,6 +51,7 @@ interface ProjectData {
   tasks: KanbanTask[];
   steps: WorkflowStep[];
   previewTaskCount: number;
+  projectName: string | null;
 }
 
 type M365ScoreKey = "security" | "compliance" | "copilot" | "governance" | "productivity";
@@ -163,13 +164,13 @@ export default function FullScreenWrapper() {
   }, [state.projectId, fetchWithAuth, navigate, dispatch]);
 
   // ── Live: client projects (to get a project ID when escalation hasn't happened yet) ──
-  const { data: portalProjects = [], isLoading: projectsLoading } = useQuery<Array<{ id: number; name: string }>>({
+  const { data: portalProjects = [], isLoading: projectsLoading } = useQuery<Array<{ id: number; title: string }>>({
     queryKey: ["portal-projects-for-overlay"],
     queryFn: async () => {
       const res = await fetchWithAuth("/api/portal/projects");
       if (!res.ok) return [];
       const body = await res.json() as unknown;
-      return Array.isArray(body) ? (body as Array<{ id: number; name: string }>) : [];
+      return Array.isArray(body) ? (body as Array<{ id: number; title: string }>) : [];
     },
     enabled: isVisible,
     staleTime: 60_000,
@@ -193,15 +194,31 @@ export default function FullScreenWrapper() {
       // Throw on auth failures so React Query retries with the refreshed token
       // rather than caching an empty result that hides real task data.
       if (res.status === 401 || res.status === 403) throw new Error("auth");
-      if (!res.ok) return { tasks: [], steps: [], previewTaskCount: 0 };
-      const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[]; previewTasks?: unknown[] };
-      return { tasks: body.tasks ?? [], steps: body.steps ?? [], previewTaskCount: body.previewTasks?.length ?? 0 };
+      if (!res.ok) return { tasks: [], steps: [], previewTaskCount: 0, projectName: null };
+      const body = await res.json() as { tasks?: KanbanTask[]; steps?: WorkflowStep[]; previewTasks?: unknown[]; project?: { title?: string } };
+      return {
+        tasks: body.tasks ?? [],
+        steps: body.steps ?? [],
+        previewTaskCount: body.previewTasks?.length ?? 0,
+        projectName: body.project?.title ?? null,
+      };
     },
     enabled: !!kanbanProjectId && isVisible,
     refetchInterval: 5_000,
     retry: 2,
     staleTime: 0,
   });
+
+  // ── Resolve the real, human-readable project name for the header title ──
+  // Prefer the bound project's own name (from the project detail fetch, then
+  // the lighter-weight project list), falling back to the quick-win title,
+  // and only showing a generic placeholder while nothing has loaded yet.
+  const boundPortalProjectName = kanbanProjectId
+    ? portalProjects.find(p => p.id === kanbanProjectId)?.title
+    : undefined;
+  const resolvedProjectName =
+    projectData?.projectName || boundPortalProjectName || quickWin?.title || undefined;
+
   // ── Live: M365 scorecard history — same endpoint as the portal dashboard ───
   const { data: scorecardHistory } = useQuery<ScorecardHistoryData>({
     queryKey: ["portal-scorecard-history-overlay"],
@@ -504,15 +521,15 @@ export default function FullScreenWrapper() {
 
   // ── Helper: find a matching portal project for the active quick win ──────────
   const findMatchingProject = useCallback(
-    (projects: Array<{ id: number; name: string }>) => {
+    (projects: Array<{ id: number; title: string }>) => {
       const titleLower = quickWin?.title?.toLowerCase() ?? "";
       return (
-        projects.find(p => p.name?.toLowerCase() === titleLower) ??
+        projects.find(p => p.title?.toLowerCase() === titleLower) ??
         (titleLower
           ? projects.find(
               p =>
-                p.name?.toLowerCase().includes(titleLower) ||
-                titleLower.includes(p.name?.toLowerCase() ?? ""),
+                p.title?.toLowerCase().includes(titleLower) ||
+                titleLower.includes(p.title?.toLowerCase() ?? ""),
             )
           : undefined) ??
         (projects.length === 1 ? projects[0] : undefined)
@@ -1048,7 +1065,7 @@ export default function FullScreenWrapper() {
 
               {/* Title */}
               <h1 className="text-[26px] font-bold text-[#191c1e] tracking-tight leading-tight text-center">
-                {quickWin?.title ?? "Your Project"}
+                {resolvedProjectName ?? "Your Project"}
               </h1>
 
               {/* Phase stepper — real WorkflowStep records */}
@@ -1299,24 +1316,24 @@ export default function FullScreenWrapper() {
 
                   {/* All done */}
                   {allTasksDone && (
-                    <div className="col-span-2 flex flex-col items-center gap-5 py-8">
-                      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <div className="col-span-2 flex flex-col items-center gap-3 py-4">
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div className="text-center">
-                        <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
-                        <p className="text-sm text-black/40 mt-1">Your M365 environment assessment is complete.</p>
+                        <p className="text-base font-bold text-[#0A2540]">All tasks complete!</p>
+                        <p className="text-xs text-black/40 mt-0.5">Your M365 environment assessment is complete.</p>
                       </div>
                       <p className="text-[11px] text-black/35 text-center max-w-xs leading-relaxed px-2">
                         This process can take 10–30 minutes. You will receive your full documentation when complete.
                       </p>
-                      <div className="flex flex-col gap-2.5 w-full max-w-xs">
+                      <div className="flex flex-col gap-2 w-full max-w-xs">
                         <button
                           onClick={() => void handleViewPresentation()}
                           disabled={openingPresentation}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 disabled:opacity-60"
+                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0078D4] text-white font-bold text-sm hover:bg-[#0078D4]/90 active:scale-[0.98] shadow-lg shadow-[#0078D4]/20 disabled:opacity-60"
                           style={{ transition: "all 240ms cubic-bezier(0.42,0,0.58,1)" }}
                         >
                           {openingPresentation ? (
@@ -1487,7 +1504,7 @@ export default function FullScreenWrapper() {
 
                   {/* Title = active Quick Win project name */}
                   <h1 className="text-[28px] font-bold text-[#191c1e] tracking-tight leading-tight">
-                    {quickWin?.title ?? "M365 Diagnostic"}
+                    {resolvedProjectName ?? "M365 Diagnostic"}
                   </h1>
 
                   {/* Phase stepper — kanban group names as phases */}
@@ -1709,15 +1726,15 @@ export default function FullScreenWrapper() {
                   {/* All tasks complete */}
                   {kanbanTasks.length > 0 &&
                     completedKanbanTasks.length === kanbanTasks.length && (
-                    <div className="flex flex-col items-center gap-4 py-12 text-center">
-                      <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center">
-                        <svg className="w-8 h-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <div className="flex flex-col items-center gap-3 py-4 text-center">
+                      <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-lg font-bold text-[#0A2540]">All tasks complete!</p>
-                        <p className="text-sm text-black/50 mt-1">Your M365 environment assessment is complete.</p>
+                        <p className="text-base font-bold text-[#0A2540]">All tasks complete!</p>
+                        <p className="text-xs text-black/50 mt-0.5">Your M365 environment assessment is complete.</p>
                       </div>
                       <p className="text-[11px] text-black/35 max-w-xs leading-relaxed">
                         This process can take 10–30 minutes. You will receive your full documentation when complete.
