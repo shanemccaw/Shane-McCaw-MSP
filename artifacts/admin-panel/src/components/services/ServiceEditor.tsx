@@ -873,6 +873,7 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
                     <option value="">— none —</option>
                     <option value="micro_offer">micro_offer</option>
                     <option value="retainer">retainer</option>
+                    <option value="optional">optional</option>
                     <option value="service_area">service_area</option>
                   </select>
                 </div>
