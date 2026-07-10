@@ -10,8 +10,20 @@ import {
   quickWinPresentationsTable,
 } from "@workspace/db";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
-import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals } from "./tenant-signals";
+import { computeTenantSignals, TENANT_SIGNALS, ADJUSTMENT_SIGNALS, projectMatchesSignals, getDisabledSignalKeys } from "./tenant-signals";
 import { detectRuleConflicts } from "./signal-conflict-detector";
+import {
+  fetchSignalRulesAndGroups,
+  getSignalWeights,
+  rankFiredSignals,
+  sumPriorityScore,
+} from "./priority-engine";
+import { computeHealthEngine } from "./health-engine";
+import { computeDriftEngine } from "./drift-engine";
+import { computeForecastingEngine } from "./forecasting-engine";
+import { getCrmSignalWeights, filterCrmSignals, sumCrmScore } from "./crm-engine";
+import { computeTenantEngineScores } from "./msp-engine";
+import { computePricingEngine } from "./engine-registry";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { logger } from "./logger";
 import { getPrompt, getDocumentStylePrefix, getSowPricingFormulaBlock } from "./prompt-loader";
@@ -546,6 +558,111 @@ export async function generateConsolidatedSowDocument(
   }
   } // end else (signalsOverride == null)
 
+  // ── Engine pre-computation ──────────────────────────────────────────────────
+  // Compute every intelligence engine's output BEFORE building the Claude prompt
+  // so the AI receives fully pre-computed numbers and never derives pricing,
+  // priority, health, drift, forecasting, CRM, or MSP scores itself. Each engine
+  // is a pure sum/sort over `computeTenantSignals()` output (see engine-registry.ts) —
+  // this block only gathers their outputs, it does not reimplement any scoring.
+  //
+  // This step is REQUIRED, not best-effort: unlike the signal-eval block above
+  // (which already fails generation loudly on error), engine pre-computation
+  // failures also abort generation rather than silently falling back to an
+  // AI-estimated score. Without these numbers, Claude has no way to comply
+  // with the "never calculate these yourself" instruction below, and a
+  // document generated without them cannot be trusted for client delivery.
+  let engineOutputsBlock: string;
+  let engineValues: {
+    finalPrice: number;
+    priorityScore: number;
+    architectureHealthScore: number;
+    driftScore: number;
+    forecastScore: number;
+    crmScore: number;
+    mspPortfolioScore: number;
+  };
+  try {
+    const [{ rules: engineRules, groups: engineGroups }, engineDisabledSignalKeys, priorityWeights, crmWeights] = await Promise.all([
+      fetchSignalRulesAndGroups(),
+      getDisabledSignalKeys(),
+      getSignalWeights(),
+      getCrmSignalWeights(),
+    ]);
+
+    const pricingEngineOutput = computePricingEngine(
+      mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const finalPrice = pricingEngineOutput.score.totalPricingValueContribution;
+    const pricingBreakdown = pricingEngineOutput.breakdown;
+
+    const { firedSignals: engineFiredSignals } = computeTenantSignals(
+      mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const engineFiredSignalKeys = [...engineFiredSignals];
+    const rankedSignals = rankFiredSignals(engineFiredSignalKeys, priorityWeights);
+    const { score: priorityScore } = sumPriorityScore(rankedSignals);
+
+    const healthEngineOutput = computeHealthEngine(
+      mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const architectureHealthScore = healthEngineOutput.score;
+
+    const driftEngineOutput = computeDriftEngine(
+      mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const driftScore = driftEngineOutput.score;
+
+    const forecastingEngineOutput = computeForecastingEngine(
+      mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const forecastScore = forecastingEngineOutput.score;
+
+    const crmBreakdown = filterCrmSignals(engineFiredSignalKeys, crmWeights);
+    const crmScoreBreakdown = sumCrmScore(crmBreakdown);
+    const crmScore = crmScoreBreakdown.total;
+
+    const tenantEngineScores = computeTenantEngineScores(
+      clientUserId, null, mergedSowProfileForSignals, allFindingsForSignals, engineRules, engineGroups, engineDisabledSignalKeys,
+    );
+    const mspPortfolioScore = tenantEngineScores.combinedScore;
+
+    engineValues = { finalPrice, priorityScore, architectureHealthScore, driftScore, forecastScore, crmScore, mspPortfolioScore };
+
+    logger.info(
+      { ...logCtx, docId, ...engineValues },
+      "consolidated-sow-generator: engine pre-computation complete",
+    );
+
+    engineOutputsBlock = [
+      "PRE-COMPUTED ENGINE VALUES — HARD CONSTRAINT (supersedes any other instruction in this prompt that asks you to calculate a score or pricing-signal value):",
+      "The values below were computed server-side by deterministic scoring engines BEFORE this prompt was built. They are the tenant's ACTUAL priority, health, drift, forecasting, CRM, and pricing-signal scores.",
+      "Do NOT calculate, estimate, re-derive, or override priorityScore, architectureHealthScore, driftScore, forecastScore, crmScore, mspPortfolioScore, finalPrice, or pricingBreakdown yourself — wherever the document references any of these specific metrics, reproduce the exact value given below, verbatim.",
+      "This does NOT change how you select each workstream's Final Price: that price must still be a single fixed dollar figure chosen from within the workstream's Base Ceiling range in the engagement projects catalogue, informed by the tenant facts and pricing formula below. finalPrice/pricingBreakdown are additional deterministic pricing-signal inputs to weigh when deciding where in that range to land — they are not a replacement grand total, and the grand total is independently recomputed and corrected server-side after generation regardless of what you output.",
+      "",
+      `finalPrice (pricing-signal value contribution — NOT the SOW grand total): $${finalPrice.toLocaleString()}`,
+      `pricingBreakdown: ${JSON.stringify(pricingBreakdown)}`,
+      `priorityScore: ${priorityScore}`,
+      `rankedSignals: ${JSON.stringify(rankedSignals)}`,
+      `architectureHealthScore: ${architectureHealthScore}`,
+      `driftScore: ${driftScore}`,
+      `forecastScore: ${forecastScore}`,
+      `crmScore: ${crmScore}`,
+      `mspPortfolioScore: ${mspPortfolioScore}`,
+    ].join("\n");
+  } catch (engineErr) {
+    logger.error(
+      { ...logCtx, docId, engineErr },
+      "consolidated-sow-generator: engine pre-computation failed — aborting generation rather than proceeding without pre-computed engine values",
+    );
+    if (docId) {
+      await db.update(insightsGeneratedDocumentsTable)
+        .set({ status: "failed", errorMessage: ("Engine pre-computation failed: " + (engineErr instanceof Error ? engineErr.message : String(engineErr))).slice(0, 500), updatedAt: new Date() })
+        .where(eq(insightsGeneratedDocumentsTable.id, docId))
+        .catch(dbErr => logger.warn({ dbErr, docId }, "consolidated-sow-generator: failed to mark row as failed after engine pre-computation error"));
+    }
+    throw new Error("SOW generation failed: could not compute intelligence engine values — please retry");
+  }
+
   const projectsBlock = signalFilteredProjects.length > 0
     ? signalFilteredProjects.map(p => {
         const triggers = (Array.isArray(p.triggeredBy) ? p.triggeredBy : []) as string[];
@@ -708,7 +825,8 @@ export async function generateConsolidatedSowDocument(
     .replace(/\{\{engagementProjects\}\}/g, projectsBlock)
     .replace(/\{\{tenantTelemetry\}\}/g, tenantTelemetryBlock)
     + `\n\n${workstreamContextBlock}\n\nCRITICAL — TENANT FACTS (use ONLY these exact numbers for all pricing adjustments; do NOT invent, estimate, or extrapolate any values not listed here):\n${sowTenantFactsWithExclusions}\n\nTIER 02 PRICING FORMULA (shared adjustments are calculated ONCE and shown in the summary section — never on individual rows):\n${pricingFormulaBlock}`
-    + (adjConstraintBlock ? `\n\n${adjConstraintBlock}` : "");
+    + (adjConstraintBlock ? `\n\n${adjConstraintBlock}` : "")
+    + (engineOutputsBlock ? `\n\n${engineOutputsBlock}` : "");
 
   // Find prior completed doc to replace on success
   let priorSowId: number | null = null;
@@ -833,6 +951,19 @@ export async function generateConsolidatedSowDocument(
   if (!sowValidation.ok) {
     logger.warn({ ...logCtx, docId, issues: sowValidation.issues }, "consolidated-sow-generator: pricing validation warnings");
   }
+
+  // ── Engine-value audit trail ────────────────────────────────────────────────
+  // engineValues is always populated at this point — the try/catch above aborts
+  // generation entirely (throws before the AI is even called) if engine
+  // pre-computation fails, so a document can never reach persistence without
+  // its pre-computed intelligence-engine numbers. Log them alongside the final
+  // docId here so every generated SOW has a queryable, permanent record of the
+  // exact deterministic values Claude was given — enabling after-the-fact
+  // audit of whether a document's content is consistent with them.
+  logger.info(
+    { ...logCtx, docId, ...engineValues, sowGrandTotal: computedTotal },
+    "consolidated-sow-generator: engine-value audit trail — values supplied to AI for this document",
+  );
 
   const htmlContent = computedTotal > 0 ? patchSowGrandTotal(purgedHtmlFinal, computedTotal) : purgedHtmlFinal;
   const sowLines: SowPricingLine[] = [
