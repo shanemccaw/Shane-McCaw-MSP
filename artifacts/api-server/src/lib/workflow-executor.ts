@@ -69,6 +69,7 @@ import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, bro
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
+import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -86,6 +87,17 @@ import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
 // ── Insights document generation helpers ─────────────────────────────────────
 // Mirrors the same helpers in routes/admin-insights.ts so the generate_document
 // workflow node produces identical output to clicking Generate in the UI.
+
+export const ENGINE_NODE_TYPE_MAP = {
+  calculate_priority: "priority",
+  calculate_pricing_engine: "pricing",
+  calculate_health: "health",
+  calculate_drift: "drift",
+  calculate_forecast: "forecasting",
+  calculate_crm: "crm",
+  calculate_msp: "msp",
+} as const;
+export type EngineNodeType = keyof typeof ENGINE_NODE_TYPE_MAP;
 
 const REPORT_DOC_TYPE_LABELS: Record<string, string> = {
   executive_summary:           "Executive Summary",
@@ -657,6 +669,28 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "get_tenant_signals":
       return { dryRun: true, signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true };
+
+    case "calculate_priority":
+    case "calculate_pricing_engine":
+    case "calculate_health":
+    case "calculate_drift":
+    case "calculate_forecast":
+    case "calculate_crm":
+    case "calculate_msp": {
+      const engineKey = ENGINE_NODE_TYPE_MAP[node.type as EngineNodeType];
+      const def = getEngineDef(engineKey);
+      return {
+        dryRun: true,
+        engine: engineKey,
+        score: engineKey === "pricing"
+          ? { totalPricingImpact: 250, totalPricingValueContribution: 500 }
+          : 42,
+        breakdown: [],
+        rawSignals: ["alwaysInclude"],
+        timestamp: new Date().toISOString(),
+        note: def ? undefined : "unknown engine",
+      };
+    }
 
     case "generate_diff_report":
       return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
@@ -2772,6 +2806,46 @@ async function executeNode(
               customerError: "Unable to retrieve your tenant signals — an error occurred. Please retry or contact support.",
             };
             logger.error({ runId, gtsErr }, "wf-executor: get_tenant_signals failed");
+          }
+        }
+        break;
+      }
+
+      case "calculate_priority":
+      case "calculate_pricing_engine":
+      case "calculate_health":
+      case "calculate_drift":
+      case "calculate_forecast":
+      case "calculate_crm":
+      case "calculate_msp": {
+        const engineKey = ENGINE_NODE_TYPE_MAP[node.type as EngineNodeType];
+        const ceClientIdRaw = interp(node.data.clientId as string | undefined, payload);
+        const ceClientId = ceClientIdRaw ? parseInt(ceClientIdRaw, 10) : NaN;
+        if (isNaN(ceClientId)) {
+          nodeError = true;
+          output = {
+            error: `${node.type} requires a valid clientId`,
+            customerError: "Unable to compute this score — no client ID was provided.",
+          };
+        } else {
+          try {
+            const def = getEngineDef(engineKey);
+            if (!def) {
+              nodeError = true;
+              output = { error: `Unknown engine: ${engineKey}` };
+            } else {
+              const result = await def.runForTenant(ceClientId);
+              output = { engine: engineKey, ...(result as Record<string, unknown>) };
+              logger.info({ runId, ceClientId, engine: engineKey }, "wf-executor: engine node completed");
+            }
+          } catch (ceErr) {
+            nodeError = true;
+            const errMsg = ceErr instanceof Error ? ceErr.message : String(ceErr);
+            output = {
+              error: errMsg,
+              customerError: "Unable to compute this score — an error occurred. Please retry or contact support.",
+            };
+            logger.error({ runId, ceErr }, "wf-executor: engine node failed");
           }
         }
         break;

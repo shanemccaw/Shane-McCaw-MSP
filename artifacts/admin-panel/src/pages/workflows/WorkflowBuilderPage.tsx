@@ -94,6 +94,14 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   generate_diff_report:      { bg: "#110D22", border: "#8B5CF6", icon: "📄", label: "Diff Report"         },
   notify_major_changes:      { bg: "#110D22", border: "#8B5CF6", icon: "🔔", label: "Notify Changes"      },
   get_tenant_signals:        { bg: "#0D1020", border: "#7C3AED", icon: "📡", label: "Get Tenant Signals"  },
+  // ── Intelligence Engines ──
+  calculate_priority:       { bg: "#150D20", border: "#A855F7", icon: "🎯", label: "Priority Engine"   },
+  calculate_pricing_engine: { bg: "#150D20", border: "#A855F7", icon: "💰", label: "Pricing Engine"    },
+  calculate_health:   { bg: "#150D20", border: "#A855F7", icon: "🩺", label: "Health Engine"     },
+  calculate_drift:    { bg: "#150D20", border: "#A855F7", icon: "📉", label: "Drift Engine"      },
+  calculate_forecast: { bg: "#150D20", border: "#A855F7", icon: "🔮", label: "Forecasting Engine"},
+  calculate_crm:      { bg: "#150D20", border: "#A855F7", icon: "🧲", label: "CRM Engine"        },
+  calculate_msp:      { bg: "#150D20", border: "#A855F7", icon: "🛰", label: "MSP Portfolio Engine" },
   // ── Marketing Actions ──
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   // ── Project Actions ──
@@ -248,6 +256,14 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   generate_diff_report:      [{ key: "documentId", label: "Created diff report ID" }, { key: "changesFound", label: "true if diffs detected" }, { key: "changeCount", label: "Number of changed fields" }],
   notify_major_changes:      [{ key: "notified", label: "true if alert was sent" }, { key: "skipped", label: "true if no major changes" }],
   get_tenant_signals:        [{ key: "signals", label: "Array of all fired signal keys (including alwaysInclude) — pipe into Generate Document signalsOverride" }, { key: "signalCount", label: "Total number of fired signals" }, { key: "hasSignals", label: "true if at least one tenant-specific signal fired (beyond alwaysInclude)" }],
+  // Intelligence Engine nodes
+  calculate_priority: [{ key: "engine", label: "Engine key (\"priority\")" }, { key: "score", label: "Summed priority score across fired, enabled signals" }, { key: "breakdown", label: "Array of contributing signals and their weighted contribution" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_pricing_engine: [{ key: "engine", label: "Engine key (\"pricing\")" }, { key: "score", label: "{ totalPricingImpact, totalPricingValueContribution }" }, { key: "breakdown", label: "Array of { signalKey, pricingImpact, pricingValueContribution }" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_health:   [{ key: "engine", label: "Engine key (\"health\")" }, { key: "score", label: "Overall architecture health score" }, { key: "breakdown", label: "Array of contributing category impacts" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_drift:    [{ key: "engine", label: "Engine key (\"drift\")" }, { key: "score", label: "Drift score" }, { key: "breakdown", label: "Array of contributing drift-tagged signals" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_forecast: [{ key: "engine", label: "Engine key (\"forecasting\")" }, { key: "score", label: "Forecast score (trendValue * decayFactor summed)" }, { key: "breakdown", label: "Array of contributing trend signals" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_crm:      [{ key: "engine", label: "Engine key (\"crm\")" }, { key: "score", label: "{ fit, pain, maturity, intent, urgency } sub-scores" }, { key: "breakdown", label: "Array of contributing crm:* signals" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  calculate_msp:      [{ key: "engine", label: "Engine key (\"msp\")" }, { key: "score", label: "Portfolio-wide risk roll-up (health + drift + priority)" }, { key: "breakdown", label: "Array of per-tenant contributing scores" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
   // Marketing Actions
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
@@ -803,6 +819,18 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "generate_diff_report",       label: "Diff Report",             description: "Compare last two health snapshots and create a doc",  tags: ["m365", "health", "diff", "report"] },
       { type: "notify_major_changes",       label: "Notify Major Changes",    description: "Alert Shane if health score changed significantly",   tags: ["m365", "health", "notify", "alert"] },
       { type: "get_tenant_signals",          label: "Get Tenant Signals",       description: "Evaluate all signal rules for a client and output the fired signal keys. Pipe {{signals}} into Generate Document (consolidated_sow) to skip redundant signal evaluation.", tags: ["m365", "signals", "tenant", "sow", "engagement", "intelligence"] },
+    ],
+  },
+  {
+    name: "Intelligence Engines",
+    nodes: [
+      { type: "calculate_priority", label: "Priority Engine",    description: "Rank a tenant by summing priorityScoreContribution across fired, enabled signals. Outputs {{score}} and {{breakdown}}.", tags: ["engine", "priority", "score", "intelligence"] },
+      { type: "calculate_pricing_engine", label: "Pricing Engine", description: "Sum pricingImpact / pricingValueContribution across fired, enabled signals for a tenant. Outputs {{score}} and {{breakdown}}.", tags: ["engine", "pricing", "score", "intelligence"] },
+      { type: "calculate_health",   label: "Health Engine",      description: "Compute the tenant's overall architecture health score across governance/security/compliance/adoption/copilot categories.", tags: ["engine", "health", "score", "intelligence"] },
+      { type: "calculate_drift",    label: "Drift Engine",       description: "Compute a tenant's drift score and trend direction from drift-tagged rules/groups that fired.", tags: ["engine", "drift", "score", "intelligence"] },
+      { type: "calculate_forecast", label: "Forecasting Engine", description: "Project trendValue * decayFactor across fired signals with a non-zero trend for a tenant.", tags: ["engine", "forecasting", "score", "intelligence"] },
+      { type: "calculate_crm",      label: "CRM Engine",         description: "Sum the five CRM contribution fields (fit/pain/maturity/intent/urgency) across fired crm:* signals.", tags: ["engine", "crm", "score", "intelligence"] },
+      { type: "calculate_msp",      label: "MSP Portfolio Engine", description: "Aggregate health + drift + priority scores into a portfolio-wide risk roll-up.", tags: ["engine", "msp", "portfolio", "score", "intelligence"] },
     ],
   },
   {
@@ -4029,6 +4057,27 @@ function NodeConfigPanel({
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
               <p className="text-[10px] text-[#484F58]">Evaluates all configured signal rules for the client and outputs the fired signal keys. Pipe <span className="font-mono text-[#7D8590]">{"{{signals}}"}</span> into the <em>Pre-computed Signals</em> field of a downstream <em>Generate Document</em> (consolidated_sow) node to skip redundant signal evaluation. Outputs:</p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{signals}}"} · {"{{signalCount}}"} · {"{{hasSignals}}"}</p>
+            </div>
+          </>
+        )}
+
+        {(nodeType === "calculate_priority" || nodeType === "calculate_pricing_engine" || nodeType === "calculate_health" ||
+          nodeType === "calculate_drift" || nodeType === "calculate_forecast" || nodeType === "calculate_crm" ||
+          nodeType === "calculate_msp") && (
+          <>
+            <PayloadField label="Client ID" value={(node.data.clientId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, clientId: v })} placeholder="{{clientId}}" ancestorOutputs={ancestorOutputs} />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">
+                {nodeType === "calculate_priority" && "Ranks this tenant by summing priorityScoreContribution across currently-fired, enabled signals."}
+                {nodeType === "calculate_pricing_engine" && "Sums pricingImpact / pricingValueContribution across currently-fired, enabled signals for this tenant."}
+                {nodeType === "calculate_health" && "Sums governance/security/compliance/adoption/copilot/architecture impact into an overall health score for this tenant."}
+                {nodeType === "calculate_drift" && "Reduces drift-tagged rules/groups that evaluated true into a driftScore + trendDirection for this tenant."}
+                {nodeType === "calculate_forecast" && "Sums trendValue * decayFactor across fired signals with a non-zero trend for this tenant."}
+                {nodeType === "calculate_crm" && "Sums the five CRM contribution fields (fit/pain/maturity/intent/urgency) across fired crm:* signals for this tenant."}
+                {nodeType === "calculate_msp" && "Aggregates health + drift + priority scores for this tenant into a portfolio-wide risk roll-up."}
+                {" "}Outputs:
+              </p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{engine}}"} · {"{{score}}"} · {"{{breakdown}}"} · {"{{rawSignals}}"} · {"{{timestamp}}"}</p>
             </div>
           </>
         )}

@@ -1933,6 +1933,9 @@ export interface WfNode {
     | "update_variable"
     // Signals
     | "get_tenant_signals"
+    // Intelligence Engines
+    | "calculate_priority" | "calculate_pricing_engine" | "calculate_health"
+    | "calculate_drift" | "calculate_forecast" | "calculate_crm" | "calculate_msp"
     // Array / transform
     | "group_by"
     // Utilities
