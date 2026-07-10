@@ -37,6 +37,7 @@ import {
   broadcastPresentationScopeChange,
   broadcastPresentationDocsChange,
 } from "./sse-broadcast";
+import { pushSowDebugLog, setSowDebugSignals, startSowDebugRun, finishSowDebugRun } from "./sow-debug-log-buffer";
 
 export function computeTenantTier(totalUsers: number | unknown): "Tier01" | "Tier02" | "Tier03" | "Tier04" {
   const n = typeof totalUsers === "number" ? totalUsers : Number(totalUsers);
@@ -250,6 +251,9 @@ export interface GenerateConsolidatedSowResult {
   sowTotal: number;
   /** Only populated when called with testMode — the generated HTML, never persisted. */
   htmlContent?: string;
+  /** Echoes params.runId when provided — used by the Admin Panel SOW Debug page to
+   *  correlate this result with the captured log/signal buffer (see sow-debug-log-buffer.ts). */
+  correlationId?: string;
 }
 
 export async function generateConsolidatedSowDocument(
@@ -257,6 +261,8 @@ export async function generateConsolidatedSowDocument(
 ): Promise<GenerateConsolidatedSowResult> {
   const { clientUserId, projectId, title, runId, signalsOverride, promptOverride, pricingFormulaOverride, testMode = false } = params;
   const logCtx = { clientUserId, projectId, title, runId };
+  const correlationId = runId;
+  if (correlationId) startSowDebugRun(correlationId, clientUserId, projectId);
 
   const [existingDocs, engagementProjects, customerRow, m365ProfileRow, scriptRuns, scoresRow] = await Promise.all([
     db.select({
@@ -368,6 +374,7 @@ export async function generateConsolidatedSowDocument(
     { ...logCtx, docId, engagementProjectCount: allEngagementProjects.length },
     "consolidated-sow-generator: starting signal evaluation",
   );
+  pushSowDebugLog(correlationId, "info", "Starting signal evaluation", { docId, engagementProjectCount: allEngagementProjects.length });
 
   let signalFilteredProjects = allEngagementProjects;
   let signalFilterMeta: { clean: boolean; conflictCount: number; conflicts?: Array<{ ruleIds: number[]; description: string }> } = { clean: true, conflictCount: 0 };
@@ -413,6 +420,15 @@ export async function generateConsolidatedSowDocument(
     });
     logger.info({ ...logCtx, docId, signalCount: signalsOverride.size },
       "consolidated-sow-generator: using pre-computed signals override — skipped DB signal evaluation");
+    pushSowDebugLog(correlationId, "info", "Using pre-computed signals override — skipped DB signal evaluation", { signalCount: signalsOverride.size });
+    setSowDebugSignals(correlationId, {
+      firedSignals: [...effectiveOverride],
+      firedAdjSignalKeys: [...firedAdjSignalKeys],
+      includedProjectTitles: signalFilteredProjects.map(p => p.title),
+      excludedProjectTitles: allEngagementProjects.filter(p => !signalFilteredProjects.includes(p)).map(p => p.title),
+      signalFilterMeta,
+      usedOverride: true,
+    });
   } else {
   try {
     const signalRules = await db.execute(sql`
@@ -502,7 +518,23 @@ export async function generateConsolidatedSowDocument(
       logger.info({ ...logCtx, excludedTitles, firedSignals: [...firedSignals] },
         "consolidated-sow-generator: signal filter excluded projects");
     }
+    pushSowDebugLog(correlationId, "info", "DB signal evaluation complete", {
+      firedSignalCount: firedSignals.size,
+      includedProjectCount: signalFilteredProjects.length,
+      excludedProjectCount: excludedTitles.length,
+    });
+    setSowDebugSignals(correlationId, {
+      firedSignals: [...firedSignals],
+      firedAdjSignalKeys: [...firedAdjSignalKeys],
+      includedProjectTitles: signalFilteredProjects.map(p => p.title),
+      excludedProjectTitles: excludedTitles,
+      signalFilterMeta,
+      usedOverride: false,
+    });
   } catch (signalErr) {
+    pushSowDebugLog(correlationId, "error", "Signal evaluation failed — aborting SOW generation", {
+      error: signalErr instanceof Error ? signalErr.message : String(signalErr),
+    });
     logger.error({ ...logCtx, docId, signalErr }, "consolidated-sow-generator: signal evaluation failed — aborting SOW generation");
     if (!testMode) {
       await db.update(insightsGeneratedDocumentsTable)
@@ -819,7 +851,9 @@ export async function generateConsolidatedSowDocument(
 
   if (testMode) {
     logger.info({ ...logCtx, sowTotal }, "consolidated-sow-generator: test-draft generation complete (no persistence)");
-    return { docId: -1, clientName, sowTotal, htmlContent };
+    pushSowDebugLog(correlationId, "info", "Test-draft generation complete (no persistence)", { sowTotal });
+    finishSowDebugRun(correlationId, "success");
+    return { docId: -1, clientName, sowTotal, htmlContent, correlationId };
   }
 
   await db.update(insightsGeneratedDocumentsTable)
@@ -850,9 +884,13 @@ export async function generateConsolidatedSowDocument(
   }
 
   logger.info({ ...logCtx, docId, sowTotal }, "consolidated-sow-generator: completed successfully");
-  return { docId, clientName, sowTotal };
+  pushSowDebugLog(correlationId, "info", "Completed successfully", { docId, sowTotal });
+  finishSowDebugRun(correlationId, "success");
+  return { docId, clientName, sowTotal, correlationId };
   } catch (err) {
     logger.error({ ...logCtx, docId, err }, "consolidated-sow-generator: AI generation failed");
+    pushSowDebugLog(correlationId, "error", "AI generation failed", { error: err instanceof Error ? err.message : String(err) });
+    finishSowDebugRun(correlationId, "failed", err instanceof Error ? err.message : String(err));
     if (!testMode) {
       await db.update(insightsGeneratedDocumentsTable)
         .set({ status: "failed", errorMessage: (err instanceof Error ? err.message : String(err)).slice(0, 500), updatedAt: new Date() })

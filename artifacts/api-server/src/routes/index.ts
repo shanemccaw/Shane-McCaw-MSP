@@ -64,6 +64,7 @@ import adminMediaLibraryRouter from "./admin-media-library";
 import presentationsRouter from "./presentations";
 import adminSignalRulesRouter from "./admin-signal-rules";
 import crmPreviewStatsRouter from "./crm-preview-stats";
+import adminSowDebugRouter from "./admin-sow-debug";
 
 const router: IRouter = Router();
 
@@ -140,5 +141,6 @@ router.use(adminMediaLibraryRouter);
 router.use(presentationsRouter);
 router.use(adminSignalRulesRouter);
 router.use(crmPreviewStatsRouter);
+router.use(adminSowDebugRouter);
 
 export default router;
