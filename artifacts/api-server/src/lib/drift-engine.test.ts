@@ -205,6 +205,34 @@ describe("computeDriftEngine — pure summation", () => {
     expect(result.score).toBe(10);
     expect(result.breakdown).toHaveLength(1);
   });
+
+  it("counts a signal at most once even when it has multiple true drift-tagged contributors (group precedence over ungrouped rule)", () => {
+    const group = makeGroup({ signalKey: "hasGovernanceGaps", logic: "OR", category: "drift:policy", trendValue: 100, governanceImpact: 0 });
+    const groupRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagA", groupId: group.id });
+    const ungroupedDriftRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagB", category: "drift:policy", trendValue: 999, governanceImpact: 999 });
+
+    const profile = { flagA: true, flagB: true }; // both the group and the ungrouped rule are independently true
+    const result = computeDriftEngine(profile, [], [groupRule, ungroupedDriftRule], [group]);
+
+    // Only ONE breakdown entry for the signal — the group wins by precedence.
+    expect(result.breakdown).toHaveLength(1);
+    expect(result.breakdown[0].source).toBe("group");
+    expect(result.score).toBe(100);
+  });
+
+  it("counts a signal at most once when it has two true drift-tagged rule groups (first group in declaration order wins)", () => {
+    const groupA = makeGroup({ id: 1, signalKey: "hasGovernanceGaps", logic: "OR", category: "drift:policy", trendValue: 10, governanceImpact: 0 });
+    const groupB = makeGroup({ id: 2, signalKey: "hasGovernanceGaps", logic: "OR", category: "drift:policy", trendValue: 999, governanceImpact: 0 });
+    const ruleA = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagA", groupId: groupA.id });
+    const ruleB = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagB", groupId: groupB.id });
+
+    const profile = { flagA: true, flagB: true }; // both groups independently true
+    const result = computeDriftEngine(profile, [], [ruleA, ruleB], [groupA, groupB]);
+
+    expect(result.breakdown).toHaveLength(1);
+    expect(result.breakdown[0].sourceId).toBe(groupA.id);
+    expect(result.score).toBe(10);
+  });
 });
 
 describe("computeDriftEngine — category filtering", () => {

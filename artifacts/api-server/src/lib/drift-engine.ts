@@ -9,17 +9,26 @@
  * Scoring is intentionally pure arithmetic — no conditional logic, weighting,
  * clamping, or thresholds:
  *
- *   driftScore = sum(trendValue + governanceImpact) over drift:* category
- *                rules/groups that (a) belong to a currently-fired, enabled
- *                signal, and (b) themselves evaluated true against the
- *                tenant's profile/findings.
+ *   driftScore = sum(trendValue + governanceImpact) over currently-fired,
+ *                enabled SIGNALS whose contributing drift:* rule/group
+ *                actually evaluated true.
+ *
+ * The score/breakdown is per SIGNAL, not per rule/group: `category`,
+ * `trendValue`, and `governanceImpact` live on individual rules/groups in
+ * the schema, but a signal contributes at most once to the drift score.
+ * When a signal has more than one true drift-tagged rule/group, a single
+ * representative contributor is chosen deterministically — using the same
+ * precedence computeTenantSignals itself uses to decide a signal fired
+ * (rule groups first in declaration order, then ungrouped rules in
+ * declaration order; first true wins) — so the score never double-counts a
+ * signal and stays consistent with "how did this signal actually fire".
  *
  * Categorization is per rule/group (matching the schema), not per signal key:
  * a signal can fire via a non-drift rule while a separate drift-tagged rule
  * for the same signal key evaluates false — that drift rule must NOT
  * contribute just because the signal happens to be fired overall. Each
  * drift-tagged rule/group is independently re-evaluated so only conditions
- * that are literally true contribute to the score.
+ * that are literally true are eligible to contribute.
  *
  * `trendDirection` is never derived from a formula — it is read directly off
  * the `trendDirection` field of whichever contributing rule/group has the
@@ -92,16 +101,28 @@ export function computeDriftEngine(
     rulesByGroupId.get(rule.groupId)!.push(rule);
   }
 
-  const breakdown: DriftBreakdownEntry[] = [];
+  // At most ONE breakdown entry per signal key. When a signal has multiple
+  // true drift-tagged contributors, the winner is chosen with the same
+  // precedence computeTenantSignals uses internally to decide firing: rule
+  // groups in declaration order, then ungrouped rules in declaration order,
+  // first-true wins. This keeps the score signal-scoped (never double-counts
+  // one signal) and consistent with "how this signal actually fired".
+  const winnerBySignal = new Map<string, DriftBreakdownEntry>();
+
+  const claimSignal = (signalKey: string) => {
+    if (!firedSignals.has(signalKey)) return false;
+    if (disabledSignalKeys.has(signalKey)) return false;
+    if (winnerBySignal.has(signalKey)) return false; // already has a winning contributor
+    return true;
+  };
 
   // Drift-tagged groups: only count a group if it belongs to a fired,
-  // enabled signal AND its own AND/OR logic actually evaluates true against
-  // this tenant's data — never just because the signal fired via some other
-  // path.
+  // enabled signal (not already claimed) AND its own AND/OR logic actually
+  // evaluates true against this tenant's data — never just because the
+  // signal fired via some other path.
   for (const group of groups) {
     if (!group.category.startsWith(DRIFT_CATEGORY_PREFIX)) continue;
-    if (!firedSignals.has(group.signalKey)) continue;
-    if (disabledSignalKeys.has(group.signalKey)) continue;
+    if (!claimSignal(group.signalKey)) continue;
 
     const groupRules = rulesByGroupId.get(group.id) ?? [];
     if (groupRules.length === 0) continue;
@@ -113,7 +134,7 @@ export function computeDriftEngine(
 
     if (!groupResult) continue;
 
-    breakdown.push({
+    winnerBySignal.set(group.signalKey, {
       signalKey: group.signalKey,
       category: group.category,
       trendValue: group.trendValue,
@@ -126,17 +147,17 @@ export function computeDriftEngine(
   }
 
   // Drift-tagged ungrouped rules: same requirement — must belong to a fired,
-  // enabled signal AND independently evaluate true.
+  // enabled signal not already claimed by a group, AND independently
+  // evaluate true.
   for (const rule of rules) {
     if (rule.groupId !== null && rule.groupId !== undefined) continue; // attributed via its group above
     if (!rule.category.startsWith(DRIFT_CATEGORY_PREFIX)) continue;
-    if (!firedSignals.has(rule.signalKey)) continue;
-    if (disabledSignalKeys.has(rule.signalKey)) continue;
+    if (!claimSignal(rule.signalKey)) continue;
 
     const { result } = evaluateRule(rule, mergedProfile, parsedFindings);
     if (!result) continue;
 
-    breakdown.push({
+    winnerBySignal.set(rule.signalKey, {
       signalKey: rule.signalKey,
       category: rule.category,
       trendValue: rule.trendValue,
@@ -148,6 +169,7 @@ export function computeDriftEngine(
     });
   }
 
+  const breakdown = [...winnerBySignal.values()];
   const score = breakdown.reduce((sum, entry) => sum + entry.contribution, 0);
 
   let trendDirection: SignalTrendDirection = "flat";
