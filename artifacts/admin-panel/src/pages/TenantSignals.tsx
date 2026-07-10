@@ -17,7 +17,205 @@ interface TenantSignal {
   enabled?: boolean;
 }
 
-interface SignalRule {
+// Intelligence fields shared by signal rules and rule groups — pure data, not
+// consumed by any evaluation logic yet (see lib/tenant-signals.ts taxonomy doc).
+interface SignalIntelligenceFields {
+  priority: number;
+  weight: number;
+  pricingImpact: number;
+  priorityScoreContribution: number;
+  pricingValueContribution: number;
+  governanceImpact: number;
+  securityImpact: number;
+  complianceImpact: number;
+  adoptionImpact: number;
+  copilotImpact: number;
+  architectureImpact: number;
+  trendValue: number;
+  trendDirection: "up" | "down" | "flat";
+  decayRate: number;
+  ttlDays: number;
+  confidence: number;
+  severity: "low" | "medium" | "high" | "critical";
+  category: string;
+  pillar: string;
+  crmFitContribution: number;
+  crmPainContribution: number;
+  crmMaturityContribution: number;
+  crmIntentContribution: number;
+  crmUrgencyContribution: number;
+}
+
+const SIGNAL_CATEGORY_PREFIXES = [
+  "pricing", "priority", "governance", "security", "compliance", "adoption",
+  "copilot", "architecture", "drift", "forecasting", "crm", "msp", "workflow",
+] as const;
+
+// All intelligence fields as string-valued form state (numbers kept as text so
+// inputs can be blank / partially typed without fighting NaN coercion).
+interface IntelFormFields {
+  category: string;
+  priority: string;
+  weight: string;
+  pricingImpact: string;
+  priorityScoreContribution: string;
+  pricingValueContribution: string;
+  governanceImpact: string;
+  securityImpact: string;
+  complianceImpact: string;
+  adoptionImpact: string;
+  copilotImpact: string;
+  architectureImpact: string;
+  trendValue: string;
+  trendDirection: string;
+  decayRate: string;
+  ttlDays: string;
+  confidence: string;
+  severity: string;
+  pillar: string;
+  crmFitContribution: string;
+  crmPainContribution: string;
+  crmMaturityContribution: string;
+  crmIntentContribution: string;
+  crmUrgencyContribution: string;
+}
+
+const EMPTY_INTEL_FORM: IntelFormFields = {
+  category: "", priority: "", weight: "", pricingImpact: "", priorityScoreContribution: "",
+  pricingValueContribution: "", governanceImpact: "", securityImpact: "", complianceImpact: "",
+  adoptionImpact: "", copilotImpact: "", architectureImpact: "", trendValue: "", trendDirection: "",
+  decayRate: "", ttlDays: "", confidence: "", severity: "", pillar: "", crmFitContribution: "",
+  crmPainContribution: "", crmMaturityContribution: "", crmIntentContribution: "", crmUrgencyContribution: "",
+};
+
+function intelFormFromRow(row: Partial<SignalIntelligenceFields>): IntelFormFields {
+  const s = (v: unknown) => (v === undefined || v === null ? "" : String(v));
+  return {
+    category: s(row.category), priority: s(row.priority), weight: s(row.weight),
+    pricingImpact: s(row.pricingImpact), priorityScoreContribution: s(row.priorityScoreContribution),
+    pricingValueContribution: s(row.pricingValueContribution), governanceImpact: s(row.governanceImpact),
+    securityImpact: s(row.securityImpact), complianceImpact: s(row.complianceImpact),
+    adoptionImpact: s(row.adoptionImpact), copilotImpact: s(row.copilotImpact),
+    architectureImpact: s(row.architectureImpact), trendValue: s(row.trendValue),
+    trendDirection: s(row.trendDirection), decayRate: s(row.decayRate), ttlDays: s(row.ttlDays),
+    confidence: s(row.confidence), severity: s(row.severity), pillar: s(row.pillar),
+    crmFitContribution: s(row.crmFitContribution), crmPainContribution: s(row.crmPainContribution),
+    crmMaturityContribution: s(row.crmMaturityContribution), crmIntentContribution: s(row.crmIntentContribution),
+    crmUrgencyContribution: s(row.crmUrgencyContribution),
+  };
+}
+
+/** Builds the JSON body fragment for the intelligence fields — omits blank inputs so PATCH merges against the prior row. */
+function intelFormToBody(f: IntelFormFields): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  const setNum = (key: keyof IntelFormFields) => { if (f[key].trim() !== "") body[key] = Number(f[key]); };
+  const setStr = (key: keyof IntelFormFields) => { if (f[key].trim() !== "") body[key] = f[key].trim(); };
+  setStr("category"); setNum("priority"); setNum("weight");
+  setNum("pricingImpact"); setNum("priorityScoreContribution"); setNum("pricingValueContribution");
+  setNum("governanceImpact"); setNum("securityImpact"); setNum("complianceImpact");
+  setNum("adoptionImpact"); setNum("copilotImpact"); setNum("architectureImpact");
+  setNum("trendValue"); setStr("trendDirection"); setNum("decayRate"); setNum("ttlDays"); setNum("confidence");
+  setStr("severity"); setStr("pillar");
+  setNum("crmFitContribution"); setNum("crmPainContribution"); setNum("crmMaturityContribution");
+  setNum("crmIntentContribution"); setNum("crmUrgencyContribution");
+  return body;
+}
+
+function IntelligenceFieldsPanel({ value, onChange, compact }: { value: IntelFormFields; onChange: (f: IntelFormFields) => void; compact?: boolean }) {
+  const set = <K extends keyof IntelFormFields>(key: K, v: string) => onChange({ ...value, [key]: v });
+  const inputCls = compact
+    ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs font-mono w-full"
+    : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40";
+  const selectCls = compact
+    ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
+    : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40";
+  const labelCls = compact ? "block text-[10px] text-[#7D8590] mb-0.5" : "block text-xs text-[#7D8590] mb-1";
+  const numField = (key: keyof IntelFormFields, label: string, placeholder = "0") => (
+    <div>
+      <label className={labelCls}>{label}</label>
+      <input type="number" value={value[key]} onChange={e => set(key, e.target.value)} placeholder={placeholder} className={inputCls} />
+    </div>
+  );
+  const gridCls = compact ? "grid grid-cols-3 gap-2" : "grid grid-cols-3 gap-3";
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Core</p>
+        <div className={gridCls}>
+          <div>
+            <label className={labelCls}>Category</label>
+            <select value={value.category} onChange={e => set("category", e.target.value)} className={selectCls}>
+              <option value="">— None —</option>
+              {SIGNAL_CATEGORY_PREFIXES.map(prefix => (
+                <option key={prefix} value={`${prefix}:general`}>{prefix}:*</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelCls}>Pillar</label>
+            <input value={value.pillar} onChange={e => set("pillar", e.target.value)} placeholder="e.g. licensing" className={compact ? "border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full" : "w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"} />
+          </div>
+          <div>
+            <label className={labelCls}>Severity</label>
+            <select value={value.severity} onChange={e => set("severity", e.target.value)} className={selectCls}>
+              <option value="">— low —</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="critical">critical</option>
+            </select>
+          </div>
+          {numField("priority", "Priority")}
+          {numField("weight", "Weight")}
+          {numField("confidence", "Confidence")}
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Impact & contribution</p>
+        <div className={gridCls}>
+          {numField("pricingImpact", "Pricing impact")}
+          {numField("priorityScoreContribution", "Priority score contrib.")}
+          {numField("pricingValueContribution", "Pricing value contrib.")}
+          {numField("governanceImpact", "Governance impact")}
+          {numField("securityImpact", "Security impact")}
+          {numField("complianceImpact", "Compliance impact")}
+          {numField("adoptionImpact", "Adoption impact")}
+          {numField("copilotImpact", "Copilot impact")}
+          {numField("architectureImpact", "Architecture impact")}
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">Trend & forecasting</p>
+        <div className={gridCls}>
+          {numField("trendValue", "Trend value")}
+          <div>
+            <label className={labelCls}>Trend direction</label>
+            <select value={value.trendDirection} onChange={e => set("trendDirection", e.target.value)} className={selectCls}>
+              <option value="">— flat —</option>
+              <option value="up">up</option>
+              <option value="down">down</option>
+              <option value="flat">flat</option>
+            </select>
+          </div>
+          {numField("decayRate", "Decay rate")}
+          {numField("ttlDays", "TTL (days)")}
+        </div>
+      </div>
+      <div>
+        <p className="text-[10px] uppercase tracking-wide text-[#484F58] mb-1.5">CRM contribution</p>
+        <div className={gridCls}>
+          {numField("crmFitContribution", "Fit")}
+          {numField("crmPainContribution", "Pain")}
+          {numField("crmMaturityContribution", "Maturity")}
+          {numField("crmIntentContribution", "Intent")}
+          {numField("crmUrgencyContribution", "Urgency")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface SignalRule extends Partial<SignalIntelligenceFields> {
   id: number;
   signalKey: string;
   groupId: number | null;
@@ -29,7 +227,7 @@ interface SignalRule {
   updatedAt?: string | null;
 }
 
-interface SignalGroup {
+interface SignalGroup extends Partial<SignalIntelligenceFields> {
   id: number;
   signalKey: string;
   logic: "AND" | "OR";
@@ -254,16 +452,20 @@ export default function TenantSignalsPage() {
   const [auditLog, setAuditLog] = useState<Array<{ id: number; action: string; signalKey: string | null; ruleId: number | null; note: string | null; createdAt: string }>>([]);
   const [auditLoading, setAuditLoading] = useState(false);
 
-  const [addRuleForm, setAddRuleForm] = useState({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "" });
+  const [addRuleForm, setAddRuleForm] = useState({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "", intel: EMPTY_INTEL_FORM });
   const [addRuleConflictError, setAddRuleConflictError] = useState<string | null>(null);
   const [savingRule, setSavingRule] = useState(false);
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
-  const [editRuleForm, setEditRuleForm] = useState({ ruleType: "", sourceKey: "", compareValue: "", description: "" });
+  const [editRuleForm, setEditRuleForm] = useState({ ruleType: "", sourceKey: "", compareValue: "", description: "", intel: EMPTY_INTEL_FORM });
   const [editRuleConflictError, setEditRuleConflictError] = useState<string | null>(null);
   const [deletingRuleId, setDeletingRuleId] = useState<number | null>(null);
 
-  const [addGroupForm, setAddGroupForm] = useState({ logic: "OR" as "AND" | "OR", label: "" });
+  const [addGroupForm, setAddGroupForm] = useState({ logic: "OR" as "AND" | "OR", label: "", intel: EMPTY_INTEL_FORM });
   const [savingGroup, setSavingGroup] = useState(false);
+  const [showAddGroupIntel, setShowAddGroupIntel] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<number | null>(null);
+  const [editGroupForm, setEditGroupForm] = useState({ label: "", intel: EMPTY_INTEL_FORM });
+  const [savingGroupEdit, setSavingGroupEdit] = useState(false);
 
   const [snapshotName, setSnapshotName] = useState("");
   const [savingSnapshot, setSavingSnapshot] = useState(false);
@@ -496,11 +698,12 @@ export default function TenantSignalsPage() {
           compareValue: needsCompareValue(addRuleForm.ruleType) ? addRuleForm.compareValue.trim() || null : null,
           description: addRuleForm.description.trim() || null,
           groupId: addRuleForm.groupId ? Number(addRuleForm.groupId) : null,
+          ...intelFormToBody(addRuleForm.intel),
         }),
       });
       if (res.ok) {
         toast({ title: "Rule added" });
-        setAddRuleForm({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "" });
+        setAddRuleForm({ ruleType: "profile_key_truthy", sourceKey: "", compareValue: "", description: "", groupId: "", intel: EMPTY_INTEL_FORM });
         await loadAll();
       } else if (res.status === 422) {
         const body = await res.json() as { error: string; conflicts: Array<{ ruleIds: number[]; description: string }> };
@@ -533,6 +736,7 @@ export default function TenantSignalsPage() {
           sourceKey: editRuleForm.sourceKey.trim(),
           compareValue: needsCompareValue(editRuleForm.ruleType) ? editRuleForm.compareValue.trim() || null : null,
           description: editRuleForm.description.trim() || null,
+          ...intelFormToBody(editRuleForm.intel),
         }),
       });
       if (res.ok) {
@@ -657,16 +861,42 @@ export default function TenantSignalsPage() {
       const res = await fetchWithAuth("/api/admin/signal-rule-groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ signalKey: selectedSignal, logic: addGroupForm.logic, label: addGroupForm.label.trim() || null }),
+        body: JSON.stringify({
+          signalKey: selectedSignal,
+          logic: addGroupForm.logic,
+          label: addGroupForm.label.trim() || null,
+          ...intelFormToBody(addGroupForm.intel),
+        }),
       });
       if (res.ok) {
         toast({ title: "Group added" });
-        setAddGroupForm({ logic: "OR", label: "" });
+        setAddGroupForm({ logic: "OR", label: "", intel: EMPTY_INTEL_FORM });
         await loadAll();
       } else {
         toast({ title: "Failed to add group", variant: "destructive" });
       }
     } finally { setSavingGroup(false); }
+  }
+
+  async function handleSaveEditGroup(id: number) {
+    setSavingGroupEdit(true);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rule-groups/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: editGroupForm.label.trim() || null,
+          ...intelFormToBody(editGroupForm.intel),
+        }),
+      });
+      if (res.ok) {
+        toast({ title: "Group updated" });
+        setEditingGroupId(null);
+        await loadAll();
+      } else {
+        toast({ title: "Failed to update group", variant: "destructive" });
+      }
+    } finally { setSavingGroupEdit(false); }
   }
 
   async function handleDeleteGroup(id: number) {
@@ -1624,11 +1854,61 @@ export default function TenantSignalsPage() {
                                 {group.logic}
                               </button>
                               <span className="text-sm font-semibold text-[#C9D1D9]">{group.label ?? `Group ${group.id}`}</span>
+                              {group.category && (
+                                <span className="text-[10px] bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full">{group.category}</span>
+                              )}
+                              {group.severity && (
+                                <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded-full">{group.severity}</span>
+                              )}
+                              {(group.priority != null || group.weight != null) && (
+                                <span className="text-[10px] text-[#7D8590] font-mono">
+                                  {group.priority != null ? `p${group.priority}` : ""}{group.priority != null && group.weight != null ? " · " : ""}{group.weight != null ? `w${group.weight}` : ""}
+                                </span>
+                              )}
                             </div>
-                            <button onClick={() => void handleDeleteGroup(group.id)} className="text-[#484F58] hover:text-red-500 transition-colors">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => {
+                                  if (editingGroupId === group.id) { setEditingGroupId(null); return; }
+                                  setEditingGroupId(group.id);
+                                  setEditGroupForm({ label: group.label ?? "", intel: intelFormFromRow(group) });
+                                }}
+                                className="text-[#7D8590] hover:text-[#0078D4] transition-colors"
+                                title="Edit group intelligence fields"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button onClick={() => void handleDeleteGroup(group.id)} className="text-[#484F58] hover:text-red-500 transition-colors">
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
+                          {editingGroupId === group.id && (
+                            <div className="px-4 py-3 bg-[#161B22] border-b border-[#30363D] space-y-2">
+                              <input
+                                value={editGroupForm.label}
+                                onChange={e => setEditGroupForm(f => ({ ...f, label: e.target.value }))}
+                                placeholder="Label (optional)"
+                                className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
+                              />
+                              <IntelligenceFieldsPanel value={editGroupForm.intel} onChange={intel => setEditGroupForm(f => ({ ...f, intel }))} compact />
+                              <div className="flex items-center gap-2 pt-1">
+                                <button
+                                  onClick={() => void handleSaveEditGroup(group.id)}
+                                  disabled={savingGroupEdit}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0078D4] text-white text-xs font-semibold rounded-lg hover:bg-[#0078D4]/90 disabled:opacity-50 transition-colors"
+                                >
+                                  {savingGroupEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                                </button>
+                                <button
+                                  onClick={() => setEditingGroupId(null)}
+                                  className="px-3 py-1.5 bg-[#1C2128] text-[#C9D1D9] text-xs rounded-lg hover:bg-[#30363D] transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           <div className="divide-y divide-[#30363D]/50">
                             {groupRules.map(rule => (
                               <RuleRow
@@ -1642,7 +1922,7 @@ export default function TenantSignalsPage() {
                                 setEditingRuleId={setEditingRuleId}
                                 deletingRuleId={deletingRuleId}
                                 savingRule={savingRule}
-                                onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
+                                onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "", intel: intelFormFromRow(r) }); }}
                                 onSave={() => void handleSaveEditRule(rule.id)}
                                 onDelete={() => void handleDeleteRule(rule.id)}
                                 editRuleConflictError={editingRuleId === rule.id ? editRuleConflictError : null}
@@ -1673,7 +1953,7 @@ export default function TenantSignalsPage() {
                               setEditingRuleId={setEditingRuleId}
                               deletingRuleId={deletingRuleId}
                               savingRule={savingRule}
-                              onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "" }); }}
+                              onEdit={r => { setEditRuleConflictError(null); setEditingRuleId(r.id); setEditRuleForm({ ruleType: r.ruleType, sourceKey: r.sourceKey, compareValue: r.compareValue ?? "", description: r.description ?? "", intel: intelFormFromRow(r) }); }}
                               onSave={() => void handleSaveEditRule(rule.id)}
                               onDelete={() => void handleDeleteRule(rule.id)}
                               editRuleConflictError={editingRuleId === rule.id ? editRuleConflictError : null}
@@ -1748,6 +2028,9 @@ export default function TenantSignalsPage() {
                           className="w-full border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]/40"
                         />
                       </div>
+                      <div className="rounded-lg border border-[#30363D] bg-[#0D1117]/40 p-3">
+                        <IntelligenceFieldsPanel value={addRuleForm.intel} onChange={intel => setAddRuleForm(f => ({ ...f, intel }))} compact />
+                      </div>
                       {addRuleConflictError && (
                         <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
                           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -1782,6 +2065,12 @@ export default function TenantSignalsPage() {
                             className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs focus:outline-none w-36"
                           />
                           <button
+                            onClick={() => setShowAddGroupIntel(v => !v)}
+                            className="px-2 py-1 bg-[#1C2128] text-[#7D8590] text-xs rounded hover:bg-[#30363D] transition-colors"
+                          >
+                            {showAddGroupIntel ? "Hide fields" : "More fields"}
+                          </button>
+                          <button
                             onClick={() => void handleAddGroup()}
                             disabled={savingGroup}
                             className="px-2 py-1 bg-[#1C2128] text-[#C9D1D9] text-xs rounded hover:bg-[#30363D] transition-colors"
@@ -1790,6 +2079,11 @@ export default function TenantSignalsPage() {
                           </button>
                         </div>
                       </div>
+                      {showAddGroupIntel && (
+                        <div className="rounded-lg border border-[#30363D] bg-[#0D1117]/40 p-3 mt-2">
+                          <IntelligenceFieldsPanel value={addGroupForm.intel} onChange={intel => setAddGroupForm(f => ({ ...f, intel }))} compact />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -2744,7 +3038,7 @@ function RuleRow({
   conflictRuleIds: Set<number>;
   conflicts: Conflict[];
   editingRuleId: number | null;
-  editRuleForm: { ruleType: string; sourceKey: string; compareValue: string; description: string };
+  editRuleForm: { ruleType: string; sourceKey: string; compareValue: string; description: string; intel: IntelFormFields };
   setEditRuleForm: (f: typeof editRuleForm) => void;
   setEditingRuleId: (id: number | null) => void;
   deletingRuleId: number | null;
@@ -2790,6 +3084,9 @@ function RuleRow({
           className="border border-[#30363D] bg-[#0D1117] text-[#C9D1D9] rounded px-2 py-1 text-xs w-full"
           placeholder="Description"
         />
+        <div className="rounded border border-[#30363D] bg-[#0D1117]/40 p-2">
+          <IntelligenceFieldsPanel value={editRuleForm.intel} onChange={intel => setEditRuleForm({ ...editRuleForm, intel })} compact />
+        </div>
         {editRuleConflictError && (
           <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
@@ -2814,6 +3111,11 @@ function RuleRow({
         <code className="text-xs text-[#7D8590] font-mono">{rule.compareValue}</code>
       )}
       {rule.description && <p className="text-xs text-[#484F58] truncate max-w-32">{rule.description}</p>}
+      {rule.category && (
+        <span className="text-[10px] uppercase tracking-wide bg-[#0078D4]/10 text-[#0078D4] border border-[#0078D4]/20 px-1.5 py-0.5 rounded-full flex-shrink-0">
+          {rule.category}
+        </span>
+      )}
       {isConflict && (
         <span className="cursor-help" title={conflictText}>
           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />

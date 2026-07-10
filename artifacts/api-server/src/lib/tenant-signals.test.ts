@@ -54,6 +54,33 @@ function mockInterp(template: string, payload: Record<string, unknown>): string 
 
 const BASE_DATE = new Date("2024-01-01T00:00:00Z");
 
+const DEFAULT_INTELLIGENCE_FIELDS = {
+  priority: 0,
+  weight: 0,
+  pricingImpact: 0,
+  priorityScoreContribution: 0,
+  pricingValueContribution: 0,
+  governanceImpact: 0,
+  securityImpact: 0,
+  complianceImpact: 0,
+  adoptionImpact: 0,
+  copilotImpact: 0,
+  architectureImpact: 0,
+  trendValue: 0,
+  trendDirection: "flat" as const,
+  decayRate: 0,
+  ttlDays: 0,
+  confidence: 0,
+  severity: "low" as const,
+  category: "",
+  pillar: "",
+  crmFitContribution: 0,
+  crmPainContribution: 0,
+  crmMaturityContribution: 0,
+  crmIntentContribution: 0,
+  crmUrgencyContribution: 0,
+};
+
 function makeRule(
   overrides: Partial<SignalDerivationRule> & Pick<SignalDerivationRule, "signalKey" | "ruleType" | "sourceKey">,
 ): SignalDerivationRule {
@@ -65,6 +92,7 @@ function makeRule(
     sortOrder: 0,
     createdAt: BASE_DATE,
     updatedAt: BASE_DATE,
+    ...DEFAULT_INTELLIGENCE_FIELDS,
     ...overrides,
   };
 }
@@ -77,6 +105,7 @@ function makeGroup(
     label: null,
     sortOrder: 0,
     createdAt: BASE_DATE,
+    ...DEFAULT_INTELLIGENCE_FIELDS,
     ...overrides,
   };
 }

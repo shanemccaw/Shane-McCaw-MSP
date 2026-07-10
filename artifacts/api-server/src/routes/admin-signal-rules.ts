@@ -9,6 +9,8 @@ import {
   computeTenantSignals,
   projectMatchesSignals,
   getDisabledSignalKeys,
+  SIGNAL_TREND_DIRECTIONS,
+  SIGNAL_SEVERITIES,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -16,13 +18,132 @@ import { detectRuleConflicts } from "../lib/signal-conflict-detector";
 
 const router: IRouter = Router();
 
+// ── Intelligence field helpers ─────────────────────────────────────────────
+// Shared SELECT fragment for the intelligence fields added on both
+// signal_rule_groups and signal_derivation_rules — see the taxonomy comment
+// near `signalRuleGroupsTable` in lib/db/src/schema/index.ts.
+const INTELLIGENCE_FIELDS_SELECT = sql`
+  priority, weight,
+  pricing_impact AS "pricingImpact",
+  priority_score_contribution AS "priorityScoreContribution",
+  pricing_value_contribution AS "pricingValueContribution",
+  governance_impact AS "governanceImpact",
+  security_impact AS "securityImpact",
+  compliance_impact AS "complianceImpact",
+  adoption_impact AS "adoptionImpact",
+  copilot_impact AS "copilotImpact",
+  architecture_impact AS "architectureImpact",
+  trend_value AS "trendValue",
+  trend_direction AS "trendDirection",
+  decay_rate AS "decayRate",
+  ttl_days AS "ttlDays",
+  confidence,
+  severity,
+  category,
+  pillar,
+  crm_fit_contribution AS "crmFitContribution",
+  crm_pain_contribution AS "crmPainContribution",
+  crm_maturity_contribution AS "crmMaturityContribution",
+  crm_intent_contribution AS "crmIntentContribution",
+  crm_urgency_contribution AS "crmUrgencyContribution"
+`;
+
+interface IntelligenceFieldInput {
+  priority?: unknown;
+  weight?: unknown;
+  pricingImpact?: unknown;
+  priorityScoreContribution?: unknown;
+  pricingValueContribution?: unknown;
+  governanceImpact?: unknown;
+  securityImpact?: unknown;
+  complianceImpact?: unknown;
+  adoptionImpact?: unknown;
+  copilotImpact?: unknown;
+  architectureImpact?: unknown;
+  trendValue?: unknown;
+  trendDirection?: unknown;
+  decayRate?: unknown;
+  ttlDays?: unknown;
+  confidence?: unknown;
+  severity?: unknown;
+  category?: unknown;
+  pillar?: unknown;
+  crmFitContribution?: unknown;
+  crmPainContribution?: unknown;
+  crmMaturityContribution?: unknown;
+  crmIntentContribution?: unknown;
+  crmUrgencyContribution?: unknown;
+}
+
+const INTELLIGENCE_FIELD_DEFAULTS: Record<string, number | string> = {
+  priority: 0, weight: 0, pricingImpact: 0, priorityScoreContribution: 0, pricingValueContribution: 0,
+  governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 0, copilotImpact: 0,
+  architectureImpact: 0, trendValue: 0, trendDirection: "flat", decayRate: 0, ttlDays: 0, confidence: 0,
+  severity: "low", category: "", pillar: "", crmFitContribution: 0, crmPainContribution: 0,
+  crmMaturityContribution: 0, crmIntentContribution: 0, crmUrgencyContribution: 0,
+};
+
+/**
+ * Validates and normalizes the intelligence fields from a request body.
+ * Field-by-field merge: any field NOT present on `body` falls back to the
+ * corresponding value on `base` (e.g. the prior DB row on a PATCH) rather
+ * than a hardcoded default, so a partial update never zeroes out unrelated
+ * intelligence data. `base` defaults to the zero/empty defaults for creates.
+ */
+function parseIntelligenceFields(
+  body: IntelligenceFieldInput,
+  base: Record<string, number | string> = INTELLIGENCE_FIELD_DEFAULTS,
+): { values: Record<string, number | string>; error?: string } {
+  const num = (v: unknown, fallback: number): number => {
+    if (v === undefined) return fallback;
+    const n = Number(v);
+    return isNaN(n) ? fallback : n;
+  };
+  const str = (v: unknown, fallback: string): string => (v === undefined ? fallback : String(v));
+  if (body.trendDirection !== undefined && !SIGNAL_TREND_DIRECTIONS.includes(body.trendDirection as typeof SIGNAL_TREND_DIRECTIONS[number])) {
+    return { values: {}, error: `trendDirection must be one of: ${SIGNAL_TREND_DIRECTIONS.join(", ")}` };
+  }
+  if (body.severity !== undefined && !SIGNAL_SEVERITIES.includes(body.severity as typeof SIGNAL_SEVERITIES[number])) {
+    return { values: {}, error: `severity must be one of: ${SIGNAL_SEVERITIES.join(", ")}` };
+  }
+  return {
+    values: {
+      priority: num(body.priority, base.priority as number),
+      weight: num(body.weight, base.weight as number),
+      pricingImpact: num(body.pricingImpact, base.pricingImpact as number),
+      priorityScoreContribution: num(body.priorityScoreContribution, base.priorityScoreContribution as number),
+      pricingValueContribution: num(body.pricingValueContribution, base.pricingValueContribution as number),
+      governanceImpact: num(body.governanceImpact, base.governanceImpact as number),
+      securityImpact: num(body.securityImpact, base.securityImpact as number),
+      complianceImpact: num(body.complianceImpact, base.complianceImpact as number),
+      adoptionImpact: num(body.adoptionImpact, base.adoptionImpact as number),
+      copilotImpact: num(body.copilotImpact, base.copilotImpact as number),
+      architectureImpact: num(body.architectureImpact, base.architectureImpact as number),
+      trendValue: num(body.trendValue, base.trendValue as number),
+      trendDirection: str(body.trendDirection, base.trendDirection as string),
+      decayRate: num(body.decayRate, base.decayRate as number),
+      ttlDays: num(body.ttlDays, base.ttlDays as number),
+      confidence: num(body.confidence, base.confidence as number),
+      severity: str(body.severity, base.severity as string),
+      category: str(body.category, base.category as string),
+      pillar: str(body.pillar, base.pillar as string),
+      crmFitContribution: num(body.crmFitContribution, base.crmFitContribution as number),
+      crmPainContribution: num(body.crmPainContribution, base.crmPainContribution as number),
+      crmMaturityContribution: num(body.crmMaturityContribution, base.crmMaturityContribution as number),
+      crmIntentContribution: num(body.crmIntentContribution, base.crmIntentContribution as number),
+      crmUrgencyContribution: num(body.crmUrgencyContribution, base.crmUrgencyContribution as number),
+    },
+  };
+}
+
 // ── Raw DB helpers ─────────────────────────────────────────────────────────────
 
 async function getAllRules(): Promise<SignalDerivationRule[]> {
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
            source_key AS "sourceKey", compare_value AS "compareValue", description,
-           sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+           sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+           ${INTELLIGENCE_FIELDS_SELECT}
     FROM signal_derivation_rules
     ORDER BY signal_key, sort_order, id
   `);
@@ -31,7 +152,8 @@ async function getAllRules(): Promise<SignalDerivationRule[]> {
 
 async function getAllGroups(): Promise<SignalRuleGroup[]> {
   const rows = await db.execute(sql`
-    SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt"
+    SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+           ${INTELLIGENCE_FIELDS_SELECT}
     FROM signal_rule_groups
     ORDER BY signal_key, sort_order, id
   `);
@@ -134,6 +256,73 @@ async function seedAdjustmentSignalRules(): Promise<void> {
 
 // Run seeder at module load — safe because it no-ops for any signal that already has rules.
 void seedAdjustmentSignalRules();
+
+// ── Seed illustrative category taxonomy examples ────────────────────────────
+// Purely illustrative, inert example rules — one per `category` prefix — so
+// admins can see how the taxonomy is meant to be used. These signal keys
+// ("example:*") are NOT registered in TENANT_SIGNALS/ADJUSTMENT_SIGNALS, so
+// they are never evaluated by computeTenantSignals() and can never affect
+// signal firing, pricing, or SOW gating. Idempotent: skipped if any
+// "example:*" rule already exists.
+const CATEGORY_TAXONOMY_EXAMPLES: Array<{
+  signalKey: string;
+  label: string;
+  ruleType: string;
+  sourceKey: string;
+  compareValue: string | null;
+  description: string;
+  category: string;
+  pillar: string;
+  severity: string;
+  priority: number;
+  weight: number;
+}> = [
+  { signalKey: "example:pricing", label: "Pricing — High Deal Value", ruleType: "gte", sourceKey: "estimatedAnnualValue", compareValue: "50000", description: "Illustrates a pricing:* category signal used to influence deal pricing.", category: "pricing:high_value_deal", pillar: "pricing", severity: "medium", priority: 5, weight: 3 },
+  { signalKey: "example:priority", label: "Priority — Executive Escalation", ruleType: "equals", sourceKey: "escalationFlag", compareValue: "true", description: "Illustrates a priority:* category signal used to bump project priority.", category: "priority:executive_escalation", pillar: "priority", severity: "high", priority: 9, weight: 5 },
+  { signalKey: "example:governance", label: "Governance — Policy Gaps", ruleType: "equals", sourceKey: "hasGovernanceGaps", compareValue: "true", description: "Illustrates a governance:* category signal for tenant policy maturity.", category: "governance:policy_gaps", pillar: "governance", severity: "medium", priority: 4, weight: 2 },
+  { signalKey: "example:security", label: "Security — DLP Coverage Gap", ruleType: "equals", sourceKey: "hasDLPGaps", compareValue: "true", description: "Illustrates a security:* category signal for data-loss-prevention coverage.", category: "security:dlp_gap", pillar: "security", severity: "high", priority: 8, weight: 4 },
+  { signalKey: "example:compliance", label: "Compliance — Retention Policy Missing", ruleType: "equals", sourceKey: "hasRetentionPolicy", compareValue: "false", description: "Illustrates a compliance:* category signal for regulatory retention posture.", category: "compliance:retention_policy_missing", pillar: "compliance", severity: "high", priority: 7, weight: 4 },
+  { signalKey: "example:adoption", label: "Adoption — Low License Utilization", ruleType: "lt", sourceKey: "licenseUtilizationPct", compareValue: "40", description: "Illustrates an adoption:* category signal for underused licenses.", category: "adoption:low_license_utilization", pillar: "adoption", severity: "low", priority: 3, weight: 2 },
+  { signalKey: "example:copilot", label: "Copilot — Readiness Achieved", ruleType: "equals", sourceKey: "hasCopilotLicenses", compareValue: "true", description: "Illustrates a copilot:* category signal for Copilot AI rollout readiness.", category: "copilot:readiness_achieved", pillar: "copilot", severity: "medium", priority: 5, weight: 3 },
+  { signalKey: "example:architecture", label: "Architecture — Hybrid Exchange Complexity", ruleType: "equals", sourceKey: "hasExchangeOnPrem", compareValue: "true", description: "Illustrates an architecture:* category signal for tenant topology complexity.", category: "architecture:hybrid_exchange", pillar: "architecture", severity: "medium", priority: 6, weight: 3 },
+  { signalKey: "example:drift", label: "Drift — Config Baseline Deviation", ruleType: "equals", sourceKey: "hasConfigDrift", compareValue: "true", description: "Illustrates a drift:* category signal for configuration drift detection (future engine input).", category: "drift:config_baseline_deviation", pillar: "drift", severity: "medium", priority: 5, weight: 2 },
+  { signalKey: "example:forecasting", label: "Forecasting — Growth Trend Positive", ruleType: "gte", sourceKey: "userGrowthRatePct", compareValue: "10", description: "Illustrates a forecasting:* category signal for tenant growth trend (future engine input).", category: "forecasting:growth_trend_positive", pillar: "forecasting", severity: "low", priority: 3, weight: 2 },
+  { signalKey: "example:crm", label: "CRM — Strong Deal Fit", ruleType: "gte", sourceKey: "crmFitScore", compareValue: "80", description: "Illustrates a crm:* category signal contributing to CRM fit/pain/maturity scoring (future engine input).", category: "crm:strong_deal_fit", pillar: "crm", severity: "low", priority: 4, weight: 3 },
+  { signalKey: "example:msp", label: "MSP — Multi-Tenant Managed", ruleType: "equals", sourceKey: "isMspManaged", compareValue: "true", description: "Illustrates an msp:* category signal for managed-service-provider relationships.", category: "msp:multi_tenant_managed", pillar: "msp", severity: "low", priority: 2, weight: 1 },
+  { signalKey: "example:workflow", label: "Workflow — Automation Candidate", ruleType: "equals", sourceKey: "hasManualProcessOverhead", compareValue: "true", description: "Illustrates a workflow:* category signal flagging automation opportunities.", category: "workflow:automation_candidate", pillar: "workflow", severity: "low", priority: 3, weight: 2 },
+];
+
+async function seedCategoryTaxonomyExamples(): Promise<void> {
+  try {
+    const existing = await db.execute(sql`
+      SELECT id FROM signal_derivation_rules WHERE signal_key LIKE 'example:%' LIMIT 1
+    `);
+    if ((existing.rows as unknown[]).length > 0) return;
+
+    for (const ex of CATEGORY_TAXONOMY_EXAMPLES) {
+      const groupResult = await db.execute(sql`
+        INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order, category, pillar, severity, priority, weight)
+        VALUES (${ex.signalKey}, 'OR', ${ex.label}, 0, ${ex.category}, ${ex.pillar}, ${ex.severity}, ${ex.priority}, ${ex.weight})
+        RETURNING id
+      `);
+      const groupId = (groupResult.rows[0] as { id: number }).id;
+      await db.execute(sql`
+        INSERT INTO signal_derivation_rules
+          (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+           category, pillar, severity, priority, weight)
+        VALUES (
+          ${ex.signalKey}, ${groupId}, ${ex.ruleType}, ${ex.sourceKey}, ${ex.compareValue}, ${ex.description}, 0,
+          ${ex.category}, ${ex.pillar}, ${ex.severity}, ${ex.priority}, ${ex.weight}
+        )
+      `);
+    }
+    logger.info({ count: CATEGORY_TAXONOMY_EXAMPLES.length }, "admin-signal-rules: seeded illustrative category taxonomy examples");
+  } catch (err) {
+    logger.warn({ err }, "admin-signal-rules: category taxonomy example seeder failed (non-fatal)");
+  }
+}
+
+void seedCategoryTaxonomyExamples();
 
 // ── Custom signals DB helper ────────────────────────────────────────────────────
 
@@ -328,12 +517,14 @@ router.get("/admin/signal-rules", requireAdmin, async (_req: Request, res: Respo
 
 router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { signalKey, groupId, ruleType, sourceKey, compareValue, description, sortOrder } =
+    const { signalKey, groupId, ruleType, sourceKey, compareValue, description, sortOrder, ...intelligenceBody } =
       (req.body ?? {}) as Record<string, unknown>;
     if (!signalKey || !ruleType || !sourceKey) {
       res.status(400).json({ error: "signalKey, ruleType, sourceKey are required" });
       return;
     }
+    const { values: intel, error: intelError } = parseIntelligenceFields(intelligenceBody);
+    if (intelError) { res.status(400).json({ error: intelError }); return; }
 
     // Pre-check: simulate the post-insert rule list and detect conflicts before writing
     const existingRules = await getAllRules();
@@ -349,7 +540,8 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
       sortOrder: (sortOrder as number) ?? 0,
       createdAt: now,
       updatedAt: now,
-    };
+      ...intel,
+    } as SignalDerivationRule;
     const simulatedRules = [...existingRules, proposedRule];
     const conflicts = detectRuleConflicts(simulatedRules);
     const introducedConflicts = conflicts.filter(c => c.ruleIds.includes(-1));
@@ -362,12 +554,27 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
     }
 
     const result = await db.execute(sql`
-      INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
-      VALUES (${signalKey as string}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
-              ${compareValue ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0})
+      INSERT INTO signal_derivation_rules (
+        signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+        priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+        governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+        architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+        severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+        crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+      )
+      VALUES (
+        ${signalKey as string}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
+        ${compareValue ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0},
+        ${intel.priority}, ${intel.weight}, ${intel.pricingImpact}, ${intel.priorityScoreContribution}, ${intel.pricingValueContribution},
+        ${intel.governanceImpact}, ${intel.securityImpact}, ${intel.complianceImpact}, ${intel.adoptionImpact}, ${intel.copilotImpact},
+        ${intel.architectureImpact}, ${intel.trendValue}, ${intel.trendDirection}, ${intel.decayRate}, ${intel.ttlDays}, ${intel.confidence},
+        ${intel.severity}, ${intel.category}, ${intel.pillar}, ${intel.crmFitContribution}, ${intel.crmPainContribution},
+        ${intel.crmMaturityContribution}, ${intel.crmIntentContribution}, ${intel.crmUrgencyContribution}
+      )
       RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
                 source_key AS "sourceKey", compare_value AS "compareValue", description,
-                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                ${INTELLIGENCE_FIELDS_SELECT}
     `);
     const created = result.rows[0] as unknown as SignalDerivationRule;
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
@@ -388,14 +595,20 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
     const priorResult = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
              source_key AS "sourceKey", compare_value AS "compareValue", description,
-             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+             ${INTELLIGENCE_FIELDS_SELECT}
       FROM signal_derivation_rules WHERE id = ${id}
     `);
     const prior = priorResult.rows[0] as unknown as SignalDerivationRule | undefined;
     if (!prior) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { groupId, ruleType, sourceKey, compareValue, description, sortOrder } =
+    const { groupId, ruleType, sourceKey, compareValue, description, sortOrder, ...intelligenceBody } =
       (req.body ?? {}) as Record<string, unknown>;
+
+    const hasIntelligenceUpdate = Object.keys(intelligenceBody).length > 0;
+    const { values: parsedIntel, error: intelError } = parseIntelligenceFields(intelligenceBody, prior as unknown as Record<string, number | string>);
+    if (intelError) { res.status(400).json({ error: intelError }); return; }
+    const intel = hasIntelligenceUpdate ? parsedIntel : (prior as unknown as Record<string, number | string>);
 
     const groupIdInt = groupId !== undefined
       ? (groupId === null || groupId === "" ? null : Number(groupId))
@@ -414,6 +627,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
       compareValue: compareValue !== undefined ? (compareValue as string | null) ?? null : prior.compareValue,
       description: description !== undefined ? (description as string | null) ?? null : prior.description,
       sortOrder: sortOrderInt ?? prior.sortOrder,
+      ...(hasIntelligenceUpdate ? intel : {}),
     };
     const simulatedRules = existingRules.map(r => r.id === id ? proposedRule : r);
     const conflicts = detectRuleConflicts(simulatedRules);
@@ -434,11 +648,36 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
           compare_value = ${compareValue !== undefined ? (compareValue ?? null) : prior.compareValue},
           description = ${description !== undefined ? (description ?? null) : prior.description},
           sort_order = COALESCE(${sortOrderInt}, sort_order),
+          priority = ${intel.priority as number},
+          weight = ${intel.weight as number},
+          pricing_impact = ${intel.pricingImpact as number},
+          priority_score_contribution = ${intel.priorityScoreContribution as number},
+          pricing_value_contribution = ${intel.pricingValueContribution as number},
+          governance_impact = ${intel.governanceImpact as number},
+          security_impact = ${intel.securityImpact as number},
+          compliance_impact = ${intel.complianceImpact as number},
+          adoption_impact = ${intel.adoptionImpact as number},
+          copilot_impact = ${intel.copilotImpact as number},
+          architecture_impact = ${intel.architectureImpact as number},
+          trend_value = ${intel.trendValue as number},
+          trend_direction = ${intel.trendDirection as string},
+          decay_rate = ${intel.decayRate as number},
+          ttl_days = ${intel.ttlDays as number},
+          confidence = ${intel.confidence as number},
+          severity = ${intel.severity as string},
+          category = ${intel.category as string},
+          pillar = ${intel.pillar as string},
+          crm_fit_contribution = ${intel.crmFitContribution as number},
+          crm_pain_contribution = ${intel.crmPainContribution as number},
+          crm_maturity_contribution = ${intel.crmMaturityContribution as number},
+          crm_intent_contribution = ${intel.crmIntentContribution as number},
+          crm_urgency_contribution = ${intel.crmUrgencyContribution as number},
           updated_at = now()
       WHERE id = ${id}
       RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
                 source_key AS "sourceKey", compare_value AS "compareValue", description,
-                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                ${INTELLIGENCE_FIELDS_SELECT}
     `);
     const updated = result.rows[0] as unknown as SignalDerivationRule;
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
@@ -478,12 +717,29 @@ router.delete("/admin/signal-rules/:id", requireAdmin, async (req: Request, res:
 
 router.post("/admin/signal-rule-groups", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { signalKey, logic, label, sortOrder } = (req.body ?? {}) as Record<string, unknown>;
+    const { signalKey, logic, label, sortOrder, ...intelligenceBody } = (req.body ?? {}) as Record<string, unknown>;
     if (!signalKey || !logic) { res.status(400).json({ error: "signalKey and logic are required" }); return; }
+    const { values: intel, error: intelError } = parseIntelligenceFields(intelligenceBody);
+    if (intelError) { res.status(400).json({ error: intelError }); return; }
     const result = await db.execute(sql`
-      INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
-      VALUES (${signalKey as string}, ${logic as string}, ${label ?? null}, ${(sortOrder as number) ?? 0})
-      RETURNING id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt"
+      INSERT INTO signal_rule_groups (
+        signal_key, logic, label, sort_order,
+        priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+        governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+        architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+        severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+        crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+      )
+      VALUES (
+        ${signalKey as string}, ${logic as string}, ${label ?? null}, ${(sortOrder as number) ?? 0},
+        ${intel.priority}, ${intel.weight}, ${intel.pricingImpact}, ${intel.priorityScoreContribution}, ${intel.pricingValueContribution},
+        ${intel.governanceImpact}, ${intel.securityImpact}, ${intel.complianceImpact}, ${intel.adoptionImpact}, ${intel.copilotImpact},
+        ${intel.architectureImpact}, ${intel.trendValue}, ${intel.trendDirection}, ${intel.decayRate}, ${intel.ttlDays}, ${intel.confidence},
+        ${intel.severity}, ${intel.category}, ${intel.pillar}, ${intel.crmFitContribution}, ${intel.crmPainContribution},
+        ${intel.crmMaturityContribution}, ${intel.crmIntentContribution}, ${intel.crmUrgencyContribution}
+      )
+      RETURNING id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+                ${INTELLIGENCE_FIELDS_SELECT}
     `);
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -498,15 +754,50 @@ router.patch("/admin/signal-rule-groups/:id", requireAdmin, async (req: Request,
   try {
     const id = Number(req.params.id);
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-    const { logic, label, sortOrder } = (req.body ?? {}) as Record<string, unknown>;
-    const result = await db.execute(sql`
-      UPDATE signal_rule_groups
-      SET logic = COALESCE(${logic ?? null}, logic),
-          label = ${label !== undefined ? (label ?? null) : sql`label`},
-          sort_order = COALESCE(${sortOrder ?? null}, sort_order)
-      WHERE id = ${id}
-      RETURNING id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt"
+    const priorResult = await db.execute(sql`
+      SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+             ${INTELLIGENCE_FIELDS_SELECT}
+      FROM signal_rule_groups WHERE id = ${id}
     `);
+    const prior = priorResult.rows[0] as unknown as (SignalRuleGroup & Record<string, number | string>) | undefined;
+    if (!prior) { res.status(404).json({ error: "Not found" }); return; }
+    const { logic, label, sortOrder, ...intelligenceBody } = (req.body ?? {}) as Record<string, unknown>;
+    const hasIntelligenceUpdate = Object.keys(intelligenceBody).length > 0;
+    const { values: intel, error: intelError } = parseIntelligenceFields(intelligenceBody, prior as unknown as Record<string, number | string>);
+    if (intelError) { res.status(400).json({ error: intelError }); return; }
+    const result = hasIntelligenceUpdate
+      ? await db.execute(sql`
+        UPDATE signal_rule_groups
+        SET logic = COALESCE(${logic ?? null}, logic),
+            label = ${label !== undefined ? (label ?? null) : sql`label`},
+            sort_order = COALESCE(${sortOrder ?? null}, sort_order),
+            priority = ${intel.priority}, weight = ${intel.weight},
+            pricing_impact = ${intel.pricingImpact},
+            priority_score_contribution = ${intel.priorityScoreContribution},
+            pricing_value_contribution = ${intel.pricingValueContribution},
+            governance_impact = ${intel.governanceImpact}, security_impact = ${intel.securityImpact},
+            compliance_impact = ${intel.complianceImpact}, adoption_impact = ${intel.adoptionImpact},
+            copilot_impact = ${intel.copilotImpact}, architecture_impact = ${intel.architectureImpact},
+            trend_value = ${intel.trendValue}, trend_direction = ${intel.trendDirection},
+            decay_rate = ${intel.decayRate}, ttl_days = ${intel.ttlDays}, confidence = ${intel.confidence},
+            severity = ${intel.severity}, category = ${intel.category}, pillar = ${intel.pillar},
+            crm_fit_contribution = ${intel.crmFitContribution}, crm_pain_contribution = ${intel.crmPainContribution},
+            crm_maturity_contribution = ${intel.crmMaturityContribution},
+            crm_intent_contribution = ${intel.crmIntentContribution},
+            crm_urgency_contribution = ${intel.crmUrgencyContribution}
+        WHERE id = ${id}
+        RETURNING id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+                  ${INTELLIGENCE_FIELDS_SELECT}
+      `)
+      : await db.execute(sql`
+        UPDATE signal_rule_groups
+        SET logic = COALESCE(${logic ?? null}, logic),
+            label = ${label !== undefined ? (label ?? null) : sql`label`},
+            sort_order = COALESCE(${sortOrder ?? null}, sort_order)
+        WHERE id = ${id}
+        RETURNING id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+                  ${INTELLIGENCE_FIELDS_SELECT}
+      `);
     if (result.rows.length === 0) { res.status(404).json({ error: "Not found" }); return; }
     res.json(result.rows[0]);
   } catch (err) {
@@ -792,10 +1083,25 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
 
       if (Array.isArray(importedGroups)) {
         for (const g of importedGroups as Array<Record<string, unknown>>) {
+          const { values: gIntel } = parseIntelligenceFields(g);
           const result = await tx.execute(sql`
-            INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
-            VALUES (${g.signalKey ?? g.signal_key as string}, ${(g.logic ?? "OR") as string},
-                    ${g.label ?? null}, ${(g.sortOrder ?? g.sort_order ?? 0) as number})
+            INSERT INTO signal_rule_groups (
+              signal_key, logic, label, sort_order,
+              priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+              governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+              architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+              severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+              crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+            )
+            VALUES (
+              ${g.signalKey ?? g.signal_key as string}, ${(g.logic ?? "OR") as string},
+              ${g.label ?? null}, ${(g.sortOrder ?? g.sort_order ?? 0) as number},
+              ${gIntel.priority}, ${gIntel.weight}, ${gIntel.pricingImpact}, ${gIntel.priorityScoreContribution}, ${gIntel.pricingValueContribution},
+              ${gIntel.governanceImpact}, ${gIntel.securityImpact}, ${gIntel.complianceImpact}, ${gIntel.adoptionImpact}, ${gIntel.copilotImpact},
+              ${gIntel.architectureImpact}, ${gIntel.trendValue}, ${gIntel.trendDirection}, ${gIntel.decayRate}, ${gIntel.ttlDays}, ${gIntel.confidence},
+              ${gIntel.severity}, ${gIntel.category}, ${gIntel.pillar}, ${gIntel.crmFitContribution}, ${gIntel.crmPainContribution},
+              ${gIntel.crmMaturityContribution}, ${gIntel.crmIntentContribution}, ${gIntel.crmUrgencyContribution}
+            )
             RETURNING id
           `);
           const newId = (result.rows[0] as { id: number }).id;
@@ -807,12 +1113,27 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
       for (const r of importedRules as Array<Record<string, unknown>>) {
         const originalGroupId = r.groupId ?? r.group_id;
         const mappedGroupId = originalGroupId ? (groupIdMap.get(Number(originalGroupId)) ?? null) : null;
+        const { values: rIntel } = parseIntelligenceFields(r);
         await tx.execute(sql`
-          INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
-          VALUES (${r.signalKey ?? r.signal_key as string}, ${mappedGroupId},
-                  ${r.ruleType ?? r.rule_type as string}, ${r.sourceKey ?? r.source_key as string},
-                  ${r.compareValue ?? r.compare_value ?? null},
-                  ${r.description ?? null}, ${(r.sortOrder ?? r.sort_order ?? 0) as number})
+          INSERT INTO signal_derivation_rules (
+            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+            governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+            architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+            severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+            crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+          )
+          VALUES (
+            ${r.signalKey ?? r.signal_key as string}, ${mappedGroupId},
+            ${r.ruleType ?? r.rule_type as string}, ${r.sourceKey ?? r.source_key as string},
+            ${r.compareValue ?? r.compare_value ?? null},
+            ${r.description ?? null}, ${(r.sortOrder ?? r.sort_order ?? 0) as number},
+            ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
+            ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
+            ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
+            ${rIntel.severity}, ${rIntel.category}, ${rIntel.pillar}, ${rIntel.crmFitContribution}, ${rIntel.crmPainContribution},
+            ${rIntel.crmMaturityContribution}, ${rIntel.crmIntentContribution}, ${rIntel.crmUrgencyContribution}
+          )
         `);
         ruleCount++;
       }

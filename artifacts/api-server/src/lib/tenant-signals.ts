@@ -267,7 +267,56 @@ export const ADJUSTMENT_SIGNALS: TenantSignal[] = [
   },
 ];
 
-export interface SignalDerivationRule {
+// ─── Signal intelligence fields ────────────────────────────────────────────
+//
+// See the taxonomy comment near `signalRuleGroupsTable` in
+// `lib/db/src/schema/index.ts` for the full `category` prefix list
+// (pricing:*, priority:*, governance:*, security:*, compliance:*, adoption:*,
+// copilot:*, architecture:*, drift:*, forecasting:*, crm:*, msp:*, workflow:*).
+// These fields are pure data — no engine in this codebase reads them yet.
+// computeTenantSignals() below does not consume them; they exist so future
+// engine tasks (priority/pricing/health/drift/forecasting/CRM) can sum them
+// off fired signals without ever hardcoding a formula.
+export const SIGNAL_TREND_DIRECTIONS = ["up", "down", "flat"] as const;
+export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];
+
+export const SIGNAL_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
+
+export const SIGNAL_CATEGORY_PREFIXES = [
+  "pricing", "priority", "governance", "security", "compliance", "adoption",
+  "copilot", "architecture", "drift", "forecasting", "crm", "msp", "workflow",
+] as const;
+export type SignalCategoryPrefix = typeof SIGNAL_CATEGORY_PREFIXES[number];
+
+export interface SignalIntelligenceFields {
+  priority: number;
+  weight: number;
+  pricingImpact: number;
+  priorityScoreContribution: number;
+  pricingValueContribution: number;
+  governanceImpact: number;
+  securityImpact: number;
+  complianceImpact: number;
+  adoptionImpact: number;
+  copilotImpact: number;
+  architectureImpact: number;
+  trendValue: number;
+  trendDirection: SignalTrendDirection;
+  decayRate: number;
+  ttlDays: number;
+  confidence: number;
+  severity: SignalSeverity;
+  category: string;
+  pillar: string;
+  crmFitContribution: number;
+  crmPainContribution: number;
+  crmMaturityContribution: number;
+  crmIntentContribution: number;
+  crmUrgencyContribution: number;
+}
+
+export interface SignalDerivationRule extends SignalIntelligenceFields {
   id: number;
   signalKey: string;
   groupId: number | null;
@@ -280,7 +329,7 @@ export interface SignalDerivationRule {
   updatedAt: Date;
 }
 
-export interface SignalRuleGroup {
+export interface SignalRuleGroup extends SignalIntelligenceFields {
   id: number;
   signalKey: string;
   logic: "AND" | "OR";

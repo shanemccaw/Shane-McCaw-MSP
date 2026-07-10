@@ -1114,6 +1114,13 @@
       "when": 1784400000000,
       "tag": "0154_add_signal_enabled_state",
       "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1784500000000,
+      "tag": "0155_add_signal_intelligence_fields",
+      "breakpoints": true
     }
   ]
 }

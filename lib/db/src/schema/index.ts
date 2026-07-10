@@ -423,6 +423,71 @@ export type InsertEngagementProject = typeof engagementProjectsTable.$inferInser
 export type EngagementProject = typeof engagementProjectsTable.$inferSelect;
 
 // ── Signal Rule Engine ────────────────────────────────────────────────────────
+//
+// Signal intelligence field taxonomy (`category` picklist)
+// ----------------------------------------------------------------------------
+// Every signal rule group / rule can be tagged with a `category` describing
+// which downstream engine consumes it. This is a fixed prefix taxonomy —
+// enforced as a picklist in the admin UI (free-text `pillar` is fine for
+// finer-grained labeling within a category). Categories:
+//   pricing:*      — feeds the pricing engine (pricingImpact, pricingValueContribution)
+//   priority:*     — feeds the priority scoring engine (priorityScoreContribution)
+//   governance:*   — governance drift / health scoring (governanceImpact)
+//   security:*     — security health scoring (securityImpact)
+//   compliance:*   — compliance health scoring (complianceImpact)
+//   adoption:*     — adoption health scoring (adoptionImpact)
+//   copilot:*      — Copilot readiness/health scoring (copilotImpact)
+//   architecture:* — architecture health engine (architectureImpact)
+//   drift:*        — governance drift engine (trendValue, trendDirection, decayRate)
+//   forecasting:*  — forecasting engine (trendValue, trendDirection, ttlDays, decayRate)
+//   crm:*          — CRM scoring engine (crmFitContribution, crmPainContribution,
+//                    crmMaturityContribution, crmIntentContribution, crmUrgencyContribution)
+//   msp:*          — general MSP-facing signals not covered by the above
+//   workflow:*     — signals consumed by workflow automation nodes
+//
+// This task only adds the data fields described above — no engine reads them
+// yet. All new columns are additive, nullable-safe, and default to inert
+// values (0 / "") so `computeTenantSignals` scoring is completely unchanged.
+
+const SIGNAL_INTELLIGENCE_FIELDS = {
+  priority: integer("priority").notNull().default(0),
+  weight: integer("weight").notNull().default(0),
+  pricingImpact: integer("pricing_impact").notNull().default(0),
+  priorityScoreContribution: integer("priority_score_contribution").notNull().default(0),
+  pricingValueContribution: integer("pricing_value_contribution").notNull().default(0),
+  governanceImpact: integer("governance_impact").notNull().default(0),
+  securityImpact: integer("security_impact").notNull().default(0),
+  complianceImpact: integer("compliance_impact").notNull().default(0),
+  adoptionImpact: integer("adoption_impact").notNull().default(0),
+  copilotImpact: integer("copilot_impact").notNull().default(0),
+  architectureImpact: integer("architecture_impact").notNull().default(0),
+  trendValue: integer("trend_value").notNull().default(0),
+  trendDirection: text("trend_direction", { enum: ["up", "down", "flat"] }).notNull().default("flat"),
+  decayRate: integer("decay_rate").notNull().default(0),
+  ttlDays: integer("ttl_days").notNull().default(0),
+  confidence: integer("confidence").notNull().default(0),
+  severity: text("severity", { enum: ["low", "medium", "high", "critical"] }).notNull().default("low"),
+  category: text("category").notNull().default(""),
+  pillar: text("pillar").notNull().default(""),
+  crmFitContribution: integer("crm_fit_contribution").notNull().default(0),
+  crmPainContribution: integer("crm_pain_contribution").notNull().default(0),
+  crmMaturityContribution: integer("crm_maturity_contribution").notNull().default(0),
+  crmIntentContribution: integer("crm_intent_contribution").notNull().default(0),
+  crmUrgencyContribution: integer("crm_urgency_contribution").notNull().default(0),
+} as const;
+
+/** Allowed `category` prefixes for signal rule groups/rules — see taxonomy comment above. */
+export const SIGNAL_CATEGORY_PREFIXES = [
+  "pricing", "priority", "governance", "security", "compliance", "adoption",
+  "copilot", "architecture", "drift", "forecasting", "crm", "msp", "workflow",
+] as const;
+export type SignalCategoryPrefix = typeof SIGNAL_CATEGORY_PREFIXES[number];
+
+export const SIGNAL_TREND_DIRECTIONS = ["up", "down", "flat"] as const;
+export type SignalTrendDirection = typeof SIGNAL_TREND_DIRECTIONS[number];
+
+export const SIGNAL_SEVERITIES = ["low", "medium", "high", "critical"] as const;
+export type SignalSeverity = typeof SIGNAL_SEVERITIES[number];
 
 export const signalRuleGroupsTable = pgTable("signal_rule_groups", {
   id: serial("id").primaryKey(),
@@ -431,6 +496,7 @@ export const signalRuleGroupsTable = pgTable("signal_rule_groups", {
   label: text("label"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  ...SIGNAL_INTELLIGENCE_FIELDS,
 });
 
 export type SignalRuleGroup = typeof signalRuleGroupsTable.$inferSelect;
@@ -447,6 +513,7 @@ export const signalDerivationRulesTable = pgTable("signal_derivation_rules", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  ...SIGNAL_INTELLIGENCE_FIELDS,
 });
 
 export type SignalDerivationRule = typeof signalDerivationRulesTable.$inferSelect;
