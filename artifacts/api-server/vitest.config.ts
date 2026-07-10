@@ -13,6 +13,7 @@ export default defineConfig({
       "src/lib/workflow-executor-content.test.ts",
       "src/lib/workflow-executor-integrations.test.ts",
       "src/lib/tenant-signals.test.ts",
+      "src/lib/drift-engine.test.ts",
     ],
     coverage: {
       provider: "v8",
