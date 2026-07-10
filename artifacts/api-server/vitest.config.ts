@@ -14,6 +14,7 @@ export default defineConfig({
       "src/lib/workflow-executor-integrations.test.ts",
       "src/lib/tenant-signals.test.ts",
       "src/lib/drift-engine.test.ts",
+      "src/lib/forecasting-engine.test.ts",
       "src/lib/priority-engine.test.ts",
       "src/lib/health-engine.test.ts",
     ],
