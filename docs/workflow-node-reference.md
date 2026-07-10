@@ -527,6 +527,24 @@ Score labels: `< 40` → `"Cold"` | `40–59` → `"Warm"` | `60–79` → `"Hot
 
 ---
 
+### `write_crm_scores`
+
+Runs the CRM scoring engine (`crm-engine.ts`) for a tenant/client and writes the result onto the lead row's `priorityScore` and `pricingInfluenceScore` columns.
+
+The engine itself performs zero hardcoded scoring — it sums the five `crm:*` contribution fields (`crmFitContribution`, `crmPainContribution`, `crmMaturityContribution`, `crmIntentContribution`, `crmUrgencyContribution`) across the tenant's currently-fired, enabled signals whose `category` starts with `crm:`, all of which is configured in the admin-editable signal rules. This node only decides which field of the resulting score object maps to which lead column.
+
+| Config Field | Type | Description |
+|---|---|---|
+| `leadId` | string | Lead ID to update (interpolated) |
+| `clientUserId` | string | Client/tenant user ID to score (interpolated) |
+| `priorityScoreField` | string | Which `CrmScoreBreakdown` field to write to `priorityScore` (optional, default `"total"`) |
+| `pricingInfluenceScoreField` | string | Which `CrmScoreBreakdown` field to write to `pricingInfluenceScore` (optional, default `"total"`) |
+| `label` | string | Display label |
+
+**Outputs:** `{ leadId, clientUserId, priorityScore, pricingInfluenceScore, crmScore, crmSignals }`.
+
+---
+
 ### `assign_pipeline_stage`
 
 Moves a lead or opportunity to a new pipeline stage.

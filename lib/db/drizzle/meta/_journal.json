@@ -1121,6 +1121,13 @@
       "when": 1784500000000,
       "tag": "0155_add_signal_intelligence_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1784600000000,
+      "tag": "0156_crm_engine_scores",
+      "breakpoints": true
     }
   ]
 }

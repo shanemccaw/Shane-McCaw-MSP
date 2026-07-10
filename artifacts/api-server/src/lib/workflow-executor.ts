@@ -68,6 +68,7 @@ import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
+import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -2407,6 +2408,45 @@ async function executeNode(
             });
             output = { leadId, score, scoreLabel, qualified };
           }
+        }
+        break;
+      }
+
+      case "write_crm_scores": {
+        // Runs the CRM scoring engine (crm-engine.ts) for a tenant/client and
+        // persists the resulting scores onto the lead record's priorityScore
+        // and pricingInfluenceScore columns. The engine itself is a pure sum
+        // over the tenant's fired `crm:*` signals — this node only decides
+        // which score-object field maps to which CRM column (default: the
+        // combined `total` for both), so no scoring formula lives here.
+        const leadIdRaw = interp(node.data.leadId as string | undefined, payload);
+        const leadId = leadIdRaw ? parseInt(leadIdRaw, 10) : NaN;
+        const clientUserIdRaw = interp(node.data.clientUserId as string | undefined, payload);
+        const clientUserId = clientUserIdRaw ? parseInt(clientUserIdRaw, 10) : NaN;
+
+        if (isNaN(leadId) || isNaN(clientUserId)) {
+          nodeError = true;
+          output = { error: "write_crm_scores requires a valid leadId and clientUserId" };
+        } else {
+          const priorityField = (interp(node.data.priorityScoreField as string | undefined, payload) ?? "total") as keyof CrmScoreBreakdown;
+          const pricingField = (interp(node.data.pricingInfluenceScoreField as string | undefined, payload) ?? "total") as keyof CrmScoreBreakdown;
+
+          const crmScoreResult = await calculateCrmScore(clientUserId);
+          const priorityScore = crmScoreResult.score[priorityField] ?? crmScoreResult.score.total;
+          const pricingInfluenceScore = crmScoreResult.score[pricingField] ?? crmScoreResult.score.total;
+
+          await db.update(leadsTable)
+            .set({ priorityScore, pricingInfluenceScore })
+            .where(eq(leadsTable.id, leadId));
+
+          output = {
+            leadId,
+            clientUserId,
+            priorityScore,
+            pricingInfluenceScore,
+            crmScore: crmScoreResult.score,
+            crmSignals: crmScoreResult.breakdown.map(b => b.signalKey),
+          };
         }
         break;
       }

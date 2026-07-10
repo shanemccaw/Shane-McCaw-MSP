@@ -74,6 +74,12 @@ export const leadsTable = pgTable("leads", {
   notes: text("notes"),
   // Soft-delete: when set, this lead is hidden from all stats and list queries
   deletedAt: timestamp("deleted_at"),
+  // CRM scoring engine — see `crm-engine.ts`. Pure sums over fired `crm:*`
+  // signal contribution fields; persisted here via the `write_crm_scores`
+  // workflow node so automations and the CRM UI can read a stable value
+  // without recomputing the engine on every render.
+  priorityScore: integer("priority_score").notNull().default(0),
+  pricingInfluenceScore: integer("pricing_influence_score").notNull().default(0),
 });
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -1858,7 +1864,7 @@ export interface WfNode {
   type:
     | "start" | "end" | "action" | "condition" | "delay" | "error"
     // CRM
-    | "score_lead" | "assign_pipeline_stage" | "create_opportunity"
+    | "score_lead" | "assign_pipeline_stage" | "create_opportunity" | "write_crm_scores"
     // Diagnostics
     | "parse_quiz_results" | "generate_readiness_score" | "attach_quiz_insights"
     // M365 Health
