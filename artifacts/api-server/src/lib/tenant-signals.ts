@@ -1,3 +1,20 @@
+import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
+
+// ─── Signal enabled/disabled state ────────────────────────────────────────────
+//
+// Shared lookup used by every computeTenantSignals call site (admin routes,
+// workflow-executor, consolidated-sow-generator, portal pricing adjustments)
+// so disabled signals are gated consistently everywhere signals are evaluated.
+// A missing row means "enabled" — existing signals are unaffected until an
+// admin explicitly disables one.
+export async function getDisabledSignalKeys(): Promise<Set<string>> {
+  const rows = await db.execute(sql`
+    SELECT signal_key AS "signalKey" FROM signal_enabled_state WHERE enabled = false
+  `);
+  return new Set((rows.rows as Array<{ signalKey: string }>).map(r => r.signalKey));
+}
+
 // ─── Tenant health block vars (used by email templates) ──────────────────────
 //
 // Single source of truth for turning a client's latest per-category health
@@ -338,9 +355,21 @@ export function computeTenantSignals(
   parsedFindings: string[],
   rules: SignalDerivationRule[],
   groups: SignalRuleGroup[],
+  disabledSignalKeys: Set<string> = new Set(),
 ): { firedSignals: Set<string>; trace: RuleTraceEntry[] } {
   const trace: RuleTraceEntry[] = [];
-  const firedSignals = new Set<string>(["alwaysInclude"]);
+  const firedSignals = new Set<string>();
+  if (disabledSignalKeys.has("alwaysInclude")) {
+    trace.push({
+      signalKey: "alwaysInclude",
+      groupId: null,
+      ruleId: -1,
+      result: false,
+      reason: "Signal is disabled by admin — skipped without evaluating rules, cannot fire",
+    });
+  } else {
+    firedSignals.add("alwaysInclude");
+  }
 
   const groupMap = new Map<number, SignalRuleGroup>();
   for (const g of groups) groupMap.set(g.id, g);
@@ -361,6 +390,17 @@ export function computeTenantSignals(
   const signalKeys = [...new Set(rules.map(r => r.signalKey))];
 
   for (const signalKey of signalKeys) {
+    if (disabledSignalKeys.has(signalKey)) {
+      trace.push({
+        signalKey,
+        groupId: null,
+        ruleId: -1,
+        result: false,
+        reason: "Signal is disabled by admin — skipped without evaluating rules, cannot fire",
+      });
+      continue;
+    }
+
     let signalFired = false;
 
     const signalGroups = groups.filter(g => g.signalKey === signalKey);

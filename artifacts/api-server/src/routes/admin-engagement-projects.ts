@@ -37,11 +37,18 @@ router.get("/admin/engagement-projects/signals", requireAdmin, async (_req: Requ
 
     const allSignals = [...TENANT_SIGNALS, ...customSignals];
 
+    const enabledRows = await db.execute(sql`
+      SELECT signal_key AS "signalKey", enabled FROM signal_enabled_state
+    `);
+    const enabledMap = new Map(
+      (enabledRows.rows as Array<{ signalKey: string; enabled: boolean }>).map(r => [r.signalKey, r.enabled]),
+    );
+
     const result = allSignals.map(signal => {
       const unlocksProjects = (projects.rows as Array<{ id: number; title: string; triggeredBy: string[] }>)
         .filter(p => Array.isArray(p.triggeredBy) && p.triggeredBy.includes(signal.key))
         .map(p => ({ id: p.id, title: p.title }));
-      return { ...signal, unlocksProjects };
+      return { ...signal, unlocksProjects, enabled: enabledMap.get(signal.key) ?? true };
     });
 
     res.json(result);

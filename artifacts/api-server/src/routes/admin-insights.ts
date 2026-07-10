@@ -66,7 +66,7 @@ import {
 import { sendWebPushToAdmins } from "../lib/web-push";
 import { extractAiHtml, parseSowPricing, parseSowAllPricing, patchSowGrandTotal, purgeSowAdjustments, purgeAdjustmentsByTitle, validateSowPricing, stripStagedForReviewBanner, nextBusinessMonday, assignDeliveryDates, SowPricingLineSchema, type SowPricingLine } from "../lib/sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock, type WorkstreamKey } from "../lib/workstream-normalizer";
-import { computeTenantSignals, projectMatchesSignals, TENANT_SIGNALS } from "../lib/tenant-signals";
+import { computeTenantSignals, projectMatchesSignals, TENANT_SIGNALS, getDisabledSignalKeys } from "../lib/tenant-signals";
 import { ensureOpportunityForSow } from "../lib/crm-pipeline";
 import {
   PDFDocument,
@@ -1874,15 +1874,17 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
         firedSignals: [], totalProjects: allEngagementProjects.length, includedCount: allEngagementProjects.length, excludedCount: 0,
       };
       try {
-        const [signalRulesRes, signalGroupsRes] = await Promise.all([
+        const [signalRulesRes, signalGroupsRes, disabledSignalKeys] = await Promise.all([
           db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
           db.execute(sql`SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt" FROM signal_rule_groups ORDER BY signal_key, sort_order, id`),
+          getDisabledSignalKeys(),
         ]);
         const { firedSignals } = computeTenantSignals(
           mergedSowProfile,
           allFindings,
           signalRulesRes.rows as unknown as Parameters<typeof computeTenantSignals>[2],
           signalGroupsRes.rows as unknown as Parameters<typeof computeTenantSignals>[3],
+          disabledSignalKeys,
         );
         const knownSignalKeys = new Set(TENANT_SIGNALS.map(s => s.key));
         signalFilteredProjects = allEngagementProjects.filter(p => {

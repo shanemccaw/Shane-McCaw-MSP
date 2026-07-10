@@ -492,6 +492,14 @@ export const signalSimulationProfilesTable = pgTable("signal_simulation_profiles
 });
 
 export type SignalSimulationProfile = typeof signalSimulationProfilesTable.$inferSelect;
+
+export const signalEnabledStateTable = pgTable("signal_enabled_state", {
+  signalKey: text("signal_key").primaryKey(),
+  enabled: boolean("enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SignalEnabledState = typeof signalEnabledStateTable.$inferSelect;
 export type InsertSignalSimulationProfile = typeof signalSimulationProfilesTable.$inferInsert;
 
 export const shareEventsTable = pgTable("share_events", {

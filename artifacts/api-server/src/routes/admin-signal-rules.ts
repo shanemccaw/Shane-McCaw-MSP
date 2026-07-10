@@ -8,6 +8,7 @@ import {
   ADJUSTMENT_SIGNALS,
   computeTenantSignals,
   projectMatchesSignals,
+  getDisabledSignalKeys,
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
@@ -35,6 +36,22 @@ async function getAllGroups(): Promise<SignalRuleGroup[]> {
     ORDER BY signal_key, sort_order, id
   `);
   return rows.rows as unknown as SignalRuleGroup[];
+}
+
+// ── Signal enabled/disabled state ──────────────────────────────────────────────
+// Signals default to enabled — only rows explicitly written with enabled=false
+// are treated as disabled. A missing row means "enabled" (unchanged default
+// behavior for every existing signal until an admin explicitly toggles one).
+
+async function getSignalEnabledMap(): Promise<Record<string, boolean>> {
+  const rows = await db.execute(sql`
+    SELECT signal_key AS "signalKey", enabled FROM signal_enabled_state
+  `);
+  const map: Record<string, boolean> = {};
+  for (const r of rows.rows as Array<{ signalKey: string; enabled: boolean }>) {
+    map[r.signalKey] = r.enabled;
+  }
+  return map;
 }
 
 async function appendAuditLog(entry: {
@@ -216,10 +233,65 @@ router.get("/admin/signal-rules/adjustment-signals", requireAdmin, async (_req: 
     const customAdj = custom
       .filter(c => c.isAdjustment)
       .map(c => ({ key: c.key, label: c.label, description: c.description, expectedImpact: c.expectedImpact, recommendedRules: [] }));
-    res.json([...ADJUSTMENT_SIGNALS, ...customAdj]);
+    const enabledMap = await getSignalEnabledMap();
+    const all = [...ADJUSTMENT_SIGNALS, ...customAdj].map(s => ({ ...s, enabled: enabledMap[s.key] ?? true }));
+    res.json(all);
   } catch (err) {
     logger.error({ err }, "GET /admin/signal-rules/adjustment-signals failed");
     res.status(500).json({ error: "Failed to fetch adjustment signals" });
+  }
+});
+
+// ── GET /api/admin/signal-rules/enabled-state ─────────────────────────────────
+
+router.get("/admin/signal-rules/enabled-state", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const map = await getSignalEnabledMap();
+    res.json(map);
+  } catch (err) {
+    logger.error({ err }, "GET /admin/signal-rules/enabled-state failed");
+    res.status(500).json({ error: "Failed to fetch signal enabled state" });
+  }
+});
+
+// ── PATCH /api/admin/signal-rules/:signalKey/enabled ──────────────────────────
+
+router.patch("/admin/signal-rules/:signalKey/enabled", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { signalKey } = req.params as { signalKey: string };
+    if (!signalKey) { res.status(400).json({ error: "Missing signalKey" }); return; }
+    const { enabled } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ error: "Body must include a boolean 'enabled' field" });
+      return;
+    }
+
+    const priorResult = await db.execute(sql`
+      SELECT signal_key AS "signalKey", enabled FROM signal_enabled_state WHERE signal_key = ${signalKey}
+    `);
+    const prior = (priorResult.rows[0] as { signalKey: string; enabled: boolean } | undefined) ?? { signalKey, enabled: true };
+
+    await db.execute(sql`
+      INSERT INTO signal_enabled_state (signal_key, enabled, updated_at)
+      VALUES (${signalKey}, ${enabled}, now())
+      ON CONFLICT (signal_key) DO UPDATE SET enabled = ${enabled}, updated_at = now()
+    `);
+
+    const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
+    await appendAuditLog({
+      action: enabled ? "signal_enabled" : "signal_disabled",
+      signalKey,
+      before: prior,
+      after: { signalKey, enabled },
+      adminUserId: adminId,
+      note: `Signal "${signalKey}" ${enabled ? "enabled" : "disabled"} by admin`,
+    });
+
+    logger.info({ signalKey, enabled }, "admin-signal-rules: signal enabled state updated");
+    res.json({ signalKey, enabled });
+  } catch (err) {
+    logger.error({ err }, "PATCH /admin/signal-rules/:signalKey/enabled failed");
+    res.status(500).json({ error: "Failed to update signal enabled state" });
   }
 });
 
@@ -466,8 +538,8 @@ router.post("/admin/signal-rules/evaluate", requireAdmin, async (req: Request, r
     const mergedProfile = (profileUpdates as Record<string, unknown>) ?? {};
     const findings = Array.isArray(parsedFindings) ? (parsedFindings as string[]) : [];
 
-    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
-    const { firedSignals, trace } = computeTenantSignals(mergedProfile, findings, rules, groups);
+    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const { firedSignals, trace } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledKeys);
 
     const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
     const firedArr = [...firedSignals].map(key => {
@@ -500,8 +572,8 @@ router.post("/admin/signal-rules/preview-projects", requireAdmin, async (req: Re
     } else {
       const mergedProfile = (body.profileUpdates as Record<string, unknown>) ?? {};
       const findings = Array.isArray(body.parsedFindings) ? (body.parsedFindings as string[]) : [];
-      const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
-      const { firedSignals, trace: _trace } = computeTenantSignals(mergedProfile, findings, rules, groups);
+      const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+      const { firedSignals, trace: _trace } = computeTenantSignals(mergedProfile, findings, rules, groups, disabledKeys);
       firedSignalKeys = [...firedSignals];
       const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
       firedArr = firedSignalKeys.map(key => {
@@ -555,7 +627,7 @@ router.get("/admin/signal-rules/conflicts", requireAdmin, async (_req: Request, 
 
 router.get("/admin/signal-rules/health", requireAdmin, async (_req: Request, res: Response) => {
   try {
-    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
+    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
 
     const clientsResult = await db.execute(sql`
       SELECT DISTINCT c.id AS client_id,
@@ -586,7 +658,7 @@ router.get("/admin/signal-rules/health", requireAdmin, async (_req: Request, res
     for (const row of clientsResult.rows as Array<{ profile_updates: Record<string, unknown>; findings: string[] }>) {
       const profile = row.profile_updates ?? {};
       const findings = Array.isArray(row.findings) ? row.findings : [];
-      const { firedSignals } = computeTenantSignals(profile, findings, rules, groups);
+      const { firedSignals } = computeTenantSignals(profile, findings, rules, groups, disabledKeys);
       for (const key of firedSignals) {
         signalCounts[key] = (signalCounts[key] ?? 0) + 1;
       }
@@ -1253,12 +1325,13 @@ router.post("/admin/signal-rules/simulation-profiles/:id/run", requireAdmin, asy
       } | null;
     };
 
-    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
+    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
     const { firedSignals, trace } = computeTenantSignals(
       profileUpdates ?? {},
       Array.isArray(parsedFindings) ? parsedFindings : [],
       rules,
       groups,
+      disabledKeys,
     );
 
     const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));
@@ -1364,8 +1437,8 @@ router.post("/admin/signal-rules/dry-run-sow", requireAdmin, async (req: Request
       for (const f of run.parsedFindings ?? []) allFindings.add(f);
     }
 
-    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
-    const { firedSignals, trace } = computeTenantSignals(mergedProfile, [...allFindings], rules, groups);
+    const [rules, groups, disabledKeys] = await Promise.all([getAllRules(), getAllGroups(), getDisabledSignalKeys()]);
+    const { firedSignals, trace } = computeTenantSignals(mergedProfile, [...allFindings], rules, groups, disabledKeys);
     const firedKeys = [...firedSignals];
 
     const signalMeta = new Map(TENANT_SIGNALS.map(s => [s.key, s]));

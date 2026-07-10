@@ -382,8 +382,19 @@ export async function generateConsolidatedSowDocument(
     // This matches the DB-evaluation path which sets hasAdjSignalRules = typedSignalRules.some(r => r.signalKey.startsWith("adj:")).
     const adjRuleCheck = await db.execute(sql`SELECT 1 FROM signal_derivation_rules WHERE signal_key LIKE 'adj:%' LIMIT 1`);
     hasAdjSignalRules = adjRuleCheck.rows.length > 0;
+    // Disabled signals must never fire, even if a caller supplied a pre-computed override
+    // that includes them (e.g. a stale workflow payload) — filter them out here too.
+    const disabledOverrideRows = await db.execute(sql`
+      SELECT signal_key AS "signalKey" FROM signal_enabled_state WHERE enabled = false
+    `);
+    const disabledOverrideKeys = new Set(
+      (disabledOverrideRows.rows as Array<{ signalKey: string }>).map(r => r.signalKey),
+    );
+    const effectiveOverride = new Set(
+      [...signalsOverride].filter(key => !disabledOverrideKeys.has(key)),
+    );
     if (hasAdjSignalRules) {
-      for (const key of signalsOverride) {
+      for (const key of effectiveOverride) {
         if (key.startsWith("adj:")) firedAdjSignalKeys.add(key);
       }
     }
@@ -392,7 +403,7 @@ export async function generateConsolidatedSowDocument(
       const { included, reason } = projectMatchesSignals(
         { title: p.title, triggeredBy: triggers },
         knownSignalKeys,
-        signalsOverride,
+        effectiveOverride,
       );
       if (!included && reason) {
         logger.debug({ ...logCtx, projectTitle: p.title, reason },
@@ -414,6 +425,12 @@ export async function generateConsolidatedSowDocument(
       SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt"
       FROM signal_rule_groups ORDER BY signal_key, sort_order, id
     `);
+    const disabledSignalRows = await db.execute(sql`
+      SELECT signal_key AS "signalKey" FROM signal_enabled_state WHERE enabled = false
+    `);
+    const disabledSignalKeys = new Set(
+      (disabledSignalRows.rows as Array<{ signalKey: string }>).map(r => r.signalKey),
+    );
 
     // ── Conflict detection ───────────────────────────────────────────────────
     type RuleRow = Parameters<typeof computeTenantSignals>[2][number];
@@ -437,6 +454,7 @@ export async function generateConsolidatedSowDocument(
       allFindingsForSignals,
       typedSignalRules,
       signalGroups.rows as unknown as Parameters<typeof computeTenantSignals>[3],
+      disabledSignalKeys,
     );
 
     // Extract adj:* keys — these drive pricing adjustment gating, not project inclusion.

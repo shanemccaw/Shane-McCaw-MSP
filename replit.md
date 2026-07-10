@@ -67,6 +67,14 @@ A marketing website for Shane McCaw Consulting positioning Shane as the premier 
 
 _Populate as you build — explicit user instructions worth remembering across sessions._
 
+## Tenant Signal Enable/Disable
+
+- Admins can toggle any Tenant Signal (regular or `adj:*` adjustment signal) off in the Admin Panel's Tenant Signals page — a toggle switch appears next to each signal in the list, with a "Disabled" badge shown when off.
+- State lives in the `signal_enabled_state` table (`signal_key` PK, `enabled` boolean default true). A missing row means enabled — existing signals are unaffected until an admin explicitly toggles one.
+- API: `GET /api/admin/signal-rules/enabled-state` (full map) and `PATCH /api/admin/signal-rules/:signalKey/enabled` (toggle one, audit-logged). The signal list endpoints (`/api/admin/engagement-projects/signals`, `/api/admin/signal-rules/adjustment-signals`) also embed `enabled` on each signal object.
+- Disabled signals are skipped entirely in `computeTenantSignals` (rules not evaluated, so they can never fire) — this is enforced everywhere signals are computed: admin evaluate/preview/health/dry-run endpoints, and both paths of SOW generation in `consolidated-sow-generator.ts` (DB-eval path and the `signalsOverride` path used by the workflow executor). Disabled adjustment signals therefore never authorize pricing adjustments in `sow-pricing.ts`, since that logic keys off the already-filtered fired-signal set.
+- Disabling a signal is not retroactive — already-generated SOW documents keep whatever signals fired at generation time.
+
 ## Gotchas
 
 - The booking calendar on `/book` uses `CalendarBooking.tsx` which reads Shane's real Exchange Online calendar via the Microsoft Graph API. To activate: grant the existing service principal (`GRAPH_CLIENT_ID`) two **Application** permissions in Azure AD — `Calendars.Read` and `Calendars.ReadWrite` — then admin-consent them. No new secrets are required; the same `GRAPH_MAIL_USER_ID` mailbox is used. If Graph credentials are absent, the slot list will be empty and a clear placeholder is shown (no crash). `MicrosoftBookingsEmbed.tsx` and `VITE_BOOKINGS_URL` are no longer used by the book page.

@@ -67,7 +67,7 @@ import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
 import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
-import { computeTenantSignals, resolveSignalsOverride } from "./tenant-signals";
+import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
@@ -2706,9 +2706,10 @@ async function executeNode(
 
             const allFindings = [...new Set(scriptRuns.flatMap(r => (r.parsedFindings as string[] | null) ?? []))];
 
-            const [signalRules, signalGroups] = await Promise.all([
+            const [signalRules, signalGroups, disabledSignalKeys] = await Promise.all([
               db.select().from(signalDerivationRulesTable).orderBy(signalDerivationRulesTable.sortOrder),
               db.select().from(signalRuleGroupsTable).orderBy(signalRuleGroupsTable.sortOrder),
+              getDisabledSignalKeys(),
             ]);
 
             const { firedSignals } = computeTenantSignals(
@@ -2716,6 +2717,7 @@ async function executeNode(
               allFindings,
               signalRules as Parameters<typeof computeTenantSignals>[2],
               signalGroups as Parameters<typeof computeTenantSignals>[3],
+              disabledSignalKeys,
             );
 
             const signals = [...firedSignals];

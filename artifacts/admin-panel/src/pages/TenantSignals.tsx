@@ -14,6 +14,7 @@ interface TenantSignal {
   expectedImpact: string;
   recommendedRules: Array<{ ruleType: string; sourceKey: string; compareValue?: string; rationale: string }>;
   unlocksProjects?: Array<{ id: number; title: string }>;
+  enabled?: boolean;
 }
 
 interface SignalRule {
@@ -577,6 +578,31 @@ export default function TenantSignalsPage() {
         setNewSignalError(body.error ?? "Failed to create signal");
       }
     } finally { setSavingNewSignal(false); }
+  }
+
+  const [togglingSignalKey, setTogglingSignalKey] = useState<string | null>(null);
+
+  async function handleToggleSignalEnabled(sig: TenantSignal) {
+    const nextEnabled = !(sig.enabled ?? true);
+    setTogglingSignalKey(sig.key);
+    try {
+      const res = await fetchWithAuth(`/api/admin/signal-rules/${encodeURIComponent(sig.key)}/enabled`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      if (res.ok) {
+        const apply = (list: TenantSignal[]) =>
+          list.map(s => (s.key === sig.key ? { ...s, enabled: nextEnabled } : s));
+        setSignals(apply);
+        setAdjustmentSignals(apply);
+        toast({ title: `Signal "${sig.label}" ${nextEnabled ? "enabled" : "disabled"}` });
+      } else {
+        const body = await res.json().catch(() => ({}) as { error?: string });
+        toast({ title: body.error ?? "Failed to update signal", variant: "destructive" });
+      }
+    } finally {
+      setTogglingSignalKey(null);
+    }
   }
 
   async function handleDeleteSignal(key: string) {
@@ -1430,11 +1456,15 @@ export default function TenantSignalsPage() {
 
               const isCustom = customSignalKeys.has(sig.key);
               const isConfirmingDelete = deletingSignalKey === sig.key;
+              const isEnabled = sig.enabled ?? true;
+              const isToggling = togglingSignalKey === sig.key;
 
               return (
                 <div
                   key={sig.key}
                   className={`group relative flex items-center border-b border-[#30363D]/50 transition-colors ${
+                    !isEnabled ? "opacity-50" : ""
+                  } ${
                     isSelected
                       ? signalSection === "adjustment"
                         ? "bg-[#00B4D8]/10 border-l-2 border-l-[#00B4D8]"
@@ -1470,12 +1500,30 @@ export default function TenantSignalsPage() {
                             {conflictsForSig > 0 && (
                               <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
                             )}
+                            {!isEnabled && (
+                              <span className="text-[10px] uppercase tracking-wide font-semibold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded">Disabled</span>
+                            )}
                           </div>
                           {hp && (
                             <p className="text-xs text-[#484F58] mt-0.5">{hp.clientCount} / {hp.totalClients} clients</p>
                           )}
                         </div>
                         <ChevronRight className={`w-3.5 h-3.5 flex-shrink-0 transition-transform ${isSelected ? (signalSection === "adjustment" ? "text-[#00B4D8]" : "text-[#0078D4]") + " rotate-90" : "text-[#484F58]"}`} />
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); void handleToggleSignalEnabled(sig); }}
+                        disabled={isToggling}
+                        title={isEnabled ? "Disable signal (it will never fire)" : "Enable signal"}
+                        aria-label={isEnabled ? `Disable ${sig.label}` : `Enable ${sig.label}`}
+                        className={`mr-2 relative inline-flex h-4.5 w-8 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                          isEnabled ? "bg-[#0078D4]" : "bg-[#30363D]"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                            isEnabled ? "translate-x-4" : "translate-x-0.5"
+                          }`}
+                        />
                       </button>
                       {isCustom && (
                         <button

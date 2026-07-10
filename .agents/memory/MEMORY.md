@@ -26,3 +26,4 @@
 - [SOW signal-authoritative phase generation](sow-signal-authoritative-phases.md) — client checklist reads stored sowPricingLines not live HTML; purge+drift enforcement happens post-generation, non-blocking
 - [Hardcoded prompt fragments get duplicated across routes](sow-pricing-formula-duplication.md) — a "single" hardcoded prompt block was actually copy-pasted 3x across generator + preview routes; migrating to DB-editable required finding and wiring all copies
 - [AI generation testMode pattern](ai-prompt-generation-testmode.md) — every docId-keyed persistence site (insert, callback, success update, catch-block failure update) needs its own testMode guard
+- [Tenant signal enable/disable gating](signal-enabled-state-gating.md) — computeTenantSignals has many call sites (admin routes + 2 SOW-generator paths); disabled keys must be fetched/filtered at every one, including pre-computed override sets

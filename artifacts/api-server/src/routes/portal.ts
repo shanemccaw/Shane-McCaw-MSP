@@ -14,7 +14,7 @@ import { setSecretValue, getSecretValue, getSecretMetadata } from "../lib/azure-
 import { testClientCredentials } from "../lib/azure-credentials.ts";
 import { probeGraphPermissions } from "../lib/probe-graph-permissions.ts";
 import { stripStagedForReviewBanner, stripTierDetectionText, extractAiHtml, nextBusinessMonday, WORKSTREAM_ADJ_MAP, ADJ_SIGNAL_PATTERNS, type SowPricingLine } from "../lib/sow-pricing.ts";
-import { computeTenantSignals, ADJUSTMENT_SIGNALS, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
+import { computeTenantSignals, ADJUSTMENT_SIGNALS, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { runClientScriptSequence } from "../lib/client-script-sequence.ts";
 import { advancePhaseIfComplete, syncProjectProgress as syncProjectProgressLib, seedKanbanCardsForPhase } from "../lib/kanban-phase-advance.ts";
 import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "../lib/kanban-auto-fire.ts";
@@ -10033,9 +10033,10 @@ async function computeSignalDrivenAdjustments(
     for (const run of [...scriptRuns].reverse()) Object.assign(mergedProfile, run.profileUpdates ?? {});
     const allFindings = [...new Set(scriptRuns.flatMap(r => r.parsedFindings ?? []))];
 
-    const [signalRulesRes, signalGroupsRes] = await Promise.all([
+    const [signalRulesRes, signalGroupsRes, disabledSignalKeys] = await Promise.all([
       db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
       db.execute(sql`SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt" FROM signal_rule_groups ORDER BY signal_key, sort_order, id`),
+      getDisabledSignalKeys(),
     ]);
 
     const { firedSignals } = computeTenantSignals(
@@ -10043,6 +10044,7 @@ async function computeSignalDrivenAdjustments(
       allFindings,
       signalRulesRes.rows as unknown as SignalDerivationRule[],
       signalGroupsRes.rows as unknown as SignalRuleGroup[],
+      disabledSignalKeys,
     );
 
     const firedAdjKeys = ADJUSTMENT_SIGNALS.map(s => s.key).filter(k => firedSignals.has(k));
