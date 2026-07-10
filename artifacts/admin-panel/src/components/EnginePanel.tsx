@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Eye, Gauge, FlaskConical, Settings } from "lucide-react";
+import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson } from "lucide-react";
 
 export interface EngineDefLite {
   key: string;
@@ -56,6 +56,8 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [testResult, setTestResult] = useState<TestRunResult | null>(null);
   const [previewResult, setPreviewResult] = useState<unknown | null>(null);
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true);
@@ -164,8 +166,83 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   };
 
+  const downloadJson = (data: unknown, filename: string) => {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/export`);
+      if (!res.ok) throw new Error("Export failed");
+      const data = await res.json();
+      downloadJson(data, `${engineKey}-engine-export.json`);
+      toast({ title: "Export ready", description: `Downloaded ${engineKey}-engine-export.json` });
+    } catch (err) {
+      toast({ title: "Export failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/import-template`);
+      if (!res.ok) throw new Error("Failed to load template");
+      const data = await res.json();
+      downloadJson(data, `${engineKey}-engine-import-template.json`);
+    } catch (err) {
+      toast({ title: "Template download failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const text = await file.text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new Error("Selected file is not valid JSON");
+      }
+      const confirmed = window.confirm(
+        `Importing will REPLACE all current ${def?.label ?? engineKey} rules and groups. A backup snapshot is taken automatically. Continue?`,
+      );
+      if (!confirmed) return;
+      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Import failed");
+      toast({ title: "Import complete", description: `Imported ${data.imported} rule(s) across ${data.groupsImported} group(s).` });
+      void loadConfig();
+    } catch (err) {
+      toast({ title: "Import failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <div className="p-6 space-y-4">
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={handleImportFileSelected}
+      />
       <div>
         <h1 className="text-xl font-semibold">{def?.label ?? engineKey}</h1>
         <p className="text-sm text-muted-foreground">{def?.description}</p>
@@ -276,6 +353,20 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
         </TabsContent>
 
         <TabsContent value="configuration" className="space-y-3 mt-4">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={handleExport}>
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Export JSON
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()} disabled={importing}>
+              {importing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
+              Import JSON
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleDownloadTemplate}>
+              <FileJson className="w-3.5 h-3.5 mr-1.5" />
+              Download import template
+            </Button>
+          </div>
           {configLoading ? (
             <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
           ) : (

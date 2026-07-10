@@ -19,7 +19,7 @@ import {
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "../lib/tenant-signals";
-import { getAllRules, getAllGroups } from "./admin-signal-rules";
+import { getAllRules, getAllGroups, parseIntelligenceFields, saveSnapshot } from "./admin-signal-rules";
 import { pushEngineTestLog, listEngineTestLogs } from "../lib/engine-test-log-buffer";
 
 const router: IRouter = Router();
@@ -194,6 +194,231 @@ router.get("/admin/engines/:key/configuration", requireAdmin, async (req: Reques
   } catch (err) {
     logger.error({ err, engineKey: key }, "admin-engines: configuration fetch failed");
     res.status(500).json({ error: "Failed to load engine configuration" });
+  }
+});
+
+// ── GET /api/admin/engines/:key/export ──────────────────────────────────────
+// Exports this engine's category-scoped rules + groups as a standalone JSON
+// document, downloadable from the Configuration tab and re-importable via
+// POST .../import below (round-trips exactly, including DB ids for reference).
+
+router.get("/admin/engines/:key/export", requireAdmin, async (req: Request, res: Response) => {
+  const { key } = req.params;
+  const def = getEngineDef(String(key));
+  if (!def) {
+    res.status(404).json({ error: "Unknown engine" });
+    return;
+  }
+  try {
+    const [rules, groups] = await Promise.all([getAllRules(), getAllGroups()]);
+    const prefix = `${def.categoryPrefix}:`;
+    const scopedGroups = groups.filter(g => (g.category ?? "").startsWith(prefix));
+    const scopedRules = rules.filter(r => (r.category ?? "").startsWith(prefix));
+    res.json({
+      engine: def.key,
+      engineLabel: def.label,
+      categoryPrefix: def.categoryPrefix,
+      exportedAt: new Date().toISOString(),
+      groups: scopedGroups,
+      rules: scopedRules,
+    });
+  } catch (err) {
+    logger.error({ err, engineKey: key }, "admin-engines: export failed");
+    res.status(500).json({ error: "Failed to export engine rules" });
+  }
+});
+
+// ── GET /api/admin/engines/:key/import-template ─────────────────────────────
+// A downloadable, minimal-but-complete example document for this engine —
+// one sample group with one sample rule, using this engine's categoryPrefix
+// and its most relevant intelligence field pre-filled to a non-zero example
+// value, so an admin can see exactly which fields matter for this engine.
+
+const ENGINE_EXAMPLE_FIELD: Record<string, string> = {
+  priority: "priorityScoreContribution",
+  pricing: "pricingImpact",
+  health: "governanceImpact",
+  drift: "trendValue",
+  forecasting: "trendValue",
+  crm: "crmFitContribution",
+  msp: "priorityScoreContribution",
+};
+
+router.get("/admin/engines/:key/import-template", requireAdmin, (req: Request, res: Response) => {
+  const { key } = req.params;
+  const def = getEngineDef(String(key));
+  if (!def) {
+    res.status(404).json({ error: "Unknown engine" });
+    return;
+  }
+  const prefix = `${def.categoryPrefix}:`;
+  const exampleField = ENGINE_EXAMPLE_FIELD[def.key] ?? "priorityScoreContribution";
+  res.json({
+    engine: def.key,
+    engineLabel: def.label,
+    categoryPrefix: def.categoryPrefix,
+    note:
+      `Template for the ${def.label}. 'category' on every rule/group MUST start with "${prefix}" ` +
+      `or it will not be picked up by this engine. Delete this example group/rule and add your own, ` +
+      `or edit the example in place. Importing this file (unmodified) via the Import JSON button will ` +
+      `replace ALL of this engine's current rules/groups with just this one example.`,
+    groups: [
+      {
+        signalKey: `${def.categoryPrefix}:example-signal`,
+        logic: "OR",
+        label: "Example Group — replace me",
+        sortOrder: 0,
+        category: `${prefix}example`,
+        [exampleField]: 10,
+      },
+    ],
+    rules: [
+      {
+        signalKey: `${def.categoryPrefix}:example-signal`,
+        groupSignalKey: `${def.categoryPrefix}:example-signal`,
+        ruleType: "profile_key_truthy",
+        sourceKey: "exampleProfileField",
+        compareValue: null,
+        description: "Example rule — replace with a real profile_key_* or findings_keyword rule.",
+        sortOrder: 0,
+        category: `${prefix}example`,
+        [exampleField]: 10,
+      },
+    ],
+  });
+});
+
+// ── POST /api/admin/engines/:key/import ─────────────────────────────────────
+// Replaces ALL of this engine's category-scoped rules + groups with the
+// imported document. Scoped strictly to rows whose `category` starts with
+// this engine's categoryPrefix — other engines' rules/groups (and any
+// ungrouped/legacy signals with no category) are left untouched.
+//
+// Rules reference their group via `groupSignalKey` (or legacy numeric
+// `groupId`/`group_id`, remapped like the global bundle importer) since
+// group DB ids are not stable across export/import round-trips.
+
+router.post("/admin/engines/:key/import", requireAdmin, async (req: Request, res: Response) => {
+  const { key } = req.params;
+  const def = getEngineDef(String(key));
+  if (!def) {
+    res.status(404).json({ error: "Unknown engine" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const importedGroups = body.groups;
+  const importedRules = body.rules;
+  if (!Array.isArray(importedRules)) {
+    res.status(400).json({ error: "Body must contain a 'rules' array" });
+    return;
+  }
+  const prefix = `${def.categoryPrefix}:`;
+
+  // Validate every row is actually scoped to this engine before touching the DB.
+  const badGroup = (importedGroups as Array<Record<string, unknown>> | undefined)?.find(
+    g => !String(g.category ?? "").startsWith(prefix),
+  );
+  if (badGroup) {
+    res.status(400).json({ error: `Every group's "category" must start with "${prefix}" for the ${def.label} — got "${badGroup.category}"` });
+    return;
+  }
+  const badRule = (importedRules as Array<Record<string, unknown>>).find(
+    r => !String(r.category ?? "").startsWith(prefix),
+  );
+  if (badRule) {
+    res.status(400).json({ error: `Every rule's "category" must start with "${prefix}" for the ${def.label} — got "${badRule.category}"` });
+    return;
+  }
+
+  try {
+    const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
+    // Full-ruleset backup before mutating, so a bad import is always recoverable
+    // via the existing Rule Versions restore flow.
+    const snapshotId = await saveSnapshot(`Pre-import backup (${def.label})`, adminId);
+
+    let ruleCount = 0;
+    let groupCount = 0;
+
+    await db.transaction(async (tx) => {
+      // Delete only this engine's category-scoped rows.
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE category LIKE ${prefix + "%"}`);
+      await tx.execute(sql`DELETE FROM signal_rule_groups WHERE category LIKE ${prefix + "%"}`);
+
+      // signalKey -> new group DB id, keyed by the group's own signalKey since
+      // that's the only stable cross-reference an exported group carries.
+      const groupIdBySignalKey = new Map<string, number>();
+
+      if (Array.isArray(importedGroups)) {
+        for (const g of importedGroups as Array<Record<string, unknown>>) {
+          const { values: gIntel } = parseIntelligenceFields(g);
+          const signalKey = String(g.signalKey ?? g.signal_key ?? "");
+          if (!signalKey) continue;
+          const result = await tx.execute(sql`
+            INSERT INTO signal_rule_groups (
+              signal_key, logic, label, sort_order,
+              priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+              governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+              architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+              severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+              crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+            )
+            VALUES (
+              ${signalKey}, ${(g.logic ?? "OR") as string},
+              ${g.label ?? null}, ${(g.sortOrder ?? g.sort_order ?? 0) as number},
+              ${gIntel.priority}, ${gIntel.weight}, ${gIntel.pricingImpact}, ${gIntel.priorityScoreContribution}, ${gIntel.pricingValueContribution},
+              ${gIntel.governanceImpact}, ${gIntel.securityImpact}, ${gIntel.complianceImpact}, ${gIntel.adoptionImpact}, ${gIntel.copilotImpact},
+              ${gIntel.architectureImpact}, ${gIntel.trendValue}, ${gIntel.trendDirection}, ${gIntel.decayRate}, ${gIntel.ttlDays}, ${gIntel.confidence},
+              ${gIntel.severity}, ${(g.category as string) ?? prefix}, ${gIntel.pillar}, ${gIntel.crmFitContribution}, ${gIntel.crmPainContribution},
+              ${gIntel.crmMaturityContribution}, ${gIntel.crmIntentContribution}, ${gIntel.crmUrgencyContribution}
+            )
+            RETURNING id
+          `);
+          const newId = (result.rows[0] as { id: number }).id;
+          groupIdBySignalKey.set(signalKey, newId);
+          groupCount++;
+        }
+      }
+
+      for (const r of importedRules as Array<Record<string, unknown>>) {
+        const groupRef = String(r.groupSignalKey ?? r.group_signal_key ?? "");
+        const mappedGroupId = groupRef ? (groupIdBySignalKey.get(groupRef) ?? null) : null;
+        const { values: rIntel } = parseIntelligenceFields(r);
+        await tx.execute(sql`
+          INSERT INTO signal_derivation_rules (
+            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
+            governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
+            architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
+            severity, category, pillar, crm_fit_contribution, crm_pain_contribution,
+            crm_maturity_contribution, crm_intent_contribution, crm_urgency_contribution
+          )
+          VALUES (
+            ${(r.signalKey ?? r.signal_key) as string}, ${mappedGroupId},
+            ${(r.ruleType ?? r.rule_type) as string}, ${(r.sourceKey ?? r.source_key) as string},
+            ${(r.compareValue ?? r.compare_value ?? null) as string | null},
+            ${(r.description ?? null) as string | null}, ${(r.sortOrder ?? r.sort_order ?? 0) as number},
+            ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
+            ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
+            ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
+            ${rIntel.severity}, ${(r.category as string) ?? prefix}, ${rIntel.pillar}, ${rIntel.crmFitContribution}, ${rIntel.crmPainContribution},
+            ${rIntel.crmMaturityContribution}, ${rIntel.crmIntentContribution}, ${rIntel.crmUrgencyContribution}
+          )
+        `);
+        ruleCount++;
+      }
+
+      await tx.execute(sql`
+        INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
+        VALUES ('import', null, null, null, null, ${adminId},
+                ${`Engine import (${def.label}): replaced with ${ruleCount} rule(s) across ${groupCount} group(s). Pre-import snapshot saved as ID ${snapshotId}.`})
+      `);
+    });
+
+    logger.info({ engineKey: key, ruleCount, groupCount, snapshotId }, "admin-engines: engine-scoped import complete");
+    res.json({ engine: def.key, imported: ruleCount, groupsImported: groupCount, snapshotId });
+  } catch (err) {
+    logger.error({ err, engineKey: key }, "admin-engines: engine-scoped import failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
   }
 });
 

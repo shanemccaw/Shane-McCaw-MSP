@@ -90,7 +90,7 @@ const INTELLIGENCE_FIELD_DEFAULTS: Record<string, number | string> = {
  * than a hardcoded default, so a partial update never zeroes out unrelated
  * intelligence data. `base` defaults to the zero/empty defaults for creates.
  */
-function parseIntelligenceFields(
+export function parseIntelligenceFields(
   body: IntelligenceFieldInput,
   base: Record<string, number | string> = INTELLIGENCE_FIELD_DEFAULTS,
 ): { values: Record<string, number | string>; error?: string } {
@@ -199,7 +199,7 @@ async function appendAuditLog(entry: {
   `);
 }
 
-async function saveSnapshot(name: string, adminId?: number | null): Promise<number> {
+export async function saveSnapshot(name: string, adminId?: number | null): Promise<number> {
   const rules = await getAllRules();
   const groups = await getAllGroups();
   const snapshot = { rules, groups };
