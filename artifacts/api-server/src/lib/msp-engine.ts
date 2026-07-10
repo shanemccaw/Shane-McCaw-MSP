@@ -1,0 +1,205 @@
+/**
+ * msp-engine.ts
+ *
+ * MSP portfolio-risk roll-up engine. This is the aggregation layer on top of
+ * the per-tenant health, drift, and priority engines — it does not recompute
+ * any tenant scoring itself. For every active client/tenant it calls:
+ *   - calculateArchitectureHealthScore(tenantId) from health-engine.ts
+ *   - computeDriftEngine(...)                    from drift-engine.ts
+ *   - calculatePriorityScore(tenantId)            from priority-engine.ts
+ * and sums the three resulting `score` fields into that tenant's
+ * `combinedScore`. `portfolioRisk` is exactly the sum of every tenant's
+ * `combinedScore` across the whole client base — no weighting, no
+ * conditional logic, no clamping.
+ *
+ * Out of scope (see task spec): the health/drift/priority engines
+ * themselves, admin UI (MSP console dashboard), workflow nodes, SOW wiring.
+ */
+
+import { db, usersTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import {
+  computeTenantSignals,
+  getDisabledSignalKeys,
+  type SignalDerivationRule,
+  type SignalRuleGroup,
+} from "./tenant-signals.ts";
+import { computeHealthEngine } from "./health-engine.ts";
+import { computeDriftEngine } from "./drift-engine.ts";
+import {
+  fetchSignalRulesAndGroups,
+  buildTenantProfileAndFindings,
+  rankFiredSignals,
+  sumPriorityScore,
+  getSignalWeights,
+} from "./priority-engine.ts";
+
+// ── Shared engine output contract (mirrors priority-engine.ts / health-engine.ts) ──
+
+export interface TenantEngineScores {
+  tenantId: number;
+  tenantName: string | null;
+  architectureHealthScore: number;
+  driftScore: number;
+  priorityScore: number;
+  /** Pure sum of the three scores above — nothing else. */
+  combinedScore: number;
+  firedSignals: string[];
+}
+
+export interface MspEngineOutput {
+  engine: "msp";
+  score: number;
+  /** Per-tenant breakdown, in the order tenants were fetched. */
+  breakdown: TenantEngineScores[];
+  /** Tenants sorted descending by combinedScore. */
+  rankedTenants: TenantEngineScores[];
+  rawSignals: string[];
+  rawRules: SignalDerivationRule[];
+  workflowVariables: Record<string, number>;
+  timestamp: string;
+}
+
+/**
+ * Pure core of the engine: given every tenant's already-computed
+ * `combinedScore` (from the health/drift/priority engines), sums them into
+ * `portfolioRisk` and sorts tenants descending by `combinedScore` into
+ * `rankedTenants`. No DB access, no conditionals, no weighting — a plain
+ * sum + sort over data the per-tenant engines already produced.
+ */
+export function aggregatePortfolioRisk(
+  tenantScores: TenantEngineScores[],
+): { portfolioRisk: number; rankedTenants: TenantEngineScores[] } {
+  const portfolioRisk = tenantScores.reduce((sum, t) => sum + t.combinedScore, 0);
+  const rankedTenants = [...tenantScores].sort((a, b) => b.combinedScore - a.combinedScore);
+  return { portfolioRisk, rankedTenants };
+}
+
+/**
+ * Pure per-tenant computation: given the tenant's merged profile/findings
+ * and the (already-fetched) global signal rule/group configuration, calls
+ * each of the three existing engines' pure compute functions directly
+ * (never re-implementing their scoring) and sums the three `score` fields
+ * into `combinedScore`.
+ */
+export function computeTenantEngineScores(
+  tenantId: number,
+  tenantName: string | null,
+  mergedProfile: Record<string, unknown>,
+  parsedFindings: string[],
+  rules: SignalDerivationRule[],
+  groups: SignalRuleGroup[],
+  disabledSignalKeys: Set<string>,
+): TenantEngineScores {
+  const health = computeHealthEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+  const drift = computeDriftEngine(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+
+  const { firedSignals } = computeTenantSignals(mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+  const firedSignalKeys = [...firedSignals];
+  const weights = getSignalWeightsFromRulesAndGroups(rules, groups);
+  const rankedSignals = rankFiredSignals(firedSignalKeys, weights);
+  const { score: priorityScore } = sumPriorityScore(rankedSignals);
+
+  const combinedScore = health.score + drift.score + priorityScore;
+
+  return {
+    tenantId,
+    tenantName,
+    architectureHealthScore: health.score,
+    driftScore: drift.score,
+    priorityScore,
+    combinedScore,
+    firedSignals: firedSignalKeys,
+  };
+}
+
+/**
+ * Derives per-signal `priorityScoreContribution` weight configuration from
+ * already-fetched rules/groups — the same "max across rows for that signal
+ * key" convention `getSignalWeights()` uses in priority-engine.ts, kept
+ * local here so this module can batch-fetch rules/groups once for the whole
+ * portfolio instead of once per tenant.
+ */
+function getSignalWeightsFromRulesAndGroups(
+  rules: SignalDerivationRule[],
+  groups: SignalRuleGroup[],
+): { signalKey: string; weight: number; priority: number; priorityScoreContribution: number }[] {
+  const bySignal = new Map<string, { signalKey: string; weight: number; priority: number; priorityScoreContribution: number }>();
+
+  const consider = (signalKey: string, weight: number, priority: number, priorityScoreContribution: number) => {
+    const existing = bySignal.get(signalKey);
+    if (!existing) {
+      bySignal.set(signalKey, { signalKey, weight, priority, priorityScoreContribution });
+      return;
+    }
+    existing.weight = Math.max(existing.weight, weight);
+    existing.priority = Math.max(existing.priority, priority);
+    existing.priorityScoreContribution = Math.max(existing.priorityScoreContribution, priorityScoreContribution);
+  };
+
+  for (const rule of rules) consider(rule.signalKey, rule.weight, rule.priority, rule.priorityScoreContribution);
+  for (const group of groups) consider(group.signalKey, group.weight, group.priority, group.priorityScoreContribution);
+
+  return [...bySignal.values()];
+}
+
+/**
+ * Fetches every active client/tenant record the platform manages.
+ */
+async function fetchActiveTenants(): Promise<{ id: number; name: string | null }[]> {
+  return db
+    .select({ id: usersTable.id, name: usersTable.name })
+    .from(usersTable)
+    .where(eq(usersTable.role, "client"));
+}
+
+/**
+ * Calculates the MSP portfolio-risk view: for every active tenant, computes
+ * its architecture health, drift, and priority scores (by delegating to the
+ * existing engines — never recomputing them), sums them into a per-tenant
+ * `combinedScore`, then sums all tenants' combined scores into
+ * `portfolioRisk` and ranks tenants descending by risk.
+ *
+ * The per-tenant engines' pure compute functions (`computeHealthEngine`,
+ * `computeDriftEngine`, and the priority-engine's rank/sum helpers) are
+ * called directly — the same functions the health/drift/priority engines'
+ * own DB-fetching entry points delegate to — so this engine reuses a single
+ * batched rules/groups/disabledSignalKeys fetch across the whole portfolio
+ * instead of re-fetching per tenant, without duplicating any scoring logic.
+ */
+export async function calculateMspPortfolioRisk(): Promise<MspEngineOutput> {
+  const [tenants, { rules, groups }, disabledSignalKeys] = await Promise.all([
+    fetchActiveTenants(),
+    fetchSignalRulesAndGroups(),
+    getDisabledSignalKeys(),
+  ]);
+
+  const tenantScores = await Promise.all(
+    tenants.map(async tenant => {
+      const { mergedProfile, findings } = await buildTenantProfileAndFindings(tenant.id);
+      return computeTenantEngineScores(tenant.id, tenant.name, mergedProfile, findings, rules, groups, disabledSignalKeys);
+    }),
+  );
+
+  const { portfolioRisk, rankedTenants } = aggregatePortfolioRisk(tenantScores);
+
+  const rawSignals = [...new Set(tenantScores.flatMap(t => t.firedSignals))];
+
+  const workflowVariables: Record<string, number> = {
+    portfolioRisk,
+    tenantCount: tenantScores.length,
+    topRiskTenantId: rankedTenants[0]?.tenantId ?? 0,
+    topRiskCombinedScore: rankedTenants[0]?.combinedScore ?? 0,
+  };
+
+  return {
+    engine: "msp",
+    score: portfolioRisk,
+    breakdown: tenantScores,
+    rankedTenants,
+    rawSignals,
+    rawRules: rules,
+    workflowVariables,
+    timestamp: new Date().toISOString(),
+  };
+}

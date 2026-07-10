@@ -18,6 +18,7 @@ export default defineConfig({
       "src/lib/priority-engine.test.ts",
       "src/lib/health-engine.test.ts",
       "src/lib/crm-engine.test.ts",
+      "src/lib/msp-engine.test.ts",
     ],
     coverage: {
       provider: "v8",

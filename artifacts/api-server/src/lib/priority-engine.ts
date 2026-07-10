@@ -120,7 +120,7 @@ export async function fetchSignalRulesAndGroups(): Promise<{
  * client's stored profile overlaid with every completed script run's
  * `profileUpdates`, oldest-first so newer runs win on conflicting keys.
  */
-async function buildTenantProfileAndFindings(
+export async function buildTenantProfileAndFindings(
   clientUserId: number,
 ): Promise<{ mergedProfile: Record<string, unknown>; findings: string[] }> {
   const [profileRow] = await db
