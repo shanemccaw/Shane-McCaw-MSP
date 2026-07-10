@@ -1166,3 +1166,165 @@ export function patchSowGrandTotal(html: string, correctTotal: number): string {
     },
   );
 }
+
+/**
+ * The subset of pre-computed intelligence-engine outputs that
+ * `consolidated-sow-generator.ts` injects into the AI prompt as a hard
+ * "reproduce verbatim, do not recalculate" constraint (see `engineOutputsBlock`).
+ */
+export interface EngineReconciliationValues {
+  finalPrice: number;
+  priorityScore: number;
+  architectureHealthScore: number;
+  driftScore: number;
+  forecastScore: number;
+  crmScore: number;
+  mspPortfolioScore: number;
+  /**
+   * Per-signal pricing contributions from `computePricingEngine().breakdown`.
+   * `finalPrice` above must equal the sum of `pricingValueContribution` across
+   * this array by construction (see `engine-registry.ts`) — passed here mainly
+   * so `reconcileEngineValues` can defensively re-verify that invariant and so
+   * callers have a single, authoritative source for both the total and its
+   * components when auditing a generated document.
+   */
+  pricingBreakdown: Array<{ signalKey: string; pricingImpact: number; pricingValueContribution: number }>;
+}
+
+interface EngineMetricSpec {
+  key: keyof EngineReconciliationValues;
+  label: string;
+  /** Matches "<label> ... <number>", tolerating HTML tags/markup between label and number. */
+  matchPattern: RegExp;
+  isMoney: boolean;
+}
+
+/**
+ * One entry per metric the prompt forbids the AI from recalculating.
+ * `finalPrice` is deliberately NOT matched against every "Final Price" table
+ * cell — those are the per-workstream chosen prices, a different concept —
+ * only against prose that explicitly frames it as the pricing-signal value
+ * contribution, per the exact wording used in `engineOutputsBlock`.
+ */
+const ENGINE_METRIC_SPECS: EngineMetricSpec[] = [
+  {
+    key: "priorityScore", label: "priorityScore",
+    matchPattern: /priority\s*score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "architectureHealthScore", label: "architectureHealthScore",
+    matchPattern: /architecture\s*health\s*score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "driftScore", label: "driftScore",
+    matchPattern: /drift\s*score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "forecastScore", label: "forecastScore",
+    matchPattern: /forecast(?:ing)?\s*score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "crmScore", label: "crmScore",
+    matchPattern: /crm\s*score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "mspPortfolioScore", label: "mspPortfolioScore",
+    matchPattern: /msp\s*(?:portfolio\s*)?score[\s\S]{0,60}?\$?([\d,]+(?:\.\d+)?)/gi,
+    isMoney: false,
+  },
+  {
+    key: "finalPrice", label: "finalPrice (pricing-signal value contribution)",
+    matchPattern: /pricing[\s-]signal\s*(?:value\s*contribution)?[\s\S]{0,60}?\$([\d,]+(?:\.\d+)?)/gi,
+    isMoney: true,
+  },
+];
+
+/**
+ * Post-generation reconciliation for the pre-computed engine values that
+ * `consolidated-sow-generator.ts` tells the AI to "reproduce verbatim, never
+ * recalculate" (finalPrice, pricingBreakdown-derived score, priorityScore,
+ * architectureHealthScore, driftScore, forecastScore, crmScore,
+ * mspPortfolioScore). The prompt instruction alone is not enforcement — this
+ * scans the generated HTML for any place the AI actually wrote one of these
+ * metrics out and, if the number it wrote doesn't match the deterministic
+ * engine value within a small tolerance, overwrites it in place with the
+ * correct value before the document is persisted.
+ *
+ * This is intentionally narrow: it only touches spots where the document
+ * explicitly cites one of these metric labels near a number. It never
+ * touches the per-workstream pricing table (that's `parseSowAllPricing` /
+ * `patchSowGrandTotal`'s job) and never invents a mention that isn't there —
+ * if the AI never referenced a metric, there is nothing to reconcile.
+ */
+export function reconcileEngineValues(
+  html: string,
+  engineValues: EngineReconciliationValues,
+): { html: string; corrections: string[] } {
+  let result = html;
+  const corrections: string[] = [];
+
+  for (const spec of ENGINE_METRIC_SPECS) {
+    const expected = engineValues[spec.key];
+    if (typeof expected !== "number" || isNaN(expected)) continue;
+
+    result = result.replace(spec.matchPattern, (match: string, numStr: string) => {
+      const found = parseFloat(numStr.replace(/,/g, ""));
+      if (isNaN(found)) return match;
+
+      const tolerance = spec.isMoney ? 1 : 0.5;
+      if (Math.abs(found - expected) <= tolerance) return match;
+
+      const formattedExpected = expected.toLocaleString("en-US");
+      corrections.push(
+        `${spec.label}: AI wrote ${spec.isMoney ? "$" : ""}${found.toLocaleString("en-US")} but engine value is ` +
+        `${spec.isMoney ? "$" : ""}${formattedExpected} — corrected in place`,
+      );
+
+      const numMatch = match.match(/\$?[\d,]+(?:\.\d+)?\s*$/);
+      if (!numMatch || numMatch.index === undefined) return match;
+      const dollarSign = numMatch[0].startsWith("$") ? "$" : "";
+      return match.slice(0, numMatch.index) + dollarSign + formattedExpected;
+    });
+  }
+
+  // ── pricingBreakdown component-level reconciliation ─────────────────────────
+  // finalPrice above is the SUM of pricingBreakdown[].pricingValueContribution.
+  // If the document breaks that total down per fired signal anywhere (e.g. a
+  // "Pricing Signal Contribution" list/table citing a signal by name next to
+  // a dollar figure), correct each cited component the same way as the
+  // aggregate metrics above. Signal keys are matched loosely — as the literal
+  // key ("hasGovernanceGaps") or as a humanized label ("Has Governance Gaps") —
+  // since the AI only ever sees the raw key in the JSON block, not a
+  // pre-humanized label.
+  for (const entry of engineValues.pricingBreakdown) {
+    if (!entry.signalKey || typeof entry.pricingValueContribution !== "number") continue;
+    const escapedKey = entry.signalKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const humanized = entry.signalKey.replace(/[:_-]/g, "\\s*[:_-]?\\s*").replace(/([a-z])([A-Z])/g, "$1\\s*$2");
+    const labelPattern = new RegExp(`(?:${escapedKey}|${humanized})[\\s\\S]{0,60}?\\$([\\d,]+(?:\\.\\d+)?)`, "gi");
+
+    result = result.replace(labelPattern, (match: string, numStr: string) => {
+      const found = parseFloat(numStr.replace(/,/g, ""));
+      if (isNaN(found)) return match;
+
+      const tolerance = 1;
+      if (Math.abs(found - entry.pricingValueContribution) <= tolerance) return match;
+
+      const formattedExpected = entry.pricingValueContribution.toLocaleString("en-US");
+      corrections.push(
+        `pricingBreakdown["${entry.signalKey}"]: AI wrote $${found.toLocaleString("en-US")} but engine value is ` +
+        `$${formattedExpected} — corrected in place`,
+      );
+
+      const numMatch = match.match(/\$[\d,]+(?:\.\d+)?\s*$/);
+      if (!numMatch || numMatch.index === undefined) return match;
+      return match.slice(0, numMatch.index) + `$${formattedExpected}`;
+    });
+  }
+
+  return { html: result, corrections };
+}

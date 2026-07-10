@@ -16,7 +16,7 @@
  * matching the intent of the integration path tests.
  */
 import { describe, it, expect } from "vitest";
-import { stripMarkdownFence, extractAiHtml, validateSowPricing, parseSowAllPricing, purgeAdjustmentsByTitle, purgeHallucinatedWorkstreams, canonicalizeWorkstreamTitles, injectMissingWorkstreams, detectSowPhaseDrift, type SowPricingLine } from "./sow-pricing.ts";
+import { stripMarkdownFence, extractAiHtml, validateSowPricing, parseSowAllPricing, purgeAdjustmentsByTitle, purgeHallucinatedWorkstreams, canonicalizeWorkstreamTitles, injectMissingWorkstreams, detectSowPhaseDrift, reconcileEngineValues, type SowPricingLine, type EngineReconciliationValues } from "./sow-pricing.ts";
 
 // ---------------------------------------------------------------------------
 // Unit tests — stripMarkdownFence()
@@ -873,5 +873,89 @@ describe("full enforcement pipeline — canonicalize + inject guarantees zero dr
     expect(h3).toContain("Copilot for Microsoft 365 Deployment Project");
     expect(h3).not.toContain("Bonus Executive Workshop Series");
     expect(h3).toContain("Security & Compliance Hardening for Microsoft 365");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// reconcileEngineValues()
+// ---------------------------------------------------------------------------
+
+describe("reconcileEngineValues()", () => {
+  const engineValues: EngineReconciliationValues = {
+    finalPrice: 5200,
+    priorityScore: 85,
+    architectureHealthScore: 62,
+    driftScore: 40,
+    forecastScore: 71,
+    crmScore: 33,
+    mspPortfolioScore: 58,
+    pricingBreakdown: [
+      { signalKey: "hasGovernanceGaps", pricingImpact: 3, pricingValueContribution: 2200 },
+      { signalKey: "hasExternalSharingEnabled", pricingImpact: 2, pricingValueContribution: 3000 },
+    ],
+  };
+
+  it("corrects a mismatched score metric mentioned in prose", () => {
+    const html = "<p>The tenant Priority Score is <strong>72</strong> based on current telemetry.</p>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toContain("<strong>85</strong>");
+    expect(corrected).not.toContain("72");
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toMatch(/priorityScore/);
+  });
+
+  it("corrects a mismatched finalPrice pricing-signal citation", () => {
+    const html = "<p>This engagement carries a pricing-signal value contribution of $4,500 toward pricing.</p>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toContain("$5,200");
+    expect(corrected).not.toContain("$4,500");
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toMatch(/finalPrice/);
+  });
+
+  it("corrects a mismatched pricingBreakdown component cited by signal key", () => {
+    const html = "<li>hasGovernanceGaps contributes $1,800 to the pricing signal.</li>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toContain("$2,200");
+    expect(corrected).not.toContain("$1,800");
+    expect(corrections).toHaveLength(1);
+    expect(corrections[0]).toMatch(/hasGovernanceGaps/);
+  });
+
+  it("leaves values unchanged when the AI already matched the engine exactly", () => {
+    const html =
+      "<p>Priority Score: 85. Drift Score: 40. " +
+      "pricing-signal value contribution: $5,200.</p>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toBe(html);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("does not touch the per-workstream Final Price table column", () => {
+    const html =
+      "<table><tr><th>Project/Workstream</th><th>Final Price (USD)</th></tr>" +
+      "<tr><td>Governance Hardening</td><td>$12,000</td></tr></table>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toBe(html);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("is a no-op when a metric is never mentioned in the document", () => {
+    const html = "<p>No engine metrics referenced here at all.</p>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toBe(html);
+    expect(corrections).toHaveLength(0);
+  });
+
+  it("corrects multiple distinct mismatches across the document in one pass", () => {
+    const html =
+      "<p>Architecture Health Score: 50.</p>" +
+      "<p>Drift Score: 10.</p>" +
+      "<p>CRM Score: 5.</p>";
+    const { html: corrected, corrections } = reconcileEngineValues(html, engineValues);
+    expect(corrected).toContain("Architecture Health Score: 62");
+    expect(corrected).toContain("Drift Score: 40");
+    expect(corrected).toContain("CRM Score: 33");
+    expect(corrections).toHaveLength(3);
   });
 });

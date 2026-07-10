@@ -42,7 +42,9 @@ import {
   assignDeliveryDates,
   ADJ_SIGNAL_PATTERNS,
   SowPricingLineSchema,
+  reconcileEngineValues,
   type SowPricingLine,
+  type EngineReconciliationValues,
 } from "./sow-pricing";
 import { resolveWorkstreamKeys, buildWorkstreamContextBlock } from "./workstream-normalizer";
 import {
@@ -572,15 +574,7 @@ export async function generateConsolidatedSowDocument(
   // with the "never calculate these yourself" instruction below, and a
   // document generated without them cannot be trusted for client delivery.
   let engineOutputsBlock: string;
-  let engineValues: {
-    finalPrice: number;
-    priorityScore: number;
-    architectureHealthScore: number;
-    driftScore: number;
-    forecastScore: number;
-    crmScore: number;
-    mspPortfolioScore: number;
-  };
+  let engineValues: EngineReconciliationValues;
   try {
     const [{ rules: engineRules, groups: engineGroups }, engineDisabledSignalKeys, priorityWeights, crmWeights] = await Promise.all([
       fetchSignalRulesAndGroups(),
@@ -626,7 +620,7 @@ export async function generateConsolidatedSowDocument(
     );
     const mspPortfolioScore = tenantEngineScores.combinedScore;
 
-    engineValues = { finalPrice, priorityScore, architectureHealthScore, driftScore, forecastScore, crmScore, mspPortfolioScore };
+    engineValues = { finalPrice, priorityScore, architectureHealthScore, driftScore, forecastScore, crmScore, mspPortfolioScore, pricingBreakdown };
 
     logger.info(
       { ...logCtx, docId, ...engineValues },
@@ -925,7 +919,24 @@ export async function generateConsolidatedSowDocument(
     );
   }
 
-  const purgedHtmlFinal = htmlWithInjected;
+  // ── Engine-value reconciliation ──────────────────────────────────────────────
+  // The prompt tells Claude to reproduce the pre-computed engine values
+  // (finalPrice, priorityScore, architectureHealthScore, driftScore,
+  // forecastScore, crmScore, mspPortfolioScore) verbatim wherever it references
+  // them — but that instruction alone has no enforcement. Scan the generated
+  // HTML for any place the AI actually wrote one of these metrics out and
+  // overwrite it with the deterministic engine value if it drifted.
+  const { html: reconciledHtml, corrections: engineValueCorrections } = reconcileEngineValues(
+    htmlWithInjected, engineValues,
+  );
+  if (engineValueCorrections.length > 0) {
+    logger.warn(
+      { ...logCtx, docId, engineValueCorrections },
+      "consolidated-sow-generator: ENGINE VALUE DRIFT — AI misreported a pre-computed engine value; corrected in place",
+    );
+  }
+
+  const purgedHtmlFinal = reconciledHtml;
   const { workstreamLines, adjustmentLines, computedTotal } = parseSowAllPricing(purgedHtmlFinal);
 
   // Runtime drift guard — this MUST be a no-op after canonicalization +
