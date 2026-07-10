@@ -161,6 +161,50 @@ describe("computeDriftEngine — pure summation", () => {
     expect(result.breakdown).toHaveLength(1);
     expect(result.breakdown[0].category).toBe("drift:policy");
   });
+
+  it("does NOT count a drift-tagged AND group whose rules do not all evaluate true, even if the signal fired via another rule", () => {
+    // hasGovernanceGaps fires via a separate, non-drift ungrouped rule —
+    // but the drift-tagged AND group's own condition is false because only
+    // one of its two rules is satisfied. The false group must not contribute.
+    const driftGroup = makeGroup({
+      signalKey: "hasGovernanceGaps",
+      logic: "AND",
+      category: "drift:policy",
+      trendValue: 50,
+      governanceImpact: 50,
+    });
+    const driftGroupRule1 = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagA", groupId: driftGroup.id });
+    const driftGroupRule2 = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "flagB", groupId: driftGroup.id });
+    const otherFiringRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "otherTrigger", category: "pricing:unrelated" });
+
+    const profile = { flagA: true, flagB: false, otherTrigger: true }; // signal fires via otherTrigger; drift AND group is false (flagB missing)
+    const result = computeDriftEngine(profile, [], [driftGroupRule1, driftGroupRule2, otherFiringRule], [driftGroup]);
+
+    expect(result.score).toBe(0);
+    expect(result.breakdown).toEqual([]);
+  });
+
+  it("does NOT count a drift-tagged ungrouped rule that evaluates false, even though its signal fired via a different rule", () => {
+    const driftRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "driftFlag", category: "drift:policy", trendValue: 40, governanceImpact: 40 });
+    const otherFiringRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "otherTrigger", category: "pricing:unrelated" });
+
+    const profile = { driftFlag: false, otherTrigger: true }; // signal fires via otherTrigger; driftRule itself is false
+    const result = computeDriftEngine(profile, [], [driftRule, otherFiringRule], []);
+
+    expect(result.score).toBe(0);
+    expect(result.breakdown).toEqual([]);
+  });
+
+  it("DOES count a drift-tagged rule that independently evaluates true, in addition to whatever else fired the signal", () => {
+    const driftRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "driftFlag", category: "drift:policy", trendValue: 7, governanceImpact: 3 });
+    const otherFiringRule = makeRule({ signalKey: "hasGovernanceGaps", ruleType: "profile_key_truthy", sourceKey: "otherTrigger", category: "pricing:unrelated" });
+
+    const profile = { driftFlag: true, otherTrigger: true }; // both true — signal fires, and drift rule is independently true
+    const result = computeDriftEngine(profile, [], [driftRule, otherFiringRule], []);
+
+    expect(result.score).toBe(10);
+    expect(result.breakdown).toHaveLength(1);
+  });
 });
 
 describe("computeDriftEngine — category filtering", () => {

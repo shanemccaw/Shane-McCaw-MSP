@@ -346,7 +346,7 @@ export interface RuleTraceEntry {
   reason: string;
 }
 
-function evaluateRule(
+export function evaluateRule(
   rule: SignalDerivationRule,
   mergedProfile: Record<string, unknown>,
   parsedFindings: string[],
