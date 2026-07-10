@@ -1712,27 +1712,43 @@ router.post("/admin/workflows/definitions/:id/publish-to-prod", requireAdmin, as
       });
 
     if (publishedVersion) {
-      await prodDb
-        .insert(wfVersionsTable)
-        .values({
-          id: publishedVersion.id,
-          definitionId: def.id,
-          versionNumber: publishedVersion.versionNumber,
-          label: publishedVersion.label,
-          status: "published" as const,
-          graph: publishedVersion.graph,
-          isDefault: publishedVersion.isDefault,
-          createdAt: publishedVersion.createdAt,
-        })
-        .onConflictDoUpdate({
-          target: wfVersionsTable.id,
-          set: {
+      // Archive-then-insert must be atomic: otherwise a query resolving "the
+      // published version" for this definition (e.g. event-triggered runs)
+      // can observe zero or two rows with status='published' mid-flight and
+      // pick a stale one. Every prior publish-to-prod call for this
+      // definition leaves its version row behind, so any other row still
+      // marked "published" for this definitionId must be archived first.
+      await prodDb.transaction(async (tx) => {
+        await tx
+          .update(wfVersionsTable)
+          .set({ status: "archived" })
+          .where(and(
+            eq(wfVersionsTable.definitionId, def.id),
+            eq(wfVersionsTable.status, "published"),
+          ));
+
+        await tx
+          .insert(wfVersionsTable)
+          .values({
+            id: publishedVersion.id,
+            definitionId: def.id,
+            versionNumber: publishedVersion.versionNumber,
             label: publishedVersion.label,
             status: "published" as const,
             graph: publishedVersion.graph,
             isDefault: publishedVersion.isDefault,
-          },
-        });
+            createdAt: publishedVersion.createdAt,
+          })
+          .onConflictDoUpdate({
+            target: wfVersionsTable.id,
+            set: {
+              label: publishedVersion.label,
+              status: "published" as const,
+              graph: publishedVersion.graph,
+              isDefault: publishedVersion.isDefault,
+            },
+          });
+      });
     }
 
     for (const trigger of triggers) {
