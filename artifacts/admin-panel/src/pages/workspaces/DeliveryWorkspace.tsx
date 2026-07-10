@@ -7,6 +7,18 @@ import TenantSignalsPage from "@/pages/TenantSignals";
 import WorkflowsPage from "@/pages/Workflows";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
+import EnginePanel from "@/components/EnginePanel";
+
+const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp"] as const;
+const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
+  priority: "Priority Engine",
+  pricing: "Pricing Engine",
+  health: "Health Engine",
+  drift: "Drift Engine",
+  forecasting: "Forecasting Engine",
+  crm: "CRM Engine",
+  msp: "MSP Engine",
+};
 
 const NAV_ITEMS: WorkspaceNavItem[] = [
   {
@@ -72,9 +84,22 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  ...ENGINE_NAV_KEYS.map((key): WorkspaceNavItem => ({
+    label: ENGINE_LABELS[key],
+    path: `/delivery/engines/${key}`,
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  })),
 ];
 
 function getContent(section: string): ReactNode {
+  if (section.startsWith("engines/")) {
+    const key = section.slice("engines/".length);
+    if ((ENGINE_NAV_KEYS as readonly string[]).includes(key)) return <EnginePanel engineKey={key} />;
+  }
   switch (section) {
     case "clients":              return <ClientsPage />;
     case "engagement-projects":  return <EngagementProjectsPage />;

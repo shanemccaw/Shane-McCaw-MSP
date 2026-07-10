@@ -28,3 +28,4 @@
 - [AI generation testMode pattern](ai-prompt-generation-testmode.md) — every docId-keyed persistence site (insert, callback, success update, catch-block failure update) needs its own testMode guard
 - [Tenant signal enable/disable gating](signal-enabled-state-gating.md) — computeTenantSignals has many call sites (admin routes + 2 SOW-generator paths); disabled keys must be fetched/filtered at every one, including pre-computed override sets
 - [SOW debug page pattern](sow-debug-page.md) — testMode generation + correlationId ring buffer lets an admin debug page reuse real generation logic without persisting or duplicating it
+- [Engine registry pattern](engine-registry-pattern.md) — 7 intelligence engines share one EngineDef contract + generic admin routes/EnginePanel UI instead of per-engine dashboards

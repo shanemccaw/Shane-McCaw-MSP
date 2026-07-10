@@ -138,7 +138,7 @@ function parseIntelligenceFields(
 
 // ── Raw DB helpers ─────────────────────────────────────────────────────────────
 
-async function getAllRules(): Promise<SignalDerivationRule[]> {
+export async function getAllRules(): Promise<SignalDerivationRule[]> {
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
            source_key AS "sourceKey", compare_value AS "compareValue", description,
@@ -150,7 +150,7 @@ async function getAllRules(): Promise<SignalDerivationRule[]> {
   return rows.rows as unknown as SignalDerivationRule[];
 }
 
-async function getAllGroups(): Promise<SignalRuleGroup[]> {
+export async function getAllGroups(): Promise<SignalRuleGroup[]> {
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
            ${INTELLIGENCE_FIELDS_SELECT}

@@ -125,6 +125,13 @@ function Router() {
       <Route path="/delivery">
         <Redirect to="/delivery/projects" />
       </Route>
+      <Route path="/delivery/engines/:engineKey">
+        {(params) => (
+          <AdminRoute>
+            <DeliveryWorkspace section={`engines/${params?.engineKey ?? ""}`} />
+          </AdminRoute>
+        )}
+      </Route>
       <Route path="/delivery/:section">
         {(params) => (
           <AdminRoute>

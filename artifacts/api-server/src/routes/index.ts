@@ -63,6 +63,7 @@ import adminGeneratedImagesRouter from "./admin-generated-images";
 import adminMediaLibraryRouter from "./admin-media-library";
 import presentationsRouter from "./presentations";
 import adminSignalRulesRouter from "./admin-signal-rules";
+import adminEnginesRouter from "./admin-engines";
 import crmPreviewStatsRouter from "./crm-preview-stats";
 import adminSowDebugRouter from "./admin-sow-debug";
 
@@ -140,6 +141,7 @@ router.use(adminGeneratedImagesRouter);
 router.use(adminMediaLibraryRouter);
 router.use(presentationsRouter);
 router.use(adminSignalRulesRouter);
+router.use(adminEnginesRouter);
 router.use(crmPreviewStatsRouter);
 router.use(adminSowDebugRouter);
 

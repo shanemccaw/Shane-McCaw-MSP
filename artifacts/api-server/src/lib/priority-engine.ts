@@ -151,7 +151,7 @@ export async function buildTenantProfileAndFindings(
  * evaluator every other call site uses (`computeTenantSignals`), so this
  * engine can never drift from what the SOW/CRM/workflow paths consider fired.
  */
-async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
+export async function getFiredSignalKeysForTenant(tenantId: number): Promise<{
   firedSignalKeys: string[];
   rules: SignalDerivationRule[];
 }> {
