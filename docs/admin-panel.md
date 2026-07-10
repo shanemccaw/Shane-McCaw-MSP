@@ -1,7 +1,7 @@
 # Admin Panel — Internal Reference
 
 > **Audience:** Shane (operator), developers maintaining the platform, and AI agents operating on this codebase.
-> **Last updated:** 2026-07-09
+> **Last updated:** 2026-07-10
 > **Source of truth for node details:** [workflow-node-reference.md](./workflow-node-reference.md)
 > **Scope:** This document is a complete, precise technical reference for the Admin Panel (`artifacts/admin-panel`) and its API surface (`artifacts/api-server/src/routes/admin-*.ts`). It is written to be precise enough to serve as an AI system prompt — every endpoint, table, and configuration value referenced here reflects the current codebase and live database state.
 
@@ -18,6 +18,7 @@
 7. [Insights & Documents](#7-insights--documents)
 8. [Marketing Command Center](#8-marketing-command-center)
 9. [Tenant Signals](#9-tenant-signals)
+9.7. [Intelligence Engines & Admin UX](#97-intelligence-engines--admin-ux)
 10. [Workflow Builder](#10-workflow-builder)
 11. [Workflow Node Reference](#11-workflow-node-reference)
 12. [Workflow API Reference](#12-workflow-api-reference)
@@ -727,6 +728,57 @@ Lists all signal derivation rules (grouped and ungrouped), grouped visually by `
 
 Tests a hypothetical M365 profile snapshot (and/or findings text) against all active rules. Inputs are stored as reusable `signal_simulation_profiles` rows (`profileUpdates`, `parsedFindings`, `tags`). Output: a ranked list of matched signals, with the evaluated rules and a brief explanation of why each fired; the result and any downstream project diff are persisted back onto the profile as `lastRunResult` / `lastRunProjectDiff`.
 
+### 9.7 Intelligence Engines & Admin UX
+
+**Path prefix:** `/admin-panel/delivery/engines/:key`
+**Registry:** `artifacts/api-server/src/lib/engine-registry.ts`
+**Routes:** `artifacts/api-server/src/routes/admin-engines.ts`
+**UI:** `EnginePanel.tsx` (shared dashboard/testing/preview/configuration shell driven entirely by the registry — no engine-specific components)
+
+Seven intelligence engines were added on top of the Tenant Signals rule engine ([9.1](#91-rule-evaluation-model)). Each engine is a **pure sum/reduce over `computeTenantSignals()` output** — none of them reimplement signal evaluation, and none hardcode scoring logic outside their own `*-engine.ts` lib file. The generic admin routes and `EnginePanel.tsx` UI drive all seven off one shared `EngineDef` contract, so adding an eighth engine requires only a new registry entry, not new routes or UI.
+
+**The `EngineDef` contract** (one object per engine in `ENGINE_DEFS`):
+
+| Field | Description |
+|---|---|
+| `key` | Engine identifier used in URLs and the workflow executor's `ENGINE_NODE_TYPE_MAP` (`priority`, `pricing`, `health`, `drift`, `forecasting`, `crm`, `msp`) |
+| `label` / `description` | Display name and one-line summary shown in the engine list and dashboard header |
+| `categoryPrefix` | Scopes the Configuration tab's rule/group list to signals whose `category` starts with this prefix (e.g. `crm` → only `crm:*` signals) |
+| `runForTenant(tenantId)` | Runs the engine for a real tenant — this is what the `calculate_*` workflow nodes call |
+| `runForPayload(input)` | Runs the engine against a hypothetical `{ mergedProfile, parsedFindings, rules, groups, disabledSignalKeys }` payload, for the Testing tab |
+| `tenantScoped` | `true` for all engines except `msp`, which aggregates across the whole client portfolio rather than one tenant |
+
+**The seven engines:**
+
+| Key | Label | What it computes |
+|---|---|---|
+| `priority` | Priority Engine | Sums `priorityScoreContribution` across currently-fired, enabled signals |
+| `pricing` | Pricing Engine | Sums `pricingImpact` / `pricingValueContribution` across fired signals into `{ totalPricingImpact, totalPricingValueContribution }` |
+| `health` | Architecture Health Engine | Sums governance/security/compliance/adoption/copilot/architecture impact into an overall health score |
+| `drift` | Drift Engine | Reduces drift-tagged rules/groups that evaluated true into a `driftScore` + `trendDirection` |
+| `forecasting` | Forecasting Engine | Sums `trendValue * decayFactor` across fired signals with a non-zero trend |
+| `crm` | CRM Engine | Sums the five `crm:*` contribution fields (fit/pain/maturity/intent/urgency) across fired signals |
+| `msp` | MSP Portfolio Engine | Aggregates health + drift + priority per tenant into a portfolio-wide risk roll-up (not tenant-scoped) |
+
+**Generic admin routes** (all under `requireAdmin`, keyed by `:key` = engine key):
+
+| Route | Purpose |
+|---|---|
+| `GET /api/admin/engines` | Lists all registered engines (key, label, description, tenantScoped) for the engine picker |
+| `GET /api/admin/engines/:key/dashboard` | Summary view — recent scores, top contributing signals |
+| `POST /api/admin/engines/:key/test` | Runs `runForPayload()` against a hypothetical profile/findings payload (Testing tab) |
+| `POST /api/admin/engines/:key/preview` | Runs `runForTenant()` against a real tenant ID (Preview tab) |
+| `GET /api/admin/engines/:key/logs` | Recent run history for the engine |
+| `GET /api/admin/engines/:key/configuration` | Rules/groups scoped by `categoryPrefix`, for the Configuration tab |
+| `POST /api/admin/engines/rule-groups/:groupId/test` | Tests a single rule group in isolation |
+| `GET /api/admin/engines/rule-groups/:groupId/preview` \| `/activation-logs` | Preview and activation history for a rule group |
+| `POST /api/admin/engines/signals/:signalKey/test` | Tests a single signal key in isolation |
+| `GET /api/admin/engines/signals/:signalKey/preview` \| `/contribution-preview` \| `/logs` | Preview, per-engine contribution breakdown, and history for a single signal |
+
+**`EnginePanel.tsx`** renders four tabs — Dashboard, Testing, Preview, Configuration — reading the same `EngineDef` metadata for every engine, so the seven engines share one component tree with zero per-engine branching in the UI layer. Nav entries for all seven live under the Delivery workspace at `/delivery/engines/:key`.
+
+**Workflow integration:** Each engine is also exposed as a workflow node (`calculate_priority`, `calculate_pricing_engine`, `calculate_health`, `calculate_drift`, `calculate_forecast`, `calculate_crm`, `calculate_msp`) plus a standalone `get_tenant_signals` node for fetching just the fired-signal set without scoring. See [workflow-node-reference.md § 9](./workflow-node-reference.md#9-intelligence-engines) for node-level config/output details, and [Section 9](#9-tenant-signals) above for the underlying rule engine and enable/disable gating.
+
 ---
 
 ## 10. Workflow Builder
@@ -869,6 +921,7 @@ The node reference is organized into the following categories:
 | Finance (Stripe) | Invoice creation/editing/charging, coupon creation, phased-payment orchestration |
 | Social Media | `post_linkedin`, `post_twitter`, `post_facebook` |
 | Data & Variables | `sql_query`, `find_object`, variable set/transform nodes |
+| Intelligence Engines | `get_tenant_signals` plus the seven `calculate_*` engine nodes (priority, pricing, health, drift, forecasting, CRM, MSP) — see [9.7](#97-intelligence-engines--admin-ux) for the underlying engine registry |
 | Internal / System | `system_action`, `emit_event`, `reconcile_orphaned_runs`, `cleanup_old_runs` |
 | Promoted Action Types | Aliases of the generic `action` node exposed as first-class palette entries for discoverability (e.g. specific Stripe or CRM actions) |
 

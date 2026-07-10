@@ -2,7 +2,7 @@
 
 > Standalone catalogue of all workflow node types available in the Admin Panel builder.  
 > For builder UX, BFS execution model, and API endpoints, see [admin-panel.md](./admin-panel.md).  
-> **Last updated:** 2026-07-09
+> **Last updated:** 2026-07-10
 
 ---
 
@@ -16,8 +16,9 @@
 6. [Finance (Stripe)](#6-finance-stripe)
 7. [Social Media](#7-social-media)
 8. [Data & Variables](#8-data--variables)
-9. [Internal / System](#9-internal--system)
-10. [Promoted Action Types](#10-promoted-action-types)
+9. [Intelligence Engines](#9-intelligence-engines)
+10. [Internal / System](#10-internal--system)
+11. [Promoted Action Types](#11-promoted-action-types)
 
 ---
 
@@ -1344,7 +1345,59 @@ AI-generates a full landing page for a campaign including headline, subheadline,
 
 ---
 
-## 9. Internal / System
+## 9. Intelligence Engines
+
+> Added as part of the Tenant Signal Intelligence Engine epic. All 8 nodes below (1 signal-lookup node + 7 engine nodes) sit downstream of the [Tenant Signals](./admin-panel.md#9-tenant-signals) rule engine — they either surface the raw fired-signal set (`get_tenant_signals`) or run one of the seven scoring engines defined in `engine-registry.ts` (`calculate_priority`, `calculate_pricing_engine`, `calculate_health`, `calculate_drift`, `calculate_forecast`, `calculate_crm`, `calculate_msp`) against a live tenant. Each engine node is a thin executor wrapper around `getEngineDef(engineKey).runForTenant(clientId)` — the scoring logic itself lives in the corresponding `*-engine.ts` lib file and is not duplicated here.
+
+### `get_tenant_signals`
+
+Evaluates every enabled signal rule/group for a client and outputs the fired signal keys, without running any scoring engine. Internally merges the client's stored M365 profile with `profileUpdates` from up to 50 recent completed script runs (oldest-first, so profile row wins ties), collects deduplicated `parsedFindings` text, then calls `computeTenantSignals()` with the live `signal_derivation_rules` / `signal_rule_groups` and the current disabled-signal set.
+
+| Config Field | Type | Description |
+|---|---|---|
+| `clientId` | string | Client user ID to evaluate signals for (interpolated) |
+| `label` | string | Display label |
+
+**Outputs:** `{ signals: string[], signalCount: number, hasSignals: boolean }`. `signals` includes the virtual `alwaysInclude` signal; `hasSignals` is `true` only when at least one *tenant-specific* signal fired (i.e. `firedSignals.size > 1`).
+
+**Dry-run:** Returns `{ signals: ["alwaysInclude", "hasGovernanceGaps"], signalCount: 2, hasSignals: true }`.
+
+**Gotcha:** Disabled signal keys (toggled off in the Admin Panel's Tenant Signals page) are filtered out before evaluation and can never appear in `signals` — see `replit.md` "Tenant Signal Enable/Disable". Pipe `{{signals}}` into the **Pre-computed Signals** field of a downstream `generate_document` (`consolidated_sow`) node to skip redundant signal evaluation during SOW generation.
+
+**Error handling:** If `clientId` fails to resolve to a number, or the DB lookup throws, the node sets `nodeError = true` and returns `{ error, customerError }` instead of throwing — downstream `condition`/`switch_case` nodes should branch on the presence of an `error` field rather than assuming success.
+
+---
+
+### Engine nodes: `calculate_priority` / `calculate_pricing_engine` / `calculate_health` / `calculate_drift` / `calculate_forecast` / `calculate_crm` / `calculate_msp`
+
+All seven share one config shape and one output shape — only the underlying engine (and therefore the meaning of `score`/`breakdown`) differs.
+
+| Config Field | Type | Description |
+|---|---|---|
+| `clientId` | string | Tenant/client user ID to score (interpolated). For `calculate_msp` this is still required by the node even though the underlying portfolio engine can also run tenant-less. |
+| `label` | string | Display label |
+
+**Outputs:** `{ engine: string, score, breakdown: unknown[], rawSignals: string[], timestamp: string }` — the executor spreads the engine's raw result object and prefixes it with `engine: <engineKey>`.
+
+| Node type | `engine` value | What `score` means |
+|---|---|---|
+| `calculate_priority` | `"priority"` | Number — sum of `priorityScoreContribution` across fired, enabled signals |
+| `calculate_pricing_engine` | `"pricing"` | **Object**, not a number: `{ totalPricingImpact, totalPricingValueContribution }` |
+| `calculate_health` | `"health"` | Number — overall architecture health score (governance/security/compliance/adoption/copilot/architecture) |
+| `calculate_drift` | `"drift"` | Number — `driftScore`; result also includes a `trendDirection` field alongside `score` |
+| `calculate_forecast` | `"forecasting"` | Number — sum of `trendValue * decayFactor` across signals with a non-zero trend |
+| `calculate_crm` | `"crm"` | Object — `CrmScoreBreakdown` with `total` plus the five fit/pain/maturity/intent/urgency components |
+| `calculate_msp` | `"msp"` | Object — portfolio-wide risk roll-up aggregating health + drift + priority per tenant |
+
+**Dry-run:** Returns `{ dryRun: true, engine: <key>, score: <same shape as live>, breakdown: [], rawSignals: ["alwaysInclude"], timestamp }`. For `calculate_pricing_engine` the dry-run `score` is `{ totalPricingImpact: 250, totalPricingValueContribution: 500 }`; every other engine dry-runs to `score: 42`.
+
+**Gotcha:** `score` is **not** always a number — `calculate_pricing_engine`, `calculate_crm`, and `calculate_msp` return an object. Any downstream `condition` node comparing `{{score}}` numerically must first branch on `{{engine}}` or read a specific nested field (e.g. `{{score.total}}` for CRM).
+
+**Error handling:** An unresolvable `clientId`, an unknown engine key, or a thrown error inside `runForTenant()` all set `nodeError = true` and return `{ error, customerError }` — none of these nodes throw and abort the run outright.
+
+---
+
+## 10. Internal / System
 
 These node types are used internally by the executor and seeded system workflows. They are not available in the builder's node palette for custom workflows.
 
@@ -1392,7 +1445,7 @@ A non-executing documentation node. Renders a text annotation card on the canvas
 
 ---
 
-## 10. Promoted Action Types
+## 11. Promoted Action Types
 
 The following node `type` values are **first-class aliases** for the generic `action` node with a matching `actionType`. They appear as distinct node types in the graph JSON and in the builder palette, but share the same executor logic as their `action` counterpart.
 
