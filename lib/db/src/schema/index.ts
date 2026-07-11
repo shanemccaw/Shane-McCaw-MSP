@@ -2043,6 +2043,8 @@ export interface WfNode {
     | "group_by"
     // Monitor Package Engine
     | "monitor_get_package" | "monitor_execute_package"
+    // Live Monitor Engine (Mode B — O365 Management Activity API)
+    | "monitor_subscription_ensure" | "monitor_poll_activity"
     // Utilities
     | "comment";
   position: { x: number; y: number };

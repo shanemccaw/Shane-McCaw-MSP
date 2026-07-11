@@ -1,0 +1,312 @@
+export type MonitorCheckAuditLog = typeof monitorCheckAuditLogTable.$inferSelect;
+
+// ── Report Definitions ─────────────────────────────────────────────────────────
+// MSP-authored templates that describe what to generate, for whom, and how to
+// deliver it. One definition can be triggered many times (→ report_runs rows).
+
+export const REPORT_DOC_TYPES = [
+  "executive_summary",
+  "full_readiness_report",
+  "security_posture_report",
+  "governance_maturity_report",
+  "data_exposure_risk_report",
+  "license_optimization_report",
+  "license_waste_report",
+] as const;
+export type ReportDocType = typeof REPORT_DOC_TYPES[number];
+
+export const REPORT_DELIVERY_METHODS = ["in_app", "email", "both"] as const;
+export type ReportDeliveryMethod = typeof REPORT_DELIVERY_METHODS[number];
+
+export const mspReportDefinitionsTable = pgTable("msp_report_definitions", {
+  id: serial("id").primaryKey(),
+  definitionId: uuid("definition_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // Optional scope — null means "across all customers"
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull().default("executive_summary"),
+  // Delivery preferences
+  deliveryMethod: text("delivery_method", { enum: REPORT_DELIVERY_METHODS }).notNull().default("in_app"),
+  // For email delivery — to address (resolved from customer if null)
+  deliveryEmail: text("delivery_email"),
+  // Optional extra context fed into the AI prompt
+  fieldMappings: jsonb("field_mappings").$type<Record<string, unknown>>().notNull().default({}),
+  // Workflow schedule/trigger config
+  scheduleConfig: jsonb("schedule_config").$type<Record<string, unknown>>().notNull().default({}),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_defs_msp_id_idx").on(t.mspId),
+  index("msp_report_defs_customer_id_idx").on(t.customerId),
+]);
+
+export type MspReportDefinition = typeof mspReportDefinitionsTable.$inferSelect;
+export type InsertMspReportDefinition = typeof mspReportDefinitionsTable.$inferInsert;
+
+// ── Report Runs ────────────────────────────────────────────────────────────────
+// One row per triggered generation. Tracks lifecycle, stores the generated PDF
+// as base64 in pdfContent (for in-app download), and records delivery outcome.
+
+export const REPORT_RUN_STATUSES = ["pending", "generating", "generated", "delivering", "delivered", "failed"] as const;
+export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
+
+export const mspReportRunsTable = pgTable("msp_report_runs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().unique().defaultRandom(),
+  definitionId: uuid("definition_id").notNull().references(() => mspReportDefinitionsTable.definitionId, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull(),
+  status: text("status", { enum: REPORT_RUN_STATUSES }).notNull().default("pending"),
+  // Generated HTML content
+  htmlContent: text("html_content"),
+  // Generated PDF as base64 (null until generated)
+  pdfBase64: text("pdf_base64"),
+  pdfSizeBytes: integer("pdf_size_bytes"),
+  // Delivery outcome
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  deliveryEmail: text("delivery_email"),
+  // Error message if failed
+  errorMessage: text("error_message"),
+  // Workflow run reference (if generated via workflow)
+  workflowRunId: uuid("workflow_run_id"),
+  triggeredByUserId: integer("triggered_by_user_id"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_runs_msp_id_idx").on(t.mspId),
+  index("msp_report_runs_def_id_idx").on(t.definitionId),
+  index("msp_report_runs_status_idx").on(t.status),
+]);
+
+export type MspReportRun = typeof mspReportRunsTable.$inferSelect;
+export type InsertMspReportRun = typeof mspReportRunsTable.$inferInsert;
+
+// ── MSP Custom Domains ─────────────────────────────────────────────────────────
+// One verified custom domain per MSP (e.g. portal.acmeit.com).
+// Verification uses a TXT record on the apex of the custom domain.
+// Status flow: pending → verified (or failed if DNS lookup mismatches).
+// A missing/unverified row means the MSP uses the default /portal/{tenantSlug} URL.
+
+export const MSP_CUSTOM_DOMAIN_STATUSES = ["pending", "verified", "failed"] as const;
+export type MspCustomDomainStatus = typeof MSP_CUSTOM_DOMAIN_STATUSES[number];
+
+export const mspCustomDomainsTable = pgTable("msp_custom_domains", {
+  id: serial("id").primaryKey(),
+  // Each MSP can register at most one custom domain (unique on mspId)
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // The custom domain the MSP wants to point at the portal (e.g. portal.acmeit.com)
+  domain: text("domain").notNull().unique(),
+  // Verification token embedded as a TXT record value: _msp-platform-verify=<token>
+  verificationToken: text("verification_token").notNull(),
+  verificationStatus: text("verification_status", { enum: MSP_CUSTOM_DOMAIN_STATUSES })
+    .notNull()
+    .default("pending"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_custom_domains_msp_id_idx").on(t.mspId),
+  index("msp_custom_domains_domain_idx").on(t.domain),
+]);
+
+export type MspCustomDomain = typeof mspCustomDomainsTable.$inferSelect;
+export type InsertMspCustomDomain = typeof mspCustomDomainsTable.$inferInsert;
+
+// ── MSP Sales Bundles ──────────────────────────────────────────────────────────
+// MSP-owned metadata representing a named, priced collection of Monitoring
+// Packages that MSPs market and sell to their customers. The MSP never authors
+// the underlying Monitor Checks or Monitoring Packages — those stay
+// platform-only. The MSP sets their own resale price with unrestricted markup.
+
+export const MSP_SALES_BUNDLE_STATUS = ["draft", "active", "archived"] as const;
+export type MspSalesBundleStatus = typeof MSP_SALES_BUNDLE_STATUS[number];
+
+export const mspSalesBundlesTable = pgTable("msp_sales_bundles", {
+  id: serial("id").primaryKey(),
+  bundleId: uuid("bundle_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** Ordered list of monitoring_packages.key values included in this bundle */
+  monitoringPackageKeys: jsonb("monitoring_package_keys").$type<string[]>().notNull().default([]),
+  /** Platform-computed MSP internal cost in cents (sum of platformCostCents per package) */
+  internalCostCents: integer("internal_cost_cents").notNull().default(0),
+  /** MSP-set resale price in cents (unrestricted markup) */
+  resalePriceCents: integer("resale_price_cents").notNull().default(0),
+  status: text("status", { enum: MSP_SALES_BUNDLE_STATUS }).notNull().default("draft"),
+  /** Optional trial period in days the MSP offers to customers (null = no trial) */
+  trialDays: integer("trial_days"),
+  createdByUserId: integer("created_by_user_id"),
+  updatedByUserId: integer("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sales_bundles_msp_id_idx").on(t.mspId),
+  index("msp_sales_bundles_status_idx").on(t.status),
+]);
+
+export type MspSalesBundle = typeof mspSalesBundlesTable.$inferSelect;
+export type InsertMspSalesBundle = typeof mspSalesBundlesTable.$inferInsert;
+
+// ── MSP Sales Bundle Assignments ───────────────────────────────────────────────
+// One row per (bundle, customer) assignment. Activates the underlying monitoring
+// packages' execution for the customer's tenantId.
+
+export const MSP_BUNDLE_ASSIGNMENT_STATUS = ["active", "suspended", "revoked"] as const;
+export type MspBundleAssignmentStatus = typeof MSP_BUNDLE_ASSIGNMENT_STATUS[number];
+
+export const mspSalesBundleAssignmentsTable = pgTable("msp_sales_bundle_assignments", {
+  id: serial("id").primaryKey(),
+  assignmentId: uuid("assignment_id").notNull().unique().defaultRandom(),
+  bundleId: uuid("bundle_id").notNull().references(() => mspSalesBundlesTable.bundleId, { onDelete: "restrict" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "restrict" }),
+  /** M365 tenant GUID — drives package execution routing */
+  tenantId: text("tenant_id"),
+  status: text("status", { enum: MSP_BUNDLE_ASSIGNMENT_STATUS }).notNull().default("active"),
+  /** When execution of the underlying packages was activated */
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  /** When a trial (if any) expires — null if no trial */
+  trialExpiresAt: timestamp("trial_expires_at", { withTimezone: true }),
+  assignedByUserId: integer("assigned_by_user_id"),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sales_bundle_assignments_bundle_idx").on(t.bundleId),
+  index("msp_sales_bundle_assignments_msp_id_idx").on(t.mspId),
+  index("msp_sales_bundle_assignments_customer_id_idx").on(t.customerId),
+  index("msp_sales_bundle_assignments_status_idx").on(t.status),
+]);
+
+export type MspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferSelect;
+export type InsertMspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferInsert;
+
+// ── Diagnostics Runs ──────────────────────────────────────────────────────────
+// One row per triggered diagnostics run for a customer. Wraps one or more
+// Monitoring Package executions. Status progresses:
+//   pending → running → completed | failed | partial
+//
+// On failure, a portal_wf_runs stub + portal_wf_operator_tasks row is created
+// so MSP operators can see and acknowledge the failure.
+
+export const MSP_DIAGNOSTIC_RUN_STATUS = ["pending", "running", "completed", "failed", "partial"] as const;
+export type MspDiagnosticRunStatus = typeof MSP_DIAGNOSTIC_RUN_STATUS[number];
+
+export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  packageKey: text("package_key").notNull().default("default"),
+  status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
+  triggeredByUserId: integer("triggered_by_user_id"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  checksTotal: integer("checks_total").notNull().default(0),
+  checksOk: integer("checks_ok").notNull().default(0),
+  checksError: integer("checks_error").notNull().default(0),
+  checksRequiresScript: integer("checks_requires_script").notNull().default(0),
+  runStatus: text("run_status"),
+  documentId: uuid("document_id"),
+  errorMessage: text("error_message"),
+  summary: jsonb("summary").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_diagnostic_runs_msp_id_idx").on(t.mspId),
+  index("msp_diagnostic_runs_customer_id_idx").on(t.customerId),
+  index("msp_diagnostic_runs_status_idx").on(t.status),
+  index("msp_diagnostic_runs_created_at_idx").on(t.createdAt),
+]);
+
+export type MspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferSelect;
+export type InsertMspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferInsert;
+
+// ── Diagnostic Findings ───────────────────────────────────────────────────────
+// Structured findings extracted from a diagnostics run. Each row is one finding
+// from a monitor check. The `recommendation` JSONB is consumed by the Sales
+// Offer Engine to map findings to priced offers.
+
+export const MSP_DIAGNOSTIC_FINDING_SEVERITY = ["ok", "info", "warning", "critical"] as const;
+export type MspDiagnosticFindingSeverity = typeof MSP_DIAGNOSTIC_FINDING_SEVERITY[number];
+
+export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
+  id: serial("id").primaryKey(),
+  findingId: uuid("finding_id").notNull().unique().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => mspDiagnosticRunsTable.runId, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull(),
+  customerId: integer("customer_id").notNull(),
+  checkKey: text("check_key").notNull(),
+  checkLabel: text("check_label").notNull(),
+  severity: text("severity", { enum: MSP_DIAGNOSTIC_FINDING_SEVERITY }).notNull().default("info"),
+  title: text("title").notNull(),
+  description: text("description"),
+  recommendation: jsonb("recommendation").$type<{
+    signalKey?: string;
+    action?: string;
+    estimatedEffort?: string;
+    priority?: number;
+    category?: string;
+  }>(),
+  extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
+  checkStatus: text("check_status"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_diagnostic_findings_run_id_idx").on(t.runId),
+  index("msp_diagnostic_findings_customer_id_idx").on(t.customerId),
+  index("msp_diagnostic_findings_severity_idx").on(t.severity),
+]);
+
+export type MspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferSelect;
+export type InsertMspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferInsert;
+
+// ── Activity Subscriptions (Live Monitor Engine — Mode B) ─────────────────────
+// Tracks O365 Management Activity API subscriptions per tenant+contentType.
+// Also stores the polling watermark so each 5-min cycle knows where to resume.
+
+export const ACTIVITY_SUBSCRIPTION_CONTENT_TYPES = [
+  "Audit.AzureActiveDirectory",
+  "Audit.Exchange",
+  "Audit.SharePoint",
+  "Audit.General",
+  "DLP.All",
+] as const;
+export type ActivitySubscriptionContentType = typeof ACTIVITY_SUBSCRIPTION_CONTENT_TYPES[number];
+
+export const ACTIVITY_SUBSCRIPTION_STATUSES = ["active", "disabled", "expired"] as const;
+export type ActivitySubscriptionStatus = typeof ACTIVITY_SUBSCRIPTION_STATUSES[number];
+
+export const activitySubscriptionsTable = pgTable("activity_subscriptions", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  contentType: text("content_type").notNull(),
+  webhookAuthId: text("webhook_auth_id"),
+  status: text("status", { enum: ACTIVITY_SUBSCRIPTION_STATUSES }).notNull().default("active"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  pollWatermark: timestamp("poll_watermark", { withTimezone: true }),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+  lastPollEventCount: integer("last_poll_event_count").notNull().default(0),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("activity_subscriptions_tenant_content_uidx").on(t.tenantId, t.contentType),
+  index("activity_subscriptions_tenant_id_idx").on(t.tenantId),
+  index("activity_subscriptions_status_idx").on(t.status),
+  index("activity_subscriptions_msp_id_idx").on(t.mspId),
+]);
+
+export type ActivitySubscription = typeof activitySubscriptionsTable.$inferSelect;
+export type InsertActivitySubscription = typeof activitySubscriptionsTable.$inferInsert;

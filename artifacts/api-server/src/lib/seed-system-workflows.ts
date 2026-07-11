@@ -899,6 +899,181 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+
+  // ── Live Activity Monitor (Mode B — near-real-time audit-log change detection) ──
+  {
+    name: "__system__: Live Activity Monitor",
+    description:
+      "Runs every 5 minutes. For every active live-frequency monitor check × consented tenant, " +
+      "ensures the O365 Management Activity API subscription is live (starts it if absent), " +
+      "polls for new audit events since the last watermark, applies the check's severity rules, " +
+      "and writes tenant_monitor_profile rows for any critical changes. Fires a " +
+      "monitor.critical_change event and creates an admin notification if anything critical " +
+      "was detected in the cycle. Requires MT_APP_CLIENT_ID + MT_APP_CLIENT_SECRET secrets " +
+      "and ActivityFeed.Read application permission on the multi-tenant App Registration.",
+    triggerType: "schedule",
+    cron: "*/5 * * * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 400, y: 40 },
+          data: { nodeType: "start", label: "Every 5 min" },
+        },
+        {
+          // Fetch all (tenant × live-check) combinations where tenant has granted consent.
+          // Returns assignments: [{tenantId, checkKey, label, contentType, mapping, severityRules}]
+          id: "get_assignments",
+          type: "action",
+          position: { x: 400, y: 160 },
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Get Live-Frequency Assignments",
+            query: `
+SELECT json_agg(row_to_json(t)) AS "assignments"
+FROM (
+  SELECT
+    tc.tenant_id             AS "tenantId",
+    mc.key                   AS "checkKey",
+    mc.label                 AS "label",
+    mc.endpoint              AS "contentType",
+    mc.mapping::text         AS "mapping",
+    mc.severity_rules::text  AS "severityRules"
+  FROM tenant_consent tc
+  CROSS JOIN monitor_checks mc
+  WHERE tc.consent_status = 'granted'
+    AND mc.frequency       = 'live'
+    AND mc.status          = 'active'
+  ORDER BY tc.tenant_id, mc.key
+  LIMIT 500
+) t
+`.trim(),
+          },
+        },
+        {
+          // ForEach iterates over assignments; body: ensure_sub → poll_activity
+          id: "loop",
+          type: "foreach",
+          position: { x: 400, y: 300 },
+          data: {
+            nodeType: "foreach",
+            label: "For Each Assignment",
+            arrayPath: "assignments",
+            itemAlias: "assignment",
+          },
+        },
+        {
+          // Body node 1: ensure subscription is active for this tenant+contentType
+          id: "ensure_sub",
+          type: "monitor_subscription_ensure",
+          position: { x: 700, y: 300 },
+          data: {
+            nodeType: "monitor_subscription_ensure",
+            label: "Ensure Subscription",
+            tenantId:    "{{assignment.tenantId}}",
+            contentType: "{{assignment.contentType}}",
+          },
+        },
+        {
+          // Body node 2: poll for new audit events since the stored watermark
+          id: "poll_activity",
+          type: "monitor_poll_activity",
+          position: { x: 900, y: 300 },
+          data: {
+            nodeType: "monitor_poll_activity",
+            label: "Poll Audit Activity",
+            tenantId:    "{{assignment.tenantId}}",
+            contentType: "{{assignment.contentType}}",
+            checkKey:    "{{assignment.checkKey}}",
+          },
+        },
+        {
+          // After the foreach loop: check if any critical profiles were written this cycle
+          id: "check_critical",
+          type: "action",
+          position: { x: 400, y: 440 },
+          data: {
+            nodeType: "action",
+            actionType: "sql_query",
+            label: "Check for Critical Events",
+            query: `
+SELECT
+  CASE WHEN COUNT(*) > 0 THEN true ELSE false END AS "criticalChangeDetected",
+  COUNT(*) AS "criticalCount"
+FROM tenant_monitor_profiles
+WHERE created_at > NOW() - INTERVAL '6 minutes'
+  AND severity_matched IS NOT NULL
+  AND trigger_id LIKE 'wf-run-%'
+`.trim(),
+          },
+        },
+        {
+          id: "cond",
+          type: "condition",
+          position: { x: 400, y: 580 },
+          data: {
+            nodeType: "condition",
+            label: "Critical Change?",
+            expression: "{{criticalChangeDetected}} == true",
+          },
+        },
+        {
+          id: "emit_ev",
+          type: "emit_event",
+          position: { x: 600, y: 700 },
+          data: {
+            nodeType: "emit_event",
+            label: "Emit monitor.critical_change",
+            eventName: "monitor.critical_change",
+            payload: JSON.stringify({ criticalCount: "{{criticalCount}}", source: "live_activity_monitor" }),
+          },
+        },
+        {
+          id: "notify",
+          type: "create_notification",
+          position: { x: 600, y: 840 },
+          data: {
+            nodeType: "create_notification",
+            label: "Create Admin Notification",
+            title: "Live Monitor: Critical Change Detected",
+            body:  "{{criticalCount}} critical audit event(s) found in the last cycle. Check Monitoring → Monitor Profiles for details.",
+            type:  "alert",
+            linkPath: "/delivery/engines/msp",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 600, y: 980 },
+          data: { nodeType: "end", label: "Done" },
+        },
+        {
+          id: "end_noop",
+          type: "end",
+          position: { x: 200, y: 700 },
+          data: { nodeType: "end", label: "No Changes" },
+        },
+      ],
+      edges: [
+        { id: "e1",  source: "start",          target: "get_assignments" },
+        { id: "e2",  source: "get_assignments", target: "loop" },
+        // foreach body edges
+        { id: "e3",  source: "loop",            target: "ensure_sub",    sourceHandle: "body" },
+        { id: "e4",  source: "ensure_sub",      target: "poll_activity" },
+        // foreach done edge → post-loop check
+        { id: "e5",  source: "loop",            target: "check_critical", sourceHandle: "done" },
+        { id: "e6",  source: "check_critical",  target: "cond" },
+        // condition branches
+        { id: "e7",  source: "cond",            target: "emit_ev",       sourceHandle: "yes" },
+        { id: "e8",  source: "cond",            target: "end_noop",      sourceHandle: "no"  },
+        // post-alert
+        { id: "e9",  source: "emit_ev",         target: "notify" },
+        { id: "e10", source: "notify",          target: "end" },
+      ],
+    },
+  },
 ];
 
 export async function seedSystemWorkflows(): Promise<void> {

@@ -1582,3 +1582,44 @@ export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
 
 export type MspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferSelect;
 export type InsertMspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferInsert;
+
+// ── Activity Subscriptions (Live Monitor Engine — Mode B) ─────────────────────
+// Tracks O365 Management Activity API subscriptions per tenant+contentType.
+// Also stores the polling watermark so each 5-min cycle knows where to resume.
+
+export const ACTIVITY_SUBSCRIPTION_CONTENT_TYPES = [
+  "Audit.AzureActiveDirectory",
+  "Audit.Exchange",
+  "Audit.SharePoint",
+  "Audit.General",
+  "DLP.All",
+] as const;
+export type ActivitySubscriptionContentType = typeof ACTIVITY_SUBSCRIPTION_CONTENT_TYPES[number];
+
+export const ACTIVITY_SUBSCRIPTION_STATUSES = ["active", "disabled", "expired"] as const;
+export type ActivitySubscriptionStatus = typeof ACTIVITY_SUBSCRIPTION_STATUSES[number];
+
+export const activitySubscriptionsTable = pgTable("activity_subscriptions", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  contentType: text("content_type").notNull(),
+  webhookAuthId: text("webhook_auth_id"),
+  status: text("status", { enum: ACTIVITY_SUBSCRIPTION_STATUSES }).notNull().default("active"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  pollWatermark: timestamp("poll_watermark", { withTimezone: true }),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
+  lastPollEventCount: integer("last_poll_event_count").notNull().default(0),
+  lastErrorMessage: text("last_error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("activity_subscriptions_tenant_content_uidx").on(t.tenantId, t.contentType),
+  index("activity_subscriptions_tenant_id_idx").on(t.tenantId),
+  index("activity_subscriptions_status_idx").on(t.status),
+  index("activity_subscriptions_msp_id_idx").on(t.mspId),
+]);
+
+export type ActivitySubscription = typeof activitySubscriptionsTable.$inferSelect;
+export type InsertActivitySubscription = typeof activitySubscriptionsTable.$inferInsert;

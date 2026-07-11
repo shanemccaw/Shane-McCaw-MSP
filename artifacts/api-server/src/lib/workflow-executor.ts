@@ -820,6 +820,17 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "monitor_execute_package":
       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
 
+    case "monitor_subscription_ensure": {
+      const mseContentTypeDry = (node.data.contentType as string | undefined) ?? "Audit.AzureActiveDirectory";
+      return { dryRun: true, subscriptionStatus: "active", contentType: mseContentTypeDry, note: "dry run — subscription not started" };
+    }
+
+    case "monitor_poll_activity": {
+      const mpaTenantIdDry = interp(node.data.tenantId as string | undefined, payload) ?? "(tenantId)";
+      const mpaContentTypeDry = interp(node.data.contentType as string | undefined, payload) ?? "Audit.AzureActiveDirectory";
+      return { dryRun: true, criticalChangeDetected: false, eventCount: 0, criticalCount: 0, tenantId: mpaTenantIdDry, contentType: mpaContentTypeDry, note: "dry run — poll skipped" };
+    }
+
     case "system_action":
       return { dryRun: true, skipped: true, task: node.data.task ?? "(none)", note: "system_action is retired — workflow graph needs re-seeding" };
 
@@ -6941,6 +6952,216 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           startedAt: mepResult.startedAt,
           completedAt: mepResult.completedAt,
         };
+        break;
+      }
+
+      // ── monitor_subscription_ensure ────────────────────────────────────────
+      // Starts (or re-confirms) an O365 Management Activity API subscription
+      // for a single tenant+contentType combination. Upserts the DB row and
+      // resets the polling watermark if this is the first run.
+      // NEVER sets nodeError — on API failure it records the error in the DB
+      // and returns subscriptionStatus:"error" so the loop can continue.
+      case "monitor_subscription_ensure": {
+        const mseTenantId     = interp(node.data.tenantId     as string | undefined, payload)?.trim();
+        const mseContentType  = interp(node.data.contentType  as string | undefined, payload)?.trim()
+          ?? (payload.assignment && typeof payload.assignment === "object"
+              ? ((payload.assignment as Record<string, unknown>).contentType as string | undefined)
+              : undefined);
+        const mseTId = mseTenantId
+          ?? (payload.assignment && typeof payload.assignment === "object"
+              ? ((payload.assignment as Record<string, unknown>).tenantId as string | undefined)
+              : undefined);
+
+        if (!mseTId || !mseContentType) {
+          output = { subscriptionStatus: "skipped", reason: "tenantId or contentType missing" };
+          break;
+        }
+
+        try {
+          const { activitySubscriptionsTable: astT } = await import("@workspace/db");
+          const { ensureActivityApiSubscription } = await import("./graph");
+          const { eq: eqMse, and: andMse } = await import("drizzle-orm");
+
+          const subInfo = await ensureActivityApiSubscription(mseTId, mseContentType);
+          const now = new Date();
+
+          const existingRows = await db
+            .select({ id: astT.id, pollWatermark: astT.pollWatermark })
+            .from(astT)
+            .where(andMse(eq(astT.tenantId, mseTId), eq(astT.contentType, mseContentType)))
+            .limit(1);
+
+          if (existingRows.length === 0) {
+            await db.insert(astT).values({
+              tenantId: mseTId,
+              contentType: mseContentType,
+              webhookAuthId: subInfo?.webhook?.authId ?? null,
+              status: subInfo ? "active" : "disabled",
+              pollWatermark: subInfo ? new Date(Date.now() - 5 * 60 * 1000) : null,
+              lastErrorMessage: subInfo ? null : "Initial subscription start failed",
+              updatedAt: now,
+            }).onConflictDoNothing();
+          } else {
+            await db.update(astT).set({
+              status: subInfo ? "active" : "disabled",
+              webhookAuthId: subInfo?.webhook?.authId ?? existingRows[0]?.pollWatermark ? undefined : null,
+              lastErrorMessage: subInfo ? null : "Subscription re-confirm failed",
+              updatedAt: now,
+            }).where(eqMse(astT.id, existingRows[0]!.id));
+          }
+
+          output = {
+            subscriptionStatus: subInfo ? "active" : "error",
+            contentType: mseContentType,
+            tenantId: mseTId,
+            webhookAuthId: subInfo?.webhook?.authId ?? null,
+          };
+          logger.info({ tenantId: mseTId, contentType: mseContentType, status: output.subscriptionStatus },
+            "wf-executor: monitor_subscription_ensure done");
+        } catch (mseErr) {
+          logger.warn({ tenantId: mseTId, contentType: mseContentType, err: mseErr },
+            "wf-executor: monitor_subscription_ensure error (non-fatal)");
+          output = { subscriptionStatus: "error", tenantId: mseTId, contentType: mseContentType, error: String(mseErr) };
+        }
+        break;
+      }
+
+      // ── monitor_poll_activity ───────────────────────────────────────────────
+      // Polls the O365 Management Activity API for new audit events since the
+      // stored watermark. Applies mapping + severity rules from the monitor_check
+      // config. Writes tenant_monitor_profile rows for critical events and
+      // advances the watermark on success.
+      // NEVER sets nodeError — all errors are logged and returned in output.
+      case "monitor_poll_activity": {
+        const mpaTenantId    = interp(node.data.tenantId    as string | undefined, payload)?.trim()
+          ?? (payload.assignment && typeof payload.assignment === "object"
+              ? ((payload.assignment as Record<string, unknown>).tenantId as string | undefined)
+              : undefined);
+        const mpaContentType = interp(node.data.contentType as string | undefined, payload)?.trim()
+          ?? (payload.assignment && typeof payload.assignment === "object"
+              ? ((payload.assignment as Record<string, unknown>).contentType as string | undefined)
+              : undefined);
+        const mpaCheckKey    = interp(node.data.checkKey    as string | undefined, payload)?.trim()
+          ?? (payload.assignment && typeof payload.assignment === "object"
+              ? ((payload.assignment as Record<string, unknown>).checkKey as string | undefined)
+              : undefined);
+
+        if (!mpaTenantId || !mpaContentType) {
+          output = { criticalChangeDetected: false, eventCount: 0, criticalCount: 0, reason: "tenantId or contentType missing" };
+          break;
+        }
+
+        try {
+          const { activitySubscriptionsTable: astPT } = await import("@workspace/db");
+          const { listActivityContent, fetchActivityBlob } = await import("./graph");
+          const { eq: eqMpa, and: andMpa } = await import("drizzle-orm");
+
+          // Resolve mapping and severity rules from node.data or assignment payload
+          const rawMapping     = (node.data.mapping ?? (payload.assignment as Record<string, unknown> | undefined)?.mapping) as Array<{ sourceField: string; targetField: string }> | string | undefined;
+          const rawSeverity    = (node.data.severityRules ?? (payload.assignment as Record<string, unknown> | undefined)?.severityRules) as Array<{ expression: string; severity: string; label?: string }> | string | undefined;
+          const mappingRules   = typeof rawMapping  === "string" ? JSON.parse(rawMapping)  as Array<{ sourceField: string; targetField: string }> : (rawMapping ?? []);
+          const severityRules  = typeof rawSeverity === "string" ? JSON.parse(rawSeverity) as Array<{ expression: string; severity: string; label?: string }> : (rawSeverity ?? []);
+
+          // Get watermark from DB
+          const subRows = await db
+            .select({ id: astPT.id, pollWatermark: astPT.pollWatermark })
+            .from(astPT)
+            .where(andMpa(eq(astPT.tenantId, mpaTenantId), eq(astPT.contentType, mpaContentType)))
+            .limit(1);
+
+          const subRow = subRows[0];
+          const endTime   = new Date();
+          const startTime = subRow?.pollWatermark ?? new Date(endTime.getTime() - 5 * 60 * 1000);
+
+          // List and fetch content blobs
+          const blobs = await listActivityContent(mpaTenantId, mpaContentType, startTime, endTime);
+          let totalEventCount = 0;
+          let criticalCount   = 0;
+
+          for (const blob of blobs) {
+            const events = await fetchActivityBlob(mpaTenantId, blob.contentUri);
+            totalEventCount += events.length;
+
+            for (const evt of events) {
+              // Build extracted properties via mapping rules
+              const extracted: Record<string, unknown> = {};
+              for (const rule of mappingRules) {
+                const val = (evt as Record<string, unknown>)[rule.sourceField];
+                if (val !== undefined) extracted[rule.targetField] = val;
+              }
+              extracted.Operation = evt.Operation;
+              extracted.Workload  = evt.Workload;
+              extracted.UserId    = evt.UserId;
+
+              // Evaluate severity rules
+              let matchedSeverity: string | null = null;
+              let matchedLabel: string | undefined;
+              const evtPayload = { ...payload, ...extracted, event: evt };
+              for (const rule of severityRules) {
+                try {
+                  if (evalCondition(rule.expression, evtPayload as Record<string, unknown>)) {
+                    matchedSeverity = rule.severity;
+                    matchedLabel    = rule.label;
+                    break;
+                  }
+                } catch { /* bad expression — skip rule */ }
+              }
+
+              if (matchedSeverity) {
+                criticalCount++;
+                // Write tenant_monitor_profile for this critical event
+                const checkKeyFinal = mpaCheckKey ?? `live.${mpaContentType.toLowerCase().replace(".", "-")}`;
+                const idempKey = `live-${mpaTenantId}-${checkKeyFinal}-${evt.Id ?? blob.contentId + "-" + totalEventCount}`;
+                try {
+                  const { tenantMonitorProfilesTable: tmpT } = await import("@workspace/db");
+                  await db.insert(tmpT).values({
+                    tenantId:   mpaTenantId,
+                    checkKey:   checkKeyFinal,
+                    triggerId:  `wf-run-${runId}`,
+                    idempotencyKey: idempKey,
+                    status:     "ok",
+                    rawResponse: evt as Record<string, unknown>,
+                    extractedProperties: extracted,
+                    severityMatched: `${matchedSeverity}${matchedLabel ? `: ${matchedLabel}` : ""}`,
+                    itemCount:  1,
+                  }).onConflictDoNothing();
+                } catch (profileErr) {
+                  logger.warn({ err: profileErr, idempKey }, "monitor_poll_activity: profile insert failed (non-fatal)");
+                }
+              }
+            }
+          }
+
+          // Advance watermark
+          if (subRow) {
+            await db.update(astPT).set({
+              pollWatermark:       endTime,
+              lastPolledAt:        endTime,
+              lastPollEventCount:  totalEventCount,
+              lastErrorMessage:    null,
+              updatedAt:           endTime,
+            }).where(eqMpa(astPT.id, subRow.id));
+          }
+
+          output = {
+            criticalChangeDetected: criticalCount > 0,
+            eventCount:   totalEventCount,
+            criticalCount,
+            blobCount:    blobs.length,
+            tenantId:     mpaTenantId,
+            contentType:  mpaContentType,
+            watermarkFrom: startTime.toISOString(),
+            watermarkTo:   endTime.toISOString(),
+          };
+          logger.info(
+            { tenantId: mpaTenantId, contentType: mpaContentType, totalEventCount, criticalCount },
+            "wf-executor: monitor_poll_activity done",
+          );
+        } catch (mpaErr) {
+          logger.warn({ tenantId: mpaTenantId, contentType: mpaContentType, err: mpaErr },
+            "wf-executor: monitor_poll_activity error (non-fatal)");
+          output = { criticalChangeDetected: false, eventCount: 0, criticalCount: 0, error: String(mpaErr), tenantId: mpaTenantId, contentType: mpaContentType };
+        }
         break;
       }
 

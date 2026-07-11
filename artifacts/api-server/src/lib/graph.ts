@@ -971,6 +971,190 @@ export async function createCalendarEvent(
   }
 }
 
+// ── O365 Management Activity API (Live Monitor Engine — Mode B) ───────────────
+// Separate from the Graph API: uses manage.office.com, not graph.microsoft.com.
+// Token scope: https://manage.office.com/.default
+// Uses the same MT App credentials (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET).
+
+const ACTIVITY_API_BASE = "https://manage.office.com/api/v1.0";
+const ACTIVITY_SCOPE = "https://manage.office.com/.default";
+
+// Per-tenant token cache for the Activity API (separate from Graph token cache)
+const activityTokenCache = new Map<string, TokenCache>();
+
+/**
+ * Obtain a client-credentials token for a tenant scoped to the
+ * O365 Management Activity API (manage.office.com).
+ * Returns null (never throws) if MT app credentials are absent.
+ */
+export async function getActivityApiToken(tenantId: string): Promise<string | null> {
+  const cached = activityTokenCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt - 60_000) return cached.token;
+
+  const clientId = process.env.MT_APP_CLIENT_ID;
+  const clientSecret = process.env.MT_APP_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    logger.warn({ tenantId }, "getActivityApiToken: MT_APP_CLIENT_ID/MT_APP_CLIENT_SECRET not configured");
+    return null;
+  }
+
+  try {
+    const params = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: ACTIVITY_SCOPE,
+    });
+    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ tenantId, status: res.status, body: text }, "getActivityApiToken: token request failed");
+      return null;
+    }
+    const data = await res.json() as { access_token: string; expires_in: number };
+    const entry: TokenCache = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+    activityTokenCache.set(tenantId, entry);
+    return entry.token;
+  } catch (err) {
+    logger.warn({ tenantId, err }, "getActivityApiToken: fetch error");
+    return null;
+  }
+}
+
+/** Evict the Activity API token cache for a tenant (e.g. after consent revoke). */
+export function evictActivityApiToken(tenantId: string): void {
+  activityTokenCache.delete(tenantId);
+}
+
+export interface ActivitySubscriptionInfo {
+  contentType: string;
+  status: "enabled" | "disabled";
+  webhook?: { authId?: string; address?: string; expiration?: string } | null;
+}
+
+/**
+ * Start (or re-enable) an O365 Management Activity API subscription for a tenant.
+ * Uses a webhook-free push-less subscription (no webhook body) so polling works
+ * without a public endpoint. Returns the subscription info on success, null on error.
+ * Never throws.
+ */
+export async function ensureActivityApiSubscription(
+  tenantId: string,
+  contentType: string,
+): Promise<ActivitySubscriptionInfo | null> {
+  const token = await getActivityApiToken(tenantId);
+  if (!token) return null;
+
+  try {
+    const url = `${ACTIVITY_API_BASE}/${tenantId}/activity/feed/subscriptions/start?contentType=${encodeURIComponent(contentType)}&PublisherIdentifier=${encodeURIComponent(tenantId)}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      // AF20024 = subscription already enabled (idempotent — not an error)
+      if (text.includes("AF20024")) {
+        return { contentType, status: "enabled", webhook: null };
+      }
+      logger.warn({ tenantId, contentType, status: res.status, body: text }, "ensureActivityApiSubscription: start failed");
+      return null;
+    }
+
+    const data = await res.json() as { contentType?: string; status?: string; webhook?: unknown };
+    return {
+      contentType: data.contentType ?? contentType,
+      status: (data.status === "enabled" ? "enabled" : "disabled") as "enabled" | "disabled",
+      webhook: (data.webhook as { authId?: string; address?: string; expiration?: string } | null | undefined) ?? null,
+    };
+  } catch (err) {
+    logger.warn({ tenantId, contentType, err }, "ensureActivityApiSubscription: error");
+    return null;
+  }
+}
+
+export interface ActivityContentBlob {
+  contentUri: string;
+  contentId: string;
+  contentType: string;
+  contentCreated: string;
+  contentExpiration: string;
+}
+
+/**
+ * List available content blobs for a tenant subscription since startTime.
+ * Returns an empty array on error (never throws).
+ */
+export async function listActivityContent(
+  tenantId: string,
+  contentType: string,
+  startTime: Date,
+  endTime: Date,
+): Promise<ActivityContentBlob[]> {
+  const token = await getActivityApiToken(tenantId);
+  if (!token) return [];
+
+  try {
+    const fmt = (d: Date) => d.toISOString().replace("Z", "");
+    const url =
+      `${ACTIVITY_API_BASE}/${tenantId}/activity/feed/subscriptions/content` +
+      `?contentType=${encodeURIComponent(contentType)}` +
+      `&startTime=${encodeURIComponent(fmt(startTime))}` +
+      `&endTime=${encodeURIComponent(fmt(endTime))}` +
+      `&PublisherIdentifier=${encodeURIComponent(tenantId)}`;
+
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const text = await res.text();
+      logger.warn({ tenantId, contentType, status: res.status, body: text }, "listActivityContent: failed");
+      return [];
+    }
+    const blobs = await res.json() as ActivityContentBlob[] | null;
+    return Array.isArray(blobs) ? blobs : [];
+  } catch (err) {
+    logger.warn({ tenantId, contentType, err }, "listActivityContent: error");
+    return [];
+  }
+}
+
+export interface ActivityEvent {
+  Id: string;
+  CreationTime: string;
+  Operation: string;
+  Workload: string;
+  UserId?: string;
+  ObjectId?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Fetch a single content blob URI and return its events.
+ * Returns empty array on error (never throws).
+ */
+export async function fetchActivityBlob(tenantId: string, blobUri: string): Promise<ActivityEvent[]> {
+  const token = await getActivityApiToken(tenantId);
+  if (!token) return [];
+
+  try {
+    const res = await fetch(blobUri, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      logger.warn({ tenantId, blobUri, status: res.status }, "fetchActivityBlob: failed");
+      return [];
+    }
+    const events = await res.json() as ActivityEvent[] | null;
+    return Array.isArray(events) ? events : [];
+  } catch (err) {
+    logger.warn({ tenantId, blobUri, err }, "fetchActivityBlob: error");
+    return [];
+  }
+}
+
 export async function createSiteFolder(
   siteId: string,
   parentPath: string,

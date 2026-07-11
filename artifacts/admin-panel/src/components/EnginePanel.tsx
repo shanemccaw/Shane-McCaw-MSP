@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson } from "lucide-react";
+import LiveMonitorPanel from "@/pages/LiveMonitorPanel";
 
 export interface EngineDefLite {
   key: string;
@@ -286,6 +287,13 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               {(dashboard?.results ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No recent clients found.</p> : null}
             </div>
           )}
+          {/* Subscription Health panel — rendered for the Live Monitor (monitoring) engine */}
+          {engineKey === "monitoring" ? (
+            <div className="mt-4 border-t pt-4">
+              <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Activity API Subscription Health</p>
+              <LiveMonitorPanel />
+            </div>
+          ) : null}
         </TabsContent>
 
         <TabsContent value="testing" className="space-y-4 mt-4">
