@@ -790,6 +790,11 @@ export default function WorkflowListPage() {
 
   // ── Modal / interaction state ──
   const [showCreate, setShowCreate] = useState(false);
+  const [showWfImport, setShowWfImport] = useState(false);
+  const [wfImportJson, setWfImportJson] = useState("");
+  const [wfImportName, setWfImportName] = useState("");
+  const [wfImporting, setWfImporting] = useState(false);
+  const wfFileRef = useRef<HTMLInputElement>(null);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
@@ -1094,6 +1099,67 @@ export default function WorkflowListPage() {
     },
   });
 
+  async function handleExportWorkflow(def: WfDefinition, e: React.MouseEvent) {
+    e.stopPropagation();
+    try {
+      const res = await fetchWithAuth(`/api/admin/workflows/definitions/${def.id}/export`);
+      if (!res.ok) { toast({ title: "Export failed", variant: "destructive" }); return; }
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${def.name}.wf.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+  }
+
+  async function handleDownloadNodeCatalog() {
+    try {
+      const res = await fetchWithAuth("/api/admin/workflows/node-catalog");
+      if (!res.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `workflow-node-catalog-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
+  }
+
+  async function handleImportWorkflow() {
+    setWfImporting(true);
+    try {
+      let body: unknown;
+      try { body = JSON.parse(wfImportJson); } catch { toast({ title: "Invalid JSON", variant: "destructive" }); return; }
+      const payload = { ...(body as Record<string, unknown>), name: wfImportName.trim() || undefined };
+      const res = await fetchWithAuth("/api/admin/workflows/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const data = await res.json() as { id: number; draftVersionId: number; name: string };
+        toast({ title: `Imported "${data.name}"`, description: "Opening in editor…" });
+        setShowWfImport(false);
+        setWfImportJson("");
+        setWfImportName("");
+        qc.invalidateQueries({ queryKey: ["wf-definitions"] });
+        navigate(`/workflows/builder/${data.id}?vid=${data.draftVersionId}`);
+      } else {
+        const err = await res.json().catch(() => ({ error: "Import failed" })) as { error: string };
+        toast({ title: err.error ?? "Import failed", variant: "destructive" });
+      }
+    } finally { setWfImporting(false); }
+  }
+
   function handlePlayClick(def: WfDefinition) {
     const fields = def.askForInputFields;
     if (fields && fields.length > 0) {
@@ -1282,6 +1348,15 @@ export default function WorkflowListPage() {
           }
           return null;
         })()}
+        <button
+          onClick={e => void handleExportWorkflow(def, e)}
+          className="opacity-0 group-hover:opacity-100 p-0.5 rounded transition-all flex-shrink-0 text-[#484F58] hover:text-[#7D8590]"
+          title="Export workflow as JSON"
+        >
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </button>
         {canRun && (
           <button
             onClick={e => { e.stopPropagation(); isActiveRunDef ? (activeRun && stopMut.mutate(activeRun.runId)) : handlePlayClick(def); }}
@@ -1720,6 +1795,24 @@ export default function WorkflowListPage() {
                 </svg>
               </button>
               <button
+                onClick={() => { setWfImportJson(""); setWfImportName(""); setShowWfImport(true); }}
+                className="p-1 rounded text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors"
+                title="Import Workflow from JSON"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l4-4m0 0l4 4m-4-4v12" />
+                </svg>
+              </button>
+              <button
+                onClick={() => void handleDownloadNodeCatalog()}
+                className="p-1 rounded text-[#484F58] hover:text-[#7D8590] hover:bg-[#1C2128] transition-colors"
+                title="Download Node Catalog (AI reference)"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </button>
+              <button
                 onClick={() => setShowCreate(true)}
                 className="p-1 rounded text-[#484F58] hover:text-[#0078D4] hover:bg-[#0078D4]/10 transition-colors"
                 title="New Workflow"
@@ -1730,6 +1823,16 @@ export default function WorkflowListPage() {
               </button>
             </div>
           </div>
+          <input
+            ref={wfFileRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) { const r = new FileReader(); r.onload = ev => setWfImportJson(String(ev.target?.result ?? "")); r.readAsText(f); }
+            }}
+          />
 
           {/* Search */}
           <div className="px-3 py-2 border-b border-[#21262D] flex-shrink-0">
@@ -2206,6 +2309,62 @@ export default function WorkflowListPage() {
           </div>
         );
       })()}
+
+      {/* Import Workflow modal */}
+      {showWfImport && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xl mx-4">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D]">
+              <h2 className="text-sm font-semibold text-[#E6EDF3]">Import Workflow</h2>
+              <button onClick={() => setShowWfImport(false)} className="text-[#484F58] hover:text-[#C9D1D9] transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-[#7D8590]">Paste a workflow export JSON or load from file. The workflow is imported as a new draft — it will not overwrite any existing workflow.</p>
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-[#484F58] uppercase tracking-wider">Name (optional override)</label>
+                <input
+                  value={wfImportName}
+                  onChange={e => setWfImportName(e.target.value)}
+                  placeholder="Leave blank to use the name from the file"
+                  className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] transition-colors"
+                />
+              </div>
+              <div>
+                <button
+                  onClick={() => wfFileRef.current?.click()}
+                  className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+                >
+                  Load from file…
+                </button>
+              </div>
+              <textarea
+                value={wfImportJson}
+                onChange={e => setWfImportJson(e.target.value)}
+                placeholder='{"version":1,"workflow":{...}}'
+                rows={10}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] font-mono focus:outline-none focus:border-[#0078D4] transition-colors resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#30363D]">
+              <button onClick={() => setShowWfImport(false)} className="px-4 py-2 text-xs rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => void handleImportWorkflow()}
+                disabled={!wfImportJson.trim() || wfImporting}
+                className="px-4 py-2 text-xs rounded-lg bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {wfImporting ? "Importing…" : "Import Workflow"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

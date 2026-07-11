@@ -523,4 +523,155 @@ router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Reques
   }
 });
 
+// ── Export catalog as JSON ─────────────────────────────────────────────────────
+
+router.get("/admin/catalog/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const services = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder, servicesTable.createdAt);
+    const records = services.map(s => ({
+      slug: s.slug,
+      name: s.name,
+      label: s.name,
+      description: s.description,
+      category: s.category,
+      categoryPath: s.categoryPath,
+      tagline: s.tagline,
+      serviceType: s.serviceType,
+      billingType: s.billingType,
+      price: s.price,
+      basePrice: s.basePrice,
+      maxPrice: s.maxPrice,
+      durationDays: s.durationDays,
+      turnaround: s.turnaround,
+      isPublic: s.isPublic,
+      isActive: s.isPublic,
+      visibility: s.visibility,
+      tier: s.tier,
+      highlighted: s.highlighted,
+      badge: s.badge,
+      iconName: s.iconName,
+      hoursPerMonth: s.hoursPerMonth,
+      sortOrder: s.sortOrder,
+      deliverables: s.deliverables,
+      inclusions: s.inclusions,
+      features: s.features,
+      targetAudience: s.targetAudience,
+      tags: s.tags,
+      requiredAppPermissions: s.requiredAppPermissions,
+      fulfillmentTypeKey: s.fulfillmentTypeKey,
+      triggeringSignalKeys: s.triggeringSignalKeys,
+      customerAgreementTemplate: s.customerAgreementTemplate,
+      isFreeOffering: s.isFreeOffering,
+    }));
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      records,
+      services: records,
+    };
+    res.setHeader("Content-Disposition", 'attachment; filename="services-export.json"');
+    res.json(payload);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
+  }
+});
+
+// ── Import catalog from JSON ───────────────────────────────────────────────────
+
+router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as { version?: number; services?: unknown[]; records?: unknown[] };
+    if (body.version !== undefined && body.version !== 1) {
+      res.status(400).json({ error: `Unsupported export version: ${body.version}. Only version 1 is supported.` });
+      return;
+    }
+    const serviceList = Array.isArray(body.records) ? body.records : body.services;
+    if (!Array.isArray(serviceList)) {
+      res.status(400).json({ error: "Body must contain a 'services' or 'records' array" });
+      return;
+    }
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const item of serviceList as Record<string, unknown>[]) {
+      // Accept `label` as an alias for `name` to match the documented export schema.
+      const name = String(item.name ?? item.label ?? "").trim();
+      if (!name) { errors.push(`Record missing name/label — skipped`); skipped++; continue; }
+      // Auto-derive slug from name if not provided so files using the minimal schema still import.
+      const rawSlug = String(item.slug ?? "").trim();
+      const slug = rawSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      try {
+        await db.execute(sql`
+          INSERT INTO services (
+            slug, name, description, category, category_path, tagline, service_type,
+            billing_type, price, base_price, max_price, duration_days, turnaround,
+            is_public, visibility, tier, highlighted, badge, icon_name, hours_per_month,
+            sort_order, deliverables, inclusions, features, target_audience, tags,
+            required_app_permissions, fulfillment_type_key, triggering_signal_keys,
+            customer_agreement_template, is_free_offering
+          ) VALUES (
+            ${slug}, ${name}, ${item.description ?? null}, ${item.category ?? null},
+            ${item.categoryPath ?? null}, ${item.tagline ?? null}, ${item.serviceType ?? null},
+            ${item.billingType ?? null}, ${item.price ?? null}, ${item.basePrice ?? null},
+            ${item.maxPrice ?? null}, ${item.durationDays ?? null}, ${item.turnaround ?? null},
+            ${item.isPublic ?? item.isActive ?? false}, ${item.visibility ?? "private"}, ${item.tier ?? null},
+            ${item.highlighted ?? false}, ${item.badge ?? null}, ${item.iconName ?? null},
+            ${item.hoursPerMonth ?? null}, ${item.sortOrder ?? 0},
+            ${item.deliverables ? JSON.stringify(item.deliverables) : null}::jsonb,
+            ${item.inclusions ? JSON.stringify(item.inclusions) : null}::jsonb,
+            ${item.features ? JSON.stringify(item.features) : null}::jsonb,
+            ${item.targetAudience ?? null},
+            ${item.tags ? JSON.stringify(item.tags) : null}::jsonb,
+            ${item.requiredAppPermissions ? JSON.stringify(item.requiredAppPermissions) : null}::jsonb,
+            ${item.fulfillmentTypeKey ?? null},
+            ${item.triggeringSignalKeys ? JSON.stringify(item.triggeringSignalKeys) : null}::jsonb,
+            ${item.customerAgreementTemplate ?? null},
+            ${item.isFreeOffering ?? false}
+          )
+          ON CONFLICT (slug) DO UPDATE SET
+            name = EXCLUDED.name,
+            description = EXCLUDED.description,
+            category = EXCLUDED.category,
+            category_path = EXCLUDED.category_path,
+            tagline = EXCLUDED.tagline,
+            service_type = EXCLUDED.service_type,
+            billing_type = EXCLUDED.billing_type,
+            price = EXCLUDED.price,
+            base_price = EXCLUDED.base_price,
+            max_price = EXCLUDED.max_price,
+            duration_days = EXCLUDED.duration_days,
+            turnaround = EXCLUDED.turnaround,
+            is_public = EXCLUDED.is_public,
+            visibility = EXCLUDED.visibility,
+            tier = EXCLUDED.tier,
+            highlighted = EXCLUDED.highlighted,
+            badge = EXCLUDED.badge,
+            icon_name = EXCLUDED.icon_name,
+            hours_per_month = EXCLUDED.hours_per_month,
+            sort_order = EXCLUDED.sort_order,
+            deliverables = EXCLUDED.deliverables,
+            inclusions = EXCLUDED.inclusions,
+            features = EXCLUDED.features,
+            target_audience = EXCLUDED.target_audience,
+            tags = EXCLUDED.tags,
+            required_app_permissions = EXCLUDED.required_app_permissions,
+            fulfillment_type_key = EXCLUDED.fulfillment_type_key,
+            triggering_signal_keys = EXCLUDED.triggering_signal_keys,
+            customer_agreement_template = EXCLUDED.customer_agreement_template,
+            is_free_offering = EXCLUDED.is_free_offering,
+            updated_at = now()
+        `);
+        imported++;
+      } catch (e) {
+        errors.push(`Slug "${slug}": ${e instanceof Error ? e.message : String(e)}`);
+        skipped++;
+      }
+    }
+    res.json({ imported, skipped, errors });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
+  }
+});
+
 export default router;

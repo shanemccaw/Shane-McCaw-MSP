@@ -2149,6 +2149,340 @@ router.get("/admin/workflows/definitions/:id/trends", requireAdmin, async (req: 
   }
 });
 
+// ── Export a single workflow definition ───────────────────────────────────────
+
+router.get("/admin/workflows/definitions/:id/export", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(defId)) { sendError(res, 400, "Invalid definition ID"); return; }
+  try {
+    const def = await db.query.wfDefinitionsTable.findFirst({ where: eq(wfDefinitionsTable.id, defId) });
+    if (!def) { sendError(res, 404, "Workflow not found"); return; }
+
+    const latestVersion = await db.query.wfVersionsTable.findFirst({
+      where: eq(wfVersionsTable.definitionId, defId),
+      orderBy: [desc(wfVersionsTable.createdAt)],
+    });
+
+    const graph = latestVersion?.graph ?? { nodes: [], edges: [] };
+    // Derive askForInputFields from the graph (same as the list endpoint)
+    const askForInputNode = (graph.nodes ?? []).find((n: { type?: string }) => n.type === "ask_for_input");
+    const askForInputFields = (askForInputNode as { data?: { fields?: unknown[] } } | undefined)?.data?.fields ?? [];
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      workflow: {
+        name: def.name,
+        description: def.description,
+        category: def.metadata?.category ?? null,
+        concurrencyLimit: def.concurrencyLimit,
+        askForInputFields,
+        graph,
+      },
+    };
+
+    const safeName = def.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.wf.json"`);
+    res.json(payload);
+  } catch (err) {
+    req.log.error({ err }, "export workflow: query failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
+  }
+});
+
+// Alias: /admin/workflows/:id/export (same handler as definitions/:id/export above)
+router.get("/admin/workflows/:id/export", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(String(req.params.id ?? ""), 10);
+  if (isNaN(defId)) { sendError(res, 400, "Invalid definition ID"); return; }
+  try {
+    const def = await db.query.wfDefinitionsTable.findFirst({ where: eq(wfDefinitionsTable.id, defId) });
+    if (!def) { sendError(res, 404, "Workflow not found"); return; }
+
+    const latestVersion = await db.query.wfVersionsTable.findFirst({
+      where: eq(wfVersionsTable.definitionId, defId),
+      orderBy: [desc(wfVersionsTable.createdAt)],
+    });
+
+    const graph = latestVersion?.graph ?? { nodes: [], edges: [] };
+    const askForInputNode = (graph.nodes ?? []).find((n: { type?: string }) => n.type === "ask_for_input");
+    const askForInputFields = (askForInputNode as { data?: { fields?: unknown[] } } | undefined)?.data?.fields ?? [];
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      workflow: {
+        name: def.name,
+        description: def.description,
+        category: def.metadata?.category ?? null,
+        concurrencyLimit: def.concurrencyLimit,
+        askForInputFields,
+        graph,
+      },
+    };
+    const safeName = def.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+    res.setHeader("Content-Disposition", `attachment; filename="${safeName}.wf.json"`);
+    res.json(payload);
+  } catch (err) {
+    req.log.error({ err }, "export workflow (alias): query failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
+  }
+});
+
+// ── Import a workflow from exported JSON ──────────────────────────────────────
+
+router.post("/admin/workflows/import", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as { version?: number; workflow?: Record<string, unknown>; name?: string };
+    if (body.version !== undefined && body.version !== 1) {
+      sendError(res, 400, `Unsupported export version: ${body.version}. Only version 1 is supported.`); return;
+    }
+    const wf = body.workflow;
+    if (!wf || typeof wf !== "object") {
+      sendError(res, 400, "Body must contain a 'workflow' object"); return;
+    }
+    const name = String(body.name ?? wf.name ?? "Imported Workflow").trim() || "Imported Workflow";
+    const description = wf.description ? String(wf.description) : undefined;
+    const rawGraph = (wf.graph && typeof wf.graph === "object") ? wf.graph as WfGraph : { nodes: [], edges: [] };
+    const concurrencyLimit = typeof wf.concurrencyLimit === "number" ? wf.concurrencyLimit : 5;
+    const category = wf.category ? String(wf.category) : undefined;
+
+    const [newDef] = await db.insert(wfDefinitionsTable).values({
+      name,
+      description,
+      concurrencyLimit,
+      metadata: category ? { category } : {},
+    }).returning();
+
+    const [newVersion] = await db.insert(wfVersionsTable).values({
+      definitionId: newDef.id,
+      graph: rawGraph,
+      label: "v1.0",
+      status: "draft",
+    }).returning();
+
+    req.log.info({ defId: newDef.id, versionId: newVersion.id }, "import workflow: created");
+    res.status(201).json({ id: newDef.id, draftVersionId: newVersion.id, name: newDef.name });
+  } catch (err) {
+    req.log.error({ err }, "import workflow: failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
+  }
+});
+
+// ── Node catalog — AI-readable reference of all workflow node types ────────────
+
+// Helper to build a NodeDef entry for the flat `nodes` array.
+// `params[].key` is the field name used in node.data.
+// `outputs` accepts strings for brevity and is automatically shaped as { key, type, description }
+// objects in the returned record, matching the NodeDef contract for AI consumers.
+// `sourceHandles` are the labelled handles on graph edges.
+function nodeDef(
+  type: string,
+  label: string,
+  category: string,
+  description: string,
+  params: Array<{ key: string; type: string; description: string; required?: boolean }>,
+  outputs: string[],
+  sourceHandles: string[],
+) {
+  return {
+    type,
+    label,
+    category,
+    description,
+    params,
+    outputs: outputs.map(key => ({
+      key,
+      type: "string",
+      description: `The ${key} value emitted by this node into steps.<nodeId>.${key}.`,
+    })),
+    sourceHandles,
+  };
+}
+
+const FLAT_NODES = [
+  // ── Trigger / Control ──────────────────────────────────────────────────────
+  nodeDef("start", "Start", "Trigger / Control", "Entry point of every workflow. Receives the initial trigger payload and makes it available downstream via {{steps.<startId>.*}}. Every workflow must have exactly one start node.", [], ["payload", "triggeredAt", "triggerType"], ["default"]),
+  nodeDef("end", "End", "Trigger / Control", "Terminates the workflow run. Optionally surfaces a customerError message in the MSP Portal when the run ends in failure.", [{ key: "customerError", type: "string", description: "Error message shown to the client when the run fails." }], [], []),
+  nodeDef("condition", "Condition", "Trigger / Control", "Evaluates a JavaScript expression and routes execution to the 'true' or 'false' handle.", [{ key: "expression", type: "string", required: true, description: "JS expression (e.g. '{{steps.n1.count}} > 0'). Must evaluate to truthy/falsy." }], ["result"], ["true", "false"]),
+  nodeDef("foreach", "For Each", "Trigger / Control", "Iterates over an array, executing the 'body' branch once per item, then continues via 'done'.", [{ key: "arrayPath", type: "string", required: true, description: "Template resolving to an array (e.g. '{{steps.n1.items}}')." }, { key: "itemAlias", type: "string", required: true, description: "Variable name for the current item inside the loop (e.g. 'task')." }], ["item", "index", "length"], ["body", "done"]),
+  nodeDef("for", "For (Counted Loop)", "Trigger / Control", "Executes the 'body' branch a fixed number of times, then continues via 'done'.", [{ key: "count", type: "number", required: true, description: "Number of iterations." }, { key: "indexAlias", type: "string", description: "Variable name for the current 0-based index (default: 'index')." }], ["index"], ["body", "done"]),
+  nodeDef("wait_for_event", "Wait for Event", "Trigger / Control", "Pauses the run until a named event arrives on the event bus, then resumes with the event payload.", [{ key: "eventName", type: "string", required: true, description: "Event bus event name to wait for." }, { key: "timeoutHours", type: "number", description: "Hours before timing out (resumes via 'timeout' handle)." }], ["eventPayload", "timedOut"], ["received", "timeout"]),
+  nodeDef("delay", "Delay", "Trigger / Control", "Pauses execution for a fixed number of minutes.", [{ key: "delayMinutes", type: "number", required: true, description: "Minutes to pause." }], [], ["default"]),
+  nodeDef("run_workflow", "Run Workflow", "Trigger / Control", "Triggers a child workflow by definition ID, optionally injecting variables and waiting for it to complete.", [{ key: "definitionId", type: "number", required: true, description: "Child workflow definition ID." }, { key: "inputMapping", type: "object", description: "Key-value map of variables passed into the child payload." }, { key: "waitForCompletion", type: "boolean", description: "If true, blocks until the child run finishes (default: false)." }], ["childRunId", "childStatus"], ["default"]),
+  nodeDef("parallel", "Parallel", "Trigger / Control", "Executes up to four branches concurrently and optionally waits for all to complete.", [{ key: "waitAll", type: "boolean", description: "If true (default), blocks until all connected branches finish." }], ["branch_1", "branch_2", "branch_3", "branch_4"], ["branch_1", "branch_2", "branch_3", "branch_4"]),
+  nodeDef("join", "Join", "Trigger / Control", "Waits for all inbound parallel branches to complete before continuing.", [], ["joined"], ["default"]),
+  nodeDef("retry", "Retry", "Trigger / Control", "Wraps a sub-graph and re-executes it up to maxAttempts times on failure before continuing via 'exhausted'.", [{ key: "maxAttempts", type: "number", required: true, description: "Maximum number of attempts (including the first)." }, { key: "delaySeconds", type: "number", description: "Seconds to wait between retries (default: 0)." }], ["attempt", "lastError"], ["body", "exhausted"]),
+  nodeDef("switch_case", "Switch / Case", "Trigger / Control", "Routes execution to one of several case handles based on matching an expression value. Source handles are dynamic: one handle per case entry using the case's 'id' field (e.g. 'case-0', 'case-1') plus a 'default' handle for unmatched values.", [{ key: "expression", type: "string", required: true, description: "Template expression to evaluate (its string value is matched against case values)." }, { key: "cases", type: "array", required: true, description: "Array of { id, value, label } case descriptors. A 'default' case is always present." }], ["matchedCase", "matchedId"], ["case", "default"]),
+  nodeDef("approval_gate", "Approval Gate", "Trigger / Control", "Pauses the run and waits for a manual admin approval before continuing.", [{ key: "message", type: "string", description: "Optional message shown to the admin in the approval UI." }, { key: "timeoutHours", type: "number", description: "Hours before auto-rejecting if no response is received." }], ["approved", "rejectedBy"], ["approved", "rejected"]),
+  nodeDef("emit_event", "Emit Event", "Trigger / Control", "Fires a named event onto the internal event bus for other workflows (or wait_for_event nodes) to receive.", [{ key: "eventName", type: "string", required: true, description: "Event name to emit." }, { key: "payload", type: "object", description: "Data to include with the event." }], ["eventName"], ["default"]),
+  nodeDef("cancel_workflow", "Cancel Workflow", "Trigger / Control", "Immediately cancels the current workflow run.", [{ key: "reason", type: "string", description: "Reason for cancellation (stored in the run record)." }], [], []),
+  nodeDef("ask_for_input", "Ask for Input", "Trigger / Control", "Presents an input form before run start. Collected values are available as {{variableName}} downstream.", [{ key: "fields", type: "array", required: true, description: "Array of field descriptors: { variableName, label, type, required?, options?, multi? }." }], ["collectedFields"], ["default"]),
+  // ── Communication ─────────────────────────────────────────────────────────
+  nodeDef("send_email", "Send Email", "Communication", "Sends a transactional email via Resend using a named DB-stored template.", [{ key: "templateName", type: "string", required: true, description: "Name of the DB email template." }, { key: "to", type: "string", required: true, description: "Recipient address. Supports templates." }, { key: "subject", type: "string", description: "Subject line override." }, { key: "variables", type: "object", description: "Template variable map." }], ["messageId", "sent"], ["default"]),
+  nodeDef("send_sms", "Send SMS", "Communication", "Sends an SMS via Twilio.", [{ key: "to", type: "string", required: true, description: "E.164 phone number (e.g. +12025551234)." }, { key: "body", type: "string", required: true, description: "SMS body. Supports templates." }], ["sid", "sent"], ["default"]),
+  nodeDef("create_notification", "Create Notification", "Communication", "Creates an in-app notification and optionally delivers a browser push to subscribed admins.", [{ key: "title", type: "string", required: true, description: "Notification title." }, { key: "message", type: "string", required: true, description: "Notification body." }, { key: "type", type: "string", description: "Category: info | warning | success | error." }, { key: "sendPush", type: "boolean", description: "If true, also sends a browser push." }], ["notificationCount"], ["default"]),
+  nodeDef("send_browser_notification", "Send Browser Notification", "Communication", "Sends a browser notification to the admin panel.", [{ key: "title", type: "string", required: true, description: "Notification title." }, { key: "body", type: "string", required: true, description: "Notification body." }], ["notificationSent"], ["default"]),
+  nodeDef("send_mobile_push", "Send Mobile Push", "Communication", "Sends a push notification to mobile app subscribers.", [{ key: "title", type: "string", required: true, description: "Push title." }, { key: "body", type: "string", required: true, description: "Push body." }], ["sent", "sentCount"], ["default"]),
+  nodeDef("play_sound", "Play Sound", "Communication", "Plays a sound in the admin browser (notification chime, alert, etc.).", [{ key: "sound", type: "string", required: true, description: "Sound preset name or URL." }], ["soundPlayed"], ["default"]),
+  nodeDef("send_campaign_email", "Send Campaign Email", "Communication", "Sends a campaign email to a recipient using a template or direct content.", [{ key: "to", type: "string", required: true, description: "Recipient email." }, { key: "subject", type: "string", required: true, description: "Email subject." }, { key: "templateSlug", type: "string", description: "Template slug if using a named template." }], ["sent", "recipient", "subject", "templateSlug"], ["default"]),
+  nodeDef("post_linkedin", "Post to LinkedIn", "Communication", "Posts an organisation post to LinkedIn (text-only).", [{ key: "text", type: "string", required: true, description: "Post body. Supports templates." }, { key: "orgId", type: "string", description: "LinkedIn org ID. Falls back to LINKEDIN_ORG_ID secret." }], ["linkedinPostId", "linkedinPostUrl"], ["default"]),
+  nodeDef("post_twitter", "Post to Twitter / X", "Communication", "Posts a tweet via OAuth 1.0a (max 280 chars).", [{ key: "text", type: "string", required: true, description: "Tweet text. Supports templates." }], ["twitterTweetId", "twitterTweetUrl"], ["default"]),
+  nodeDef("post_facebook", "Post to Facebook", "Communication", "Posts to a Facebook Page feed (text-only).", [{ key: "message", type: "string", required: true, description: "Post text. Supports templates." }, { key: "pageId", type: "string", description: "Facebook Page ID. Falls back to FACEBOOK_PAGE_ID secret." }], ["facebookPostId", "facebookPostUrl"], ["default"]),
+  // ── AI / Documents ────────────────────────────────────────────────────────
+  nodeDef("ask_ai", "Ask AI", "AI / Documents", "Calls Claude AI with a freeform prompt and returns the AI-generated text.", [{ key: "prompt", type: "string", required: true, description: "System or user prompt. Supports templates." }, { key: "model", type: "string", description: "Model ID (default: claude-haiku-4-5)." }, { key: "maxTokens", type: "number", description: "Max output tokens." }], ["aiResponse", "model"], ["default"]),
+  nodeDef("generate_document", "Generate Document", "AI / Documents", "Generates a consulting document (SOW, report, plan) using AI and saves it to the client's library.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "docCategory", type: "string", description: "Document category (e.g. 'consulting', 'report')." }, { key: "docType", type: "string", required: true, description: "Document type (e.g. 'consolidated_sow', 'executive_summary')." }, { key: "signalsOverride", type: "string", description: "Pre-computed signals expression to skip live evaluation." }], ["documentId", "docType", "name"], ["default"]),
+  nodeDef("generate_article", "Generate Article", "AI / Documents", "Uses AI to write a full Markdown article on a given topic.", [{ key: "topic", type: "string", required: true, description: "Article topic or brief. Supports templates." }, { key: "category", type: "string", description: "Article category." }], ["articleTitle", "articleSlug", "articleCategory", "articleSummary", "articleDate", "articleContent"], ["default"]),
+  nodeDef("publish_article", "Publish Article", "AI / Documents", "Publishes a Markdown article to the public Resources section of the consulting website.", [{ key: "title", type: "string", required: true, description: "Article title." }, { key: "content", type: "string", required: true, description: "Markdown body." }, { key: "slug", type: "string", required: true, description: "URL slug." }, { key: "category", type: "string", description: "Category tag." }], ["published", "slug", "articleId", "title"], ["default"]),
+  nodeDef("topic_picker", "Topic Picker", "AI / Documents", "Uses AI to select the most impactful article topic from recent news and signal context.", [{ key: "context", type: "string", description: "Optional context or sector focus." }], ["articleTopic", "topicCategory", "topicRationale"], ["default"]),
+  nodeDef("generate_image", "Generate Image", "AI / Documents", "Generates an AI image and stores it in the server.", [{ key: "prompt", type: "string", required: true, description: "Image generation prompt." }], ["imageUrl", "revisedPrompt"], ["default"]),
+  nodeDef("generate_pdf", "Generate PDF", "AI / Documents", "Renders an HTML document to PDF.", [{ key: "html", type: "string", required: true, description: "HTML content to render." }, { key: "fileName", type: "string", description: "Output filename." }], ["pdfBase64", "pdfDataUri", "fileName"], ["default"]),
+  nodeDef("generate_diff_report", "Generate Diff Report", "AI / Documents", "Compares two M365 profile snapshots and generates a change report document.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["documentId", "changesFound", "changeCount"], ["default"]),
+  nodeDef("build_presentation", "Build Presentation", "AI / Documents", "Builds an MSP Portal proposal presentation for a client.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["presentationHtml", "presentationUrl", "presentationId"], ["default"]),
+  nodeDef("generate_script", "Generate Script", "AI / Documents", "Uses AI to generate a PowerShell remediation script.", [{ key: "context", type: "string", required: true, description: "Script context or requirement description." }], ["scriptId", "packageId"], ["default"]),
+  nodeDef("check_script_output", "Check Script Output", "AI / Documents", "Analyzes a script run output with AI to determine pass/fail.", [{ key: "scriptRunId", type: "string", required: true, description: "Script run ID to analyze." }], ["passed", "outcome"], ["default"]),
+  // ── CRM / Lead Management ─────────────────────────────────────────────────
+  nodeDef("create_lead", "Create Lead", "CRM / Lead Management", "Creates a new CRM lead record.", [{ key: "name", type: "string", required: true, description: "Lead full name." }, { key: "email", type: "string", required: true, description: "Lead email." }, { key: "company", type: "string", description: "Company name." }], ["leadId", "leadName", "leadEmail"], ["default"]),
+  nodeDef("score_lead", "Score Lead", "CRM / Lead Management", "Computes a qualification score for a lead using signal rules and CRM fields.", [{ key: "leadId", type: "number", required: true, description: "Lead ID." }], ["leadId", "score", "scoreLabel", "qualified"], ["default"]),
+  nodeDef("convert_to_opportunity", "Convert to Opportunity", "CRM / Lead Management", "Promotes a lead to an opportunity record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID to convert." }], ["opportunityId", "leadId"], ["default"]),
+  nodeDef("create_opportunity", "Create Opportunity", "CRM / Lead Management", "Creates a new sales opportunity record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID." }, { key: "title", type: "string", description: "Opportunity title." }], ["opportunityId", "leadId"], ["default"]),
+  nodeDef("assign_pipeline_stage", "Assign Pipeline Stage", "CRM / Lead Management", "Moves a lead or opportunity to a named pipeline stage.", [{ key: "targetType", type: "string", required: true, description: "Target type: lead | opportunity." }, { key: "targetId", type: "number", required: true, description: "Lead or opportunity ID." }, { key: "stage", type: "string", required: true, description: "Pipeline stage name (e.g. 'Warm', 'Proposal')." }], ["targetType", "leadId", "opportunityId", "stage"], ["default"]),
+  nodeDef("create_client", "Create Client", "CRM / Lead Management", "Creates a new client account.", [{ key: "name", type: "string", required: true, description: "Client full name." }, { key: "email", type: "string", required: true, description: "Client email." }, { key: "company", type: "string", description: "Company name." }], ["clientId", "clientEmail"], ["default"]),
+  nodeDef("create_project", "Create Project", "CRM / Lead Management", "Creates a new engagement project.", [{ key: "clientId", type: "number", required: true, description: "Client user ID." }, { key: "title", type: "string", required: true, description: "Project title." }], ["projectId", "projectTitle"], ["default"]),
+  nodeDef("find_object", "Find Object", "CRM / Lead Management", "Queries a collection for a single object matching a field value.", [{ key: "collection", type: "string", required: true, description: "Collection: clients | projects | leads." }, { key: "fieldName", type: "string", required: true, description: "Field to match." }, { key: "fieldValueExpr", type: "string", required: true, description: "Value (supports templates)." }], ["object", "found"], ["default"]),
+  nodeDef("list_objects", "List Objects", "CRM / Lead Management", "Returns a filtered list of objects from a collection.", [{ key: "collection", type: "string", required: true, description: "Collection name." }, { key: "filter", type: "object", description: "Key-value filter." }, { key: "limit", type: "number", description: "Max records." }], ["items", "count"], ["default"]),
+  // ── Project / Kanban ──────────────────────────────────────────────────────
+  nodeDef("get_project_tasks", "Get Project Tasks", "Project / Kanban", "Fetches all kanban tasks for a project as a flat list and grouped by phase.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }], ["phases", "flatTasks", "taskCount", "projectId"], ["default"]),
+  nodeDef("update_project_task", "Update Project Task", "Project / Kanban", "Updates a kanban task's column, title, or priority.", [{ key: "taskId", type: "string", required: true, description: "Kanban task ID." }, { key: "column", type: "string", description: "Target column slug." }, { key: "titleExpr", type: "string", description: "New title (supports templates)." }, { key: "priority", type: "string", description: "Priority: low | medium | high | urgent." }], ["updated", "taskId", "column", "title"], ["default"]),
+  nodeDef("create_kanban_task", "Create Kanban Task", "Project / Kanban", "Creates a new task card on a kanban board.", [{ key: "boardId", type: "string", description: "Board ID (default: 'marketing')." }, { key: "title", type: "string", required: true, description: "Task title." }, { key: "column", type: "string", description: "Column slug." }, { key: "priority", type: "string", description: "Priority." }, { key: "body", type: "string", description: "Task description." }], ["taskId", "boardId", "columnId", "title"], ["default"]),
+  nodeDef("update_milestone", "Update Milestone", "Project / Kanban", "Transitions a project milestone to a new status and optionally seeds kanban cards.", [{ key: "milestoneId", type: "number", required: true, description: "Milestone ID." }, { key: "status", type: "string", required: true, description: "New status: pending | in_progress | complete." }], ["milestoneId", "previousStatus", "newStatus", "kanbanCardsSeeded"], ["default"]),
+  nodeDef("get_phases", "Get Phases", "Project / Kanban", "Retrieves the phase list for a presentation.", [{ key: "presentationId", type: "string", required: true, description: "Presentation ID." }], ["phases", "phaseCount", "presentationId"], ["default"]),
+  nodeDef("create_phase", "Create Phase", "Project / Kanban", "Adds a new phase to an engagement project.", [{ key: "projectId", type: "string", required: true, description: "Project ID." }, { key: "title", type: "string", required: true, description: "Phase title." }, { key: "price", type: "number", description: "Phase price (USD)." }], ["phaseId", "phaseTitle"], ["default"]),
+  // ── Intelligence Engines ─────────────────────────────────────────────────
+  nodeDef("calculate_priority", "Calculate Priority Score", "Intelligence Engines", "Runs the Priority Intelligence Engine for a client and returns a weighted priority score.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_pricing_engine", "Calculate Pricing Score", "Intelligence Engines", "Runs the Pricing Intelligence Engine and returns pricing impact and value contribution scores.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_health", "Calculate Health Score", "Intelligence Engines", "Runs the Health Intelligence Engine and returns a tenant health score.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_drift", "Calculate Drift Score", "Intelligence Engines", "Runs the Drift Intelligence Engine and returns a configuration drift score.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_forecast", "Calculate Forecast Score", "Intelligence Engines", "Runs the Forecasting Intelligence Engine and returns a trend-based forecast score.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_crm", "Calculate CRM Score", "Intelligence Engines", "Runs the CRM Intelligence Engine and returns fit, pain, maturity, intent, and urgency scores.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_msp", "Calculate MSP Score", "Intelligence Engines", "Runs the MSP Intelligence Engine and returns an MSP-level aggregate score.", [{ key: "mspId", type: "string", description: "MSP ID (defaults to the current tenant's MSP)." }], ["engine", "score", "breakdown", "rawSignals", "timestamp"], ["default"]),
+  nodeDef("calculate_pricing", "Calculate Pricing", "Intelligence Engines", "Computes the pricing for a document's SOW phases and stores the result.", [{ key: "documentId", type: "number", required: true, description: "Document ID." }], ["documentId", "totalPrice", "lineCount"], ["default"]),
+  // ── Diagnostics / Readiness ──────────────────────────────────────────────
+  nodeDef("parse_quiz_results", "Parse Quiz Results", "Diagnostics / Readiness", "Scores a completed readiness quiz and classifies the lead.", [{ key: "quizLeadId", type: "number", required: true, description: "Quiz lead ID." }], ["quizLeadId", "totalScore", "tier", "recommendedService", "leadName", "leadEmail", "company", "categoryScores"], ["default"]),
+  nodeDef("generate_readiness_score", "Generate Readiness Score", "Diagnostics / Readiness", "Computes and persists a readiness score record for a client.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["readinessScore", "readinessLabel", "recordId"], ["default"]),
+  nodeDef("attach_quiz_insights", "Attach Quiz Insights", "Diagnostics / Readiness", "Attaches quiz-derived insights to a generated document.", [{ key: "quizLeadId", type: "number", required: true, description: "Quiz lead ID." }, { key: "documentId", type: "number", required: true, description: "Document ID to attach insights to." }], ["insightsAttached", "documentId"], ["default"]),
+  nodeDef("validate_m365_permissions", "Validate M365 Permissions", "Diagnostics / Readiness", "Checks that required Graph API app permissions are granted.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["permissionsValid", "missingCount", "jobId"], ["default"]),
+  // ── Microsoft 365 / Azure ─────────────────────────────────────────────────
+  nodeDef("get_tenant_signals", "Get Tenant Signals", "Microsoft 365 / Azure", "Evaluates active signal rules against a client's M365 profile and returns fired signals.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["signals", "signalCount", "hasSignals"], ["default"]),
+  nodeDef("update_m365_profile", "Update M365 Profile", "Microsoft 365 / Azure", "Fetches fresh M365 profile data for a client via Graph API and stores the snapshot.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["jobId", "jobStatus"], ["default"]),
+  nodeDef("update_intelligence_tables", "Update Intelligence Tables", "Microsoft 365 / Azure", "Runs the intelligence ingestion pipeline for a client.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["updated", "recordId", "jobId"], ["default"]),
+  nodeDef("notify_major_changes", "Notify Major Changes", "Microsoft 365 / Azure", "Checks for significant M365 profile changes and fires a notification if found.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["notified", "skipped"], ["default"]),
+  nodeDef("execute_runbook", "Execute Runbook", "Microsoft 365 / Azure", "Triggers one or more Azure Automation runbooks and returns job results.", [{ key: "runbookName", type: "string", required: true, description: "Runbook name or internal UUID." }, { key: "parameters", type: "object", description: "Key-value parameters passed to the runbook." }, { key: "waitForCompletion", type: "boolean", description: "If true, blocks until the job finishes." }], ["jobId", "jobStatus", "runbookName", "jobOutput", "allSucceeded", "results", "succeeded", "failed"], ["default"]),
+  nodeDef("save_to_sharepoint", "Save to SharePoint", "Microsoft 365 / Azure", "Saves a document or file to a SharePoint Online site.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "siteUrl", type: "string", required: true, description: "Target SharePoint site URL." }, { key: "fileName", type: "string", required: true, description: "File name." }, { key: "content", type: "string", required: true, description: "File content (base64 or text)." }], ["sharePointItemId", "sharePointWebUrl", "sharePointDownloadUrl"], ["default"]),
+  nodeDef("get_from_sharepoint", "Get from SharePoint", "Microsoft 365 / Azure", "Retrieves a file from SharePoint Online.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "siteUrl", type: "string", required: true, description: "SharePoint site URL." }, { key: "filePath", type: "string", required: true, description: "File path within the site." }], ["fileContentBase64", "fileName", "mimeType", "sharePointWebUrl"], ["default"]),
+  nodeDef("check_exchange_calendar_availability", "Check Calendar Availability", "Microsoft 365 / Azure", "Queries Exchange Online for free/busy slots.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "startTime", type: "string", required: true, description: "ISO 8601 start time." }, { key: "endTime", type: "string", required: true, description: "ISO 8601 end time." }], ["isBusy", "availableSlots", "busySlots"], ["default"]),
+  nodeDef("create_exchange_calendar_event", "Create Calendar Event", "Microsoft 365 / Azure", "Creates a calendar event in Exchange Online.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "subject", type: "string", required: true, description: "Event subject." }, { key: "start", type: "string", required: true, description: "ISO 8601 start." }, { key: "end", type: "string", required: true, description: "ISO 8601 end." }, { key: "attendees", type: "array", description: "Array of attendee email addresses." }], ["eventId", "eventUrl", "eventWebLink"], ["default"]),
+  // ── SLA Engine ────────────────────────────────────────────────────────────
+  nodeDef("sla_start_timer", "SLA Start Timer", "SLA Engine", "Starts an SLA timer for a project phase.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }, { key: "phase", type: "string", description: "SLA phase identifier (e.g. 'response', 'resolution')." }, { key: "deadlineHours", type: "number", description: "SLA deadline in hours." }], ["timerId", "alreadyExisted"], ["default"]),
+  nodeDef("sla_stop_timer", "SLA Stop Timer", "SLA Engine", "Stops a running SLA timer.", [{ key: "timerId", type: "string", required: true, description: "SLA timer ID. Supports templates." }], ["stopped", "timerId"], ["default"]),
+  nodeDef("sla_warning", "SLA Warning", "SLA Engine", "Records an SLA warning event when a timer is approaching its deadline.", [{ key: "timerId", type: "string", required: true, description: "SLA timer ID. Supports templates." }], ["warningFired", "timerId"], ["default"]),
+  nodeDef("sla_breach", "SLA Breach", "SLA Engine", "Records an SLA breach when a timer has exceeded its deadline.", [{ key: "timerId", type: "string", required: true, description: "SLA timer ID. Supports templates." }], ["breachId", "alreadyExisted"], ["default"]),
+  nodeDef("sla_escalate", "SLA Escalate", "SLA Engine", "Creates an SLA escalation record.", [{ key: "timerId", type: "string", required: true, description: "SLA timer ID." }, { key: "level", type: "number", description: "Escalation level (1–5)." }], ["escalationId", "alreadyExisted", "level"], ["default"]),
+  nodeDef("sla_resolve", "SLA Resolve", "SLA Engine", "Resolves a running SLA timer and closes open escalations.", [{ key: "timerId", type: "string", required: true, description: "SLA timer ID. Supports templates." }], ["resolved", "timerId"], ["default"]),
+  // ── Scope Creep Engine ────────────────────────────────────────────────────
+  nodeDef("scope_creep_detect", "Scope Creep Detect", "Scope Creep Engine", "Detects a scope creep event and records a detection row.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }, { key: "detectionType", type: "string", description: "Detection type: drift | addition | change." }], ["detectionId", "alreadyExisted", "detectionType"], ["default"]),
+  nodeDef("scope_creep_score", "Scope Creep Score", "Scope Creep Engine", "Computes and persists the composite scope creep score for a project.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }], ["scoreId", "compositeScore", "alreadyExisted"], ["default"]),
+  nodeDef("scope_creep_violation", "Scope Creep Violation", "Scope Creep Engine", "Fires a scope creep violation event.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }, { key: "severity", type: "string", description: "Severity: low | medium | high | critical." }], ["violationId", "severity", "alreadyExisted"], ["default"]),
+  nodeDef("scope_creep_escalate", "Scope Creep Escalate", "Scope Creep Engine", "Creates a scope creep escalation record.", [{ key: "violationId", type: "string", required: true, description: "Violation ID." }, { key: "level", type: "number", description: "Escalation level." }, { key: "flagSowAmendment", type: "boolean", description: "If true, flags for SOW amendment." }, { key: "flagPricingReview", type: "boolean", description: "If true, flags for pricing review." }], ["escalationId", "alreadyExisted", "level", "flagSowAmendment", "flagPricingReview"], ["default"]),
+  nodeDef("scope_creep_resolve", "Scope Creep Resolve", "Scope Creep Engine", "Resolves a scope creep violation and closes open escalations.", [{ key: "violationId", type: "string", required: true, description: "Violation ID. Supports templates." }], ["resolved", "violationId"], ["default"]),
+  nodeDef("scope_creep_compliance_update", "Scope Creep Compliance Update", "Scope Creep Engine", "Computes and persists a scope creep compliance snapshot.", [{ key: "projectId", type: "string", required: true, description: "Engagement project ID." }], ["recordId", "compliancePct"], ["default"]),
+  // ── Sales Offer Engine ────────────────────────────────────────────────────
+  nodeDef("sales_offer_generate", "Sales Offer Generate", "Sales Offer Engine", "Generates AI-ranked sales offer candidates from active signal rules.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }], ["insertedOfferIds", "candidateCount"], ["default"]),
+  nodeDef("sales_offer_score", "Sales Offer Score", "Sales Offer Engine", "Re-scores an offer from rule groups.", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }], ["offerId", "previousScore", "newScore"], ["default"]),
+  nodeDef("sales_offer_violation", "Sales Offer Violation", "Sales Offer Engine", "Emits a violation event on an offer.", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }, { key: "violationType", type: "string", description: "Violation type: policy | sla | scope." }], ["offerId", "violationType"], ["default"]),
+  // ── Commerce / Stripe ─────────────────────────────────────────────────────
+  nodeDef("generate_stripe_payment_link", "Generate Stripe Payment Link", "Commerce / Stripe", "Creates a Stripe payment link and returns its URL.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "amountCents", type: "number", required: true, description: "Amount in cents." }, { key: "description", type: "string", description: "Payment description." }], ["paymentLinkId", "paymentLinkUrl"], ["default"]),
+  nodeDef("generate_invoice_stripe_payment", "Generate Invoice Stripe Payment", "Commerce / Stripe", "Creates a Stripe invoice and returns the invoice URL.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "amountCents", type: "number", required: true, description: "Amount in cents." }, { key: "description", type: "string", description: "Invoice description." }], ["invoiceId", "invoiceUrl", "invoicePdfUrl", "amountDue", "currency"], ["default"]),
+  nodeDef("generate_phased_invoice", "Generate Phased Invoice", "Commerce / Stripe", "Creates a Stripe invoice for a single project phase.", [{ key: "clientId", type: "string", required: true, description: "Client user ID." }, { key: "phaseTitle", type: "string", required: true, description: "Phase title." }, { key: "amountCents", type: "number", required: true, description: "Phase amount in cents." }], ["invoiceId", "customerId", "amountCents", "phaseTitle"], ["default"]),
+  nodeDef("create_phased_invoices", "Create Phased Invoices", "Commerce / Stripe", "Creates Stripe invoices for all phases of an engagement project.", [{ key: "projectId", type: "string", required: true, description: "Project ID." }], ["invoiceIds", "phaseCount", "totalScheduled"], ["default"]),
+  nodeDef("charge_stripe_invoice", "Charge Stripe Invoice", "Commerce / Stripe", "Finalizes and charges a Stripe invoice.", [{ key: "invoiceId", type: "string", required: true, description: "Stripe invoice ID." }], ["chargeStatus", "amountCharged", "stripePaymentIntentId"], ["default"]),
+  nodeDef("edit_stripe_invoice", "Edit Stripe Invoice", "Commerce / Stripe", "Updates a draft Stripe invoice (due date, amount, memo).", [{ key: "invoiceId", type: "string", required: true, description: "Stripe invoice ID." }, { key: "dueDate", type: "string", description: "New due date (ISO 8601)." }], ["invoiceId", "status", "dueDate"], ["default"]),
+  // ── Marketing ─────────────────────────────────────────────────────────────
+  nodeDef("define_campaign_goal", "Define Campaign Goal", "Marketing", "Sets the goal for a marketing campaign.", [{ key: "goal", type: "string", required: true, description: "Campaign goal description." }], ["campaignGoal"], ["default"]),
+  nodeDef("define_target_audience", "Define Target Audience", "Marketing", "Defines and stores the target audience for a campaign.", [{ key: "description", type: "string", required: true, description: "Audience description." }], ["targetAudience"], ["default"]),
+  nodeDef("create_campaign_offer", "Create Campaign Offer", "Marketing", "Creates a campaign offer record.", [{ key: "name", type: "string", required: true, description: "Offer name." }, { key: "goal", type: "string", description: "Offer goal." }, { key: "audience", type: "string", description: "Target audience." }], ["offerId", "offerName", "offerGoal", "offerAudience"], ["default"]),
+  nodeDef("create_marketing_campaign", "Create Marketing Campaign", "Marketing", "Creates a new marketing campaign record.", [{ key: "name", type: "string", required: true, description: "Campaign name." }, { key: "status", type: "string", description: "Initial status (default: 'draft')." }], ["campaignId", "campaignName", "campaignStatus"], ["default"]),
+  nodeDef("publish_landing_page", "Publish Landing Page", "Marketing", "Publishes a marketing landing page.", [{ key: "slug", type: "string", required: true, description: "Landing page URL slug." }], ["landingPageId", "slug", "published", "wasAlreadyPublished"], ["default"]),
+  nodeDef("generate_landing_page", "Generate Landing Page", "Marketing", "Uses AI to generate a marketing landing page.", [{ key: "offer", type: "string", required: true, description: "Offer or service description." }], ["landingPageId", "slug", "headline", "subheadline", "published"], ["default"]),
+  nodeDef("fetch_news_headlines", "Fetch News Headlines", "Marketing", "Fetches recent industry news headlines and scores their relevance.", [{ key: "topic", type: "string", required: true, description: "News topic to search." }, { key: "sector", type: "string", description: "Industry sector filter." }], ["newsHeadlines", "newsTopic", "newsContext", "newsArticleSuggestion", "hotScore", "isHot", "targetSector", "campaignBrief", "campaignId"], ["default"]),
+  // ── Data / Utility ────────────────────────────────────────────────────────
+  nodeDef("log_event", "Log Event", "Data / Utility", "Writes a structured log entry to the workflow run audit trail.", [{ key: "level", type: "string", description: "Log level: info | warn | error." }, { key: "message", type: "string", required: true, description: "Log message. Supports templates." }, { key: "data", type: "object", description: "Structured data to include." }], [], ["default"]),
+  nodeDef("set_variable", "Set Variable", "Data / Utility", "Computes a value and stores it so downstream nodes can reference it via {{variableName}}.", [{ key: "variableName", type: "string", required: true, description: "Variable name." }, { key: "valueExpr", type: "string", required: true, description: "Value expression (supports templates and JS arithmetic)." }], ["value"], ["default"]),
+  nodeDef("update_variable", "Update Variable", "Data / Utility", "Updates an existing workflow variable.", [{ key: "variableName", type: "string", required: true, description: "Variable name to update." }, { key: "valueExpr", type: "string", required: true, description: "New value expression." }], ["value"], ["default"]),
+  nodeDef("transform", "Transform", "Data / Utility", "Applies a JS mapping expression to reshape or filter step output data.", [{ key: "inputExpr", type: "string", required: true, description: "Expression resolving to the input data." }, { key: "mapExpr", type: "string", required: true, description: "JS arrow function body (e.g. 'item.name')." }], ["result", "count"], ["default"]),
+  nodeDef("compose", "Compose", "Data / Utility", "Assembles multiple template expressions into a single composed value.", [{ key: "template", type: "string", required: true, description: "Template string with {{}} placeholders." }], ["value"], ["default"]),
+  nodeDef("group_by", "Group By", "Data / Utility", "Groups an array of objects by a field value.", [{ key: "arrayExpr", type: "string", required: true, description: "Expression resolving to the input array." }, { key: "keyExpr", type: "string", required: true, description: "Expression to extract the grouping key from each item." }], ["groups", "groupCount"], ["default"]),
+  nodeDef("http_request", "HTTP Request", "Data / Utility", "Makes an outbound HTTP request and exposes the response as step outputs.", [{ key: "url", type: "string", required: true, description: "Target URL. Supports templates." }, { key: "method", type: "string", required: true, description: "HTTP method: GET | POST | PUT | PATCH | DELETE." }, { key: "headers", type: "object", description: "Request headers." }, { key: "body", type: "object", description: "Request body (JSON-serialized)." }], ["status", "body", "ok"], ["default"]),
+  nodeDef("sql_query", "SQL Query", "Data / Utility", "Executes a raw SQL query against the application database and returns rows.", [{ key: "query", type: "string", required: true, description: "SQL query string. Supports templates for parameter injection." }], ["rows", "rowCount"], ["default"]),
+  nodeDef("report_progress", "Report Progress", "Data / Utility", "Writes a progress log entry visible in the real-time run viewer without stopping execution.", [{ key: "message", type: "string", required: true, description: "Progress message. Supports templates." }, { key: "step", type: "number", description: "Current step number (optional, for progress bars)." }, { key: "total", type: "number", description: "Total steps (optional, for progress bars)." }], [], ["default"]),
+  nodeDef("comment", "Comment", "Data / Utility", "A no-op annotation node. Useful for labelling sections of a workflow graph. Has no effect on execution.", [{ key: "text", type: "string", description: "Annotation text visible in the builder." }], [], ["default"]),
+  // ── Error Handling ────────────────────────────────────────────────────────
+  nodeDef("error", "Error Handler", "Error Handling", "Catches errors routed via an 'error' or 'onError' edge from any node. Execution continues normally after this node.", [{ key: "label", type: "string", description: "Label describing what error condition this handler addresses." }], ["caught", "label"], ["default"]),
+  // ── CRM / Intelligence ────────────────────────────────────────────────────
+  nodeDef("write_crm_scores", "Write CRM Scores", "CRM / Lead Management", "Runs the CRM scoring engine for a client, computes fit/pain/maturity/intent/urgency, and persists the scores onto the lead record.", [{ key: "leadId", type: "number", required: true, description: "Lead ID to score." }, { key: "clientUserId", type: "number", required: true, description: "Client user ID (used to retrieve CRM signals)." }, { key: "priorityScoreField", type: "string", description: "Which CRM score field maps to priorityScore (default: 'total')." }, { key: "pricingInfluenceScoreField", type: "string", description: "Which CRM score field maps to pricingInfluenceScore (default: 'total')." }], ["leadId", "priorityScore", "pricingInfluenceScore", "engine", "crmScore"], ["default"]),
+  // ── Sales Offer Engine (continued) ────────────────────────────────────────
+  nodeDef("sales_offer_escalate", "Sales Offer Escalate", "Sales Offer Engine", "Escalates an offer and emits an admin notification.", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }, { key: "escalatedTo", type: "string", description: "Escalation target (default: 'admin')." }], ["offerId", "escalatedTo"], ["default"]),
+  nodeDef("sales_offer_resolve", "Sales Offer Resolve", "Sales Offer Engine", "Transitions an offer to a terminal lifecycle state (accepted, rejected, expired, withdrawn).", [{ key: "offerId", type: "string", required: true, description: "Offer ID. Supports templates." }, { key: "newState", type: "string", required: true, description: "Target state: accepted | rejected | expired | withdrawn." }], ["offerId", "newState"], ["default"]),
+  // ── Monitor Package Engine ────────────────────────────────────────────────
+  nodeDef("monitor_get_package", "Monitor Get Package", "Monitor Package Engine", "Fetches a monitoring package definition (checks, engines) from the database by its key.", [{ key: "packageKey", type: "string", required: true, description: "Package key (e.g. 'core-security'). Supports templates." }], ["packageKey", "packageId", "packageLabel", "checkCount", "checks", "engines"], ["default"]),
+  nodeDef("monitor_execute_package", "Monitor Execute Package", "Monitor Package Engine", "Runs a full monitoring package against a tenant, executing all active checks and recomputing intelligence engine scores.", [{ key: "packageKey", type: "string", required: true, description: "Package key. Supports templates." }, { key: "tenantId", type: "string", required: true, description: "MSP tenant ID. Supports templates." }, { key: "triggerId", type: "string", description: "Optional idempotency key for this run." }], ["packageKey", "tenantId", "runStatus", "triggerId", "checksTotal", "checksOk", "checksError", "requiresScript", "consentRevoked", "checks", "enginesRecomputed", "startedAt", "completedAt"], ["default"]),
+  nodeDef("monitor_subscription_ensure", "Monitor Subscription Ensure", "Monitor Package Engine", "Starts or re-confirms an O365 Management Activity API subscription for a tenant+contentType. Non-fatal — returns subscriptionStatus:'error' on failure so the containing loop can continue.", [{ key: "tenantId", type: "string", description: "MSP tenant ID. Falls back to assignment.tenantId in payload." }, { key: "contentType", type: "string", description: "O365 content type (e.g. 'Audit.AzureActiveDirectory'). Falls back to assignment.contentType." }], ["subscriptionStatus", "contentType", "tenantId", "webhookAuthId"], ["default"]),
+  nodeDef("monitor_poll_activity", "Monitor Poll Activity", "Monitor Package Engine", "Polls the O365 Management Activity API for new audit events since the last watermark and writes critical findings to tenant_monitor_profile. Non-fatal.", [{ key: "tenantId", type: "string", description: "MSP tenant ID. Falls back to assignment.tenantId." }, { key: "contentType", type: "string", description: "O365 content type. Falls back to assignment.contentType." }, { key: "checkKey", type: "string", description: "Monitor check key. Falls back to assignment.checkKey." }, { key: "mapping", type: "array", description: "Field mapping rules: [{sourceField, targetField}]." }, { key: "severityRules", type: "array", description: "Severity classification rules: [{expression, severity, label?}]." }], ["criticalChangeDetected", "eventCount", "criticalCount", "tenantId", "contentType"], ["default"]),
+  // ── MSP / System ──────────────────────────────────────────────────────────
+  nodeDef("msp_dunning_advance", "MSP Dunning Advance", "MSP / System", "Advances dunning states for all past-due MSP subscriptions (suspends, revokes, or archives depending on dunning level).", [], ["checked", "advanced", "suspended", "revoked", "archived"], ["default"]),
+  nodeDef("msp_overage_meter", "MSP Overage Meter", "MSP / System", "Meters overage usage for all MSP tenants and records billing events for tenants that have exceeded their plan limits.", [], ["subscriptionsChecked", "metered", "totalOverageTenants"], ["default"]),
+  nodeDef("reconcile_orphaned_runs", "Reconcile Orphaned Runs", "MSP / System", "Scans for workflow runs that are stuck in 'running' state and resolves them (marks as failed or completes them if the job finished).", [{ key: "task", type: "string", description: "Reconciliation task name (informational)." }], ["reconciled", "task"], ["default"]),
+  nodeDef("kanban_auto_fire", "Kanban Auto Fire", "MSP / System", "Fires the kanban auto-fire pipeline for a client, evaluating rule triggers and creating kanban tasks for matching actions.", [{ key: "clientId", type: "number", required: true, description: "Client user ID." }, { key: "action", type: "string", description: "Specific action to fire (omit to evaluate all)." }], ["fired", "clientId", "action"], ["default"]),
+  nodeDef("save_presentation_phases", "Save Presentation Phases (retired)", "MSP / System", "RETIRED — use a sql_query node instead. Any graph still containing this node type will be auto-patched on server startup. Outputs a deprecation notice and continues.", [], ["skipped", "note"], ["default"]),
+];
+
+const NODE_CATALOG = {
+  version: 1,
+  description: "Complete AI-readable reference of all workflow node types. Use 'nodes' for a flat machine-readable list; 'categories' groups the same nodes for human browsing. Template expressions use {{steps.<nodeId>.<outputKey>}} syntax.",
+  templateSyntax: {
+    expression: "{{steps.<nodeId>.<outputKey>}}",
+    examples: [
+      "{{steps.node-1.payload}} — access the start node's payload",
+      "{{steps.node-3.count}} — access a numeric output from step node-3",
+      "{{clientId}} — shorthand for a top-level payload key",
+      "{{steps.node-5.items[0].name}} — array element access",
+    ],
+    rules: [
+      "nodeId is the 'id' field on the graph node (e.g. 'node-1', 'node-abc123').",
+      "outputKey must match a key listed in the node's outputs array.",
+      "Expressions are resolved via interp() — they always stringify arrays/objects unless resolveExprNative() is used for native-type fields.",
+      "Use resolveExprNative() when the field requires a native type (boolean, number, array, object).",
+    ],
+  },
+  graphRules: {
+    nodes: "Each graph node has: id (string), type (must be one of the types in the nodes array), position ({x, y}), data ({nodeType, label, ...params}).",
+    edges: "Each edge has: id, source (nodeId), target (nodeId), sourceHandle (one of the node's sourceHandles), targetHandle ('input').",
+    validation: [
+      "Every workflow graph must have exactly one 'start' node.",
+      "Condition nodes must have outgoing edges on both 'true' and 'false' source handles.",
+      "foreach nodes must have a 'body' edge and a 'done' edge.",
+      "wait_for_event may have 'received' and optionally 'timeout' edges.",
+      "switch_case source handles are dynamic: one handle per case entry using the case 'id' (e.g. 'case-0') plus a 'default' handle.",
+    ],
+    parallelJoin: "Fan-out: multiple edges from one source to several targets. Fan-in: use the 'join' node type — waits for all inbound branches before continuing via 'default'.",
+    foreach: "Use the 'foreach' node type to iterate. 'body' handle executes per item; 'done' fires when all items complete. Use resolveExprNative() for the items param.",
+    retryWrap: "Use the 'retry' node type to re-execute a sub-graph. 'body' connects to the sub-graph; 'exhausted' fires after maxAttempts failures.",
+  },
+  nodes: FLAT_NODES,
+};
+
+router.get("/admin/workflows/node-catalog", requireAdmin, (_req: Request, res: Response) => {
+  res.setHeader("Content-Disposition", 'attachment; filename="workflow-node-catalog.json"');
+  res.json({ ...NODE_CATALOG, generatedAt: new Date().toISOString() });
+});
+
 // ── AI Workflow Narrative ─────────────────────────────────────────────────────
 
 router.post("/admin/workflows/definitions/:id/explain", requireAdmin, async (req: Request, res: Response) => {

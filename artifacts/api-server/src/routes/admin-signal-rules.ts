@@ -1064,11 +1064,45 @@ router.get("/admin/signal-rules/audit-log", requireAdmin, async (req: Request, r
 router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const importedRules = body.rules;
-    const importedGroups = body.groups;
+
+    if (body.version !== undefined && body.version !== 1) {
+      res.status(400).json({ error: `Unsupported export version: ${body.version}. Only version 1 is supported.` });
+      return;
+    }
+
+    // Support both old format { rules, groups } and the new export format { signals: [...] }
+    // where each signal embeds its own rules and groups arrays.
+    let importedRules: unknown = body.rules;
+    let importedGroups: unknown = body.groups;
+    if (Array.isArray(body.signals)) {
+      // New format: flatten rules/groups from each signal entry, injecting the signalKey.
+      // Signal-level `intelligence` is spread as a fallback into each rule/group so that
+      // importing the export payload round-trips all intelligence metadata correctly.
+      importedRules = (body.signals as Array<Record<string, unknown>>).flatMap(s => {
+        const signalIntel = (typeof s.intelligence === "object" && s.intelligence !== null
+          ? s.intelligence
+          : {}) as Record<string, unknown>;
+        return (Array.isArray(s.rules) ? s.rules : []).map((r: Record<string, unknown>) => ({
+          ...signalIntel, // signal-level intel as fallback (rule-level overrides below)
+          ...r,
+          signalKey: s.key,
+        }));
+      });
+      importedGroups = (body.signals as Array<Record<string, unknown>>).flatMap(s => {
+        const signalIntel = (typeof s.intelligence === "object" && s.intelligence !== null
+          ? s.intelligence
+          : {}) as Record<string, unknown>;
+        return (Array.isArray(s.groups) ? s.groups : []).map((g: Record<string, unknown>) => ({
+          ...signalIntel, // signal-level intel as fallback (group-level overrides below)
+          ...g,
+          signalKey: s.key,
+        }));
+      });
+    }
+
     const projectAssociations = body.projectAssociations as Record<string, number[]> | undefined;
     if (!Array.isArray(importedRules)) {
-      res.status(400).json({ error: "Body must contain a 'rules' array" }); return;
+      res.status(400).json({ error: "Body must contain a 'rules' array or a 'signals' array" }); return;
     }
 
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
@@ -1182,6 +1216,30 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
         }
       }
 
+      // Restore enabled/disabled state for each signal that has an explicit `enabled`
+      // field in the export payload. Missing = keep existing state (default: enabled).
+      if (Array.isArray(body.signals)) {
+        for (const s of body.signals as Array<Record<string, unknown>>) {
+          const signalKey = s.key as string | undefined;
+          if (!signalKey) continue;
+          if (typeof s.enabled === "boolean" && !s.enabled) {
+            // Only persist an explicit disabled state — absence means enabled (default).
+            await tx.execute(sql`
+              INSERT INTO signal_enabled_state (signal_key, enabled)
+              VALUES (${signalKey}, false)
+              ON CONFLICT (signal_key) DO UPDATE SET enabled = false
+            `);
+          } else if (s.enabled === true) {
+            // Restore explicit enabled (removes a previous disabled entry if present).
+            await tx.execute(sql`
+              INSERT INTO signal_enabled_state (signal_key, enabled)
+              VALUES (${signalKey}, true)
+              ON CONFLICT (signal_key) DO UPDATE SET enabled = true
+            `);
+          }
+        }
+      }
+
       await tx.execute(sql`
         INSERT INTO signal_rule_audit_log (action, signal_key, rule_id, before, after, admin_user_id, note)
         VALUES ('import', null, null, null, null, ${adminId},
@@ -1189,7 +1247,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
       `);
     });
 
-    res.json({ imported: ruleCount, snapshotId, projectLinksUpdated: projectLinkCount });
+    res.json({ imported: ruleCount, skipped: 0, errors: [], snapshotId, projectLinksUpdated: projectLinkCount });
   } catch (err) {
     logger.error({ err }, "POST /admin/signal-rules/import failed");
     res.status(500).json({ error: "Import failed" });
@@ -1974,6 +2032,98 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
   } catch (err) {
     logger.error({ err }, "signal-rules: publish-to-prod failed");
     res.status(500).json({ error: err instanceof Error ? err.message : "Failed to publish to production" });
+  }
+});
+
+// ── Export all signal rules as structured JSON ────────────────────────────────
+
+router.get("/admin/signal-rules/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const [allRules, allGroups, enabledMap] = await Promise.all([
+      getAllRules(),
+      getAllGroups(),
+      getSignalEnabledMap(),
+    ]);
+    const customSignals = await getCustomSignals();
+
+    // Build a combined list of all known signals (static + custom)
+    const allSignals = [...TENANT_SIGNALS, ...ADJUSTMENT_SIGNALS, ...customSignals.map(c => ({
+      key: c.key,
+      label: c.label,
+      description: c.description,
+      expectedImpact: c.expectedImpact,
+      recommendedRules: [] as Array<{ ruleType: string; sourceKey: string; compareValue?: string; rationale: string }>,
+    }))];
+
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      signals: allSignals.map(s => {
+        const rules = allRules.filter(r => r.signalKey === s.key);
+        const groups = allGroups.filter(g => g.signalKey === s.key);
+        // Attach intelligence fields from the first rule with them as the signal-level snapshot
+        const intelRule = rules.find(r => r.priority != null);
+        return {
+          key: s.key,
+          label: s.label,
+          description: s.description,
+          expectedImpact: s.expectedImpact,
+          enabled: enabledMap[s.key] ?? true,
+          recommendedRules: s.recommendedRules,
+          intelligence: intelRule ? {
+            priority: intelRule.priority,
+            weight: intelRule.weight,
+            pricingImpact: intelRule.pricingImpact,
+            priorityScoreContribution: intelRule.priorityScoreContribution,
+            pricingValueContribution: intelRule.pricingValueContribution,
+            governanceImpact: intelRule.governanceImpact,
+            securityImpact: intelRule.securityImpact,
+            complianceImpact: intelRule.complianceImpact,
+            adoptionImpact: intelRule.adoptionImpact,
+            copilotImpact: intelRule.copilotImpact,
+            architectureImpact: intelRule.architectureImpact,
+            trendValue: intelRule.trendValue,
+            trendDirection: intelRule.trendDirection,
+            decayRate: intelRule.decayRate,
+            ttlDays: intelRule.ttlDays,
+            confidence: intelRule.confidence,
+            severity: intelRule.severity,
+            category: intelRule.category,
+            pillar: intelRule.pillar,
+            crmFitContribution: intelRule.crmFitContribution,
+            crmPainContribution: intelRule.crmPainContribution,
+            crmMaturityContribution: intelRule.crmMaturityContribution,
+            crmIntentContribution: intelRule.crmIntentContribution,
+            crmUrgencyContribution: intelRule.crmUrgencyContribution,
+          } : null,
+          rules: rules.map(r => ({
+            id: r.id,
+            groupId: r.groupId,
+            ruleType: r.ruleType,
+            sourceKey: r.sourceKey,
+            compareValue: r.compareValue,
+            description: r.description,
+            rationale: r.description,
+            sortOrder: r.sortOrder,
+            priority: r.priority,
+            weight: r.weight,
+            pricingImpact: r.pricingImpact,
+          })),
+          groups: groups.map(g => ({
+            id: g.id,
+            logic: g.logic,
+            label: g.label,
+            sortOrder: g.sortOrder,
+          })),
+        };
+      }),
+    };
+
+    res.setHeader("Content-Disposition", 'attachment; filename="tenant-signals-export.json"');
+    res.json(payload);
+  } catch (err) {
+    logger.error({ err }, "GET /admin/signal-rules/export failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
   }
 });
 

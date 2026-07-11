@@ -229,4 +229,76 @@ router.post("/admin/fulfillment-types/resolve", requireAdmin, async (req: Reques
   res.json(result);
 });
 
+// ── Export fulfillment types as JSON ──────────────────────────────────────────
+
+router.get("/admin/fulfillment-types/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(fulfillmentTypesTable).orderBy(desc(fulfillmentTypesTable.createdAt));
+    const records = rows.map(r => ({
+      key: r.key,
+      label: r.label,
+      description: r.description,
+      firedWhen: r.firedWhen,
+      recurring: r.recurring,
+      isActive: r.isActive,
+    }));
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      records,
+      fulfillmentTypes: records,
+    };
+    res.setHeader("Content-Disposition", 'attachment; filename="fulfillment-types-export.json"');
+    res.json(payload);
+  } catch (err) {
+    logger.error({ err }, "admin-fulfillment-types: export failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
+  }
+});
+
+// ── Import fulfillment types from JSON ────────────────────────────────────────
+
+router.post("/admin/fulfillment-types/import", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const body = (req.body ?? {}) as { version?: number; fulfillmentTypes?: unknown[]; records?: unknown[] };
+    if (body.version !== undefined && body.version !== 1) {
+      res.status(400).json({ error: `Unsupported export version: ${body.version}. Only version 1 is supported.` });
+      return;
+    }
+    const typeList = Array.isArray(body.records) ? body.records : body.fulfillmentTypes;
+    if (!Array.isArray(typeList)) {
+      res.status(400).json({ error: "Body must contain a 'fulfillmentTypes' or 'records' array" });
+      return;
+    }
+    let imported = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+
+    for (const item of typeList as Record<string, unknown>[]) {
+      const parsed = createSchema.safeParse(item);
+      if (!parsed.success) {
+        errors.push(`Key "${String(item.key ?? "?")}" validation failed: ${JSON.stringify(parsed.error.flatten())}`);
+        skipped++;
+        continue;
+      }
+      const { key, label, description, firedWhen, recurring, isActive } = parsed.data;
+      try {
+        await db.insert(fulfillmentTypesTable).values({ key, label, description, firedWhen, recurring, isActive })
+          .onConflictDoUpdate({
+            target: fulfillmentTypesTable.key,
+            set: { label, description, firedWhen, recurring, isActive },
+          });
+        imported++;
+      } catch (e) {
+        errors.push(`Key "${key}": ${e instanceof Error ? e.message : String(e)}`);
+        skipped++;
+      }
+    }
+    res.json({ imported, skipped, errors });
+  } catch (err) {
+    logger.error({ err }, "admin-fulfillment-types: import failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Import failed" });
+  }
+});
+
 export default router;

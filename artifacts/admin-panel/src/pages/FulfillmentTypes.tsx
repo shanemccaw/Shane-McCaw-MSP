@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Pencil, Trash2, Loader2, RefreshCw, Zap, Play,
-  CheckCircle2, XCircle, RotateCcw,
+  CheckCircle2, XCircle, RotateCcw, Download, Upload,
 } from "lucide-react";
 
 const FIRED_WHEN_OPTIONS = ["purchase", "signal", "manual"] as const;
@@ -63,6 +63,11 @@ export default function FulfillmentTypes() {
 
   const [deleteTarget, setDeleteTarget] = useState<FulfillmentType | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importJson, setImportJson] = useState("");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -162,6 +167,47 @@ export default function FulfillmentTypes() {
     }
   }
 
+  async function handleExport() {
+    try {
+      const res = await fetchWithAuth("/api/admin/fulfillment-types/export");
+      if (!res.ok) { toast({ title: "Export failed", variant: "destructive" }); return; }
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `fulfillment-types-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+  }
+
+  async function handleImport() {
+    setImporting(true);
+    try {
+      let body: unknown;
+      try { body = JSON.parse(importJson); } catch { toast({ title: "Invalid JSON", variant: "destructive" }); return; }
+      const res = await fetchWithAuth("/api/admin/fulfillment-types/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json() as { imported: number; skipped: number; errors: string[] };
+        toast({ title: `Imported ${data.imported} type${data.imported !== 1 ? "s" : ""}.${data.skipped > 0 ? ` ${data.skipped} skipped.` : ""}` });
+        if (data.errors.length > 0) toast({ title: `Warnings: ${data.errors.slice(0, 3).join("; ")}`, variant: "destructive" });
+        setShowImportModal(false);
+        setImportJson("");
+        void load();
+      } else {
+        const err = await res.json().catch(() => ({ error: "Import failed" })) as { error: string };
+        toast({ title: err.error ?? "Import failed", variant: "destructive" });
+      }
+    } finally { setImporting(false); }
+  }
+
   async function manualResolve() {
     if (!resolveKey) {
       toast({ title: "Select a fulfillment type key", variant: "destructive" });
@@ -215,6 +261,20 @@ export default function FulfillmentTypes() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => void handleExport()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            title="Export fulfillment types as JSON"
+          >
+            <Download className="w-3.5 h-3.5" /> Export JSON
+          </button>
+          <button
+            onClick={() => { setImportJson(""); setShowImportModal(true); }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            title="Import fulfillment types from JSON"
+          >
+            <Upload className="w-3.5 h-3.5" /> Import JSON
+          </button>
+          <button
             onClick={() => setResolveModal(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
           >
@@ -233,6 +293,7 @@ export default function FulfillmentTypes() {
             <Plus className="w-3.5 h-3.5" /> Add Type
           </button>
         </div>
+        <input ref={fileInputRef} type="file" accept=".json" onChange={e => { const f = e.target.files?.[0]; if (f) { const r = new FileReader(); r.onload = ev => setImportJson(String(ev.target?.result ?? "")); r.readAsText(f); } }} className="hidden" />
       </div>
 
       {/* Seed presets banner when table is empty */}
@@ -538,6 +599,48 @@ export default function FulfillmentTypes() {
               >
                 {resolving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                 Fire Event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#161B22] border border-[#30363D] rounded-xl shadow-2xl w-full max-w-xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#30363D]">
+              <h2 className="text-sm font-semibold text-[#E6EDF3]">Import Fulfillment Types</h2>
+              <button onClick={() => setShowImportModal(false)} className="text-[#484F58] hover:text-[#C9D1D9] transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-xs text-[#7D8590]">Paste an export JSON or load a file. Each type is upserted by <code className="bg-[#21262D] px-1 rounded">key</code>.</p>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="text-xs px-3 py-1.5 rounded border border-[#30363D] bg-[#21262D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+              >
+                Load from file…
+              </button>
+              <textarea
+                value={importJson}
+                onChange={e => setImportJson(e.target.value)}
+                placeholder='{"version":1,"fulfillmentTypes":[...]}'
+                rows={10}
+                className="w-full bg-[#0D1117] border border-[#30363D] rounded-lg px-3 py-2 text-xs text-[#C9D1D9] placeholder-[#484F58] font-mono focus:outline-none focus:border-[#0078D4] transition-colors resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-[#30363D]">
+              <button onClick={() => setShowImportModal(false)} className="px-4 py-2 text-xs rounded-lg border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] transition-colors">Cancel</button>
+              <button
+                onClick={() => void handleImport()}
+                disabled={!importJson.trim() || importing}
+                className="px-4 py-2 text-xs rounded-lg bg-[#0078D4] text-white hover:bg-[#106EBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {importing ? "Importing…" : "Import"}
               </button>
             </div>
           </div>
