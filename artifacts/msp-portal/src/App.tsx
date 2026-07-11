@@ -325,11 +325,15 @@ function SlugInnerSwitch() {
       </Route>
 
       {/* Slug root — role-aware landing.
-          Don't gate on isLoading: redirect to /login immediately so the form
-          renders at once; LoginPage's own useEffect handles the redirect back
-          to the dashboard once the boot refresh completes. */}
+          Render LoginPage directly instead of redirecting to /login.
+          A Redirect would return null while scheduling navigation in a
+          useLayoutEffect; in React 18 concurrent mode the browser can paint
+          that blank null state before the re-render lands, producing the
+          blank-blue-screen bug. Rendering LoginPage here is equivalent: the
+          form appears immediately, and LoginPage's own useEffect handles the
+          redirect-to-dashboard once the boot refresh completes. */}
       <Route path="/">
-        {user ? <Redirect to={defaultLanding} /> : <Redirect to="/login" />}
+        {user ? <Redirect to={defaultLanding} /> : <LoginPage />}
       </Route>
 
       <Route component={NotFound} />
@@ -349,7 +353,15 @@ function SlugScope() {
 
   return (
     <SlugProvider slug={slug}>
-      <WouterRouter base={`${BASE_PATH}/${slug}`}>
+      {/*
+       * IMPORTANT: Wouter appends nested bases to the parent's base.
+       * The outer WouterRouter already has base="/portal".
+       * Passing `/${slug}` here yields an effective base of
+       * "/portal" + "/${slug}" = "/portal/${slug}".
+       * Passing `${BASE_PATH}/${slug}` would double the prefix to
+       * "/portal/portal/${slug}" and break all inner path matching.
+       */}
+      <WouterRouter base={`/${slug}`}>
         <SlugInnerSwitch />
       </WouterRouter>
     </SlugProvider>
