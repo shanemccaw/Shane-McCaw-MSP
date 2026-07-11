@@ -16,7 +16,6 @@ import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "d
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
-import { logger } from "../lib/logger.ts";
 import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 
 const router: IRouter = Router();
@@ -254,7 +253,7 @@ router.get(
         aiPeriodUsagePct,
       });
     } catch (err) {
-      logger.error({ err }, "msp-portal: dashboard query failed");
+      req.log.error({ err }, "msp-portal: dashboard query failed");
       res.status(500).json({ error: "Dashboard query failed" });
     }
   },
@@ -329,10 +328,10 @@ router.post(
         metadata: { requestedAt: now.toISOString() },
       });
 
-      logger.info({ mspId, actorId: req.user!.id }, "msp-portal: cancellation requested");
+      req.log.info({ mspId, actorId: req.user!.id }, "msp-portal: cancellation requested");
       res.json({ ok: true, offboardingState: "cancellation_requested", requestedAt: now.toISOString() });
     } catch (err) {
-      logger.error({ err }, "msp-portal: offboarding request failed");
+      req.log.error({ err }, "msp-portal: offboarding request failed");
       res.status(500).json({ error: "Offboarding request failed" });
     }
   },
@@ -466,10 +465,10 @@ router.post(
         });
       }
 
-      logger.info({ mspId, customerCount: customers.length }, "msp-portal: export generated");
+      req.log.info({ mspId, customerCount: customers.length }, "msp-portal: export generated");
       res.json({ ok: true, offboardingState: "export_ready", export: exportPackage });
     } catch (err) {
-      logger.error({ err }, "msp-portal: export failed");
+      req.log.error({ err }, "msp-portal: export failed");
       res.status(500).json({ error: "Export generation failed" });
     }
   },
@@ -551,10 +550,10 @@ router.post(
         metadata: { archivedAt: now.toISOString() },
       });
 
-      logger.info({ mspId: targetMspId, actorId: req.user!.id }, "msp-portal: MSP archived");
+      req.log.info({ mspId: targetMspId, actorId: req.user!.id }, "msp-portal: MSP archived");
       res.json({ ok: true, offboardingState: "archival_flagged", archivedAt: now.toISOString() });
     } catch (err) {
-      logger.error({ err }, "msp-portal: archive failed");
+      req.log.error({ err }, "msp-portal: archive failed");
       res.status(500).json({ error: "Archive operation failed" });
     }
   },
@@ -619,7 +618,7 @@ router.get(
 
       res.json({ events, total: events.length, limit });
     } catch (err) {
-      logger.error({ err }, "msp-portal: events query failed");
+      req.log.error({ err }, "msp-portal: events query failed");
       res.status(500).json({ error: "Failed to fetch events" });
     }
   },
@@ -779,7 +778,7 @@ router.post(
 
         const assignedCount = results.filter((r) => r.status === "assigned").length;
         const skippedCount = results.filter((r) => r.status === "skipped").length;
-        logger.info({ mspId, bundleId, assignedCount, skippedCount }, "msp-portal: bulk assign_bundle complete");
+        req.log.info({ mspId, bundleId, assignedCount, skippedCount }, "msp-portal: bulk assign_bundle complete");
         res.json({ action: "assign_bundle", results, assignedCount, skippedCount });
         return;
       }
@@ -845,14 +844,14 @@ router.post(
           .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
           .where(and(inArray(mspCustomersTable.id, ids), eq(mspCustomersTable.mspId, mspId)));
 
-        logger.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
+        req.log.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
         res.json({ action: "archive", updated: ids.length });
         return;
       }
 
       res.status(400).json({ error: `Unknown action: ${String(action)}` });
     } catch (err) {
-      logger.error({ err }, "msp-portal: bulk action failed");
+      req.log.error({ err }, "msp-portal: bulk action failed");
       res.status(500).json({ error: "Bulk action failed" });
     }
   },
@@ -924,7 +923,7 @@ router.get(
         pageSize: limit,
       });
     } catch (err) {
-      logger.error({ err }, "msp-portal: customer list failed");
+      req.log.error({ err }, "msp-portal: customer list failed");
       res.status(500).json({ error: "Failed to fetch customers" });
     }
   },
@@ -990,7 +989,7 @@ router.get(
 
       res.json({ suspended: true, daysSuspended });
     } catch (err) {
-      logger.error({ err }, "msp-portal: msp-suspension query failed");
+      req.log.error({ err }, "msp-portal: msp-suspension query failed");
       res.status(500).json({ error: "Failed to fetch MSP suspension status" });
     }
   },

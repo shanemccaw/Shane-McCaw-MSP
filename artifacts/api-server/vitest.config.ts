@@ -48,6 +48,7 @@ export default defineConfig({
       "src/lib/__tests__/node-type-registry.test.ts",
       "src/routes/msp-suspended-banner.test.ts",
       "src/routes/msp-customers-bulk.test.ts",
+      "src/middlewares/requireAuth.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -67,6 +67,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const payload = jwt.verify(token, secret) as AuthUser;
     req.user = payload;
 
+    // Enrich the per-request child logger with tenant context so every
+    // downstream log line is automatically correlated to the MSP and customer.
+    // pino-http already bound traceId (req.id) when it created req.log; we
+    // just append mspId/customerId from the verified JWT claims here.
+    if (req.log) {
+      req.log = req.log.child({
+        ...(payload.mspId != null ? { mspId: payload.mspId } : {}),
+        ...(payload.customerId != null ? { customerId: payload.customerId } : {}),
+      });
+    }
+
     if (payload.impersonatedBy && !READ_METHODS.has(req.method)) {
       res.status(403).json({ error: "This action is not available in admin preview mode" });
       return;
