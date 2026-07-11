@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,12 +26,15 @@ import {
 } from "@/components/ui/table";
 import { ChevronLeft, ChevronRight, RefreshCw, Search, Shield } from "lucide-react";
 
+type Outcome = "success" | "failure" | "partial";
+
 interface AuditEntry {
   id: number;
   actorEmail: string;
   action: string;
   resource: string;
   detail?: string;
+  outcome: Outcome | null;
   createdAt: string;
 }
 
@@ -35,6 +45,25 @@ interface AuditResponse {
 
 const PAGE_SIZE = 30;
 
+function OutcomeBadge({ outcome }: { outcome: Outcome | null }) {
+  if (!outcome) return <span className="text-muted-foreground text-xs">—</span>;
+  const styles: Record<Outcome, string> = {
+    success: "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800",
+    failure: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
+    partial: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800",
+  };
+  const labels: Record<Outcome, string> = {
+    success: "Success",
+    failure: "Failure",
+    partial: "Partial",
+  };
+  return (
+    <Badge variant="outline" className={`text-[11px] font-medium capitalize ${styles[outcome]}`}>
+      {labels[outcome]}
+    </Badge>
+  );
+}
+
 export default function AuditPage() {
   const { fetchWithAuth } = useAuth();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -42,13 +71,15 @@ export default function AuditPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [outcomeFilter, setOutcomeFilter] = useState<"all" | Outcome>("all");
 
   const fetchEntries = useCallback(
-    async (p = page, q = search) => {
+    async (p = page, q = search, o = outcomeFilter) => {
       setLoading(true);
       try {
         const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) });
         if (q.trim()) params.set("search", q);
+        if (o !== "all") params.set("outcome", o);
         const res = await fetchWithAuth(`/api/msp/audit?${params}`);
         if (res.ok) {
           const data = (await res.json()) as AuditResponse;
@@ -59,20 +90,25 @@ export default function AuditPage() {
         setLoading(false);
       }
     },
-    [fetchWithAuth, page, search],
+    [fetchWithAuth, page, search, outcomeFilter],
   );
 
-  useEffect(() => { void fetchEntries(page, search); }, [page]);
+  useEffect(() => { void fetchEntries(page, search, outcomeFilter); }, [page]);
 
   useEffect(() => {
-    const t = setTimeout(() => { setPage(1); void fetchEntries(1, search); }, 300);
+    const t = setTimeout(() => { setPage(1); void fetchEntries(1, search, outcomeFilter); }, 300);
     return () => clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+    void fetchEntries(1, search, outcomeFilter);
+  }, [outcomeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const actions = (
-    <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => void fetchEntries(page, search)}>
+    <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => void fetchEntries(page, search, outcomeFilter)}>
       <RefreshCw className="size-3.5" />
       Refresh
     </Button>
@@ -91,14 +127,28 @@ export default function AuditPage() {
           </div>
         </div>
 
-        <div className="relative max-w-xs">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Filter by action or user…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Filter by action or user…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm"
+            />
+          </div>
+
+          <Select value={outcomeFilter} onValueChange={(v) => setOutcomeFilter(v as "all" | Outcome)}>
+            <SelectTrigger className="h-8 w-36 text-sm">
+              <SelectValue placeholder="Outcome" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All outcomes</SelectItem>
+              <SelectItem value="success">Success</SelectItem>
+              <SelectItem value="failure">Failure</SelectItem>
+              <SelectItem value="partial">Partial</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="rounded-md border border-border overflow-hidden">
@@ -107,6 +157,7 @@ export default function AuditPage() {
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableHead>Actor</TableHead>
                 <TableHead>Action</TableHead>
+                <TableHead>Outcome</TableHead>
                 <TableHead>Resource</TableHead>
                 <TableHead>Detail</TableHead>
                 <TableHead>When</TableHead>
@@ -116,7 +167,7 @@ export default function AuditPage() {
               {loading
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 5 }).map((__, j) => (
+                      {Array.from({ length: 6 }).map((__, j) => (
                         <TableCell key={j}><Skeleton className="h-4 w-24" /></TableCell>
                       ))}
                     </TableRow>
@@ -124,8 +175,8 @@ export default function AuditPage() {
                 : entries.length === 0
                   ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-32 text-center text-muted-foreground text-sm">
-                        No audit log entries yet.
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground text-sm">
+                        No audit log entries{outcomeFilter !== "all" ? ` with outcome "${outcomeFilter}"` : ""}.
                       </TableCell>
                     </TableRow>
                   )
@@ -136,6 +187,9 @@ export default function AuditPage() {
                         <Badge variant="outline" className="text-[11px] font-mono">
                           {e.action}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <OutcomeBadge outcome={e.outcome} />
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{e.resource}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-48 truncate">
