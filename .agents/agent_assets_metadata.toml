@@ -41,3 +41,9 @@ id = "SKK2acfdGBT42UinumS_v"
 uri = "file://.local/tasks/backend-audit-post-msp-rebuild.md"
 type = "text"
 title = "Backend Audit — Post-MSP-Portal Rebuild"
+
+[[outputs]]
+id = "zhvOin04ZYZKLbKPd6UlP"
+uri = "file://.local/tasks/msp-portal-crm-retirement-audit.md"
+type = "text"
+title = "MSP Portal — Customer Surface Audit & CRM Retirement Gap Analysis"
