@@ -63,7 +63,7 @@ const serviceSchema = z.object({
   maxPrice: z.string().nullable(),
   durationDays: z.number().nullable(),
   turnaround: z.string().nullable(),
-  billingType: z.enum(["one_time", "recurring_monthly"]),
+  billingType: z.enum(["one_time", "recurring_monthly", "recurring", "fixed"]),
   visibility: z.enum(["public", "private", "landing_page_only"]),
   serviceType: z.string().nullable(),
   tagline: z.string().nullable(),
@@ -705,7 +705,7 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
               className="px-3 py-1.5 text-xs font-medium border border-[#30363D] text-[#7D8590] rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors">
               {saving ? "Saving…" : "Save & Close"}
             </button>
-            <button type="button" onClick={() => void handleSubmit(onSubmit)()} disabled={saving}
+            <button type="button" onClick={() => void handleSubmit(onSubmit, (errs) => toast({ title: `Validation error: ${Object.keys(errs).join(", ")}`, variant: "destructive" }))()} disabled={saving}
               className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-[#0078D4] hover:bg-[#006CBE] text-white rounded-lg disabled:opacity-50 transition-colors">
               {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
               {saving ? "Saving…" : "Save"}
@@ -852,9 +852,14 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
               <div>
                 <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Billing Type</label>
                 <Controller name="billingType" control={control} render={({ field }) => (
-                  <div className="flex gap-3">
-                    {[{ v: "one_time" as const, label: "One-time charge" }, { v: "recurring_monthly" as const, label: "Monthly retainer" }].map(opt => (
-                      <label key={opt.v} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${field.value === opt.v ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}>
+                  <div className="flex flex-wrap gap-3">
+                    {([
+                      { v: "one_time" as const, label: "One-time" },
+                      { v: "recurring_monthly" as const, label: "Monthly retainer" },
+                      { v: "recurring" as const, label: "Recurring" },
+                      { v: "fixed" as const, label: "Fixed-price" },
+                    ]).map(opt => (
+                      <label key={opt.v} className={`flex items-center gap-2.5 flex-1 min-w-[8rem] border rounded-xl p-3 cursor-pointer transition-all ${field.value === opt.v ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}>
                         <input type="radio" value={opt.v} checked={field.value === opt.v} onChange={() => field.onChange(opt.v)} className="text-[#0078D4]" />
                         <span className="text-sm font-medium text-[#E6EDF3]">{opt.label}</span>
                       </label>

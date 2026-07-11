@@ -140,7 +140,7 @@ export const servicesTable = pgTable("services", {
   orderWorkflow: jsonb("order_workflow").$type<WizardStep[]>(),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),
-  billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),
+  billingType: text("billing_type", { enum: ["one_time", "recurring_monthly", "recurring", "fixed"] }).notNull().default("one_time"),
   isPublic: boolean("is_public").notNull().default(true),
   visibility: text("visibility", { enum: ["public", "private", "landing_page_only"] }).notNull().default("public"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

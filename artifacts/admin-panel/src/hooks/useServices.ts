@@ -27,7 +27,7 @@ export interface ServiceRow {
   maxPrice: string | null;
   durationDays: number | null;
   turnaround: string | null;
-  billingType: "one_time" | "recurring_monthly";
+  billingType: "one_time" | "recurring_monthly" | "recurring" | "fixed";
   isPublic: boolean;
   visibility: "public" | "private" | "landing_page_only";
   createdAt: string;

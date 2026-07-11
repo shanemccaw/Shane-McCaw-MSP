@@ -93,7 +93,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         maxPrice: maxPrice != null ? String(maxPrice) : null,
         durationDays: durationDays != null ? Number(durationDays) : null,
         turnaround: (turnaround as string | null) ?? null,
-        billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly",
+        billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly" | "recurring" | "fixed",
         isPublic: resolvedVisibility != null ? resolvedVisibility === "public" : (isPublic != null ? Boolean(isPublic) : false),
         visibility: resolvedVisibility ?? "private",
         slug: (slug as string | null) ?? null,
