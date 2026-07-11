@@ -10,7 +10,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspAuditLogsTable, usersTable } from "@workspace/db";
-import { eq, and, desc, count, ilike, or, gte, lte, type SQL } from "drizzle-orm";
+import { eq, and, desc, count, ilike, or, gte, lte, inArray, type SQL } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
 
 const router: IRouter = Router();
@@ -101,22 +101,40 @@ router.get("/msp/audit", requireRole("MSPAdmin"), async (req: Request, res: Resp
     .limit(limit)
     .offset(offset);
 
-  // Attach actor email where available
+  // Attach actor email where available (fetch ALL unique actor IDs, not just the first)
   const actorIds = [...new Set(entries.map((e) => e.actorUserId).filter((id): id is number => id != null))];
   const actors = actorIds.length > 0
     ? await db
         .select({ id: usersTable.id, email: usersTable.email, name: usersTable.name })
         .from(usersTable)
-        .where(eq(usersTable.id, actorIds[0]!))
+        .where(inArray(usersTable.id, actorIds))
     : [];
 
   const actorMap = new Map(actors.map((a) => [a.id, a]));
 
-  const enriched = entries.map((e) => ({
-    ...e,
-    actorEmail: e.actorUserId ? actorMap.get(e.actorUserId)?.email ?? null : null,
-    actorName: e.actorUserId ? actorMap.get(e.actorUserId)?.name ?? null : null,
-  }));
+  // Serialize with UI-friendly field aliases so the client doesn't need to know
+  // the internal column names (actionType → action, entityLabel → resource,
+  // metadata → detail as a short string, occurredAt → createdAt as ISO string).
+  const enriched = entries.map((e) => {
+    const actor = e.actorUserId ? actorMap.get(e.actorUserId) : null;
+    const detail = e.metadata
+      ? typeof e.metadata === "string"
+        ? e.metadata
+        : JSON.stringify(e.metadata)
+      : null;
+    return {
+      id: e.id,
+      eventId: e.eventId,
+      actorEmail: actor?.email ?? e.actorRole ?? null,
+      actorName: actor?.name ?? null,
+      actorRole: e.actorRole,
+      action: e.actionType,
+      resource: e.entityLabel ?? e.entityType ?? null,
+      detail,
+      outcome: e.outcome,
+      createdAt: e.occurredAt instanceof Date ? e.occurredAt.toISOString() : String(e.occurredAt),
+    };
+  });
 
   res.json({ entries: enriched, total: totalRow?.total ?? 0, page, limit });
 });
