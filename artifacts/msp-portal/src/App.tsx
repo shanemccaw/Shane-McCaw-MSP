@@ -14,6 +14,7 @@ import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
 import OffboardingPage from "@/pages/offboarding";
 import WebhooksPage from "@/pages/webhooks";
+import InitiateOnboardingPage from "@/pages/initiate-onboarding";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -75,6 +76,9 @@ function Router() {
       </Route>
       <Route path="/webhooks">
         <ProtectedRoute component={WebhooksPage} />
+      </Route>
+      <Route path="/initiate-onboarding">
+        <ProtectedRoute component={InitiateOnboardingPage} />
       </Route>
       <Route path="/">
         <Redirect to="/dashboard" />

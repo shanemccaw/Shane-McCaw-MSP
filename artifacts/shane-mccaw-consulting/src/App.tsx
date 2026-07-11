@@ -46,6 +46,8 @@ import HowItWorks from "@/pages/HowItWorks";
 import TechnicalOverview from "@/pages/TechnicalOverview";
 import LandingPage from "@/pages/LandingPage";
 import Assessments from "@/pages/Assessments";
+import Checkout from "@/pages/Checkout";
+import OnboardingLink from "@/pages/OnboardingLink";
 
 const queryClient = new QueryClient();
 
@@ -121,6 +123,8 @@ function Router() {
       <Route path="/how-it-works" component={HowItWorks} />
       <Route path="/assessments" component={Assessments} />
       <Route path="/lp/:slug" component={LandingPage} />
+      <Route path="/checkout" component={Checkout} />
+      <Route path="/onboarding/:token" component={OnboardingLink} />
       <Route component={NotFound} />
     </Switch>
     </>

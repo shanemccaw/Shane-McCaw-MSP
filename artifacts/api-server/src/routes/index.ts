@@ -72,6 +72,7 @@ import mspV1Router from "./msp-v1";
 import adminSlaRouter from "./admin-sla";
 import mspEnginesRouter from "./msp-engines";
 import webhooksRouter from "./webhooks";
+import mspOnboardingRouter from "./msp-onboarding";
 
 const router: IRouter = Router();
 
@@ -155,6 +156,7 @@ router.use(mspPortalRouter);
 router.use(adminSlaRouter);
 router.use(mspEnginesRouter);
 router.use(webhooksRouter);
+router.use(mspOnboardingRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
