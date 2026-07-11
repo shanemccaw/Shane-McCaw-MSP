@@ -196,6 +196,35 @@ export const servicesTable = pgTable("services", {
   // A fired signal matching any key here feeds resolve_fulfillment identically to
   // a purchase — the same mechanism, zero duplicated branching.
   triggeringSignalKeys: jsonb("triggering_signal_keys").$type<string[]>(),
+
+  // ── MSP Billing / Checkout Classification ─────────────────────────────────
+  // serviceClass: controls the checkout + billing flow for MSP portal offers.
+  //   project      — accepted offer → SOW → customer signature → charge MSP card
+  //   add_on       — accepted offer → Stripe checkout → confirmation (no signature)
+  //   subscription — accepted offer → Stripe subscription checkout → confirmation
+  // Null / missing row = treated as "add_on" (direct checkout, no SOW).
+  serviceClass: text("service_class", {
+    enum: ["project", "add_on", "subscription"],
+  }),
+
+  // deliveryType: what gets fulfilled once billing is confirmed.
+  //   assessment           — one-time diagnostic / health check
+  //   bundle_subscription  — recurring monitoring package bundle
+  //   retainer             — ongoing hourly/weekly engagement
+  //   document_generation  — automated report or document
+  //   none                 — platform-only (no external deliverable)
+  // Orthogonal to serviceClass — a project can be any deliveryType.
+  deliveryType: text("delivery_type", {
+    enum: ["assessment", "bundle_subscription", "retainer", "document_generation", "none"],
+  }),
+
+  // When true, a $0 purchase skips Stripe entirely (free assessments, Free tier).
+  // When false, $0 purchases still create a Stripe invoice for record-keeping.
+  allowFreeCheckout: boolean("allow_free_checkout").notNull().default(true),
+
+  // Optional: Stripe trial period in days. Applied when the offer carries trial terms.
+  // Non-null here sets the default; individual offers may override.
+  trialPeriodDays: integer("trial_period_days"),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

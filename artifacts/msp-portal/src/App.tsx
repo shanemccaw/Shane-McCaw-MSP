@@ -30,6 +30,8 @@ import CustomerHomePage from "@/pages/customer-home";
 import CustomerDocumentsPage from "@/pages/customer-documents";
 import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import CustomerSowPage from "@/pages/customer-sow";
+import MspCustomerSowPage from "@/pages/msp-customer-sow";
+import MspSowPublicPage from "@/pages/msp-sow-public";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import OperatorTasksPage from "@/pages/operator-tasks";
@@ -269,6 +271,9 @@ function SlugInnerSwitch() {
       <Route path="/customer-sow/:id">
         <ProtectedRoute component={CustomerSowPage} />
       </Route>
+      <Route path="/msp-sow/:sowId">
+        <ProtectedRoute component={MspCustomerSowPage} />
+      </Route>
       <Route path="/customer-sla">
         <ProtectedRoute component={CustomerSlaPage} />
       </Route>
@@ -449,6 +454,11 @@ function Router() {
       </Route>
       <Route path="/trust">
         <TrustPage />
+      </Route>
+
+      {/* Public MSP SOW viewer — share token, no auth required */}
+      <Route path="/sow/:shareToken">
+        <MspSowPublicPage />
       </Route>
 
       {/* Root — redirect to last-used slug or flat login */}
