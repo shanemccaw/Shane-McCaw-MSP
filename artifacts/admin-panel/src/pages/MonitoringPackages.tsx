@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useJsonImportExport } from "@/hooks/useJsonImportExport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,9 +49,18 @@ const EMPTY_PKG: Partial<MonitoringPackage> = {
   engines: [],
 };
 
+const MONITORING_PACKAGE_TEMPLATE = {
+  key: "category-package-name",
+  label: "Human-readable package name",
+  description: "Brief description of what this monitoring package covers",
+  engines: ["health", "monitoring"],
+  checkKeys: ["example:check-key"],
+};
+
 export default function MonitoringPackagesPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
+  const { exportJson, downloadTemplate, importJson } = useJsonImportExport();
   const [packages, setPackages] = useState<MonitoringPackage[]>([]);
   const [allChecks, setAllChecks] = useState<MonitorCheck[]>([]);
   const [loading, setLoading] = useState(true);
@@ -101,6 +111,51 @@ export default function MonitoringPackagesPage() {
       setExpandedPkg(key);
       if (!pkgChecks[key]) await loadPkgChecks(key);
     }
+  };
+
+  const handleImport = () => {
+    importJson(async (records) => {
+      const first = records[0] as Record<string, unknown> | undefined;
+      if (first && "__parseError" in (first ?? {})) {
+        toast({ title: "Import failed", description: String(first.__parseError), variant: "destructive" });
+        return;
+      }
+      let created = 0, updated = 0, failed = 0;
+      const existingKeys = new Set(packages.map(p => p.key));
+      for (const raw of records) {
+        const rec = raw as Record<string, unknown>;
+        try {
+          const key = String(rec.key);
+          const isEdit = existingKeys.has(key);
+          const url = isEdit ? `/api/admin/monitoring-packages/${key}` : "/api/admin/monitoring-packages";
+          const method = isEdit ? "PATCH" : "POST";
+          // Strip checkKeys and status — status always defaults to active on import
+          const { checkKeys: importedCheckKeys, status: _status, ...pkgBody } = rec as Record<string, unknown> & { checkKeys?: string[]; status?: string };
+          const res = await fetchWithAuth(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(pkgBody) });
+          if (!res.ok) { failed++; continue; }
+          // If checkKeys is present (even empty), always call PUT to faithfully restore assignments
+          if (Array.isArray(importedCheckKeys)) {
+            const putRes = await fetchWithAuth(`/api/admin/monitoring-packages/${key}/checks`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ checkKeys: importedCheckKeys }),
+            });
+            if (!putRes.ok) { failed++; continue; }
+          }
+          isEdit ? updated++ : created++;
+        } catch { failed++; }
+      }
+      const parts = [];
+      if (created) parts.push(`${created} created`);
+      if (updated) parts.push(`${updated} updated`);
+      if (failed) parts.push(`${failed} failed`);
+      toast({
+        title: `Imported ${created + updated} packages`,
+        description: parts.join(", "),
+        variant: failed > 0 ? "destructive" : "default",
+      });
+      void loadPackages();
+    });
   };
 
   const openCreate = () => { setEditingPkg({ ...EMPTY_PKG }); setShowDialog(true); };
@@ -194,9 +249,35 @@ export default function MonitoringPackagesPage() {
           <h2 className="text-xl font-semibold text-white">Monitoring Packages</h2>
           <p className="text-sm text-gray-400 mt-1">Named groups of Monitor Checks assigned to customer tenants</p>
         </div>
-        <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
-          + New Package
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadTemplate("monitoring-packages-template.json", MONITORING_PACKAGE_TEMPLATE)}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Template
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImport}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Import JSON
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportJson("monitoring-packages.json", packages)}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Export JSON
+          </Button>
+          <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+            + New Package
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useJsonImportExport } from "@/hooks/useJsonImportExport";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,9 +65,25 @@ const SEVERITY_COLORS: Record<string, string> = {
   info: "bg-blue-500/20 text-blue-400 border-blue-500/30",
 };
 
+const MONITOR_CHECK_TEMPLATE = {
+  key: "category:check-name",
+  label: "Human-readable check name",
+  description: "Brief description of what this check verifies",
+  endpoint: "/users?$select=id,displayName,mfaRegistered",
+  method: "GET",
+  frequency: "daily",
+  properties: ["id", "displayName", "mfaRegistered"],
+  engines: ["health", "monitoring"],
+  requiresCustomerScript: false,
+  mapping: [{ sourceField: "mfaRegistered", targetField: "mfaEnabledCount", transform: "count" }],
+  severityRules: [{ expression: "mfaEnabledCount == 0", severity: "critical", label: "No MFA users" }],
+  outputSchema: { type: "object", required: ["mfaEnabledCount"] },
+};
+
 export default function MonitorChecksPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
+  const { exportJson, downloadTemplate, importJson } = useJsonImportExport();
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -89,6 +106,41 @@ export default function MonitorChecksPage() {
   }, [fetchWithAuth, toast]);
 
   useEffect(() => { void loadChecks(); }, [loadChecks]);
+
+  const handleImport = () => {
+    importJson(async (records) => {
+      const first = records[0] as Record<string, unknown> | undefined;
+      if (first && "__parseError" in (first ?? {})) {
+        toast({ title: "Import failed", description: String(first.__parseError), variant: "destructive" });
+        return;
+      }
+      let created = 0, updated = 0, failed = 0;
+      const existingKeys = new Set(checks.map(c => c.key));
+      for (const raw of records) {
+        const rec = raw as Record<string, unknown>;
+        try {
+          const isEdit = existingKeys.has(String(rec.key));
+          const url = isEdit ? `/api/admin/monitor-checks/${String(rec.key)}` : "/api/admin/monitor-checks";
+          const method = isEdit ? "PATCH" : "POST";
+          // Strip status — imported records always default to active
+          const { status: _status, ...importBody } = rec as Record<string, unknown> & { status?: string };
+          const res = await fetchWithAuth(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(importBody) });
+          if (!res.ok) { failed++; continue; }
+          isEdit ? updated++ : created++;
+        } catch { failed++; }
+      }
+      const parts = [];
+      if (created) parts.push(`${created} created`);
+      if (updated) parts.push(`${updated} updated`);
+      if (failed) parts.push(`${failed} failed`);
+      toast({
+        title: `Imported ${created + updated} checks`,
+        description: parts.join(", "),
+        variant: failed > 0 ? "destructive" : "default",
+      });
+      void loadChecks();
+    });
+  };
 
   const openCreate = () => { setEditingCheck({ ...EMPTY_CHECK }); setShowDialog(true); };
   const openEdit = (c: MonitorCheck) => { setEditingCheck({ ...c }); setShowDialog(true); };
@@ -151,9 +203,35 @@ export default function MonitorChecksPage() {
           <h2 className="text-xl font-semibold text-white">Monitor Checks</h2>
           <p className="text-sm text-gray-400 mt-1">Platform-authored Graph API checks — never MSP-authored</p>
         </div>
-        <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
-          + New Check
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => downloadTemplate("monitor-checks-template.json", MONITOR_CHECK_TEMPLATE)}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Template
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleImport}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Import JSON
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportJson("monitor-checks.json", checks)}
+            className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
+          >
+            Export JSON
+          </Button>
+          <Button onClick={openCreate} className="bg-[#0078D4] hover:bg-[#006cbf] text-white">
+            + New Check
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4">
