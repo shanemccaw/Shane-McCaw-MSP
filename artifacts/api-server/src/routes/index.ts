@@ -83,6 +83,7 @@ import mspSignupRouter from "./msp-signup";
 import mspBillingWebhookRouter from "./msp-billing-webhook";
 import portalCustomerEnginesRouter from "./portal-customer-engines";
 import adminFulfillmentTypesRouter from "./admin-fulfillment-types";
+import mspDocumentsRouter from "./msp-documents";
 
 const router: IRouter = Router();
 
@@ -177,6 +178,7 @@ router.use(mspBillingWebhookRouter);
 router.use(portalCustomerEnginesRouter);
 router.use(scriptIngestionRouter);
 router.use(portalScriptLibraryRouter);
+router.use(mspDocumentsRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

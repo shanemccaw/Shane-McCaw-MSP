@@ -236,7 +236,59 @@ export const mspDlqStoreTable = pgTable("msp_dlq_store", {
 export type MspDlqStoreRow = typeof mspDlqStoreTable.$inferSelect;
 export type InsertMspDlqStoreRow = typeof mspDlqStoreTable.$inferInsert;
 
-// ── MSP Documents (shell) ──────────────────────────────────────────────────────
+// ── MSP SharePoint Connectors ──────────────────────────────────────────────────
+// Stores MSP-owned App Registration credentials for the msp_owned connector mode.
+// Platform mode uses env-level GRAPH_* secrets — no row needed.
+// clientSecretRef: Key Vault secret name. For dev, clientSecretPlain (never committed).
+
+export const MSP_SHAREPOINT_CONNECTOR_MODES = ["platform", "msp_owned"] as const;
+export type MspSharepointConnectorMode = typeof MSP_SHAREPOINT_CONNECTOR_MODES[number];
+
+export const mspSharepointConnectorsTable = pgTable("msp_sharepoint_connectors", {
+  id: serial("id").primaryKey(),
+  connectorId: uuid("connector_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  // MSP's Azure AD tenant — required for msp_owned mode
+  tenantId: text("tenant_id").notNull(),
+  // App Registration client ID (msp_owned mode)
+  clientId: text("client_id").notNull(),
+  // Key Vault secret name where the client secret is stored. Null = use clientSecretPlain.
+  clientSecretRef: text("client_secret_ref"),
+  // Plaintext client secret for dev/test. MUST NOT be used in production.
+  clientSecretPlain: text("client_secret_plain"),
+  // MSP's SharePoint site URL (e.g. https://contoso.sharepoint.com/sites/msp-docs)
+  sharepointSiteUrl: text("sharepoint_site_url"),
+  sharepointSiteId: text("sharepoint_site_id"),
+  // Default folder under which documents are stored
+  defaultFolderPath: text("default_folder_path").default("Documents"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sharepoint_connectors_msp_id_idx").on(t.mspId),
+]);
+
+export type MspSharepointConnector = typeof mspSharepointConnectorsTable.$inferSelect;
+export type InsertMspSharepointConnector = typeof mspSharepointConnectorsTable.$inferInsert;
+
+// ── Document Pipeline Status ───────────────────────────────────────────────────
+
+export const DOC_PIPELINE_STATUSES = [
+  "pending",
+  "html_stored",
+  "pdf_generating",
+  "pdf_ready",
+  "sharepoint_uploading",
+  "sharepoint_uploaded",
+  "version_registered",
+  "published",
+  "failed",
+] as const;
+export type DocPipelineStatus = typeof DOC_PIPELINE_STATUSES[number];
+
+// ── MSP Documents ──────────────────────────────────────────────────────────────
 
 export const mspDocumentsTable = pgTable("msp_documents", {
   id: serial("id").primaryKey(),
@@ -249,34 +301,53 @@ export const mspDocumentsTable = pgTable("msp_documents", {
   status: text("status", { enum: ["draft", "active", "archived"] }).notNull().default("draft"),
   currentVersionId: uuid("current_version_id"),
   createdByUserId: integer("created_by_user_id").notNull(),
+  // Pipeline lifecycle tracking
+  pipelineStatus: text("pipeline_status", { enum: DOC_PIPELINE_STATUSES }).default("pending"),
+  pipelineRunId: uuid("pipeline_run_id"),
+  // SharePoint connector mode for this document
+  connectorMode: text("connector_mode", { enum: MSP_SHAREPOINT_CONNECTOR_MODES }).notNull().default("platform"),
+  connectorId: uuid("connector_id"),
+  // Publication tracking
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  publishedByUserId: integer("published_by_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_documents_msp_id_idx").on(t.mspId),
   index("msp_documents_customer_id_idx").on(t.customerId),
+  index("msp_documents_pipeline_status_idx").on(t.pipelineStatus),
 ]);
 
 export type MspDocument = typeof mspDocumentsTable.$inferSelect;
 export type InsertMspDocument = typeof mspDocumentsTable.$inferInsert;
 
-// ── MSP Document Versions (shell) ─────────────────────────────────────────────
+// ── MSP Document Versions ──────────────────────────────────────────────────────
 
 export const mspDocumentVersionsTable = pgTable("msp_document_versions", {
   id: serial("id").primaryKey(),
   versionId: uuid("version_id").notNull().unique().defaultRandom(),
   documentId: uuid("document_id").notNull().references(() => mspDocumentsTable.documentId, { onDelete: "cascade" }),
   versionNumber: integer("version_number").notNull(),
+  // HTML canonical source
   content: text("content"),
   contentHash: text("content_hash"),
+  // PDF artifact
   storageKey: text("storage_key"),
   mimeType: text("mime_type"),
   sizeBytes: integer("size_bytes"),
+  pdfSizeBytes: integer("pdf_size_bytes"),
+  // SharePoint upload result
+  sharepointFileId: text("sharepoint_file_id"),
+  sharepointFileUrl: text("sharepoint_file_url"),
+  // Per-version pipeline status
+  pipelineStatus: text("pipeline_status", { enum: DOC_PIPELINE_STATUSES }).default("pending"),
   authorUserId: integer("author_user_id").notNull(),
   changeNote: text("change_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_document_versions_document_id_idx").on(t.documentId),
   uniqueIndex("msp_document_versions_doc_version_idx").on(t.documentId, t.versionNumber),
+  index("msp_document_versions_sharepoint_file_id_idx").on(t.sharepointFileId),
 ]);
 
 export type MspDocumentVersion = typeof mspDocumentVersionsTable.$inferSelect;

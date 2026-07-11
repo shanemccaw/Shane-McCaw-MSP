@@ -30,6 +30,7 @@ export default defineConfig({
       "src/lib/resolve-fulfillment.test.ts",
       "src/routes/msp-sla-scope-creep.test.ts",
       "src/lib/ai-billing.test.ts",
+      "src/tests/doc-pipeline.test.ts",
     ],
     coverage: {
       provider: "v8",
