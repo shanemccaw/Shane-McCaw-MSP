@@ -969,3 +969,157 @@ export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
 
 export type MspSubscription = typeof mspSubscriptionsTable.$inferSelect;
 export type InsertMspSubscription = typeof mspSubscriptionsTable.$inferInsert;
+
+// ── MSP Connector Configuration ────────────────────────────────────────────────
+// One row per MSP. Stores connector mode and Exchange Online integration settings.
+// Raw credential values are NEVER stored here — only Key Vault secret names.
+// Exchange Online credentials are stored in Key Vault using the secretName fields.
+
+export const MSP_CONNECTOR_MODES = ["agent", "api_key", "delegated"] as const;
+export type MspConnectorMode = typeof MSP_CONNECTOR_MODES[number];
+
+export const mspConnectorConfigsTable = pgTable("msp_connector_configs", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // Connector mode determines how the MSP integrates with customer tenants
+  connectorMode: text("connector_mode", { enum: MSP_CONNECTOR_MODES }).notNull().default("delegated"),
+  // Exchange Online integration fields — secrets stored in Key Vault by name only
+  exchangeOnlineEnabled: boolean("exchange_online_enabled").notNull().default(false),
+  exchangeOnlineTenantId: text("exchange_online_tenant_id"),
+  exchangeOnlineClientIdSecretName: text("exchange_online_client_id_secret_name"),
+  exchangeOnlineClientSecretName: text("exchange_online_client_secret_name"),
+  // Whether the MSP has agreed to audit logging for automated actions
+  auditLoggingEnabled: boolean("audit_logging_enabled").notNull().default(true),
+  // Optional customer agreement template authored by the MSP
+  customerAgreementTemplate: text("customer_agreement_template"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedByUserId: integer("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_connector_configs_msp_id_idx").on(t.mspId),
+]);
+
+export type MspConnectorConfig = typeof mspConnectorConfigsTable.$inferSelect;
+export type InsertMspConnectorConfig = typeof mspConnectorConfigsTable.$inferInsert;
+
+// ── Plan Capability Rules ──────────────────────────────────────────────────────
+// Data-driven mapping: (Stripe product/service tier) → (capability key → enabled).
+// Editable through the Admin Panel. Resolved at runtime by requirePlanFeature().
+// One row per (serviceId, capabilityKey) pair. Missing row = capability available.
+
+export const mspPlanCapabilitiesTable = pgTable("msp_plan_capabilities", {
+  id: serial("id").primaryKey(),
+  // References services.id (msp_monthly_subscription products in the product catalog)
+  serviceId: integer("service_id").notNull(),
+  // The feature capability key checked by requirePlanFeature()
+  capabilityKey: text("capability_key").notNull(),
+  // false = gated on this tier; true = available on this tier
+  enabled: boolean("enabled").notNull().default(true),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedByUserId: integer("updated_by_user_id"),
+}, (t) => [
+  uniqueIndex("msp_plan_capabilities_service_cap_idx").on(t.serviceId, t.capabilityKey),
+  index("msp_plan_capabilities_service_id_idx").on(t.serviceId),
+]);
+
+export type MspPlanCapability = typeof mspPlanCapabilitiesTable.$inferSelect;
+export type InsertMspPlanCapability = typeof mspPlanCapabilitiesTable.$inferInsert;
+
+// ── MSP Overrides ─────────────────────────────────────────────────────────────
+// Per-MSP ad hoc overrides granting feature flags or custom allowances outside
+// their plan. Created only by PlatformAdmin. One row per MSP (upsert).
+
+export const mspOverridesTable = pgTable("msp_overrides", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // Feature flags overriding tier capabilities (e.g. { "advanced_signals": true })
+  featureFlags: jsonb("feature_flags").$type<Record<string, boolean>>().notNull().default({}),
+  // Override the tenant count allowance (null = use plan default)
+  tenantAllowanceOverride: integer("tenant_allowance_override"),
+  // Override the AI credit allowance (null = use plan default)
+  aiCreditAllowanceOverride: integer("ai_credit_allowance_override"),
+  // Human-readable reason for the override (required)
+  reason: text("reason").notNull(),
+  // Optional expiry — after this date the override is no longer applied
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_overrides_msp_id_idx").on(t.mspId),
+  index("msp_overrides_expires_at_idx").on(t.expiresAt),
+]);
+
+export type MspOverride = typeof mspOverridesTable.$inferSelect;
+export type InsertMspOverride = typeof mspOverridesTable.$inferInsert;
+
+// ── MSP Email Templates ────────────────────────────────────────────────────────
+// Per-MSP email template customization. Platform-level defaults (mspId = null)
+// are seeded on startup and cannot be edited by MSP admins.
+//
+// Platform-locked keys (immutable): 'password_reset', 'mfa_code', 'consent_revoked'
+// MSP-customizable keys: 'onboarding_welcome', 'monitoring_complete',
+//   'offer_available', 'report_ready', 'invoice_due_reminder'
+//
+// The fallback chain: MSP row → platform default row → code default.
+// Required merge fields are validated on save (server-side).
+
+export const MSP_EMAIL_TEMPLATE_KEYS = [
+  "onboarding_welcome",
+  "monitoring_complete",
+  "offer_available",
+  "report_ready",
+  "invoice_due_reminder",
+  "password_reset",
+  "mfa_code",
+  "consent_revoked",
+] as const;
+export type MspEmailTemplateKey = typeof MSP_EMAIL_TEMPLATE_KEYS[number];
+
+export const MSP_LOCKED_EMAIL_KEYS: ReadonlySet<MspEmailTemplateKey> = new Set([
+  "password_reset",
+  "mfa_code",
+  "consent_revoked",
+]);
+
+export const mspEmailTemplatesTable = pgTable("msp_email_templates", {
+  id: serial("id").primaryKey(),
+  // null = platform-level default; set = MSP-specific override
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  templateKey: text("template_key", { enum: MSP_EMAIL_TEMPLATE_KEYS }).notNull(),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedByUserId: integer("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_email_templates_msp_key_idx").on(t.mspId, t.templateKey),
+  index("msp_email_templates_key_idx").on(t.templateKey),
+]);
+
+export type MspEmailTemplate = typeof mspEmailTemplatesTable.$inferSelect;
+export type InsertMspEmailTemplate = typeof mspEmailTemplatesTable.$inferInsert;
+
+// ── MSP Impersonation Tokens ───────────────────────────────────────────────────
+// Tracks impersonation sessions issued by PlatformAdmin. Used to extend the
+// Active Sessions view — shows both refresh-token sessions and impersonation tokens.
+
+export const mspImpersonationTokensTable = pgTable("msp_impersonation_tokens", {
+  id: serial("id").primaryKey(),
+  tokenId: uuid("token_id").notNull().unique().defaultRandom(),
+  // Who performed the impersonation
+  actorUserId: integer("actor_user_id").notNull(),
+  // Who was impersonated
+  targetUserId: integer("target_user_id").notNull(),
+  targetMspId: integer("target_msp_id"),
+  issuedAt: timestamp("issued_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  reason: text("reason"),
+  userAgent: text("user_agent"),
+  ipAddress: text("ip_address"),
+}, (t) => [
+  index("msp_impersonation_tokens_actor_idx").on(t.actorUserId),
+  index("msp_impersonation_tokens_target_idx").on(t.targetUserId),
+  index("msp_impersonation_tokens_expires_at_idx").on(t.expiresAt),
+]);

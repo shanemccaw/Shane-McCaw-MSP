@@ -25,6 +25,11 @@ import PurchaseDetailPage from "@/pages/crm/PurchaseDetail";
 import OpportunityDetailPage from "@/pages/crm/OpportunityDetail";
 import PromptCenterEditPage from "@/pages/PromptCenterEdit";
 
+// ─── MSP Platform admin pages ─────────────────────────────────────────────────
+import MspAdminPage from "@/pages/MspAdmin";
+import PlanManagementPage from "@/pages/PlanManagement";
+import MspOverridesPage from "@/pages/MspOverrides";
+
 // ─── Standalone pages (remain at legacy paths, still need DashboardShell) ────
 import DocumentsPage from "@/pages/crm/Documents";
 import StatusReportsPage from "@/pages/crm/StatusReports";
@@ -293,6 +298,17 @@ function Router() {
       <Route path="/inbox"><Redirect to="/system/inbox" /></Route>
       <Route path="/security"><Redirect to="/system/security" /></Route>
       <Route path="/crm/quiz-pain-config"><Redirect to="/system/signal-mappings" /></Route>
+
+      {/* ── MSP Platform admin pages ── */}
+      <Route path="/msp">
+        <AdminRoute><MspAdminPage /></AdminRoute>
+      </Route>
+      <Route path="/msp/plans">
+        <AdminRoute><PlanManagementPage /></AdminRoute>
+      </Route>
+      <Route path="/msp/overrides">
+        <AdminRoute><MspOverridesPage /></AdminRoute>
+      </Route>
 
       {/* ── Catch-all ── */}
       <Route>

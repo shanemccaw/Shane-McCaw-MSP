@@ -10,6 +10,13 @@ import CustomersPage from "@/pages/customers";
 import CustomerDetailPage from "@/pages/customer-detail";
 import MspsPage from "@/pages/msps";
 import SettingsPage from "@/pages/settings";
+import SettingsOrgProfilePage from "@/pages/settings-org-profile";
+import SettingsConnectorPage from "@/pages/settings-connector";
+import SettingsServiceAccountsPage from "@/pages/settings-service-accounts";
+import SettingsTeamPage from "@/pages/settings-team";
+import SettingsBillingPage from "@/pages/settings-billing";
+import SettingsEmailTemplatesPage from "@/pages/settings-email-templates";
+import SettingsSessionsPage from "@/pages/settings-sessions";
 import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
 import OffboardingPage from "@/pages/offboarding";
@@ -152,6 +159,27 @@ function Router() {
       </Route>
       <Route path="/audit">
         <ProtectedRoute component={AuditPage} />
+      </Route>
+      <Route path="/settings/profile">
+        <ProtectedRoute component={SettingsOrgProfilePage} />
+      </Route>
+      <Route path="/settings/connector">
+        <ProtectedRoute component={SettingsConnectorPage} />
+      </Route>
+      <Route path="/settings/service-accounts">
+        <ProtectedRoute component={SettingsServiceAccountsPage} />
+      </Route>
+      <Route path="/settings/team">
+        <ProtectedRoute component={SettingsTeamPage} />
+      </Route>
+      <Route path="/settings/billing">
+        <ProtectedRoute component={SettingsBillingPage} />
+      </Route>
+      <Route path="/settings/email-templates">
+        <ProtectedRoute component={SettingsEmailTemplatesPage} />
+      </Route>
+      <Route path="/settings/sessions">
+        <ProtectedRoute component={SettingsSessionsPage} />
       </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />

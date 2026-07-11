@@ -1,86 +1,107 @@
 /**
- * Settings page — MSP portal account and platform settings.
+ * Settings hub — MSP portal account and platform settings.
+ * Links to sub-pages for all settings sections.
  */
 
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { toast } from "sonner";
 import {
   Bell,
   Building2,
   ChevronRight,
-  Cog,
+  CreditCard,
   Globe,
+  Key,
   Lock,
-  Palette,
+  Mail,
   Shield,
   Users,
+  Zap,
 } from "lucide-react";
+import { Link } from "wouter";
 
-interface SettingsSection {
+interface SettingsLink {
   icon: React.ElementType;
   title: string;
   description: string;
+  href: string;
   badge?: string;
-  action?: string;
   roles?: string[];
 }
 
-const SETTINGS_SECTIONS: SettingsSection[] = [
+const SETTINGS_LINKS: SettingsLink[] = [
   {
     icon: Building2,
     title: "Organisation Profile",
-    description: "Update your MSP name, logo, and contact details.",
-    action: "Edit",
+    description: "Update your MSP name, logo, and brand colour.",
+    href: "/settings/profile",
   },
   {
-    icon: Palette,
-    title: "White-Label Branding",
-    description: "Customise the portal colours and logo shown to your customers.",
-    action: "Customise",
+    icon: Zap,
+    title: "Connector & Exchange Online",
+    description: "Choose how the platform connects to customer tenants. Configure Exchange Online credentials.",
+    href: "/settings/connector",
+    roles: ["MSPAdmin"],
+  },
+  {
+    icon: Key,
+    title: "Service Accounts",
+    description: "Create and revoke machine-to-machine API keys for automation.",
+    href: "/settings/service-accounts",
+    roles: ["MSPAdmin"],
+  },
+  {
+    icon: Users,
+    title: "Team Members",
+    description: "Invite operators and manage role assignments.",
+    href: "/settings/team",
+    roles: ["MSPAdmin"],
+  },
+  {
+    icon: CreditCard,
+    title: "Billing",
+    description: "View your subscription status and manage your payment method.",
+    href: "/settings/billing",
+    roles: ["MSPAdmin"],
+  },
+  {
+    icon: Mail,
+    title: "Email Templates",
+    description: "Customise the emails sent to your customers with your own branding.",
+    href: "/settings/email-templates",
+    roles: ["MSPAdmin"],
+  },
+  {
+    icon: Shield,
+    title: "Active Sessions",
+    description: "Review and revoke active login sessions for your MSP users.",
+    href: "/settings/sessions",
+    roles: ["MSPAdmin"],
   },
   {
     icon: Globe,
     title: "Custom Domain",
     description: "Map a custom domain (e.g. portal.yourmsp.com) to the portal.",
     badge: "Upcoming",
-    action: "Configure",
-  },
-  {
-    icon: Users,
-    title: "Team Members",
-    description: "Invite operators and manage role assignments.",
-    action: "Manage",
+    href: "#",
   },
   {
     icon: Bell,
     title: "Notifications",
     description: "Configure email and push notification preferences.",
-    action: "Configure",
+    badge: "Upcoming",
+    href: "#",
   },
   {
     icon: Lock,
     title: "Security & MFA",
-    description: "Manage multi-factor authentication and session settings.",
-    action: "Configure",
-  },
-  {
-    icon: Shield,
-    title: "Audit & Compliance",
-    description: "Review audit logs and configure data retention policies.",
-    action: "View",
-    roles: ["PlatformAdmin", "MSPAdmin"],
-  },
-  {
-    icon: Cog,
-    title: "API & Integrations",
-    description: "Manage API keys and third-party service integrations.",
-    action: "Configure",
-    roles: ["PlatformAdmin", "MSPAdmin"],
+    description: "Manage multi-factor authentication settings.",
+    badge: "Upcoming",
+    href: "#",
   },
 ];
 
@@ -88,7 +109,7 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const mspRole = user?.mspRole;
 
-  function isVisible(section: SettingsSection) {
+  function isVisible(section: SettingsLink) {
     if (!section.roles || section.roles.length === 0) return true;
     return section.roles.includes(mspRole ?? "");
   }
@@ -134,38 +155,42 @@ export default function SettingsPage() {
 
         {/* Settings sections */}
         <div className="space-y-2">
-          {SETTINGS_SECTIONS.filter(isVisible).map((section) => (
-            <div
-              key={section.title}
-              className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <div className="rounded-md bg-muted/60 p-2">
-                  <section.icon className="size-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{section.title}</p>
-                    {section.badge && (
-                      <Badge variant="outline" className="text-[10px] h-4 px-1.5">
-                        {section.badge}
-                      </Badge>
-                    )}
+          {SETTINGS_LINKS.filter(isVisible).map((section) => {
+            const isUpcoming = section.badge === "Upcoming" || section.href === "#";
+            const inner = (
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card/60 px-4 py-3.5 hover:bg-card transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="rounded-md bg-muted/60 p-2">
+                    <section.icon className="size-4 text-muted-foreground" />
                   </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{section.description}</p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{section.title}</p>
+                      {section.badge && (
+                        <Badge variant="outline" className="text-[10px] h-4 px-1.5">
+                          {section.badge}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{section.description}</p>
+                  </div>
                 </div>
+                {!isUpcoming && (
+                  <ChevronRight className="size-4 text-muted-foreground shrink-0" />
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-muted-foreground gap-1"
-                onClick={() => toast.info(`${section.title} settings coming soon`)}
-              >
-                {section.action}
-                <ChevronRight className="size-3.5" />
-              </Button>
-            </div>
-          ))}
+            );
+
+            if (isUpcoming) {
+              return <div key={section.title} className="opacity-60 cursor-not-allowed">{inner}</div>;
+            }
+
+            return (
+              <Link key={section.title} href={section.href}>
+                {inner}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </AppShell>

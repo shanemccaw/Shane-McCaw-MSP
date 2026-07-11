@@ -84,6 +84,10 @@ import mspBillingWebhookRouter from "./msp-billing-webhook";
 import portalCustomerEnginesRouter from "./portal-customer-engines";
 import adminFulfillmentTypesRouter from "./admin-fulfillment-types";
 import mspDocumentsRouter from "./msp-documents";
+import mspAdminSettingsRouter from "./msp-admin-settings";
+import mspSettingsRouter from "./msp-settings";
+import mspPlanManagementRouter from "./msp-plan-management";
+import mspAuditLogRouter from "./msp-audit-log";
 
 const router: IRouter = Router();
 
@@ -179,6 +183,10 @@ router.use(portalCustomerEnginesRouter);
 router.use(scriptIngestionRouter);
 router.use(portalScriptLibraryRouter);
 router.use(mspDocumentsRouter);
+router.use(mspAdminSettingsRouter);
+router.use(mspSettingsRouter);
+router.use(mspPlanManagementRouter);
+router.use(mspAuditLogRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
