@@ -7,10 +7,16 @@
  *
  * The Stripe webhook (msp-billing-webhook.ts) handles the actual MSP provisioning
  * once Stripe confirms payment — this file only creates the checkout session.
+ *
+ * Agreement gate (GAP-05):
+ *   POST /api/msp/signup/start requires `agreementVersion` matching the current
+ *   published platform agreement. Missing or mismatched version → HTTP 400.
+ *   The accepted version + sign-up IP/UA are embedded in Stripe session metadata
+ *   so the webhook can insert the mspAgreementAcceptancesTable row after provisioning.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, servicesTable, mspSubscriptionsTable, mspsTable } from "@workspace/db";
+import { db, servicesTable, mspSubscriptionsTable, mspsTable, platformAgreementsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
@@ -57,6 +63,10 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
 // Creates a Stripe Checkout Session for the chosen MSP platform tier.
 // The MSP record is NOT created here — it is provisioned by the webhook handler
 // once Stripe confirms payment.
+//
+// Agreement gate: if a current platform agreement is published, `agreementVersion`
+// in the request body must match it. A bypass attempt (missing / wrong version)
+// returns HTTP 400 before any Stripe call is made.
 
 router.post("/msp/signup/start", async (req: Request, res: Response) => {
   const {
@@ -65,12 +75,18 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
     contactName,
     contactEmail,
     serviceId,
+    agreementVersion,
+    agreementId,
+    checkboxConfirmed,
   } = (req.body ?? {}) as {
     companyName?: string;
     domain?: string;
     contactName?: string;
     contactEmail?: string;
     serviceId?: number;
+    agreementVersion?: string | null;
+    agreementId?: number | null;
+    checkboxConfirmed?: boolean;
   };
 
   // Validate required fields
@@ -88,6 +104,54 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
   }
 
   try {
+    // ── Agreement gate ──────────────────────────────────────────────────────────
+    // Fetch the current active platform agreement. If one exists, the caller MUST
+    // supply a matching agreementVersion — this proves they went through the
+    // clickwrap step and prevents a direct-POST bypass.
+    const [currentAgreement] = await db
+      .select({
+        id: platformAgreementsTable.id,
+        version: platformAgreementsTable.version,
+        title: platformAgreementsTable.title,
+      })
+      .from(platformAgreementsTable)
+      .where(eq(platformAgreementsTable.isCurrentVersion, true))
+      .limit(1);
+
+    if (currentAgreement) {
+      // Require explicit checkbox confirmation — version match alone can be spoofed
+      // by a direct POST with the correct version but no real acceptance.
+      if (checkboxConfirmed !== true) {
+        res.status(400).json({
+          error: "You must check the agreement checkbox to confirm acceptance before proceeding.",
+          code: "AGREEMENT_CHECKBOX_REQUIRED",
+        });
+        return;
+      }
+      if (!agreementVersion || agreementVersion !== currentAgreement.version) {
+        logger.warn(
+          {
+            contactEmail: contactEmail.trim(),
+            providedVersion: agreementVersion ?? null,
+            currentVersion: currentAgreement.version,
+          },
+          "msp-signup: agreement version mismatch — blocking checkout",
+        );
+        res.status(400).json({
+          error: `You must accept the current platform agreement (version ${currentAgreement.version}) before proceeding.`,
+          code: "AGREEMENT_REQUIRED",
+          requiredVersion: currentAgreement.version,
+        });
+        return;
+      }
+    } else {
+      // No published agreement yet — proceed but log a warning for visibility
+      logger.warn(
+        { contactEmail: contactEmail.trim() },
+        "msp-signup: no current platform agreement published — proceeding without agreement gate",
+      );
+    }
+
     // Load the selected tier
     const [service] = await db
       .select({
@@ -167,6 +231,11 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
       },
     });
 
+    // Capture IP and User-Agent for the acceptance record.
+    // Stripe metadata values are limited to 500 chars.
+    const signupIp = (req.ip ?? req.socket?.remoteAddress ?? "").slice(0, 100);
+    const signupUa = (req.headers["user-agent"] ?? "").slice(0, 500);
+
     // Build the Checkout Session
     const sessionParams: Record<string, unknown> = {
       mode: "subscription",
@@ -192,13 +261,24 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
         msp_contact_name: contactName?.trim() ?? "",
         service_id: String(service.id),
         signup_source: "msp_platform",
+        // Agreement acceptance evidence — consumed by the billing webhook
+        agreement_accepted: currentAgreement ? "true" : "none",
+        agreement_version: currentAgreement ? currentAgreement.version : "",
+        agreement_id: currentAgreement ? String(currentAgreement.id) : "",
+        signup_ip: signupIp,
+        signup_ua: signupUa,
       },
     };
 
     const session = await stripe.checkout.sessions.create(sessionParams as Parameters<typeof stripe.checkout.sessions.create>[0]);
 
     logger.info(
-      { sessionId: session.id, companyName: companyName.trim(), serviceId: service.id },
+      {
+        sessionId: session.id,
+        companyName: companyName.trim(),
+        serviceId: service.id,
+        agreementVersion: currentAgreement?.version ?? null,
+      },
       "msp-signup: checkout session created",
     );
 

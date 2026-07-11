@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ShieldCheck, CheckCircle2, ArrowRight, ArrowLeft, Building2, CreditCard } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, ShieldCheck, CheckCircle2, ArrowRight, ArrowLeft, Building2, CreditCard, FileText } from "lucide-react";
 
 interface Tier {
   id: number;
@@ -31,6 +32,13 @@ interface Tier {
   inclusions: string[] | null;
   badge: string | null;
   highlighted: boolean;
+}
+
+interface PlatformAgreement {
+  id: number;
+  version: string;
+  title: string;
+  body: string;
 }
 
 const companySchema = z.object({
@@ -52,15 +60,33 @@ async function apiFetch(path: string, init?: RequestInit) {
   return res.json();
 }
 
+type Step = "company" | "tier" | "agreement" | "checkout";
+const STEPS: Step[] = ["company", "tier", "agreement", "checkout"];
+const STEP_LABELS: Record<Step, string> = {
+  company: "Company Info",
+  tier: "Choose Plan",
+  agreement: "Review Agreement",
+  checkout: "Payment",
+};
+
+function stepIndex(s: Step) {
+  return STEPS.indexOf(s);
+}
+
 export default function SignupPage() {
   const [, navigate] = useLocation();
-  const [step, setStep] = useState<"company" | "tier" | "checkout">("company");
+  const [step, setStep] = useState<Step>("company");
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [tiersLoading, setTiersLoading] = useState(false);
   const [selectedTierId, setSelectedTierId] = useState<number | null>(null);
   const [companyData, setCompanyData] = useState<CompanyForm | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Agreement step state
+  const [agreement, setAgreement] = useState<PlatformAgreement | null>(null);
+  const [agreementLoading, setAgreementLoading] = useState(false);
+  const [agreementChecked, setAgreementChecked] = useState(false);
 
   const {
     register,
@@ -78,6 +104,18 @@ export default function SignupPage() {
     }
   }, [step, tiers.length]);
 
+  useEffect(() => {
+    if (step === "agreement" && !agreement && !agreementLoading) {
+      setAgreementLoading(true);
+      apiFetch("/api/platform/agreement/current")
+        .then((data: { agreement: PlatformAgreement | null }) => {
+          setAgreement(data.agreement);
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setAgreementLoading(false));
+    }
+  }, [step, agreement, agreementLoading]);
+
   function onCompanySubmit(data: CompanyForm) {
     setCompanyData(data);
     setStep("tier");
@@ -94,6 +132,10 @@ export default function SignupPage() {
         body: JSON.stringify({
           ...companyData,
           serviceId: selectedTierId,
+          agreementVersion: agreement?.version ?? null,
+          agreementId: agreement?.id ?? null,
+          // Explicit clickwrap attestation — required by the server when an agreement is published
+          checkboxConfirmed: agreement !== null ? agreementChecked : undefined,
         }),
       }) as { checkoutUrl: string };
       window.location.href = result.checkoutUrl;
@@ -104,6 +146,7 @@ export default function SignupPage() {
   }
 
   const selectedTier = tiers.find(t => t.id === selectedTierId) ?? null;
+  const currentStepIdx = stepIndex(step);
 
   return (
     <div className="min-h-screen bg-sidebar flex flex-col items-center justify-start p-4 pt-12">
@@ -116,20 +159,22 @@ export default function SignupPage() {
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center justify-center gap-3 text-sm">
-          {(["company", "tier", "checkout"] as const).map((s, i) => (
-            <div key={s} className="flex items-center gap-2">
-              {i > 0 && <div className="w-8 h-px bg-sidebar-border" />}
-              <div className={`flex items-center gap-1.5 ${step === s ? "text-sidebar-primary font-medium" : step === "tier" && s === "company" || step === "checkout" ? "text-sidebar-foreground/60" : "text-sidebar-foreground/40"}`}>
-                <div className={`size-5 rounded-full flex items-center justify-center text-xs ${step === s ? "bg-sidebar-primary text-white" : (step === "tier" && s === "company") || (step === "checkout" && s !== "checkout") ? "bg-sidebar-primary/20 text-sidebar-primary" : "bg-sidebar-border text-sidebar-foreground/40"}`}>
-                  {(step === "tier" && s === "company") || (step === "checkout" && s !== "checkout")
-                    ? <CheckCircle2 className="size-3" />
-                    : i + 1}
+        <div className="flex items-center justify-center gap-2 text-sm">
+          {STEPS.map((s, i) => {
+            const isActive = step === s;
+            const isDone = currentStepIdx > i;
+            return (
+              <div key={s} className="flex items-center gap-2">
+                {i > 0 && <div className="w-6 h-px bg-sidebar-border" />}
+                <div className={`flex items-center gap-1.5 ${isActive ? "text-sidebar-primary font-medium" : isDone ? "text-sidebar-foreground/60" : "text-sidebar-foreground/40"}`}>
+                  <div className={`size-5 rounded-full flex items-center justify-center text-xs ${isActive ? "bg-sidebar-primary text-white" : isDone ? "bg-sidebar-primary/20 text-sidebar-primary" : "bg-sidebar-border text-sidebar-foreground/40"}`}>
+                    {isDone ? <CheckCircle2 className="size-3" /> : i + 1}
+                  </div>
+                  <span className="hidden sm:inline capitalize">{STEP_LABELS[s]}</span>
                 </div>
-                <span className="hidden sm:inline capitalize">{s === "company" ? "Company Info" : s === "tier" ? "Choose Plan" : "Payment"}</span>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {error && (
@@ -261,16 +306,90 @@ export default function SignupPage() {
               </Button>
               <Button
                 disabled={!selectedTierId}
-                onClick={() => { setStep("checkout"); setError(null); }}
+                onClick={() => { setStep("agreement"); setError(null); }}
                 className="gap-2"
               >
-                Continue to Payment <ArrowRight className="size-4" />
+                Continue <ArrowRight className="size-4" />
               </Button>
             </div>
           </div>
         )}
 
-        {/* ── Step 3: Checkout Confirmation ── */}
+        {/* ── Step 3: Platform Agreement Clickwrap ── */}
+        {step === "agreement" && (
+          <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="size-5" />
+                {agreementLoading ? "Loading Agreement…" : (agreement?.title ?? "Platform Agreement")}
+              </CardTitle>
+              <CardDescription>
+                Please read the agreement below carefully and confirm your acceptance before proceeding.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {agreementLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="size-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : agreement ? (
+                <>
+                  {/* Agreement version badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                      Version {agreement.version}
+                    </span>
+                  </div>
+
+                  {/* Scrollable agreement body */}
+                  <div
+                    className="rounded-lg border border-sidebar-border bg-background/50 p-4 overflow-y-auto max-h-72 text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed"
+                    role="region"
+                    aria-label="Agreement text"
+                  >
+                    {agreement.body}
+                  </div>
+
+                  {/* Clickwrap checkbox */}
+                  <div className="flex items-start gap-3 rounded-lg border border-sidebar-border bg-sidebar-primary/5 p-4">
+                    <Checkbox
+                      id="agreement-checkbox"
+                      checked={agreementChecked}
+                      onCheckedChange={(checked) => setAgreementChecked(checked === true)}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <label
+                      htmlFor="agreement-checkbox"
+                      className="text-sm leading-snug cursor-pointer select-none"
+                    >
+                      I have read and agree to the <strong>{agreement.title}</strong> (Version {agreement.version}). I confirm I have authority to bind my organisation to these terms.
+                    </label>
+                  </div>
+                </>
+              ) : (
+                /* No published agreement — allow proceeding with a notice */
+                <div className="rounded-lg border border-sidebar-border bg-muted/40 p-4 text-sm text-muted-foreground text-center">
+                  No platform agreement is currently published. You may proceed.
+                </div>
+              )}
+
+              <div className="flex justify-between pt-1">
+                <Button variant="outline" onClick={() => { setStep("tier"); setError(null); }} className="gap-2">
+                  <ArrowLeft className="size-4" /> Back
+                </Button>
+                <Button
+                  disabled={agreement !== null && !agreementChecked}
+                  onClick={() => { setStep("checkout"); setError(null); }}
+                  className="gap-2"
+                >
+                  Continue to Payment <ArrowRight className="size-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── Step 4: Checkout Confirmation ── */}
         {step === "checkout" && companyData && selectedTier && (
           <Card className="border-sidebar-border bg-card/95 backdrop-blur">
             <CardHeader>
@@ -308,6 +427,18 @@ export default function SignupPage() {
                     ${selectedTier.price ? parseFloat(selectedTier.price).toLocaleString("en-US", { minimumFractionDigits: 0 }) : "—"}/month
                   </span>
                 </div>
+                {agreement && (
+                  <>
+                    <div className="border-t border-sidebar-border my-1" />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Agreement</span>
+                      <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                        <CheckCircle2 className="size-3.5" />
+                        Accepted (v{agreement.version})
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <p className="text-xs text-muted-foreground">
@@ -315,7 +446,7 @@ export default function SignupPage() {
               </p>
 
               <div className="flex justify-between pt-1">
-                <Button variant="outline" onClick={() => { setStep("tier"); setError(null); }} className="gap-2" disabled={checkoutLoading}>
+                <Button variant="outline" onClick={() => { setStep("agreement"); setError(null); }} className="gap-2" disabled={checkoutLoading}>
                   <ArrowLeft className="size-4" /> Back
                 </Button>
                 <Button onClick={handleCheckout} disabled={checkoutLoading} className="gap-2">

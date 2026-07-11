@@ -17,7 +17,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspSubscriptionsTable, mspUsersTable, usersTable, mspEventStoreTable } from "@workspace/db";
+import { db, mspsTable, mspSubscriptionsTable, mspUsersTable, usersTable, mspEventStoreTable, mspAgreementAcceptancesTable, platformAgreementsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
@@ -177,6 +177,54 @@ async function handleCheckoutCompleted(
   const periodStart = rawSub.current_period_start ? new Date(rawSub.current_period_start * 1000) : null;
   const periodEnd = rawSub.current_period_end ? new Date(rawSub.current_period_end * 1000) : null;
 
+  // ── Agreement gate (activation prerequisite) ────────────────────────────────
+  // Query the current active platform agreement. If one exists, the session MUST
+  // carry agreement_accepted="true" — otherwise this signup bypassed the clickwrap
+  // step and we must not activate the account.
+  const [currentAgreement] = await db
+    .select({
+      id: platformAgreementsTable.id,
+      version: platformAgreementsTable.version,
+    })
+    .from(platformAgreementsTable)
+    .where(eq(platformAgreementsTable.isCurrentVersion, true))
+    .limit(1);
+
+  const agreementAccepted = metadata.agreement_accepted === "true";
+  const agreementVersion = metadata.agreement_version ?? "";
+  const agreementId = parseInt(metadata.agreement_id ?? "", 10) || null;
+  const signupIp = metadata.signup_ip ?? null;
+  const signupUa = metadata.signup_ua ?? null;
+
+  if (currentAgreement && !agreementAccepted) {
+    // Hard block: a current agreement exists but the session does not carry a
+    // valid acceptance flag. Provisioning is refused. Return 200 to Stripe so
+    // it does not retry — this is a data integrity issue on our side, not a
+    // transient failure.
+    logger.error(
+      {
+        sessionId: session.id,
+        currentAgreementVersion: currentAgreement.version,
+        metadataAgreementAccepted: metadata.agreement_accepted ?? "(missing)",
+      },
+      "msp-billing-webhook: BLOCKED — current platform agreement not accepted; MSP will not be activated",
+    );
+    return;
+  }
+
+  if (currentAgreement && agreementVersion !== currentAgreement.version) {
+    // Accepted flag is set but for a stale version — also a hard block.
+    logger.error(
+      {
+        sessionId: session.id,
+        currentVersion: currentAgreement.version,
+        acceptedVersion: agreementVersion,
+      },
+      "msp-billing-webhook: BLOCKED — accepted agreement version does not match current version; MSP will not be activated",
+    );
+    return;
+  }
+
   // Idempotent — check if MSP already provisioned for this subscription
   const [existingSub] = await db
     .select({ id: mspSubscriptionsTable.id })
@@ -222,8 +270,57 @@ async function handleCheckoutCompleted(
   });
 
   // If we have a contact email, create or link the MSP admin user
+  let provisionedUserId: number | null = null;
   if (contactEmail) {
-    await provisionMspAdminUser(msp.id, contactEmail, contactName, customerId);
+    provisionedUserId = await provisionMspAdminUser(msp.id, contactEmail, contactName, customerId);
+  }
+
+  // ── Acceptance row (required prerequisite for event emission) ────────────────
+  // Insert the clickwrap record now that we have both mspId and userId.
+  // If a current agreement exists and the insert fails we treat it as a hard
+  // failure — do not emit the "provisioned" event so operators can investigate.
+  if (currentAgreement && provisionedUserId !== null) {
+    await db.insert(mspAgreementAcceptancesTable).values({
+      mspId: msp.id,
+      userId: provisionedUserId,
+      agreementVersion,
+      agreementId,
+      ipAddress: signupIp,
+      userAgent: signupUa,
+      checkboxConfirmed: true,
+    }).onConflictDoNothing();
+
+    // Activation guard: verify the row exists before emitting the provisioned event
+    const [verifiedAcceptance] = await db
+      .select({ id: mspAgreementAcceptancesTable.id })
+      .from(mspAgreementAcceptancesTable)
+      .where(
+        and(
+          eq(mspAgreementAcceptancesTable.userId, provisionedUserId),
+          eq(mspAgreementAcceptancesTable.agreementVersion, agreementVersion),
+        ),
+      )
+      .limit(1);
+
+    if (!verifiedAcceptance) {
+      logger.error(
+        { mspId: msp.id, userId: provisionedUserId, agreementVersion },
+        "msp-billing-webhook: BLOCKED — acceptance row could not be verified; provisioned event will NOT be emitted",
+      );
+      return;
+    }
+
+    logger.info(
+      { mspId: msp.id, userId: provisionedUserId, agreementVersion },
+      "msp-billing-webhook: MSA acceptance row recorded and verified",
+    );
+  } else if (currentAgreement && provisionedUserId === null) {
+    // Agreement required but no user was provisioned — can't write acceptance row
+    logger.error(
+      { mspId: msp.id, contactEmail, agreementVersion },
+      "msp-billing-webhook: BLOCKED — agreement required but no userId was provisioned; provisioned event will NOT be emitted",
+    );
+    return;
   }
 
   // Emit provisioning event to the MSP event store
@@ -238,24 +335,25 @@ async function handleCheckoutCompleted(
       contactEmail,
       serviceId,
       subscriptionId,
+      agreementVersion: agreementVersion || null,
     },
     mspId: msp.id,
     ownerType: "platform",
   });
 
   logger.info(
-    { mspId: msp.id, slug, subscriptionId, serviceId },
+    { mspId: msp.id, slug, subscriptionId, serviceId, agreementVersion: agreementVersion || null },
     "msp-billing-webhook: MSP provisioned successfully",
   );
 }
 
-/** Creates or links the MSP admin user account. */
+/** Creates or links the MSP admin user account. Returns the userId, or null on failure. */
 async function provisionMspAdminUser(
   mspId: number,
   email: string,
   name: string,
   _stripeCustomerId: string | undefined,
-): Promise<void> {
+): Promise<number | null> {
   try {
     // Upsert user account
     const normalizedEmail = email.toLowerCase().trim();
@@ -268,7 +366,7 @@ async function provisionMspAdminUser(
       })
       .returning({ id: usersTable.id });
 
-    if (!user) return;
+    if (!user) return null;
 
     // Upsert msp_users row with MSPAdmin role
     const [existingMspUser] = await db
@@ -287,8 +385,10 @@ async function provisionMspAdminUser(
     }
 
     logger.info({ mspId, userId: user.id, email: normalizedEmail }, "msp-billing-webhook: MSPAdmin user provisioned");
+    return user.id;
   } catch (err) {
     logger.warn({ err, mspId, email }, "msp-billing-webhook: admin user provisioning failed (non-fatal)");
+    return null;
   }
 }
 
