@@ -3,6 +3,12 @@ import { useLocation } from "wouter";
 import { useInbox } from "@/contexts/InboxContext";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import IDEShell, {
+  type ActivityItem,
+  type ExplorerSection,
+  type IDETab,
+  type CmdKItem,
+} from "@/components/IDEShell";
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, FunnelChart, Funnel, LabelList,
@@ -8446,169 +8452,494 @@ function MarketingDashboard({ fetchWithAuth, onNavigate }: {
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── IDE Shell config ─────────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { id: "dashboard",       label: "Dashboard",    icon: "⊞" },
-  { id: "recommendations", label: "AI Leads",     icon: "🤖" },
-  { id: "lead-finder",     label: "Lead Finder",  icon: "🔍" },
-  { id: "outreach",        label: "Outreach",     icon: "✉️" },
-  { id: "content",         label: "Content Hub",  icon: "📝" },
-  { id: "campaigns",       label: "Campaigns",    icon: "📣" },
-  { id: "tasks",           label: "Tasks",        icon: "✅" },
-  { id: "analytics",       label: "Analytics",    icon: "📊" },
-  { id: "connections",     label: "Connections",  icon: "🔗" },
-  { id: "settings",        label: "Settings",     icon: "⚙️" },
-];
+const SECTION_META: Record<string, { label: string; icon: string }> = {
+  dashboard:       { label: "Dashboard",    icon: "⊞" },
+  recommendations: { label: "AI Leads",     icon: "🤖" },
+  "lead-finder":   { label: "Lead Finder",  icon: "🔍" },
+  outreach:        { label: "Outreach",     icon: "✉️" },
+  content:         { label: "Content Hub",  icon: "📝" },
+  campaigns:       { label: "Campaigns",    icon: "📣" },
+  tasks:           { label: "Tasks",        icon: "✅" },
+  analytics:       { label: "Analytics",    icon: "📊" },
+  connections:     { label: "Connections",  icon: "🔗" },
+  settings:        { label: "Settings",     icon: "⚙️" },
+};
 
-const VALID_TABS = new Set(NAV_ITEMS.map(n => n.id));
+const VALID_SECTIONS = new Set(Object.keys(SECTION_META));
 
-// Legacy tab aliases — redirect old ?tab= values to new IDs
 const TAB_ALIASES: Record<string, string> = {
   command: "dashboard",
   kpi: "dashboard",
   "follow-ups": "dashboard",
   "ad-library": "campaigns",
+  templates: "outreach",
 };
 
-function getTabFromSearch(): string {
+function getSectionFromSearch(): string {
   const params = new URLSearchParams(window.location.search);
   const raw = params.get("tab") ?? "";
-  const tab = TAB_ALIASES[raw] ?? raw;
-  return VALID_TABS.has(tab) ? tab : "dashboard";
+  const s = TAB_ALIASES[raw] ?? raw;
+  return VALID_SECTIONS.has(s) ? s : "dashboard";
 }
+
+const ACTIVITY_ITEMS: ActivityItem[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    href: "/command/overview",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v2a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 13a1 1 0 011-1h4a1 1 0 011 1v6a1 1 0 01-1 1h-4a1 1 0 01-1-1v-6z" />
+      </svg>
+    ),
+  },
+  {
+    id: "crm",
+    label: "CRM",
+    href: "/pipeline/leads",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
+  {
+    id: "engines",
+    label: "Engines",
+    href: "/delivery/engagement-projects",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+      </svg>
+    ),
+  },
+  {
+    id: "monitoring",
+    label: "Monitoring",
+    href: "/delivery/activity-logs",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    id: "products",
+    label: "Products",
+    href: "/content/services",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+      </svg>
+    ),
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    href: "/workflows/list",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+      </svg>
+    ),
+  },
+  {
+    id: "marketing",
+    label: "Marketing",
+    isActive: true,
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+      </svg>
+    ),
+  },
+  {
+    id: "system",
+    label: "System",
+    href: "/system/inbox",
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      </svg>
+    ),
+  },
+];
+
+const EXPLORER_SECTIONS: ExplorerSection[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    defaultOpen: true,
+    items: [
+      { id: "dashboard", label: "Dashboard", icon: "⊞" },
+    ],
+  },
+  {
+    id: "leads",
+    label: "Leads",
+    defaultOpen: true,
+    items: [
+      { id: "recommendations", label: "AI Leads", icon: "🤖" },
+      { id: "lead-finder",     label: "Lead Finder", icon: "🔍" },
+    ],
+  },
+  {
+    id: "outreach",
+    label: "Outreach",
+    defaultOpen: true,
+    items: [
+      { id: "outreach",    label: "Outreach", icon: "✉️" },
+      { id: "templates",   label: "Templates", icon: "📋" },
+    ],
+  },
+  {
+    id: "content",
+    label: "Content",
+    defaultOpen: true,
+    items: [
+      { id: "content", label: "Content Hub", icon: "📝" },
+    ],
+  },
+  {
+    id: "campaigns-group",
+    label: "Campaigns",
+    defaultOpen: true,
+    items: [
+      { id: "campaigns", label: "Campaigns", icon: "📣" },
+    ],
+  },
+  {
+    id: "analytics-group",
+    label: "Analytics",
+    defaultOpen: true,
+    items: [
+      { id: "analytics", label: "Analytics", icon: "📊" },
+    ],
+  },
+  {
+    id: "planning",
+    label: "Planning",
+    defaultOpen: false,
+    items: [
+      { id: "tasks", label: "Tasks", icon: "✅" },
+    ],
+  },
+  {
+    id: "more",
+    label: "More",
+    defaultOpen: false,
+    items: [
+      { id: "connections", label: "Connections", icon: "🔗" },
+      { id: "settings",    label: "Settings",    icon: "⚙️" },
+    ],
+  },
+];
+
+const CMDK_ITEMS: CmdKItem[] = [
+  { id: "dashboard",       label: "Dashboard",    section: "Overview",   icon: "⊞" },
+  { id: "recommendations", label: "AI Leads",     section: "Leads",      icon: "🤖" },
+  { id: "lead-finder",     label: "Lead Finder",  section: "Leads",      icon: "🔍" },
+  { id: "outreach",        label: "Outreach",     section: "Outreach",   icon: "✉️" },
+  { id: "templates",       label: "Templates",    section: "Outreach",   icon: "📋" },
+  { id: "content",         label: "Content Hub",  section: "Content",    icon: "📝" },
+  { id: "campaigns",       label: "Campaigns",    section: "Campaigns",  icon: "📣" },
+  { id: "analytics",       label: "Analytics",    section: "Analytics",  icon: "📊" },
+  { id: "tasks",           label: "Tasks",        section: "Planning",   icon: "✅" },
+  { id: "connections",     label: "Connections",  section: "More",       icon: "🔗" },
+  { id: "settings",        label: "Settings",     section: "More",       icon: "⚙️" },
+];
+
+// "templates" is a virtual alias that maps to the outreach section
+const EXPLORER_TO_SECTION: Record<string, string> = {
+  templates: "outreach",
+};
+
+// Sections that are actually rendered (not aliases)
+const RENDERABLE_SECTIONS: string[] = [
+  "dashboard",
+  "recommendations",
+  "lead-finder",
+  "outreach",
+  "content",
+  "campaigns",
+  "tasks",
+  "analytics",
+  "connections",
+  "settings",
+];
+
+// ─── Bottom Panel ─────────────────────────────────────────────────────────────
+
+function MarketingBottomPanel({ fetchWithAuth }: { fetchWithAuth: (url: string, opts?: RequestInit) => Promise<Response> }) {
+  const [assets, setAssets] = useState<{ id: number; assetType: string; title: string; createdAt?: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchWithAuth(`${API}/admin/marketing/campaign-assets?limit=20`)
+      .then(r => r.json())
+      .then((d: unknown) => { setAssets(Array.isArray(d) ? (d as { id: number; assetType: string; title: string; createdAt?: string }[]).slice(0, 20) : []); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [fetchWithAuth]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full text-xs text-[#484F58]">
+        <div className="w-4 h-4 border-2 border-[#0078D4] border-t-transparent rounded-full animate-spin mr-2" />Loading…
+      </div>
+    );
+  }
+
+  if (assets.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-xs text-[#484F58]">
+        No AI generations yet — generate content in Content Hub or Outreach.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col divide-y divide-[#21262D]">
+      {assets.map(a => (
+        <div key={a.id} className="flex items-center gap-3 px-4 py-2">
+          <span className="text-sm flex-shrink-0">
+            {a.assetType === "cold_email" ? "✉️" : a.assetType === "linkedin_post" ? "💼" : a.assetType === "blog_post" ? "📝" : a.assetType === "newsletter" ? "📧" : "📄"}
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-[#C9D1D9] truncate">{a.title}</p>
+            <p className="text-[10px] text-[#484F58] truncate">{a.assetType.replace(/_/g, " ")}</p>
+          </div>
+          {a.createdAt && (
+            <span className="text-[10px] text-[#484F58] flex-shrink-0">
+              {new Date(a.createdAt).toLocaleDateString()}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─── URL hydration helpers ────────────────────────────────────────────────────
+
+// All valid explorer item IDs (renderable sections + "templates" virtual alias)
+const ALL_EXPLORER_IDS = new Set([...RENDERABLE_SECTIONS, "templates"]);
+
+/** Returns the explorer item id from the URL (e.g. "templates", "campaigns", "dashboard"). */
+function getExplorerItemFromSearch(): string {
+  const params = new URLSearchParams(window.location.search);
+  const raw = params.get("tab") ?? "";
+  if (ALL_EXPLORER_IDS.has(raw)) return raw;
+  // Legacy aliases map to section IDs; use those as explorer IDs if valid
+  const aliased = TAB_ALIASES[raw];
+  if (aliased && ALL_EXPLORER_IDS.has(aliased)) return aliased;
+  return "dashboard";
+}
+
+/** Build an IDETab from an explorer item id. */
+function explorerItemToTab(explorerItemId: string): IDETab {
+  const section = EXPLORER_TO_SECTION[explorerItemId] ?? explorerItemId;
+  const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
+  const meta = SECTION_META[resolvedSection] ?? { label: explorerItemId, icon: "📄" };
+  const label = explorerItemId === "templates" ? "Templates" : meta.label;
+  const icon = explorerItemId === "templates" ? "📋" : meta.icon;
+  return { id: explorerItemId, label, icon, closeable: true };
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MarketingCommandCenter() {
   const { fetchWithAuth } = useAuth();
-  const [activeSection, setActiveSection] = useState<string>(getTabFromSearch);
-  const [navCollapsed, setNavCollapsed] = useState(false);
 
-  const navigate = useCallback((section: string) => {
-    const resolved = TAB_ALIASES[section] ?? section;
-    const tab = VALID_TABS.has(resolved) ? resolved : "dashboard";
+  // Compute initial state from URL so deep links work on first render
+  const [activeSection, setActiveSection] = useState<string>(() => getSectionFromSearch());
+
+  const [activeExplorer, setActiveExplorer] = useState<string>(() => getExplorerItemFromSearch());
+
+  // Open tabs — Dashboard always pinned; if URL has another section, open its tab too
+  const [openTabs, setOpenTabs] = useState<IDETab[]>(() => {
+    const tabs: IDETab[] = [{ id: "dashboard", label: "Dashboard", icon: "⊞", closeable: false }];
+    const explorerItem = getExplorerItemFromSearch();
+    if (explorerItem !== "dashboard") {
+      tabs.push(explorerItemToTab(explorerItem));
+    }
+    return tabs;
+  });
+
+  // Mounted sections — eager-mount the initial section so it renders immediately on deep link
+  const [mounted, setMounted] = useState<Set<string>>(() => {
+    const set = new Set(["dashboard"]);
+    const section = getSectionFromSearch();
+    if (section !== "dashboard") set.add(section);
+    return set;
+  });
+
+  const navigate = useCallback((explorerItemId: string) => {
+    // Resolve aliases
+    const section = EXPLORER_TO_SECTION[explorerItemId] ?? explorerItemId;
+    const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
+
+    // Update URL
     const url = new URL(window.location.href);
-    if (tab === "dashboard") {
+    if (explorerItemId === "dashboard") {
       url.searchParams.delete("tab");
     } else {
-      url.searchParams.set("tab", tab);
+      url.searchParams.set("tab", explorerItemId);
     }
     history.pushState(null, "", url.toString());
-    setActiveSection(tab);
+
+    // Open tab if not already open
+    setOpenTabs(prev => {
+      if (prev.some(t => t.id === explorerItemId)) return prev;
+      const meta = SECTION_META[resolvedSection] ?? { label: explorerItemId, icon: "📄" };
+      // For "templates" give it a distinct label
+      const label = explorerItemId === "templates" ? "Templates" : (meta.label);
+      const icon = explorerItemId === "templates" ? "📋" : meta.icon;
+      return [...prev, { id: explorerItemId, label, icon, closeable: true }];
+    });
+
+    setMounted(prev => {
+      if (prev.has(resolvedSection)) return prev;
+      return new Set([...prev, resolvedSection]);
+    });
+
+    setActiveSection(resolvedSection);
+    setActiveExplorer(explorerItemId);
   }, []);
 
+  // Navigate from within section content (e.g. dashboard quick-actions)
+  const navigateSection = useCallback((section: string) => {
+    const resolved = TAB_ALIASES[section] ?? section;
+    navigate(resolved);
+  }, [navigate]);
+
+  // Handle popstate (browser back/forward)
   useEffect(() => {
-    const onPopState = () => setActiveSection(getTabFromSearch());
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
+    const onPop = () => {
+      const explorerItem = getExplorerItemFromSearch();
+      const section = getSectionFromSearch();
+      setActiveSection(section);
+      setActiveExplorer(explorerItem);
+      setMounted(prev => (prev.has(section) ? prev : new Set([...prev, section])));
+      // Ensure the tab is in openTabs so the tab bar is consistent
+      setOpenTabs(prev => {
+        if (prev.some(t => t.id === explorerItem)) return prev;
+        return [...prev, explorerItemToTab(explorerItem)];
+      });
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
 
-  const activeNav = NAV_ITEMS.find(n => n.id === activeSection);
+  // Tab select
+  const handleTabSelect = useCallback((tabId: string) => {
+    const section = EXPLORER_TO_SECTION[tabId] ?? tabId;
+    const resolvedSection = VALID_SECTIONS.has(section) ? section : "dashboard";
+    setActiveSection(resolvedSection);
+    setActiveExplorer(tabId);
+
+    const url = new URL(window.location.href);
+    if (tabId === "dashboard") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", tabId);
+    history.pushState(null, "", url.toString());
+  }, []);
+
+  // Tab close
+  const handleTabClose = useCallback((tabId: string) => {
+    setOpenTabs(prev => {
+      const next = prev.filter(t => t.id !== tabId);
+      // If we closed the active tab, activate the last remaining tab
+      if (tabId === activeExplorer && next.length > 0) {
+        const last = next[next.length - 1];
+        const s = EXPLORER_TO_SECTION[last.id] ?? last.id;
+        const rs = VALID_SECTIONS.has(s) ? s : "dashboard";
+        setActiveSection(rs);
+        setActiveExplorer(last.id);
+      }
+      return next;
+    });
+  }, [activeExplorer]);
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0D1117]">
-      {/* ── Left Navigation ── */}
-      <div className={`flex-shrink-0 flex flex-col bg-[#161B22] border-r border-[#30363D] transition-all duration-200 ${navCollapsed ? "w-12" : "w-52"}`}>
-        {/* Nav header */}
-        <div className={`flex items-center border-b border-[#30363D] h-11 flex-shrink-0 ${navCollapsed ? "justify-center px-0" : "justify-between px-3"}`}>
-          {!navCollapsed && (
-            <span className="text-[11px] font-bold text-[#7D8590] uppercase tracking-widest">Marketing</span>
-          )}
-          <button
-            onClick={() => setNavCollapsed(c => !c)}
-            className="text-[#7D8590] hover:text-[#E6EDF3] transition-colors p-1 rounded"
-            title={navCollapsed ? "Expand nav" : "Collapse nav"}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              {navCollapsed
-                ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 18l6-6-6-6" />
-                : <path strokeLinecap="round" strokeLinejoin="round" d="M15 18l-6-6 6-6" />}
-            </svg>
-          </button>
-        </div>
-
-        {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto py-2 space-y-0.5 px-1">
-          {NAV_ITEMS.map(item => {
-            const isActive = activeSection === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => navigate(item.id)}
-                title={navCollapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-2.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors ${
-                  isActive
-                    ? "bg-[#0078D4]/20 text-[#58A6FF]"
-                    : "text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128]"
-                } ${navCollapsed ? "justify-center" : ""}`}
-              >
-                <span className="text-base leading-none flex-shrink-0">{item.icon}</span>
-                {!navCollapsed && <span className="truncate">{item.label}</span>}
-              </button>
-            );
-          })}
-        </nav>
+    <IDEShell
+      activityItems={ACTIVITY_ITEMS}
+      explorerTitle="Marketing"
+      explorerSections={EXPLORER_SECTIONS}
+      activeExplorerItem={activeExplorer}
+      onExplorerItemClick={navigate}
+      tabs={openTabs}
+      activeTabId={activeExplorer}
+      onTabSelect={handleTabSelect}
+      onTabClose={handleTabClose}
+      bottomPanel={<MarketingBottomPanel fetchWithAuth={fetchWithAuth} />}
+      bottomPanelTitle="Recent AI Generations"
+      cmdKItems={CMDK_ITEMS}
+    >
+      {/* All sections mounted lazily; shown/hidden with CSS — preserves state across navigation */}
+      <div className="h-full overflow-hidden relative">
+        {RENDERABLE_SECTIONS.map(sectionId => {
+          if (!mounted.has(sectionId)) return null;
+          const isVisible = activeSection === sectionId;
+          return (
+            <div
+              key={sectionId}
+              className="absolute inset-0 overflow-y-auto p-4 md:p-6"
+              style={{ display: isVisible ? undefined : "none" }}
+            >
+              {sectionId === "dashboard" && (
+                <MarketingDashboard fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
+              )}
+              {sectionId === "recommendations" && (
+                <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />
+              )}
+              {sectionId === "lead-finder" && (
+                <LeadFinderSection fetchWithAuth={fetchWithAuth} />
+              )}
+              {sectionId === "outreach" && (
+                <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />
+              )}
+              {sectionId === "content" && (
+                <ContentHubSection fetchWithAuth={fetchWithAuth} />
+              )}
+              {sectionId === "campaigns" && (
+                <div className="space-y-8">
+                  <CampaignsHubSection fetchWithAuth={fetchWithAuth} />
+                  <div className="border-t border-[#30363D] pt-8">
+                    <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigateSection} />
+                  </div>
+                </div>
+              )}
+              {sectionId === "tasks" && (
+                <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigateSection} />
+              )}
+              {sectionId === "analytics" && (
+                <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
+              )}
+              {sectionId === "connections" && (
+                <div className="max-w-2xl space-y-4">
+                  <div className="mb-2">
+                    <h2 className="text-sm font-semibold text-[#E6EDF3]">Social Media Connections</h2>
+                    <p className="text-[11px] text-[#7D8590] mt-0.5">
+                      Monitor the health of your social media tokens. LinkedIn tokens expire every 60 days — this panel alerts you before posts start failing silently.
+                    </p>
+                  </div>
+                  <SocialConnectionsCard fetchWithAuth={fetchWithAuth} />
+                </div>
+              )}
+              {sectionId === "settings" && (
+                <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+                  <span className="text-4xl">⚙️</span>
+                  <p className="text-sm font-semibold text-[#E6EDF3]">Marketing Settings</p>
+                  <p className="text-xs text-[#7D8590] max-w-xs">Configure ICP, target industries, value proposition, and other marketing preferences. Coming soon.</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {/* ── Main Content ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top bar */}
-        <div className="flex-shrink-0 h-11 flex items-center justify-between px-5 bg-[#161B22] border-b border-[#30363D]">
-          <h1 className="text-sm font-semibold text-[#E6EDF3]">
-            {activeNav?.icon} {activeNav?.label ?? "Marketing"}
-          </h1>
-        </div>
-
-        {/* Scrollable section content */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
-          {activeSection === "dashboard" && (
-            <MarketingDashboard fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
-          )}
-          {activeSection === "recommendations" && (
-            <RecommendedLeadsSection fetchWithAuth={fetchWithAuth} />
-          )}
-          {activeSection === "lead-finder" && (
-            <LeadFinderSection fetchWithAuth={fetchWithAuth} />
-          )}
-          {activeSection === "outreach" && (
-            <OutreachAutomationSection fetchWithAuth={fetchWithAuth} />
-          )}
-          {activeSection === "content" && (
-            <ContentHubSection fetchWithAuth={fetchWithAuth} />
-          )}
-          {activeSection === "campaigns" && (
-            <div className="space-y-8">
-              <CampaignsHubSection fetchWithAuth={fetchWithAuth} />
-              <div className="border-t border-[#30363D] pt-8">
-                <AdLibrarySection fetchWithAuth={fetchWithAuth} onNavigate={navigate} />
-              </div>
-            </div>
-          )}
-          {activeSection === "tasks" && (
-            <MarketingTasksKanban fetchWithAuth={fetchWithAuth} onSectionNavigate={navigate} />
-          )}
-          {activeSection === "analytics" && (
-            <TrafficAnalyticsSection fetchWithAuth={fetchWithAuth} />
-          )}
-          {activeSection === "connections" && (
-            <div className="max-w-2xl space-y-4">
-              <div className="mb-2">
-                <h2 className="text-sm font-semibold text-[#E6EDF3]">Social Media Connections</h2>
-                <p className="text-[11px] text-[#7D8590] mt-0.5">
-                  Monitor the health of your social media tokens. LinkedIn tokens expire every 60 days — this panel alerts you before posts start failing silently.
-                </p>
-              </div>
-              <SocialConnectionsCard fetchWithAuth={fetchWithAuth} />
-            </div>
-          )}
-          {activeSection === "settings" && (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
-              <span className="text-4xl">⚙️</span>
-              <p className="text-sm font-semibold text-[#E6EDF3]">Marketing Settings</p>
-              <p className="text-xs text-[#7D8590] max-w-xs">Configure ICP, target industries, value proposition, and other marketing preferences. Coming soon.</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    </IDEShell>
   );
 }
