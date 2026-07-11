@@ -10,8 +10,10 @@ import SharePointPage from "@/pages/SharePoint";
 import EnginePanel from "@/components/EnginePanel";
 import FulfillmentQueuePage from "@/pages/FulfillmentQueue";
 import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
+import MonitorChecksPage from "@/pages/MonitorChecks";
+import MonitoringPackagesPage from "@/pages/MonitoringPackages";
 
-const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla"] as const;
+const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla", "monitoring"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   priority: "Priority Engine",
   pricing: "Pricing Engine",
@@ -21,6 +23,7 @@ const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   crm: "CRM Engine",
   msp: "MSP Engine",
   sla: "SLA Engine",
+  monitoring: "Monitoring Engine",
 };
 
 const NAV_ITEMS: WorkspaceNavItem[] = [
@@ -105,6 +108,24 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Monitor Checks",
+    path: "/delivery/monitor-checks",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    label: "Monitoring Packages",
+    path: "/delivery/monitoring-packages",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
+      </svg>
+    ),
+  },
   ...ENGINE_NAV_KEYS.map((key): WorkspaceNavItem => ({
     label: ENGINE_LABELS[key],
     path: `/delivery/engines/${key}`,
@@ -130,6 +151,8 @@ function getContent(section: string): ReactNode {
     case "hub-storage":          return <SharePointPage />;
     case "fulfillment-queue":    return <FulfillmentQueuePage />;
     case "fulfillment-types":    return <FulfillmentTypesPage />;
+    case "monitor-checks":       return <MonitorChecksPage />;
+    case "monitoring-packages":  return <MonitoringPackagesPage />;
     default:                     return <ProjectsPage />;
   }
 }

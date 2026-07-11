@@ -2039,6 +2039,8 @@ export interface WfNode {
     | "scope_creep_escalate" | "scope_creep_resolve" | "scope_creep_compliance_update"
     // Array / transform
     | "group_by"
+    // Monitor Package Engine
+    | "monitor_get_package" | "monitor_execute_package"
     // Utilities
     | "comment";
   position: { x: number; y: number };

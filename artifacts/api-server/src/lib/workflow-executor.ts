@@ -2350,31 +2350,87 @@ async function executeNode(
       }
 
       case "check_script_output": {
-        const rawOutput    = interp(node.data.scriptOutput as string | undefined, payload) ?? "";
-        const sensitivity  = (node.data.sensitivity as string | undefined) ?? "balanced";
+        // Fully deterministic: HTTP status code detection + output schema shape validation.
+        // No AI call, no token cost.
+        const rawOutput   = interp(node.data.scriptOutput as string | undefined, payload) ?? "";
+        const sensitivity = (node.data.sensitivity as string | undefined) ?? "balanced";
+        const outputSchema = node.data.outputSchema as Record<string, unknown> | undefined;
         if (dryRun) {
-          const dryLabel = sensitivity === "strict" ? "strict" : sensitivity === "lenient" ? "lenient" : sensitivity === "very_lenient" ? "very lenient" : "balanced";
           conditionResult = true;
-          output = { dryRun: true, passed: true, outcome: `Dry run: output accepted (${dryLabel} sensitivity)` };
+          output = { dryRun: true, passed: true, outcome: "Dry run: output accepted (deterministic mode)" };
           break;
         }
-        const sensitivityGuide =
-          sensitivity === "strict"      ? "Fail on ANY warning, non-zero exit code, or error message. Even minor anomalies should fail." :
-          sensitivity === "lenient"     ? "Pass if the output contains substantial usable structured data overall, even if some individual requests failed (e.g. a few 503/401 errors among many successful data fields). Only fail if the majority of the data collection failed, no meaningful data was collected, or the script terminated before producing useful output." :
-          sensitivity === "very_lenient"? "Pass unless the script produced zero output, crashed before collecting any data at all, or reported a fatal unhandled exception. Individual API errors (401, 403, 503, timeouts) and partial failures on specific endpoints are explicitly non-fatal. Only fail on total catastrophic failure with no usable data whatsoever." :
-                                          "Fail on major errors only; warnings and informational messages are acceptable. Pass if the overall output looks healthy.";
-        const aiText = await (async () => {
-          const msg = await anthropic.messages.create({
-            model: "claude-haiku-4-5",
-            max_tokens: 256,
-            system: `You are a script-output evaluator. Respond with ONLY valid JSON: {"passed": boolean, "outcome": "one sentence"}. ${sensitivityGuide}`,
-            messages: [{ role: "user", content: rawOutput.length > 0 ? rawOutput.slice(0, 8000) : "(empty output)" }],
-          });
-          return msg.content.find(b => b.type === "text")?.text ?? "";
-        })();
-        const parsed = extractJsonFromAiText(aiText);
-        const passed = typeof parsed?.passed === "boolean" ? parsed.passed : true;
-        const outcome = typeof parsed?.outcome === "string" ? parsed.outcome : aiText.slice(0, 200);
+
+        // 1. Schema validation if outputSchema is present
+        if (outputSchema) {
+          const { validateOutputShape } = await import("./monitor-executor");
+          let parsed: unknown = rawOutput;
+          try { parsed = JSON.parse(rawOutput); } catch { /* keep as string */ }
+          const { valid, errors } = validateOutputShape(parsed, outputSchema);
+          conditionResult = valid;
+          output = {
+            passed: valid,
+            outcome: valid
+              ? "Output matches expected schema"
+              : `Schema validation failed: ${errors.slice(0, 3).join("; ")}`,
+            sensitivity,
+            schemaErrors: valid ? [] : errors,
+          };
+          break;
+        }
+
+        // 2. HTTP status code heuristic — scan for failure patterns
+        const isEmpty = rawOutput.trim().length === 0;
+        if (isEmpty) {
+          const lenientPass = sensitivity === "lenient" || sensitivity === "very_lenient";
+          conditionResult = lenientPass;
+          output = { passed: lenientPass, outcome: "Script produced no output", sensitivity };
+          break;
+        }
+
+        const fatalPatterns = [
+          /\b(fatal|unhandled exception|terminated|crash)\b/i,
+          /Exception calling "[\w]+" with "[\d]+" argument/i,
+          /TerminatingError/i,
+        ];
+        const errorPatterns = [
+          /\bERROR\b.*:/i,
+          /\bException\b/i,
+          /status\s*[=:]\s*[4-9]\d{2}\b/i,
+          /HTTP[/ ]\d\.\d\s+[4-9]\d{2}\b/i,
+          /exit code[: ]+[1-9]\d*/i,
+        ];
+        const successPatterns = [
+          /status\s*[=:]\s*2\d{2}\b/i,
+          /HTTP[/ ]\d\.\d\s+2\d{2}\b/i,
+          /success|completed|done|ok\b/i,
+        ];
+
+        const hasFatal = fatalPatterns.some(p => p.test(rawOutput));
+        const hasErrors = errorPatterns.some(p => p.test(rawOutput));
+        const hasSuccess = successPatterns.some(p => p.test(rawOutput));
+
+        let passed: boolean;
+        let outcome: string;
+
+        if (hasFatal) {
+          passed = false;
+          outcome = "Script produced a fatal/terminating error";
+        } else if (sensitivity === "very_lenient") {
+          passed = true;
+          outcome = hasErrors ? "Partial errors detected but not fatal (very_lenient mode)" : "Output received";
+        } else if (sensitivity === "lenient") {
+          passed = !hasFatal && (!hasErrors || hasSuccess);
+          outcome = passed ? "Output looks healthy or has recoverable errors" : "Output indicates significant failure";
+        } else if (sensitivity === "strict") {
+          passed = !hasErrors && !hasFatal;
+          outcome = passed ? "No errors detected" : "Errors found (strict mode)";
+        } else {
+          // balanced
+          passed = !hasFatal && (!hasErrors || hasSuccess);
+          outcome = passed ? "Output looks acceptable" : "Output contains errors without success indicators";
+        }
+
         conditionResult = passed;
         output = { passed, outcome, sensitivity };
         break;
@@ -6774,6 +6830,119 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "comment":
         output = {};
         break;
+
+      // ── Monitor Package Engine nodes ──────────────────────────────────────────
+
+      case "monitor_get_package": {
+        const mpgPackageKey = interp(node.data.packageKey as string | undefined, payload);
+        if (!mpgPackageKey) {
+          nodeError = true;
+          output = { error: "monitor_get_package: packageKey is required" };
+          break;
+        }
+        if (dryRun) {
+          output = {
+            dryRun: true,
+            packageKey: mpgPackageKey,
+            packageLabel: "Dry-run package",
+            checkCount: 0,
+            checks: [],
+          };
+          break;
+        }
+        const { monitoringPackagesTable: mpgPkgT, monitoringPackageChecksTable: mpgLinkT, monitorChecksTable: mpgCheckT } = await import("@workspace/db");
+        const { eq: mpgEq, and: mpgAnd } = await import("drizzle-orm");
+        const [mpgPkg] = await db.select().from(mpgPkgT).where(mpgAnd(mpgEq(mpgPkgT.key, mpgPackageKey), mpgEq(mpgPkgT.status, "active"))).limit(1);
+        if (!mpgPkg) {
+          nodeError = true;
+          output = { error: `monitor_get_package: package "${mpgPackageKey}" not found or not active` };
+          break;
+        }
+        const mpgLinks = await db.select().from(mpgLinkT).where(mpgEq(mpgLinkT.packageKey, mpgPackageKey)).orderBy(mpgLinkT.sortOrder);
+        const mpgActiveChecks = mpgLinks.length > 0
+          ? await db.select({ key: mpgCheckT.key, label: mpgCheckT.label, requiresCustomerScript: mpgCheckT.requiresCustomerScript, frequency: mpgCheckT.frequency })
+              .from(mpgCheckT)
+              .where(mpgEq(mpgCheckT.status, "active"))
+          : [];
+        output = {
+          packageKey: mpgPkg.key,
+          packageId: mpgPkg.packageId,
+          packageLabel: mpgPkg.label,
+          checkCount: mpgLinks.length,
+          checks: mpgLinks.map(l => {
+            const c = mpgActiveChecks.find(ch => ch.key === l.checkKey);
+            return { checkKey: l.checkKey, label: c?.label ?? l.checkKey, requiresCustomerScript: c?.requiresCustomerScript ?? false, sortOrder: l.sortOrder };
+          }),
+          engines: mpgPkg.engines ?? [],
+        };
+        break;
+      }
+
+      case "monitor_execute_package": {
+        const mepPackageKey = interp(node.data.packageKey as string | undefined, payload) ??
+          (payload.packageKey as string | undefined);
+        const mepTenantId  = interp(node.data.tenantId as string | undefined, payload) ??
+          (payload.tenantId as string | undefined);
+        if (!mepPackageKey || !mepTenantId) {
+          nodeError = true;
+          output = { error: "monitor_execute_package: packageKey and tenantId are required" };
+          break;
+        }
+        if (dryRun) {
+          output = {
+            dryRun: true,
+            packageKey: mepPackageKey,
+            tenantId: mepTenantId,
+            runStatus: "completed",
+            checksTotal: 0,
+            checksOk: 0,
+            checksError: 0,
+            requiresScript: 0,
+            checks: [],
+          };
+          break;
+        }
+        const { executeMonitoringPackage } = await import("./monitor-executor");
+        const mepTriggerId = `wf-run-${runId}-node-${node.id}`;
+        const mepResult = await executeMonitoringPackage({
+          packageKey: mepPackageKey,
+          tenantId: mepTenantId,
+          triggerId: mepTriggerId,
+          onProgress: (evt) => {
+            broadcastAdminWorkflowEvent({
+              type: "node_progress",
+              runId,
+              nodeId: node.id,
+              level: "progress",
+              message: `Monitor check ${evt.index + 1}/${evt.total}: ${evt.checkLabel} → ${evt.status}`,
+              metadata: {
+                checkKey: evt.checkKey,
+                status: evt.status,
+                requiresCustomerScript: evt.requiresCustomerScript,
+                index: evt.index,
+                total: evt.total,
+              },
+            });
+          },
+        });
+        nodeError = mepResult.runStatus === "consent_revoked" || mepResult.runStatus === "partial_failure";
+        output = {
+          packageKey: mepResult.packageKey,
+          tenantId: mepResult.tenantId,
+          runStatus: mepResult.runStatus,
+          triggerId: mepTriggerId,
+          checksTotal: mepResult.checks.length,
+          checksOk: mepResult.checks.filter((c: { status: string }) => c.status === "ok").length,
+          checksError: mepResult.checks.filter((c: { status: string }) => c.status === "error").length,
+          requiresScript: mepResult.checks.filter((c: { status: string }) => c.status === "requires_script").length,
+          consentRevoked: mepResult.checks.filter((c: { status: string }) => c.status === "consent_revoked").length,
+          checks: mepResult.checks,
+          enginesRecomputed: mepResult.enginesRecomputed,
+          startedAt: mepResult.startedAt,
+          completedAt: mepResult.completedAt,
+        };
+        break;
+      }
 
       default:
         logger.warn({ nodeType: node.type, nodeId: node.id, runId }, "workflow-executor: unrecognised node type — setting error output");

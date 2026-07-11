@@ -20,6 +20,7 @@ import {
 } from "./tenant-signals.ts";
 import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy } from "./sla-engine.ts";
 import { runScopeCreepEngineForTenant, computeScopeCreepEngine } from "./scope-creep-engine.ts";
+import { computeMonitoringEngine, computeMonitoringEngineForPayload } from "./monitor-executor.ts";
 import {
   fetchSignalRulesAndGroups,
   buildTenantProfileAndFindings,
@@ -278,6 +279,16 @@ export const ENGINE_DEFS: EngineDef[] = [
     runForPayload: (_input) => {
       return computeScopeCreepEngine([], []);
     },
+  },
+  {
+    key: "monitoring",
+    label: "Monitoring Engine",
+    description: "Executes platform-authored Monitor Checks against customer tenants via Graph API, writes tenant_monitor_profile rows, and classifies severity. Output: {results, breakdown: coverage/failures, logs, debug}.",
+    categoryPrefix: "monitoring",
+    tenantScoped: true,
+    ruleOwnership: "platform",
+    runForTenant: (tenantId) => computeMonitoringEngine(tenantId),
+    runForPayload: (_input) => computeMonitoringEngineForPayload(),
   },
 ];
 

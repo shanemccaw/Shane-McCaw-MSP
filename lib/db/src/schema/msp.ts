@@ -810,6 +810,7 @@ export const portalWfIdempotencyTable = pgTable("portal_wf_idempotency", {
 }, (t) => [
   index("portal_wf_idempotency_run_id_idx").on(t.runId),
 ]);
+
 // One row per MSP — links the MSP to its Stripe subscription and the Product
 // Catalog tier it has purchased (services.fulfillmentType = "msp_monthly_subscription").
 // This table owns dunning state. Billing for offers/SOWs is entirely separate
@@ -1123,3 +1124,123 @@ export const mspImpersonationTokensTable = pgTable("msp_impersonation_tokens", {
   index("msp_impersonation_tokens_target_idx").on(t.targetUserId),
   index("msp_impersonation_tokens_expires_at_idx").on(t.expiresAt),
 ]);
+
+// ── Monitoring Package Engine ──────────────────────────────────────────────────
+
+export const MONITOR_CHECK_FREQUENCY = ["hourly", "daily", "live"] as const;
+export type MonitorCheckFrequency = typeof MONITOR_CHECK_FREQUENCY[number];
+
+export const MONITOR_CHECK_STATUS = ["active", "archived"] as const;
+export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
+
+export const monitorChecksTable = pgTable("monitor_checks", {
+  id: serial("id").primaryKey(),
+  checkId: uuid("check_id").notNull().unique().defaultRandom(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  endpoint: text("endpoint").notNull(),
+  method: text("method").notNull().default("GET"),
+  requestBody: jsonb("request_body").$type<Record<string, unknown>>(),
+  selectParams: text("select_params"),
+  properties: jsonb("properties").$type<string[]>().notNull().default([]),
+  mapping: jsonb("mapping").$type<Array<{ sourceField: string; targetField: string; transform?: string }>>().notNull().default([]),
+  severityRules: jsonb("severity_rules").$type<Array<{ expression: string; severity: string; label?: string }>>().notNull().default([]),
+  outputSchema: jsonb("output_schema").$type<Record<string, unknown>>(),
+  engines: jsonb("engines").$type<string[]>().notNull().default([]),
+  frequency: text("frequency", { enum: MONITOR_CHECK_FREQUENCY }).notNull().default("daily"),
+  requiresCustomerScript: boolean("requires_customer_script").notNull().default(false),
+  schemaVersion: integer("schema_version").notNull().default(1),
+  status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  createdByAdminId: integer("created_by_admin_id"),
+  updatedByAdminId: integer("updated_by_admin_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("monitor_checks_key_idx").on(t.key),
+  index("monitor_checks_status_idx").on(t.status),
+  index("monitor_checks_frequency_idx").on(t.frequency),
+]);
+
+export type MonitorCheck = typeof monitorChecksTable.$inferSelect;
+export type InsertMonitorCheck = typeof monitorChecksTable.$inferInsert;
+
+export const monitoringPackagesTable = pgTable("monitoring_packages", {
+  id: serial("id").primaryKey(),
+  packageId: uuid("package_id").notNull().unique().defaultRandom(),
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  engines: jsonb("engines").$type<string[]>().notNull().default([]),
+  status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  createdByAdminId: integer("created_by_admin_id"),
+  updatedByAdminId: integer("updated_by_admin_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("monitoring_packages_key_idx").on(t.key),
+  index("monitoring_packages_status_idx").on(t.status),
+]);
+
+export type MonitoringPackage = typeof monitoringPackagesTable.$inferSelect;
+export type InsertMonitoringPackage = typeof monitoringPackagesTable.$inferInsert;
+
+export const monitoringPackageChecksTable = pgTable("monitoring_package_checks", {
+  id: serial("id").primaryKey(),
+  packageKey: text("package_key").notNull().references(() => monitoringPackagesTable.key, { onDelete: "cascade" }),
+  checkKey: text("check_key").notNull().references(() => monitorChecksTable.key, { onDelete: "restrict" }),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("monitoring_package_checks_pkg_check_idx").on(t.packageKey, t.checkKey),
+  index("monitoring_package_checks_package_idx").on(t.packageKey),
+  index("monitoring_package_checks_check_idx").on(t.checkKey),
+]);
+
+export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferSelect;
+
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script"] as const;
+export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
+
+export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
+  id: serial("id").primaryKey(),
+  profileId: uuid("profile_id").notNull().unique().defaultRandom(),
+  tenantId: text("tenant_id").notNull(),
+  checkKey: text("check_key").notNull(),
+  checkSchemaVersion: integer("check_schema_version").notNull().default(1),
+  triggerId: text("trigger_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  status: text("status", { enum: TENANT_MONITOR_PROFILE_STATUS }).notNull().default("ok"),
+  rawResponse: jsonb("raw_response").$type<Record<string, unknown>>(),
+  extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
+  severityMatched: text("severity_matched"),
+  errorMessage: text("error_message"),
+  itemCount: integer("item_count"),
+  pageCount: integer("page_count"),
+  collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("tenant_monitor_profiles_idempotency_idx").on(t.idempotencyKey),
+  index("tenant_monitor_profiles_tenant_check_idx").on(t.tenantId, t.checkKey),
+  index("tenant_monitor_profiles_tenant_id_idx").on(t.tenantId),
+  index("tenant_monitor_profiles_collected_at_idx").on(t.collectedAt),
+]);
+
+export type TenantMonitorProfile = typeof tenantMonitorProfilesTable.$inferSelect;
+
+export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
+  id: serial("id").primaryKey(),
+  action: text("action").notNull(),
+  checkKey: text("check_key"),
+  packageKey: text("package_key"),
+  before: jsonb("before").$type<Record<string, unknown>>(),
+  after: jsonb("after").$type<Record<string, unknown>>(),
+  adminUserId: integer("admin_user_id"),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("monitor_check_audit_log_check_key_idx").on(t.checkKey),
+  index("monitor_check_audit_log_created_at_idx").on(t.createdAt),
+]);
+
+export type MonitorCheckAuditLog = typeof monitorCheckAuditLogTable.$inferSelect;
