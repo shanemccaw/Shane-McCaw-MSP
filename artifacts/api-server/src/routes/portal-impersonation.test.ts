@@ -139,9 +139,14 @@ mock.module("@workspace/db", {
     presentationDocViewsTable: {},
     quickWinResultSharesTable: {},
     clientDocumentsTable: {},
+    fulfillmentQueueTable: {},
+    fulfillmentSlaConfigTable: {},
+    FULFILLMENT_DELIVERY_STATUSES: ["not_started", "in_progress", "delivered", "blocked"],
+    FULFILLMENT_SOURCE_TYPES: ["offer", "sow", "bundle"],
     mspCustomersTable: {},
     mspUsersTable: {},
     mspAuditLogsTable: {},
+    monitorChecksTable: {},
   },
 });
 

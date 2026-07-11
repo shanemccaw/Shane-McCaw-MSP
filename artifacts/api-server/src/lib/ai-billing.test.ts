@@ -30,6 +30,7 @@ import {
   computeTokenCostCents,
   periodKeyFor,
   ALERT_THRESHOLDS,
+  resolveBillingMspId,
   type AiBalanceSummary,
 } from "./ai-billing.js";
 
@@ -319,5 +320,41 @@ describe("platform-funded nodes", () => {
     expect(isPlatformAdmitted("platform", -1000)).toBe(true);
     expect(isPlatformAdmitted("msp", 0)).toBe(false);
     expect(isPlatformAdmitted("msp", 1)).toBe(true);
+  });
+});
+
+// ── Test: resolveBillingMspId (impersonation attribution) ─────────────────────
+
+describe("resolveBillingMspId", () => {
+  it("returns null when no user is provided", () => {
+    expect(resolveBillingMspId(null)).toBeNull();
+    expect(resolveBillingMspId(undefined)).toBeNull();
+  });
+
+  it("returns the user's own mspId for a normal MSPAdmin session", () => {
+    expect(resolveBillingMspId({ mspId: 42 })).toBe(42);
+  });
+
+  it("returns null for a PlatformAdmin with no impersonation in progress", () => {
+    // PlatformAdmins have no mspId of their own — AI costs are absorbed by the
+    // platform (billed elsewhere).
+    expect(resolveBillingMspId({ mspId: undefined })).toBeNull();
+    expect(resolveBillingMspId({})).toBeNull();
+  });
+
+  it("returns impersonatedMspId and NOT the actor's own mspId during impersonation", () => {
+    // Core billing-attribution requirement: when a PlatformAdmin impersonates
+    // MSP 99, AI costs must debit MSP 99's balance — not the admin's (null) balance.
+    expect(resolveBillingMspId({ mspId: undefined, impersonatedMspId: 99 })).toBe(99);
+  });
+
+  it("prefers impersonatedMspId over mspId when both are set", () => {
+    // Although in practice an impersonation JWT sets mspId == impersonatedMspId,
+    // the helper must always give impersonatedMspId priority.
+    expect(resolveBillingMspId({ mspId: 10, impersonatedMspId: 20 })).toBe(20);
+  });
+
+  it("falls back to mspId when impersonatedMspId is not set", () => {
+    expect(resolveBillingMspId({ mspId: 7, impersonatedMspId: undefined })).toBe(7);
   });
 });

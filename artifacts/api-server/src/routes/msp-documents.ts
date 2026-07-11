@@ -30,6 +30,7 @@ import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { createRun, executeRun } from "../lib/portal-workflow-engine";
+import { resolveBillingMspId } from "../lib/ai-billing";
 import { DEFAULT_DOC_PIPELINE_GRAPH } from "../lib/doc-pipeline-nodes";
 import { resolveConnectorSiteId } from "../lib/sharepoint-connector";
 
@@ -118,10 +119,11 @@ router.post(
         logger.warn({ err }, "msp-documents: failed to ensure pipeline workflow (non-fatal)"),
       );
 
-      // Create and enqueue a portal workflow run for the pipeline
+      // Create and enqueue a portal workflow run for the pipeline.
+      // Use resolveBillingMspId so impersonation sessions debit the target MSP.
       const runId = await createRun({
         workflowKey: "doc.pipeline.default",
-        tenantContext: { mspId, customerId: customerId ?? null },
+        tenantContext: { mspId: resolveBillingMspId(req.user) ?? mspId, customerId: customerId ?? null },
         triggerEventType: "msp.document.submit",
         inputPayload: {
           documentId: document.documentId,
@@ -270,9 +272,10 @@ router.post(
 
       await ensureDocPipelineWorkflow().catch(() => {});
 
+      // Use resolveBillingMspId so impersonation sessions debit the target MSP.
       const runId = await createRun({
         workflowKey: "doc.pipeline.default",
-        tenantContext: { mspId, customerId: document.customerId ?? null },
+        tenantContext: { mspId: resolveBillingMspId(req.user) ?? mspId, customerId: document.customerId ?? null },
         triggerEventType: "msp.document.version",
         inputPayload: {
           documentId,

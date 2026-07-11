@@ -70,6 +70,7 @@ import {
   startMappings,
   mappingsLoadedAt,
 } from "../lib/portal-workflow-engine.ts";
+import { resolveBillingMspId } from "../lib/ai-billing.ts";
 
 function p(val: string | string[] | undefined): string {
   return Array.isArray(val) ? (val[0] ?? "") : (val ?? "");
@@ -278,9 +279,13 @@ router.post(
     if (!wf) { apiError(res, 404, ApiErrorCode.NOT_FOUND, `Workflow '${workflowKey}' not found`); return; }
     if (!wf.isActive) { apiError(res, 409, ApiErrorCode.CONFLICT, `Workflow '${workflowKey}' is not active`); return; }
 
+    // resolveBillingMspId takes precedence so impersonation sessions always
+    // debit the target MSP rather than the acting PlatformAdmin (who has no
+    // mspId of their own).  Body-provided mspId is used as a fallback for
+    // direct PlatformAdmin calls where no impersonation context is present.
     const runId = await createRun({
       workflowKey,
-      tenantContext: { mspId: mspId ?? null, customerId: customerId ?? null },
+      tenantContext: { mspId: resolveBillingMspId(req.user) ?? mspId ?? null, customerId: customerId ?? null },
       inputPayload: inputPayload ?? {},
     });
 

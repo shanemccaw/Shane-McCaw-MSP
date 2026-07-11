@@ -184,6 +184,13 @@ export interface CanonicalEventActor {
   id: number | string;
   role: MspRole | "system";
   type: "user" | "service_account" | "system";
+  /**
+   * Present only during impersonation sessions.
+   * Identifies the MSP the actor is operating on behalf of so audit trails can
+   * distinguish "PlatformAdmin acting as MSP X" from a direct MSP X action.
+   * Also used as the canonical billing-attribution target for AI cost accounting.
+   */
+  actingAs?: number;
 }
 
 export const mspEventStoreTable = pgTable("msp_event_store", {

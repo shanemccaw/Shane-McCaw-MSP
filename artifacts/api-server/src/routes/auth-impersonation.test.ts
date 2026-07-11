@@ -65,6 +65,7 @@ mock.module("@workspace/db", {
     db: makeMockDb(),
     usersTable: {},
     mspUsersTable: {},
+    mspsTable: {},
     mspRefreshTokensTable: {},
     passwordResetTokensTable: {},
     impersonationTokensTable: {},
@@ -106,9 +107,12 @@ mock.module("../lib/event-bus.ts", {
   namedExports: {
     dispatchEvent: async () => {},
     fireWorkflowsForEvent: async () => {},
-    EVENT_TYPES: {},
+    EVENT_TYPES: {
+      IMPERSONATION_SESSION_STARTED: "auth.impersonation.session_started",
+    },
     systemActor: () => ({}),
     userActor: () => ({}),
+    impersonationActor: () => ({}),
   },
 });
 

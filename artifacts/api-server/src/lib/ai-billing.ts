@@ -39,6 +39,28 @@ import { eq, and, sum, desc, gte, sql, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 
+// ── Billing MSP resolution ─────────────────────────────────────────────────────
+
+/**
+ * Resolve the MSP that should be billed for an AI action from an authenticated
+ * request context (or any object that carries the JWT claims).
+ *
+ * During impersonation sessions a PlatformAdmin acts on behalf of a target MSP.
+ * The `impersonatedMspId` claim identifies that MSP and takes precedence over
+ * the actor's own `mspId` (which is null for PlatformAdmins) so costs are always
+ * attributed to the correct tenant — never left unattributed or charged to the
+ * wrong account.
+ *
+ * Use this helper everywhere an mspId needs to be passed to `checkAiAdmission`
+ * or `recordAiUsage` in a request-scoped context.
+ */
+export function resolveBillingMspId(
+  user: { mspId?: number; impersonatedMspId?: number } | undefined | null,
+): number | null {
+  if (!user) return null;
+  return user.impersonatedMspId ?? user.mspId ?? null;
+}
+
 // ── Token cost rates ───────────────────────────────────────────────────────────
 // Cost per 1M tokens in cents. Used when callers provide token counts.
 // These are conservative estimates; update as model pricing changes.

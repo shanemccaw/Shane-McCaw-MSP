@@ -9,7 +9,7 @@ import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
 import { signMfaToken } from "./mfa.ts";
-import { dispatchEvent, EVENT_TYPES, systemActor, userActor } from "../lib/event-bus.ts";
+import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole } from "../middlewares/requireAuth.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -606,6 +606,8 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
   const sessionToken = jwt.sign(jwtPayload, secret, { expiresIn: "30m" });
 
   // Audit every impersonation session start (non-fatal — never blocks the response)
+  // The canonical event actor carries `actingAs: impersonatedMspId` so downstream
+  // consumers (AI billing, audit dashboards) can attribute actions to the correct MSP.
   try {
     await db.insert(mspAuditLogsTable).values({
       actorUserId: record.adminUserId,
@@ -618,6 +620,8 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
       correlationId: randomUUID(),
       outcome: "success",
       metadata: {
+        actorType: "platformAdmin",
+        actingAs: impersonatedMspId ?? null,
         targetUserId: targetUser.id,
         impersonatedMspId: impersonatedMspId ?? null,
       },
@@ -625,6 +629,23 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
   } catch {
     // Audit log is non-fatal
   }
+
+  // Dispatch a canonical event with the enriched impersonation actor so the
+  // event store records who (PlatformAdmin userId) acted as which MSP (actingAs).
+  void dispatchEvent({
+    eventType: EVENT_TYPES.IMPERSONATION_SESSION_STARTED,
+    actor: impersonatedMspId !== undefined
+      ? impersonationActor(record.adminUserId, impersonatedMspId)
+      : userActor(record.adminUserId, "PlatformAdmin"),
+    source: "auth.impersonate-exchange",
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    payload: {
+      targetUserId: targetUser.id,
+      targetEmail: targetUser.email,
+      impersonatedMspId: impersonatedMspId ?? null,
+    },
+  });
 
   res.json({
     accessToken: sessionToken,

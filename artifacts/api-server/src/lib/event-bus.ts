@@ -219,6 +219,21 @@ export function serviceAccountActor(saId: number): CanonicalEventActor {
   return { id: saId, role: "ServiceAccount", type: "service_account" };
 }
 
+/**
+ * Actor builder for PlatformAdmin actions taken during an impersonation session.
+ *
+ * The resulting actor record clearly distinguishes "PlatformAdmin acting as MSP X"
+ * from a direct MSP X action. The `actingAs` field carries the impersonated MSP's
+ * id and is also the canonical AI billing-attribution target — any AI cost incurred
+ * while this actor is the subject of an event must be charged to `actingAs`.
+ *
+ * @param adminUserId - PlatformAdmin's own user id
+ * @param impersonatedMspId - The MSP being acted on behalf of
+ */
+export function impersonationActor(adminUserId: number, impersonatedMspId: number): CanonicalEventActor {
+  return { id: adminUserId, role: "PlatformAdmin", type: "user", actingAs: impersonatedMspId };
+}
+
 // ── Well-known event type constants ──────────────────────────────────────────
 
 export const EVENT_TYPES = {
@@ -254,6 +269,9 @@ export const EVENT_TYPES = {
   IDEMPOTENCY_HIT: "idempotency.hit",
   DLQ_ITEM_ENQUEUED: "dlq.item.enqueued",
   DLQ_ITEM_RESOLVED: "dlq.item.resolved",
+
+  IMPERSONATION_SESSION_STARTED: "auth.impersonation.session_started",
+  IMPERSONATION_TOKEN_ISSUED: "auth.impersonation.token_issued",
 } as const;
 
 export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES];
