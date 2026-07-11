@@ -1,4 +1,6 @@
 import { logger } from "./logger";
+import { db, tenantConsentTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -9,11 +11,38 @@ interface TokenCache {
 
 let tokenCache: TokenCache | null = null;
 
+// Per-tenant token cache — keyed by tenantId, uses the multi-tenant app credentials
+const tenantTokenCache = new Map<string, TokenCache>();
+
+// ── Multi-tenant app scopes ────────────────────────────────────────────────────
+// Full union declared upfront — adding scopes later requires re-consent on every tenant.
+// These are the Application permissions added to the multi-tenant App Registration manifest.
+export const REQUIRED_MT_SCOPES = [
+  "Directory.Read.All",
+  "SecurityEvents.Read.All",
+  "Exchange.ManageAsApp",
+  "Sites.Read.All",
+  "Reports.Read.All",
+  "Policy.Read.All",
+  "DeviceManagementConfiguration.Read.All",
+  "AuditLog.Read.All",
+  "ActivityFeed.Read",
+] as const;
+
+export type MtScope = typeof REQUIRED_MT_SCOPES[number];
+
 export function graphCredentialsPresent(): boolean {
   return Boolean(
     process.env.GRAPH_TENANT_ID &&
     process.env.GRAPH_CLIENT_ID &&
     process.env.GRAPH_CLIENT_SECRET
+  );
+}
+
+export function mtAppCredentialsPresent(): boolean {
+  return Boolean(
+    process.env.MT_APP_CLIENT_ID &&
+    process.env.MT_APP_CLIENT_SECRET
   );
 }
 
@@ -53,6 +82,148 @@ export async function getAccessToken(): Promise<string> {
     expiresAt: Date.now() + data.expires_in * 1000,
   };
   return tokenCache.token;
+}
+
+/**
+ * Obtain a client-credentials token for a customer tenant using the
+ * multi-tenant App Registration. The customer tenant must have already
+ * completed admin consent (grant_type=client_credentials requires it).
+ *
+ * Throws ConsentRevokedError on 401/invalid_grant so callers can flip the
+ * tenant to "consent_revoked" without manual error string matching.
+ */
+export async function getAccessTokenForTenant(tenantId: string): Promise<string> {
+  const cached = tenantTokenCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt - 60_000) {
+    return cached.token;
+  }
+
+  const clientId = process.env.MT_APP_CLIENT_ID;
+  const clientSecret = process.env.MT_APP_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error("MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET not configured");
+  }
+
+  const params = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: clientId,
+    client_secret: clientSecret,
+    scope: "https://graph.microsoft.com/.default",
+  });
+
+  const res = await fetch(
+    `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    // 400/401 with invalid_grant or consent_required means admin consent has been revoked
+    const isConsentError =
+      res.status === 401 ||
+      (res.status === 400 && (text.includes("invalid_grant") || text.includes("AADSTS65001") || text.includes("consent_required")));
+
+    if (isConsentError) {
+      logger.warn({ tenantId, status: res.status }, "Graph token: consent revoked for tenant");
+      throw new ConsentRevokedError(tenantId);
+    }
+
+    throw new Error(`Graph tenant token fetch failed for ${tenantId}: ${res.status} ${text}`);
+  }
+
+  const data = await res.json() as { access_token: string; expires_in: number };
+  const entry: TokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  tenantTokenCache.set(tenantId, entry);
+  return entry.token;
+}
+
+/**
+ * Error thrown when a tenant's admin consent has been revoked or was never granted.
+ * Callers should catch this and call markTenantConsentRevoked() then surface a
+ * "re-authorize" prompt — never a silent failure.
+ */
+export class ConsentRevokedError extends Error {
+  readonly tenantId: string;
+  constructor(tenantId: string) {
+    super(`Admin consent revoked or missing for tenant ${tenantId}`);
+    this.name = "ConsentRevokedError";
+    this.tenantId = tenantId;
+  }
+}
+
+/**
+ * Flip a tenant's consent status to "revoked" in the DB and evict its token cache.
+ * Safe to call from any catch-block that catches ConsentRevokedError.
+ */
+export async function markTenantConsentRevoked(tenantId: string): Promise<void> {
+  tenantTokenCache.delete(tenantId);
+  try {
+    await db
+      .update(tenantConsentTable)
+      .set({ consentStatus: "revoked", revokedAt: new Date(), updatedAt: new Date() })
+      .where(eq(tenantConsentTable.tenantId, tenantId));
+  } catch (err) {
+    logger.error({ err, tenantId }, "markTenantConsentRevoked: DB update failed");
+  }
+}
+
+/**
+ * Build the Microsoft admin-consent redirect URL for a customer tenant.
+ * Use "common" when the tenantId is unknown at link-generation time.
+ *
+ * @param tenantHint  - Azure AD tenant ID (GUID), domain, or "common"
+ * @param state       - opaque state blob echoed back in the callback (use invite token)
+ * @param redirectUri - absolute URL the OAuth callback lands on
+ */
+export function buildAdminConsentUrl(
+  tenantHint: string,
+  state: string,
+  redirectUri: string,
+): string {
+  const clientId = process.env.MT_APP_CLIENT_ID ?? "";
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, state });
+  return `https://login.microsoftonline.com/${encodeURIComponent(tenantHint)}/adminconsent?${params.toString()}`;
+}
+
+/**
+ * Perform a Graph API call against a specific customer tenant.
+ * Automatically handles 401 responses by marking consent revoked and
+ * re-throwing ConsentRevokedError — callers must NOT silently swallow it.
+ */
+export async function graphFetchForTenant(
+  tenantId: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  const token = await getAccessTokenForTenant(tenantId);
+  const res = await fetch(`${GRAPH_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...(options.headers ?? {}),
+    },
+  });
+
+  if (res.status === 401) {
+    // Clone the response so we can read the body for diagnostics and still throw
+    const text = await res.text();
+    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — revoking consent");
+    // Evict from cache immediately
+    tenantTokenCache.delete(tenantId);
+    await markTenantConsentRevoked(tenantId);
+    throw new ConsentRevokedError(tenantId);
+  }
+
+  return res;
 }
 
 async function graphFetch(path: string, options: RequestInit = {}): Promise<Response> {

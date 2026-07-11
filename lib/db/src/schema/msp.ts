@@ -384,3 +384,50 @@ export const fulfillmentSlaConfigTable = pgTable("fulfillment_sla_config", {
 
 export type FulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferSelect;
 export type InsertFulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferInsert;
+
+// ── Tenant Consent ─────────────────────────────────────────────────────────────
+// One row per customer Azure AD tenant. Created/updated by the admin-consent
+// OAuth callback. The platform's multi-tenant app registration is the identity;
+// no per-customer credential is ever stored.
+
+export const tenantConsentTable = pgTable("tenant_consent", {
+  tenantId: text("tenant_id").primaryKey(),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  clientUserId: integer("client_user_id"),
+  consentStatus: text("consent_status", {
+    enum: ["pending", "granted", "declined", "revoked"],
+  }).notNull().default("pending"),
+  consentedAt: timestamp("consented_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  adminEmail: text("admin_email"),
+  adminDisplayName: text("admin_display_name"),
+  scopesGranted: jsonb("scopes_granted").$type<string[]>().notNull().default([]),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("tenant_consent_customer_id_idx").on(t.customerId),
+  index("tenant_consent_status_idx").on(t.consentStatus),
+]);
+
+export type TenantConsent = typeof tenantConsentTable.$inferSelect;
+export type InsertTenantConsent = typeof tenantConsentTable.$inferInsert;
+
+// ── Consent Invite Tokens ──────────────────────────────────────────────────────
+// Single-use expiring tokens that wrap the admin-consent redirect URL.
+// One token is created per onboarding invite; it is burned on first use or on expiry.
+
+export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
+  token: text("token").primaryKey(),
+  tenantId: text("tenant_id"),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  clientUserId: integer("client_user_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("consent_invite_tokens_expires_at_idx").on(t.expiresAt),
+  index("consent_invite_tokens_customer_id_idx").on(t.customerId),
+]);
+
+export type ConsentInviteToken = typeof consentInviteTokensTable.$inferSelect;
+export type InsertConsentInviteToken = typeof consentInviteTokensTable.$inferInsert;

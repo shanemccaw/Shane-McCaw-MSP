@@ -21,6 +21,7 @@ export default defineConfig({
       "src/lib/msp-engine.test.ts",
       "src/lib/engine-determinism.test.ts",
       "src/lib/msp.test.ts",
+      "src/routes/consent.test.ts",
     ],
     coverage: {
       provider: "v8",

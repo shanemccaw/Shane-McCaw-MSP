@@ -66,6 +66,7 @@ import adminSignalRulesRouter from "./admin-signal-rules";
 import adminEnginesRouter from "./admin-engines";
 import crmPreviewStatsRouter from "./crm-preview-stats";
 import adminSowDebugRouter from "./admin-sow-debug";
+import consentRouter from "./consent";
 
 const router: IRouter = Router();
 
@@ -144,5 +145,6 @@ router.use(adminSignalRulesRouter);
 router.use(adminEnginesRouter);
 router.use(crmPreviewStatsRouter);
 router.use(adminSowDebugRouter);
+router.use(consentRouter);
 
 export default router;
