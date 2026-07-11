@@ -44,6 +44,7 @@ import {
   ListTodo,
   LogOut,
   Menu,
+  MessageCircle,
   Play,
   Search,
   Shield,
@@ -122,6 +123,12 @@ const NAV_SECTIONS: NavSection[] = [
         href: "/customer-scope",
         roles: ["CustomerUser"],
       },
+      {
+        icon: MessageCircle,
+        label: "Support",
+        href: "/support",
+        roles: ["CustomerUser"],
+      },
     ],
   },
   {
@@ -185,6 +192,17 @@ const NAV_SECTIONS: NavSection[] = [
         label: "Dead Letter Queue",
         href: "/dlq",
         roles: ["PlatformAdmin", "MSPAdmin"],
+      },
+    ],
+  },
+  {
+    label: "Support",
+    items: [
+      {
+        icon: MessageCircle,
+        label: "Support Chat",
+        href: "/support",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
     ],
   },

@@ -42,6 +42,7 @@ import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
+import SupportChatPage from "@/pages/support-chat";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -236,6 +237,9 @@ function Router() {
       </Route>
       <Route path="/customer-scope">
         <ProtectedRoute component={CustomerScopePage} />
+      </Route>
+      <Route path="/support">
+        <ProtectedRoute component={SupportChatPage} />
       </Route>
 
       {/* AI Billing */}
