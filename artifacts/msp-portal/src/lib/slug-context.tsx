@@ -33,3 +33,12 @@ export function getStoredSlug(): string | null {
     return null;
   }
 }
+
+/** Persist a slug to sessionStorage so future flat-login visits resolve instantly. */
+export function storeSlug(slug: string): void {
+  try {
+    sessionStorage.setItem(SESSION_SLUG_KEY, slug);
+  } catch {
+    // ignore — sessionStorage unavailable
+  }
+}

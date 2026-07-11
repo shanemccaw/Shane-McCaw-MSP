@@ -38,6 +38,7 @@ export interface AuthUser {
   mspRole?: MspRole;
   mspId?: number;
   customerId?: number;
+  mspSlug?: string;
   impersonatedBy?: number;
   /** Unix timestamp (seconds) when this access token expires */
   exp?: number;
@@ -58,7 +59,7 @@ interface AuthState {
 }
 
 interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[] }>;
+  login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[]; user?: AuthUser }>;
   /** Complete an MFA flow by supplying the tokens received from the MFA challenge endpoint */
   completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
   logout: () => Promise<void>;
@@ -287,6 +288,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         silentRefreshTimerRef.current = setInterval(() => {
           void doRefresh();
         }, SILENT_REFRESH_INTERVAL_MS);
+
+        // Return the parsed user so callers can use mspSlug immediately
+        // without waiting for async React state propagation.
+        const user = parseJwt(data.accessToken);
+        return { user: user ?? undefined };
       }
 
       return {};

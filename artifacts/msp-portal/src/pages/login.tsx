@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth-context";
-import { useMspSlug, getStoredSlug } from "@/lib/slug-context";
+import { useMspSlug, getStoredSlug, storeSlug } from "@/lib/slug-context";
 import {
   Card,
   CardContent,
@@ -239,18 +239,26 @@ export default function LoginPage() {
         return;
       }
 
+      // Compute landing from the freshly-resolved user so CustomerUser
+      // always goes to customer-home, not dashboard (pre-login user is null).
+      const resolvedLanding =
+        result.user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+
       if (ctxSlug) {
         // Inside slug-scoped router — navigate() auto-prefixes the slug.
-        // e.g. "/dashboard" → /portal/{slug}/dashboard
-        navigate(defaultLanding);
+        // e.g. "/customer-home" → /portal/{slug}/customer-home
+        navigate(resolvedLanding);
       } else {
         // Flat /login context — no inner router to add the slug prefix.
         // Build the slug-prefixed path manually.
-        const slug = tenantSlug ?? getStoredSlug();
+        // Prefer URL/query/storage slug; fall back to the slug embedded in
+        // the user's JWT (mspSlug) so flat logins never dead-end.
+        const slug = tenantSlug ?? getStoredSlug() ?? result.user?.mspSlug ?? null;
         if (slug) {
-          navigate(`/${slug}${defaultLanding}`);
+          storeSlug(slug);
+          navigate(`/${slug}${resolvedLanding}`);
         } else {
-          // No slug in URL, query, or storage — go to root and let
+          // No slug in URL, query, storage, or JWT — go to root and let
           // RootRedirect try again once auth state propagates.
           navigate("/");
         }

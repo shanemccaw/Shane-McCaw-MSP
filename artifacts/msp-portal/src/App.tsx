@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { SlugProvider, getStoredSlug } from "@/lib/slug-context";
+import { SlugProvider, getStoredSlug, storeSlug } from "@/lib/slug-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
@@ -397,16 +397,21 @@ function FlatLoggedInRedirect() {
   const [, navigate] = useLocation();
   const storedSlug = getStoredSlug();
 
+  // Resolve slug: prefer stored (from a previous visit), then JWT claim.
+  const resolvedSlug = storedSlug ?? user?.mspSlug ?? null;
+
   useEffect(() => {
-    if (storedSlug) {
+    if (resolvedSlug) {
+      // Persist slug so next visit resolves instantly without needing the JWT.
+      if (!storedSlug) storeSlug(resolvedSlug);
       const landing = user?.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
-      navigate(`/${storedSlug}/${landing}`, { replace: true });
+      navigate(`/${resolvedSlug}/${landing}`, { replace: true });
     }
     // No slug known — stay on this component; do NOT navigate to "/" (would loop)
-  }, [storedSlug, user, navigate]);
+  }, [resolvedSlug, storedSlug, user, navigate]);
 
-  // While redirect is pending (storedSlug exists), show spinner
-  if (storedSlug) {
+  // While redirect is pending (slug resolved), show spinner
+  if (resolvedSlug) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -414,7 +419,7 @@ function FlatLoggedInRedirect() {
     );
   }
 
-  // No slug known — stable fallback: prompt the user to navigate to their portal URL
+  // No slug known at all — genuine edge case: account has no MSP association
   return (
     <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
       <div className="w-full max-w-sm text-center text-sidebar-foreground space-y-4">

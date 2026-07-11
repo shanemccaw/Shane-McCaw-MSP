@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspUsersTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspUsersTable, mspsTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, type MspRole } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
@@ -103,6 +103,7 @@ async function getMspClaims(userId: number): Promise<{
   mspRole: MspRole | null;
   mspId: number | null;
   customerId: number | null;
+  mspSlug: string | null;
 }> {
   const [mspUser] = await db
     .select()
@@ -110,17 +111,29 @@ async function getMspClaims(userId: number): Promise<{
     .where(eq(mspUsersTable.userId, userId))
     .limit(1);
 
-  if (!mspUser) return { mspRole: null, mspId: null, customerId: null };
+  if (!mspUser) return { mspRole: null, mspId: null, customerId: null, mspSlug: null };
+
+  let mspSlug: string | null = null;
+  if (mspUser.mspId) {
+    const [msp] = await db
+      .select({ slug: mspsTable.slug })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspUser.mspId))
+      .limit(1);
+    mspSlug = msp?.slug ?? null;
+  }
+
   return {
     mspRole: mspUser.mspRole as MspRole,
     mspId: mspUser.mspId ?? null,
     customerId: mspUser.customerId ?? null,
+    mspSlug,
   };
 }
 
 function buildUserPayload(
   user: typeof usersTable.$inferSelect,
-  mspClaims: { mspRole: MspRole | null; mspId: number | null; customerId: number | null },
+  mspClaims: { mspRole: MspRole | null; mspId: number | null; customerId: number | null; mspSlug: string | null },
 ) {
   return {
     id: user.id,
@@ -136,6 +149,7 @@ function buildUserPayload(
     mspRole: mspClaims.mspRole ?? undefined,
     mspId: mspClaims.mspId ?? undefined,
     customerId: mspClaims.customerId ?? undefined,
+    mspSlug: mspClaims.mspSlug ?? undefined,
   };
 }
 
