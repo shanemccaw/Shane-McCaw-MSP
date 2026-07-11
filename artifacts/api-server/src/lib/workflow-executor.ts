@@ -859,7 +859,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
     case "reconcile_orphaned_runs":
       return { dryRun: true, reconciled: false, task: (node.data.task as string | undefined) ?? "reconcile_orphaned_runs", note: "dry run — reconciliation skipped" };
 
-    case "monitor_execute_package":
+    case "kanban_auto_fire":
       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
 
     case "monitor_subscription_ensure": {
@@ -4988,6 +4988,35 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               : { found: false, objectType: "client", fieldName: foField, fieldValue: foValue };
             break;
           }
+          case "monitoring_package": {
+            // Resolves a monitoring package record from the DB by its slug key.
+            // Use this in event-driven workflows to validate/resolve the package before execution.
+            // Supported fieldNames: "key" (default)
+            const { monitoringPackagesTable: foMpT, monitoringPackageChecksTable: foMpLinkT } = await import("@workspace/db");
+            const { eq: foMpEq } = await import("drizzle-orm");
+            const [foMpRow] = await db.select().from(foMpT).where(foMpEq(foMpT.key, foValue)).limit(1);
+            if (!foMpRow) {
+              output = { found: false, objectType: "monitoring_package", fieldName: foField, fieldValue: foValue };
+              break;
+            }
+            const foMpLinks = await db
+              .select({ checkKey: foMpLinkT.checkKey, sortOrder: foMpLinkT.sortOrder })
+              .from(foMpLinkT)
+              .where(foMpEq(foMpLinkT.packageKey, foMpRow.key))
+              .orderBy(foMpLinkT.sortOrder);
+            output = {
+              found: true,
+              objectType: "monitoring_package",
+              objectId: foMpRow.packageId,
+              packageKey: foMpRow.key,
+              packageId: foMpRow.packageId,
+              packageLabel: foMpRow.label,
+              status: foMpRow.status,
+              checkCount: foMpLinks.length,
+              engines: foMpRow.engines ?? [],
+            };
+            break;
+          }
           case "project": {
             const rows = await db.select().from(projectsTable).where(
               foField === "id" ? eq(projectsTable.id, parseInt(foValue, 10)) :
@@ -5531,7 +5560,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
-      case "monitor_execute_package": {
+      case "kanban_auto_fire": {
         // Fires the appropriate kanban auto-fire function based on the `action`
         // field in the payload (set by the upstream kanban.card_moved event).
         //   action = "script"   → autoFireFirstBacklogScript (Azure runbook execution)
@@ -5545,7 +5574,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           ?? String(payload.action ?? "")) as string;
 
         if (isNaN(mepClientId)) {
-          logger.warn({ runId, nodeId: node.id }, "monitor_execute_package: no clientId — skipping");
+          logger.warn({ runId, nodeId: node.id }, "kanban_auto_fire: no clientId — skipping");
           output = { skipped: true, reason: "no clientId" };
           break;
         }
@@ -5553,24 +5582,24 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         const mepFires: string[] = [];
         if (mepAction === "script" || !mepAction) {
           void autoFireFirstBacklogScript(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "monitor_execute_package: script fire error (non-fatal)");
+            logger.warn({ err, mepClientId }, "kanban_auto_fire: script fire error (non-fatal)");
           });
           mepFires.push("script");
         }
         if (mepAction === "document") {
           void autoFireDocumentCard(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "monitor_execute_package: document fire error (non-fatal)");
+            logger.warn({ err, mepClientId }, "kanban_auto_fire: document fire error (non-fatal)");
           });
           mepFires.push("document");
         }
         if (mepAction === "workflow") {
           void autoFireRunWorkflowCards(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "monitor_execute_package: workflow fire error (non-fatal)");
+            logger.warn({ err, mepClientId }, "kanban_auto_fire: workflow fire error (non-fatal)");
           });
           mepFires.push("workflow");
         }
 
-        logger.info({ runId, mepClientId, mepAction, mepFires }, "wf-executor: monitor_execute_package dispatched");
+        logger.info({ runId, mepClientId, mepAction, mepFires }, "wf-executor: kanban_auto_fire dispatched");
         output = { fired: true, clientId: mepClientId, action: mepAction, dispatched: mepFires };
         break;
       }
@@ -7115,7 +7144,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
         const { executeMonitoringPackage } = await import("./monitor-executor");
-        const mepTriggerId = `wf-run-${runId}-node-${node.id}`;
+        const mepTriggerId =
+          (node.data.triggerId as string | undefined
+            ? interp(node.data.triggerId as string, payload)
+            : undefined) ?? `wf-run-${runId}-node-${node.id}`;
         const mepResult = await executeMonitoringPackage({
           packageKey: mepPackageKey,
           tenantId: mepTenantId,

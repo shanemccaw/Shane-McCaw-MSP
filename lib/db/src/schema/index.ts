@@ -2017,7 +2017,7 @@ export interface WfNode {
     // System (internal / seeded workflows)
     | "system_action"           // retired — kept for backward-compat graph parsing only
     | "reconcile_orphaned_runs" // replaces system_action: reconcile_orphaned_runs / reconcile_late_stuck_queued
-    | "monitor_execute_package" // replaces system_action: auto_fire_kanban
+    | "kanban_auto_fire"        // replaces system_action: auto_fire_kanban (formerly misnamed monitor_execute_package)
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

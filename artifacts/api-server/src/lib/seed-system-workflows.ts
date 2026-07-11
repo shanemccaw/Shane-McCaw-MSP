@@ -21,7 +21,10 @@ interface SystemWorkflowSeed {
   description: string;
   triggerType: "startup" | "schedule" | "event";
   cron?: string;
+  /** Single event name — inserts one trigger row. */
   eventName?: string;
+  /** Multiple event names — inserts one trigger row per event name. Takes precedence over eventName when provided. */
+  eventNames?: string[];
   triggerEnabled?: boolean;
   graph: {
     nodes: Array<{ id: string; type: string; position: { x: number; y: number }; data: Record<string, unknown> }>;
@@ -30,6 +33,126 @@ interface SystemWorkflowSeed {
 }
 
 const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
+  // ── On Purchase — Run Monitoring Package ──────────────────────────────────
+  {
+    name: "On Purchase — Run Monitoring Package",
+    description:
+      "Triggered when a client completes a purchase or grants monitoring consent. " +
+      "Expects the event payload to carry: clientId (user record ID), packageKey (monitoring package slug, published by the purchase/consent event), and tenantId (Azure AD tenant GUID). " +
+      "Graph: (1) find_object resolves the client record by clientId. " +
+      "(2) find_object resolves and validates the monitoring_package record from the DB using the packageKey from the event payload — this is the package-resolution step that confirms the package is active and loads its metadata before execution. " +
+      "(3) monitor_execute_package runs all checks for the resolved package against the tenant. " +
+      "Per-check progress is emitted to the run timeline via the SSE progress channel.",
+    triggerType: "event",
+    eventNames: ["purchase.completed", "consent.granted"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Purchase / Consent Event" },
+        },
+        {
+          id: "find_client",
+          type: "find_object",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Client Record",
+            objectType: "client",
+            fieldName: "id",
+            fieldValueExpr: "{{clientId}}",
+          },
+        },
+        {
+          // Resolves and validates the monitoring package from the DB by the event-payload key.
+          // Outputs: packageKey, packageId, packageLabel, status, checkCount, engines.
+          id: "resolve_pkg",
+          type: "find_object",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "find_object",
+            label: "Resolve Monitoring Package",
+            objectType: "monitoring_package",
+            fieldName: "key",
+            fieldValueExpr: "{{packageKey}}",
+          },
+        },
+        {
+          // Loads full package metadata (check list, engine list) using the canonical key
+          // emitted by the find_object step above.
+          id: "get_pkg",
+          type: "monitor_get_package",
+          position: { x: 300, y: 480 },
+          data: {
+            nodeType: "monitor_get_package",
+            label: "Load Package Metadata",
+            packageKey: "{{steps.resolve_pkg.packageKey}}",
+          },
+        },
+        {
+          id: "execute_pkg",
+          type: "monitor_execute_package",
+          position: { x: 300, y: 620 },
+          data: {
+            nodeType: "monitor_execute_package",
+            label: "Execute Monitor Checks",
+            packageKey: "{{steps.get_pkg.packageKey}}",
+            tenantId: "{{tenantId}}",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 300, y: 760 },
+          data: { nodeType: "condition", label: "Checks Passed?", expression: "runStatus == 'completed'" },
+        },
+        {
+          id: "notify_ok",
+          type: "create_notification",
+          position: { x: 150, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Monitoring Complete",
+            title: "Monitoring package executed successfully",
+            body: "Package {{steps.get_pkg.packageLabel}} completed with {{steps.execute_pkg.checksOk}} of {{steps.execute_pkg.checksTotal}} checks passing for {{steps.find_client.name}}.",
+            type: "general",
+          },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 450, y: 900 },
+          data: {
+            nodeType: "create_notification",
+            label: "Monitoring Issues",
+            title: "Monitoring run completed with issues",
+            body: "Package {{steps.get_pkg.packageLabel}} for {{steps.find_client.name}} finished with status {{steps.execute_pkg.runStatus}}. {{steps.execute_pkg.checksError}} check(s) failed, {{steps.execute_pkg.consentRevoked}} consent-revoked.",
+            type: "general",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 1040 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start",       target: "find_client"  },
+        { id: "e2", source: "find_client", target: "resolve_pkg"  },
+        { id: "e3", source: "resolve_pkg", target: "get_pkg"      },
+        { id: "e4", source: "get_pkg",     target: "execute_pkg"  },
+        { id: "e5", source: "execute_pkg", target: "branch"       },
+        { id: "e6", source: "branch",      target: "notify_ok",   sourceHandle: "true"  },
+        { id: "e7", source: "branch",      target: "notify_fail", sourceHandle: "false" },
+        { id: "e8", source: "notify_ok",   target: "end"          },
+        { id: "e9", source: "notify_fail", target: "end"          },
+      ],
+    },
+  },
   // ── MSP Dunning State Machine ─────────────────────────────────────────────
   {
     name: "MSP Dunning State Machine",
@@ -486,9 +609,9 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         {
           id: "execute",
-          type: "monitor_execute_package",
+          type: "kanban_auto_fire",
           position: { x: 100, y: 360 },
-          data: { nodeType: "monitor_execute_package", label: "Auto-fire Card", clientId: "{{clientUserId}}", action: "{{action}}" },
+          data: { nodeType: "kanban_auto_fire", label: "Auto-fire Card", clientId: "{{clientUserId}}", action: "{{action}}" },
         },
         { id: "end",      type: "end", position: { x: 100, y: 490 }, data: { nodeType: "end", label: "Done" } },
         { id: "end_skip", type: "end", position: { x: 250, y: 230 }, data: { nodeType: "end", label: "No client — skip" } },
@@ -1561,7 +1684,31 @@ export async function seedSystemWorkflows(): Promise<void> {
              AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
           [defId, JSON.stringify(seed.graph)],
         );
-        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + monitor_execute_package");
+        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + kanban_auto_fire");
+        // Patch v2: rename monitor_execute_package execute node → kanban_auto_fire (type collision fix).
+        // Guard: fires only when execute node still has the old type name.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"execute","type":"monitor_execute_package"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire v2 — renamed execute node type monitor_execute_package → kanban_auto_fire");
+      } else if (seed.name === "On Purchase — Run Monitoring Package") {
+        // Patch v1: upgrade graphs seeded without monitor_get_package (find_object → execute_pkg directly).
+        // Guard: fires when execute_pkg node takes its packageKey from resolve_pkg (not get_pkg),
+        // meaning monitor_get_package was absent in that version.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"execute_pkg","data":{"packageKey":"{{steps.resolve_pkg.packageKey}}"}}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched On Purchase — added monitor_get_package between find_object and monitor_execute_package");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
@@ -1571,14 +1718,17 @@ export async function seedSystemWorkflows(): Promise<void> {
       );
 
       if (existingTrigger.rowCount === 0) {
-        if (seed.triggerType === "event" && seed.eventName) {
-          // Explicit event trigger (e.g. sow.scope_reduced). Respects triggerEnabled (default: true).
+        if (seed.triggerType === "event" && (seed.eventNames?.length || seed.eventName)) {
+          // Explicit event trigger(s). eventNames (array) takes precedence over eventName.
           const enabled = seed.triggerEnabled !== false;
-          await pool.query(
-            `INSERT INTO wf_triggers (definition_id, type, config, enabled)
-             VALUES ($1, 'event', $2::jsonb, $3)`,
-            [defId, JSON.stringify({ eventName: seed.eventName }), enabled],
-          );
+          const names = seed.eventNames?.length ? seed.eventNames : [seed.eventName!];
+          for (const evName of names) {
+            await pool.query(
+              `INSERT INTO wf_triggers (definition_id, type, config, enabled)
+               VALUES ($1, 'event', $2::jsonb, $3)`,
+              [defId, JSON.stringify({ eventName: evName }), enabled],
+            );
+          }
         } else if (seed.triggerType === "startup") {
           // Startup trigger: fire once on init, no next_run_at
           // Special case: Kanban Auto-fire uses event trigger, not startup

@@ -185,6 +185,13 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   // ── Scripts ──
   generate_script:      { bg: "#0D1A10", border: "#22C55E", icon: "📜", label: "Generate Script"       },
   check_script_output:  { bg: "#041A18", border: "#2DD4BF", icon: "🔬", label: "Check Script Output"   },
+  // ── Kanban (internal — not in library) ──
+  kanban_auto_fire: { bg: "#1A1020", border: "#7C3AED", icon: "⚡", label: "Auto-fire Card" },
+  // ── Monitoring ──
+  monitor_get_package:         { bg: "#0F2A2A", border: "#00B4D8", icon: "📦", label: "Get Monitor Package"        },
+  monitor_execute_package:     { bg: "#0F2A2A", border: "#00B4D8", icon: "📡", label: "Execute Monitor Package"    },
+  monitor_poll_activity:       { bg: "#0A2020", border: "#06B6D4", icon: "📶", label: "Poll Activity"              },
+  monitor_subscription_ensure: { bg: "#0A2020", border: "#06B6D4", icon: "🔗", label: "Ensure Subscription"       },
   // ── Utilities ──
   comment:  { bg: "#1A1600", border: "#CA8A04", icon: "📝", label: "Comment"            },
 };
@@ -345,6 +352,43 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   send_mobile_push: [{ key: "sent", label: "true if push was dispatched to at least one device" }, { key: "sentCount", label: "Number of device tokens reached" }],
   // Create In-App Notification
   create_notification: [{ key: "notificationCount", label: "Number of admin users who received the in-app notification" }],
+  // Monitoring nodes
+  monitor_get_package: [
+    { key: "packageKey",   label: "Package key (slug)" },
+    { key: "packageId",    label: "Package DB UUID" },
+    { key: "packageLabel", label: "Package display label" },
+    { key: "checks",       label: "Array of check objects (checkKey, label, requiresCustomerScript, sortOrder)" },
+    { key: "checkCount",   label: "Number of checks in this package" },
+    { key: "engines",      label: "Array of intelligence engine keys that will be recomputed after execution" },
+  ],
+  monitor_execute_package: [
+    { key: "runStatus",          label: "Overall run outcome", enumValues: ["completed", "partial_failure", "consent_revoked", "no_checks"] },
+    { key: "packageKey",         label: "Package key that was executed" },
+    { key: "tenantId",           label: "Tenant ID that was assessed" },
+    { key: "triggerId",          label: "Idempotency trigger ID for this run" },
+    { key: "checksTotal",        label: "Total number of checks attempted" },
+    { key: "checksOk",           label: "Number of checks that passed (status: ok)" },
+    { key: "checksError",        label: "Number of checks that failed (status: error)" },
+    { key: "requiresScript",     label: "Number of checks requiring a customer-side script" },
+    { key: "consentRevoked",     label: "Number of checks that encountered a consent-revoked error" },
+    { key: "checks",             label: "Array of per-check result objects (checkKey, status, extractedProperties, severityMatched, errorMessage, itemCount, pageCount)" },
+    { key: "enginesRecomputed",  label: "Array of intelligence engine keys recomputed after the run" },
+    { key: "startedAt",          label: "ISO timestamp when execution started" },
+    { key: "completedAt",        label: "ISO timestamp when execution finished" },
+  ],
+  monitor_poll_activity: [
+    { key: "criticalChangeDetected", label: "true if at least one critical-severity event was found" },
+    { key: "eventCount",             label: "Total number of audit events fetched" },
+    { key: "criticalCount",          label: "Number of events that matched a critical severity rule" },
+    { key: "contentType",            label: "Content type that was polled" },
+    { key: "tenantId",               label: "Tenant ID that was polled" },
+  ],
+  monitor_subscription_ensure: [
+    { key: "subscriptionStatus", label: "active if subscription is live, error if start failed", enumValues: ["active", "error", "skipped"] },
+    { key: "contentType",        label: "Content type for this subscription" },
+    { key: "tenantId",           label: "Tenant ID the subscription was ensured for" },
+    { key: "webhookAuthId",      label: "Webhook auth ID from the O365 Management API (null if not applicable)" },
+  ],
   // Report Progress — passes payload through unchanged
   report_progress: [],
   // Approval Gate — outputs injected into payload after the gate is approved and execution resumes
@@ -1008,6 +1052,15 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
     nodes: [
       { type: "generate_script",     label: "Generate Script",      description: "AI-generates a PowerShell script from a service or insights document and saves it to the Script Library under Workflow Generated", tags: ["script", "powershell", "ai", "generate", "library", "m365", "azure"] },
       { type: "check_script_output", label: "Check Script Output",  description: "Use Claude AI to evaluate PowerShell / runbook output and branch to Passed or On Failure", tags: ["script", "check", "evaluate", "ai", "branch", "condition", "powershell", "output"] },
+    ],
+  },
+  {
+    name: "Monitoring",
+    nodes: [
+      { type: "monitor_get_package",         label: "Get Monitor Package",    description: "Resolve an active monitoring package by its key and output the list of checks it contains. Chain into Execute Monitor Package.", tags: ["monitoring", "package", "checks", "msp", "graph", "tenant"] },
+      { type: "monitor_execute_package",     label: "Execute Monitor Package", description: "Run all checks in a monitoring package against a tenant via the Microsoft Graph API. Emits per-check progress and outputs runStatus, checksOk/Error, and checkResults.", tags: ["monitoring", "execute", "package", "checks", "msp", "graph", "tenant", "consent"] },
+      { type: "monitor_poll_activity",       label: "Poll Activity",           description: "Poll the O365 Management Activity API for new audit events since the stored watermark. Records critical events and advances the watermark on success.", tags: ["monitoring", "activity", "audit", "poll", "o365", "tenant", "msp"] },
+      { type: "monitor_subscription_ensure", label: "Ensure Subscription",     description: "Start or re-confirm an O365 Management Activity API subscription for a tenant and content type. Safe to call repeatedly — idempotent upsert.", tags: ["monitoring", "subscription", "o365", "activity", "tenant", "msp"] },
     ],
   },
   {
@@ -4177,6 +4230,118 @@ function NodeConfigPanel({
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
               <p className="text-[10px] text-[#484F58]">Evaluates all configured signal rules for the client and outputs the fired signal keys. Pipe <span className="font-mono text-[#7D8590]">{"{{signals}}"}</span> into the <em>Pre-computed Signals</em> field of a downstream <em>Generate Document</em> (consolidated_sow) node to skip redundant signal evaluation. Outputs:</p>
               <p className="text-[10px] font-mono text-[#7D8590]">{"{{signals}}"} · {"{{signalCount}}"} · {"{{hasSignals}}"}</p>
+            </div>
+          </>
+        )}
+
+        {/* ── Monitoring nodes ──────────────────────────────── */}
+
+        {nodeType === "monitor_get_package" && (
+          <>
+            <PayloadField
+              label="Package Key"
+              value={(node.data.packageKey as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, packageKey: v })}
+              placeholder="{{steps.findObj.packageKey}} or a literal key, e.g. m365-core"
+              ancestorOutputs={ancestorOutputs}
+              hint="Key (slug) of the monitoring package to resolve. Must match an active package in the Monitor Packages library."
+            />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Resolves the package metadata and its list of checks without executing them. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{packageKey}}"} · {"{{packageLabel}}"} · {"{{checks}}"} · {"{{checkCount}}"} · {"{{engines}}"}</p>
+              <p className="text-[10px] text-[#484F58]">Pipe <span className="font-mono text-[#7D8590]">{"{{packageKey}}"}</span> into an <em>Execute Monitor Package</em> node to run the checks.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "monitor_execute_package" && (
+          <>
+            <PayloadField
+              label="Package Key"
+              value={(node.data.packageKey as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, packageKey: v })}
+              placeholder="{{steps.getPackage.packageKey}} or a literal key"
+              ancestorOutputs={ancestorOutputs}
+              hint="Key of the monitoring package to execute. All active checks in the package will be run against the tenant."
+            />
+            <PayloadField
+              label="Tenant ID"
+              value={(node.data.tenantId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, tenantId: v })}
+              placeholder="{{tenantId}} or a literal Azure AD tenant GUID"
+              ancestorOutputs={ancestorOutputs}
+              hint="Azure AD tenant ID for the customer. Used to authenticate Graph API calls via the platform service principal."
+            />
+            <PayloadField
+              label="Trigger ID (optional — for idempotency)"
+              value={(node.data.triggerId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, triggerId: v })}
+              placeholder="{{steps.start.runId}} or leave blank for auto"
+              ancestorOutputs={ancestorOutputs}
+              hint="Optional stable key used to deduplicate check results. Auto-generated from the run ID if left blank."
+            />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Runs all checks in the package via the Microsoft Graph API. Emits per-check progress events visible in the run timeline. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{runStatus}}"} · {"{{checksTotal}}"} · {"{{checksOk}}"} · {"{{checksError}}"} · {"{{consentRevoked}}"} · {"{{checks}}"} · {"{{enginesRecomputed}}"}</p>
+              <p className="text-[10px] text-[#484F58]"><span className="font-mono text-[#7D8590]">{"{{runStatus}}"}</span> is one of <span className="font-mono text-[#7D8590]">completed · partial_failure · consent_revoked · no_checks</span>. Branch on it with a Condition node.</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "monitor_poll_activity" && (
+          <>
+            <PayloadField
+              label="Tenant ID"
+              value={(node.data.tenantId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, tenantId: v })}
+              placeholder="{{tenantId}}"
+              ancestorOutputs={ancestorOutputs}
+              hint="Azure AD tenant ID to poll. Reads the stored watermark from the activity_subscriptions table and advances it on success."
+            />
+            <PayloadField
+              label="Content Type"
+              value={(node.data.contentType as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, contentType: v })}
+              placeholder="Audit.AzureActiveDirectory"
+              ancestorOutputs={ancestorOutputs}
+              hint="O365 Management Activity content type, e.g. Audit.AzureActiveDirectory, Audit.Exchange, Audit.SharePoint."
+            />
+            <PayloadField
+              label="Check Key (optional)"
+              value={(node.data.checkKey as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, checkKey: v })}
+              placeholder="live.audit-aad"
+              ancestorOutputs={ancestorOutputs}
+              hint="Key under which critical events are stored in tenant_monitor_profiles. Defaults to live.<contentType> if omitted."
+            />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Fetches audit blobs since the stored watermark and applies severity rules. Writes critical events to tenant_monitor_profiles and advances the watermark. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{criticalChangeDetected}}"} · {"{{eventCount}}"} · {"{{criticalCount}}"}</p>
+            </div>
+          </>
+        )}
+
+        {nodeType === "monitor_subscription_ensure" && (
+          <>
+            <PayloadField
+              label="Tenant ID"
+              value={(node.data.tenantId as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, tenantId: v })}
+              placeholder="{{tenantId}}"
+              ancestorOutputs={ancestorOutputs}
+              hint="Azure AD tenant ID. The subscription will be registered (or confirmed) under this tenant."
+            />
+            <PayloadField
+              label="Content Type"
+              value={(node.data.contentType as string) ?? ""}
+              onChange={v => onChange(node.id, { ...node.data, contentType: v })}
+              placeholder="Audit.AzureActiveDirectory"
+              ancestorOutputs={ancestorOutputs}
+              hint="O365 Management Activity content type to subscribe to. E.g. Audit.AzureActiveDirectory, Audit.Exchange, Audit.SharePoint, DLP.All."
+            />
+            <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5 space-y-1">
+              <p className="text-[10px] text-[#484F58]">Idempotent — safe to call on every run. Creates the subscription if missing or re-confirms it if it already exists. Resets the poll watermark on first creation. Outputs:</p>
+              <p className="text-[10px] font-mono text-[#7D8590]">{"{{subscriptionStatus}}"} · {"{{contentType}}"} · {"{{tenantId}}"} · {"{{webhookAuthId}}"}</p>
             </div>
           </>
         )}
