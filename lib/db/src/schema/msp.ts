@@ -476,3 +476,57 @@ export const mspJobQueueTable = pgTable("msp_job_queue", {
 
 export type MspJobQueueRow = typeof mspJobQueueTable.$inferSelect;
 export type InsertMspJobQueueRow = typeof mspJobQueueTable.$inferInsert;
+
+// ── Outbound Webhooks ──────────────────────────────────────────────────────────
+// Customer- and MSP-level webhook registrations. Each registration holds a URL,
+// a plaintext HMAC-SHA256 secret (used to sign outgoing payloads), and the set
+// of event types the owner wants to receive.
+
+export const outboundWebhooksTable = pgTable("outbound_webhooks", {
+  id: serial("id").primaryKey(),
+  webhookId: uuid("webhook_id").notNull().unique().defaultRandom(),
+  ownerType: text("owner_type", { enum: ["msp", "customer", "platform"] }).notNull(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  url: text("url").notNull(),
+  secret: text("secret").notNull(),
+  secretPrefix: text("secret_prefix").notNull(),
+  eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("outbound_webhooks_msp_id_idx").on(t.mspId),
+  index("outbound_webhooks_customer_id_idx").on(t.customerId),
+]);
+
+export type OutboundWebhook = typeof outboundWebhooksTable.$inferSelect;
+export type InsertOutboundWebhook = typeof outboundWebhooksTable.$inferInsert;
+
+// ── Outbound Webhook Deliveries ────────────────────────────────────────────────
+// Delivery log for outbound webhook dispatch. Each row records one HTTP attempt.
+// Multiple rows per event possible (retries).
+
+export const outboundWebhookDeliveriesTable = pgTable("outbound_webhook_deliveries", {
+  id: serial("id").primaryKey(),
+  deliveryId: uuid("delivery_id").notNull().unique().defaultRandom(),
+  webhookId: uuid("webhook_id").notNull().references(() => outboundWebhooksTable.webhookId, { onDelete: "cascade" }),
+  eventId: uuid("event_id"),
+  eventType: text("event_type").notNull(),
+  attempt: integer("attempt").notNull().default(1),
+  status: text("status", { enum: ["pending", "success", "failed", "retrying"] }).notNull().default("pending"),
+  statusCode: integer("status_code"),
+  responseSnippet: text("response_snippet"),
+  requestBodySnapshot: jsonb("request_body_snapshot").$type<Record<string, unknown>>(),
+  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("outbound_webhook_deliveries_webhook_id_idx").on(t.webhookId),
+  index("outbound_webhook_deliveries_event_id_idx").on(t.eventId),
+  index("outbound_webhook_deliveries_created_at_idx").on(t.createdAt),
+]);
+
+export type OutboundWebhookDelivery = typeof outboundWebhookDeliveriesTable.$inferSelect;
+export type InsertOutboundWebhookDelivery = typeof outboundWebhookDeliveriesTable.$inferInsert;

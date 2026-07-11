@@ -20,6 +20,7 @@ import type {
   MspRole,
 } from "@workspace/db";
 import { logger } from "./logger";
+import { fanOutWebhooks } from "./webhook-delivery.ts";
 
 // ── Runtime envelope schema ───────────────────────────────────────────────────
 
@@ -137,6 +138,16 @@ export async function dispatchUnsafe(opts: EventDispatchOptions): Promise<Dispat
     ownerType: opts.ownerType ?? (opts.customerId != null ? "customer" : opts.mspId != null ? "msp" : "platform"),
     mspId: opts.mspId ?? null,
     customerId: opts.customerId ?? null,
+  });
+
+  // Fan out to registered outbound webhooks (fire-and-forget, never throws)
+  void fanOutWebhooks({
+    eventId,
+    eventType: normalized.eventType,
+    occurredAt,
+    mspId: opts.mspId ?? null,
+    customerId: opts.customerId ?? null,
+    payload: opts.payload,
   });
 
   return { eventId, eventType: opts.eventType, occurredAt };

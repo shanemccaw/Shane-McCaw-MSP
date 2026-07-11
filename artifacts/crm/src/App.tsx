@@ -26,6 +26,7 @@ import PortalArchive from "@/pages/portal/PortalArchive";
 import PortalM365Profile from "@/pages/portal/PortalM365Profile";
 import PortalAppRegistration from "@/pages/portal/PortalAppRegistration";
 import PortalSecurity from "@/pages/portal/PortalSecurity";
+import PortalWebhooks from "@/pages/portal/PortalWebhooks";
 import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalPrivacy from "@/pages/portal/PortalPrivacy";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
@@ -304,6 +305,9 @@ function Router() {
       </Route>
       <Route path="/portal/security">
         <RequireAuth role="client"><RequireEngagement><PortalSecurity /></RequireEngagement></RequireAuth>
+      </Route>
+      <Route path="/portal/webhooks">
+        <RequireAuth role="client"><RequireEngagement><PortalWebhooks /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/insights">
         <RequireAuth role="client"><RequireEngagement><PortalInsights /></RequireEngagement></RequireAuth>

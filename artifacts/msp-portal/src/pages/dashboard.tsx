@@ -24,6 +24,7 @@ import {
   Shield,
   Users,
   Bell,
+  Webhook,
 } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -141,6 +142,7 @@ export default function DashboardPage() {
           <NavItem icon={Users} label="Customers" href="/customers" />
           <NavItem icon={Bell} label="Events" href="/events" />
           <NavItem icon={Shield} label="Audit Logs" href="/audit" />
+          <NavItem icon={Webhook} label="Webhooks" href="/webhooks" />
         </nav>
 
         <div className="px-3 py-4 border-t border-sidebar-border space-y-2">
@@ -340,11 +342,13 @@ function NavItem({
   label,
   href,
   active,
+  href,
 }: {
   icon: React.ElementType;
   label: string;
   href?: string;
   active?: boolean;
+  href?: string;
 }) {
   const cls = `w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
     active
@@ -362,6 +366,7 @@ function NavItem({
       </Link>
     );
   }
+
 
   return (
     <button className={cls}>

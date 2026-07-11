@@ -7,6 +7,7 @@ import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import OffboardingPage from "@/pages/offboarding";
+import WebhooksPage from "@/pages/webhooks";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -47,6 +48,9 @@ function Router() {
       </Route>
       <Route path="/offboarding">
         <ProtectedRoute component={OffboardingPage} />
+      </Route>
+      <Route path="/webhooks">
+        <ProtectedRoute component={WebhooksPage} />
       </Route>
       <Route path="/">
         <Redirect to="/dashboard" />
