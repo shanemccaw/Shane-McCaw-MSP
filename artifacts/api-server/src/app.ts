@@ -1,7 +1,8 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
+import { randomUUID } from "crypto";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -14,12 +15,19 @@ app.set("trust proxy", 1);
 app.use(
   pinoHttp({
     logger,
+    // Generate a stable traceId per request, exposed as x-trace-id response header.
+    genReqId(req) {
+      const existing = req.headers["x-trace-id"];
+      if (typeof existing === "string" && existing.length > 0) return existing;
+      return randomUUID();
+    },
     serializers: {
       req(req) {
         return {
           id: req.id,
           method: req.method,
           url: req.url?.split("?")[0],
+          traceId: req.id,
         };
       },
       res(res) {
@@ -30,6 +38,13 @@ app.use(
     },
   }),
 );
+
+// Expose the traceId in every response so clients can correlate logs.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const traceId = (req as unknown as { id?: string }).id ?? randomUUID();
+  res.setHeader("x-trace-id", traceId);
+  next();
+});
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
 // Webhook endpoints need raw body for signature verification — must be before express.json()

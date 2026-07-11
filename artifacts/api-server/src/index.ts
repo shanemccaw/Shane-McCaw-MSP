@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initAlertEngine } from "./lib/alert-engine";
 import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
 import { initGraphSubscription } from "./lib/graph-subscription";
 import { graphCredentialsPresent } from "./lib/graph";
@@ -140,6 +141,12 @@ app.listen(port, (err) => {
   // Loads start mappings and registers event bus listener.
   initPortalWorkflowEngine().catch((err: unknown) => {
     logger.warn({ err }, "portal-wf: engine init failed (non-fatal)");
+  });
+
+  // ── Platform Alert Engine ─────────────────────────────────────────────────
+  // Ensures alert tables, seeds default rules, starts polling every 5 minutes.
+  initAlertEngine(5 * 60 * 1000).catch((err: unknown) => {
+    logger.warn({ err }, "alert-engine: init failed (non-fatal)");
   });
 
   // ── Workflow Engine: seed system workflows then fire startup triggers ──────

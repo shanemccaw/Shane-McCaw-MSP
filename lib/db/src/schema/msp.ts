@@ -1791,3 +1791,79 @@ export const mspCustomerClickwrapsTable = pgTable("msp_customer_clickwraps", {
   index("msp_customer_clickwraps_msp_id_idx").on(t.mspId),
   index("msp_customer_clickwraps_customer_user_id_idx").on(t.customerUserId),
 ]);
+
+// ── Observability: Alert Rules ─────────────────────────────────────────────────
+// Configurable alert rules evaluated by the platform alert engine.
+// Each rule defines a condition type, threshold, and delivery preferences.
+
+export const MSP_ALERT_CONDITION_TYPES = [
+  "dlq_backlog",       // unresolved DLQ items exceed threshold
+  "billing_failure",   // MSP subscriptions in payment_failed_at state
+  "sla_breach",        // fulfillment_queue rows overdue past SLA
+  "event_bus_backlog", // webhook delivery failures in last N minutes
+  "job_failure_rate",  // background jobs failing at above-threshold rate
+] as const;
+export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
+
+export const MSP_ALERT_SEVERITIES = ["warning", "critical"] as const;
+export type MspAlertSeverity = typeof MSP_ALERT_SEVERITIES[number];
+
+export const mspAlertRulesTable = pgTable("msp_alert_rules", {
+  id: serial("id").primaryKey(),
+  // Human-readable unique key, e.g. "dlq_backlog_critical"
+  ruleKey: text("rule_key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  conditionType: text("condition_type", { enum: MSP_ALERT_CONDITION_TYPES }).notNull(),
+  // For count-based conditions: fire when count >= threshold
+  threshold: integer("threshold").notNull().default(5),
+  // Lookback window in minutes for rate-based conditions
+  windowMinutes: integer("window_minutes").notNull().default(60),
+  severity: text("severity", { enum: MSP_ALERT_SEVERITIES }).notNull().default("warning"),
+  enabled: boolean("enabled").notNull().default(true),
+  // Delivery channels
+  deliveryEmail: boolean("delivery_email").notNull().default(true),
+  deliveryPush: boolean("delivery_push").notNull().default(true),
+  // Minimum gap between re-alerts for the same rule (de-duplication window)
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+  // Admin Panel deep-link shown in alert delivery (e.g. /system/dlq)
+  deepLinkPath: text("deep_link_path"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_alert_rules_condition_type_idx").on(t.conditionType),
+  index("msp_alert_rules_enabled_idx").on(t.enabled),
+]);
+
+export type MspAlertRule = typeof mspAlertRulesTable.$inferSelect;
+export type InsertMspAlertRule = typeof mspAlertRulesTable.$inferInsert;
+
+// ── Observability: Alert Events ────────────────────────────────────────────────
+// Records every time an alert rule fires. Used for de-duplication (cooldown)
+// and the alert history log in the Admin Panel.
+
+export const mspAlertEventsTable = pgTable("msp_alert_events", {
+  id: serial("id").primaryKey(),
+  alertEventId: uuid("alert_event_id").notNull().unique().defaultRandom(),
+  ruleId: integer("rule_id").notNull().references(() => mspAlertRulesTable.id, { onDelete: "cascade" }),
+  ruleKey: text("rule_key").notNull(),
+  severity: text("severity", { enum: MSP_ALERT_SEVERITIES }).notNull(),
+  conditionValue: integer("condition_value").notNull(),
+  // Human-readable description of what fired (e.g. "DLQ has 12 unresolved items")
+  summary: text("summary").notNull(),
+  // Deep-link path for the admin panel (e.g. /system/dlq)
+  deepLinkPath: text("deep_link_path"),
+  // Optional MSP context for MSP-scoped alerts
+  mspId: integer("msp_id"),
+  // Delivery tracking
+  deliveredEmail: boolean("delivered_email").notNull().default(false),
+  deliveredPush: boolean("delivered_push").notNull().default(false),
+  // Set when an operator acknowledges / resolves the alert
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedBy: integer("resolved_by"),
+  firedAt: timestamp("fired_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_alert_events_rule_id_idx").on(t.ruleId),
+  index("msp_alert_events_fired_at_idx").on(t.firedAt),
+  index("msp_alert_events_severity_idx").on(t.severity),
+]);
