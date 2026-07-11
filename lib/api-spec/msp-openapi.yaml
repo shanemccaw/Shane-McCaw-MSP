@@ -1,0 +1,761 @@
+openapi: 3.1.0
+info:
+  # Do not change the title — it controls generated filenames (MspApi → msp-api.ts)
+  title: MspApi
+  version: 0.1.0
+  description: MSP Portal API specification — covers authentication, MSP CRUD, customer management, and portal-facing endpoints.
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: msp-auth
+    description: MSP portal authentication
+  - name: msp-portal
+    description: MSP dashboard and offboarding
+  - name: msp-customers
+    description: MSP customer management
+  - name: msp-signup
+    description: MSP self-service signup and tier selection
+  - name: msp-settings
+    description: MSP organisation settings
+  - name: msp-consent
+    description: Microsoft admin-consent flow
+
+paths:
+  # ── Auth ─────────────────────────────────────────────────────────────────────
+
+  /msp/auth/login:
+    post:
+      operationId: mspAuthLogin
+      tags: [msp-auth]
+      summary: Log in to the MSP portal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MspLoginInput"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspAuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  /msp/auth/refresh:
+    post:
+      operationId: mspAuthRefresh
+      tags: [msp-auth]
+      summary: Refresh MSP access token using httpOnly cookie
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspAuthResponse"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  /msp/auth/logout:
+    post:
+      operationId: mspAuthLogout
+      tags: [msp-auth]
+      summary: Log out and clear the refresh token cookie
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+
+  /msp/auth/me:
+    get:
+      operationId: mspAuthMe
+      tags: [msp-auth]
+      summary: Return the currently authenticated user's profile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspUserProfile"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  # ── Portal tenant resolution (public) ─────────────────────────────────────
+
+  /portal/tenant/{slug}:
+    get:
+      operationId: getPortalTenant
+      tags: [msp-portal]
+      summary: Resolve a tenant slug to its MSP record (used for portal branding)
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+          description: The MSP's URL slug
+      responses:
+        "200":
+          description: Tenant found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspTenant"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  # ── MSP Dashboard ─────────────────────────────────────────────────────────
+
+  /msp/dashboard:
+    get:
+      operationId: getMspDashboard
+      tags: [msp-portal]
+      summary: Return MSP KPI dashboard metrics
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspDashboard"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  # ── Customers ─────────────────────────────────────────────────────────────
+
+  /msp/customers:
+    get:
+      operationId: listMspCustomers
+      tags: [msp-customers]
+      summary: List customers for the authenticated MSP
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - in: query
+          name: search
+          schema:
+            type: string
+          description: Filter by company name or domain
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, inactive, all]
+            default: all
+      responses:
+        "200":
+          description: Customer list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspCustomerList"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+    post:
+      operationId: createMspCustomer
+      tags: [msp-customers]
+      summary: Create a new customer under the authenticated MSP
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMspCustomerInput"
+      responses:
+        "201":
+          description: Customer created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspCustomer"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  /msp/customers/{id}:
+    get:
+      operationId: getMspCustomer
+      tags: [msp-customers]
+      summary: Get a single customer record
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Customer record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspCustomer"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+    patch:
+      operationId: updateMspCustomer
+      tags: [msp-customers]
+      summary: Update a customer record
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMspCustomerInput"
+      responses:
+        "200":
+          description: Updated customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspCustomer"
+        "404":
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  # ── Signup / Tiers ────────────────────────────────────────────────────────
+
+  /msp/signup/tiers:
+    get:
+      operationId: listMspSignupTiers
+      tags: [msp-signup]
+      summary: List available MSP subscription tiers
+      responses:
+        "200":
+          description: Tier list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspTierList"
+
+  # ── Settings ──────────────────────────────────────────────────────────────
+
+  /msp/settings:
+    get:
+      operationId: getMspSettings
+      tags: [msp-settings]
+      summary: Return MSP organisation settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspSettings"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+    patch:
+      operationId: updateMspSettings
+      tags: [msp-settings]
+      summary: Update MSP organisation settings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMspSettingsInput"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspSettings"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+  # ── Admin consent flow ────────────────────────────────────────────────────
+
+  /consent/invite-link:
+    post:
+      operationId: createConsentInviteLink
+      tags: [msp-consent]
+      summary: Generate a single-use Microsoft admin-consent invite link
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentInviteLinkInput"
+      responses:
+        "200":
+          description: Invite link created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentInviteLinkResponse"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+        "503":
+          description: Multi-tenant app credentials not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MspErrorResponse"
+
+# ── Components ────────────────────────────────────────────────────────────────
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+
+    MspLoginInput:
+      type: object
+      required: [email, password, slug]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          description: The MSP's portal slug
+        totpCode:
+          type: string
+          description: TOTP code for MFA-enabled accounts
+
+    MspAuthResponse:
+      type: object
+      required: [accessToken, user]
+      properties:
+        accessToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/MspUserProfile"
+
+    MspUserProfile:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [admin, user]
+        mspRole:
+          type: string
+          nullable: true
+          enum: [PlatformAdmin, MSPAdmin, MSPOperator, CustomerUser, ServiceAccount, Free]
+        mspId:
+          type: integer
+          nullable: true
+        mspSlug:
+          type: string
+          nullable: true
+        customerId:
+          type: integer
+          nullable: true
+
+    # ── Tenant ───────────────────────────────────────────────────────────────
+
+    MspTenant:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+        name:
+          type: string
+        logoUrl:
+          type: string
+          nullable: true
+        primaryColor:
+          type: string
+          nullable: true
+        status:
+          type: string
+
+    # ── Dashboard ─────────────────────────────────────────────────────────────
+
+    MspDashboard:
+      type: object
+      properties:
+        msp:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: integer
+            name:
+              type: string
+            status:
+              type: string
+            offboardingState:
+              type: string
+              nullable: true
+        customers:
+          type: object
+          properties:
+            total:
+              type: integer
+            active:
+              type: integer
+            inactive:
+              type: integer
+            suspended:
+              type: integer
+        signals:
+          type: object
+          properties:
+            firedThisMonth:
+              type: integer
+        offers:
+          type: object
+          properties:
+            sentThisMonth:
+              type: integer
+            acceptedThisMonth:
+              type: integer
+            acceptanceRate:
+              type: number
+            unacceptedCount:
+              type: integer
+        revenue:
+          type: object
+          properties:
+            totalThisMonthCents:
+              type: integer
+        ai:
+          type: object
+          properties:
+            creditsRemaining:
+              type: number
+              nullable: true
+            creditLimit:
+              type: number
+              nullable: true
+
+    # ── Customers ─────────────────────────────────────────────────────────────
+
+    MspCustomer:
+      type: object
+      required: [id, companyName, status]
+      properties:
+        id:
+          type: integer
+        mspId:
+          type: integer
+        companyName:
+          type: string
+        domain:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive, suspended, offboarding]
+        contactName:
+          type: string
+          nullable: true
+        contactEmail:
+          type: string
+          nullable: true
+        tenantId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    MspCustomerList:
+      type: object
+      required: [customers, total, page, limit]
+      properties:
+        customers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MspCustomer"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    CreateMspCustomerInput:
+      type: object
+      required: [companyName]
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+        domain:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+          format: email
+        tenantId:
+          type: string
+
+    UpdateMspCustomerInput:
+      type: object
+      properties:
+        companyName:
+          type: string
+          minLength: 1
+        domain:
+          type: string
+        contactName:
+          type: string
+        contactEmail:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [active, inactive, suspended]
+
+    # ── Signup / Tiers ────────────────────────────────────────────────────────
+
+    MspTier:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        slug:
+          type: string
+          nullable: true
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        tagline:
+          type: string
+          nullable: true
+        price:
+          type: string
+          nullable: true
+        tenantAllowance:
+          type: integer
+          nullable: true
+        aiCreditAllowance:
+          type: integer
+          nullable: true
+        overageRateCents:
+          type: integer
+          nullable: true
+        features:
+          type: array
+          nullable: true
+          items:
+            type: string
+        badge:
+          type: string
+          nullable: true
+        highlighted:
+          type: boolean
+
+    MspTierList:
+      type: object
+      required: [tiers]
+      properties:
+        tiers:
+          type: array
+          items:
+            $ref: "#/components/schemas/MspTier"
+
+    # ── Settings ──────────────────────────────────────────────────────────────
+
+    MspSettings:
+      type: object
+      properties:
+        companyName:
+          type: string
+          nullable: true
+        domain:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        primaryColor:
+          type: string
+          nullable: true
+        supportEmail:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+
+    UpdateMspSettingsInput:
+      type: object
+      properties:
+        companyName:
+          type: string
+        domain:
+          type: string
+        logoUrl:
+          type: string
+        primaryColor:
+          type: string
+        supportEmail:
+          type: string
+        timezone:
+          type: string
+
+    # ── Consent ───────────────────────────────────────────────────────────────
+
+    ConsentInviteLinkInput:
+      type: object
+      properties:
+        tenantId:
+          type: string
+          description: Azure AD tenant ID hint (use "common" to allow any tenant)
+        customerId:
+          type: integer
+        clientUserId:
+          type: integer
+        ttlHours:
+          type: integer
+          minimum: 1
+          maximum: 168
+          default: 72
+
+    ConsentInviteLinkResponse:
+      type: object
+      required: [consentUrl, token, expiresAt, scopes]
+      properties:
+        consentUrl:
+          type: string
+          format: uri
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        scopes:
+          type: array
+          items:
+            type: string
+
+    # ── Shared ────────────────────────────────────────────────────────────────
+
+    MspErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

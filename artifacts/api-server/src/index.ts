@@ -15,6 +15,7 @@ import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine";
+import { startJobWorker } from "./lib/msp-jobs";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
@@ -136,6 +137,26 @@ app.listen(port, (err) => {
   seedMspPlatformAdmin().catch((err) => {
     logger.warn({ err }, "MSP platform admin seed failed (non-fatal)");
   });
+
+  // ── MSP Job Worker ────────────────────────────────────────────────────────
+  // The job worker runs inside the same API server process (inline) rather than
+  // as a separate process or workflow. This is intentional for the current
+  // deployment model:
+  //
+  //   • Single-process simplicity: no inter-process coordination, shared DB
+  //     pool, and no extra workflow to manage.
+  //   • SELECT … FOR UPDATE SKIP LOCKED in msp-jobs.ts makes it safe to run
+  //     multiple API server replicas simultaneously — each instance claims its
+  //     own jobs without collision.
+  //   • For higher throughput: extract msp-job-worker.ts as a separate entry
+  //     point and register it as a dedicated Replit workflow (see the comment
+  //     block in lib/msp-jobs.ts). The producer/consumer interface is
+  //     intentionally decoupled to make this migration straightforward.
+  //
+  // Job handlers must be registered before startJobWorker() is called so that
+  // the first poll tick can claim and dispatch them correctly.
+  startJobWorker(5_000, 5);
+  logger.info({}, "msp-jobs: inline worker started");
 
   // ── Portal Workflow Engine: initialize on startup ─────────────────────────
   // Loads start mappings and registers event bus listener.

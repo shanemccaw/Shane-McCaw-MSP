@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { SlugProvider, getStoredSlug, storeSlug } from "@/lib/slug-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
+import { useGetPortalTenant } from "@workspace/api-client-react";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
 import CustomersPage from "@/pages/customers";
@@ -50,6 +51,7 @@ import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
 import CustomerOffersPage from "@/pages/customer-offers";
 import NotFound from "@/pages/not-found";
+import ConsentDeclinedPage from "@/pages/consent-declined";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
@@ -73,22 +75,21 @@ const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "");
 function TenantEntryPage() {
   const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
-  const [state, setState] = useState<"loading" | "redirect" | "notfound">("loading");
+
+  // Use the generated type-safe hook from the MSP OpenAPI spec to resolve the
+  // tenant slug. This replaces the previous raw fetch() call and gives us
+  // compile-time type safety on the response shape.
+  const { data, isError, isSuccess } = useGetPortalTenant(slug ?? "");
 
   useEffect(() => {
-    if (!slug) { setState("notfound"); return; }
-    fetch(`/api/portal/tenant/${encodeURIComponent(slug)}`)
-      .then((r) => {
-        if (!r.ok) { setState("notfound"); return; }
-        // Tenant exists — redirect to the slug-scoped login page.
-        // In the outer router (base=/portal), "/{slug}/login" becomes /portal/{slug}/login.
-        navigate(`/${slug}/login`, { replace: true });
-        setState("redirect");
-      })
-      .catch(() => setState("notfound"));
-  }, [slug, navigate]);
+    if (isSuccess && data) {
+      // Tenant exists — redirect to the slug-scoped login page.
+      // In the outer router (base=/portal), "/{slug}/login" becomes /portal/{slug}/login.
+      navigate(`/${slug}/login`, { replace: true });
+    }
+  }, [isSuccess, data, slug, navigate]);
 
-  if (state === "notfound") return <NotFound />;
+  if (!slug || isError) return <NotFound />;
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -511,6 +512,14 @@ function Router() {
       {/* Public invite accept — no auth required */}
       <Route path="/invite/:token">
         <AcceptInvitePage />
+      </Route>
+
+      {/* Microsoft admin-consent declined — public, no auth required.
+          The API consent callback redirects here when the Global Admin clicks
+          "No" at the Microsoft permission screen. Renders a friendly error
+          page explaining what happened and how to re-initiate the flow. */}
+      <Route path="/consent/declined">
+        <ConsentDeclinedPage />
       </Route>
 
       {/* Root — redirect to last-used slug or flat login */}

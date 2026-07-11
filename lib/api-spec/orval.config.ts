@@ -69,4 +69,60 @@ export default defineConfig({
       },
     },
   },
+
+  // ── MSP Portal API ──────────────────────────────────────────────────────────
+  // Separate spec covering MSP auth, dashboard, customer management, and consent.
+  // Output goes to generated-msp/ sub-directories so it does not collide with
+  // the main generated/ output.
+
+  "msp-api-client-react": {
+    input: {
+      target: "./msp-openapi.yaml",
+    },
+    output: {
+      workspace: apiClientReactSrc,
+      target: "generated-msp",
+      client: "react-query",
+      mode: "split",
+      baseUrl: "/api",
+      clean: true,
+      prettier: true,
+      override: {
+        fetch: {
+          includeHttpResponseReturnType: false,
+        },
+        mutator: {
+          path: path.resolve(apiClientReactSrc, "custom-fetch.ts"),
+          name: "customFetch",
+        },
+      },
+    },
+  },
+
+  "msp-zod": {
+    input: {
+      target: "./msp-openapi.yaml",
+    },
+    output: {
+      workspace: apiZodSrc,
+      client: "zod",
+      target: "generated-msp",
+      schemas: { path: "generated-msp/types", type: "typescript" },
+      mode: "split",
+      clean: true,
+      prettier: true,
+      override: {
+        zod: {
+          coerce: {
+            query: ['boolean', 'number', 'string'],
+            param: ['boolean', 'number', 'string'],
+            body: ['bigint', 'date'],
+            response: ['bigint', 'date'],
+          },
+        },
+        useDates: true,
+        useBigInt: true,
+      },
+    },
+  },
 });
