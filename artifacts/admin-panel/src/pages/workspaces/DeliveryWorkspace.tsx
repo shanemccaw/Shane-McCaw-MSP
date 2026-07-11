@@ -9,6 +9,7 @@ import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
 import EnginePanel from "@/components/EnginePanel";
 import FulfillmentQueuePage from "@/pages/FulfillmentQueue";
+import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 
 const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
@@ -95,6 +96,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Fulfillment Types",
+    path: "/delivery/fulfillment-types",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
   ...ENGINE_NAV_KEYS.map((key): WorkspaceNavItem => ({
     label: ENGINE_LABELS[key],
     path: `/delivery/engines/${key}`,
@@ -119,6 +129,7 @@ function getContent(section: string): ReactNode {
     case "activity-logs":        return <ActivityLogPage />;
     case "hub-storage":          return <SharePointPage />;
     case "fulfillment-queue":    return <FulfillmentQueuePage />;
+    case "fulfillment-types":    return <FulfillmentTypesPage />;
     default:                     return <ProjectsPage />;
   }
 }

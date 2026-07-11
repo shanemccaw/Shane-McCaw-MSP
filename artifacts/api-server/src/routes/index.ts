@@ -79,6 +79,7 @@ import platformAgreementsRouter from "./platform-agreements";
 import mspSignupRouter from "./msp-signup";
 import mspBillingWebhookRouter from "./msp-billing-webhook";
 import portalCustomerEnginesRouter from "./portal-customer-engines";
+import adminFulfillmentTypesRouter from "./admin-fulfillment-types";
 
 const router: IRouter = Router();
 
@@ -160,6 +161,7 @@ router.use(adminSowDebugRouter);
 router.use(consentRouter);
 router.use(mspPortalRouter);
 router.use(platformAgreementsRouter);
+router.use(adminFulfillmentTypesRouter);
 router.use(adminSlaRouter);
 router.use(adminScopeCreepRouter);
 router.use(mspScopeCreepRouter);

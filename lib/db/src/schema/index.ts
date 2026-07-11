@@ -86,6 +86,45 @@ export const insertLeadSchema = createInsertSchema(leadsTable).omit({ id: true, 
 export type InsertLead = typeof leadsTable.$inferInsert;
 export type Lead = typeof leadsTable.$inferSelect;
 
+// ── Fulfillment Types ──────────────────────────────────────────────────────────
+// Admin-extensible registry of fulfillment lifecycle kinds.
+// Each type maps to an event trigger on a Workflow Definition — what *actually*
+// happens for a given type is a visible workflow, not opaque code.
+
+export const fulfillmentTypesTable = pgTable("fulfillment_types", {
+  // Human-readable key used as the event suffix: fulfillment.<key>
+  key: text("key").primaryKey(),
+  label: text("label").notNull(),
+  description: text("description"),
+  // Surfaces that may use this type: "purchase" | "signal" | "manual"
+  firedWhen: jsonb("fired_when").$type<string[]>().notNull().default([]),
+  // true → Stripe subscription billing; false → one-time charge
+  recurring: boolean("recurring").notNull().default(false),
+  // Soft-toggle without deleting the record
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertFulfillmentType = typeof fulfillmentTypesTable.$inferInsert;
+export type FulfillmentType = typeof fulfillmentTypesTable.$inferSelect;
+
+// ── Fulfillment Idempotency Store ──────────────────────────────────────────────
+// Deduplicates resolve_fulfillment calls by (Stripe session ID | signal-fire event ID).
+// A row present means the event has already been emitted; callers skip silently.
+
+export const fulfillmentIdempotencyTable = pgTable("fulfillment_idempotency", {
+  // Caller-supplied dedup key (Stripe session ID, signal-fire UUID, etc.)
+  idempotencyKey: text("idempotency_key").primaryKey(),
+  fulfillmentTypeKey: text("fulfillment_type_key").notNull(),
+  // Full payload that was emitted (for auditing / replay)
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertFulfillmentIdempotency = typeof fulfillmentIdempotencyTable.$inferInsert;
+export type FulfillmentIdempotency = typeof fulfillmentIdempotencyTable.$inferSelect;
+
 // Services / Micro-Offers (templates)
 export const servicesTable = pgTable("services", {
   id: serial("id").primaryKey(),
@@ -149,6 +188,14 @@ export const servicesTable = pgTable("services", {
   // Map of capability keys → true/false for tier gating. Missing key = not gated.
   // Example: { "advanced_signals": true, "custom_workflows": false }
   tierCapabilities: jsonb("tier_capabilities").$type<Record<string, boolean>>(),
+  // ── Fulfillment Engine ─────────────────────────────────────────────────────
+  // FK into fulfillment_types.key — what lifecycle type this service triggers.
+  // Resolved by resolve_fulfillment at checkout / signal fire.
+  fulfillmentTypeKey: text("fulfillment_type_key"),
+  // Signal keys (from tenant-signals) that auto-trigger this service's fulfillment.
+  // A fired signal matching any key here feeds resolve_fulfillment identically to
+  // a purchase — the same mechanism, zero duplicated branching.
+  triggeringSignalKeys: jsonb("triggering_signal_keys").$type<string[]>(),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;
