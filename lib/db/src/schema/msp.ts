@@ -735,3 +735,49 @@ export const portalWfIdempotencyTable = pgTable("portal_wf_idempotency", {
 }, (t) => [
   index("portal_wf_idempotency_run_id_idx").on(t.runId),
 ]);
+// One row per MSP — links the MSP to its Stripe subscription and the Product
+// Catalog tier it has purchased (services.fulfillmentType = "msp_monthly_subscription").
+// This table owns dunning state. Billing for offers/SOWs is entirely separate
+// (managed in portal.ts) and never intersects with this table.
+
+export const MSP_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "canceled", "unpaid"] as const;
+export type MspSubscriptionStatus = typeof MSP_SUBSCRIPTION_STATUSES[number];
+
+export const MSP_DUNNING_STATES = ["reminder_sent", "suspended", "access_revoked", "archival_flagged"] as const;
+export type MspDunningState = typeof MSP_DUNNING_STATES[number];
+
+export const mspSubscriptionsTable = pgTable("msp_subscriptions", {
+  id: serial("id").primaryKey(),
+  // The MSP organisation this subscription belongs to. One subscription per MSP.
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // The Product Catalog row (services.fulfillmentType = "msp_monthly_subscription")
+  // that defines this tier's allowances and capabilities. Not a FK to avoid
+  // cross-schema circular reference in TS — enforced at DB level via migrate-prod.
+  serviceId: integer("service_id").notNull(),
+  // Stripe identifiers
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  // Subscription lifecycle
+  status: text("status", { enum: MSP_SUBSCRIPTION_STATUSES }).notNull().default("trialing"),
+  currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+  currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+  // Dunning state machine. null = fully operational.
+  // Transitions: null → reminder_sent (Day 3) → suspended (Day 7) → access_revoked (Day 14) → archival_flagged (Day 30)
+  dunningState: text("dunning_state", { enum: MSP_DUNNING_STATES }),
+  // Set when first payment failure is detected. Dunning day-count = NOW - paymentFailedAt.
+  paymentFailedAt: timestamp("payment_failed_at", { withTimezone: true }),
+  // Snapshot of active customer tenant count, updated by the overage metering workflow.
+  tenantCountSnapshot: integer("tenant_count_snapshot").notNull().default(0),
+  // Contact email for dunning notification emails
+  contactEmail: text("contact_email"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_subscriptions_status_idx").on(t.status),
+  index("msp_subscriptions_stripe_sub_idx").on(t.stripeSubscriptionId),
+  index("msp_subscriptions_dunning_idx").on(t.dunningState),
+]);
+
+export type MspSubscription = typeof mspSubscriptionsTable.$inferSelect;
+export type InsertMspSubscription = typeof mspSubscriptionsTable.$inferInsert;

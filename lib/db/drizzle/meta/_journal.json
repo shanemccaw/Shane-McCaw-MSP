@@ -1156,6 +1156,13 @@
       "when": 1784900000000,
       "tag": "0158_portal_wf_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 161,
+      "version": "7",
+      "when": 1752192000000,
+      "tag": "0158_msp_platform_subscription",
+      "breakpoints": true
     }
   ]
 }

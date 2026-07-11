@@ -343,6 +343,37 @@ const legacyMigrations = [
         ON "msp_agreement_acceptances" ("user_id");
     `,
   },
+  {
+    name: "0016_msp_platform_subscription",
+    sql: `
+      -- MSP Platform Subscription tier fields on services table
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "fulfillment_type" text NOT NULL DEFAULT 'manual';
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "tenant_allowance" integer NOT NULL DEFAULT 0;
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "ai_credit_allowance" integer NOT NULL DEFAULT 0;
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "overage_rate_cents" integer NOT NULL DEFAULT 0;
+      ALTER TABLE "services" ADD COLUMN IF NOT EXISTS "tier_capabilities" jsonb;
+
+      -- MSP Platform Subscriptions table
+      CREATE TABLE IF NOT EXISTS "msp_subscriptions" (
+        "id"                      serial PRIMARY KEY,
+        "msp_id"                  integer NOT NULL,
+        "service_id"              integer NOT NULL,
+        "stripe_customer_id"      text,
+        "stripe_subscription_id"  text UNIQUE,
+        "stripe_checkout_session_id" text UNIQUE,
+        "status"                  text NOT NULL DEFAULT 'trialing',
+        "dunning_state"           text,
+        "payment_failed_at"       timestamptz,
+        "current_period_start"    timestamptz,
+        "current_period_end"      timestamptz,
+        "cancel_at_period_end"    boolean NOT NULL DEFAULT false,
+        "tenant_count"            integer NOT NULL DEFAULT 0,
+        "ai_credits_used"         integer NOT NULL DEFAULT 0,
+        "created_at"              timestamptz NOT NULL DEFAULT now(),
+        "updated_at"              timestamptz NOT NULL DEFAULT now()
+      );
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------

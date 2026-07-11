@@ -21,6 +21,8 @@ import CustomerHomePage from "@/pages/customer-home";
 import CustomerDocumentsPage from "@/pages/customer-documents";
 import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import CustomerSowPage from "@/pages/customer-sow";
+import SignupPage from "@/pages/signup";
+import SignupSuccessPage from "@/pages/signup-success";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -105,6 +107,12 @@ function Router() {
       {/* Public routes */}
       <Route path="/login">
         {!isLoading && user ? <Redirect to={defaultLanding} /> : <LoginPage />}
+      </Route>
+      <Route path="/signup/success">
+        <SignupSuccessPage />
+      </Route>
+      <Route path="/signup">
+        {!isLoading && user ? <Redirect to="/dashboard" /> : <SignupPage />}
       </Route>
       <Route path="/trust">
         <TrustPage />

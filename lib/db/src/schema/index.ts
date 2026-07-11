@@ -133,6 +133,22 @@ export const servicesTable = pgTable("services", {
   // App Registration permissions required from the client before automation can run.
   // Shown in the contract agreement as a numbered section the client must acknowledge.
   requiredAppPermissions: jsonb("required_app_permissions").$type<{ scope: string; reason: string }[]>(),
+  // ── MSP Platform Subscription fields ─────────────────────────────────────────
+  // Products with fulfillmentType = "msp_monthly_subscription" are MSP platform
+  // tiers — separate from per-project/per-offer billing. These fields are only
+  // meaningful when fulfillmentType = "msp_monthly_subscription".
+  fulfillmentType: text("fulfillment_type", {
+    enum: ["standard", "msp_monthly_subscription"],
+  }).notNull().default("standard"),
+  // Number of customer tenants included in the flat platform fee (0 = unlimited)
+  tenantAllowance: integer("tenant_allowance"),
+  // Monthly AI credit allowance for Copilot/signal generation (0 = unlimited)
+  aiCreditAllowance: integer("ai_credit_allowance"),
+  // Per-additional-tenant overage rate in cents (USD) billed monthly via usage records
+  overageRateCents: integer("overage_rate_cents"),
+  // Map of capability keys → true/false for tier gating. Missing key = not gated.
+  // Example: { "advanced_signals": true, "custom_workflows": false }
+  tierCapabilities: jsonb("tier_capabilities").$type<Record<string, boolean>>(),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

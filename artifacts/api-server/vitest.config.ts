@@ -25,6 +25,7 @@ export default defineConfig({
       "src/routes/consent.test.ts",
       "src/routes/msp-portal.test.ts",
       "src/routes/msp-onboarding.test.ts",
+      "src/lib/__tests__/msp-subscription.test.ts",
     ],
     coverage: {
       provider: "v8",

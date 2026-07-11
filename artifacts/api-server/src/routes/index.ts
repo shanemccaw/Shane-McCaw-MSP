@@ -76,6 +76,8 @@ import mspEnginesRouter from "./msp-engines";
 import webhooksRouter from "./webhooks";
 import mspOnboardingRouter from "./msp-onboarding";
 import platformAgreementsRouter from "./platform-agreements";
+import mspSignupRouter from "./msp-signup";
+import mspBillingWebhookRouter from "./msp-billing-webhook";
 
 const router: IRouter = Router();
 
@@ -163,6 +165,8 @@ router.use(mspScopeCreepRouter);
 router.use(mspEnginesRouter);
 router.use(webhooksRouter);
 router.use(mspOnboardingRouter);
+router.use(mspSignupRouter);
+router.use(mspBillingWebhookRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

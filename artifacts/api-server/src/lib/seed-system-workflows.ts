@@ -30,6 +30,85 @@ interface SystemWorkflowSeed {
 }
 
 const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
+  // ── MSP Dunning State Machine ─────────────────────────────────────────────
+  {
+    name: "MSP Dunning State Machine",
+    description: "Runs daily. For every past-due platform subscription, advances the dunning state based on how many days have elapsed since payment failure. Configurable thresholds: Day 3 → reminder_sent, Day 7 → suspended (new onboarding blocked), Day 14 → access_revoked, Day 30 → archival_flagged. Payment success (via Stripe webhook) resets dunning instantly.",
+    triggerType: "schedule",
+    cron: "0 8 * * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Daily 08:00 UTC" },
+        },
+        {
+          id: "dunning",
+          type: "system_action",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "system_action",
+            label: "Advance Dunning States",
+            task: "msp_dunning_advance",
+            // Configurable day thresholds — edit these to adjust dunning timing
+            dayReminder: 3,
+            daySuspend: 7,
+            dayRevoke: 14,
+            dayArchive: 30,
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 340 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "dunning" },
+        { id: "e2", source: "dunning", target: "end" },
+      ],
+    },
+  },
+  // ── MSP Overage Metering ───────────────────────────────────────────────────
+  {
+    name: "MSP Overage Metering",
+    description: "Runs on the 1st of each month. Counts active customer tenants for every active MSP platform subscription, compares against the tier's included tenant allowance, and records overage events for billing. MSPs are never hard-blocked for overage — the flat fee covers the allowance; overage is billed at the configured per-tenant rate.",
+    triggerType: "schedule",
+    cron: "0 6 1 * *",
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "1st of Month 06:00 UTC" },
+        },
+        {
+          id: "meter",
+          type: "system_action",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "system_action",
+            label: "Meter Tenant Overage",
+            task: "msp_overage_meter",
+          },
+        },
+        {
+          id: "end",
+          type: "end",
+          position: { x: 300, y: 340 },
+          data: { nodeType: "end", label: "Done" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "meter" },
+        { id: "e2", source: "meter", target: "end" },
+      ],
+    },
+  },
   {
     name: "Presentation Phase Generator",
     description: "Triggered when a client advances past the SOW step. Reads the scoped SOW HTML, asks AI to propose project phases with price weights, and saves them back to the presentation. Pushes SSE progress to the client's browser in real time.",
