@@ -23,3 +23,9 @@ id = "qeDj8iwVfJK5duuHtpIc3"
 uri = "file://.local/tasks/email-sending-paths-audit.md"
 type = "text"
 title = "Email Sending Paths & Templates Audit"
+
+[[outputs]]
+id = "B1RJMGf0c6-O1pPPw722Q"
+uri = "file://.local/tasks/ALL_PLANS_COMBINED.md"
+type = "text"
+title = "MSP Portal — All Task Plans (Combined)"
