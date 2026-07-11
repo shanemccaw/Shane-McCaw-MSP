@@ -73,6 +73,7 @@ import adminSlaRouter from "./admin-sla";
 import mspEnginesRouter from "./msp-engines";
 import webhooksRouter from "./webhooks";
 import mspOnboardingRouter from "./msp-onboarding";
+import platformAgreementsRouter from "./platform-agreements";
 
 const router: IRouter = Router();
 
@@ -153,6 +154,7 @@ router.use(crmPreviewStatsRouter);
 router.use(adminSowDebugRouter);
 router.use(consentRouter);
 router.use(mspPortalRouter);
+router.use(platformAgreementsRouter);
 router.use(adminSlaRouter);
 router.use(mspEnginesRouter);
 router.use(webhooksRouter);

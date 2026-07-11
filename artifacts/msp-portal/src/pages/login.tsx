@@ -15,7 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck, KeyRound } from "lucide-react";
+
+// ── Schemas ───────────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -23,10 +25,150 @@ const loginSchema = z.object({
 });
 type LoginForm = z.infer<typeof loginSchema>;
 
+const totpSchema = z.object({
+  code: z.string().min(6, "Enter the 6-digit code").max(6),
+});
+type TotpForm = z.infer<typeof totpSchema>;
+
+// ── MFA challenge step ────────────────────────────────────────────────────────
+
+function MfaChallenge({
+  mfaToken,
+  methods,
+  onSuccess,
+  onCancel,
+}: {
+  mfaToken: string;
+  methods: string[];
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const { completeMfaLogin } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+
+  const hasTotp = methods.includes("totp");
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<TotpForm>({ resolver: zodResolver(totpSchema) });
+
+  async function onSubmitTotp(data: TotpForm) {
+    setError(null);
+    try {
+      const res = await fetch("/api/auth/mfa/totp/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mfaToken, code: data.code.replace(/\s/g, "") }),
+      });
+      const json = (await res.json()) as {
+        accessToken?: string;
+        refreshToken?: string;
+        refreshExpiresAt?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(json.error ?? "Invalid code. Please try again.");
+        return;
+      }
+      if (json.accessToken) {
+        completeMfaLogin(json.accessToken, json.refreshToken, json.refreshExpiresAt);
+      }
+      onSuccess();
+    } catch {
+      setError("A network error occurred. Please try again.");
+    }
+  }
+
+  if (hasTotp) {
+    return (
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="space-y-1 pb-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" />
+            <CardTitle className="text-lg">Two-factor verification</CardTitle>
+          </div>
+          <CardDescription>
+            Enter the 6-digit code from your authenticator app.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmitTotp)} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="code">Authenticator code</Label>
+              <Input
+                id="code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                maxLength={6}
+                className="text-center text-xl tracking-[0.4em] font-mono"
+                {...register("code")}
+              />
+              {errors.code && (
+                <p className="text-xs text-destructive">{errors.code.message}</p>
+              )}
+            </div>
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {isSubmitting ? "Verifying…" : "Verify"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground text-sm"
+              onClick={onCancel}
+            >
+              Back to sign in
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Fallback for non-TOTP methods (passkey, SMS — full implementation is a follow-up)
+  return (
+    <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg">Two-factor verification</CardTitle>
+        <CardDescription>
+          Your account requires MFA. Available methods: {methods.join(", ")}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Please contact your administrator if you need assistance completing MFA.
+        </p>
+        <Button variant="outline" className="w-full" onClick={onCancel}>
+          Back to sign in
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Main login page ───────────────────────────────────────────────────────────
+
 export default function LoginPage() {
   const { login } = useAuth();
   const [, navigate] = useLocation();
   const [serverError, setServerError] = useState<string | null>(null);
+
+  const [mfaState, setMfaState] = useState<{ mfaToken: string; methods: string[] } | null>(null);
 
   const {
     register,
@@ -38,8 +180,8 @@ export default function LoginPage() {
     setServerError(null);
     try {
       const result = await login(data.email, data.password);
-      if (result.mfaRequired) {
-        setServerError("MFA is required — MFA flow coming soon.");
+      if (result.mfaRequired && result.mfaToken) {
+        setMfaState({ mfaToken: result.mfaToken, methods: result.methods ?? [] });
         return;
       }
       navigate("/dashboard");
@@ -48,10 +190,32 @@ export default function LoginPage() {
     }
   }
 
+  if (mfaState) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="w-full max-w-sm space-y-6">
+          <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
+            <ShieldCheck className="size-10 text-sidebar-primary" />
+            <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
+            <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
+          </div>
+          <MfaChallenge
+            mfaToken={mfaState.mfaToken}
+            methods={mfaState.methods}
+            onSuccess={() => navigate("/dashboard")}
+            onCancel={() => setMfaState(null)}
+          />
+          <p className="text-center text-xs text-sidebar-foreground/40">
+            Access is provisioned by your administrator
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
       <div className="w-full max-w-sm space-y-6">
-        {/* Brand mark */}
         <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
           <ShieldCheck className="size-10 text-sidebar-primary" />
           <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
@@ -110,9 +274,13 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <p className="text-center text-xs text-sidebar-foreground/40">
-          Access is provisioned by your administrator
-        </p>
+        <div className="text-center text-xs text-sidebar-foreground/40 space-x-3">
+          <span>Access is provisioned by your administrator</span>
+          <span>·</span>
+          <a href="/portal/trust" className="hover:text-sidebar-foreground/70 underline">
+            Trust &amp; Privacy
+          </a>
+        </div>
       </div>
     </div>
   );

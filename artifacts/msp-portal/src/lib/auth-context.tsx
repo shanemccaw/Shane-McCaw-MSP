@@ -59,6 +59,8 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<{ mfaRequired?: boolean; mfaToken?: string; methods?: string[] }>;
+  /** Complete an MFA flow by supplying the tokens received from the MFA challenge endpoint */
+  completeMfaLogin: (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => void;
   logout: () => Promise<void>;
   extendSession: () => Promise<void>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -333,9 +335,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [state.accessToken, doRefresh],
   );
 
+  const completeMfaLogin = useCallback(
+    (accessToken: string, refreshToken?: string, refreshExpiresAt?: string) => {
+      applyTokens(accessToken, refreshToken, refreshExpiresAt);
+      // Start periodic silent access-token refresh
+      if (silentRefreshTimerRef.current) clearInterval(silentRefreshTimerRef.current);
+      silentRefreshTimerRef.current = setInterval(() => {
+        void doRefresh();
+      }, SILENT_REFRESH_INTERVAL_MS);
+    },
+    [applyTokens, doRefresh],
+  );
+
   const value: AuthContextValue = {
     ...state,
     login,
+    completeMfaLogin,
     logout,
     extendSession,
     fetchWithAuth,

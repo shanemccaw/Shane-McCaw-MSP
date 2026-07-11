@@ -561,3 +561,47 @@ export const mspOnboardingLinksTable = pgTable("msp_onboarding_links", {
 
 export type MspOnboardingLink = typeof mspOnboardingLinksTable.$inferSelect;
 export type InsertMspOnboardingLink = typeof mspOnboardingLinksTable.$inferInsert;
+
+// ── Platform Agreements (MSA + DPA versioning) ────────────────────────────────
+// Shane pastes the agreement text here; publishing a new version does NOT
+// invalidate prior MSPs' recorded acceptances — each acceptance records the
+// exact version that was live at the time.
+
+export const platformAgreementsTable = pgTable("platform_agreements", {
+  id: serial("id").primaryKey(),
+  version: text("version").notNull(),
+  title: text("title").notNull().default("Platform MSA + DPA"),
+  body: text("body").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  publishedByUserId: integer("published_by_user_id"),
+  isCurrentVersion: boolean("is_current_version").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("platform_agreements_is_current_idx").on(t.isCurrentVersion),
+]);
+
+export type PlatformAgreement = typeof platformAgreementsTable.$inferSelect;
+export type InsertPlatformAgreement = typeof platformAgreementsTable.$inferInsert;
+
+// ── MSP Agreement Acceptances (clickwrap records) ─────────────────────────────
+// One row per MSP signup. A missing row means the MSP has NOT yet accepted.
+// Never deleted — audit trail of who accepted what version and when.
+
+export const mspAgreementAcceptancesTable = pgTable("msp_agreement_acceptances", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "restrict" }),
+  userId: integer("user_id").notNull(),
+  agreementVersion: text("agreement_version").notNull(),
+  agreementId: integer("agreement_id"),
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }).notNull().defaultNow(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  checkboxConfirmed: boolean("checkbox_confirmed").notNull().default(true),
+}, (t) => [
+  index("msp_agreement_acceptances_msp_id_idx").on(t.mspId),
+  index("msp_agreement_acceptances_user_id_idx").on(t.userId),
+]);
+
+export type MspAgreementAcceptance = typeof mspAgreementAcceptancesTable.$inferSelect;
+export type InsertMspAgreementAcceptance = typeof mspAgreementAcceptancesTable.$inferInsert;

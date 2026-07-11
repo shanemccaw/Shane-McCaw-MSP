@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes, createCipheriv, createDecipheriv } from "crypto";
-import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable } from "@workspace/db";
+import { db, usersTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, mspUsersTable, mspRefreshTokensTable } from "@workspace/db";
 import { eq, and, gt } from "drizzle-orm";
 import { requireAuth, type AuthUser } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -893,9 +893,27 @@ async function verifySmsCode(userId: number, code: string): Promise<boolean> {
   return true;
 }
 
+async function getMspClaimsForUser(userId: number): Promise<{
+  mspRole: import("@workspace/db").MspRole | null;
+  mspId: number | null;
+  customerId: number | null;
+}> {
+  const [mspUser] = await db
+    .select()
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+  if (!mspUser) return { mspRole: null, mspId: null, customerId: null };
+  return {
+    mspRole: mspUser.mspRole as import("@workspace/db").MspRole,
+    mspId: mspUser.mspId ?? null,
+    customerId: mspUser.customerId ?? null,
+  };
+}
+
 async function issueFullSession(userId: number, res: Response): Promise<void> {
   const secret = getJwtSecret();
-  const REFRESH_TOKEN_TTL_DAYS = 30;
+  const REFRESH_TOKEN_TTL_DAYS = 7;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) {
@@ -903,11 +921,30 @@ async function issueFullSession(userId: number, res: Response): Promise<void> {
     return;
   }
 
-  const payload = buildUserPayload(user);
-  const accessToken = jwt.sign(payload, secret, { expiresIn: "15m" });
-  const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
+  // Include MSP role claims in the token so the MSP Portal auth works correctly
+  const mspClaims = await getMspClaimsForUser(userId);
+  const basePayload = buildUserPayload(user);
+  const payload = {
+    ...basePayload,
+    mspRole: mspClaims.mspRole ?? undefined,
+    mspId: mspClaims.mspId ?? undefined,
+    customerId: mspClaims.customerId ?? undefined,
+  };
 
-  res.cookie("refreshToken", refreshToken, {
+  const accessToken = jwt.sign(payload, secret, { expiresIn: "15m" });
+
+  // Issue a proper sliding refresh token stored in DB (matching the auth.ts pattern)
+  const rawRefreshToken = randomBytes(48).toString("hex");
+  const tokenHash = createHash("sha256").update(rawRefreshToken).digest("hex");
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await db.insert(mspRefreshTokensTable).values({
+    userId,
+    tokenHash,
+    expiresAt,
+  });
+
+  res.cookie("refreshToken", rawRefreshToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -915,7 +952,12 @@ async function issueFullSession(userId: number, res: Response): Promise<void> {
     path: "/api/auth",
   });
 
-  res.json({ accessToken, user: payload });
+  res.json({
+    accessToken,
+    refreshToken: rawRefreshToken,
+    refreshExpiresAt: expiresAt.toISOString(),
+    user: payload,
+  });
 }
 
 export default router;

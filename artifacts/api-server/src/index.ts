@@ -168,6 +168,43 @@ app.listen(port, (err) => {
     logger.warn({ err }, "Migration: pending_approvals table failed (non-fatal)");
   });
 
+  // ── Platform Agreements & MSP Agreement Acceptances ──────────────────────
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS platform_agreements (
+      id                    SERIAL PRIMARY KEY,
+      version               TEXT NOT NULL,
+      title                 TEXT NOT NULL DEFAULT 'Platform MSA + DPA',
+      body                  TEXT NOT NULL,
+      published_at          TIMESTAMPTZ,
+      published_by_user_id  INTEGER,
+      is_current_version    BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS platform_agreements_is_current_idx
+      ON platform_agreements (is_current_version);
+
+    CREATE TABLE IF NOT EXISTS msp_agreement_acceptances (
+      id                SERIAL PRIMARY KEY,
+      msp_id            INTEGER,
+      user_id           INTEGER NOT NULL,
+      agreement_version TEXT NOT NULL,
+      agreement_id      INTEGER,
+      accepted_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      ip_address        TEXT,
+      user_agent        TEXT,
+      checkbox_confirmed BOOLEAN NOT NULL DEFAULT TRUE
+    );
+    CREATE INDEX IF NOT EXISTS msp_agreement_acceptances_msp_id_idx
+      ON msp_agreement_acceptances (msp_id);
+    CREATE INDEX IF NOT EXISTS msp_agreement_acceptances_user_id_idx
+      ON msp_agreement_acceptances (user_id);
+  `).then(() => {
+    logger.info("Migration: platform_agreements and msp_agreement_acceptances tables ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: platform_agreements tables failed (non-fatal)");
+  });
+
   // ── Workflow Engine: schema additions ────────────────────────────────────
   pool.query(`
     ALTER TABLE wf_definitions ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}';

@@ -15,8 +15,11 @@ import AuditPage from "@/pages/audit";
 import OffboardingPage from "@/pages/offboarding";
 import WebhooksPage from "@/pages/webhooks";
 import InitiateOnboardingPage from "@/pages/initiate-onboarding";
+import AcceptAgreementPage from "@/pages/accept-agreement";
+import TrustPage from "@/pages/trust";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,10 +27,50 @@ const queryClient = new QueryClient({
   },
 });
 
+// ── Agreement gate ────────────────────────────────────────────────────────────
+// After authentication, check whether the user has accepted the current
+// platform agreement. PlatformAdmin users that have MFA enrolled will
+// already be challenged at login; all MSP users are gated here.
+
+function useAgreementGate(): { loading: boolean; required: boolean } {
+  const { user, fetchWithAuth } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [required, setRequired] = useState(false);
+
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      setRequired(false);
+      return;
+    }
+    // Only gate users that have an MSP role (not plain client/admin portal users)
+    if (!user.mspRole) {
+      setLoading(false);
+      setRequired(false);
+      return;
+    }
+    fetchWithAuth("/api/platform/agreement/acceptance-status")
+      .then((r) => r.json())
+      .then((data: { required?: boolean; accepted?: boolean }) => {
+        setRequired(!!(data.required && !data.accepted));
+      })
+      .catch(() => {
+        // Don't block on network failure — fail open
+        setRequired(false);
+      })
+      .finally(() => setLoading(false));
+  }, [user, fetchWithAuth]);
+
+  return { loading, required };
+}
+
+// ── Protected route with agreement gate ───────────────────────────────────────
+
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
+  const { loading: agreementLoading, required: agreementRequired } = useAgreementGate();
 
-  if (isLoading) {
+  if (isLoading || agreementLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -39,6 +82,10 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     return <Redirect to="/login" />;
   }
 
+  if (agreementRequired) {
+    return <Redirect to="/accept-agreement" />;
+  }
+
   return <Component />;
 }
 
@@ -47,9 +94,20 @@ function Router() {
 
   return (
     <Switch>
+      {/* Public routes */}
       <Route path="/login">
         {!isLoading && user ? <Redirect to="/dashboard" /> : <LoginPage />}
       </Route>
+      <Route path="/trust">
+        <TrustPage />
+      </Route>
+
+      {/* Auth-required but no agreement gate (the gate page itself) */}
+      <Route path="/accept-agreement">
+        <AcceptAgreementPage />
+      </Route>
+
+      {/* Protected routes */}
       <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
       </Route>
@@ -80,6 +138,7 @@ function Router() {
       <Route path="/initiate-onboarding">
         <ProtectedRoute component={InitiateOnboardingPage} />
       </Route>
+
       <Route path="/">
         <Redirect to="/dashboard" />
       </Route>
