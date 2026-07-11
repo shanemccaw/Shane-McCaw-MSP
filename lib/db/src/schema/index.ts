@@ -270,7 +270,7 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   projectId: integer("project_id").notNull().references(() => projectsTable.id),
   title: text("title").notNull(),
   description: text("description"),
-  column: text("column", { enum: ["backlog", "in_progress", "waiting_on_customer", "completed"] }).notNull().default("backlog"),
+  column: text("column", { enum: ["backlog", "in_progress", "waiting_on_customer", "review", "completed"] }).notNull().default("backlog"),
   order: integer("order").notNull().default(0),
   assignedTo: text("assigned_to"),
   dueDate: timestamp("due_date"),
@@ -286,6 +286,8 @@ export const kanbanTasksTable = pgTable("kanban_tasks", {
   statusReportId: integer("status_report_id"),
   taskType: text("task_type"),
   taskMetadata: jsonb("task_metadata"),
+  publicNotes: text("public_notes"),
+  internalNotes: text("internal_notes"),
 });
 
 export type InsertKanbanTask = typeof kanbanTasksTable.$inferInsert;

@@ -37,6 +37,7 @@ export default defineConfig({
       "src/routes/msp-custom-domain.test.ts",
       "src/routes/msp-sales-bundles.test.ts",
       "src/routes/msp-diagnostics.test.ts",
+      "src/routes/portal-delivery-kanban.test.ts",
     ],
     coverage: {
       provider: "v8",

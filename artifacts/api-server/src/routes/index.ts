@@ -94,6 +94,7 @@ import mspReportsRouter from "./msp-reports";
 import mspCustomDomainRouter from "./msp-custom-domain";
 import mspSalesBundlesRouter from "./msp-sales-bundles";
 import mspDiagnosticsRouter from "./msp-diagnostics";
+import portalDeliveryKanbanRouter from "./portal-delivery-kanban";
 
 const router: IRouter = Router();
 
@@ -195,10 +196,14 @@ router.use(mspPlanManagementRouter);
 router.use(mspAuditLogRouter);
 router.use(supportChatRouter);
 router.use(adminMonitorChecksRouter);
+<<<<<<< HEAD
 router.use(mspReportsRouter);
 router.use(mspCustomDomainRouter);
 router.use(mspSalesBundlesRouter);
 router.use(mspDiagnosticsRouter);
+=======
+router.use(portalDeliveryKanbanRouter);
+>>>>>>> 8c5beda3 (feat: Portal Kanban — Project Delivery Board (#2729))
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

@@ -46,6 +46,7 @@ import SalesBundlesPage from "@/pages/sales-bundles";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
+import ProjectKanbanPage from "@/pages/project-kanban";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -276,6 +277,9 @@ function Router() {
       </Route>
       <Route path="/support">
         <ProtectedRoute component={SupportChatPage} />
+      </Route>
+      <Route path="/project-kanban/:id">
+        <ProtectedRoute component={ProjectKanbanPage} />
       </Route>
 
       {/* Reports */}
