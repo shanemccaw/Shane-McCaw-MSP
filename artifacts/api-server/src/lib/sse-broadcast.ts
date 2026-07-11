@@ -1,5 +1,53 @@
 import type { Response } from "express";
 
+// ── Per-user notification SSE ──────────────────────────────────────────────────
+// Keyed by userId (usersTable) for platform_admin / customer_user recipients.
+// MSP-user recipients key off mspUserId (negative convention: -(mspUserId) to
+// avoid collisions with regular userIds, since both are serials starting at 1).
+
+const notificationSSEClients = new Map<number, Set<Response>>();
+
+/**
+ * Register an SSE client for user-scoped notification updates.
+ * @param key  positive userId for admin/client users; -(mspUserId) for MSP users
+ */
+export function registerNotificationSSEClient(key: number, res: Response, onClose: () => void): void {
+  if (!notificationSSEClients.has(key)) notificationSSEClients.set(key, new Set());
+  const clients = notificationSSEClients.get(key)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) notificationSSEClients.delete(key);
+    onClose();
+  });
+}
+
+/**
+ * Broadcast a new-notification event to a specific user's SSE clients.
+ * @param key  positive userId or -(mspUserId)
+ */
+export function broadcastNotification(key: number, notification: Record<string, unknown>): void {
+  const clients = notificationSSEClients.get(key);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "notification", notification })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+/**
+ * Broadcast an unread-count update to a user's SSE clients (lightweight ping).
+ * @param key  positive userId or -(mspUserId)
+ */
+export function broadcastUnreadCount(key: number, unreadCount: number): void {
+  const clients = notificationSSEClients.get(key);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "unread_count", unreadCount })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
 const kanbanSSEClients = new Map<number, Set<Response>>();
 
 export function registerSSEClient(projectId: number, res: Response, onClose: () => void): void {

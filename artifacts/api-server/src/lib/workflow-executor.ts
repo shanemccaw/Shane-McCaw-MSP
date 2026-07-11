@@ -3348,18 +3348,69 @@ async function executeNode(
       }
 
       case "create_notification": {
-        const cnTitle = interp(node.data.title    as string | undefined, payload)?.trim() ?? "";
-        const cnBody  = interp(node.data.body     as string | undefined, payload) ?? "";
-        const cnLink  = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
-        const cnType  = (interp(node.data.type    as string | undefined, payload)?.trim() || "message") as
+        const cnTitle    = interp(node.data.title    as string | undefined, payload)?.trim() ?? "";
+        const cnBody     = interp(node.data.body     as string | undefined, payload) ?? "";
+        const cnLink     = interp(node.data.linkPath as string | undefined, payload)?.trim() || null;
+        const cnType     = (interp(node.data.type    as string | undefined, payload)?.trim() || "message") as
           "project_update" | "message" | "invoice" | "document" | "general" | "lead_created" | "quiz_lead_created" | "purchase_created";
         const validTypes = ["project_update","message","invoice","document","general","lead_created","quiz_lead_created","purchase_created"] as const;
         const resolvedType = (validTypes as readonly string[]).includes(cnType) ? cnType : "message" as const;
 
+        // channel: "inbox" enables Notification Center delivery in addition to legacy admin-only inserts
+        const cnChannel  = (interp(node.data.channel  as string | undefined, payload)?.trim() || "default") as string;
+        const cnCategory = interp(node.data.category  as string | undefined, payload)?.trim() || null;
+        const cnSeverity = (interp(node.data.severity as string | undefined, payload)?.trim() || "info") as "info" | "warning" | "critical";
+        const cnFeedType = (interp(node.data.feedType as string | undefined, payload)?.trim() || "personal") as "personal" | "all_activity";
+
         if (!cnTitle) {
           logger.warn({ runId }, "create_notification: title is empty — skipping insert");
           output = { notificationCount: 0, skipped: true, reason: "title is empty" };
+        } else if (cnChannel === "inbox") {
+          // Notification Center path: insert for all admins with full NC fields
+          const adminRows = await db
+            .select({ id: usersTable.id })
+            .from(usersTable)
+            .where(eq(usersTable.role, "admin"));
+
+          if (adminRows.length === 0) {
+            logger.warn({ runId }, "create_notification[inbox]: no admin users found — skipping");
+            output = { notificationCount: 0, skipped: true, reason: "no admin users" };
+          } else {
+            const { broadcastNotification, broadcastUnreadCount } = await import("./sse-broadcast");
+            await db.insert(notificationsTable).values(
+              adminRows.map(row => ({
+                userId: row.id,
+                title: cnTitle,
+                body: cnBody || null,
+                type: resolvedType,
+                linkPath: cnLink,
+                read: false,
+                feedType: cnFeedType,
+                category: cnCategory,
+                severity: cnSeverity,
+                recipientType: "platform_admin" as const,
+              })),
+            );
+            // SSE broadcast for each admin so open tabs update instantly
+            const newNotif = {
+              title: cnTitle, body: cnBody || null, category: cnCategory,
+              severity: cnSeverity, linkPath: cnLink, feedType: cnFeedType,
+              read: false, createdAt: new Date().toISOString(),
+            };
+            for (const row of adminRows) {
+              broadcastNotification(row.id, newNotif);
+              // Recompute unread count and push it
+              const [cnt] = await db
+                .select({ n: count() })
+                .from(notificationsTable)
+                .where(and(eq(notificationsTable.userId, row.id), eq(notificationsTable.feedType, "personal"), eq(notificationsTable.read, false)));
+              broadcastUnreadCount(row.id, cnt?.n ?? 0);
+            }
+            logger.info({ runId, notificationCount: adminRows.length, cnFeedType, cnCategory }, "create_notification[inbox]: inserted notifications");
+            output = { notificationCount: adminRows.length };
+          }
         } else {
+          // Legacy path: insert for all admins without NC fields (backward compat)
           const adminRows = await db
             .select({ id: usersTable.id })
             .from(usersTable)

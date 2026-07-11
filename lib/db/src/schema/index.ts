@@ -381,13 +381,20 @@ export type Message = typeof messagesTable.$inferSelect;
 // Notifications
 export const notificationsTable = pgTable("notifications", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => usersTable.id),
+  userId: integer("user_id").references(() => usersTable.id),
   title: text("title").notNull(),
   body: text("body"),
   type: text("type", { enum: ["project_update", "message", "invoice", "document", "general", "lead_created", "quiz_lead_created", "purchase_created"] }).notNull().default("general"),
   read: boolean("read").notNull().default(false),
   linkPath: text("link_path"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Notification Center v2 fields
+  feedType: text("feed_type", { enum: ["personal", "all_activity"] }).notNull().default("personal"),
+  category: text("category"),
+  severity: text("severity", { enum: ["info", "warning", "critical"] }).notNull().default("info"),
+  mspId: integer("msp_id"),
+  mspUserId: integer("msp_user_id"),
+  recipientType: text("recipient_type", { enum: ["platform_admin", "msp_user", "customer_user"] }).notNull().default("platform_admin"),
 });
 
 export type InsertNotification = typeof notificationsTable.$inferInsert;

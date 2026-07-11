@@ -5440,31 +5440,7 @@ router.post("/portal/messages", requireAuth, async (req: Request, res: Response)
   res.status(201).json(msg);
 });
 
-// ─── CLIENT: Notifications ───────────────────────────────────────────────────
-router.get("/portal/notifications", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  const notifications = await db.select().from(notificationsTable)
-    .where(eq(notificationsTable.userId, userId))
-    .orderBy(desc(notificationsTable.createdAt))
-    .limit(50);
-  res.json(notifications);
-});
-
-router.patch("/portal/notifications/:id/read", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  const id = parseInt(String(req.params.id ?? ""), 10);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
-  await db.update(notificationsTable).set({ read: true })
-    .where(and(eq(notificationsTable.id, id), eq(notificationsTable.userId, userId)));
-  res.json({ ok: true });
-});
-
-router.post("/portal/notifications/read-all", requireAuth, async (req: Request, res: Response) => {
-  const userId = req.user!.id;
-  await db.update(notificationsTable).set({ read: true })
-    .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.read, false)));
-  res.json({ ok: true });
-});
+// ─── CLIENT: Notifications — handled by routes/notifications.ts ──────────────
 
 // ─── ADMIN: Clients ──────────────────────────────────────────────────────────
 router.get("/admin/clients", requireAdmin, async (_req: Request, res: Response) => {

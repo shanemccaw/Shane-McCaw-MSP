@@ -5,6 +5,7 @@ import PortalTour, { useTour } from "@/components/PortalTour";
 import { useAssistantChat } from "@/hooks/useAssistantChat";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import ScriptProgressWidget from "@/components/ScriptProgressWidget";
+import NotificationBell from "@/components/NotificationBell";
 
 interface NavItem {
   label: string;
@@ -163,7 +164,7 @@ function OverallHealthWidget({ variant = "dark" }: { variant?: "dark" | "light" 
 
 function Logo() {
   return (
-    <div className="flex items-center gap-2.5 px-5 py-4 border-b border-white/10">
+    <div className="flex items-center gap-2.5 px-5 py-4">
       <div className="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center flex-shrink-0">
         <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5 text-white" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
@@ -280,6 +281,11 @@ const CLIENT_NAV_ITEMS = (unreadMessages: number, hasArchivedProjects = false, a
     path: "/portal/privacy",
     icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>,
   },
+  {
+    label: "Notifications",
+    path: "/portal/notifications",
+    icon: <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>,
+  },
 ];
 
 export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, hasArchivedProjects = false, appRegPending = false }: { unreadNotifications?: number; unreadMessages?: number; hasArchivedProjects?: boolean; appRegPending?: boolean }) {
@@ -290,7 +296,13 @@ export function ClientSidebar({ unreadNotifications = 0, unreadMessages = 0, has
 
   return (
     <aside className="hidden md:flex w-60 flex-shrink-0 bg-[#0A2540] flex-col h-screen sticky top-0">
-      <Logo />
+      {/* Logo + notification bell row */}
+      <div className="flex items-center border-b border-white/10">
+        <div className="flex-1 min-w-0"><Logo /></div>
+        <div className="pr-3 flex-shrink-0">
+          <NotificationBell />
+        </div>
+      </div>
       <div className="pt-3">
         <OverallHealthWidget />
         <ScriptProgressWidget />

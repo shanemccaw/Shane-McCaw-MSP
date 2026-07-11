@@ -161,6 +161,25 @@ app.listen(port, (err) => {
     });
   }, 60_000);
 
+  // ── Notification Center: daily retention prune ─────────────────────────────
+  // Removes personal notifications older than 30 days.
+  // all_activity rows are retained indefinitely.
+  import("./lib/notification-center").then(({ pruneOldPersonalNotifications }) => {
+    // Run once shortly after startup, then every 24 hours.
+    setTimeout(() => {
+      pruneOldPersonalNotifications().catch((err: unknown) => {
+        logger.warn({ err }, "notification-center: initial prune failed (non-fatal)");
+      });
+    }, 10_000);
+    setInterval(() => {
+      pruneOldPersonalNotifications().catch((err: unknown) => {
+        logger.warn({ err }, "notification-center: scheduled prune failed (non-fatal)");
+      });
+    }, 24 * 60 * 60 * 1000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "notification-center: failed to load prune module (non-fatal)");
+  });
+
   // ── Pending approvals table ───────────────────────────────────────────────
   pool.query(`
     CREATE TABLE IF NOT EXISTS pending_approvals (

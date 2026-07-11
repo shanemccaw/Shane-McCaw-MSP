@@ -29,6 +29,7 @@ import PortalSecurity from "@/pages/portal/PortalSecurity";
 import PortalWebhooks from "@/pages/portal/PortalWebhooks";
 import PortalInsights from "@/pages/portal/PortalInsights";
 import PortalPrivacy from "@/pages/portal/PortalPrivacy";
+import PortalNotifications from "@/pages/portal/PortalNotifications";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
@@ -320,6 +321,9 @@ function Router() {
       </Route>
       <Route path="/portal/privacy">
         <RequireAuth role="client"><RequireEngagement><PortalPrivacy /></RequireEngagement></RequireAuth>
+      </Route>
+      <Route path="/portal/notifications">
+        <RequireAuth role="client"><RequireEngagement><PortalNotifications /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/quick-wins">
         <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>

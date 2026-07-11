@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { CommandPalette } from "@/components/command-palette";
+import { NotificationBell } from "@/components/notification-bell";
 import {
   Activity,
   AlertCircle,
@@ -627,6 +628,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
 
           <div className="ml-auto flex items-center gap-2">
             {actions}
+            <NotificationBell />
             <button
               className="hidden sm:flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               onClick={() => setCmdOpen(true)}
