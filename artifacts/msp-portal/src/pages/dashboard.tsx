@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   DollarSign,
   FileBarChart2,
+  Info,
   PercentCircle,
+  RefreshCw,
   TrendingDown,
   Users,
 } from "lucide-react";
@@ -108,17 +110,23 @@ export default function DashboardPage() {
   const { user, fetchWithAuth } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [wasteData, setWasteData] = useState<LicenseWasteData | null>(null);
 
   useEffect(() => {
     let mounted = true;
     fetchWithAuth("/api/msp/dashboard")
       .then(async (res) => {
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (mounted) setError(true);
+          return;
+        }
         const json = (await res.json()) as DashboardData;
         if (mounted) setData(json);
       })
-      .catch(() => {})
+      .catch(() => {
+        if (mounted) setError(true);
+      })
       .finally(() => {
         if (mounted) setLoading(false);
       });
@@ -143,9 +151,57 @@ export default function DashboardPage() {
       })
     : "This month";
 
+  // Determine if PlatformAdmin is viewing without an MSP context
+  const isPlatformAdminNoMsp = !loading && !error && user?.role === "admin" && !data?.msp;
+
   return (
     <AppShell title="Dashboard">
       <div className="p-6 space-y-6">
+
+        {/* Error banner — shown when the dashboard API call fails */}
+        {error && (
+          <Card className="border-destructive/40 bg-destructive/10">
+            <CardContent className="flex items-center gap-3 py-4">
+              <RefreshCw className="size-4 text-destructive shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-destructive">Unable to load dashboard data</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Please refresh the page. If the problem persists, contact support.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.location.reload()}
+                className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10"
+              >
+                Refresh
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* PlatformAdmin no-MSP context info banner */}
+        {isPlatformAdminNoMsp && (
+          <Card className="border-blue-500/30 bg-blue-500/10">
+            <CardContent className="flex items-center gap-3 py-4">
+              <Info className="size-4 text-blue-400 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-300">Viewing as Platform Admin — no MSP selected</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Metrics below show platform-wide totals. Select a specific MSP tenant to see per-MSP data.
+                </p>
+              </div>
+              <Link href="/msps">
+                <Button variant="outline" size="sm" className="shrink-0 border-blue-500/30 text-blue-300 hover:bg-blue-500/10">
+                  MSPs list
+                  <ArrowRight className="size-3.5 ml-1.5" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Welcome + offboarding banner */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
@@ -182,21 +238,21 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Signals Fired"
-            value={data?.signalsFiredThisMonth ?? 0}
+            value={error || isPlatformAdminNoMsp ? "—" : (data?.signalsFiredThisMonth ?? 0)}
             sub={periodLabel}
             icon={Activity}
             loading={loading}
           />
           <StatCard
             title="Offer Acceptance"
-            value={`${data?.offerAcceptanceRate ?? 0}%`}
+            value={error || isPlatformAdminNoMsp ? "—" : `${data?.offerAcceptanceRate ?? 0}%`}
             sub="Active customer rate"
             icon={PercentCircle}
             loading={loading}
           />
           <StatCard
             title="Monitoring Revenue"
-            value={`$${data?.revenueUsdThisMonth ?? "0.00"}`}
+            value={error || isPlatformAdminNoMsp ? "—" : `$${data?.revenueUsdThisMonth ?? "0.00"}`}
             sub={periodLabel}
             icon={DollarSign}
             loading={loading}
@@ -236,7 +292,9 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               {loading ? <Skeleton className="h-8 w-12 mt-1" /> : (
-                <div className="text-2xl font-bold">{data?.customers.total ?? 0}</div>
+                <div className="text-2xl font-bold">
+                  {error || isPlatformAdminNoMsp ? "—" : (data?.customers.total ?? 0)}
+                </div>
               )}
               <CardDescription className="text-xs mt-1">All organisations</CardDescription>
             </CardContent>
@@ -249,13 +307,15 @@ export default function DashboardPage() {
             <CardContent>
               {loading ? <Skeleton className="h-8 w-12 mt-1" /> : (
                 <div className="text-2xl font-bold text-green-400">
-                  {data?.customers.active ?? 0}
+                  {error || isPlatformAdminNoMsp ? "—" : (data?.customers.active ?? 0)}
                 </div>
               )}
               <CardDescription className="text-xs mt-1">
-                {data && data.customers.total > 0
-                  ? `${Math.round((data.customers.active / data.customers.total) * 100)}% of total`
-                  : "No customers yet"}
+                {error || isPlatformAdminNoMsp
+                  ? "Select an MSP to view"
+                  : data && data.customers.total > 0
+                    ? `${Math.round((data.customers.active / data.customers.total) * 100)}% of total`
+                    : "No customers yet"}
               </CardDescription>
             </CardContent>
           </Card>
@@ -267,7 +327,7 @@ export default function DashboardPage() {
             <CardContent>
               {loading ? <Skeleton className="h-8 w-12 mt-1" /> : (
                 <div className="text-2xl font-bold text-blue-400">
-                  {data?.customers.onboarding ?? 0}
+                  {error || isPlatformAdminNoMsp ? "—" : (data?.customers.onboarding ?? 0)}
                 </div>
               )}
               <CardDescription className="text-xs mt-1">In progress</CardDescription>

@@ -108,17 +108,26 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
       setRequired(false);
       return;
     }
-    if (!user.mspRole) {
+    // PlatformAdmin never needs agreement gating — skip the fetch entirely.
+    if (user.role === "admin" || !user.mspRole) {
       setLoading(false);
       setRequired(false);
       return;
     }
-    fetchWithAuth("/api/platform/agreement/acceptance-status")
-      .then((r) => r.json())
+
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), 8_000),
+    );
+
+    Promise.race([
+      fetchWithAuth("/api/platform/agreement/acceptance-status").then((r) => r.json()),
+      timeout,
+    ])
       .then((data: { required?: boolean; accepted?: boolean }) => {
         setRequired(!!(data.required && !data.accepted));
       })
       .catch(() => {
+        // On timeout or any error, unblock the UI — don't gate forever.
         setRequired(false);
       })
       .finally(() => setLoading(false));
@@ -170,7 +179,15 @@ function SlugInnerSwitch() {
     <Switch>
       {/* Public slug-scoped routes */}
       <Route path="/login">
-        {!isLoading && user ? <Redirect to={defaultLanding} /> : <LoginPage />}
+        {isLoading ? (
+          <div className="min-h-screen flex items-center justify-center bg-sidebar">
+            <Loader2 className="size-6 animate-spin text-sidebar-foreground/40" />
+          </div>
+        ) : user ? (
+          <Redirect to={defaultLanding} />
+        ) : (
+          <LoginPage />
+        )}
       </Route>
 
       {/* Agreement gate page — auth-required but not gated itself */}
