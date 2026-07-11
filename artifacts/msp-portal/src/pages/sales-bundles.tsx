@@ -285,7 +285,7 @@ function BundleDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit Bundle" : "Create Sales Bundle"}</DialogTitle>
           <DialogDescription>
@@ -293,7 +293,7 @@ function BundleDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 py-2">
+        <div className="space-y-5 py-2 w-full min-w-0">
           {/* Name */}
           <div className="space-y-1.5">
             <Label htmlFor="bundle-name">Bundle Name <span className="text-destructive">*</span></Label>
@@ -333,7 +333,7 @@ function BundleDialog({
                 </span>
               </div>
             )}
-            <div className="border rounded-md divide-y max-h-52 overflow-y-auto">
+            <div className="border rounded-md divide-y max-h-52 overflow-y-auto overflow-x-hidden">
               {availablePackages.length === 0 ? (
                 <p className="p-4 text-sm text-muted-foreground text-center">
                   No active monitoring packages available yet.
