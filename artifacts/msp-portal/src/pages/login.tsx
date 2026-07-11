@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -29,6 +29,43 @@ const totpSchema = z.object({
   code: z.string().min(6, "Enter the 6-digit code").max(6),
 });
 type TotpForm = z.infer<typeof totpSchema>;
+
+// ── Tenant branding ───────────────────────────────────────────────────────────
+
+interface TenantBranding {
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  primaryColor: string | null;
+}
+
+function useTenantBranding(slug: string | null): TenantBranding | null {
+  const [branding, setBranding] = useState<TenantBranding | null>(null);
+
+  useEffect(() => {
+    if (!slug) return;
+    fetch(`/api/portal/branding?slug=${encodeURIComponent(slug)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data: TenantBranding | null) => {
+        if (data) {
+          setBranding(data);
+          // Apply brand color as a CSS variable override for this session
+          if (data.primaryColor) {
+            document.documentElement.style.setProperty("--msp-brand-login-color", data.primaryColor);
+          }
+        }
+      })
+      .catch(() => {
+        // Fail silently — platform branding is the fallback
+      });
+
+    return () => {
+      document.documentElement.style.removeProperty("--msp-brand-login-color");
+    };
+  }, [slug]);
+
+  return branding;
+}
 
 // ── MFA challenge step ────────────────────────────────────────────────────────
 
@@ -166,9 +203,13 @@ function MfaChallenge({
 export default function LoginPage() {
   const { login } = useAuth();
   const [, navigate] = useLocation();
+  const search = useSearch();
   const [serverError, setServerError] = useState<string | null>(null);
-
   const [mfaState, setMfaState] = useState<{ mfaToken: string; methods: string[] } | null>(null);
+
+  // Read tenant slug from ?t= query param (set by branded portal URL or tenant entry route)
+  const tenantSlug = new URLSearchParams(search).get("t") ?? null;
+  const branding = useTenantBranding(tenantSlug);
 
   const {
     register,
@@ -190,15 +231,37 @@ export default function LoginPage() {
     }
   }
 
+  // Branded header — shows MSP logo/name when a tenant slug is present
+  const brandedHeader = branding ? (
+    <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
+      {branding.logoUrl ? (
+        <img
+          src={branding.logoUrl}
+          alt={`${branding.name} logo`}
+          className="h-10 w-auto object-contain"
+        />
+      ) : (
+        <ShieldCheck
+          className="size-10"
+          style={{ color: branding.primaryColor ?? "var(--sidebar-primary)" }}
+        />
+      )}
+      <h1 className="text-xl font-semibold tracking-tight">{branding.name}</h1>
+      <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
+    </div>
+  ) : (
+    <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
+      <ShieldCheck className="size-10 text-sidebar-primary" />
+      <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
+      <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
+    </div>
+  );
+
   if (mfaState) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
         <div className="w-full max-w-sm space-y-6">
-          <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
-            <ShieldCheck className="size-10 text-sidebar-primary" />
-            <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
-            <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
-          </div>
+          {brandedHeader}
           <MfaChallenge
             mfaToken={mfaState.mfaToken}
             methods={mfaState.methods}
@@ -216,11 +279,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
       <div className="w-full max-w-sm space-y-6">
-        <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
-          <ShieldCheck className="size-10 text-sidebar-primary" />
-          <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
-          <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
-        </div>
+        {brandedHeader}
 
         <Card className="border-sidebar-border bg-card/95 backdrop-blur">
           <CardHeader className="space-y-1 pb-4">

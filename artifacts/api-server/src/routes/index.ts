@@ -91,6 +91,7 @@ import mspAuditLogRouter from "./msp-audit-log";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
 import mspReportsRouter from "./msp-reports";
+import mspCustomDomainRouter from "./msp-custom-domain";
 
 const router: IRouter = Router();
 
@@ -190,9 +191,13 @@ router.use(mspAdminSettingsRouter);
 router.use(mspSettingsRouter);
 router.use(mspPlanManagementRouter);
 router.use(mspAuditLogRouter);
+<<<<<<< HEAD
 router.use(supportChatRouter);
 router.use(adminMonitorChecksRouter);
 router.use(mspReportsRouter);
+=======
+router.use(mspCustomDomainRouter);
+>>>>>>> 9cb6f885 (feat: MSP Custom Domain & Branded Portal URL (#2733))
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

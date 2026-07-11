@@ -1186,6 +1186,9 @@ export const mspImpersonationTokensTable = pgTable("msp_impersonation_tokens", {
   index("msp_impersonation_tokens_expires_at_idx").on(t.expiresAt),
 ]);
 
+export type MspImpersonationToken = typeof mspImpersonationTokensTable.$inferSelect;
+export type InsertMspImpersonationToken = typeof mspImpersonationTokensTable.$inferInsert;
+
 // ── Monitoring Package Engine ──────────────────────────────────────────────────
 
 export const MONITOR_CHECK_FREQUENCY = ["hourly", "daily", "live"] as const;
@@ -1393,3 +1396,35 @@ export const mspReportRunsTable = pgTable("msp_report_runs", {
 
 export type MspReportRun = typeof mspReportRunsTable.$inferSelect;
 export type InsertMspReportRun = typeof mspReportRunsTable.$inferInsert;
+
+// ── MSP Custom Domains ─────────────────────────────────────────────────────────
+// One verified custom domain per MSP (e.g. portal.acmeit.com).
+// Verification uses a TXT record on the apex of the custom domain.
+// Status flow: pending → verified (or failed if DNS lookup mismatches).
+// A missing/unverified row means the MSP uses the default /portal/{tenantSlug} URL.
+
+export const MSP_CUSTOM_DOMAIN_STATUSES = ["pending", "verified", "failed"] as const;
+export type MspCustomDomainStatus = typeof MSP_CUSTOM_DOMAIN_STATUSES[number];
+
+export const mspCustomDomainsTable = pgTable("msp_custom_domains", {
+  id: serial("id").primaryKey(),
+  // Each MSP can register at most one custom domain (unique on mspId)
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // The custom domain the MSP wants to point at the portal (e.g. portal.acmeit.com)
+  domain: text("domain").notNull().unique(),
+  // Verification token embedded as a TXT record value: _msp-platform-verify=<token>
+  verificationToken: text("verification_token").notNull(),
+  verificationStatus: text("verification_status", { enum: MSP_CUSTOM_DOMAIN_STATUSES })
+    .notNull()
+    .default("pending"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_custom_domains_msp_id_idx").on(t.mspId),
+  index("msp_custom_domains_domain_idx").on(t.domain),
+]);
+
+export type MspCustomDomain = typeof mspCustomDomainsTable.$inferSelect;
+export type InsertMspCustomDomain = typeof mspCustomDomainsTable.$inferInsert;

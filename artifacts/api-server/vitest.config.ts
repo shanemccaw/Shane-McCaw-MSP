@@ -34,6 +34,7 @@ export default defineConfig({
       "src/routes/support-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/msp-mailer.test.ts",
+      "src/routes/msp-custom-domain.test.ts",
     ],
     coverage: {
       provider: "v8",

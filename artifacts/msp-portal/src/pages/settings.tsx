@@ -86,8 +86,8 @@ const SETTINGS_LINKS: SettingsLink[] = [
     icon: Globe,
     title: "Custom Domain",
     description: "Map a custom domain (e.g. portal.yourmsp.com) to the portal.",
-    badge: "Upcoming",
-    href: "#",
+    href: "/settings/custom-domain",
+    roles: ["MSPAdmin"],
   },
   {
     icon: Bell,

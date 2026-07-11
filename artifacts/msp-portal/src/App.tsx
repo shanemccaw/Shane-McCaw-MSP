@@ -1,4 +1,4 @@
-import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect, useLocation, useParams } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +17,7 @@ import SettingsTeamPage from "@/pages/settings-team";
 import SettingsBillingPage from "@/pages/settings-billing";
 import SettingsEmailTemplatesPage from "@/pages/settings-email-templates";
 import SettingsSessionsPage from "@/pages/settings-sessions";
+import SettingsCustomDomainPage from "@/pages/settings-custom-domain";
 import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
 import OffboardingPage from "@/pages/offboarding";
@@ -52,6 +53,36 @@ const queryClient = new QueryClient({
     queries: { retry: 1, staleTime: 30_000 },
   },
 });
+
+// ── Tenant slug entry point ────────────────────────────────────────────────────
+// Handles /portal/{tenantSlug} URLs — validates the slug via the API, then
+// redirects to the login page with the tenant's branding context in the URL.
+// Falls back to NotFound if the slug does not correspond to any MSP.
+
+function TenantEntryPage() {
+  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const [, navigate] = useLocation();
+  const [state, setState] = useState<"loading" | "redirect" | "notfound">("loading");
+
+  useEffect(() => {
+    if (!tenantSlug) { setState("notfound"); return; }
+    fetch(`/api/portal/tenant/${encodeURIComponent(tenantSlug)}`)
+      .then((r) => {
+        if (!r.ok) { setState("notfound"); return; }
+        // Tenant exists — redirect to login with the slug context
+        navigate(`/login?t=${encodeURIComponent(tenantSlug)}`, { replace: true });
+        setState("redirect");
+      })
+      .catch(() => setState("notfound"));
+  }, [tenantSlug, navigate]);
+
+  if (state === "notfound") return <NotFound />;
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 // ── Agreement gate ────────────────────────────────────────────────────────────
 // After authentication, check whether the user has accepted the current
@@ -183,6 +214,9 @@ function Router() {
       <Route path="/settings/sessions">
         <ProtectedRoute component={SettingsSessionsPage} />
       </Route>
+      <Route path="/settings/custom-domain">
+        <ProtectedRoute component={SettingsCustomDomainPage} />
+      </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />
       </Route>
@@ -262,6 +296,11 @@ function Router() {
         ) : (
           <Redirect to={defaultLanding} />
         )}
+      </Route>
+
+      {/* Branded tenant entry — /portal/{tenantSlug} validates slug then redirects to login */}
+      <Route path="/:tenantSlug">
+        <TenantEntryPage />
       </Route>
 
       <Route component={NotFound} />
