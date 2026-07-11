@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth-context";
-import { Link } from "wouter";
+import { AppShell } from "@/components/app-shell";
 import {
   Card,
   CardContent,
@@ -9,11 +9,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   Download,
   Shield,
@@ -155,17 +153,7 @@ export default function OffboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="h-14 border-b border-border bg-background flex items-center px-6 gap-4">
-        <Link href="/dashboard">
-          <Button variant="ghost" size="sm" className="gap-2">
-            <ArrowLeft className="size-4" />
-            Back to Dashboard
-          </Button>
-        </Link>
-        <h1 className="text-sm font-semibold text-foreground">Offboarding</h1>
-      </header>
-
+    <AppShell title="Offboarding">
       <div className="max-w-2xl mx-auto p-6 space-y-6">
         {/* Warning banner */}
         <Card className="border-amber-200 bg-amber-50/50">
@@ -332,6 +320,6 @@ export default function OffboardingPage() {
           </Card>
         )}
       </div>
-    </div>
+    </AppShell>
   );
 }
