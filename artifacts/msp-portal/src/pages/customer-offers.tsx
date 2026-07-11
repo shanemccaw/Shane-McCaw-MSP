@@ -6,7 +6,10 @@
  *
  * Customers can:
  *   - View sent/pending offers with rationale and price
- *   - Accept an offer (triggers offer.accepted canonical event → Billing/SOW task)
+ *   - Initiate checkout (branches by serviceClass on the server):
+ *       add_on/subscription → redirected to Stripe checkout
+ *       $0 free → service activated immediately (rate-limited)
+ *       project → SOW created and customer sent to review/sign page
  *   - Reject an offer with an optional reason
  *   - See their offer history (accepted / rejected / expired)
  *
@@ -41,7 +44,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
-  DollarSign,
+  CreditCard,
   Gift,
   Loader2,
   RefreshCw,
@@ -68,9 +71,16 @@ interface CustomerOffer {
   createdAt: string;
 }
 
+type CheckoutOutcome =
+  | { outcome: "checkout_required"; checkoutUrl: string; trialPeriodDays: number | null }
+  | { outcome: "free_activated"; message: string }
+  | { outcome: "sow_created"; sowId: string; shareUrl: string; message: string }
+  | { error: string };
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function formatCents(cents: number): string {
+  if (cents === 0) return "Free";
   return `$${(cents / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -175,15 +185,16 @@ function RejectDialog({ open, offerTitle, onConfirm, onCancel, submitting }: Rej
 
 interface SentOfferCardProps {
   offer: CustomerOffer;
-  onAccept: (offer: CustomerOffer) => void;
+  onCheckout: (offer: CustomerOffer) => void;
   onReject: (offer: CustomerOffer) => void;
   submitting: boolean;
 }
 
-function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardProps) {
+function SentOfferCard({ offer, onCheckout, onReject, submitting }: SentOfferCardProps) {
   const expiresDays = daysUntil(offer.expiresAt);
   const isExpiring = expiresDays !== null && expiresDays >= 0 && expiresDays <= 7;
   const countdown = useCountdown(offer.expiresAt);
+  const isFree = offer.adjustedPriceCents === 0;
 
   return (
     <Card className={`${countdown ? "border-amber-500/40 bg-amber-500/5" : "border-primary/30 bg-primary/5"}`}>
@@ -213,7 +224,11 @@ function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardP
           </div>
           <div className="text-right shrink-0">
             <p className="text-lg font-bold text-primary">{formatCents(offer.adjustedPriceCents)}</p>
-            <p className="text-xs text-muted-foreground">one-time</p>
+            {isFree ? (
+              <Badge variant="secondary" className="text-xs mt-0.5">Free assessment</Badge>
+            ) : (
+              <p className="text-xs text-muted-foreground">one-time</p>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -227,11 +242,17 @@ function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardP
           <Button
             size="sm"
             className="gap-1.5"
-            onClick={() => onAccept(offer)}
+            onClick={() => onCheckout(offer)}
             disabled={submitting}
           >
-            {submitting ? <Loader2 className="size-3.5 animate-spin" /> : <ThumbsUp className="size-3.5" />}
-            Accept offer
+            {submitting ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : isFree ? (
+              <ThumbsUp className="size-3.5" />
+            ) : (
+              <CreditCard className="size-3.5" />
+            )}
+            {isFree ? "Activate free" : "Proceed to payment"}
           </Button>
           <Button
             size="sm"
@@ -356,12 +377,51 @@ export default function CustomerOffersPage() {
     return () => clearInterval(id);
   }, [loadOffers]);
 
-  async function handleAccept(offer: CustomerOffer) {
+  async function handleCheckout(offer: CustomerOffer) {
     setSubmitting(true);
     try {
-      const res = await fetchWithAuth(`/api/portal/offers/${offer.id}/accept`, { method: "POST" });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) { toast.error(data.error ?? "Could not accept offer"); return; }
+      const res = await fetchWithAuth(`/api/portal/offers/${offer.id}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = (await res.json()) as CheckoutOutcome;
+
+      if (!res.ok || "error" in data) {
+        const msg = "error" in data ? data.error : "Could not process your request.";
+        // 429 = rate limit reached
+        if (res.status === 429) {
+          toast.error(msg);
+        } else {
+          toast.error(msg ?? "Could not initiate checkout. Please try again.");
+        }
+        return;
+      }
+
+      if ("outcome" in data) {
+        if (data.outcome === "checkout_required") {
+          // Redirect to Stripe
+          window.location.href = data.checkoutUrl;
+          return;
+        }
+
+        if (data.outcome === "free_activated") {
+          toast.success("Service activated — your team has been notified and will be in touch shortly.");
+          await loadOffers(true);
+          return;
+        }
+
+        if (data.outcome === "sow_created") {
+          toast.success("Your Statement of Work is ready. Redirecting you to review and sign…");
+          await loadOffers(true);
+          // Navigate to the SOW review page
+          setTimeout(() => {
+            window.location.href = data.shareUrl;
+          }, 1500);
+          return;
+        }
+      }
+
+      // Fallback — treat as success
       toast.success("Offer accepted — your service team has been notified.");
       await loadOffers(true);
     } catch {
@@ -448,7 +508,7 @@ export default function CustomerOffersPage() {
                   <SentOfferCard
                     key={offer.id}
                     offer={offer}
-                    onAccept={handleAccept}
+                    onCheckout={handleCheckout}
                     onReject={(o) => setRejectTarget(o)}
                     submitting={submitting}
                   />

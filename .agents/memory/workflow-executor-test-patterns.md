@@ -96,6 +96,47 @@ vi.mock("@workspace/integrations-openai-ai-server/image", () => ({
 }));
 ```
 
+### Constructor mocks (used with `new`) — must use regular function, not arrow
+
+When mocking a class instantiated via `new` (e.g. `new Stripe(...)`), the
+`mockImplementation` factory must be a regular `function`, not an arrow function.
+Arrow functions cannot be constructors; vitest warns and the mock silently returns
+`undefined`, causing the route to throw.
+
+```ts
+// CORRECT
+vi.mock("stripe", () => ({
+  default: vi.fn().mockImplementation(function () {
+    return { checkout: { sessions: { create: mockCreate } }, webhooks: { ... } };
+  }),
+}));
+
+// WRONG — arrow functions cannot be constructors
+vi.mock("stripe", () => ({
+  default: vi.fn().mockImplementation(() => ({ ... })),  // vitest warning + crash
+}));
+```
+
+### vi.hoisted() for mocks shared across vi.mock() factories
+
+`vi.mock()` factories are hoisted before module-level `const` declarations. Any
+`vi.fn()` variable referenced inside a factory must be declared via `vi.hoisted()`,
+which runs before factories. Without it the variable is in TDZ (temporal dead zone)
+when the factory evaluates and the mock function is `undefined`.
+
+```ts
+const { mockCreate, mockDbSelect } = vi.hoisted(() => ({
+  mockCreate: vi.fn(),
+  mockDbSelect: vi.fn(),
+}));
+
+vi.mock("stripe", () => ({
+  default: vi.fn().mockImplementation(function () {
+    return { checkout: { sessions: { create: mockCreate } } };
+  }),
+}));
+```
+
 ### DB queue pattern
 Every `executeWorkflowRun(runId)` call consumes a queue in order:
 1. `[runRow]` — wfRunsTable SELECT

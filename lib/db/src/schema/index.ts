@@ -2318,12 +2318,38 @@ export const salesOffersTable = pgTable("sales_offers", {
   idempotencyKey: text("idempotency_key").unique(),
   /** Full engine output snapshot at generation time (for audit). */
   engineSnapshot: jsonb("engine_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  /**
+   * Offer-level trial period override (days).
+   * Takes precedence over the product-level trialPeriodDays on servicesTable.
+   * The same product can have different trial terms on different campaigns/offers.
+   * Applied to Stripe subscription_data.trial_period_days at checkout.
+   */
+  trialPeriodDays: integer("trial_period_days"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type InsertSalesOffer = typeof salesOffersTable.$inferInsert;
 export type SalesOffer = typeof salesOffersTable.$inferSelect;
+
+// ── Free-Checkout Rate-Limit Attempts ─────────────────────────────────────────
+// Records every $0 portal checkout attempt for rate-limit enforcement.
+// Limits:
+//   1 per customer email per rolling 90-day window.
+//   3 per IP address per rolling 24-hour window.
+//   Per-MSP daily aggregate triggers a soft PlatformAdmin alert (not a hard block).
+
+export const freeCheckoutAttemptsTable = pgTable("free_checkout_attempts", {
+  id: serial("id").primaryKey(),
+  offerId: integer("offer_id").notNull(),
+  customerEmail: text("customer_email").notNull(),
+  ipAddress: text("ip_address"),
+  mspId: integer("msp_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type InsertFreeCheckoutAttempt = typeof freeCheckoutAttemptsTable.$inferInsert;
+export type FreeCheckoutAttempt = typeof freeCheckoutAttemptsTable.$inferSelect;
 
 /** Audit trail for every lifecycle transition on a sales offer. */
 export const salesOfferEventsTable = pgTable("sales_offer_events", {

@@ -1226,6 +1226,13 @@
       "when": 1752710400000,
       "tag": "0165_monitoring_packages_missing_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "7",
+      "when": 1783760291741,
+      "tag": "0166_portal_checkout_tables",
+      "breakpoints": true
     }
   ]
 }

@@ -41,6 +41,7 @@ export default defineConfig({
       "src/lib/__tests__/live-monitor-nodes.test.ts",
       "src/routes/msp-sow.test.ts",
       "src/routes/admin-observability.test.ts",
+      "src/routes/portal-checkout.test.ts",
     ],
     coverage: {
       provider: "v8",

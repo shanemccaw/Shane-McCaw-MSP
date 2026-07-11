@@ -101,6 +101,7 @@ import portalDeliveryKanbanRouter from "./portal-delivery-kanban";
 import adminLiveMonitorRouter from "./admin-live-monitor";
 import mspSowRouter from "./msp-sow";
 import adminObservabilityRouter from "./admin-observability";
+import portalCheckoutRouter from "./portal-checkout";
 
 const router: IRouter = Router();
 
@@ -213,6 +214,7 @@ router.use(portalDeliveryKanbanRouter);
 router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);
+router.use(portalCheckoutRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);
