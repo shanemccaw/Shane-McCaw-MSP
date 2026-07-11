@@ -1936,6 +1936,9 @@ export interface WfNode {
     // Intelligence Engines
     | "calculate_priority" | "calculate_pricing_engine" | "calculate_health"
     | "calculate_drift" | "calculate_forecast" | "calculate_crm" | "calculate_msp"
+    // SLA Engine
+    | "sla_start_timer" | "sla_stop_timer" | "sla_warning"
+    | "sla_breach" | "sla_escalate" | "sla_resolve"
     // Array / transform
     | "group_by"
     // Utilities

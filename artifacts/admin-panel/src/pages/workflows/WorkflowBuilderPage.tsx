@@ -102,6 +102,13 @@ const NODE_STYLES: Record<string, { bg: string; border: string; icon: string; la
   calculate_forecast: { bg: "#150D20", border: "#A855F7", icon: "🔮", label: "Forecasting Engine"},
   calculate_crm:      { bg: "#150D20", border: "#A855F7", icon: "🧲", label: "CRM Engine"        },
   calculate_msp:      { bg: "#150D20", border: "#A855F7", icon: "🛰", label: "MSP Portfolio Engine" },
+  // ── SLA Engine ──
+  sla_start_timer:    { bg: "#001A14", border: "#00C896", icon: "⏱",  label: "SLA: Start Timer"   },
+  sla_stop_timer:     { bg: "#001A14", border: "#00C896", icon: "⏹",  label: "SLA: Stop Timer"    },
+  sla_warning:        { bg: "#1A1000", border: "#F59E0B", icon: "⚠️",  label: "SLA: Warning"       },
+  sla_breach:         { bg: "#1A0000", border: "#EF4444", icon: "🚨",  label: "SLA: Breach"        },
+  sla_escalate:       { bg: "#1A0800", border: "#F97316", icon: "🔺",  label: "SLA: Escalate"      },
+  sla_resolve:        { bg: "#001A14", border: "#10B981", icon: "✅",  label: "SLA: Resolve"       },
   // ── Marketing Actions ──
   send_campaign_email: { bg: "#0D1A10", border: "#10B981", icon: "📨", label: "Send Campaign Email" },
   // ── Project Actions ──
@@ -264,6 +271,13 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   calculate_forecast: [{ key: "engine", label: "Engine key (\"forecasting\")" }, { key: "score", label: "Forecast score (trendValue * decayFactor summed)" }, { key: "breakdown", label: "Array of contributing trend signals" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
   calculate_crm:      [{ key: "engine", label: "Engine key (\"crm\")" }, { key: "score", label: "{ fit, pain, maturity, intent, urgency } sub-scores" }, { key: "breakdown", label: "Array of contributing crm:* signals" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
   calculate_msp:      [{ key: "engine", label: "Engine key (\"msp\")" }, { key: "score", label: "Portfolio-wide risk roll-up (health + drift + priority)" }, { key: "breakdown", label: "Array of per-tenant contributing scores" }, { key: "rawSignals", label: "All fired signal keys considered" }, { key: "timestamp", label: "ISO timestamp the score was computed" }],
+  // SLA Engine nodes
+  sla_start_timer:    [{ key: "timerId", label: "UUID of the started (or existing) SLA timer" }, { key: "alreadyExisted", label: "true if the idempotency key matched an existing timer" }],
+  sla_stop_timer:     [{ key: "stopped", label: "true if the timer was found and stopped" }, { key: "timerId", label: "UUID of the stopped timer" }],
+  sla_warning:        [{ key: "warningFired", label: "true if the warning timestamp was set on the timer" }, { key: "timerId", label: "UUID of the affected timer" }],
+  sla_breach:         [{ key: "breachId", label: "UUID of the created (or existing) breach record" }, { key: "alreadyExisted", label: "true if the idempotency key matched an existing breach" }],
+  sla_escalate:       [{ key: "escalationId", label: "UUID of the created (or existing) escalation record" }, { key: "alreadyExisted", label: "true if the idempotency key matched an existing escalation" }, { key: "level", label: "Escalation level (1 = first responder, 2+ = senior/management)" }],
+  sla_resolve:        [{ key: "resolved", label: "true if the timer was found and resolved" }, { key: "timerId", label: "UUID of the resolved timer" }],
   // Marketing Actions
   send_campaign_email: [{ key: "sent", label: "true if email was sent" }, { key: "recipient", label: "Resolved recipient address" }, { key: "subject", label: "Rendered email subject" }, { key: "sourceRef", label: "asset:id or template:slug that was used" }, { key: "templateSlug", label: "Legacy: template slug (empty when using campaign asset)" }],
   // Project Actions
@@ -831,6 +845,12 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
       { type: "calculate_forecast", label: "Forecasting Engine", description: "Project trendValue * decayFactor across fired signals with a non-zero trend for a tenant.", tags: ["engine", "forecasting", "score", "intelligence"] },
       { type: "calculate_crm",      label: "CRM Engine",         description: "Sum the five CRM contribution fields (fit/pain/maturity/intent/urgency) across fired crm:* signals.", tags: ["engine", "crm", "score", "intelligence"] },
       { type: "calculate_msp",      label: "MSP Portfolio Engine", description: "Aggregate health + drift + priority scores into a portfolio-wide risk roll-up.", tags: ["engine", "msp", "portfolio", "score", "intelligence"] },
+      { type: "sla_start_timer",    label: "SLA Start Timer",      description: "Start an SLA response or resolution timer for a customer ticket. Outputs {{timerId}} for downstream nodes.", tags: ["engine", "sla", "timer", "start", "intelligence"] },
+      { type: "sla_stop_timer",     label: "SLA Stop Timer",       description: "Stop a running SLA timer (marks it stopped/resolved without breach).", tags: ["engine", "sla", "timer", "stop", "intelligence"] },
+      { type: "sla_warning",        label: "SLA Warning",          description: "Fire the warning milestone on an SLA timer when the warning threshold is crossed.", tags: ["engine", "sla", "warning", "threshold", "intelligence"] },
+      { type: "sla_breach",         label: "SLA Breach",           description: "Record an SLA breach when elapsed time exceeds the policy threshold. Updates the timer status to 'breached'. Outputs {{breachId}}.", tags: ["engine", "sla", "breach", "violation", "intelligence"] },
+      { type: "sla_escalate",       label: "SLA Escalate",         description: "Create an escalation record for an open breach (supports multi-level operator_task/email/sms/webhook escalations). Outputs {{escalationId}}.", tags: ["engine", "sla", "escalate", "level", "intelligence"] },
+      { type: "sla_resolve",        label: "SLA Resolve",          description: "Resolve an SLA timer, mark any associated breaches resolved, and close open escalations.", tags: ["engine", "sla", "resolve", "close", "intelligence"] },
     ],
   },
   {

@@ -10,7 +10,7 @@ import SharePointPage from "@/pages/SharePoint";
 import EnginePanel from "@/components/EnginePanel";
 import FulfillmentQueuePage from "@/pages/FulfillmentQueue";
 
-const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp"] as const;
+const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   priority: "Priority Engine",
   pricing: "Pricing Engine",
@@ -19,6 +19,7 @@ const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   forecasting: "Forecasting Engine",
   crm: "CRM Engine",
   msp: "MSP Engine",
+  sla: "SLA Engine",
 };
 
 const NAV_ITEMS: WorkspaceNavItem[] = [

@@ -6,6 +6,7 @@ import { graphCredentialsPresent } from "./lib/graph";
 import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
+import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
@@ -113,6 +114,10 @@ app.listen(port, (err) => {
 
   seedEmailTemplates().catch((err) => {
     logger.warn({ err }, "Email template seed failed (non-fatal)");
+  });
+
+  seedSlaRunbooks().catch((err) => {
+    logger.warn({ err }, "SLA runbook seed failed (non-fatal)");
   });
 
   // ── Workflow Engine: seed system workflows then fire startup triggers ──────

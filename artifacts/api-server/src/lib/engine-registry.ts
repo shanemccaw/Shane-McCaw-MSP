@@ -18,6 +18,7 @@ import {
   type SignalDerivationRule,
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
+import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy } from "./sla-engine.ts";
 import {
   fetchSignalRulesAndGroups,
   buildTenantProfileAndFindings,
@@ -53,6 +54,12 @@ export interface EngineDef {
   runForPayload(input: EngineTestInput): unknown;
   /** true for engines that operate per-tenant (all but MSP, which is portfolio-wide). */
   tenantScoped: boolean;
+  /**
+   * "platform" — rules owned and edited only by Shane/PlatformAdmin.
+   * "msp"      — MSP operators can add/override rules for their own organisation.
+   * Defaults to "platform" when absent.
+   */
+  ruleOwnership?: "platform" | "msp";
 }
 
 // ── pricing engine ──────────────────────────────────────────────────────────
@@ -238,10 +245,25 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Aggregates health + drift + priority scores per tenant into a portfolio-wide risk roll-up.",
     categoryPrefix: "msp",
     tenantScoped: false,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateMspForTenant(tenantId),
     runForPayload: (input) => {
       const { mergedProfile, parsedFindings, rules, groups, disabledSignalKeys } = input;
       return computeTenantEngineScores(0, "Sample Payload", mergedProfile, parsedFindings, rules, groups, disabledSignalKeys);
+    },
+  },
+  {
+    key: "sla",
+    label: "SLA Engine",
+    description: "Tracks SLA timers per customer, detects warnings and breaches, and computes compliance scores across MSP-managed tenants.",
+    categoryPrefix: "sla",
+    tenantScoped: true,
+    ruleOwnership: "msp",
+    runForTenant: (tenantId) => runSlaEngineForTenant(tenantId),
+    runForPayload: (_input) => {
+      const sampleTimers: SlaTimer[] = [];
+      const samplePolicies: SlaPolicy[] = [];
+      return computeSlaEngine(sampleTimers, samplePolicies);
     },
   },
 ];

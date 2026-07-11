@@ -692,6 +692,56 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       };
     }
 
+    case "sla_start_timer":
+      return {
+        dryRun: true,
+        timerId: "00000000-0000-0000-0000-000000000000",
+        alreadyExisted: false,
+        phase: (node.data.phase as string | undefined) ?? "response",
+        note: "Timer would be started in live run",
+      };
+
+    case "sla_stop_timer":
+      return {
+        dryRun: true,
+        stopped: true,
+        timerId: interp(node.data.timerId as string | undefined, payload) ?? "",
+        note: "Timer would be stopped in live run",
+      };
+
+    case "sla_warning":
+      return {
+        dryRun: true,
+        warningFired: true,
+        timerId: interp(node.data.timerId as string | undefined, payload) ?? "",
+        note: "Warning event would be recorded in live run",
+      };
+
+    case "sla_breach":
+      return {
+        dryRun: true,
+        breachId: "00000000-0000-0000-0000-000000000000",
+        alreadyExisted: false,
+        note: "Breach record would be created in live run",
+      };
+
+    case "sla_escalate":
+      return {
+        dryRun: true,
+        escalationId: "00000000-0000-0000-0000-000000000000",
+        alreadyExisted: false,
+        level: (node.data.level as number | undefined) ?? 1,
+        note: "Escalation would be created in live run",
+      };
+
+    case "sla_resolve":
+      return {
+        dryRun: true,
+        resolved: true,
+        timerId: interp(node.data.timerId as string | undefined, payload) ?? "",
+        note: "Timer would be resolved and open escalations closed in live run",
+      };
+
     case "generate_diff_report":
       return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
 
@@ -2846,6 +2896,173 @@ async function executeNode(
               customerError: "Unable to compute this score — an error occurred. Please retry or contact support.",
             };
             logger.error({ runId, ceErr }, "wf-executor: engine node failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_start_timer": {
+        const { startSlaTimer: slaStartTimer } = await import("./sla-engine.ts");
+        const slaMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const slaCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const slaPolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        if (isNaN(slaMspId) || isNaN(slaCustomerId) || isNaN(slaPolicyId)) {
+          nodeError = true;
+          output = { error: "sla_start_timer requires mspId, customerId, and policyId" };
+        } else {
+          try {
+            const slaStartResult = await slaStartTimer({
+              mspId: slaMspId,
+              customerId: slaCustomerId,
+              policyId: slaPolicyId,
+              ticketRef: interp(node.data.ticketRef as string | undefined, payload) ?? undefined,
+              ticketType: (interp(node.data.ticketType as string | undefined, payload) ?? "incident") || "incident",
+              phase: ((interp(node.data.phase as string | undefined, payload) ?? "response") as "response" | "resolution"),
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = slaStartResult;
+            logger.info({ runId, timerId: slaStartResult.timerId }, "wf-executor: sla_start_timer completed");
+          } catch (slaErr) {
+            nodeError = true;
+            output = { error: slaErr instanceof Error ? slaErr.message : String(slaErr) };
+            logger.error({ runId, slaErr }, "wf-executor: sla_start_timer failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_stop_timer": {
+        const { stopSlaTimer: slaStopTimer } = await import("./sla-engine.ts");
+        const slaStopTimerId = interp(node.data.timerId as string | undefined, payload) ?? "";
+        if (!slaStopTimerId) {
+          nodeError = true;
+          output = { error: "sla_stop_timer requires timerId" };
+        } else {
+          try {
+            const stopped = await slaStopTimer(slaStopTimerId);
+            output = { stopped, timerId: slaStopTimerId };
+            logger.info({ runId, timerId: slaStopTimerId, stopped }, "wf-executor: sla_stop_timer completed");
+          } catch (slaStopErr) {
+            nodeError = true;
+            output = { error: slaStopErr instanceof Error ? slaStopErr.message : String(slaStopErr) };
+            logger.error({ runId, slaStopErr }, "wf-executor: sla_stop_timer failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_warning": {
+        const slaWarnTimerId = interp(node.data.timerId as string | undefined, payload) ?? "";
+        if (!slaWarnTimerId) {
+          nodeError = true;
+          output = { error: "sla_warning requires timerId" };
+        } else {
+          try {
+            const { db: slaDb } = await import("@workspace/db");
+            const { sql: slaSql } = await import("drizzle-orm");
+            await slaDb.execute(slaSql`
+              UPDATE sla_timers SET warning_fired_at = NOW(), updated_at = NOW()
+              WHERE timer_id = ${slaWarnTimerId} AND warning_fired_at IS NULL
+            `);
+            output = { warningFired: true, timerId: slaWarnTimerId };
+            logger.info({ runId, timerId: slaWarnTimerId }, "wf-executor: sla_warning fired");
+          } catch (slaWarnErr) {
+            nodeError = true;
+            output = { error: slaWarnErr instanceof Error ? slaWarnErr.message : String(slaWarnErr) };
+            logger.error({ runId, slaWarnErr }, "wf-executor: sla_warning failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_breach": {
+        const { fireSlaBreachRecord: slaFireBreach } = await import("./sla-engine.ts");
+        const slaBreachTimerId = interp(node.data.timerId as string | undefined, payload) ?? "";
+        const slaBreachMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const slaBreachCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const slaBreachPolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        const slaBreachElapsed = parseInt(interp(node.data.elapsedMinutes as string | undefined, payload) ?? "0", 10);
+        const slaBreachThreshold = parseInt(interp(node.data.thresholdMinutes as string | undefined, payload) ?? "60", 10);
+        if (!slaBreachTimerId || isNaN(slaBreachMspId) || isNaN(slaBreachCustomerId) || isNaN(slaBreachPolicyId)) {
+          nodeError = true;
+          output = { error: "sla_breach requires timerId, mspId, customerId, and policyId" };
+        } else {
+          try {
+            const slaBreachResult = await slaFireBreach({
+              timerId: slaBreachTimerId,
+              mspId: slaBreachMspId,
+              customerId: slaBreachCustomerId,
+              policyId: slaBreachPolicyId,
+              ticketRef: interp(node.data.ticketRef as string | undefined, payload) ?? undefined,
+              phase: ((interp(node.data.phase as string | undefined, payload) ?? "response") as "response" | "resolution"),
+              elapsedMinutes: isNaN(slaBreachElapsed) ? 0 : slaBreachElapsed,
+              thresholdMinutes: isNaN(slaBreachThreshold) ? 60 : slaBreachThreshold,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = slaBreachResult;
+            logger.info({ runId, breachId: slaBreachResult.breachId }, "wf-executor: sla_breach recorded");
+          } catch (slaBreachErr) {
+            nodeError = true;
+            output = { error: slaBreachErr instanceof Error ? slaBreachErr.message : String(slaBreachErr) };
+            logger.error({ runId, slaBreachErr }, "wf-executor: sla_breach failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_escalate": {
+        const { escalateSla: slaEscalate } = await import("./sla-engine.ts");
+        const slaEscBreachId = interp(node.data.breachId as string | undefined, payload) ?? "";
+        const slaEscMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const slaEscCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const slaEscLevel = parseInt(interp(node.data.level as string | undefined, payload) ?? "1", 10);
+        if (!slaEscBreachId || isNaN(slaEscMspId) || isNaN(slaEscCustomerId)) {
+          nodeError = true;
+          output = { error: "sla_escalate requires breachId, mspId, and customerId" };
+        } else {
+          try {
+            const slaEscResult = await slaEscalate({
+              breachId: slaEscBreachId,
+              mspId: slaEscMspId,
+              customerId: slaEscCustomerId,
+              level: isNaN(slaEscLevel) ? 1 : slaEscLevel,
+              escalationType: (interp(node.data.escalationType as string | undefined, payload) as "operator_task" | "email" | "sms" | "webhook" | undefined) ?? "operator_task",
+              assignedTo: interp(node.data.assignedTo as string | undefined, payload) ?? undefined,
+              target: interp(node.data.target as string | undefined, payload) ?? undefined,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = slaEscResult;
+            logger.info({ runId, escalationId: slaEscResult.escalationId }, "wf-executor: sla_escalate completed");
+          } catch (slaEscErr) {
+            nodeError = true;
+            output = { error: slaEscErr instanceof Error ? slaEscErr.message : String(slaEscErr) };
+            logger.error({ runId, slaEscErr }, "wf-executor: sla_escalate failed");
+          }
+        }
+        break;
+      }
+
+      case "sla_resolve": {
+        const { resolveSlaTimer: slaResolve } = await import("./sla-engine.ts");
+        const slaResTimerId = interp(node.data.timerId as string | undefined, payload) ?? "";
+        if (!slaResTimerId) {
+          nodeError = true;
+          output = { error: "sla_resolve requires timerId" };
+        } else {
+          try {
+            const resolved = await slaResolve(
+              slaResTimerId,
+              interp(node.data.notes as string | undefined, payload) ?? undefined,
+            );
+            output = { resolved, timerId: slaResTimerId };
+            logger.info({ runId, timerId: slaResTimerId, resolved }, "wf-executor: sla_resolve completed");
+          } catch (slaResErr) {
+            nodeError = true;
+            output = { error: slaResErr instanceof Error ? slaResErr.message : String(slaResErr) };
+            logger.error({ runId, slaResErr }, "wf-executor: sla_resolve failed");
           }
         }
         break;
