@@ -1268,6 +1268,13 @@
       "when": 1752192000000,
       "tag": "0171_services_catalog_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1752278400000,
+      "tag": "0172_services_class_delivery_fields",
+      "breakpoints": true
     }
   ]
 }

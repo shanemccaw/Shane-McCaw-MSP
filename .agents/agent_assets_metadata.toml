@@ -35,3 +35,9 @@ id = "imWZF-D5jhtVIDbRfpwAq"
 uri = "file://.local/tasks/shane-mccaw-consulting-spec.md"
 type = "text"
 title = "Shane McCaw Consulting — Technical Specification (As-Built)"
+
+[[outputs]]
+id = "SKK2acfdGBT42UinumS_v"
+uri = "file://.local/tasks/backend-audit-post-msp-rebuild.md"
+type = "text"
+title = "Backend Audit — Post-MSP-Portal Rebuild"
