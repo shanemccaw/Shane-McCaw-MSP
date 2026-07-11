@@ -37,11 +37,16 @@ export function ImportJsonDialog({ open, onClose, onConfirm }: ImportJsonDialogP
     }
     try {
       const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) {
-        setValidation({ ok: false, message: "JSON must be an array of records", records: null });
+      const records: unknown[] = Array.isArray(parsed)
+        ? parsed
+        : parsed !== null && typeof parsed === "object"
+          ? [parsed]
+          : null as never;
+      if (!Array.isArray(records)) {
+        setValidation({ ok: false, message: "JSON must be an object or array of records", records: null });
         return;
       }
-      setValidation({ ok: true, message: `✓ Valid — ${parsed.length} record${parsed.length === 1 ? "" : "s"}`, records: parsed });
+      setValidation({ ok: true, message: `✓ Valid — ${records.length} record${records.length === 1 ? "" : "s"}`, records });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Invalid JSON";
       setValidation({ ok: false, message: msg, records: null });
@@ -62,7 +67,7 @@ export function ImportJsonDialog({ open, onClose, onConfirm }: ImportJsonDialogP
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-sm text-gray-400">
-            Paste a JSON array of records below. Existing records with matching keys will be updated; new keys will be created.
+            Paste a JSON object or array of records below. Existing records with matching keys will be updated; new keys will be created.
           </p>
           <Textarea
             value={raw}
