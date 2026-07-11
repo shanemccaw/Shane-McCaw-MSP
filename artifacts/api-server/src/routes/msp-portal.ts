@@ -16,7 +16,7 @@ import { eq, and, count, sql, gte, like, sum, or, desc, ilike } from "drizzle-or
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { logger } from "../lib/logger.ts";
-import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
+import { resolveMspId, resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 
 const router: IRouter = Router();
 
@@ -558,6 +558,71 @@ router.post(
   },
 );
 
+// ── GET /api/msp/events ────────────────────────────────────────────────────────
+// Recent events scoped to the authenticated MSP, ordered newest first.
+// Query params: limit (default 50, max 200)
+
+router.get(
+  "/msp/events",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspId(req);
+      const limit = Math.min(200, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "50"), 10) || 50));
+
+      // Base query
+      const baseConditions = mspId
+        ? [eq(mspEventStoreTable.mspId, mspId)]
+        : [];
+
+      const rows = await db
+        .select({
+          id: mspEventStoreTable.id,
+          eventType: mspEventStoreTable.eventType,
+          customerId: mspEventStoreTable.customerId,
+          occurredAt: mspEventStoreTable.occurredAt,
+          payload: mspEventStoreTable.payload,
+          customerName: mspCustomersTable.name,
+        })
+        .from(mspEventStoreTable)
+        .leftJoin(mspCustomersTable, eq(mspEventStoreTable.customerId, mspCustomersTable.id))
+        .where(baseConditions.length > 0 ? and(...(baseConditions as [ReturnType<typeof eq>])) : undefined)
+        .orderBy(desc(mspEventStoreTable.occurredAt))
+        .limit(limit);
+
+      const events = rows.map((r) => {
+        // Derive severity from event type prefix
+        let severity: "info" | "warning" | "critical" = "info";
+        if (r.eventType.startsWith("error.") || r.eventType.startsWith("msp.cancellation")) {
+          severity = "critical";
+        } else if (r.eventType.startsWith("signal.") || r.eventType.startsWith("msp.offboarding")) {
+          severity = "warning";
+        }
+
+        // Human-readable description: prefer payload.description, then humanise the eventType
+        const payloadDesc = typeof (r.payload as Record<string, unknown>)?.description === "string"
+          ? String((r.payload as Record<string, unknown>).description)
+          : null;
+        const description = payloadDesc ?? r.eventType.replace(/[._]/g, " ");
+
+        return {
+          id: r.id,
+          type: r.eventType,
+          customerName: r.customerName ?? "—",
+          description,
+          severity,
+          occurredAt: r.occurredAt,
+        };
+      });
+
+      res.json({ events, total: events.length, limit });
+    } catch (err) {
+      logger.error({ err }, "msp-portal: events query failed");
+      res.status(500).json({ error: "Failed to fetch events" });
+    }
+  },
+);
+
 // ── GET /api/msp/customers ─────────────────────────────────────────────────────
 // Paginated customer list scoped to the authenticated MSP.
 // Query params: page (1-based), limit, search (name/domain), status
@@ -567,7 +632,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspIdOrZero(req);
+      const mspId = await resolveMspId(req);
 
       const page = Math.max(1, parseInt(String((req.query as Record<string, unknown>).page ?? "1"), 10) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10) || 20));

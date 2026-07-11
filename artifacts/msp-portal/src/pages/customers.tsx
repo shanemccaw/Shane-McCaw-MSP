@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "wouter";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +83,7 @@ const PAGE_SIZE = 20;
 
 export default function CustomersPage() {
   const { fetchWithAuth } = useAuth();
+  const mspSlug = useMspSlug();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -102,6 +104,7 @@ export default function CustomersPage() {
         });
         if (q.trim()) params.set("search", q);
         if (status !== "all") params.set("status", status);
+        if (mspSlug) params.set("slug", mspSlug);
 
         const res = await fetchWithAuth(`/api/msp/customers?${params}`);
         if (!res.ok) return;
@@ -114,7 +117,7 @@ export default function CustomersPage() {
         setLoading(false);
       }
     },
-    [fetchWithAuth, page, search, statusFilter],
+    [fetchWithAuth, mspSlug, page, search, statusFilter],
   );
 
   useEffect(() => {
@@ -150,8 +153,9 @@ export default function CustomersPage() {
 
   async function bulkArchive() {
     setBulkLoading(true);
+    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
     try {
-      const res = await fetchWithAuth("/api/msp/customers/bulk", {
+      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
         method: "POST",
         body: JSON.stringify({ action: "archive", ids: [...selected] }),
       });
@@ -167,8 +171,9 @@ export default function CustomersPage() {
 
   async function bulkAssignBundle() {
     setBulkLoading(true);
+    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
     try {
-      const res = await fetchWithAuth("/api/msp/customers/bulk", {
+      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
         method: "POST",
         body: JSON.stringify({ action: "assign_bundle", ids: [...selected] }),
       });
@@ -184,8 +189,9 @@ export default function CustomersPage() {
 
   async function bulkTriggerMonitoring() {
     setBulkLoading(true);
+    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
     try {
-      const res = await fetchWithAuth("/api/msp/customers/bulk", {
+      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
         method: "POST",
         body: JSON.stringify({ action: "trigger_monitoring", ids: [...selected] }),
       });

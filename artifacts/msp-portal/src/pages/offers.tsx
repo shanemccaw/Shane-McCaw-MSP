@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -664,6 +665,7 @@ function PipelineStats({ offers }: { offers: SalesOffer[] }) {
 
 export default function OffersPage() {
   const { fetchWithAuth, accessToken } = useAuth();
+  const mspSlug = useMspSlug();
   const [offers, setOffers] = useState<SalesOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [stateFilter, setStateFilter] = useState<string>("all");
@@ -679,6 +681,7 @@ export default function OffersPage() {
       try {
         const params = new URLSearchParams({ limit: "200" });
         if (stateFilter !== "all") params.set("state", stateFilter);
+        if (mspSlug) params.set("slug", mspSlug);
         const res = await fetchWithAuth(`/api/msp/sales-offers?${params}`);
         if (!res.ok) return;
         const data = (await res.json()) as { offers: SalesOffer[] };
@@ -690,7 +693,7 @@ export default function OffersPage() {
         setRefreshing(false);
       }
     },
-    [fetchWithAuth, stateFilter],
+    [fetchWithAuth, mspSlug, stateFilter],
   );
 
   useEffect(() => {
@@ -700,7 +703,9 @@ export default function OffersPage() {
   // SSE subscription — canonical event bus for real-time offer state changes
   useEffect(() => {
     if (!accessToken) return;
-    const url = `/api/msp/sales-offers/sse?token=${encodeURIComponent(accessToken)}`;
+    const sseParams = new URLSearchParams({ token: accessToken });
+    if (mspSlug) sseParams.set("slug", mspSlug);
+    const url = `/api/msp/sales-offers/sse?${sseParams.toString()}`;
     const es = new EventSource(url);
 
     es.onmessage = (e: MessageEvent<string>) => {

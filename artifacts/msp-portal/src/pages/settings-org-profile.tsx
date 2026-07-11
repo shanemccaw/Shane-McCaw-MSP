@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,13 +28,15 @@ interface MspProfile {
 
 export default function SettingsOrgProfilePage() {
   const { fetchWithAuth } = useAuth();
+  const mspSlug = useMspSlug();
   const [profile, setProfile] = useState<MspProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ name: "", domain: "", logoUrl: "", primaryColor: "" });
 
   useEffect(() => {
-    fetchWithAuth("/api/msp/settings/profile")
+    const params = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
+    fetchWithAuth(`/api/msp/settings/profile${params}`)
       .then((r) => r.json())
       .then((data: MspProfile) => {
         setProfile(data);
@@ -57,7 +60,8 @@ export default function SettingsOrgProfilePage() {
       if (form.logoUrl) body.logoUrl = form.logoUrl;
       if (form.primaryColor) body.primaryColor = form.primaryColor;
 
-      const res = await fetchWithAuth("/api/msp/settings/profile", {
+      const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
+      const res = await fetchWithAuth(`/api/msp/settings/profile${slugParam}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

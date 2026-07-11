@@ -4,6 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,13 +28,16 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 export default function EventsPage() {
   const { fetchWithAuth } = useAuth();
+  const mspSlug = useMspSlug();
   const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth("/api/msp/events?limit=50");
+      const params = new URLSearchParams({ limit: "50" });
+      if (mspSlug) params.set("slug", mspSlug);
+      const res = await fetchWithAuth(`/api/msp/events?${params}`);
       if (res.ok) {
         const data = (await res.json()) as { events: EventItem[] };
         setEvents(data.events ?? []);
@@ -41,7 +45,7 @@ export default function EventsPage() {
     } finally {
       setLoading(false);
     }
-  }, [fetchWithAuth]);
+  }, [fetchWithAuth, mspSlug]);
 
   useEffect(() => { void fetchEvents(); }, [fetchEvents]);
 
