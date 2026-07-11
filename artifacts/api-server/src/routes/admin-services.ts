@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, servicesTable, clientServicesTable, contractsTable, workflowTemplatesTable, contractTemplatesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { z } from "zod";
 import fs from "fs";
@@ -71,6 +71,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       serviceType, tagline, targetAudience, inclusions, features, badge,
       highlighted, hoursPerMonth, iconName, pageHref, sortOrder, workflowTemplateId, tier,
       requiredAppPermissions,
+      categoryPath, tags, customerAgreementTemplate, isFreeOffering,
+      fulfillmentTypeKey, triggeringSignalKeys,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -111,6 +113,12 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         requiredAppPermissions: Array.isArray(requiredAppPermissions)
           ? (requiredAppPermissions as { scope: string; reason: string }[])
           : null,
+        categoryPath: (categoryPath as string | null) ?? null,
+        tags: parseStringArray(tags),
+        customerAgreementTemplate: (customerAgreementTemplate as string | null) ?? null,
+        isFreeOffering: isFreeOffering != null ? Boolean(isFreeOffering) : false,
+        fulfillmentTypeKey: (fulfillmentTypeKey as string | null) ?? null,
+        triggeringSignalKeys: parseStringArray(triggeringSignalKeys),
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
@@ -205,6 +213,61 @@ router.delete("/admin/services/:id", requireAdmin, async (req: Request, res: Res
       return;
     }
     res.status(500).json({ error: "Failed to delete service" });
+  }
+});
+
+router.patch("/admin/services/bulk-category", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { ids, categoryPath } = (req.body ?? {}) as { ids?: unknown; categoryPath?: unknown };
+    if (!Array.isArray(ids) || ids.length === 0) {
+      res.status(400).json({ error: "ids must be a non-empty array" }); return;
+    }
+    const numIds = ids.map(Number).filter(n => !isNaN(n));
+    const resolved = typeof categoryPath === "string" && categoryPath.trim() ? categoryPath.trim() : null;
+    await db
+      .update(servicesTable)
+      .set({ categoryPath: resolved, updatedAt: new Date() })
+      .where(inArray(servicesTable.id, numIds));
+    res.json({ ok: true, updated: numIds.length });
+  } catch (err: unknown) {
+    req.log?.error(err);
+    res.status(500).json({ error: "Failed to bulk update category" });
+  }
+});
+
+router.patch("/admin/services/reparent-category", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { fromPath, toParentPath } = (req.body ?? {}) as { fromPath?: unknown; toParentPath?: unknown };
+    if (typeof fromPath !== "string" || !fromPath.trim()) {
+      res.status(400).json({ error: "fromPath is required" }); return;
+    }
+    const from = fromPath.trim();
+    const lastName = from.includes("/") ? from.split("/").pop()! : from;
+    const toParent = typeof toParentPath === "string" && toParentPath.trim() ? toParentPath.trim() : null;
+    const newPath = toParent ? `${toParent}/${lastName}` : lastName;
+
+    if (newPath === from) { res.json({ ok: true, updated: 0 }); return; }
+
+    // Escape LIKE special chars in fromPath for the prefix scan
+    const escapedFrom = from.replace(/[%_\\]/g, (c) => `\\${c}`);
+
+    await db.execute(sql`
+      UPDATE services
+      SET
+        category_path = CASE
+          WHEN category_path = ${from} THEN ${newPath}
+          ELSE ${newPath} || SUBSTRING(category_path FROM ${from.length + 1})
+        END,
+        updated_at = NOW()
+      WHERE
+        category_path = ${from}
+        OR category_path LIKE ${escapedFrom + "/%"}
+    `);
+
+    res.json({ ok: true, updated: null, newPath });
+  } catch (err: unknown) {
+    req.log?.error(err);
+    res.status(500).json({ error: "Failed to reparent category" });
   }
 });
 

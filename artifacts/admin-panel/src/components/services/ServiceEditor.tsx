@@ -20,6 +20,7 @@ import {
 import { TagInput } from "@/components/TagInput";
 import ArrayEditor from "./ArrayEditor";
 import ServiceEditorSidePanel from "./ServiceEditorSidePanel";
+import CategoryPickerDropdown from "./CategoryPickerDropdown";
 import type { WizardStep, WizardOption } from "@/hooks/useServices";
 
 function nanoid() { return Math.random().toString(36).slice(2, 10); }
@@ -79,6 +80,12 @@ const serviceSchema = z.object({
   inclusions: z.array(z.string()),
   features: z.array(z.string()),
   requiredAppPermissions: z.array(z.object({ scope: z.string(), reason: z.string() })),
+  categoryPath: z.string().nullable(),
+  tags: z.array(z.string()),
+  fulfillmentTypeKey: z.string().nullable(),
+  triggeringSignalKeys: z.array(z.string()),
+  customerAgreementTemplate: z.string().nullable(),
+  isFreeOffering: z.boolean(),
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
@@ -149,7 +156,7 @@ function WorkflowBuilder({ serviceId, serviceName, onClose }: { serviceId: numbe
     <div className="border border-[#0078D4]/30 bg-[#1C2128] rounded-xl p-5">
       <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
         <div>
-          <h4 className="text-sm font-bold text-[#E6EDF3]">Order Workflow — {serviceName}</h4>
+          <h4 className="text-sm font-bold text-[#E6EDF3]">Project Template — {serviceName}</h4>
           <p className="text-xs text-[#7D8590] mt-0.5">Build the questionnaire clients walk through to calculate their final price.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -217,7 +224,7 @@ function WorkflowBuilder({ serviceId, serviceName, onClose }: { serviceId: numbe
           <div className="flex items-center gap-3 mt-4">
             <button onClick={addStep} className="flex items-center gap-2 border border-dashed border-[#0078D4]/50 text-[#0078D4] text-xs font-semibold px-4 py-2 rounded-lg hover:bg-[#0078D4]/5"><Plus className="w-3.5 h-3.5" />Add step</button>
             <button onClick={() => void handleSave()} disabled={saving} className="flex items-center gap-2 bg-[#0078D4] text-white text-xs font-semibold px-4 py-2 rounded-lg disabled:opacity-50">
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{saving ? "Saving…" : "Save Workflow"}
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}{saving ? "Saving…" : "Save Project Template"}
             </button>
             {savedMsg && <span className="text-xs text-emerald-400 font-semibold">✓ Saved</span>}
             {saveError && <span className="text-xs text-red-400">{saveError}</span>}
@@ -232,9 +239,11 @@ interface Props {
   id: number | null;
   onClose: () => void;
   onSaved?: (id: number) => void;
+  panelMode?: boolean;
+  allCategoryPaths?: string[];
 }
 
-export default function ServiceEditor({ id, onClose, onSaved }: Props) {
+export default function ServiceEditor({ id, onClose, onSaved, panelMode = false, allCategoryPaths = [] }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
   const isNew = id === null;
@@ -255,6 +264,9 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
   const [allPsScripts, setAllPsScripts] = useState<{ id: string; title: string; category: string }[]>([]);
   const [reqScriptAddId, setReqScriptAddId] = useState("");
   const [reqScriptSaving, setReqScriptSaving] = useState(false);
+
+  const [fulfillmentTypes, setFulfillmentTypes] = useState<{ key: string; label: string }[]>([]);
+  const [tenantSignals, setTenantSignals] = useState<{ key: string; label: string }[]>([]);
 
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
@@ -300,6 +312,12 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
     inclusions: service?.inclusions ?? [],
     features: service?.features ?? [],
     requiredAppPermissions: (service?.requiredAppPermissions as { scope: string; reason: string }[] | undefined) ?? [],
+    categoryPath: service?.categoryPath ?? null,
+    tags: service?.tags ?? [],
+    fulfillmentTypeKey: service?.fulfillmentTypeKey ?? null,
+    triggeringSignalKeys: service?.triggeringSignalKeys ?? [],
+    customerAgreementTemplate: service?.customerAgreementTemplate ?? null,
+    isFreeOffering: service?.isFreeOffering ?? false,
   }), [service]);
 
   const { register, handleSubmit, control, watch, reset, formState: { errors, isDirty } } = useForm<ServiceFormValues>({
@@ -314,12 +332,26 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
 
   useEffect(() => {
     void (async () => {
-      const [cr, wr] = await Promise.all([
+      const [cr, wr, ftr, tsr] = await Promise.all([
         fetchWithAuth("/api/admin/clients"),
         fetchWithAuth("/api/admin/workflow-templates"),
+        fetchWithAuth("/api/admin/fulfillment-types"),
+        fetchWithAuth("/api/admin/engagement-projects/signals"),
       ]);
       if (cr.ok) setClients(await cr.json() as Client[]);
       if (wr.ok) setWorkflowTemplates(await wr.json() as WorkflowTemplateMeta[]);
+      if (ftr.ok) {
+        const d = await ftr.json() as { key: string; label: string }[];
+        setFulfillmentTypes(Array.isArray(d) ? d : []);
+      }
+      if (tsr.ok) {
+        const d = await tsr.json() as { key?: string; signalKey?: string; label?: string; name?: string }[];
+        setTenantSignals(
+          Array.isArray(d)
+            ? d.map(s => ({ key: s.key ?? s.signalKey ?? "", label: s.label ?? s.name ?? s.key ?? s.signalKey ?? "" })).filter(s => s.key)
+            : []
+        );
+      }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -380,6 +412,12 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
           inclusions: values.inclusions.length > 0 ? values.inclusions : null,
           features: values.features.length > 0 ? values.features : null,
           requiredAppPermissions: values.requiredAppPermissions.length > 0 ? values.requiredAppPermissions : null,
+          categoryPath: values.categoryPath ?? null,
+          tags: values.tags.length > 0 ? values.tags : null,
+          fulfillmentTypeKey: values.fulfillmentTypeKey ?? null,
+          triggeringSignalKeys: values.triggeringSignalKeys.length > 0 ? values.triggeringSignalKeys : null,
+          customerAgreementTemplate: values.customerAgreementTemplate ?? null,
+          isFreeOffering: values.isFreeOffering,
         },
       });
       toast({ title: "Service saved" });
@@ -530,9 +568,11 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
       <div className="flex h-full overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 max-w-xl">
           <div className="flex items-center gap-3 mb-6">
-            <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-            </button>
+            {!panelMode && (
+              <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+            )}
             <h2 className="text-xl font-bold text-[#E6EDF3]">New Service</h2>
           </div>
           <form onSubmit={e => void handleCreate(e)} className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
@@ -638,10 +678,12 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
-          <button type="button" onClick={() => isDirty ? setDiscardOpen(true) : onClose()}
-            className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-          </button>
+          {!panelMode && (
+            <button type="button" onClick={() => isDirty ? setDiscardOpen(true) : onClose()}
+              className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+          )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-[#E6EDF3] truncate">{service.name}</h2>
@@ -680,8 +722,8 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
           <button type="button" onClick={() => { setShowWorkflow(p => !p); setShowAssign(false); }}
             className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
             {service.orderWorkflow && service.orderWorkflow.length > 0
-              ? `Workflow (${service.orderWorkflow.length} step${service.orderWorkflow.length !== 1 ? "s" : ""})`
-              : "Workflow"}
+              ? `Project Template (${service.orderWorkflow.length} step${service.orderWorkflow.length !== 1 ? "s" : ""})`
+              : "Project Template"}
           </button>
           <div className="flex items-center gap-1.5 ml-auto">
             <button type="button" onClick={() => void handleGeneratePdf()} disabled={generatingPdf}
@@ -1098,6 +1140,122 @@ export default function ServiceEditor({ id, onClose, onSaved }: Props) {
                     </ul>
                   )}
                   <div className="w-full bg-[#0078D4]/70 text-white text-xs font-semibold text-center py-2 rounded-lg mt-2 opacity-70">Get Started</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Product Catalog */}
+            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5 space-y-5">
+              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider">Product Catalog</p>
+
+              {/* Category Path */}
+              <div>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Category Path</label>
+                <Controller
+                  name="categoryPath"
+                  control={control}
+                  render={({ field }) => (
+                    <CategoryPickerDropdown
+                      value={field.value}
+                      onChange={v => field.onChange(v ?? null)}
+                      allCategoryPaths={allCategoryPaths}
+                      placeholder="Select or create category…"
+                    />
+                  )}
+                />
+                <p className="text-[10px] text-[#484F58] mt-1">Determines which category node this service appears under in the left pane. Type a new path to create a category.</p>
+              </div>
+
+              {/* Tags */}
+              <div>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tags</label>
+                <Controller
+                  name="tags"
+                  control={control}
+                  render={({ field }) => (
+                    <TagInput
+                      value={field.value}
+                      onChange={v => field.onChange(v ?? [])}
+                      placeholder="Type a tag and press Enter…"
+                    />
+                  )}
+                />
+              </div>
+
+              {/* Fulfillment Type */}
+              {fulfillmentTypes.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fulfillment Type</label>
+                  <Controller
+                    name="fulfillmentTypeKey"
+                    control={control}
+                    render={({ field }) => (
+                      <select
+                        value={field.value ?? ""}
+                        onChange={e => field.onChange(e.target.value || null)}
+                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
+                      >
+                        <option value="">— None —</option>
+                        {fulfillmentTypes.map(ft => <option key={ft.key} value={ft.key}>{ft.label}</option>)}
+                      </select>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Triggering Signals */}
+              {tenantSignals.length > 0 && (
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Triggering Signals</label>
+                  <p className="text-[10px] text-[#484F58] mb-2">Tenant signals that automatically trigger this service's fulfillment.</p>
+                  <Controller
+                    name="triggeringSignalKeys"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                        {tenantSignals.map(sig => (
+                          <label key={sig.key} className="flex items-center gap-2.5 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={(field.value ?? []).includes(sig.key)}
+                              onChange={e => {
+                                const current = field.value ?? [];
+                                field.onChange(e.target.checked ? [...current, sig.key] : current.filter(k => k !== sig.key));
+                              }}
+                              className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4]"
+                            />
+                            <span className="text-xs text-[#C9D1D9] group-hover:text-[#E6EDF3]">{sig.label}</span>
+                            <span className="text-[10px] text-[#484F58] font-mono">{sig.key}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  />
+                </div>
+              )}
+
+              {/* Customer Agreement Template */}
+              <div>
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Customer Agreement Template</label>
+                <textarea
+                  {...register("customerAgreementTemplate")}
+                  placeholder="Per-service agreement text shown to clients on the portal…"
+                  rows={5}
+                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-y"
+                />
+              </div>
+
+              {/* Free Offering */}
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  {...register("isFreeOffering")}
+                  type="checkbox"
+                  id="is-free-offering"
+                  className="rounded border-[#30363D] bg-[#0D1117] text-emerald-500"
+                />
+                <div>
+                  <label htmlFor="is-free-offering" className="text-sm font-medium text-[#C9D1D9] cursor-pointer">Free Offering</label>
+                  <p className="text-[10px] text-[#484F58]">When checked, this service skips Stripe checkout entirely — clients accept at $0.</p>
                 </div>
               </div>
             </div>

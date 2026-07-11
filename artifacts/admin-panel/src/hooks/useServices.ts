@@ -49,6 +49,13 @@ export interface ServiceRow {
   overviewPdfKey: string | null;
   overviewPdfGeneratedAt: string | null;
   requiredAppPermissions: { scope: string; reason: string }[] | null;
+  // IDE Product Catalog fields
+  categoryPath: string | null;
+  tags: string[] | null;
+  customerAgreementTemplate: string | null;
+  isFreeOffering: boolean;
+  fulfillmentTypeKey: string | null;
+  triggeringSignalKeys: string[] | null;
 }
 
 export type ServiceUpdate = Omit<ServiceRow, "id" | "createdAt" | "orderWorkflow" | "overviewPdfKey" | "overviewPdfGeneratedAt">;
@@ -127,6 +134,41 @@ export function useDeleteService() {
       if (!res.ok) {
         const body = await res.json() as { error?: string };
         throw new Error(body.error ?? "Delete failed");
+      }
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: SERVICES_QUERY_KEY }); },
+  });
+}
+
+export function useReparentCategory() {
+  const { fetchWithAuth } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<{ updated: number }, Error, { fromPath: string; toParentPath: string | null }>({
+    mutationFn: async ({ fromPath, toParentPath }) => {
+      const res = await fetchWithAuth("/api/admin/services/reparent-category", {
+        method: "PATCH",
+        body: JSON.stringify({ fromPath, toParentPath }),
+      });
+      const body = await res.json() as { updated: number; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "Reparent failed");
+      return body;
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: SERVICES_QUERY_KEY }); },
+  });
+}
+
+export function useBulkCategoryMove() {
+  const { fetchWithAuth } = useAuth();
+  const qc = useQueryClient();
+  return useMutation<void, Error, { ids: number[]; categoryPath: string | null }>({
+    mutationFn: async ({ ids, categoryPath }) => {
+      const res = await fetchWithAuth("/api/admin/services/bulk-category", {
+        method: "PATCH",
+        body: JSON.stringify({ ids, categoryPath }),
+      });
+      if (!res.ok) {
+        const body = await res.json() as { error?: string };
+        throw new Error(body.error ?? "Bulk category move failed");
       }
     },
     onSuccess: () => { void qc.invalidateQueries({ queryKey: SERVICES_QUERY_KEY }); },

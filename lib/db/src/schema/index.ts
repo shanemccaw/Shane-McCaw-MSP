@@ -225,6 +225,17 @@ export const servicesTable = pgTable("services", {
   // Optional: Stripe trial period in days. Applied when the offer carries trial terms.
   // Non-null here sets the default; individual offers may override.
   trialPeriodDays: integer("trial_period_days"),
+
+  // ── IDE Product Catalog fields ─────────────────────────────────────────────
+  // Slash-delimited category hierarchy e.g. "Consulting/M365". Used to build
+  // the left-pane category tree in the admin Product Catalog view.
+  categoryPath: text("category_path"),
+  // Free-form tags for search and filtering.
+  tags: jsonb("tags").$type<string[]>(),
+  // Per-service customer-facing agreement text rendered on the client portal.
+  customerAgreementTemplate: text("customer_agreement_template"),
+  // When true, the service is offered at $0 — skips Stripe checkout entirely.
+  isFreeOffering: boolean("is_free_offering").notNull().default(false),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

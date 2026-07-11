@@ -42,6 +42,7 @@ export default defineConfig({
       "src/routes/msp-sow.test.ts",
       "src/routes/admin-observability.test.ts",
       "src/routes/portal-checkout.test.ts",
+      "src/routes/admin-services-catalog.test.ts",
     ],
     coverage: {
       provider: "v8",
