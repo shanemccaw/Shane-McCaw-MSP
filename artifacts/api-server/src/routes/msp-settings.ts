@@ -58,13 +58,14 @@ import {
   mspAuditLogsTable,
   mspMailboxConnectorsTable,
   mspMailboxConsentStatesTable,
+  mspInvitesTable,
   usersTable,
   MSP_LOCKED_EMAIL_KEYS,
   MSP_EMAIL_TEMPLATE_KEYS,
   type MspEmailTemplateKey,
   type MspConnectorMode,
 } from "@workspace/db";
-import { eq, and, desc, isNull, inArray, gte } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, gte, lt } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
@@ -74,6 +75,7 @@ import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
 import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { sendEmailForMsp, emailButton, brandedEmail } from "../lib/mailer.ts";
 
 const router: IRouter = Router();
 
@@ -1120,6 +1122,171 @@ router.delete("/msp/settings/sessions/:tokenHash", requireRole("MSPAdmin"), asyn
     actionType: "session.revoke",
     entityType: "session",
     entityId: tokenHash.slice(0, 12),
+    mspId,
+  });
+
+  res.json({ ok: true });
+});
+
+// ── Invite helpers ────────────────────────────────────────────────────────────
+
+function getMspPortalInviteUrl(token: string): string {
+  const base = process.env.SITE_URL
+    ?? (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : "");
+  return `${base}/portal/invite/${token}`;
+}
+
+// ── Invites ───────────────────────────────────────────────────────────────────
+
+const createInviteSchema = z.object({
+  email: z.string().email("A valid email is required"),
+  mspRole: z.enum(["MSPAdmin", "MSPOperator"]),
+});
+
+router.post("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const parsed = createInviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  const email = parsed.data.email.toLowerCase().trim();
+
+  // Check the user isn't already an active member of this MSP
+  const [existingUser] = await db
+    .select({ id: usersTable.id })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+
+  if (existingUser) {
+    const [existingMember] = await db
+      .select({ id: mspUsersTable.id })
+      .from(mspUsersTable)
+      .where(and(eq(mspUsersTable.userId, existingUser.id), eq(mspUsersTable.mspId, mspId), eq(mspUsersTable.isActive, true)))
+      .limit(1);
+    if (existingMember) {
+      apiError(res, 409, "This user is already an active member of your MSP");
+      return;
+    }
+  }
+
+  // Check for a still-valid pending invite to the same email
+  const now = new Date();
+  const [existingInvite] = await db
+    .select({ id: mspInvitesTable.id })
+    .from(mspInvitesTable)
+    .where(
+      and(
+        eq(mspInvitesTable.mspId, mspId),
+        eq(mspInvitesTable.invitedEmail, email),
+        isNull(mspInvitesTable.usedAt),
+        gte(mspInvitesTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (existingInvite) {
+    apiError(res, 409, "An unexpired invite already exists for this email. Revoke it first if you need to resend.");
+    return;
+  }
+
+  const [msp] = await db
+    .select({ name: mspsTable.name })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, mspId))
+    .limit(1);
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+  const [invite] = await db
+    .insert(mspInvitesTable)
+    .values({
+      token,
+      mspId,
+      invitedEmail: email,
+      mspRole: parsed.data.mspRole,
+      invitedByUserId: req.user!.id,
+      expiresAt,
+    })
+    .returning();
+
+  const inviteUrl = getMspPortalInviteUrl(token);
+  const mspName = msp?.name ?? "Your IT Service Provider";
+
+  const bodyHtml = `
+    <h2 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#0A2540;">You've been invited to join ${mspName}</h2>
+    <p>You have been invited to join the ${mspName} team portal as <strong>${parsed.data.mspRole === "MSPAdmin" ? "MSP Admin" : "MSP Operator"}</strong>.</p>
+    <p>Click the link below to accept your invitation and set up your account. This link expires in <strong>72 hours</strong>.</p>
+    ${emailButton("Accept Invitation", inviteUrl)}
+    <p style="margin-top:24px;font-size:13px;color:#64748b;">If you weren't expecting this, you can safely ignore this email.</p>
+  `;
+
+  void sendEmailForMsp(mspId, email, `You're invited to join ${mspName}`, bodyHtml);
+
+  await writeAuditLog({
+    req,
+    actionType: "invite.create",
+    entityType: "msp_invite",
+    entityId: String(invite!.id),
+    mspId,
+    metadata: { email, mspRole: parsed.data.mspRole },
+  });
+
+  logger.info({ mspId, email, role: parsed.data.mspRole }, "msp-settings: invite created");
+  res.status(201).json(invite);
+});
+
+router.get("/msp/settings/invites", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const now = new Date();
+  const invites = await db
+    .select({
+      id: mspInvitesTable.id,
+      invitedEmail: mspInvitesTable.invitedEmail,
+      mspRole: mspInvitesTable.mspRole,
+      expiresAt: mspInvitesTable.expiresAt,
+      createdAt: mspInvitesTable.createdAt,
+      inviterEmail: usersTable.email,
+      inviterName: usersTable.name,
+    })
+    .from(mspInvitesTable)
+    .leftJoin(usersTable, eq(usersTable.id, mspInvitesTable.invitedByUserId))
+    .where(
+      and(
+        eq(mspInvitesTable.mspId, mspId),
+        isNull(mspInvitesTable.usedAt),
+        gte(mspInvitesTable.expiresAt, now),
+      ),
+    )
+    .orderBy(desc(mspInvitesTable.createdAt));
+
+  res.json(invites);
+});
+
+router.delete("/msp/settings/invites/:inviteId", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const inviteId = parseInt(p(req.params["inviteId"]), 10);
+  if (!mspId || isNaN(inviteId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const [deleted] = await db
+    .delete(mspInvitesTable)
+    .where(and(eq(mspInvitesTable.id, inviteId), eq(mspInvitesTable.mspId, mspId), isNull(mspInvitesTable.usedAt)))
+    .returning({ id: mspInvitesTable.id });
+
+  if (!deleted) { apiError(res, 404, "Invite not found or already used"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "invite.revoke",
+    entityType: "msp_invite",
+    entityId: String(inviteId),
     mspId,
   });
 

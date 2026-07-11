@@ -1247,6 +1247,20 @@
       "when": 1752883200000,
       "tag": "0168_msp_missing_portal_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "7",
+      "when": 1783728000000,
+      "tag": "0169_msp_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "7",
+      "when": 1783814400000,
+      "tag": "0170_msp_invites_fk",
+      "breakpoints": true
     }
   ]
 }

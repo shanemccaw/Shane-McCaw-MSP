@@ -34,6 +34,7 @@ import MspCustomerSowPage from "@/pages/msp-customer-sow";
 import MspSowPublicPage from "@/pages/msp-sow-public";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
+import AcceptInvitePage from "@/pages/accept-invite";
 import OperatorTasksPage from "@/pages/operator-tasks";
 import DlqPage from "@/pages/dlq";
 import RunsPage from "@/pages/runs";
@@ -505,6 +506,11 @@ function Router() {
       {/* Public MSP SOW viewer — share token, no auth required */}
       <Route path="/sow/:shareToken">
         <MspSowPublicPage />
+      </Route>
+
+      {/* Public invite accept — no auth required */}
+      <Route path="/invite/:token">
+        <AcceptInvitePage />
       </Route>
 
       {/* Root — redirect to last-used slug or flat login */}

@@ -25,17 +25,22 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
-import { randomBytes } from "crypto";
+import { randomBytes, createHash } from "crypto";
 import {
   db,
   mspsTable,
   mspUsersTable,
   mspOnboardingLinksTable,
+  mspInvitesTable,
+  mspRefreshTokensTable,
   usersTable,
 } from "@workspace/db";
 import { eq, and, isNull, gte, or } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
+import { z } from "zod";
 
 const router: IRouter = Router();
 
@@ -305,6 +310,312 @@ router.get("/public/msps/direct", async (_req: Request, res: Response): Promise<
   }
 
   res.json(msp);
+});
+
+// ── Public invite endpoints ────────────────────────────────────────────────────
+
+const inviteAcceptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 500 : 30,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait and try again." },
+});
+
+// GET /api/public/msp-invite/:token
+// Validates token — returns MSP name, pre-filled email, role for the accept page.
+
+router.get("/public/msp-invite/:token", inviteAcceptLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  if (!token) { res.status(400).json({ error: "Token is required" }); return; }
+
+  const now = new Date();
+  const [row] = await db
+    .select({
+      id: mspInvitesTable.id,
+      invitedEmail: mspInvitesTable.invitedEmail,
+      mspRole: mspInvitesTable.mspRole,
+      expiresAt: mspInvitesTable.expiresAt,
+      usedAt: mspInvitesTable.usedAt,
+      mspId: mspInvitesTable.mspId,
+      mspName: mspsTable.name,
+      mspSlug: mspsTable.slug,
+      mspLogoUrl: mspsTable.logoUrl,
+      mspPrimaryColor: mspsTable.primaryColor,
+      mspStatus: mspsTable.status,
+    })
+    .from(mspInvitesTable)
+    .innerJoin(mspsTable, eq(mspsTable.id, mspInvitesTable.mspId))
+    .where(eq(mspInvitesTable.token, token))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "This invite link does not exist." });
+    return;
+  }
+
+  if (row.usedAt) {
+    res.status(410).json({ error: "This invite link has already been used." });
+    return;
+  }
+
+  if (row.expiresAt < now) {
+    res.status(410).json({ error: "This invite link has expired. Please ask your administrator to send a new one." });
+    return;
+  }
+
+  if (row.mspStatus === "suspended") {
+    res.status(403).json({ error: "The organisation associated with this invite is not currently active." });
+    return;
+  }
+
+  res.json({
+    invitedEmail: row.invitedEmail,
+    mspRole: row.mspRole,
+    expiresAt: row.expiresAt,
+    msp: {
+      id: row.mspId,
+      name: row.mspName,
+      slug: row.mspSlug,
+      logoUrl: row.mspLogoUrl,
+      primaryColor: row.mspPrimaryColor,
+    },
+  });
+});
+
+// POST /api/public/msp-invite/:token/accept
+// Validates token, creates (or finds) user, inserts msp_users row, burns token.
+// Body: { name?, password? } — password required only for new users.
+
+const acceptInviteSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  password: z.string().min(8).optional(),
+});
+
+router.post("/public/msp-invite/:token/accept", inviteAcceptLimiter, async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  if (!token) { res.status(400).json({ error: "Token is required" }); return; }
+
+  const parsed = acceptInviteSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+    return;
+  }
+
+  const now = new Date();
+  const [row] = await db
+    .select({
+      id: mspInvitesTable.id,
+      invitedEmail: mspInvitesTable.invitedEmail,
+      mspRole: mspInvitesTable.mspRole,
+      expiresAt: mspInvitesTable.expiresAt,
+      usedAt: mspInvitesTable.usedAt,
+      mspId: mspInvitesTable.mspId,
+      mspStatus: mspsTable.status,
+      mspSlug: mspsTable.slug,
+    })
+    .from(mspInvitesTable)
+    .innerJoin(mspsTable, eq(mspsTable.id, mspInvitesTable.mspId))
+    .where(eq(mspInvitesTable.token, token))
+    .limit(1);
+
+  if (!row) {
+    res.status(404).json({ error: "This invite link does not exist." });
+    return;
+  }
+
+  if (row.usedAt) {
+    res.status(410).json({ error: "This invite link has already been used." });
+    return;
+  }
+
+  if (row.expiresAt < now) {
+    res.status(410).json({ error: "This invite link has expired. Please ask your administrator to send a new one." });
+    return;
+  }
+
+  if (row.mspStatus === "suspended") {
+    res.status(403).json({ error: "The organisation associated with this invite is not currently active." });
+    return;
+  }
+
+  const email = row.invitedEmail;
+
+  // Look up existing user by email
+  const [existingUser] = await db
+    .select({ id: usersTable.id, email: usersTable.email })
+    .from(usersTable)
+    .where(eq(usersTable.email, email))
+    .limit(1);
+
+  // ── Auth enforcement for existing accounts ──────────────────────────────────
+  // If the invited email already has an account, the requester MUST be
+  // authenticated as that user (proven via JWT). We never allow a token alone
+  // to silently reassign another user's MSP membership.
+  if (existingUser) {
+    const authHeader = req.headers.authorization;
+    let authenticatedEmail: string | null = null;
+
+    if (authHeader?.startsWith("Bearer ")) {
+      const jwtToken = authHeader.slice(7);
+      const jwtSecret = process.env.JWT_SECRET;
+      if (jwtSecret) {
+        try {
+          const payload = jwt.verify(jwtToken, jwtSecret) as { email?: string };
+          authenticatedEmail = payload.email?.toLowerCase() ?? null;
+        } catch {
+          // Invalid/expired token — treat as unauthenticated
+        }
+      }
+    }
+
+    if (!authenticatedEmail) {
+      res.status(401).json({
+        error: "This email already has an account. Please sign in to accept this invitation.",
+        requiresSignIn: true,
+      });
+      return;
+    }
+
+    if (authenticatedEmail !== email.toLowerCase()) {
+      res.status(403).json({
+        error: `You are signed in with a different account. Please sign in as ${email} to accept this invitation.`,
+      });
+      return;
+    }
+  } else {
+    // New user path — name and password required
+    if (!parsed.data.name?.trim()) {
+      res.status(400).json({ error: "Name is required for new accounts" });
+      return;
+    }
+    if (!parsed.data.password) {
+      res.status(400).json({ error: "Password is required for new accounts" });
+      return;
+    }
+  }
+
+  // ── Atomic transaction: burn token (with double-accept guard) + provision user ─
+  let acceptedUserId: number | null = null;
+  try {
+    await db.transaction(async (tx) => {
+      // Burn the token atomically — the WHERE usedAt IS NULL guard prevents
+      // two concurrent requests from both succeeding (double-accept race).
+      const burned = await tx
+        .update(mspInvitesTable)
+        .set({ usedAt: now })
+        .where(and(eq(mspInvitesTable.id, row.id), isNull(mspInvitesTable.usedAt)))
+        .returning({ id: mspInvitesTable.id });
+
+      if (!burned.length) {
+        throw Object.assign(new Error("ALREADY_USED"), { status: 410 });
+      }
+
+      // Create or reuse user
+      let userId: number;
+      if (existingUser) {
+        userId = existingUser.id;
+      } else {
+        const passwordHash = await bcrypt.hash(parsed.data.password!, 12);
+        const [newUser] = await tx
+          .insert(usersTable)
+          .values({ email, name: parsed.data.name!.trim(), passwordHash })
+          .returning({ id: usersTable.id });
+        userId = newUser!.id;
+      }
+
+      // Upsert msp_users
+      const [existingMspUser] = await tx
+        .select({ id: mspUsersTable.id, mspId: mspUsersTable.mspId, isActive: mspUsersTable.isActive })
+        .from(mspUsersTable)
+        .where(eq(mspUsersTable.userId, userId))
+        .limit(1);
+
+      if (existingMspUser) {
+        if (!(existingMspUser.mspId === row.mspId && existingMspUser.isActive)) {
+          await tx
+            .update(mspUsersTable)
+            .set({ mspId: row.mspId, mspRole: row.mspRole as "MSPAdmin" | "MSPOperator", isActive: true, updatedAt: new Date() })
+            .where(eq(mspUsersTable.id, existingMspUser.id));
+        }
+      } else {
+        await tx.insert(mspUsersTable).values({
+          userId,
+          mspId: row.mspId,
+          mspRole: row.mspRole as "MSPAdmin" | "MSPOperator",
+          isActive: true,
+        });
+      }
+
+      acceptedUserId = userId;
+    });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "ALREADY_USED") {
+      res.status(410).json({ error: "This invite link has already been used." });
+      return;
+    }
+    throw err;
+  }
+
+  logger.info({ userId: acceptedUserId, mspId: row.mspId, role: row.mspRole }, "msp-invite: invite accepted");
+
+  // Issue auth tokens so the accepting user lands on the portal dashboard
+  // without a separate login step (same pattern as auth.ts login flow).
+  const jwtSecret = process.env.JWT_SECRET;
+  if (jwtSecret && acceptedUserId !== null) {
+    try {
+      const [acceptedUserRow] = await db
+        .select()
+        .from(usersTable)
+        .where(eq(usersTable.id, acceptedUserId))
+        .limit(1);
+
+      const [mspUserRow] = await db
+        .select()
+        .from(mspUsersTable)
+        .where(eq(mspUsersTable.userId, acceptedUserId))
+        .limit(1);
+
+      if (acceptedUserRow && mspUserRow) {
+        const payload = {
+          id: acceptedUserRow.id,
+          email: acceptedUserRow.email,
+          name: acceptedUserRow.name ?? undefined,
+          role: acceptedUserRow.role,
+          mspRole: mspUserRow.mspRole ?? undefined,
+          mspId: mspUserRow.mspId ?? undefined,
+          mspSlug: row.mspSlug,
+        };
+
+        const accessToken = jwt.sign(payload, jwtSecret, { expiresIn: "15m" });
+
+        const rawRefreshToken = randomBytes(48).toString("hex");
+        const tokenHash = createHash("sha256").update(rawRefreshToken).digest("hex");
+        const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+        await db.insert(mspRefreshTokensTable).values({
+          userId: acceptedUserId,
+          tokenHash,
+          expiresAt: refreshExpiresAt,
+          userAgent: req.headers["user-agent"] ?? null,
+          ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
+        });
+
+        res.json({
+          ok: true,
+          mspSlug: row.mspSlug,
+          accessToken,
+          refreshToken: rawRefreshToken,
+          refreshExpiresAt: refreshExpiresAt.toISOString(),
+        });
+        return;
+      }
+    } catch (tokenErr) {
+      logger.warn({ err: tokenErr }, "msp-invite: failed to issue tokens, continuing without auto-login");
+    }
+  }
+
+  res.json({ ok: true, mspSlug: row.mspSlug });
 });
 
 export default router;

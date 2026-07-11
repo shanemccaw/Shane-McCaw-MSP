@@ -128,6 +128,28 @@ export const mspServiceAccountsTable = pgTable("msp_service_accounts", {
 export type MspServiceAccount = typeof mspServiceAccountsTable.$inferSelect;
 export type InsertMspServiceAccount = typeof mspServiceAccountsTable.$inferInsert;
 
+// ── MSP Invites ───────────────────────────────────────────────────────────────
+// MSPAdmins invite employees via email. Each invite is a one-time token that
+// expires after 72 hours. On acceptance a users + msp_users row is created/linked.
+
+export const mspInvitesTable = pgTable("msp_invites", {
+  id: serial("id").primaryKey(),
+  token: text("token").notNull().unique(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  invitedEmail: text("invited_email").notNull(),
+  mspRole: text("msp_role", { enum: ["MSPAdmin", "MSPOperator"] }).notNull().default("MSPOperator"),
+  invitedByUserId: integer("invited_by_user_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_invites_msp_id_idx").on(t.mspId),
+  index("msp_invites_expires_at_idx").on(t.expiresAt),
+]);
+
+export type MspInvite = typeof mspInvitesTable.$inferSelect;
+export type InsertMspInvite = typeof mspInvitesTable.$inferInsert;
+
 // ── Sliding Refresh Tokens ────────────────────────────────────────────────────
 // Stored so we can rotate (slide) the 7-day window and revoke individual sessions.
 
