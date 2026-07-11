@@ -638,6 +638,17 @@ router.get(
     try {
       const mspId = resolveMspId(req);
 
+      // PlatformAdmins browsing without a specific MSP context get a zeroed response
+      // rather than a query scoped to msp_id = 0 (which would never match real rows).
+      if (!mspId) {
+        res.json({
+          totalCustomers: 0, customersWithWaste: 0,
+          estimatedAnnualSavings: 0, estimatedAnnualSavingsFormatted: "$0",
+          totalUnusedLicenses: 0, reportsGenerated: 0, hasData: false,
+        });
+        return;
+      }
+
       // Count customers with licensing waste detected across MSP's customer portfolio
       // (via msp_customers → client_m365_profiles join)
       const result = await db.execute(sql`
@@ -661,7 +672,7 @@ router.get(
         FROM msp_customers mc
         LEFT JOIN users u ON u.company = mc.name
         LEFT JOIN client_m365_profiles cmp ON cmp.client_id = u.id
-        WHERE mc.msp_id = ${mspId || 0}
+        WHERE mc.msp_id = ${mspId}
           AND mc.status = 'active'
       `);
 

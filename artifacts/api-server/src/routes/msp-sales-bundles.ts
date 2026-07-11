@@ -53,7 +53,9 @@ function getMspId(req: Request): number | null {
   const user = req.user!;
   if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
     const q = parseInt(p(req.query["mspId"] as string | undefined), 10);
-    return isNaN(q) ? null : q;
+    // Fall back to the user's own mspId (e.g. PlatformAdmin browsing their own MSP)
+    if (isNaN(q)) return user.mspId ?? null;
+    return q;
   }
   return user.mspId ?? null;
 }

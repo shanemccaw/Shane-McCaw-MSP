@@ -138,6 +138,34 @@ function validateMergeFields(key: string, body: string): string | null {
   return null;
 }
 
+// ── GET /api/msp/profile — alias consumed by app-shell.tsx ────────────────────
+// The frontend fetches /api/msp/profile; the canonical route is /api/msp/settings/profile.
+// This thin alias avoids a frontend change while keeping one source of truth.
+
+router.get("/msp/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const [msp] = await db
+    .select({
+      id: mspsTable.id,
+      name: mspsTable.name,
+      slug: mspsTable.slug,
+      domain: mspsTable.domain,
+      logoUrl: mspsTable.logoUrl,
+      primaryColor: mspsTable.primaryColor,
+      status: mspsTable.status,
+      trialEndsAt: mspsTable.trialEndsAt,
+      createdAt: mspsTable.createdAt,
+    })
+    .from(mspsTable)
+    .where(eq(mspsTable.id, mspId))
+    .limit(1);
+
+  if (!msp) { apiError(res, 404, "MSP not found"); return; }
+  res.json(msp);
+});
+
 // ── GET /api/msp/settings/profile ─────────────────────────────────────────────
 
 router.get("/msp/settings/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {

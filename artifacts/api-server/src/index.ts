@@ -741,4 +741,146 @@ app.listen(port, (err) => {
   // Slug→UUID conversion for workflow_template_step_tasks.runbook_id is handled
   // by Drizzle migration 0103_workflow_template_step_tasks_runbook_id_uuid_fk.sql.
   // No runtime patch needed here.
+
+  // ── MSP: add is_direct_business column if missing ─────────────────────────
+  // The Drizzle schema has this column but older DB instances may not.
+  pool.query(`
+    ALTER TABLE msps ADD COLUMN IF NOT EXISTS is_direct_business BOOLEAN NOT NULL DEFAULT false
+  `).then(() => {
+    logger.info("Migration: msps.is_direct_business column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: msps.is_direct_business column failed (non-fatal)");
+  });
+
+  // ── SLA Engine tables ──────────────────────────────────────────────────────
+  // These tables are queried by /api/msp/sla/* routes. The engine can start
+  // returning data (or empty arrays) immediately once these exist.
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS sla_policies (
+      id                              SERIAL PRIMARY KEY,
+      msp_id                          INTEGER REFERENCES msps(id) ON DELETE CASCADE,
+      name                            TEXT NOT NULL,
+      description                     TEXT,
+      response_time_minutes           INTEGER NOT NULL DEFAULT 60,
+      warning_threshold_pct           NUMERIC(5,2) NOT NULL DEFAULT 80,
+      resolution_time_minutes         INTEGER NOT NULL DEFAULT 480,
+      resolution_warning_threshold_pct NUMERIC(5,2) NOT NULL DEFAULT 80,
+      escalation_rules                JSONB NOT NULL DEFAULT '[]',
+      priority                        INTEGER NOT NULL DEFAULT 0,
+      is_active                       BOOLEAN NOT NULL DEFAULT true,
+      created_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_policies_msp_id_idx ON sla_policies (msp_id);
+
+    CREATE TABLE IF NOT EXISTS sla_timers (
+      id                  SERIAL PRIMARY KEY,
+      timer_id            TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
+      msp_id              INTEGER NOT NULL,
+      customer_id         INTEGER,
+      policy_id           INTEGER REFERENCES sla_policies(id) ON DELETE SET NULL,
+      ticket_ref          TEXT,
+      ticket_type         TEXT,
+      status              TEXT NOT NULL DEFAULT 'active',
+      phase               TEXT NOT NULL DEFAULT 'response',
+      started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      warning_fired_at    TIMESTAMPTZ,
+      breached_at         TIMESTAMPTZ,
+      stopped_at          TIMESTAMPTZ,
+      idempotency_key     TEXT,
+      trace_id            TEXT,
+      metadata            JSONB NOT NULL DEFAULT '{}',
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_timers_msp_id_idx ON sla_timers (msp_id);
+    CREATE INDEX IF NOT EXISTS sla_timers_status_idx ON sla_timers (status);
+
+    CREATE TABLE IF NOT EXISTS sla_breaches (
+      id                  SERIAL PRIMARY KEY,
+      breach_id           TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
+      timer_id            TEXT REFERENCES sla_timers(timer_id) ON DELETE CASCADE,
+      msp_id              INTEGER NOT NULL,
+      customer_id         INTEGER,
+      policy_id           INTEGER REFERENCES sla_policies(id) ON DELETE SET NULL,
+      ticket_ref          TEXT,
+      phase               TEXT NOT NULL DEFAULT 'response',
+      breach_type         TEXT NOT NULL DEFAULT 'breach',
+      elapsed_minutes     NUMERIC(10,2) NOT NULL DEFAULT 0,
+      threshold_minutes   INTEGER NOT NULL DEFAULT 0,
+      operator_task_id    TEXT,
+      resolved_at         TIMESTAMPTZ,
+      resolution_notes    TEXT,
+      created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_breaches_msp_id_idx ON sla_breaches (msp_id);
+    CREATE INDEX IF NOT EXISTS sla_breaches_resolved_at_idx ON sla_breaches (resolved_at);
+
+    CREATE TABLE IF NOT EXISTS sla_escalations (
+      id                SERIAL PRIMARY KEY,
+      escalation_id     TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
+      breach_id         TEXT REFERENCES sla_breaches(breach_id) ON DELETE CASCADE,
+      msp_id            INTEGER NOT NULL,
+      customer_id       INTEGER,
+      level             INTEGER NOT NULL DEFAULT 1,
+      escalation_type   TEXT NOT NULL DEFAULT 'operator_task',
+      status            TEXT NOT NULL DEFAULT 'pending',
+      assigned_to       TEXT,
+      target            TEXT,
+      escalated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      resolved_at       TIMESTAMPTZ,
+      metadata          JSONB NOT NULL DEFAULT '{}',
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_escalations_msp_id_idx ON sla_escalations (msp_id);
+    CREATE INDEX IF NOT EXISTS sla_escalations_status_idx ON sla_escalations (status);
+
+    CREATE TABLE IF NOT EXISTS sla_compliance_records (
+      id                      SERIAL PRIMARY KEY,
+      record_id               TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
+      msp_id                  INTEGER NOT NULL,
+      customer_id             INTEGER,
+      policy_id               INTEGER REFERENCES sla_policies(id) ON DELETE SET NULL,
+      period_start            TIMESTAMPTZ NOT NULL,
+      period_end              TIMESTAMPTZ NOT NULL,
+      total_tickets           INTEGER NOT NULL DEFAULT 0,
+      breached_tickets        INTEGER NOT NULL DEFAULT 0,
+      compliance_pct          NUMERIC(5,2) NOT NULL DEFAULT 100,
+      avg_response_minutes    NUMERIC(10,2),
+      avg_resolution_minutes  NUMERIC(10,2),
+      notes                   TEXT,
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS sla_compliance_msp_id_idx ON sla_compliance_records (msp_id);
+    CREATE INDEX IF NOT EXISTS sla_compliance_period_start_idx ON sla_compliance_records (period_start);
+  `).then(() => {
+    logger.info("Migration: SLA engine tables (sla_policies, sla_timers, sla_breaches, sla_escalations, sla_compliance_records) ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: SLA engine tables failed (non-fatal)");
+  });
+
+  // ── client_m365_profiles: ensure profile JSONB column exists ──────────────
+  // The /api/msp/reports/license-waste route reads profile->>'hasLicensingWaste'
+  // and profile->>'estimatedAnnualWasteDollars'. If the column is absent the
+  // query throws instead of returning zeros.
+  pool.query(`
+    ALTER TABLE client_m365_profiles ADD COLUMN IF NOT EXISTS profile JSONB NOT NULL DEFAULT '{}'
+  `).then(() => {
+    logger.info("Migration: client_m365_profiles.profile JSONB column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: client_m365_profiles.profile column failed (non-fatal)");
+  });
+
+  // ── scope_creep_escalations: add created_at column if missing ─────────────
+  // ensureScopeCreepTables() defines the table with escalated_at but not
+  // created_at. The GET /api/msp/scope-creep/escalations route queries and
+  // ORDER BY created_at — missing column causes a 500 on any existing instance.
+  pool.query(`
+    ALTER TABLE scope_creep_escalations
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  `).then(() => {
+    logger.info("Migration: scope_creep_escalations.created_at column ensured");
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "Migration: scope_creep_escalations.created_at column failed (non-fatal)");
+  });
 });
