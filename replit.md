@@ -85,6 +85,20 @@ _Populate as you build — explicit user instructions worth remembering across s
 - **Browser push notifications (background delivery)**: OS-level push alerts require two VAPID secrets in Replit Secrets: `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`. Generate them once with `npx web-push generate-vapid-keys` (or `node -e "const wp=require('web-push');console.log(wp.generateVAPIDKeys())"`), then paste the `publicKey` value into `VAPID_PUBLIC_KEY` and `privateKey` into `VAPID_PRIVATE_KEY`. Without these secrets, all `sendWebPushToAdmins()` calls are silently skipped and a warning is emitted at server startup. Pushes are delivered by the browser vendor's push service even when the Admin Panel tab is closed, as long as the browser is running. The service worker at `artifacts/admin-panel/public/sw.js` handles the `push` event and shows the OS notification.
 - **PAY-TODAY discount offer**: When a client first views a presentation's payment step, the server records `firstVisitedAt` on the presentation and derives a 72-hour offer window. The offer state (savings, discounted total, countdown expiry) is returned by `GET /api/portal/presentations/:id/offer` and rendered in `PaymentOptionsPanel.tsx` + `PayTodayBanner.tsx`. The discount is configured via a row in the internal `coupons` DB table with `code = 'PAY-TODAY'` and `discountValue` set to the desired percentage — create or update it via the Admin Panel (no Stripe Dashboard action needed). At checkout, the server computes the discount amount in cents (same rounding path as the offer endpoint) and creates a one-time Stripe coupon with `amount_off` so the discount appears as a named line item in Stripe's reporting. Both offer display and Stripe charge use the same cents-based arithmetic so there is never a displayed-vs-charged discrepancy. The countdown in `PayTodayBanner.tsx` displays in `HH:MM:SS` format; the percentage label is derived dynamically from `coupon.discountValue`. The Agreement step is locked until payment is confirmed (status `"paid"` or `"signed"`); sidebar indicators and overview cards enforce this gate in addition to the footer.
 
+## Docs
+
+Operational and architectural reference documents live in `/docs/`:
+
+| Document | Purpose |
+|----------|---------|
+| [`docs/architecture-overview.md`](docs/architecture-overview.md) | Auth model, event bus contract, workflow engine node types, engine registry, tiered data ownership |
+| [`docs/architecture.md`](docs/architecture.md) | Full component map, route namespaces, data flows, DB table groups, third-party integrations |
+| [`docs/acceptance-checklist.md`](docs/acceptance-checklist.md) | Go-live gate — one verifiable item per completed MSP Portal capability |
+| [`docs/runbooks/dlq-replay.md`](docs/runbooks/dlq-replay.md) | Step-by-step procedure to replay failed DLQ entries |
+| [`docs/runbooks/workflow-run-remediation.md`](docs/runbooks/workflow-run-remediation.md) | Diagnose and remediate stuck / failed workflow runs |
+| [`docs/runbooks/key-vault-credential-rotation.md`](docs/runbooks/key-vault-credential-rotation.md) | Rotate an MSP's Azure Key Vault credentials without downtime |
+| [`docs/runbooks/incident-response.md`](docs/runbooks/incident-response.md) | Production incident triage, severity levels, and escalation path |
+
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details

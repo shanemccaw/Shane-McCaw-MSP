@@ -102,8 +102,14 @@ This checklist consolidates the "done looks like" criteria from every task in th
 - [ ] SOW pricing adjustments reflect fired tenant signals (e.g., `hasSecurityGaps`)
 - [ ] Disabled signals are skipped in all compute paths (admin evaluate, SOW generation, dry-run)
 - [ ] AI document generation handles Anthropic streaming for long outputs (no 10-min timeout crash)
-- [ ] CRM engine, drift engine, health engine, forecasting engine, priority engine all return results without errors
+- [ ] All 11 engines return results without errors: `priority`, `pricing`, `health`, `drift`, `forecasting`, `crm`, `msp`, `sla`, `scope_creep`, `monitoring`, `sales_offer`
+- [ ] Each engine's `runForPayload` (test mode) returns a result without touching live customer data
 - [ ] AI prompt edits in the Admin Panel take effect on next generation (no code deploy required)
+- [ ] The MSP Portfolio Engine (`msp`) aggregates health + drift + priority scores across all customers into a portfolio-level risk roll-up
+- [ ] The SLA Engine detects SLA timer warnings and breaches and surfaces them in the MSP portal customer detail view
+- [ ] The Scope Creep Engine raises violations when deliverable / timeline drift is detected; escalation recommendations appear in the Admin Panel
+- [ ] The Monitoring Engine runs platform-authored monitor checks against a test customer tenant via Graph API and writes `tenant_monitor_profile` rows
+- [ ] The Sales Offer Engine returns ranked offer candidates for a customer with a populated profile; disabled signals are excluded from offer scoring
 
 ---
 
