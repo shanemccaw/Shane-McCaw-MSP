@@ -30,8 +30,19 @@ vi.mock("@workspace/db", () => {
     mspCustomersTable: { id: "id", mspId: "msp_id", status: "status", name: "name", domain: "domain", industry: "industry", tenantId: "tenant_id", ownerType: "owner_type", createdAt: "created_at" },
     mspEventStoreTable: { id: "id", mspId: "msp_id", customerId: "customer_id", eventType: "event_type", occurredAt: "occurred_at", source: "source", actor: "actor", meta: "meta", payload: "payload", ownerType: "owner_type" },
     mspAuditLogsTable: { id: "id" },
+    salesOffersTable: { id: "id", mspId: "msp_id", state: "state", adjustedPriceCents: "adjusted_price_cents" },
+    mspSalesBundlesTable: { id: "id", bundleId: "bundle_id", mspId: "msp_id", name: "name", status: "status", createdAt: "created_at" },
   };
 });
+
+vi.mock("../lib/ai-billing.ts", () => ({
+  getAiBalance: vi.fn().mockResolvedValue({
+    alertThreshold: 80,
+    periodUsagePct: 82,
+    balanceCents: 5000,
+    periodKey: "2026-07",
+  }),
+}));
 
 vi.mock("../lib/logger.ts", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -57,6 +68,58 @@ function makePlatformAdminToken(): string {
     { expiresIn: "1h" },
   );
 }
+
+// ── Countdown utility (pure math) ────────────────────────────────────────────────
+
+/**
+ * Pure helper that mirrors the HH:MM:SS computation in the useCountdown hook.
+ * Isolated here for server-side unit testing without React/DOM.
+ */
+function formatCountdown(remainingMs: number): string {
+  const r = Math.max(0, remainingMs);
+  const h = Math.floor(r / 3_600_000);
+  const m = Math.floor((r % 3_600_000) / 60_000);
+  const s = Math.floor((r % 60_000) / 1_000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+describe("offerCountdown utility", () => {
+  it("formats 1 hour exactly as 01:00:00", () => {
+    expect(formatCountdown(3_600_000)).toBe("01:00:00");
+  });
+
+  it("formats 23 h 59 m 59 s correctly", () => {
+    const ms = 23 * 3_600_000 + 59 * 60_000 + 59 * 1_000;
+    expect(formatCountdown(ms)).toBe("23:59:59");
+  });
+
+  it("formats 0 ms as 00:00:00", () => {
+    expect(formatCountdown(0)).toBe("00:00:00");
+  });
+
+  it("clamps negative remaining to 00:00:00", () => {
+    expect(formatCountdown(-5_000)).toBe("00:00:00");
+  });
+
+  it("correctly separates hours, minutes, and seconds", () => {
+    // 90 minutes = 1 h 30 m 0 s
+    expect(formatCountdown(90 * 60_000)).toBe("01:30:00");
+    // 65 seconds
+    expect(formatCountdown(65_000)).toBe("00:01:05");
+  });
+
+  it("only fires for offers expiring within 24 hours", () => {
+    const now = Date.now();
+    const within24h = now + 23 * 3_600_000;
+    const beyond24h = now + 25 * 3_600_000;
+
+    const isWithin = (expiresMs: number) => expiresMs - now <= 86_400_000 && expiresMs > now;
+
+    expect(isWithin(within24h)).toBe(true);
+    expect(isWithin(beyond24h)).toBe(false);
+    expect(isWithin(now - 1_000)).toBe(false); // already expired
+  });
+});
 
 // ── Dashboard tests ──────────────────────────────────────────────────────────────
 

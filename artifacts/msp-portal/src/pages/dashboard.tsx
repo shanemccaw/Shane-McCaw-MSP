@@ -20,10 +20,13 @@ import {
   DollarSign,
   FileBarChart2,
   Info,
+  Package,
   PercentCircle,
   RefreshCw,
   TrendingDown,
+  TrendingUp,
   Users,
+  Zap,
 } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -61,6 +64,11 @@ interface DashboardData {
   revenueCentsThisMonth: number;
   revenueUsdThisMonth: string;
   periodStart: string;
+  unacceptedOffersCents: number;
+  unacceptedOffersCount: number;
+  idleBundles: Array<{ bundleId: string; name: string; daysIdle: number }>;
+  aiAlertThreshold: number | null;
+  aiPeriodUsagePct: number | null;
 }
 
 interface LicenseWasteData {
@@ -333,6 +341,108 @@ export default function DashboardPage() {
               <CardDescription className="text-xs mt-1">In progress</CardDescription>
             </CardContent>
           </Card>
+        </div>
+
+        {/* ── Growth & Engagement Widgets ────────────────────────────────────── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+
+          {/* Widget 1: Unaccepted Offers Value */}
+          <Link href="/sales-offers">
+            <Card className="cursor-pointer hover:border-primary/40 transition-colors group h-full">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium">Pipeline Value</CardTitle>
+                <DollarSign className="size-4 text-emerald-400" />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-8 w-24 mt-1" />
+                ) : (data?.unacceptedOffersCount ?? 0) === 0 ? (
+                  <div className="text-2xl font-bold text-muted-foreground">—</div>
+                ) : (
+                  <div className="text-2xl font-bold text-emerald-400">
+                    ${((data?.unacceptedOffersCents ?? 0) / 100).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {(data?.unacceptedOffersCount ?? 0) === 0
+                    ? "No open offers"
+                    : `${data?.unacceptedOffersCount} offer${data?.unacceptedOffersCount !== 1 ? "s" : ""} awaiting response`}
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
+
+          {/* Widget 2: AI Balance Momentum */}
+          {(data?.aiPeriodUsagePct != null && data.aiPeriodUsagePct > 0) && (
+            <Card className={`h-full ${(data.aiAlertThreshold ?? 0) >= 90 ? "border-amber-500/30 bg-amber-500/5" : "border-primary/20 bg-primary/5"}`}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium">AI Usage Momentum</CardTitle>
+                <Zap className={`size-4 ${(data.aiAlertThreshold ?? 0) >= 90 ? "text-amber-400" : "text-primary"}`} />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <>
+                    <div className={`text-2xl font-bold ${(data.aiAlertThreshold ?? 0) >= 90 ? "text-amber-400" : "text-primary"}`}>
+                      {Math.round(data.aiPeriodUsagePct)}%
+                    </div>
+                    <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-700 ${(data.aiAlertThreshold ?? 0) >= 90 ? "bg-amber-400" : "bg-primary"}`}
+                        style={{ width: `${Math.min(100, data.aiPeriodUsagePct)}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      {(data.aiAlertThreshold ?? 0) >= 95
+                        ? "Near capacity — consider a top-up"
+                        : (data.aiAlertThreshold ?? 0) >= 80
+                        ? "Strong utilisation this period"
+                        : "AI tools actively delivering value"}
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Widget 3: Idle Bundle Nudges */}
+          {(data?.idleBundles?.length ?? 0) > 0 && (
+            <Card className="border-amber-500/20 bg-amber-500/5 h-full">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium">Idle Bundles</CardTitle>
+                <Package className="size-4 text-amber-400" />
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <Skeleton className="h-8 w-16 mt-1" />
+                ) : (
+                  <>
+                    <div className="text-2xl font-bold text-amber-400">
+                      {data!.idleBundles.length}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 mb-2">
+                      Bundle{data!.idleBundles.length !== 1 ? "s" : ""} with no new assignment in 30+ days
+                    </p>
+                    <div className="space-y-1">
+                      {data!.idleBundles.slice(0, 3).map((b) => (
+                        <div key={b.bundleId} className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground truncate mr-2">{b.name}</span>
+                          <span className="text-amber-400 shrink-0">{b.daysIdle}d</span>
+                        </div>
+                      ))}
+                    </div>
+                    <Link href="/bundles">
+                      <p className="text-xs text-primary mt-2 flex items-center gap-1 hover:underline">
+                        <TrendingUp className="size-3" />
+                        Assign to customers
+                      </p>
+                    </Link>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Quick links */}

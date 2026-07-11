@@ -129,10 +129,10 @@ const PRESENTATION_STATUS: Record<
 // ── Finding severity config ───────────────────────────────────────────────────
 
 const FINDING_SEVERITY_CONFIG = {
-  critical: { label: "Critical", icon: AlertCircle, color: "text-red-400",   bg: "bg-red-500/10 border-red-500/30" },
-  warning:  { label: "Warning",  icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30" },
-  info:     { label: "Info",     icon: Info,          color: "text-blue-400",  bg: "bg-blue-500/10 border-blue-500/30" },
-  ok:       { label: "OK",       icon: CheckCircle2,  color: "text-green-400", bg: "bg-green-500/10 border-green-500/30" },
+  critical: { label: "Critical", icon: AlertCircle, color: "text-red-400",   bg: "bg-red-500/10 border-red-500/30",     riskFrame: "Compliance risk exposure — immediate action recommended" },
+  warning:  { label: "Warning",  icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30", riskFrame: "Attention needed to maintain security posture" },
+  info:     { label: "Info",     icon: Info,          color: "text-blue-400",  bg: "bg-blue-500/10 border-blue-500/30",   riskFrame: "Review recommended for optimisation" },
+  ok:       { label: "OK",       icon: CheckCircle2,  color: "text-green-400", bg: "bg-green-500/10 border-green-500/30", riskFrame: "" },
 } as const;
 
 function FindingBadge({ severity }: { severity: DiagnosticFinding["severity"] }) {
@@ -443,6 +443,11 @@ export default function CustomerDiagnosticsPage() {
                               <p className="text-xs text-muted-foreground">{f.title}</p>
                               {f.description && (
                                 <p className="text-xs text-muted-foreground/70 mt-1">{f.description}</p>
+                              )}
+                              {cfg.riskFrame && (
+                                <p className={`text-[11px] font-medium mt-2 ${cfg.color}`}>
+                                  {cfg.riskFrame}
+                                </p>
                               )}
                             </div>
                           </div>

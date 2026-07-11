@@ -11,9 +11,10 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable } from "@workspace/db";
-import { eq, and, count, sql, gte, like } from "drizzle-orm";
+import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable } from "@workspace/db";
+import { eq, and, count, sql, gte, like, sum } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
+import { getAiBalance } from "../lib/ai-billing.ts";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -58,6 +59,9 @@ router.get(
         offerAcceptedRows,
         revenueResult,
         mspRow,
+        unacceptedOffersResult,
+        idleBundlesResult,
+        aiBalance,
       ] = await Promise.all([
         // Customer breakdown: total + by status
         mspId
@@ -143,6 +147,48 @@ router.get(
               .where(eq(mspsTable.id, mspId))
               .limit(1)
           : Promise.resolve([]),
+
+        // ── Growth widget #1: unaccepted offers value ─────────────────────────
+        // Sum of adjustedPriceCents for sent (unaccepted) offers for this MSP
+        mspId
+          ? db
+              .select({
+                totalCents: sum(salesOffersTable.adjustedPriceCents),
+                offerCount: count(),
+              })
+              .from(salesOffersTable)
+              .where(
+                and(
+                  eq(salesOffersTable.mspId, mspId),
+                  eq(salesOffersTable.state, "sent"),
+                ),
+              )
+          : Promise.resolve([{ totalCents: null, offerCount: 0 }]),
+
+        // ── Growth widget #2: idle bundles (no active assignment in 30 days) ─
+        mspId
+          ? db.execute(
+              sql`
+                SELECT b.bundle_id AS "bundleId", b.name,
+                  FLOOR(
+                    EXTRACT(EPOCH FROM (NOW() - COALESCE(MAX(a.assigned_at), b.created_at)))
+                    / 86400
+                  )::int AS "daysIdle"
+                FROM msp_sales_bundles b
+                LEFT JOIN msp_sales_bundle_assignments a
+                  ON a.bundle_id = b.bundle_id AND a.status != 'revoked'
+                WHERE b.msp_id = ${mspId} AND b.status = 'active'
+                GROUP BY b.bundle_id, b.name, b.created_at
+                HAVING COALESCE(MAX(a.assigned_at), b.created_at) < NOW() - INTERVAL '30 days'
+                ORDER BY "daysIdle" DESC
+                LIMIT 5
+              `,
+            )
+          : Promise.resolve({ rows: [] }),
+
+        // ── Growth widget #3: AI balance (momentum framing) ──────────────────
+        // Silently suppress errors — this widget is optional
+        mspId ? getAiBalance(mspId).catch(() => null) : Promise.resolve(null),
       ]);
 
       // Aggregate customer counts
@@ -179,6 +225,26 @@ router.get(
 
       const msp = (mspRow as Array<{ id: number; name: string; status: string; offboardingState: string | null; offboardingRequestedAt: Date | null; exportReadyAt: Date | null }>)[0] ?? null;
 
+      // ── Growth widget data ──────────────────────────────────────────────────
+
+      // Widget 1: unaccepted offers
+      type UnacceptedRow = { totalCents: string | null; offerCount: number };
+      const unacceptedRow = (unacceptedOffersResult as UnacceptedRow[])[0] ?? { totalCents: null, offerCount: 0 };
+      const unacceptedOffersCents = Number(unacceptedRow.totalCents ?? 0);
+      const unacceptedOffersCount = Number(unacceptedRow.offerCount ?? 0);
+
+      // Widget 2: idle bundles
+      type IdleBundleRow = { bundleId: string; name: string; daysIdle: number };
+      const idleBundles = (
+        idleBundlesResult && "rows" in idleBundlesResult
+          ? (idleBundlesResult as { rows: IdleBundleRow[] }).rows
+          : []
+      );
+
+      // Widget 3: AI balance/momentum
+      const aiAlertThreshold = (aiBalance as { alertThreshold?: number | null } | null)?.alertThreshold ?? null;
+      const aiPeriodUsagePct = (aiBalance as { periodUsagePct?: number | null } | null)?.periodUsagePct ?? null;
+
       res.json({
         msp,
         customers: customerCounts,
@@ -189,6 +255,11 @@ router.get(
         revenueCentsThisMonth,
         revenueUsdThisMonth: (revenueCentsThisMonth / 100).toFixed(2),
         periodStart: monthStart.toISOString(),
+        unacceptedOffersCents,
+        unacceptedOffersCount,
+        idleBundles,
+        aiAlertThreshold,
+        aiPeriodUsagePct,
       });
     } catch (err) {
       logger.error({ err }, "msp-portal: dashboard query failed");

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import PortalLayout from "@/components/PortalLayout";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
 } from "recharts";
 
 interface CategoryBreakdown {
@@ -26,6 +26,7 @@ interface HealthSummaryData {
   lastUpdated: string;
   timeSeries: Array<{ date: string; score: number }>;
   categories: CategoryBreakdown[];
+  schemaVersionMarkers?: string[];
 }
 
 type HealthResponse = HealthSummary | HealthSummaryData;
@@ -177,8 +178,16 @@ export default function PortalHealthScore() {
 
                 {d.timeSeries.length >= 2 && (
                   <div className="mt-6">
-                    <p className="text-xs font-medium text-gray-500 mb-3">Score trend</p>
-                    <ResponsiveContainer width="100%" height={120}>
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-medium text-gray-500">Score trend — first scan to today</p>
+                      {(d.schemaVersionMarkers?.length ?? 0) > 0 && (
+                        <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                          <span className="inline-block w-3 border-t border-dashed border-purple-400" />
+                          Check definition updated
+                        </div>
+                      )}
+                    </div>
+                    <ResponsiveContainer width="100%" height={140}>
                       <LineChart data={d.timeSeries} margin={{ top: 4, right: 8, left: -24, bottom: 4 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                         <XAxis
@@ -192,6 +201,16 @@ export default function PortalHealthScore() {
                           labelFormatter={l => new Date(l + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
                           contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
                         />
+                        {(d.schemaVersionMarkers ?? []).map(date => (
+                          <ReferenceLine
+                            key={date}
+                            x={date}
+                            stroke="#a855f7"
+                            strokeDasharray="4 3"
+                            strokeWidth={1.5}
+                            label={{ value: "↑", position: "top", fontSize: 9, fill: "#a855f7" }}
+                          />
+                        ))}
                         <Line
                           type="monotone"
                           dataKey="score"
@@ -202,6 +221,24 @@ export default function PortalHealthScore() {
                         />
                       </LineChart>
                     </ResponsiveContainer>
+                    {/* Before / After summary */}
+                    {hasHistory && d.overallFirst > 0 && d.overallDelta !== 0 && (
+                      <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-gray-50 rounded-xl py-3">
+                          <p className="text-[10px] text-gray-400 mb-1">First scan</p>
+                          <p className="text-lg font-bold text-gray-600">{d.overallFirst}%</p>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          <div className={`px-2 py-1 rounded-full text-xs font-bold ${d.overallDelta > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                            {d.overallDelta > 0 ? "▲" : "▼"} {Math.abs(d.overallDelta)}pts
+                          </div>
+                        </div>
+                        <div className={`rounded-xl py-3 ${d.overallDelta > 0 ? "bg-green-50" : "bg-red-50"}`}>
+                          <p className="text-[10px] text-gray-400 mb-1">Today</p>
+                          <p className={`text-lg font-bold ${d.overallDelta > 0 ? "text-green-700" : "text-red-700"}`}>{d.overallLatest}%</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

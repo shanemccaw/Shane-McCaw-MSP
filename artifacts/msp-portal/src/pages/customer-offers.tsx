@@ -14,7 +14,7 @@
  * /api/portal/offers/sse. Falls back to 30 s polling when SSE is unavailable.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -94,6 +94,35 @@ function daysUntil(iso: string | null | undefined): number | null {
   return diff;
 }
 
+/**
+ * Returns a live HH:MM:SS countdown string when expiresAt is within 24 hours,
+ * or null otherwise. Ticks every second via setInterval.
+ */
+function useCountdown(expiresAt: string | null | undefined): string | null {
+  const [now, setNow] = useState(() => Date.now());
+
+  const expiresMs = useMemo(
+    () => (expiresAt ? new Date(expiresAt).getTime() : null),
+    [expiresAt],
+  );
+
+  const withinDay = expiresMs !== null && expiresMs - now <= 86_400_000 && expiresMs > now;
+
+  useEffect(() => {
+    if (!withinDay) return;
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [withinDay]);
+
+  if (!withinDay || expiresMs === null) return null;
+
+  const remaining = Math.max(0, expiresMs - now);
+  const h = Math.floor(remaining / 3_600_000);
+  const m = Math.floor((remaining % 3_600_000) / 60_000);
+  const s = Math.floor((remaining % 60_000) / 1_000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 // ── Reject Dialog ─────────────────────────────────────────────────────────────
 
 interface RejectDialogProps {
@@ -154,9 +183,10 @@ interface SentOfferCardProps {
 function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardProps) {
   const expiresDays = daysUntil(offer.expiresAt);
   const isExpiring = expiresDays !== null && expiresDays >= 0 && expiresDays <= 7;
+  const countdown = useCountdown(offer.expiresAt);
 
   return (
-    <Card className="border-primary/30 bg-primary/5">
+    <Card className={`${countdown ? "border-amber-500/40 bg-amber-500/5" : "border-primary/30 bg-primary/5"}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-1 flex-1">
@@ -164,7 +194,14 @@ function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardP
               <Sparkles className="size-3.5 text-primary shrink-0" />
               <CardTitle className="text-base leading-snug">{offer.title}</CardTitle>
             </div>
-            {offer.expiresAt && (
+            {countdown ? (
+              <div className="flex items-center gap-1.5">
+                <Clock className="size-3 text-amber-400" />
+                <p className="text-xs text-amber-400 font-mono font-semibold">
+                  Offer expires in {countdown}
+                </p>
+              </div>
+            ) : offer.expiresAt ? (
               <p className={`text-xs ${isExpiring ? "text-amber-400" : "text-muted-foreground"}`}>
                 {expiresDays !== null && expiresDays < 0
                   ? "This offer has expired"
@@ -172,7 +209,7 @@ function SentOfferCard({ offer, onAccept, onReject, submitting }: SentOfferCardP
                   ? "Expires today"
                   : `Expires in ${expiresDays} day${expiresDays !== 1 ? "s" : ""}`}
               </p>
-            )}
+            ) : null}
           </div>
           <div className="text-right shrink-0">
             <p className="text-lg font-bold text-primary">{formatCents(offer.adjustedPriceCents)}</p>

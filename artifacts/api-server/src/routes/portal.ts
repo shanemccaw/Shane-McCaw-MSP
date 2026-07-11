@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -616,6 +616,21 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
 
   const lastUpdated = rows[rows.length - 1].recordedAt.toISOString();
 
+  // Detect check definition changes: any active monitor check that has been updated
+  // (schemaVersion > 1) may explain a score change on or around its updatedAt date.
+  // We surface the unique dates as annotation markers for the timeline.
+  let schemaVersionMarkers: string[] = [];
+  try {
+    const changedChecks = await db
+      .select({ updatedAt: monitorChecksTable.updatedAt })
+      .from(monitorChecksTable)
+      .where(sql`${monitorChecksTable.schemaVersion} > 1`);
+    const allDays = changedChecks.map(r => r.updatedAt.toISOString().slice(0, 10));
+    schemaVersionMarkers = [...new Set(allDays)].sort();
+  } catch {
+    // Non-fatal — markers are optional annotations
+  }
+
   res.json({
     hasData: true,
     overallFirst,
@@ -624,6 +639,7 @@ router.get("/portal/health/summary", requireAuth, async (req: Request, res: Resp
     lastUpdated,
     timeSeries,
     categories,
+    schemaVersionMarkers,
   });
 });
 
