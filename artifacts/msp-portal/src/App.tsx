@@ -23,6 +23,10 @@ import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
 import CustomerSowPage from "@/pages/customer-sow";
 import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
+import OperatorTasksPage from "@/pages/operator-tasks";
+import DlqPage from "@/pages/dlq";
+import RunsPage from "@/pages/runs";
+import RunDetailPage from "@/pages/run-detail";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -153,6 +157,18 @@ function Router() {
       </Route>
       <Route path="/initiate-onboarding">
         <ProtectedRoute component={InitiateOnboardingPage} />
+      </Route>
+      <Route path="/operator-tasks">
+        <ProtectedRoute component={OperatorTasksPage} />
+      </Route>
+      <Route path="/dlq">
+        <ProtectedRoute component={DlqPage} />
+      </Route>
+      <Route path="/runs/:runId">
+        <ProtectedRoute component={RunDetailPage} />
+      </Route>
+      <Route path="/runs">
+        <ProtectedRoute component={RunsPage} />
       </Route>
 
       {/* Customer-facing pages */}

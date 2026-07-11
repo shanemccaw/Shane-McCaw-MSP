@@ -422,4 +422,31 @@ router.post(
   },
 );
 
+router.patch(
+  "/dlq/:dlqId",
+  requireRole("MSPAdmin"),
+  mspMutatingRateLimit,
+  async (req: Request, res: Response) => {
+    const dlqId = p(req.params["dlqId"]);
+    const { resolution } = req.body as { resolution?: "discarded" | "manual" };
+
+    if (!resolution || !["discarded", "manual"].includes(resolution)) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "resolution must be 'discarded' or 'manual'");
+      return;
+    }
+
+    const [existing] = await db.select().from(mspDlqStoreTable)
+      .where(eq(mspDlqStoreTable.dlqId, dlqId)).limit(1);
+    if (!existing) { apiError(res, 404, ApiErrorCode.NOT_FOUND, "DLQ entry not found"); return; }
+    if (existing.resolvedAt) { apiError(res, 409, ApiErrorCode.CONFLICT, "DLQ entry is already resolved"); return; }
+
+    const [updated] = await db.update(mspDlqStoreTable).set({
+      resolution,
+      resolvedAt: new Date(),
+    }).where(eq(mspDlqStoreTable.dlqId, dlqId)).returning();
+
+    res.json({ entry: updated });
+  },
+);
+
 export default router;

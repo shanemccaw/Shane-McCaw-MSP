@@ -26,6 +26,7 @@ import {
 import { CommandPalette } from "@/components/command-palette";
 import {
   Activity,
+  AlertCircle,
   Award,
   Bell,
   Building2,
@@ -37,8 +38,10 @@ import {
   FileText,
   Home,
   LayoutDashboard,
+  ListTodo,
   LogOut,
   Menu,
+  Play,
   Search,
   Shield,
   Users,
@@ -129,6 +132,29 @@ const NAV_SECTIONS: NavSection[] = [
         icon: Shield,
         label: "Audit Logs",
         href: "/audit",
+        roles: ["PlatformAdmin", "MSPAdmin"],
+      },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      {
+        icon: ListTodo,
+        label: "Operator Tasks",
+        href: "/operator-tasks",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: Play,
+        label: "Workflow Runs",
+        href: "/runs",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
+        icon: AlertCircle,
+        label: "Dead Letter Queue",
+        href: "/dlq",
         roles: ["PlatformAdmin", "MSPAdmin"],
       },
     ],
