@@ -439,3 +439,40 @@ export const consentInviteTokensTable = pgTable("consent_invite_tokens", {
 
 export type ConsentInviteToken = typeof consentInviteTokensTable.$inferSelect;
 export type InsertConsentInviteToken = typeof consentInviteTokensTable.$inferInsert;
+
+// ── Background Job Queue ───────────────────────────────────────────────────────
+// Persistent queue for long-running tasks (provisioning, report generation, etc.)
+// Workers poll this table, lock a row with SELECT … FOR UPDATE SKIP LOCKED,
+// execute the handler, then update status to 'completed' or 'failed'.
+// Failed jobs are retried up to maxAttempts before being moved to msp_dlq_store.
+
+export const MSP_JOB_STATUS = ["pending", "running", "completed", "failed", "cancelled"] as const;
+export type MspJobStatus = typeof MSP_JOB_STATUS[number];
+
+export const mspJobQueueTable = pgTable("msp_job_queue", {
+  id: serial("id").primaryKey(),
+  jobId: uuid("job_id").notNull().unique().defaultRandom(),
+  jobType: text("job_type").notNull(),
+  status: text("status", { enum: MSP_JOB_STATUS }).notNull().default("pending"),
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+  errorStack: text("error_stack"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull().defaultNow(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  correlationId: uuid("correlation_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_job_queue_status_scheduled_idx").on(t.status, t.scheduledAt),
+  index("msp_job_queue_job_type_idx").on(t.jobType),
+  index("msp_job_queue_msp_id_idx").on(t.mspId),
+  index("msp_job_queue_correlation_id_idx").on(t.correlationId),
+]);
+
+export type MspJobQueueRow = typeof mspJobQueueTable.$inferSelect;
+export type InsertMspJobQueueRow = typeof mspJobQueueTable.$inferInsert;

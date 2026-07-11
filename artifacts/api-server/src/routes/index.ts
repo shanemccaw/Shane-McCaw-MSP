@@ -68,6 +68,7 @@ import crmPreviewStatsRouter from "./crm-preview-stats";
 import adminSowDebugRouter from "./admin-sow-debug";
 import consentRouter from "./consent";
 import mspPortalRouter from "./msp-portal";
+import mspV1Router from "./msp-v1";
 
 const router: IRouter = Router();
 
@@ -148,5 +149,8 @@ router.use(crmPreviewStatsRouter);
 router.use(adminSowDebugRouter);
 router.use(consentRouter);
 router.use(mspPortalRouter);
+
+// MSP platform API — versioned surface
+router.use("/msp/v1", mspV1Router);
 
 export default router;
