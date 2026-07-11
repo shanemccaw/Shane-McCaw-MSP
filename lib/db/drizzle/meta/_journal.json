@@ -1212,6 +1212,13 @@
       "when": 1752624000000,
       "tag": "0163_live_monitor_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "7",
+      "when": 1752364800000,
+      "tag": "0164_sales_offer_engine",
+      "breakpoints": true
     }
   ]
 }

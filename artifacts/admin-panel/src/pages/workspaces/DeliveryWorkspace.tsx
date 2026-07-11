@@ -13,7 +13,7 @@ import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 import MonitorChecksPage from "@/pages/MonitorChecks";
 import MonitoringPackagesPage from "@/pages/MonitoringPackages";
 
-const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla", "monitoring"] as const;
+const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp", "sla", "monitoring", "sales_offer"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   priority: "Priority Engine",
   pricing: "Pricing Engine",
@@ -24,6 +24,7 @@ const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
   msp: "MSP Engine",
   sla: "SLA Engine",
   monitoring: "Monitoring Engine",
+  sales_offer: "Sales Offer Engine",
 };
 
 const NAV_ITEMS: WorkspaceNavItem[] = [

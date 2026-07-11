@@ -798,6 +798,48 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         note: "Scope creep compliance snapshot would be computed and persisted in live run",
       };
 
+    // ── Sales Offer Engine nodes (dry-run stubs) ────────────────────────────
+    case "sales_offer_generate":
+      return {
+        dryRun: true,
+        insertedOfferIds: [],
+        candidateCount: 0,
+        note: "Sales offer candidates would be generated and persisted as draft rows in live run",
+      };
+
+    case "sales_offer_score":
+      return {
+        dryRun: true,
+        offerId: parseInt(interp(node.data.offerId as string | undefined, payload) ?? "0", 10) || 0,
+        previousScore: 0,
+        newScore: 0,
+        note: "Offer score would be re-computed from rule groups in live run",
+      };
+
+    case "sales_offer_violation":
+      return {
+        dryRun: true,
+        offerId: parseInt(interp(node.data.offerId as string | undefined, payload) ?? "0", 10) || 0,
+        violationType: (node.data.violationType as string | undefined) ?? "policy",
+        note: "Sales offer violation event would be emitted in live run",
+      };
+
+    case "sales_offer_escalate":
+      return {
+        dryRun: true,
+        offerId: parseInt(interp(node.data.offerId as string | undefined, payload) ?? "0", 10) || 0,
+        escalatedTo: (node.data.escalatedTo as string | undefined) ?? "admin",
+        note: "Offer would be escalated and a notification emitted in live run",
+      };
+
+    case "sales_offer_resolve":
+      return {
+        dryRun: true,
+        offerId: parseInt(interp(node.data.offerId as string | undefined, payload) ?? "0", 10) || 0,
+        newState: (node.data.newState as string | undefined) ?? "accepted",
+        note: "Offer lifecycle state would be transitioned in live run",
+      };
+
     case "generate_diff_report":
       return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
 
@@ -3422,6 +3464,165 @@ async function executeNode(
             nodeError = true;
             output = { error: scCompErr instanceof Error ? scCompErr.message : String(scCompErr) };
             logger.error({ runId, scCompErr }, "wf-executor: scope_creep_compliance_update failed");
+          }
+        }
+        break;
+      }
+
+      // ── Sales Offer Engine nodes (live) ────────────────────────────────────
+
+      case "sales_offer_generate": {
+        const { runSalesOfferEngineForTenant: soRun, persistSalesOfferCandidates: soPersist } = await import("./sales-offer-engine.ts");
+        const soTenantId = parseInt(interp(node.data.tenantId as string | undefined, payload) ?? "", 10);
+        const soMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10) || null;
+        if (isNaN(soTenantId)) {
+          nodeError = true;
+          output = { error: "sales_offer_generate requires tenantId" };
+        } else {
+          try {
+            const soResult = await soRun(soTenantId, soMspId);
+            const soInserted = await soPersist(soResult.candidates, soTenantId, soMspId, soResult as unknown as Record<string, unknown>);
+            output = { insertedOfferIds: soInserted, candidateCount: soResult.candidates.length, firedSignals: soResult.firedSignals };
+            logger.info({ runId, soTenantId, candidateCount: soResult.candidates.length, insertedCount: soInserted.length }, "wf-executor: sales_offer_generate completed");
+          } catch (soGenErr) {
+            nodeError = true;
+            output = { error: soGenErr instanceof Error ? soGenErr.message : String(soGenErr) };
+            logger.error({ runId, soGenErr }, "wf-executor: sales_offer_generate failed");
+          }
+        }
+        break;
+      }
+
+      case "sales_offer_score": {
+        const { salesOffersTable: soTable, salesOfferRuleGroupsTable: soRgTable, servicesTable: soSvcTable } = await import("@workspace/db");
+        const { computeSalesOfferEngine: soCompute, loadSalesOfferConfig: soLoadCfg, emitOfferEvent: soScoreEmit } = await import("./sales-offer-engine.ts");
+        const { db: soDb } = await import("@workspace/db");
+        const { eq: soEq } = await import("drizzle-orm");
+        const soScoreOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
+        if (isNaN(soScoreOfferId)) {
+          nodeError = true;
+          output = { error: "sales_offer_score requires offerId" };
+        } else {
+          try {
+            const [soOffer] = await soDb.select().from(soTable).where(soEq(soTable.id, soScoreOfferId)).limit(1);
+            if (!soOffer) throw new Error(`Sales offer ${soScoreOfferId} not found`);
+            const [soRgs, soSvcs, soCfg] = await Promise.all([
+              soDb.select().from(soRgTable).where(soEq(soRgTable.isActive, true)),
+              soDb.select({ id: soSvcTable.id, name: soSvcTable.name, price: soSvcTable.price, basePrice: soSvcTable.basePrice }).from(soSvcTable),
+              soLoadCfg(soOffer.mspId),
+            ]);
+            const soEngineOut = soCompute(soOffer.tenantId, new Set(soOffer.firedSignalKeys ?? []), soRgs, soSvcs, soCfg);
+            const soCandidate = soEngineOut.candidates.find(c => c.serviceId === soOffer.serviceId);
+            const soNewScore = soCandidate?.score ?? 0;
+            const soPrevScore = soOffer.score;
+            await soDb.update(soTable).set({ score: soNewScore, updatedAt: new Date() }).where(soEq(soTable.id, soScoreOfferId));
+            // Emit canonical offer.scored event for audit trail completeness
+            await soScoreEmit(soScoreOfferId, "offer.scored", { previousScore: soPrevScore, newScore: soNewScore }, null);
+            output = { offerId: soScoreOfferId, previousScore: soPrevScore, newScore: soNewScore };
+            logger.info({ runId, soScoreOfferId, soPrevScore, soNewScore }, "wf-executor: sales_offer_score completed");
+          } catch (soScoreErr) {
+            nodeError = true;
+            output = { error: soScoreErr instanceof Error ? soScoreErr.message : String(soScoreErr) };
+            logger.error({ runId, soScoreErr }, "wf-executor: sales_offer_score failed");
+          }
+        }
+        break;
+      }
+
+      case "sales_offer_violation": {
+        // Idempotent: node.data.idempotencyKey prevents duplicate violation events when
+        // the workflow node is retried (e.g. after a transient failure).
+        const { emitOfferEvent: soEmit } = await import("./sales-offer-engine.ts");
+        const { db: soViolDb, salesOfferEventsTable: soViolEvtTable } = await import("@workspace/db");
+        const { eq: soViolEq, and: soViolAnd } = await import("drizzle-orm");
+        const soViolOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
+        const soViolType = (interp(node.data.violationType as string | undefined, payload) ?? "policy");
+        const soViolIdempKey = interp(node.data.idempotencyKey as string | undefined, payload) ?? null;
+        if (isNaN(soViolOfferId)) {
+          nodeError = true;
+          output = { error: "sales_offer_violation requires offerId" };
+        } else {
+          try {
+            // Dedupe: if idempotencyKey supplied, skip if already emitted
+            if (soViolIdempKey) {
+              const existing = await soViolDb
+                .select({ id: soViolEvtTable.id })
+                .from(soViolEvtTable)
+                .where(soViolAnd(soViolEq(soViolEvtTable.offerId, soViolOfferId), soViolEq(soViolEvtTable.eventName, "offer.violation")))
+                .limit(1);
+              if (existing.length > 0) {
+                output = { offerId: soViolOfferId, violationType: soViolType, emitted: false, skipped: true, reason: "idempotent: already emitted" };
+                logger.info({ runId, soViolOfferId }, "wf-executor: sales_offer_violation skipped (idempotent)");
+                break;
+              }
+            }
+            await soEmit(soViolOfferId, "offer.violation", { violationType: soViolType, note: interp(node.data.note as string | undefined, payload) ?? "", idempotencyKey: soViolIdempKey }, null);
+            output = { offerId: soViolOfferId, violationType: soViolType, emitted: true };
+            logger.info({ runId, soViolOfferId, soViolType }, "wf-executor: sales_offer_violation emitted");
+          } catch (soViolErr) {
+            nodeError = true;
+            output = { error: soViolErr instanceof Error ? soViolErr.message : String(soViolErr) };
+            logger.error({ runId, soViolErr }, "wf-executor: sales_offer_violation failed");
+          }
+        }
+        break;
+      }
+
+      case "sales_offer_escalate": {
+        // Idempotent: dedupe on (offerId, "offer.escalated") when idempotencyKey supplied.
+        const { emitOfferEvent: soEscEmit } = await import("./sales-offer-engine.ts");
+        const { db: soEscDb } = await import("@workspace/db");
+        const { salesOfferEventsTable: soEscEvtTable } = await import("@workspace/db");
+        const { eq: soEscEq, and: soEscAnd } = await import("drizzle-orm");
+        const soEscOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
+        const soEscTo = interp(node.data.escalatedTo as string | undefined, payload) ?? "admin";
+        const soEscIdempKey = interp(node.data.idempotencyKey as string | undefined, payload) ?? null;
+        if (isNaN(soEscOfferId)) {
+          nodeError = true;
+          output = { error: "sales_offer_escalate requires offerId" };
+        } else {
+          try {
+            if (soEscIdempKey) {
+              const existing = await soEscDb
+                .select({ id: soEscEvtTable.id })
+                .from(soEscEvtTable)
+                .where(soEscAnd(soEscEq(soEscEvtTable.offerId, soEscOfferId), soEscEq(soEscEvtTable.eventName, "offer.escalated")))
+                .limit(1);
+              if (existing.length > 0) {
+                output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: false, skipped: true, reason: "idempotent: already emitted" };
+                logger.info({ runId, soEscOfferId }, "wf-executor: sales_offer_escalate skipped (idempotent)");
+                break;
+              }
+            }
+            await soEscEmit(soEscOfferId, "offer.escalated", { escalatedTo: soEscTo, note: interp(node.data.note as string | undefined, payload) ?? "", idempotencyKey: soEscIdempKey }, null);
+            output = { offerId: soEscOfferId, escalatedTo: soEscTo, emitted: true };
+            logger.info({ runId, soEscOfferId, soEscTo }, "wf-executor: sales_offer_escalate emitted");
+          } catch (soEscErr) {
+            nodeError = true;
+            output = { error: soEscErr instanceof Error ? soEscErr.message : String(soEscErr) };
+            logger.error({ runId, soEscErr }, "wf-executor: sales_offer_escalate failed");
+          }
+        }
+        break;
+      }
+
+      case "sales_offer_resolve": {
+        const { transitionOfferState: soTransition } = await import("./sales-offer-engine.ts");
+        const soResOfferId = parseInt(interp(node.data.offerId as string | undefined, payload) ?? "", 10);
+        const soResState = (interp(node.data.newState as string | undefined, payload) ?? "accepted");
+        const soResReason = interp(node.data.rejectionReason as string | undefined, payload) ?? undefined;
+        if (isNaN(soResOfferId)) {
+          nodeError = true;
+          output = { error: "sales_offer_resolve requires offerId" };
+        } else {
+          try {
+            const soUpdated = await soTransition(soResOfferId, soResState as import("@workspace/db").SalesOfferState, null, { rejectionReason: soResReason });
+            output = { offerId: soResOfferId, newState: soResState, updatedAt: soUpdated.updatedAt };
+            logger.info({ runId, soResOfferId, soResState }, "wf-executor: sales_offer_resolve completed");
+          } catch (soResErr) {
+            nodeError = true;
+            output = { error: soResErr instanceof Error ? soResErr.message : String(soResErr) };
+            logger.error({ runId, soResErr }, "wf-executor: sales_offer_resolve failed");
           }
         }
         break;

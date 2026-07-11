@@ -2045,6 +2045,9 @@ export interface WfNode {
     | "monitor_get_package" | "monitor_execute_package"
     // Live Monitor Engine (Mode B — O365 Management Activity API)
     | "monitor_subscription_ensure" | "monitor_poll_activity"
+    // Sales Offer Engine
+    | "sales_offer_generate" | "sales_offer_score" | "sales_offer_violation"
+    | "sales_offer_escalate" | "sales_offer_resolve"
     // Utilities
     | "comment";
   position: { x: number; y: number };
@@ -2227,5 +2230,153 @@ export const clientPresentationsTable = pgTable("client_presentations", {
 
 export type InsertClientPresentation = typeof clientPresentationsTable.$inferInsert;
 export type ClientPresentation = typeof clientPresentationsTable.$inferSelect;
+
+// ── Sales Offer Engine ──────────────────────────────────────────────────────────
+//
+// Lifecycle: draft → sent → accepted | rejected | expired
+// Diagnostics findings converted into candidate offers by engine rules.
+// Pricing always reads from the Product Catalog (servicesTable), never a
+// separate hardcoded price table.
+
+export const SALES_OFFER_STATES = ["draft", "sent", "accepted", "rejected", "expired"] as const;
+export type SalesOfferState = typeof SALES_OFFER_STATES[number];
+
+export const SALES_OFFER_RULE_TYPES = [
+  "eligibility",   // determines whether an offer candidate is eligible for a tenant
+  "bundling",      // groups offers together based on fired signals
+  "pricing",       // adjusts base catalog price up or down
+  "scoring",       // determines the offer's relevance score
+  "expiration",    // how long the offer is valid after being sent
+] as const;
+export type SalesOfferRuleType = typeof SALES_OFFER_RULE_TYPES[number];
+
+/** One generated offer — scoped to a tenant/MSP pair, backed by a catalog product. */
+export const salesOffersTable = pgTable("sales_offers", {
+  id: serial("id").primaryKey(),
+  /** The MSP customer tenant the offer is addressed to. */
+  tenantId: integer("tenant_id").references(() => usersTable.id, { onDelete: "set null" }),
+  /** FK to servicesTable — the product this offer is for. Pricing reads from there. */
+  serviceId: integer("service_id").references(() => servicesTable.id, { onDelete: "set null" }),
+  /** Which MSP generated this offer (null = platform admin). */
+  mspId: integer("msp_id"),
+  /** Human-readable offer title (can differ from product name). */
+  title: text("title").notNull(),
+  /** Short pitch explaining why this offer is relevant for this tenant. */
+  rationale: text("rationale"),
+  /** Fired signal keys that triggered this offer's eligibility. */
+  firedSignalKeys: jsonb("fired_signal_keys").$type<string[]>().notNull().default([]),
+  /** Other offer IDs bundled into this one (empty = standalone). */
+  bundledOfferIds: jsonb("bundled_offer_ids").$type<number[]>().notNull().default([]),
+  /** Base price from the catalog in USD cents. */
+  basePriceCents: integer("base_price_cents").notNull().default(0),
+  /** Engine-adjusted price in USD cents (after pricing rules). */
+  adjustedPriceCents: integer("adjusted_price_cents").notNull().default(0),
+  /** Score [0–100] from the scoring rule group — higher = more relevant. */
+  score: integer("score").notNull().default(0),
+  /** Lifecycle state. */
+  state: text("state", { enum: SALES_OFFER_STATES }).notNull().default("draft"),
+  /** ISO-8601 date after which the offer auto-expires (set at send time). */
+  expiresAt: timestamp("expires_at"),
+  /** When the offer was sent to the client. */
+  sentAt: timestamp("sent_at"),
+  /** When the offer was accepted. */
+  acceptedAt: timestamp("accepted_at"),
+  /** When the offer was rejected or expired. */
+  closedAt: timestamp("closed_at"),
+  /** Free-text reason supplied on rejection. */
+  rejectionReason: text("rejection_reason"),
+  /** Idempotency key — prevents duplicate offers for same (tenantId, serviceId, signalSet). */
+  idempotencyKey: text("idempotency_key").unique(),
+  /** Full engine output snapshot at generation time (for audit). */
+  engineSnapshot: jsonb("engine_snapshot").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertSalesOffer = typeof salesOffersTable.$inferInsert;
+export type SalesOffer = typeof salesOffersTable.$inferSelect;
+
+/** Audit trail for every lifecycle transition on a sales offer. */
+export const salesOfferEventsTable = pgTable("sales_offer_events", {
+  id: serial("id").primaryKey(),
+  offerId: integer("offer_id").notNull().references(() => salesOffersTable.id, { onDelete: "cascade" }),
+  /** Canonical event name: offer.generated | offer.scored | offer.sent | offer.accepted | offer.rejected | offer.expired */
+  eventName: text("event_name").notNull(),
+  /** Full event envelope stored for replay / downstream consumption. */
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  actorUserId: integer("actor_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertSalesOfferEvent = typeof salesOfferEventsTable.$inferInsert;
+export type SalesOfferEvent = typeof salesOfferEventsTable.$inferSelect;
+
+/**
+ * Engine-level configuration — one row per MSP (or mspId = null for platform defaults).
+ * Scoring weights, bundling thresholds, expiration defaults. All values are in
+ * integer units so they stay DB-native without float serialization issues.
+ */
+export const salesOfferConfigTable = pgTable("sales_offer_config", {
+  id: serial("id").primaryKey(),
+  /** Null = platform-wide defaults; non-null = MSP-level override. */
+  mspId: integer("msp_id").unique(),
+  /**
+   * Scoring weight overrides for each rule type [0–100].
+   * { eligibility, bundling, pricing, scoring, expiration }
+   */
+  scoringWeights: jsonb("scoring_weights").$type<Record<string, number>>().notNull().default({}),
+  /** Minimum score [0–100] for an offer to be included in a generated set. */
+  minScore: integer("min_score").notNull().default(40),
+  /** Maximum number of offers to include in a single generate call (0 = unlimited). */
+  maxOffersPerGenerate: integer("max_offers_per_generate").notNull().default(5),
+  /** Default TTL in days before a sent offer auto-expires (0 = no expiry). */
+  defaultExpirationDays: integer("default_expiration_days").notNull().default(30),
+  /** Minimum number of signals that must fire to trigger bundling (0 = no bundling). */
+  bundlingThreshold: integer("bundling_threshold").notNull().default(2),
+  /** JSON config blob for any additional engine parameters admins want to add. */
+  extra: jsonb("extra").$type<Record<string, unknown>>().notNull().default({}),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertSalesOfferConfig = typeof salesOfferConfigTable.$inferInsert;
+export type SalesOfferConfig = typeof salesOfferConfigTable.$inferSelect;
+
+/**
+ * Configurable rule groups for the Sales Offer Engine.
+ * Each rule group defines eligibility / bundling / pricing / scoring / expiration
+ * conditions for a particular offer candidate (keyed by serviceId or a logical key).
+ */
+export const salesOfferRuleGroupsTable = pgTable("sales_offer_rule_groups", {
+  id: serial("id").primaryKey(),
+  /** Human-readable key, e.g. "governance-remediation-offer" */
+  key: text("key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  ruleType: text("rule_type", { enum: SALES_OFFER_RULE_TYPES }).notNull().default("eligibility"),
+  /** FK to the service this rule group targets (null = applies to all). */
+  serviceId: integer("service_id").references(() => servicesTable.id, { onDelete: "set null" }),
+  /**
+   * Signal keys that must be fired for this rule group to activate.
+   * Logic: OR (any signal triggers) or AND (all must fire) — see `logic`.
+   */
+  requiredSignalKeys: jsonb("required_signal_keys").$type<string[]>().notNull().default([]),
+  logic: text("logic", { enum: ["AND", "OR"] }).notNull().default("OR"),
+  /** For pricing rules: adjustment in percentage points (-50 = 50% discount, 20 = 20% premium). */
+  pricingAdjustmentPct: integer("pricing_adjustment_pct").notNull().default(0),
+  /** For scoring rules: base score contribution [0–100]. */
+  scoreContribution: integer("score_contribution").notNull().default(0),
+  /** For expiration rules: TTL in days (overrides config default when > 0). */
+  expirationDays: integer("expiration_days").notNull().default(0),
+  /** For bundling rules: service IDs to bundle with this offer. */
+  bundleWithServiceIds: jsonb("bundle_with_service_ids").$type<number[]>().notNull().default([]),
+  /** Whether this rule group is active. */
+  isActive: boolean("is_active").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type InsertSalesOfferRuleGroup = typeof salesOfferRuleGroupsTable.$inferInsert;
+export type SalesOfferRuleGroup = typeof salesOfferRuleGroupsTable.$inferSelect;
 
 export * from "./msp";

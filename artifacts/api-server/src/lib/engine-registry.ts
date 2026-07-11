@@ -22,6 +22,12 @@ import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy 
 import { runScopeCreepEngineForTenant, computeScopeCreepEngine } from "./scope-creep-engine.ts";
 import { computeMonitoringEngine, computeMonitoringEngineForPayload } from "./monitor-executor.ts";
 import {
+  runSalesOfferEngineForTenant,
+  computeSalesOfferEngine,
+  loadSalesOfferRuleGroups,
+  loadSalesOfferConfig,
+} from "./sales-offer-engine.ts";
+import {
   fetchSignalRulesAndGroups,
   buildTenantProfileAndFindings,
   getSignalWeights,
@@ -289,6 +295,28 @@ export const ENGINE_DEFS: EngineDef[] = [
     ruleOwnership: "platform",
     runForTenant: (tenantId) => computeMonitoringEngine(tenantId),
     runForPayload: (_input) => computeMonitoringEngineForPayload(),
+  },
+  {
+    key: "sales_offer",
+    label: "Sales Offer Engine",
+    description: "Converts diagnostics findings (fired signals + product catalog) into priced, scored, lifecycle-managed candidate offers via configurable rule groups. Outputs offer candidates ranked by relevance score.",
+    categoryPrefix: "sales_offer",
+    tenantScoped: true,
+    ruleOwnership: "msp",
+    runForTenant: (tenantId) => runSalesOfferEngineForTenant(tenantId),
+    runForPayload: async (input) => {
+      const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
+      const [ruleGroups, services, config] = await Promise.all([
+        loadSalesOfferRuleGroups(),
+        (async () => {
+          const { db: soDb } = await import("@workspace/db");
+          const { servicesTable: soSvcTable } = await import("@workspace/db");
+          return soDb.select({ id: soSvcTable.id, name: soSvcTable.name, price: soSvcTable.price, basePrice: soSvcTable.basePrice }).from(soSvcTable);
+        })(),
+        loadSalesOfferConfig(null),
+      ]);
+      return computeSalesOfferEngine(null, firedSignals, ruleGroups, services, config);
+    },
   },
 ];
 
