@@ -1240,6 +1240,13 @@
       "when": 1752796800000,
       "tag": "0167_msp_missing_tables_and_column",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "7",
+      "when": 1752883200000,
+      "tag": "0168_msp_missing_portal_tables",
+      "breakpoints": true
     }
   ]
 }

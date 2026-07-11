@@ -632,7 +632,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = await resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const page = Math.max(1, parseInt(String((req.query as Record<string, unknown>).page ?? "1"), 10) || 1);
       const limit = Math.min(100, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10) || 20));
