@@ -12,7 +12,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable } from "@workspace/db";
-import { eq, and, count, sql, gte, like, sum } from "drizzle-orm";
+import { eq, and, count, sql, gte, like, sum, or, desc, ilike } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { logger } from "../lib/logger.ts";
@@ -554,6 +554,78 @@ router.post(
     } catch (err) {
       logger.error({ err }, "msp-portal: archive failed");
       res.status(500).json({ error: "Archive operation failed" });
+    }
+  },
+);
+
+// ── GET /api/msp/customers ─────────────────────────────────────────────────────
+// Paginated customer list scoped to the authenticated MSP.
+// Query params: page (1-based), limit, search (name/domain), status
+
+router.get(
+  "/msp/customers",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspId(req);
+
+      const page = Math.max(1, parseInt(String((req.query as Record<string, unknown>).page ?? "1"), 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10) || 20));
+      const offset = (page - 1) * limit;
+      const search = String((req.query as Record<string, unknown>).search ?? "").trim();
+      const statusFilter = String((req.query as Record<string, unknown>).status ?? "").trim();
+
+      const conditions = [];
+
+      if (mspId) {
+        conditions.push(eq(mspCustomersTable.mspId, mspId));
+      }
+
+      if (search) {
+        conditions.push(
+          or(
+            ilike(mspCustomersTable.name, `%${search}%`),
+            ilike(mspCustomersTable.domain, `%${search}%`),
+          ),
+        );
+      }
+
+      if (statusFilter && statusFilter !== "all") {
+        conditions.push(
+          eq(mspCustomersTable.status, statusFilter as "active" | "inactive" | "onboarding"),
+        );
+      }
+
+      const whereClause = conditions.length > 0 ? and(...(conditions as [ReturnType<typeof eq>, ...ReturnType<typeof eq>[]])) : undefined;
+
+      const [[{ total }], customers] = await Promise.all([
+        db.select({ total: count() }).from(mspCustomersTable).where(whereClause),
+        db
+          .select({
+            id: mspCustomersTable.id,
+            name: mspCustomersTable.name,
+            domain: mspCustomersTable.domain,
+            status: mspCustomersTable.status,
+            tenantId: mspCustomersTable.tenantId,
+            mspId: mspCustomersTable.mspId,
+            createdAt: mspCustomersTable.createdAt,
+          })
+          .from(mspCustomersTable)
+          .where(whereClause)
+          .orderBy(desc(mspCustomersTable.createdAt))
+          .limit(limit)
+          .offset(offset),
+      ]);
+
+      res.json({
+        customers,
+        total: Number(total),
+        page,
+        pageSize: limit,
+      });
+    } catch (err) {
+      logger.error({ err }, "msp-portal: customer list failed");
+      res.status(500).json({ error: "Failed to fetch customers" });
     }
   },
 );

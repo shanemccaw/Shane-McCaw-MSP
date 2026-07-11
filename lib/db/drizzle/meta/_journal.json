@@ -1233,6 +1233,13 @@
       "when": 1783760291741,
       "tag": "0166_portal_checkout_tables",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "7",
+      "when": 1752796800000,
+      "tag": "0167_msp_missing_tables_and_column",
+      "breakpoints": true
     }
   ]
 }
