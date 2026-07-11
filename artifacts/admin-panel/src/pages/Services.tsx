@@ -56,6 +56,23 @@ export default function ServicesPage() {
     );
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      const res = await fetchWithAuth("/api/admin/catalog/import-template");
+      if (!res.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "services-import-template.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
+  }
+
   async function handleExport() {
     try {
       const res = await fetchWithAuth("/api/admin/catalog/export");
@@ -111,6 +128,15 @@ export default function ServicesPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b border-[#21262D] bg-[#0D1117]">
+        <button
+          onClick={() => void handleDownloadTemplate()}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          Download Template
+        </button>
         <button
           onClick={handleExport}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"

@@ -576,6 +576,51 @@ router.get("/admin/catalog/export", requireAdmin, async (_req: Request, res: Res
   }
 });
 
+// ── Import template ────────────────────────────────────────────────────────────
+
+router.get("/admin/catalog/import-template", requireAdmin, (_req: Request, res: Response) => {
+  const template = {
+    version: 1,
+    services: [
+      {
+        slug: "example-service",
+        name: "Example Service",
+        description: "A short description of what this service delivers.",
+        category: "Advisory",
+        categoryPath: "Advisory/Strategy",
+        tagline: "One-line marketing hook shown on the pricing page.",
+        serviceType: "project",
+        billingType: "fixed",
+        price: 2500,
+        basePrice: null,
+        maxPrice: null,
+        durationDays: 14,
+        turnaround: "2 weeks",
+        isPublic: false,
+        visibility: "private",
+        tier: null,
+        highlighted: false,
+        badge: null,
+        iconName: null,
+        hoursPerMonth: null,
+        sortOrder: 0,
+        deliverables: ["Deliverable 1", "Deliverable 2"],
+        inclusions: ["Item included"],
+        features: ["Feature A", "Feature B"],
+        targetAudience: "Enterprise IT teams",
+        tags: ["m365", "strategy"],
+        requiredAppPermissions: [],
+        fulfillmentTypeKey: null,
+        triggeringSignalKeys: [],
+        customerAgreementTemplate: null,
+        isFreeOffering: false,
+      },
+    ],
+  };
+  res.setHeader("Content-Disposition", 'attachment; filename="services-import-template.json"');
+  res.json(template);
+});
+
 // ── Import catalog from JSON ───────────────────────────────────────────────────
 
 router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Response) => {
