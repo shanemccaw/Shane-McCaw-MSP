@@ -8,15 +8,30 @@
  *   customerId?: number   — override customer scope
  *   promptOverride?: string
  *
- * Execution flow:
- *   1. Load report definition + customer context
- *   2. AI-generate HTML content (same prompt path as generate_document)
- *   3. Convert HTML → PDF via pdf-lib
- *   4. Persist msp_report_runs row (generated)
- *   5. If deliveryMethod includes "email" → send via Exchange Online (Graph)
- *   6. Mark run "delivered"
+ * Node input (injected by trigger route):
+ *   reportRunId?: string  — UUID of a pre-created msp_report_runs row (status "pending").
+ *                           When provided, the handler updates the existing row instead of
+ *                           creating a new one. This is the path used by the API trigger
+ *                           endpoint so the run ID can be returned to the caller immediately.
+ *   definitionId?: string — falls back to config.definitionId
+ *   triggeredByUserId?: number
  *
- * Output: { runId, title, status, pdfSizeBytes }
+ * Execution flow:
+ *   1. Resolve definitionId + optionally a pre-created reportRunId
+ *   2. Load report definition + customer context
+ *   3. Upsert / update msp_report_runs row (status → "generating")
+ *   4. AI-generate HTML content
+ *   5. Convert HTML → PDF via pdf-lib
+ *   6. Persist generated content + status "generated"
+ *   7. If deliveryMethod includes "email" → send via Exchange Online (Graph)
+ *   8. Mark run "delivered"
+ *
+ * Output: { runId, title, status, pdfSizeBytes, docType }
+ *
+ * On any unhandled error the handler:
+ *   - Updates the run row to status "failed" with the error message
+ *   - Re-throws so the workflow engine can apply its retry policy and eventually
+ *     route the run to the DLQ and create an operator task.
  */
 
 import { registerNodeHandler } from "./portal-workflow-engine";
@@ -28,7 +43,7 @@ import {
   mspCustomersTable,
   mspsTable,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
@@ -148,49 +163,86 @@ const DOC_TYPE_SECTION_HINTS: Record<string, string> = {
 
 // ── generate_report node handler ──────────────────────────────────────────────
 
-async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<string, unknown>> {
+/**
+ * Exported for unit testing. Registered as "generate_report" node type.
+ *
+ * Two operating modes:
+ *   a) Pre-created run (API trigger path): ctx.input.reportRunId is set.
+ *      The trigger endpoint already inserted the msp_report_runs row with
+ *      status "pending"; this handler updates it through generating → delivered.
+ *   b) Self-created run (event-driven / direct workflow path): no reportRunId.
+ *      The handler inserts a new msp_report_runs row with status "generating".
+ */
+export async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<string, unknown>> {
   const definitionId = String(ctx.config["definitionId"] ?? ctx.input["definitionId"] ?? "");
   if (!definitionId) throw new Error("generate_report: definitionId is required");
 
-  // 1. Load report definition
-  const [def] = await db
-    .select()
-    .from(mspReportDefinitionsTable)
-    .where(eq(mspReportDefinitionsTable.definitionId, definitionId))
-    .limit(1);
+  // Pre-created run ID (from the API trigger path)
+  const preCreatedRunId = ctx.input["reportRunId"] ? String(ctx.input["reportRunId"]) : null;
 
-  if (!def) throw new Error(`generate_report: definition ${definitionId} not found`);
-
-  const customerId = Number(ctx.config["customerId"] ?? ctx.input["customerId"] ?? def.customerId ?? 0) || null;
-
-  // 2. Resolve customer + MSP context
-  const [customer, msp] = await Promise.all([
-    customerId
-      ? db.select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain }).from(mspCustomersTable).where(eq(mspCustomersTable.id, customerId)).limit(1).then(rows => rows[0] ?? null)
-      : Promise.resolve(null),
-    db.select({ id: mspsTable.id, name: mspsTable.name }).from(mspsTable).where(eq(mspsTable.id, def.mspId)).limit(1).then(rows => rows[0] ?? null),
-  ]);
-
-  const docTypeLabel = DOC_TYPE_LABELS[def.docType] ?? def.docType;
-  const title = customer ? `${docTypeLabel} — ${customer.name}` : `${docTypeLabel} — ${msp?.name ?? "MSP"} Portfolio`;
-
-  // 3. Create pending run row
-  const [run] = await db
-    .insert(mspReportRunsTable)
-    .values({
-      definitionId: def.definitionId,
-      mspId: def.mspId,
-      customerId,
-      title,
-      docType: def.docType,
-      status: "generating",
-      triggeredByUserId: Number(ctx.input["triggeredByUserId"] ?? 0) || null,
-    })
-    .returning();
-
-  if (!run) throw new Error("generate_report: failed to create run row");
+  // Track the resolved runId so the catch block can mark it "failed" even for early errors.
+  let runId: string | null = preCreatedRunId;
 
   try {
+    // 1. Load report definition
+    const [def] = await db
+      .select()
+      .from(mspReportDefinitionsTable)
+      .where(eq(mspReportDefinitionsTable.definitionId, definitionId))
+      .limit(1);
+
+    if (!def) throw new Error(`generate_report: definition ${definitionId} not found`);
+
+    const customerId = Number(ctx.config["customerId"] ?? ctx.input["customerId"] ?? def.customerId ?? 0) || null;
+
+    // 2. Resolve customer + MSP context
+    const [customer, msp] = await Promise.all([
+      customerId
+        ? db.select({ id: mspCustomersTable.id, name: mspCustomersTable.name, domain: mspCustomersTable.domain })
+            .from(mspCustomersTable)
+            .where(eq(mspCustomersTable.id, customerId))
+            .limit(1)
+            .then(rows => rows[0] ?? null)
+        : Promise.resolve(null),
+      db.select({ id: mspsTable.id, name: mspsTable.name })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, def.mspId))
+        .limit(1)
+        .then(rows => rows[0] ?? null),
+    ]);
+
+    const docTypeLabel = DOC_TYPE_LABELS[def.docType] ?? def.docType;
+    const title = customer ? `${docTypeLabel} — ${customer.name}` : `${docTypeLabel} — ${msp?.name ?? "MSP"} Portfolio`;
+
+    // 3. Resolve or create the msp_report_runs row
+    if (preCreatedRunId) {
+      // Update existing row from "pending" → "generating"
+      await db
+        .update(mspReportRunsTable)
+        .set({ status: "generating", updatedAt: new Date() })
+        .where(eq(mspReportRunsTable.runId, preCreatedRunId));
+    } else {
+      // Create a new row (event-driven / direct workflow path)
+      const [run] = await db
+        .insert(mspReportRunsTable)
+        .values({
+          definitionId: def.definitionId,
+          mspId: def.mspId,
+          customerId,
+          title,
+          docType: def.docType,
+          status: "generating",
+          triggeredByUserId: Number(ctx.input["triggeredByUserId"] ?? 0) || null,
+        })
+        .returning();
+
+      if (!run) throw new Error("generate_report: failed to create run row");
+      runId = run.runId;
+    }
+
+    // runId is now confirmed set (preCreatedRunId or newly inserted row)
+    const confirmedRunId = runId!;
+
     // 4. Build AI prompt
     const contextBlock = [
       `REPORT TYPE: ${docTypeLabel}`,
@@ -228,7 +280,7 @@ async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<s
       .map((b) => ("text" in b ? (b.text as string) : ""))
       .join("");
 
-    // Extract HTML
+    // Extract HTML (Claude sometimes wraps in a code fence)
     const htmlMatch = rawText.match(/```(?:html)?\s*([\s\S]*?)```/i);
     const htmlContent = htmlMatch ? htmlMatch[1]!.trim() : rawText;
 
@@ -248,12 +300,12 @@ async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<s
         generatedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(mspReportRunsTable.runId, run.runId));
+      .where(eq(mspReportRunsTable.runId, confirmedRunId));
 
     // 7. Email delivery if requested
     const deliveryMethod = def.deliveryMethod;
     if (deliveryMethod === "email" || deliveryMethod === "both") {
-      const toEmail = def.deliveryEmail ?? (customer ? null : null);
+      const toEmail = def.deliveryEmail ?? null;
       const fromUserId = process.env.GRAPH_MAIL_USER_ID;
 
       if (toEmail && fromUserId) {
@@ -261,7 +313,7 @@ async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<s
           await db
             .update(mspReportRunsTable)
             .set({ status: "delivering", updatedAt: new Date() })
-            .where(eq(mspReportRunsTable.runId, run.runId));
+            .where(eq(mspReportRunsTable.runId, confirmedRunId));
 
           await sendMailViaGraph({
             fromUserId,
@@ -274,48 +326,70 @@ async function handleGenerateReport(ctx: NodeExecutionContext): Promise<Record<s
           await db
             .update(mspReportRunsTable)
             .set({ status: "delivered", deliveredAt: new Date(), deliveryEmail: toEmail, updatedAt: new Date() })
-            .where(eq(mspReportRunsTable.runId, run.runId));
+            .where(eq(mspReportRunsTable.runId, confirmedRunId));
         } catch (emailErr) {
-          logger.warn({ err: emailErr, runId: run.runId }, "generate_report: email delivery failed (non-fatal)");
+          logger.warn({ err: emailErr, runId: confirmedRunId }, "generate_report: email delivery failed (non-fatal)");
           // Keep as "generated" even if email fails — PDF is still downloadable in-app
           await db
             .update(mspReportRunsTable)
             .set({ status: "generated", errorMessage: `Email delivery failed: ${String(emailErr)}`, updatedAt: new Date() })
-            .where(eq(mspReportRunsTable.runId, run.runId));
+            .where(eq(mspReportRunsTable.runId, confirmedRunId));
         }
       } else {
         // No email configured — mark delivered for in_app only
         await db
           .update(mspReportRunsTable)
           .set({ status: "delivered", deliveredAt: new Date(), updatedAt: new Date() })
-          .where(eq(mspReportRunsTable.runId, run.runId));
+          .where(eq(mspReportRunsTable.runId, confirmedRunId));
       }
     } else {
       // In-app only
       await db
         .update(mspReportRunsTable)
         .set({ status: "delivered", deliveredAt: new Date(), updatedAt: new Date() })
-        .where(eq(mspReportRunsTable.runId, run.runId));
+        .where(eq(mspReportRunsTable.runId, confirmedRunId));
     }
 
-    logger.info({ runId: run.runId, title, docType: def.docType }, "generate_report: completed");
+    logger.info({ runId: confirmedRunId, title, docType: def.docType }, "generate_report: completed");
 
     return {
-      runId: run.runId,
+      runId: confirmedRunId,
       title,
       status: "delivered",
       pdfSizeBytes: pdfBuffer.length,
       docType: def.docType,
     };
   } catch (err) {
-    logger.error({ err, runId: run.runId }, "generate_report: generation failed");
-    await db
-      .update(mspReportRunsTable)
-      .set({ status: "failed", errorMessage: String(err), updatedAt: new Date() })
-      .where(eq(mspReportRunsTable.runId, run.runId));
+    // Mark the report run as failed, then re-throw so the workflow engine applies
+    // its retry policy and eventually routes the run to the DLQ + creates an operator task.
+    // runId may be null if the run row hadn't been created/resolved yet (e.g. definition lookup failed
+    // before we could set it to "generating"). In that case we skip the update — the engine will
+    // still write the DLQ entry and operator task using the workflow run record.
+    logger.error({ err, runId }, "generate_report: generation failed");
+    if (runId) {
+      await db
+        .update(mspReportRunsTable)
+        .set({ status: "failed", errorMessage: String(err), updatedAt: new Date() })
+        .where(eq(mspReportRunsTable.runId, runId));
+    }
     throw err;
   }
 }
+
+// ── Workflow graph constant ────────────────────────────────────────────────────
+// Used by msp-reports.ts to seed the portal_wf_workflows entry on first use.
+
+export const REPORT_GENERATION_WORKFLOW_KEY = "msp.report.generation";
+
+export const REPORT_GENERATION_GRAPH = {
+  nodes: [
+    { id: "start",    type: "start",           config: {} },
+    { id: "generate", type: "generate_report",  config: {} },
+  ],
+  edges: [
+    { from: "start", to: "generate" },
+  ],
+};
 
 // ── Registration ──────────────────────────────────────────────────────────────
 

@@ -30,18 +30,31 @@ import {
   REPORT_DOC_TYPES,
   REPORT_DELIVERY_METHODS,
 } from "@workspace/db";
-import { eq, and, desc, or, sql } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { sendMailViaGraph } from "../lib/graph";
+import { createRun, executeRun, upsertWorkflow } from "../lib/portal-workflow-engine";
+import { REPORT_GENERATION_WORKFLOW_KEY, REPORT_GENERATION_GRAPH } from "../lib/report-nodes";
 
 const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Ensure the report generation workflow exists in portal_wf_workflows.
+ * Idempotent — safe to call on every trigger request.
+ */
+async function ensureReportGenWorkflow(): Promise<void> {
+  await upsertWorkflow({
+    workflowKey: REPORT_GENERATION_WORKFLOW_KEY,
+    label: "MSP Report Generation",
+    description: "Generates an MSP report via AI and PDF. Failures route to DLQ and create an operator task.",
+    graph: REPORT_GENERATION_GRAPH,
+    isActive: true,
+  });
+}
 
 function stripHtml(html: string): string {
   return html
@@ -121,101 +134,6 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   license_optimization_report: "License Optimization Report",
   license_waste_report:        "License Waste Analysis Report",
 };
-
-const DOC_TYPE_HINTS: Record<string, string> = {
-  executive_summary:           "Include: Executive Overview, Key Findings, M365 Health Summary, Top 3 Recommendations, Next Steps.",
-  full_readiness_report:       "Include: Environment Overview, Identity & Access, Security Posture, Compliance, Collaboration Health, Licensing, Recommendations.",
-  security_posture_report:     "Include: Threat Landscape, Identity Gaps, MFA Status, Privileged Access, Defender Config, Remediation Priorities.",
-  governance_maturity_report:  "Include: Governance Maturity Score, Policy Assessment, Roles & Responsibilities, Compliance Gaps, Recommendations.",
-  data_exposure_risk_report:   "Include: Data Exposure Summary, Oversharing, Sensitive Data Findings, External Sharing, DLP Coverage, Roadmap.",
-  license_optimization_report: "Include: License Inventory, Utilization, Unused Licenses, Right-Sizing, Projected Annual Savings, Implementation Plan.",
-  license_waste_report:        "Include: License Waste Executive Summary, TOTAL IDENTIFIABLE ANNUAL SAVINGS (prominently as a dollar figure), Unlicensed User Analysis, Inactive Licenses, SKU Consolidation, 90-Day Action Plan.",
-};
-
-// ── Inline report generation (for direct API trigger) ─────────────────────────
-
-async function runReportGeneration(runId: string): Promise<void> {
-  const [run] = await db
-    .select()
-    .from(mspReportRunsTable)
-    .where(eq(mspReportRunsTable.runId, runId))
-    .limit(1);
-
-  if (!run) { logger.error({ runId }, "msp-reports: run not found in async job"); return; }
-
-  const [def] = await db
-    .select()
-    .from(mspReportDefinitionsTable)
-    .where(eq(mspReportDefinitionsTable.definitionId, run.definitionId))
-    .limit(1);
-
-  if (!def) {
-    await db.update(mspReportRunsTable).set({ status: "failed", errorMessage: "Definition not found", updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-    return;
-  }
-
-  try {
-    const docTypeLabel = DOC_TYPE_LABELS[def.docType] ?? def.docType;
-
-    // Build prompt
-    const ctxBlock = [
-      `REPORT TYPE: ${docTypeLabel}`,
-      run.customerId ? `CUSTOMER ID: ${run.customerId}` : "SCOPE: MSP Portfolio",
-      `TITLE: ${run.title}`,
-      `DATE: ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
-      "",
-      "FIELD CONTEXT:",
-      Object.keys(def.fieldMappings ?? {}).length > 0 ? JSON.stringify(def.fieldMappings, null, 2) : "(No additional context — use M365 best practices and industry benchmarks.)",
-      "",
-      `STRUCTURE: ${DOC_TYPE_HINTS[def.docType] ?? "Generate a comprehensive professional report."}`,
-    ].join("\n");
-
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5",
-      max_tokens: 4096,
-      system: `You are a Microsoft 365 consultant generating a professional ${docTypeLabel}. Output complete well-structured HTML using h1–h3, p, ul, li, table tags. No markdown. No preamble. Begin with the content directly.`,
-      messages: [{ role: "user", content: [ctxBlock, def.description ? `\nADDITIONAL INSTRUCTIONS: ${def.description}` : ""].join("\n") }],
-    });
-
-    const rawText = message.content.filter((b) => b.type === "text").map(b => "text" in b ? (b.text as string) : "").join("");
-    const htmlMatch = rawText.match(/```(?:html)?\s*([\s\S]*?)```/i);
-    const htmlContent = htmlMatch ? htmlMatch[1]!.trim() : rawText;
-
-    const pdfBuffer = await buildPdf(stripHtml(htmlContent), run.title);
-    const pdfBase64 = pdfBuffer.toString("base64");
-
-    await db.update(mspReportRunsTable).set({
-      status: "generated", htmlContent, pdfBase64, pdfSizeBytes: pdfBuffer.length,
-      generatedAt: new Date(), updatedAt: new Date(),
-    }).where(eq(mspReportRunsTable.runId, runId));
-
-    // Email delivery
-    const deliveryMethod = def.deliveryMethod;
-    if ((deliveryMethod === "email" || deliveryMethod === "both") && def.deliveryEmail && process.env.GRAPH_MAIL_USER_ID) {
-      await db.update(mspReportRunsTable).set({ status: "delivering", updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-      try {
-        await sendMailViaGraph({
-          fromUserId: process.env.GRAPH_MAIL_USER_ID,
-          to: def.deliveryEmail,
-          subject: run.title,
-          htmlBody: `<p>Please find attached your <strong>${docTypeLabel}</strong> report.</p>`,
-          attachments: [{ filename: `${run.title.replace(/[^a-zA-Z0-9\s]/g, "").trim()}.pdf`, content: pdfBuffer, contentType: "application/pdf" }],
-        });
-        await db.update(mspReportRunsTable).set({ status: "delivered", deliveredAt: new Date(), deliveryEmail: def.deliveryEmail, updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-      } catch (emailErr) {
-        logger.warn({ err: emailErr, runId }, "msp-reports: email delivery failed");
-        await db.update(mspReportRunsTable).set({ status: "generated", errorMessage: `Email failed: ${String(emailErr)}`, updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-      }
-    } else {
-      await db.update(mspReportRunsTable).set({ status: "delivered", deliveredAt: new Date(), updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-    }
-
-    logger.info({ runId, title: run.title }, "msp-reports: generation completed");
-  } catch (err) {
-    logger.error({ err, runId }, "msp-reports: generation failed");
-    await db.update(mspReportRunsTable).set({ status: "failed", errorMessage: String(err), updatedAt: new Date() }).where(eq(mspReportRunsTable.runId, runId));
-  }
-}
 
 // ── GET /api/msp/reports/definitions ─────────────────────────────────────────
 
@@ -444,13 +362,29 @@ router.post(
 
       if (!run) { res.status(500).json({ error: "Failed to create run" }); return; }
 
-      // Respond immediately with runId, then generate in background
+      // Respond immediately — run is now "pending" in msp_report_runs
       res.status(202).json({ runId: run.runId, title, status: "pending" });
 
-      // Fire-and-forget async generation
-      void runReportGeneration(run.runId).catch((err: unknown) => {
-        logger.error({ err, runId: run.runId }, "msp-reports: background generation error");
-      });
+      // Route generation through the Portal Workflow Engine so any failure produces
+      // a DLQ entry and an operator task identical to every other engine failure.
+      void (async () => {
+        try {
+          await ensureReportGenWorkflow();
+          const wfRunId = await createRun({
+            workflowKey: REPORT_GENERATION_WORKFLOW_KEY,
+            tenantContext: { mspId: def.mspId, customerId: def.customerId ?? null },
+            triggerEventType: "msp.report.trigger",
+            inputPayload: {
+              reportRunId: run.runId,
+              definitionId: def.definitionId,
+              triggeredByUserId,
+            },
+          });
+          await executeRun(wfRunId);
+        } catch (err) {
+          logger.error({ err, runId: run.runId }, "msp-reports: workflow engine dispatch error");
+        }
+      })();
     } catch (err) {
       logger.error({ err }, "msp-reports: trigger failed");
       res.status(500).json({ error: "Failed to trigger report" });
