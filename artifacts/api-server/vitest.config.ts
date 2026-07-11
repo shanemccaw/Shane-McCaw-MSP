@@ -36,6 +36,7 @@ export default defineConfig({
       "src/lib/msp-mailer.test.ts",
       "src/routes/msp-custom-domain.test.ts",
       "src/routes/msp-sales-bundles.test.ts",
+      "src/routes/msp-diagnostics.test.ts",
     ],
     coverage: {
       provider: "v8",

@@ -93,6 +93,7 @@ import adminMonitorChecksRouter from "./admin-monitor-checks";
 import mspReportsRouter from "./msp-reports";
 import mspCustomDomainRouter from "./msp-custom-domain";
 import mspSalesBundlesRouter from "./msp-sales-bundles";
+import mspDiagnosticsRouter from "./msp-diagnostics";
 
 const router: IRouter = Router();
 
@@ -197,6 +198,7 @@ router.use(adminMonitorChecksRouter);
 router.use(mspReportsRouter);
 router.use(mspCustomDomainRouter);
 router.use(mspSalesBundlesRouter);
+router.use(mspDiagnosticsRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

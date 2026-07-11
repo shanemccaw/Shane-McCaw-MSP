@@ -14,16 +14,40 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowRight,
   CheckCircle2,
   ChevronRight,
   Clock,
   FileSignature,
+  Info,
   Loader2,
+  ShieldCheck,
   Zap,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DiagnosticRun {
+  runId: string;
+  status: string;
+  checksTotal: number;
+  checksOk: number;
+  checksError: number;
+  checksRequiresScript: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+interface DiagnosticFinding {
+  findingId: string;
+  checkKey: string;
+  checkLabel: string;
+  severity: "ok" | "info" | "warning" | "critical";
+  title: string;
+  description?: string;
+  checkStatus?: string;
+}
 
 interface LatestPresentation {
   id: number;
@@ -102,6 +126,24 @@ const PRESENTATION_STATUS: Record<
   },
 };
 
+// ── Finding severity config ───────────────────────────────────────────────────
+
+const FINDING_SEVERITY_CONFIG = {
+  critical: { label: "Critical", icon: AlertCircle, color: "text-red-400",   bg: "bg-red-500/10 border-red-500/30" },
+  warning:  { label: "Warning",  icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30" },
+  info:     { label: "Info",     icon: Info,          color: "text-blue-400",  bg: "bg-blue-500/10 border-blue-500/30" },
+  ok:       { label: "OK",       icon: CheckCircle2,  color: "text-green-400", bg: "bg-green-500/10 border-green-500/30" },
+} as const;
+
+function FindingBadge({ severity }: { severity: DiagnosticFinding["severity"] }) {
+  const cfg = FINDING_SEVERITY_CONFIG[severity];
+  return (
+    <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 border ${cfg.bg} ${cfg.color}`}>
+      {cfg.label}
+    </Badge>
+  );
+}
+
 // ── Score bar ──────────────────────────────────────────────────────────────────
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -139,6 +181,11 @@ export default function CustomerDiagnosticsPage() {
   const [loadingPresentation, setLoadingPresentation] = useState(true);
   const [loadingQuiz, setLoadingQuiz] = useState(true);
 
+  // Real diagnostic findings from the Monitoring Package engine
+  const [latestRun, setLatestRun] = useState<DiagnosticRun | null>(null);
+  const [diagnosticFindings, setDiagnosticFindings] = useState<DiagnosticFinding[]>([]);
+  const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
+
   useEffect(() => {
     let mounted = true;
 
@@ -166,6 +213,19 @@ export default function CustomerDiagnosticsPage() {
       .catch(() => {})
       .finally(() => {
         if (mounted) setLoadingQuiz(false);
+      });
+
+    fetchWithAuth("/api/portal/diagnostics/latest")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as { run: DiagnosticRun | null; findings: DiagnosticFinding[] };
+        if (!mounted) return;
+        setLatestRun(data.run ?? null);
+        setDiagnosticFindings(data.findings ?? []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setLoadingDiagnostics(false);
       });
 
     return () => {
@@ -320,9 +380,84 @@ export default function CustomerDiagnosticsPage() {
           )}
         </div>
 
-        {/* ── Diagnostic scores ── */}
+        {/* ── Live diagnostic findings (from Monitoring Package engine) ── */}
         <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Diagnostic Findings</h3>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Live Diagnostic Findings</h3>
+
+          {loadingDiagnostics ? (
+            <Skeleton className="h-28 w-full rounded-xl" />
+          ) : !latestRun ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-8 text-center gap-2">
+                <ShieldCheck className="size-7 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">No diagnostic run yet</p>
+                <p className="text-xs text-muted-foreground/60 max-w-sm">
+                  Your MSP will run a Microsoft 365 environment check. Structured findings will appear here once complete.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {/* Run summary bar */}
+              <Card>
+                <CardContent className="py-3 px-5">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Last run</p>
+                      <p className="text-sm font-medium">
+                        {latestRun.checksTotal} checks · {latestRun.checksOk} passed · {latestRun.checksError} errors
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="size-3" />
+                      {relativeDate(latestRun.createdAt)}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Findings list — hide ok findings to keep it actionable */}
+              {diagnosticFindings.filter(f => f.severity !== "ok").length === 0 ? (
+                <Card className="border-green-500/20 bg-green-500/5">
+                  <CardContent className="flex items-center gap-3 py-4 px-5">
+                    <CheckCircle2 className="size-5 text-green-400 shrink-0" />
+                    <p className="text-sm text-green-400">All checks passed — no issues found</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {diagnosticFindings
+                    .filter(f => f.severity !== "ok")
+                    .map((f) => {
+                      const cfg = FINDING_SEVERITY_CONFIG[f.severity];
+                      const Icon = cfg.icon;
+                      return (
+                        <div key={f.findingId} className={`rounded-xl border px-4 py-3 ${cfg.bg}`}>
+                          <div className="flex items-start gap-3">
+                            <Icon className={`size-4 ${cfg.color} shrink-0 mt-0.5`} />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <p className="text-sm font-medium">{f.checkLabel || f.checkKey}</p>
+                                <FindingBadge severity={f.severity} />
+                              </div>
+                              <p className="text-xs text-muted-foreground">{f.title}</p>
+                              {f.description && (
+                                <p className="text-xs text-muted-foreground/70 mt-1">{f.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* ── Quiz-based scores ── */}
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Assessment Scores</h3>
 
           {loadingQuiz ? (
             <Skeleton className="h-64 w-full rounded-xl" />

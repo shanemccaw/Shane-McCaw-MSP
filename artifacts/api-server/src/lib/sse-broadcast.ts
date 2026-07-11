@@ -254,3 +254,85 @@ export function broadcastMspEngineEvent(mspId: number, event: Record<string, unk
 export function getMspEngineEventClientCount(mspId: number): number {
   return mspEngineEventClients.get(mspId)?.size ?? 0;
 }
+
+// ── Diagnostics Run SSE ────────────────────────────────────────────────────────
+// Keyed by runId (UUID string). The progress modal subscribes on open; the
+// runner broadcasts per-check progress events and a final complete/error event.
+// Late-join support: cache the latest state and replay it to freshly connected
+// clients so the modal works even if the connection is established after the
+// run has already started.
+
+type DiagnosticsRunState =
+  | { type: "diagnostics_progress"; checkKey: string; checkLabel: string; status: string; index: number; total: number; requiresCustomerScript: boolean; errorMessage?: string }
+  | { type: "diagnostics_complete"; status: string; checksTotal: number; checksOk: number; checksError: number; requiresScript: number; findings: number }
+  | { type: "diagnostics_error"; message: string };
+
+const diagnosticsRunSSEClients = new Map<string, Set<Response>>();
+const lastDiagnosticsRunState = new Map<string, DiagnosticsRunState>();
+
+export function registerDiagnosticsRunSSEClient(runId: string, res: Response, onClose: () => void): void {
+  if (!diagnosticsRunSSEClients.has(runId)) diagnosticsRunSSEClients.set(runId, new Set());
+  const clients = diagnosticsRunSSEClients.get(runId)!;
+  clients.add(res);
+  const cached = lastDiagnosticsRunState.get(runId);
+  if (cached) {
+    try { res.write(`data: ${JSON.stringify(cached)}\n\n`); } catch { }
+  }
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) diagnosticsRunSSEClients.delete(runId);
+    onClose();
+  });
+}
+
+export function broadcastDiagnosticsRunProgress(runId: string, data: {
+  checkKey: string;
+  checkLabel: string;
+  status: string;
+  index: number;
+  total: number;
+  requiresCustomerScript: boolean;
+  errorMessage?: string;
+}): void {
+  const state: DiagnosticsRunState = { type: "diagnostics_progress", ...data };
+  lastDiagnosticsRunState.set(runId, state);
+  const clients = diagnosticsRunSSEClients.get(runId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(state)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function broadcastDiagnosticsRunComplete(runId: string, data: {
+  status: string;
+  checksTotal: number;
+  checksOk: number;
+  checksError: number;
+  requiresScript: number;
+  findings: number;
+}): void {
+  const state: DiagnosticsRunState = { type: "diagnostics_complete", ...data };
+  lastDiagnosticsRunState.set(runId, state);
+  const clients = diagnosticsRunSSEClients.get(runId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(state)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function broadcastDiagnosticsRunError(runId: string, message: string): void {
+  const state: DiagnosticsRunState = { type: "diagnostics_error", message };
+  lastDiagnosticsRunState.set(runId, state);
+  const clients = diagnosticsRunSSEClients.get(runId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(state)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function clearDiagnosticsRunSSEState(runId: string): void {
+  lastDiagnosticsRunState.delete(runId);
+}

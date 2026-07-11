@@ -1503,3 +1503,82 @@ export const mspSalesBundleAssignmentsTable = pgTable("msp_sales_bundle_assignme
 
 export type MspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferSelect;
 export type InsertMspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferInsert;
+
+// ── Diagnostics Runs ──────────────────────────────────────────────────────────
+// One row per triggered diagnostics run for a customer. Wraps one or more
+// Monitoring Package executions. Status progresses:
+//   pending → running → completed | failed | partial
+//
+// On failure, a portal_wf_runs stub + portal_wf_operator_tasks row is created
+// so MSP operators can see and acknowledge the failure.
+
+export const MSP_DIAGNOSTIC_RUN_STATUS = ["pending", "running", "completed", "failed", "partial"] as const;
+export type MspDiagnosticRunStatus = typeof MSP_DIAGNOSTIC_RUN_STATUS[number];
+
+export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  packageKey: text("package_key").notNull().default("default"),
+  status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
+  triggeredByUserId: integer("triggered_by_user_id"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  checksTotal: integer("checks_total").notNull().default(0),
+  checksOk: integer("checks_ok").notNull().default(0),
+  checksError: integer("checks_error").notNull().default(0),
+  checksRequiresScript: integer("checks_requires_script").notNull().default(0),
+  runStatus: text("run_status"),
+  documentId: uuid("document_id"),
+  errorMessage: text("error_message"),
+  summary: jsonb("summary").$type<Record<string, unknown>>(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_diagnostic_runs_msp_id_idx").on(t.mspId),
+  index("msp_diagnostic_runs_customer_id_idx").on(t.customerId),
+  index("msp_diagnostic_runs_status_idx").on(t.status),
+  index("msp_diagnostic_runs_created_at_idx").on(t.createdAt),
+]);
+
+export type MspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferSelect;
+export type InsertMspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferInsert;
+
+// ── Diagnostic Findings ───────────────────────────────────────────────────────
+// Structured findings extracted from a diagnostics run. Each row is one finding
+// from a monitor check. The `recommendation` JSONB is consumed by the Sales
+// Offer Engine to map findings to priced offers.
+
+export const MSP_DIAGNOSTIC_FINDING_SEVERITY = ["ok", "info", "warning", "critical"] as const;
+export type MspDiagnosticFindingSeverity = typeof MSP_DIAGNOSTIC_FINDING_SEVERITY[number];
+
+export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
+  id: serial("id").primaryKey(),
+  findingId: uuid("finding_id").notNull().unique().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => mspDiagnosticRunsTable.runId, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull(),
+  customerId: integer("customer_id").notNull(),
+  checkKey: text("check_key").notNull(),
+  checkLabel: text("check_label").notNull(),
+  severity: text("severity", { enum: MSP_DIAGNOSTIC_FINDING_SEVERITY }).notNull().default("info"),
+  title: text("title").notNull(),
+  description: text("description"),
+  recommendation: jsonb("recommendation").$type<{
+    signalKey?: string;
+    action?: string;
+    estimatedEffort?: string;
+    priority?: number;
+    category?: string;
+  }>(),
+  extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
+  checkStatus: text("check_status"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_diagnostic_findings_run_id_idx").on(t.runId),
+  index("msp_diagnostic_findings_customer_id_idx").on(t.customerId),
+  index("msp_diagnostic_findings_severity_idx").on(t.severity),
+]);
+
+export type MspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferSelect;
+export type InsertMspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferInsert;
