@@ -10,6 +10,7 @@ import {
   Users,
   Bell,
   Link2,
+  Zap,
 } from "lucide-react";
 
 const ROLE_COLORS: Record<string, string> = {
@@ -68,6 +69,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
           <NavItem icon={Users} label="Customers" href="/customers" />
           <NavItem icon={Link2} label="Onboard Customer" href="/initiate-onboarding" />
           <NavItem icon={Bell} label="Events" href="/events" />
+          <NavItem icon={Zap} label="AI Billing" href="/ai-billing" />
           <NavItem icon={Shield} label="Audit Logs" href="/audit" />
         </nav>
 

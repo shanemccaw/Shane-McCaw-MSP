@@ -32,6 +32,7 @@ import CustomerScopePage from "@/pages/customer-scope";
 import SlaDashboardPage from "@/pages/sla-dashboard";
 import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import ScriptLibraryPage from "@/pages/scripts";
+import AiBillingPage from "@/pages/ai-billing";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import { Loader2 } from "lucide-react";
@@ -207,6 +208,11 @@ function Router() {
       </Route>
       <Route path="/customer-scope">
         <ProtectedRoute component={CustomerScopePage} />
+      </Route>
+
+      {/* AI Billing */}
+      <Route path="/ai-billing">
+        <ProtectedRoute component={AiBillingPage} />
       </Route>
 
       {/* Root redirect — role-aware */}

@@ -40,6 +40,8 @@ import { eq, and, inArray, sql as drizzleSql } from "drizzle-orm";
 import { logger } from "./logger";
 import { addEventListener, dispatchEvent, systemActor } from "./event-bus";
 import type { DispatchedEvent } from "./event-bus";
+import { isAIDependent, getAiCostOwner } from "./node-type-registry.js";
+import { checkAiAdmission, recordAiUsage } from "./ai-billing.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -578,6 +580,13 @@ export async function executeRun(runId: string): Promise<void> {
   let terminalError: string | undefined;
   let terminalStack: string | undefined;
 
+  // ── AI admission gate (run-scoped) ─────────────────────────────────────────
+  // Checked exactly ONCE per run at the first AI-dependent node.
+  // Once admitted, subsequent AI-dependent nodes skip the check.
+  // Persisted on the run record so paused-then-resumed runs stay admitted.
+  // null = not yet evaluated for this execution cycle.
+  let aiAdmitted: boolean | null = run.aiAdmitted ?? null;
+
   for (const nodeId of executionOrder) {
     const node = graph.nodes.find((n) => n.id === nodeId);
     if (!node) continue;
@@ -603,6 +612,69 @@ export async function executeRun(runId: string): Promise<void> {
         completedAt: new Date(),
       });
       continue;
+    }
+
+    // ── AI admission check ────────────────────────────────────────────────────
+    if (isAIDependent(node.type)) {
+      const costOwner = getAiCostOwner(node.type);
+
+      if (aiAdmitted === null) {
+        // First AI-dependent node in this run — check balance once
+        const admission = await checkAiAdmission(tenantContext.mspId, costOwner);
+        aiAdmitted = admission.admitted;
+
+        // Persist the admission decision on the run record
+        await db.update(portalWfRunsTable)
+          .set({ aiAdmitted })
+          .where(eq(portalWfRunsTable.runId, runId));
+
+        if (!aiAdmitted) {
+          logger.warn(
+            { runId, nodeId, nodeType: node.type, mspId: tenantContext.mspId, reason: admission.reason },
+            "portal-wf: AI node blocked — MSP has insufficient AI credit balance",
+          );
+          const blockedOutput = {
+            aiBlocked: true,
+            outcome: "ai_blocked",
+            reason: admission.reason ?? "Insufficient AI credit balance",
+            balanceCents: admission.balanceCents,
+          };
+          nodeOutputs[nodeId] = blockedOutput;
+          await upsertNodeOutput({
+            runId,
+            nodeId,
+            nodeType: node.type,
+            status: "completed",
+            attemptCount: 1,
+            inputPayload: mergedInput,
+            outputPayload: blockedOutput,
+            startedAt: new Date(),
+            completedAt: new Date(),
+          });
+          continue;
+        }
+      } else if (!aiAdmitted) {
+        // Already blocked earlier in this run — keep blocking
+        const blockedOutput = {
+          aiBlocked: true,
+          outcome: "ai_blocked",
+          reason: "Run was blocked at an earlier AI node",
+        };
+        nodeOutputs[nodeId] = blockedOutput;
+        await upsertNodeOutput({
+          runId,
+          nodeId,
+          nodeType: node.type,
+          status: "completed",
+          attemptCount: 1,
+          inputPayload: mergedInput,
+          outputPayload: blockedOutput,
+          startedAt: new Date(),
+          completedAt: new Date(),
+        });
+        continue;
+      }
+      // aiAdmitted === true → fall through to execute
     }
 
     const result = await executeNodeWithRetry(node, mergedInput, tenantContext, runId, retryPolicy);

@@ -39,6 +39,7 @@ import {
 import { cancelJob, requeueJob } from "../lib/msp-jobs.ts";
 import webhooksRouter from "./msp-webhooks.ts";
 import portalWfRouter from "./portal-wf-api.ts";
+import aiBillingRouter from "./ai-billing.ts";
 
 /** Coerce Express 5 params (typed as string | string[]) to a plain string */
 function p(val: string | string[] | undefined): string {
@@ -58,6 +59,9 @@ router.use("/webhooks", webhooksRouter);
 
 // ── Portal Workflow Engine API ────────────────────────────────────────────────
 router.use("/portal-wf", portalWfRouter);
+
+// ── AI Cost Governance & Billing ──────────────────────────────────────────────
+router.use("/ai-billing", aiBillingRouter);
 
 // ── Health (unauthenticated) ──────────────────────────────────────────────────
 router.get("/health", (_req: Request, res: Response) => {

@@ -659,6 +659,10 @@ export const portalWfRunsTable = pgTable("portal_wf_runs", {
   completedAt: timestamp("completed_at", { withTimezone: true }),
   mspId: integer("msp_id"),
   customerId: integer("customer_id"),
+  // AI admission gate — persisted so paused-then-resumed runs stay admitted.
+  // null = not yet evaluated, true = admitted (positive balance at first AI node),
+  // false = blocked (zero/negative balance at first AI node).
+  aiAdmitted: boolean("ai_admitted"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -739,6 +743,119 @@ export const portalWfIdempotencyTable = pgTable("portal_wf_idempotency", {
 // Catalog tier it has purchased (services.fulfillmentType = "msp_monthly_subscription").
 // This table owns dunning state. Billing for offers/SOWs is entirely separate
 // (managed in portal.ts) and never intersects with this table.
+
+// ── AI Usage Events ────────────────────────────────────────────────────────────
+// Append-only log of every AI inference call. Used for billing, dashboards, and
+// cost attribution. All monetary amounts in integer cents (USD).
+
+export const AI_COST_OWNER = ["msp", "platform"] as const;
+export type AiCostOwner = typeof AI_COST_OWNER[number];
+
+export const aiUsageEventsTable = pgTable("ai_usage_events", {
+  id: serial("id").primaryKey(),
+  eventId: uuid("event_id").notNull().unique().defaultRandom(),
+  // Which MSP this usage belongs to. Null for platform-owned operations.
+  mspId: integer("msp_id"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  // The portal workflow node type or free-form feature label (e.g. "generate_document", "chat_message")
+  nodeType: text("node_type").notNull(),
+  feature: text("feature"),
+  // Token counts (null when token counting unavailable)
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  // Cost in integer cents. Always non-negative.
+  costCents: integer("cost_cents").notNull().default(0),
+  // Who bears the cost: "msp" debits the MSP's allowance; "platform" never does.
+  costOwner: text("cost_owner", { enum: AI_COST_OWNER }).notNull().default("msp"),
+  // Which workflow run triggered this usage (if applicable)
+  runId: text("run_id"),
+  // AI model used
+  model: text("model"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("ai_usage_events_msp_id_idx").on(t.mspId),
+  index("ai_usage_events_occurred_at_idx").on(t.occurredAt),
+  index("ai_usage_events_cost_owner_idx").on(t.costOwner),
+  index("ai_usage_events_run_id_idx").on(t.runId),
+]);
+
+export type AiUsageEvent = typeof aiUsageEventsTable.$inferSelect;
+export type InsertAiUsageEvent = typeof aiUsageEventsTable.$inferInsert;
+
+// ── AI Balance Ledger ──────────────────────────────────────────────────────────
+// Double-entry transaction log for each MSP's AI credit balance.
+// All amounts in integer cents (USD). Positive = credit, negative = debit.
+//
+// Transaction types:
+//   monthly_grant   — free allowance added at the start of each billing period
+//   purchase        — MSP purchases an AI credit block via Stripe (never expires)
+//   consumption     — AI was used; links to an ai_usage_events row
+//   period_reset    — monthly_grant allowance expires at period end (no rollover)
+
+export const AI_LEDGER_TXN_TYPES = ["monthly_grant", "purchase", "consumption", "period_reset"] as const;
+export type AiLedgerTxnType = typeof AI_LEDGER_TXN_TYPES[number];
+
+export const aiBalanceLedgerTable = pgTable("ai_balance_ledger", {
+  id: serial("id").primaryKey(),
+  ledgerId: uuid("ledger_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull(),
+  txnType: text("txn_type", { enum: AI_LEDGER_TXN_TYPES }).notNull(),
+  // Positive = credit (grant/purchase); negative = debit (consumption/reset).
+  amountCents: integer("amount_cents").notNull(),
+  description: text("description"),
+  // External reference: Stripe payment intent ID, run ID, period key, etc.
+  referenceId: text("reference_id"),
+  // For monthly_grant/period_reset — the billing period this applies to (e.g. "2026-07")
+  periodKey: text("period_key"),
+  // For consumption rows — links back to the usage event
+  usageEventId: uuid("usage_event_id"),
+  // Running balance snapshot after this transaction (cents, MSP-scoped)
+  balanceAfterCents: integer("balance_after_cents"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdByUserId: integer("created_by_user_id"),
+}, (t) => [
+  index("ai_balance_ledger_msp_id_idx").on(t.mspId),
+  index("ai_balance_ledger_txn_type_idx").on(t.txnType),
+  index("ai_balance_ledger_created_at_idx").on(t.createdAt),
+  index("ai_balance_ledger_period_key_idx").on(t.periodKey),
+]);
+
+export type AiBalanceLedgerRow = typeof aiBalanceLedgerTable.$inferSelect;
+export type InsertAiBalanceLedgerRow = typeof aiBalanceLedgerTable.$inferInsert;
+
+// ── MSP AI Block Purchases ─────────────────────────────────────────────────────
+// Tracks Stripe-backed AI credit block purchases. One row per Stripe checkout.
+// Never expires — MSPs consume these after their monthly grant is exhausted.
+
+export const MSP_AI_PURCHASE_STATUSES = ["pending", "active", "exhausted", "refunded"] as const;
+export type MspAiPurchaseStatus = typeof MSP_AI_PURCHASE_STATUSES[number];
+
+export const mspAiPurchasesTable = pgTable("msp_ai_purchases", {
+  id: serial("id").primaryKey(),
+  purchaseId: uuid("purchase_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // Stripe identifiers
+  stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  // Credit block details
+  pricePaidCents: integer("price_paid_cents").notNull(),
+  creditGrantedCents: integer("credit_granted_cents").notNull(),
+  status: text("status", { enum: MSP_AI_PURCHASE_STATUSES }).notNull().default("pending"),
+  // Stripe customer ID for the MSP (for future re-use)
+  stripeCustomerId: text("stripe_customer_id"),
+  purchasedByUserId: integer("purchased_by_user_id"),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_ai_purchases_msp_id_idx").on(t.mspId),
+  index("msp_ai_purchases_status_idx").on(t.status),
+  index("msp_ai_purchases_stripe_session_idx").on(t.stripeCheckoutSessionId),
+]);
+
+export type MspAiPurchase = typeof mspAiPurchasesTable.$inferSelect;
+export type InsertMspAiPurchase = typeof mspAiPurchasesTable.$inferInsert;
 
 export const MSP_SUBSCRIPTION_STATUSES = ["trialing", "active", "past_due", "canceled", "unpaid"] as const;
 export type MspSubscriptionStatus = typeof MSP_SUBSCRIPTION_STATUSES[number];
