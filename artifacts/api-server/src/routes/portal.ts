@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
-import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
+import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
 import { sendEmail, sendEmailFromTemplate, getEmailTemplateOrFallback, getTenantHealthBlockHtml, purchaseConfirmationEmail, onboardingConfirmationEmail, adminPurchaseAlertEmail, closureRequestEmail, statusReportReplyEmail, clientThreadReplyEmail, adminThreadReplyEmail, retainerResumedEmail, appRegExpiryAlertEmail, brandedEmail, PORTAL_URL } from "../lib/mailer.ts";
 import { sendAdminSms } from "../lib/sms.ts";
@@ -5877,6 +5877,96 @@ router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res
 
   res.json({ token, client: { id: client.id, email: client.email, name: client.name } });
 });
+
+// ─── MSP: Impersonation ──────────────────────────────────────────────────────
+// MSPAdmin can impersonate a customer within their own MSP.
+// PlatformAdmin can impersonate any customer across any MSP.
+// The resulting token is 30-minute, single-use, and query-param based so that
+// the MSP Portal can open the customer's view without a separate login flow.
+router.post(
+  "/msp/:mspId/customers/:customerId/impersonate",
+  requireRole("MSPAdmin"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    const mspId = parseInt(String(req.params.mspId ?? ""), 10);
+    const customerId = parseInt(String(req.params.customerId ?? ""), 10);
+    if (isNaN(mspId) || isNaN(customerId)) {
+      res.status(400).json({ error: "Invalid mspId or customerId" });
+      return;
+    }
+
+    // Confirm the customer record belongs to this MSP (IDOR prevention)
+    const [customer] = await db
+      .select()
+      .from(mspCustomersTable)
+      .where(and(eq(mspCustomersTable.id, customerId), eq(mspCustomersTable.mspId, mspId)))
+      .limit(1);
+    if (!customer) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    // Find the portal user linked to this customer
+    const [mspUserRow] = await db
+      .select({ userId: mspUsersTable.userId })
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.customerId, customerId))
+      .limit(1);
+    if (!mspUserRow) {
+      res.status(404).json({ error: "No portal user found for this customer" });
+      return;
+    }
+
+    const [targetUser] = await db
+      .select()
+      .from(usersTable)
+      .where(eq(usersTable.id, mspUserRow.userId))
+      .limit(1);
+    if (!targetUser) {
+      res.status(404).json({ error: "Target user not found" });
+      return;
+    }
+
+    const actorId = req.user!.id;
+    const { randomBytes, randomUUID } = await import("crypto");
+    const token = randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+    await db.insert(impersonationTokensTable).values({
+      token,
+      clientUserId: targetUser.id,
+      adminUserId: actorId,
+      expiresAt,
+    });
+
+    // MSP audit log — every impersonation session is recorded
+    try {
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: actorId,
+        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        mspId,
+        customerId,
+        actionType: "IMPERSONATION_TOKEN_ISSUED",
+        entityType: "customer",
+        entityId: String(customerId),
+        entityLabel: customer.name,
+        correlationId: randomUUID(),
+        ipAddress: req.ip ?? req.socket?.remoteAddress ?? null,
+        userAgent: req.headers["user-agent"] ?? null,
+        outcome: "success",
+        metadata: { targetUserId: targetUser.id, targetEmail: targetUser.email },
+      });
+    } catch {
+      // Audit log is non-fatal — never interrupt the impersonation flow
+    }
+
+    res.json({
+      token,
+      customer: { id: customer.id, name: customer.name },
+      targetUser: { id: targetUser.id, email: targetUser.email, name: targetUser.name },
+    });
+  },
+);
 
 // ─── ADMIN: Projects ─────────────────────────────────────────────────────────
 router.get("/admin/projects", requireAdmin, async (_req: Request, res: Response) => {

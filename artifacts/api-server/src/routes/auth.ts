@@ -3,13 +3,13 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, mspUsersTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, type MspRole } from "@workspace/db";
+import { db, usersTable, mspUsersTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, mspCustomersTable, type MspRole } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
-import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
-import { getPortalBaseUrl } from "../lib/portal-url";
-import { signMfaToken } from "./mfa";
-import { dispatchEvent, EVENT_TYPES, systemActor, userActor } from "../lib/event-bus";
+import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
+import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { signMfaToken } from "./mfa.ts";
+import { dispatchEvent, EVENT_TYPES, systemActor, userActor } from "../lib/event-bus.ts";
 import { requireRole } from "../middlewares/requireAuth.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -525,6 +525,13 @@ router.post("/auth/reset-password", async (req: Request, res: Response) => {
 });
 
 // ─── Impersonation token exchange ─────────────────────────────────────────────
+// Consumes a single-use impersonation token (issued by POST /admin/impersonate/:userId
+// or POST /api/msp/:mspId/customers/:customerId/impersonate) and returns a short-lived
+// JWT that carries the target user's full MSP context.
+//
+// Key billing-attribution rule: the `impersonatedMspId` claim in the resulting JWT
+// identifies the MSP that must be charged for any AI-dependent action taken during
+// this session — never the actor's MSP or left unattributed.
 router.post("/auth/impersonate-exchange", async (req: Request, res: Response) => {
   const { token } = req.body as { token?: string };
   if (!token) {
@@ -549,31 +556,73 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
     return;
   }
 
+  // Consume the token atomically — marks it as used so it cannot be replayed
   await db.update(impersonationTokensTable)
     .set({ usedAt: now })
     .where(eq(impersonationTokensTable.id, record.id));
 
-  const [client] = await db.select().from(usersTable)
+  const [targetUser] = await db.select().from(usersTable)
     .where(eq(usersTable.id, record.clientUserId))
     .limit(1);
-  if (!client || client.role !== "client") {
-    res.status(404).json({ error: "Client not found" });
+  if (!targetUser) {
+    res.status(404).json({ error: "Target user not found" });
     return;
   }
 
-  const sessionToken = jwt.sign(
-    { id: client.id, email: client.email, role: "client" as const, impersonatedBy: record.adminUserId },
-    secret,
-    { expiresIn: "30m" },
-  );
+  // Pull the target user's MSP claims so that the impersonation session sees
+  // exactly the same tenant scope as the real user.
+  const mspClaims = await getMspClaims(targetUser.id);
+
+  // impersonatedMspId is the canonical billing-attribution claim.
+  // Any AI cost incurred while this claim is present must be charged to that
+  // MSP's balance — never to the actor or left unattributed.
+  const impersonatedMspId = mspClaims.mspId ?? undefined;
+
+  const jwtPayload = {
+    id: targetUser.id,
+    email: targetUser.email,
+    role: targetUser.role,
+    impersonatedBy: record.adminUserId,
+    ...(impersonatedMspId !== undefined ? { impersonatedMspId } : {}),
+    ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+    ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+    ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
+  };
+
+  const sessionToken = jwt.sign(jwtPayload, secret, { expiresIn: "30m" });
+
+  // Audit every impersonation session start (non-fatal — never blocks the response)
+  try {
+    await db.insert(mspAuditLogsTable).values({
+      actorUserId: record.adminUserId,
+      actionType: "IMPERSONATION_SESSION_STARTED",
+      entityType: "user",
+      entityId: String(targetUser.id),
+      entityLabel: targetUser.email,
+      mspId: mspClaims.mspId,
+      customerId: mspClaims.customerId,
+      correlationId: randomUUID(),
+      outcome: "success",
+      metadata: {
+        targetUserId: targetUser.id,
+        impersonatedMspId: impersonatedMspId ?? null,
+      },
+    });
+  } catch {
+    // Audit log is non-fatal
+  }
 
   res.json({
     accessToken: sessionToken,
     user: {
-      id: client.id,
-      email: client.email,
-      role: "client" as const,
+      id: targetUser.id,
+      email: targetUser.email,
+      role: targetUser.role,
       impersonatedBy: record.adminUserId,
+      ...(impersonatedMspId !== undefined ? { impersonatedMspId } : {}),
+      ...(mspClaims.mspRole !== null ? { mspRole: mspClaims.mspRole } : {}),
+      ...(mspClaims.mspId !== null ? { mspId: mspClaims.mspId } : {}),
+      ...(mspClaims.customerId !== null ? { customerId: mspClaims.customerId } : {}),
     },
   });
 });

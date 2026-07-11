@@ -9,6 +9,12 @@ export interface AuthUser {
   name?: string;
   role: "admin" | "client";
   impersonatedBy?: number;
+  /**
+   * When this session is an impersonation, this is the target user's mspId.
+   * Any AI-dependent action taken during this session must be billed to this
+   * MSP's balance — never to the actor's MSP or left unattributed.
+   */
+  impersonatedMspId?: number;
   // MSP extended claims — present when the user has an msp_users row
   mspRole?: MspRole;
   mspId?: number;
