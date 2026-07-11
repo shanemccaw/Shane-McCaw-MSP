@@ -1939,6 +1939,9 @@ export interface WfNode {
     // SLA Engine
     | "sla_start_timer" | "sla_stop_timer" | "sla_warning"
     | "sla_breach" | "sla_escalate" | "sla_resolve"
+    // Scope Creep Engine
+    | "scope_creep_detect" | "scope_creep_score" | "scope_creep_violation"
+    | "scope_creep_escalate" | "scope_creep_resolve" | "scope_creep_compliance_update"
     // Array / transform
     | "group_by"
     // Utilities

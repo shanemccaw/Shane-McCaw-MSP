@@ -742,6 +742,60 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         note: "Timer would be resolved and open escalations closed in live run",
       };
 
+    case "scope_creep_detect":
+      return {
+        dryRun: true,
+        detectionId: "00000000-0000-0000-0000-000000000000",
+        alreadyExisted: false,
+        detectionType: (node.data.detectionType as string | undefined) ?? "drift",
+        note: "Scope creep detection would be recorded in live run",
+      };
+
+    case "scope_creep_score":
+      return {
+        dryRun: true,
+        scoreId: "00000000-0000-0000-0000-000000000000",
+        compositeScore: 0,
+        alreadyExisted: false,
+        note: "Scope creep composite score would be computed and persisted in live run",
+      };
+
+    case "scope_creep_violation":
+      return {
+        dryRun: true,
+        violationId: "00000000-0000-0000-0000-000000000000",
+        severity: "medium",
+        alreadyExisted: false,
+        note: "Scope creep violation would be fired in live run",
+      };
+
+    case "scope_creep_escalate":
+      return {
+        dryRun: true,
+        escalationId: "00000000-0000-0000-0000-000000000000",
+        alreadyExisted: false,
+        level: (node.data.level as number | undefined) ?? 1,
+        flagSowAmendment: (node.data.flagSowAmendment as boolean | undefined) ?? false,
+        flagPricingReview: (node.data.flagPricingReview as boolean | undefined) ?? false,
+        note: "Scope creep escalation would be created in live run",
+      };
+
+    case "scope_creep_resolve":
+      return {
+        dryRun: true,
+        resolved: true,
+        violationId: interp(node.data.violationId as string | undefined, payload) ?? "",
+        note: "Scope creep violation would be resolved and open escalations closed in live run",
+      };
+
+    case "scope_creep_compliance_update":
+      return {
+        dryRun: true,
+        recordId: "00000000-0000-0000-0000-000000000000",
+        compliancePct: 100,
+        note: "Scope creep compliance snapshot would be computed and persisted in live run",
+      };
+
     case "generate_diff_report":
       return { dryRun: true, documentId: 1, changesFound: true, changeCount: 5 };
 
@@ -3063,6 +3117,212 @@ async function executeNode(
             nodeError = true;
             output = { error: slaResErr instanceof Error ? slaResErr.message : String(slaResErr) };
             logger.error({ runId, slaResErr }, "wf-executor: sla_resolve failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_detect": {
+        const { recordScopeCreepDetection: scRecord } = await import("./scope-creep-engine.ts");
+        const scDetMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const scDetCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const scDetPolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        const scDetType = (interp(node.data.detectionType as string | undefined, payload) ?? "drift") as "drift" | "expansion" | "timeline_slip";
+        const scDetChangePct = parseFloat(interp(node.data.changePct as string | undefined, payload) ?? "0");
+        if (isNaN(scDetMspId) || isNaN(scDetCustomerId) || isNaN(scDetPolicyId)) {
+          nodeError = true;
+          output = { error: "scope_creep_detect requires mspId, customerId, and policyId" };
+        } else {
+          try {
+            const scDetResult = await scRecord({
+              mspId: scDetMspId,
+              customerId: scDetCustomerId,
+              policyId: scDetPolicyId,
+              detectionType: scDetType,
+              ref: interp(node.data.ref as string | undefined, payload) ?? undefined,
+              baselineValue: parseFloat(interp(node.data.baselineValue as string | undefined, payload) ?? "0") || 0,
+              currentValue: parseFloat(interp(node.data.currentValue as string | undefined, payload) ?? "0") || 0,
+              changePct: isNaN(scDetChangePct) ? 0 : scDetChangePct,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = scDetResult;
+            logger.info({ runId, detectionId: scDetResult.detectionId }, "wf-executor: scope_creep_detect recorded");
+          } catch (scDetErr) {
+            nodeError = true;
+            output = { error: scDetErr instanceof Error ? scDetErr.message : String(scDetErr) };
+            logger.error({ runId, scDetErr }, "wf-executor: scope_creep_detect failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_score": {
+        const { computeAndPersistScore: scScore } = await import("./scope-creep-engine.ts");
+        const scScoreMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const scScoreCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const scScorePolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        if (isNaN(scScoreMspId) || isNaN(scScoreCustomerId) || isNaN(scScorePolicyId)) {
+          nodeError = true;
+          output = { error: "scope_creep_score requires mspId, customerId, and policyId" };
+        } else {
+          try {
+            const scScoreResult = await scScore({
+              mspId: scScoreMspId,
+              customerId: scScoreCustomerId,
+              policyId: scScorePolicyId,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = scScoreResult;
+            logger.info({ runId, scoreId: scScoreResult.scoreId, compositeScore: scScoreResult.compositeScore }, "wf-executor: scope_creep_score completed");
+          } catch (scScoreErr) {
+            nodeError = true;
+            output = { error: scScoreErr instanceof Error ? scScoreErr.message : String(scScoreErr) };
+            logger.error({ runId, scScoreErr }, "wf-executor: scope_creep_score failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_violation": {
+        const { fireScopeCreepViolation: scViolation } = await import("./scope-creep-engine.ts");
+        const scViolMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const scViolCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const scViolPolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        const scViolScore = parseFloat(interp(node.data.compositeScore as string | undefined, payload) ?? "0");
+        const scViolThreshold = parseFloat(interp(node.data.threshold as string | undefined, payload) ?? "60");
+        if (isNaN(scViolMspId) || isNaN(scViolCustomerId) || isNaN(scViolPolicyId)) {
+          nodeError = true;
+          output = { error: "scope_creep_violation requires mspId, customerId, and policyId" };
+        } else {
+          try {
+            const scViolResult = await scViolation({
+              mspId: scViolMspId,
+              customerId: scViolCustomerId,
+              policyId: scViolPolicyId,
+              detectionId: interp(node.data.detectionId as string | undefined, payload) ?? undefined,
+              compositeScore: isNaN(scViolScore) ? 0 : scViolScore,
+              threshold: isNaN(scViolThreshold) ? 60 : scViolThreshold,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = scViolResult;
+            if (scViolResult.belowThreshold) {
+              logger.info({ runId, compositeScore: isNaN(scViolScore) ? 0 : scViolScore, threshold: isNaN(scViolThreshold) ? 60 : scViolThreshold }, "wf-executor: scope_creep_violation skipped — score below threshold");
+            } else {
+              logger.info({ runId, violationId: scViolResult.violationId, severity: scViolResult.severity }, "wf-executor: scope_creep_violation fired");
+            }
+          } catch (scViolErr) {
+            nodeError = true;
+            output = { error: scViolErr instanceof Error ? scViolErr.message : String(scViolErr) };
+            logger.error({ runId, scViolErr }, "wf-executor: scope_creep_violation failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_escalate": {
+        const { escalateScopeCreep: scEscalate } = await import("./scope-creep-engine.ts");
+        const scEscViolationId = interp(node.data.violationId as string | undefined, payload) ?? "";
+        const scEscMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const scEscCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const scEscLevel = parseInt(interp(node.data.level as string | undefined, payload) ?? "1", 10);
+        if (!scEscViolationId || isNaN(scEscMspId) || isNaN(scEscCustomerId)) {
+          nodeError = true;
+          output = { error: "scope_creep_escalate requires violationId, mspId, and customerId" };
+        } else {
+          try {
+            const scEscResult = await scEscalate({
+              violationId: scEscViolationId,
+              mspId: scEscMspId,
+              customerId: scEscCustomerId,
+              level: isNaN(scEscLevel) ? 1 : scEscLevel,
+              escalationType: (interp(node.data.escalationType as string | undefined, payload) as "operator_task" | "email" | "sms" | "webhook" | undefined) ?? "operator_task",
+              flagSowAmendment: (node.data.flagSowAmendment as boolean | undefined) ?? false,
+              flagPricingReview: (node.data.flagPricingReview as boolean | undefined) ?? false,
+              assignedTo: interp(node.data.assignedTo as string | undefined, payload) ?? undefined,
+              target: interp(node.data.target as string | undefined, payload) ?? undefined,
+              idempotencyKey: interp(node.data.idempotencyKey as string | undefined, payload) ?? undefined,
+              traceId: String(runId),
+            });
+            output = scEscResult;
+            logger.info({ runId, escalationId: scEscResult.escalationId }, "wf-executor: scope_creep_escalate completed");
+          } catch (scEscErr) {
+            nodeError = true;
+            output = { error: scEscErr instanceof Error ? scEscErr.message : String(scEscErr) };
+            logger.error({ runId, scEscErr }, "wf-executor: scope_creep_escalate failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_resolve": {
+        const { resolveScopeCreepViolation: scResolve } = await import("./scope-creep-engine.ts");
+        const scResViolationId = interp(node.data.violationId as string | undefined, payload) ?? "";
+        if (!scResViolationId) {
+          nodeError = true;
+          output = { error: "scope_creep_resolve requires violationId" };
+        } else {
+          try {
+            const resolved = await scResolve(
+              scResViolationId,
+              interp(node.data.notes as string | undefined, payload) ?? undefined,
+            );
+            output = { resolved, violationId: scResViolationId };
+            logger.info({ runId, violationId: scResViolationId, resolved }, "wf-executor: scope_creep_resolve completed");
+          } catch (scResErr) {
+            nodeError = true;
+            output = { error: scResErr instanceof Error ? scResErr.message : String(scResErr) };
+            logger.error({ runId, scResErr }, "wf-executor: scope_creep_resolve failed");
+          }
+        }
+        break;
+      }
+
+      case "scope_creep_compliance_update": {
+        const { computeScopeCreepCompliance: scCompliance } = await import("./scope-creep-engine.ts");
+        const { randomUUID: scUUID } = await import("crypto");
+        const { db: scDb } = await import("@workspace/db");
+        const { sql: scSql } = await import("drizzle-orm");
+        const scCompMspId = parseInt(interp(node.data.mspId as string | undefined, payload) ?? "", 10);
+        const scCompCustomerId = parseInt(interp(node.data.customerId as string | undefined, payload) ?? "", 10);
+        const scCompPolicyId = parseInt(interp(node.data.policyId as string | undefined, payload) ?? "", 10);
+        const scCompPeriodStart = interp(node.data.periodStart as string | undefined, payload) ?? "";
+        const scCompPeriodEnd = interp(node.data.periodEnd as string | undefined, payload) ?? "";
+        if (isNaN(scCompMspId) || isNaN(scCompCustomerId) || isNaN(scCompPolicyId) || !scCompPeriodStart || !scCompPeriodEnd) {
+          nodeError = true;
+          output = { error: "scope_creep_compliance_update requires mspId, customerId, policyId, periodStart, and periodEnd" };
+        } else {
+          try {
+            const snapshot = await scCompliance(
+              scCompMspId,
+              scCompCustomerId,
+              scCompPolicyId,
+              new Date(scCompPeriodStart),
+              new Date(scCompPeriodEnd),
+            );
+            const scRecordId = scUUID();
+            await scDb.execute(scSql`
+              INSERT INTO scope_creep_compliance (
+                record_id, msp_id, customer_id, policy_id,
+                period_start, period_end,
+                total_detections, violation_count, compliance_pct, avg_composite_score, notes
+              ) VALUES (
+                ${scRecordId}, ${scCompMspId}, ${scCompCustomerId}, ${scCompPolicyId},
+                ${scCompPeriodStart}, ${scCompPeriodEnd},
+                ${snapshot.totalDetections}, ${snapshot.violationCount},
+                ${snapshot.compliancePct}, ${snapshot.avgCompositeScore},
+                ${interp(node.data.notes as string | undefined, payload) ?? null}
+              )
+              ON CONFLICT DO NOTHING
+            `);
+            output = { recordId: scRecordId, ...snapshot };
+            logger.info({ runId, recordId: scRecordId, compliancePct: snapshot.compliancePct }, "wf-executor: scope_creep_compliance_update completed");
+          } catch (scCompErr) {
+            nodeError = true;
+            output = { error: scCompErr instanceof Error ? scCompErr.message : String(scCompErr) };
+            logger.error({ runId, scCompErr }, "wf-executor: scope_creep_compliance_update failed");
           }
         }
         break;

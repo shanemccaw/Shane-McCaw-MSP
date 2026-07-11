@@ -7,6 +7,8 @@ import { seedAiPrompts } from "./lib/prompt-loader";
 import { seedArticles } from "./lib/seed-articles";
 import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
+import { seedScopeCreepRunbooks } from "./lib/seed-scope-creep-runbooks";
+import { ensureScopeCreepTables } from "./lib/scope-creep-engine";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
@@ -119,6 +121,14 @@ app.listen(port, (err) => {
 
   seedSlaRunbooks().catch((err) => {
     logger.warn({ err }, "SLA runbook seed failed (non-fatal)");
+  });
+
+  ensureScopeCreepTables().catch((err) => {
+    logger.warn({ err }, "Scope Creep table migration failed (non-fatal)");
+  });
+
+  seedScopeCreepRunbooks().catch((err) => {
+    logger.warn({ err }, "Scope Creep runbook seed failed (non-fatal)");
   });
 
   // ── Portal Workflow Engine: initialize on startup ─────────────────────────

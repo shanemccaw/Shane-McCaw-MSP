@@ -19,6 +19,7 @@ import {
   type SignalRuleGroup,
 } from "./tenant-signals.ts";
 import { runSlaEngineForTenant, computeSlaEngine, type SlaTimer, type SlaPolicy } from "./sla-engine.ts";
+import { runScopeCreepEngineForTenant, computeScopeCreepEngine } from "./scope-creep-engine.ts";
 import {
   fetchSignalRulesAndGroups,
   buildTenantProfileAndFindings,
@@ -264,6 +265,18 @@ export const ENGINE_DEFS: EngineDef[] = [
       const sampleTimers: SlaTimer[] = [];
       const samplePolicies: SlaPolicy[] = [];
       return computeSlaEngine(sampleTimers, samplePolicies);
+    },
+  },
+  {
+    key: "scope_creep",
+    label: "Scope Creep Engine",
+    description: "Detects deliverable/requirement/ticket/timeline drift and SOW expansion, scores scope-creep risk, raises violations, escalates with SOW amendment and pricing review recommendations, and tracks monthly compliance.",
+    categoryPrefix: "scope_creep",
+    tenantScoped: true,
+    ruleOwnership: "msp",
+    runForTenant: (tenantId) => runScopeCreepEngineForTenant(tenantId),
+    runForPayload: (_input) => {
+      return computeScopeCreepEngine([], []);
     },
   },
 ];
