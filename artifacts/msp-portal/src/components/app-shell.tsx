@@ -29,6 +29,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import {
   Activity,
   AlertCircle,
+  AlertTriangle,
   Award,
   Bell,
   Building2,
@@ -452,6 +453,11 @@ interface AppShellProps {
   actions?: ReactNode;
 }
 
+interface MspSuspensionState {
+  suspended: boolean;
+  daysSuspended: number | null;
+}
+
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
   const slug = useMspSlug();
@@ -459,6 +465,7 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [profile, setProfile] = useState<MspProfile | null>(null);
+  const [suspension, setSuspension] = useState<MspSuspensionState | null>(null);
 
   const mspRole = user?.mspRole;
 
@@ -478,6 +485,18 @@ export function AppShell({ children, title, actions }: AppShellProps) {
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.mspId, slug]);
+
+  // Fetch MSP suspension state for CustomerUser only.
+  // The banner appears on every customer-facing page after 7 days of suspension.
+  useEffect(() => {
+    if (mspRole !== "CustomerUser") return;
+    fetchWithAuth("/api/portal/msp-suspension")
+      .then(async (res) => {
+        if (res.ok) setSuspension(await res.json() as MspSuspensionState);
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mspRole, user?.mspId]);
 
   // Inject MSP primary color as CSS custom property (safe: server-controlled)
   useEffect(() => {
@@ -698,6 +717,31 @@ export function AppShell({ children, title, actions }: AppShellProps) {
             </button>
           </div>
         </header>
+
+        {/* Day 7+ MSP-suspended banner — shown to CustomerUsers only, non-dismissible */}
+        {/* Server already enforces the 7-day threshold; suspended===true means ≥7 days */}
+        {mspRole === "CustomerUser" && suspension?.suspended && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="shrink-0 flex items-start gap-3 px-4 md:px-6 py-3 bg-amber-500/10 border-b border-amber-500/30 text-amber-700 dark:text-amber-300"
+            >
+              <AlertTriangle className="size-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="text-sm">
+                <span className="font-semibold">Service provider notice:&nbsp;</span>
+                There is an account issue on your service provider&apos;s side. No
+                action is required from you — your data is safe and your projects
+                remain accessible. If you have concerns, please contact{" "}
+                <a
+                  href="mailto:support@shanemccawconsulting.com"
+                  className="underline underline-offset-2 hover:text-amber-900 dark:hover:text-amber-100"
+                >
+                  support
+                </a>
+                .
+              </p>
+            </div>
+          )}
 
         {/* Page content */}
         <main className="flex-1 overflow-auto">{children}</main>

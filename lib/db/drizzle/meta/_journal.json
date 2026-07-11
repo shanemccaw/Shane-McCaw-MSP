@@ -1289,6 +1289,13 @@
       "when": 1783802070501,
       "tag": "0174_drop_azure_runbook_name",
       "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "7",
+      "when": 1752278400001,
+      "tag": "0175_msp_suspended_at",
+      "breakpoints": true
     }
   ]
 }

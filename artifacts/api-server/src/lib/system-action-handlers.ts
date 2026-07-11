@@ -298,9 +298,17 @@ export async function handleSystemAction(
             updatedAt: now,
           }).where(eq(mspSubscriptionsTable.id, sub.id));
 
-          // Sync MSP status for suspension/revocation states
-          if (targetState === "suspended" || targetState === "access_revoked") {
-            await db.update(mspsTable).set({ status: "suspended", updatedAt: now })
+          // Sync MSP status for suspension/revocation states.
+          // suspendedAt is only set on the first suspension transition — NOT
+          // reset on subsequent access_revoked escalation, so the 7-day clock
+          // keeps running from when the MSP was first suspended.
+          if (targetState === "suspended") {
+            await db.update(mspsTable)
+              .set({ status: "suspended", suspendedAt: now, updatedAt: now })
+              .where(eq(mspsTable.id, sub.mspId));
+          } else if (targetState === "access_revoked") {
+            await db.update(mspsTable)
+              .set({ status: "suspended", updatedAt: now })
               .where(eq(mspsTable.id, sub.mspId));
           }
 

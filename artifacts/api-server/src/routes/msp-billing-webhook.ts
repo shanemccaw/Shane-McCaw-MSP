@@ -435,6 +435,7 @@ async function handleSubscriptionDeleted(subscription: import("stripe").Stripe.S
   // Also suspend the MSP
   await db.update(mspsTable).set({
     status: "suspended",
+    suspendedAt: now,
     updatedAt: now,
   }).where(eq(mspsTable.id, sub.mspId));
 
@@ -482,6 +483,7 @@ async function handlePaymentSucceeded(invoice: import("stripe").Stripe.Invoice):
     // Also restore MSP status if it was suspended
     await db.update(mspsTable).set({
       status: "active",
+      suspendedAt: null,
       updatedAt: now,
     }).where(and(eq(mspsTable.id, sub.mspId), eq(mspsTable.status, "suspended")));
 

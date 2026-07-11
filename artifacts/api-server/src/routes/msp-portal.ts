@@ -11,7 +11,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable } from "@workspace/db";
+import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, mspUsersTable } from "@workspace/db";
 import { eq, and, count, sql, gte, like, sum, or, desc, ilike } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
@@ -520,6 +520,7 @@ router.post(
         .set({
           offboardingState: "archival_flagged",
           status: "suspended",
+          suspendedAt: now,
           updatedAt: now,
         })
         .where(eq(mspsTable.id, targetMspId));
@@ -691,6 +692,72 @@ router.get(
     } catch (err) {
       logger.error({ err }, "msp-portal: customer list failed");
       res.status(500).json({ error: "Failed to fetch customers" });
+    }
+  },
+);
+
+// ── GET /api/portal/msp-suspension ────────────────────────────────────────────
+// Customer-facing endpoint: returns whether the customer's parent MSP has been
+// suspended for 7+ days. Deliberately omits billing/payment specifics — only
+// exposes the computed day count so the frontend can decide whether to show the
+// informational banner.
+//
+// Accessible by CustomerUser and above (MSP staff can call it for testing).
+
+router.get(
+  "/portal/msp-suspension",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+
+      // Resolve the MSP this user belongs to.
+      // For CustomerUser, mspId is on the JWT claim; fall back to a DB lookup.
+      let mspId: number | null = req.user!.mspId ?? null;
+
+      if (!mspId) {
+        const [mspUserRow] = await db
+          .select({ mspId: mspUsersTable.mspId })
+          .from(mspUsersTable)
+          .where(eq(mspUsersTable.userId, userId))
+          .limit(1);
+        mspId = mspUserRow?.mspId ?? null;
+      }
+
+      if (!mspId) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      const [msp] = await db
+        .select({
+          status: mspsTable.status,
+          suspendedAt: mspsTable.suspendedAt,
+        })
+        .from(mspsTable)
+        .where(eq(mspsTable.id, mspId))
+        .limit(1);
+
+      if (!msp || msp.status !== "suspended" || !msp.suspendedAt) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      const daysSuspended = Math.floor(
+        (Date.now() - new Date(msp.suspendedAt).getTime()) / 86_400_000,
+      );
+
+      // Only surface the banner once the 7-day threshold has been reached.
+      // Days 1–6 are treated as not-yet-visible to customers.
+      if (daysSuspended < 7) {
+        res.json({ suspended: false, daysSuspended: null });
+        return;
+      }
+
+      res.json({ suspended: true, daysSuspended });
+    } catch (err) {
+      logger.error({ err }, "msp-portal: msp-suspension query failed");
+      res.status(500).json({ error: "Failed to fetch MSP suspension status" });
     }
   },
 );

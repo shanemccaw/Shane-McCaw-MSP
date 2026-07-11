@@ -36,6 +36,9 @@ export const mspsTable = pgTable("msps", {
   primaryColor: text("primary_color"),
   status: text("status", { enum: ["active", "suspended", "trial"] }).notNull().default("active"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  // Recorded when status transitions to "suspended". Used to compute the 7-day
+  // customer-visible banner threshold. Cleared (set to null) on re-activation.
+  suspendedAt: timestamp("suspended_at", { withTimezone: true }),
   // Offboarding state machine: null → cancellation_requested → export_ready → archival_flagged
   // Never silently deleted — customer owns their data per the hybrid model.
   offboardingState: text("offboarding_state", { enum: MSP_OFFBOARDING_STATES }),

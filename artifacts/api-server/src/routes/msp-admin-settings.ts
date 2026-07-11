@@ -256,9 +256,10 @@ router.post("/admin/msps/:mspId/suspend", requireAdmin, async (req: Request, res
   const mspId = parseInt(p(req.params["mspId"]), 10);
   if (isNaN(mspId)) { apiError(res, 400, "mspId must be a number"); return; }
 
+  const now = new Date();
   const [updated] = await db
     .update(mspsTable)
-    .set({ status: "suspended", updatedAt: new Date() })
+    .set({ status: "suspended", suspendedAt: now, updatedAt: now })
     .where(and(eq(mspsTable.id, mspId), eq(mspsTable.status, "active")))
     .returning({ id: mspsTable.id, name: mspsTable.name });
 
@@ -272,9 +273,10 @@ router.post("/admin/msps/:mspId/reactivate", requireAdmin, async (req: Request, 
   const mspId = parseInt(p(req.params["mspId"]), 10);
   if (isNaN(mspId)) { apiError(res, 400, "mspId must be a number"); return; }
 
+  const reactivateNow = new Date();
   const [updated] = await db
     .update(mspsTable)
-    .set({ status: "active", updatedAt: new Date() })
+    .set({ status: "active", suspendedAt: null, updatedAt: reactivateNow })
     .where(and(eq(mspsTable.id, mspId), eq(mspsTable.status, "suspended")))
     .returning({ id: mspsTable.id, name: mspsTable.name });
 
