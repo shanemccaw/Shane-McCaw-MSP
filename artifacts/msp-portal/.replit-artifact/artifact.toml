@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/portal/"
+title = "MSP Portal"
+version = "1.0.0"
+id = "artifacts/msp-portal"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/portal/" ]
+localPort = 26059
+
+[services.development]
+run = "pnpm --filter @workspace/msp-portal run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/msp-portal", "run", "build" ]
+publicDir = "artifacts/msp-portal/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "26059"
+BASE_PATH = "/portal/"

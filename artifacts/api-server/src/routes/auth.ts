@@ -1,13 +1,16 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
+import crypto, { randomUUID } from "crypto";
 import jwt from "jsonwebtoken";
-import { db, usersTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable } from "@workspace/db";
+import { db, usersTable, mspUsersTable, mspRefreshTokensTable, passwordResetTokensTable, impersonationTokensTable, accountSetupTokensTable, mfaEnrollmentsTable, webauthnCredentialsTable, mspAuditLogsTable, mspServiceAccountsTable, type MspRole } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer";
 import { getPortalBaseUrl } from "../lib/portal-url";
 import { signMfaToken } from "./mfa";
+import { dispatchEvent, EVENT_TYPES, systemActor, userActor } from "../lib/event-bus";
+import { requireRole } from "../middlewares/requireAuth.ts";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -29,8 +32,9 @@ const setupPasswordLimiter = rateLimit({
 
 const router: IRouter = Router();
 
-const REFRESH_TOKEN_TTL_DAYS = 30;
-const ACCESS_TOKEN_TTL = "8h";
+// 15-minute access tokens, 7-day sliding refresh
+const REFRESH_TOKEN_TTL_DAYS = 7;
+const ACCESS_TOKEN_TTL = "15m";
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function getJwtSecret(): string {
@@ -49,7 +53,75 @@ function cookieOpts(): CookieOptions {
   };
 }
 
-function buildUserPayload(user: typeof usersTable.$inferSelect) {
+function hashRefreshToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function generateRefreshToken(): string {
+  return crypto.randomBytes(48).toString("hex");
+}
+
+/**
+ * Write an auth audit log entry. Non-fatal — errors are silently swallowed
+ * so a broken DB state never interrupts an auth flow.
+ */
+async function writeAuthAuditLog(
+  actionType: string,
+  req: Request,
+  opts: {
+    userId?: number;
+    mspId?: number | null;
+    customerId?: number | null;
+    mspRole?: string | null;
+    outcome?: "success" | "failure" | "partial";
+    metadata?: Record<string, unknown>;
+  },
+): Promise<void> {
+  try {
+    await db.insert(mspAuditLogsTable).values({
+      actorUserId: opts.userId ?? null,
+      actorRole: opts.mspRole ?? null,
+      mspId: opts.mspId ?? null,
+      customerId: opts.customerId ?? null,
+      actionType,
+      correlationId: randomUUID(),
+      ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
+      userAgent: req.headers["user-agent"] ?? null,
+      outcome: opts.outcome ?? "success",
+      metadata: opts.metadata,
+    });
+  } catch {
+    // Audit log is non-fatal
+  }
+}
+
+/**
+ * Look up the msp_users row for a given user and return MSP claims.
+ * Returns null values when no MSP record exists (e.g. legacy admin user).
+ */
+async function getMspClaims(userId: number): Promise<{
+  mspRole: MspRole | null;
+  mspId: number | null;
+  customerId: number | null;
+}> {
+  const [mspUser] = await db
+    .select()
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+
+  if (!mspUser) return { mspRole: null, mspId: null, customerId: null };
+  return {
+    mspRole: mspUser.mspRole as MspRole,
+    mspId: mspUser.mspId ?? null,
+    customerId: mspUser.customerId ?? null,
+  };
+}
+
+function buildUserPayload(
+  user: typeof usersTable.$inferSelect,
+  mspClaims: { mspRole: MspRole | null; mspId: number | null; customerId: number | null },
+) {
   return {
     id: user.id,
     email: user.email,
@@ -61,7 +133,33 @@ function buildUserPayload(user: typeof usersTable.$inferSelect) {
     addressState: user.addressState ?? undefined,
     addressZip: user.addressZip ?? undefined,
     role: user.role,
+    mspRole: mspClaims.mspRole ?? undefined,
+    mspId: mspClaims.mspId ?? undefined,
+    customerId: mspClaims.customerId ?? undefined,
   };
+}
+
+/**
+ * Issue a new refresh token: generate, hash, store in DB.
+ * Returns the raw token (for the client) and the DB row id.
+ */
+async function issueRefreshToken(
+  userId: number,
+  req: Request,
+): Promise<{ rawToken: string; expiresAt: Date }> {
+  const rawToken = generateRefreshToken();
+  const tokenHash = hashRefreshToken(rawToken);
+  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await db.insert(mspRefreshTokensTable).values({
+    userId,
+    tokenHash,
+    expiresAt,
+    userAgent: req.headers["user-agent"] ?? null,
+    ipAddress: (req.ip ?? req.socket?.remoteAddress) ?? null,
+  });
+
+  return { rawToken, expiresAt };
 }
 
 router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => {
@@ -85,7 +183,6 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
-  // Guard: account created without a password (e.g. via purchase flow) cannot use this endpoint
   if (!user.passwordHash) {
     res.status(401).json({ error: "No password set for this account. Check your email for a setup link." });
     return;
@@ -119,21 +216,38 @@ router.post("/auth/login", loginLimiter, async (req: Request, res: Response) => 
     return;
   }
 
-  const payload = buildUserPayload(user);
+  const mspClaims = await getMspClaims(user.id);
+  const payload = buildUserPayload(user, mspClaims);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
+  const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
+
+  void dispatchEvent({
+    eventType: EVENT_TYPES.AUTH_LOGIN,
+    actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
+    source: "auth.login",
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    payload: { email: user.email, role: user.role },
+  });
+
+  void writeAuthAuditLog("AUTH_LOGIN", req, {
+    userId: user.id,
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    mspRole: mspClaims.mspRole,
+    metadata: { email: user.email },
+  });
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
-  // Also include refreshToken in body so mobile clients (which can't use cookies) can store it
-  res.json({ accessToken, refreshToken, user: payload });
+  res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
 });
 
 router.post("/auth/refresh", async (req: Request, res: Response) => {
   // Accept refresh token from cookie (web clients) or request body (mobile clients)
-  const token = (req.cookies?.refreshToken as string | undefined)
+  const rawToken = (req.cookies?.refreshToken as string | undefined)
     ?? (req.body as { refreshToken?: string })?.refreshToken;
 
-  if (!token) {
+  if (!rawToken) {
     res.status(401).json({ error: "No refresh token" });
     return;
   }
@@ -144,27 +258,64 @@ router.post("/auth/refresh", async (req: Request, res: Response) => {
     return;
   }
 
-  let decoded: { id: number };
-  try {
-    decoded = jwt.verify(token, secret) as { id: number };
-  } catch {
+  const tokenHash = hashRefreshToken(rawToken);
+  const now = new Date();
+
+  // Look up the refresh token in the DB
+  const [storedToken] = await db
+    .select()
+    .from(mspRefreshTokensTable)
+    .where(eq(mspRefreshTokensTable.tokenHash, tokenHash))
+    .limit(1);
+
+  if (!storedToken) {
     res.status(401).json({ error: "Invalid or expired refresh token" });
     return;
   }
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, decoded.id)).limit(1);
+  if (storedToken.revokedAt || storedToken.expiresAt < now) {
+    res.status(401).json({ error: "Refresh token has expired or been revoked" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, storedToken.userId)).limit(1);
   if (!user) {
     res.status(401).json({ error: "User not found" });
     return;
   }
 
-  const payload = buildUserPayload(user);
-  const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
-  const newRefreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
+  const mspClaims = await getMspClaims(user.id);
+  const payload = buildUserPayload(user, mspClaims);
+  const newAccessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
 
-  // Set cookie for web clients; also return token in body for mobile clients
-  res.cookie("refreshToken", newRefreshToken, cookieOpts());
-  res.json({ accessToken, refreshToken: newRefreshToken, user: payload });
+  // Sliding refresh: issue a new token and mark the old one as replaced
+  const newRawToken = generateRefreshToken();
+  const newTokenHash = hashRefreshToken(newRawToken);
+  const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
+
+  await db.insert(mspRefreshTokensTable).values({
+    userId: user.id,
+    tokenHash: newTokenHash,
+    expiresAt: newExpiresAt,
+    userAgent: storedToken.userAgent ?? null,
+    ipAddress: storedToken.ipAddress ?? null,
+  });
+
+  await db.update(mspRefreshTokensTable)
+    .set({ revokedAt: now, replacedByHash: newTokenHash })
+    .where(eq(mspRefreshTokensTable.id, storedToken.id));
+
+  void dispatchEvent({
+    eventType: EVENT_TYPES.AUTH_TOKEN_REFRESH,
+    actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
+    source: "auth.refresh",
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    payload: { userId: user.id },
+  });
+
+  res.cookie("refreshToken", newRawToken, cookieOpts());
+  res.json({ accessToken: newAccessToken, refreshToken: newRawToken, refreshExpiresAt: newExpiresAt.toISOString(), user: payload });
 });
 
 // ─── Registration disabled — accounts are created by purchases only ───────────
@@ -174,13 +325,41 @@ router.post("/auth/register", (_req: Request, res: Response) => {
   });
 });
 
-router.post("/auth/logout", (_req: Request, res: Response) => {
+router.post("/auth/logout", async (req: Request, res: Response) => {
+  const rawToken = (req.cookies?.refreshToken as string | undefined)
+    ?? (req.body as { refreshToken?: string })?.refreshToken;
+
+  let logoutUserId: number | undefined;
+  if (rawToken) {
+    const tokenHash = hashRefreshToken(rawToken);
+    const [tok] = await db
+      .select({ userId: mspRefreshTokensTable.userId })
+      .from(mspRefreshTokensTable)
+      .where(eq(mspRefreshTokensTable.tokenHash, tokenHash))
+      .limit(1);
+    logoutUserId = tok?.userId;
+    await db
+      .update(mspRefreshTokensTable)
+      .set({ revokedAt: new Date() })
+      .where(eq(mspRefreshTokensTable.tokenHash, tokenHash))
+      .catch(() => null);
+  }
+
+  if (logoutUserId) {
+    void dispatchEvent({
+      eventType: EVENT_TYPES.AUTH_LOGOUT,
+      actor: userActor(logoutUserId, "Free"),
+      source: "auth.logout",
+      payload: { userId: logoutUserId },
+    });
+    void writeAuthAuditLog("AUTH_LOGOUT", req, { userId: logoutUserId });
+  }
+
   res.clearCookie("refreshToken", { path: "/api/auth" });
   res.json({ success: true });
 });
 
 // ─── Set password from account setup token ────────────────────────────────────
-// Called after a first-time purchase when the account has no password yet.
 router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, res: Response) => {
   const { token, password } = req.body as { token?: string; password?: string };
 
@@ -228,21 +407,35 @@ router.post("/auth/setup-password", setupPasswordLimiter, async (req: Request, r
     return;
   }
 
-  const payload = buildUserPayload(user);
+  const mspClaims = await getMspClaims(user.id);
+  const payload = buildUserPayload(user, mspClaims);
   const accessToken = jwt.sign(payload, secret, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ id: user.id }, secret, { expiresIn: `${REFRESH_TOKEN_TTL_DAYS}d` });
+  const { rawToken: refreshToken, expiresAt: refreshExpiresAt } = await issueRefreshToken(user.id, req);
+
+  void dispatchEvent({
+    eventType: EVENT_TYPES.AUTH_ACCOUNT_SETUP,
+    actor: userActor(user.id, mspClaims.mspRole ?? "Free"),
+    source: "auth.setup-password",
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    payload: { userId: user.id },
+  });
+
+  void writeAuthAuditLog("AUTH_ACCOUNT_SETUP", req, {
+    userId: user.id,
+    mspId: mspClaims.mspId,
+    customerId: mspClaims.customerId,
+    mspRole: mspClaims.mspRole,
+  });
 
   res.cookie("refreshToken", refreshToken, cookieOpts());
-  res.json({ accessToken, user: payload });
+  res.json({ accessToken, refreshToken, refreshExpiresAt: refreshExpiresAt.toISOString(), user: payload });
 });
 
 // ─── Forgot password ──────────────────────────────────────────────────────────
-// Always returns 200 to prevent email enumeration — caller cannot know if
-// the address matched an account.
 router.post("/auth/forgot-password", async (req: Request, res: Response) => {
   const { email } = req.body as { email?: string };
 
-  // Respond immediately — never reveal whether the email exists
   res.json({ ok: true });
 
   if (!email) return;
@@ -253,11 +446,10 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
     .limit(1);
   if (!user) return;
 
-  // If the user has no password yet, send them a setup link instead
   if (!user.passwordHash) {
     const { randomBytes } = await import("crypto");
     const token = randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
     await db.insert(accountSetupTokensTable).values({ userId: user.id, token, expiresAt });
 
@@ -281,7 +473,7 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
   await db.insert(passwordResetTokensTable).values({ userId: user.id, token, expiresAt });
 
   const baseUrl = process.env.PORTAL_BASE_URL
-    ?? `${req.protocol}://${req.hostname}/crm`;
+    ?? `${req.protocol}://${req.hostname}/portal`;
   const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
   void sendEmailFromTemplate(
@@ -387,15 +579,148 @@ router.post("/auth/impersonate-exchange", async (req: Request, res: Response) =>
 });
 
 export async function seedAdminUser(): Promise<void> {
-  const email = process.env.CRM_ADMIN_EMAIL ?? process.env.ADMIN_EMAIL;
-  const password = process.env.CRM_ADMIN_PASSWORD ?? process.env.ADMIN_PASSWORD;
+  // Prefer ADMIN_EMAIL/ADMIN_PASSWORD; CRM_ADMIN_* are deprecated aliases kept
+  // temporarily for backwards-compatibility — remove after the next deploy cycle.
+  const email = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+  const password = process.env.ADMIN_PASSWORD ?? process.env.CRM_ADMIN_PASSWORD;
   if (!email || !password) return;
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email.toLowerCase())).limit(1);
-  if (existing) return;
+  if (existing) {
+    // Ensure the existing admin user has a PlatformAdmin msp_users row
+    const [existingMspUser] = await db
+      .select()
+      .from(mspUsersTable)
+      .where(eq(mspUsersTable.userId, existing.id))
+      .limit(1);
+    if (!existingMspUser) {
+      await db.insert(mspUsersTable).values({
+        userId: existing.id,
+        mspRole: "PlatformAdmin",
+        isActive: true,
+      });
+    }
+    return;
+  }
 
   const passwordHash = await bcrypt.hash(password, 12);
-  await db.insert(usersTable).values({ email: email.toLowerCase(), passwordHash, role: "admin" });
+  const [newUser] = await db
+    .insert(usersTable)
+    .values({ email: email.toLowerCase(), passwordHash, role: "admin" })
+    .returning({ id: usersTable.id });
+
+  if (newUser) {
+    await db.insert(mspUsersTable).values({
+      userId: newUser.id,
+      mspRole: "PlatformAdmin",
+      isActive: true,
+    });
+  }
+}
+
+// ─── ServiceAccount API key issuance ──────────────────────────────────────────
+// PlatformAdmin or MSPAdmin can issue API keys for machine-to-machine auth.
+// The raw key is returned exactly once; only the SHA-256 hash is stored.
+// Key format: msp_sa_<24-byte-hex-prefix>_<48-byte-hex-body>
+
+const SA_KEY_PREFIX = "msp_sa_";
+
+function generateApiKey(): { raw: string; prefix: string; hash: string } {
+  const prefix = crypto.randomBytes(4).toString("hex"); // 8 hex chars
+  const body = crypto.randomBytes(32).toString("hex"); // 64 hex chars
+  const raw = `${SA_KEY_PREFIX}${prefix}_${body}`;
+  const hash = crypto.createHash("sha256").update(raw).digest("hex");
+  return { raw, prefix: `${SA_KEY_PREFIX}${prefix}`, hash };
+}
+
+/**
+ * POST /api/admin/msp/service-accounts
+ * Create a new service account and return the raw API key (shown once only).
+ * Requires PlatformAdmin.
+ */
+router.post("/admin/msp/service-accounts", requireRole("PlatformAdmin"), async (req: Request, res: Response) => {
+  const { name, mspId, scopes } = req.body as {
+    name?: string;
+    mspId?: number;
+    scopes?: string[];
+  };
+
+  if (!name) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+
+  const { raw, prefix, hash } = generateApiKey();
+
+  // keyVaultSecretName is a placeholder for future Key Vault storage.
+  // Convention: msp-{mspId ?? "platform"}-sa-{slug(name)}
+  const slugName = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const keyVaultSecretName = `msp-${mspId ?? "platform"}-sa-${slugName}`;
+
+  const [inserted] = await db.insert(mspServiceAccountsTable).values({
+    mspId: mspId ?? null,
+    name,
+    keyVaultSecretName,
+    keyHash: hash,
+    keyPrefix: prefix,
+    scopes: scopes ?? [],
+  }).returning({ id: mspServiceAccountsTable.id, name: mspServiceAccountsTable.name, createdAt: mspServiceAccountsTable.createdAt });
+
+  const actor = req.user as { id: number; mspRole?: string } | undefined;
+  void dispatchEvent({
+    eventType: EVENT_TYPES.MSP_SERVICE_ACCOUNT_CREATED,
+    actor: userActor(actor?.id ?? 0, (actor?.mspRole ?? "PlatformAdmin") as import("@workspace/db").MspRole),
+    source: "auth.service-accounts",
+    mspId: mspId ?? null,
+    payload: { serviceAccountId: inserted?.id, name, keyPrefix: prefix },
+  });
+
+  void writeAuthAuditLog("MSP_SERVICE_ACCOUNT_CREATED", req, {
+    userId: actor?.id,
+    mspId: mspId ?? null,
+    mspRole: actor?.mspRole,
+    metadata: { serviceAccountId: inserted?.id, name, keyPrefix: prefix },
+  });
+
+  res.status(201).json({
+    id: inserted?.id,
+    name: inserted?.name,
+    keyPrefix: prefix,
+    apiKey: raw, // shown once — not stored; hash is stored
+    createdAt: inserted?.createdAt,
+    warning: "Save this API key now — it will not be shown again.",
+  });
+});
+
+/**
+ * Validate a service account API key (used by middleware or other routes).
+ * Returns the service account record if valid, or null if invalid/expired/revoked.
+ */
+export async function validateServiceAccountKey(
+  rawKey: string,
+): Promise<typeof mspServiceAccountsTable.$inferSelect | null> {
+  if (!rawKey.startsWith(SA_KEY_PREFIX)) return null;
+  const hash = crypto.createHash("sha256").update(rawKey).digest("hex");
+  const now = new Date();
+
+  const [sa] = await db
+    .select()
+    .from(mspServiceAccountsTable)
+    .where(eq(mspServiceAccountsTable.keyHash, hash))
+    .limit(1);
+
+  if (!sa) return null;
+  if (sa.revokedAt) return null;
+  if (sa.expiresAt && sa.expiresAt < now) return null;
+
+  // Update lastUsedAt non-critically
+  void db
+    .update(mspServiceAccountsTable)
+    .set({ lastUsedAt: now })
+    .where(eq(mspServiceAccountsTable.id, sa.id))
+    .catch(() => null);
+
+  return sa;
 }
 
 export default router;

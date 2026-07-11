@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { db, mspCustomersTable, type MspRole } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 
 export interface AuthUser {
   id: number;
@@ -7,6 +9,10 @@ export interface AuthUser {
   name?: string;
   role: "admin" | "client";
   impersonatedBy?: number;
+  // MSP extended claims — present when the user has an msp_users row
+  mspRole?: MspRole;
+  mspId?: number;
+  customerId?: number;
 }
 
 declare global {
@@ -17,7 +23,25 @@ declare global {
   }
 }
 
+// ── MSP role hierarchy ─────────────────────────────────────────────────────────
+// Higher index = higher privilege. Used by requireRole() range checks.
+const ROLE_ORDER: MspRole[] = [
+  "Free",
+  "CustomerUser",
+  "ServiceAccount",
+  "MSPOperator",
+  "MSPAdmin",
+  "PlatformAdmin",
+];
+
+function roleIndex(role: MspRole | undefined): number {
+  if (!role) return -1;
+  return ROLE_ORDER.indexOf(role);
+}
+
 const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+// ── Core auth middleware ───────────────────────────────────────────────────────
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
@@ -48,6 +72,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   }
 }
 
+// ── Legacy admin guard (backward compat) ──────────────────────────────────────
+
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   requireAuth(req, res, () => {
     if (req.user?.role !== "admin") {
@@ -56,4 +82,152 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     }
     next();
   });
+}
+
+// ── MSP role guard ─────────────────────────────────────────────────────────────
+/**
+ * Require the user to have AT LEAST the specified MSP role.
+ * Also accepts legacy `role: "admin"` users as PlatformAdmin.
+ *
+ * Example:
+ *   router.get("/msps", requireRole("MSPAdmin"), handler);
+ */
+export function requireRole(minimumRole: MspRole) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    requireAuth(req, res, () => {
+      const user = req.user!;
+
+      // Legacy admin users (role === "admin") treated as PlatformAdmin
+      const effectiveRole: MspRole | undefined =
+        user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+
+      if (roleIndex(effectiveRole) < roleIndex(minimumRole)) {
+        res.status(403).json({
+          error: `Insufficient privileges — ${minimumRole} or above required`,
+        });
+        return;
+      }
+      next();
+    });
+  };
+}
+
+// ── MSP scope guard ───────────────────────────────────────────────────────────
+/**
+ * Require that the user's mspId matches the mspId in the request params.
+ * PlatformAdmins bypass this check (cross-MSP access).
+ *
+ * Usage: router.get("/msps/:mspId/customers", requireAuth, requireMspScope("params"), handler);
+ * The mspId is read from req.params.mspId, req.query.mspId, or req.body.mspId
+ * depending on the `source` argument.
+ */
+export function requireMspScope(source: "params" | "query" | "body" = "params") {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    // PlatformAdmin bypasses tenant isolation
+    const effectiveRole: MspRole | undefined =
+      user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+    if (effectiveRole === "PlatformAdmin") {
+      next();
+      return;
+    }
+
+    const rawMspId =
+      source === "params"
+        ? (req.params as Record<string, string>)["mspId"]
+        : source === "query"
+          ? String((req.query as Record<string, unknown>)["mspId"] ?? "")
+          : String((req.body as Record<string, unknown>)["mspId"] ?? "");
+
+    const requestedMspId = parseInt(rawMspId, 10);
+    if (isNaN(requestedMspId)) {
+      res.status(400).json({ error: "mspId is required" });
+      return;
+    }
+
+    if (user.mspId !== requestedMspId) {
+      res.status(403).json({ error: "Access to this MSP is not permitted" });
+      return;
+    }
+
+    next();
+  };
+}
+
+// ── Customer scope guard ──────────────────────────────────────────────────────
+/**
+ * Require the user to belong to the customer specified in params/query/body.
+ * MSPAdmin and MSPOperator can access any customer within their MSP.
+ * PlatformAdmin can access any customer.
+ */
+export function requireCustomerScope(source: "params" | "query" | "body" = "params") {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const user = req.user;
+    if (!user) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const effectiveRole: MspRole | undefined =
+      user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+
+    // PlatformAdmin bypasses all customer scope checks
+    if (effectiveRole === "PlatformAdmin") {
+      next();
+      return;
+    }
+
+    // Extract the target customerId from the request
+    const rawCustomerId =
+      source === "params"
+        ? (req.params as Record<string, string>)["customerId"]
+        : source === "query"
+          ? String((req.query as Record<string, unknown>)["customerId"] ?? "")
+          : String((req.body as Record<string, unknown>)["customerId"] ?? "");
+
+    const requestedCustomerId = parseInt(rawCustomerId, 10);
+    if (isNaN(requestedCustomerId)) {
+      res.status(400).json({ error: "customerId is required" });
+      return;
+    }
+
+    // MSPAdmin/MSPOperator: verify target customer belongs to their MSP (IDOR prevention)
+    if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator") {
+      if (!user.mspId) {
+        res.status(403).json({ error: "MSP operator token has no mspId claim" });
+        return;
+      }
+      try {
+        const [customer] = await db
+          .select({ id: mspCustomersTable.id })
+          .from(mspCustomersTable)
+          .where(and(
+            eq(mspCustomersTable.id, requestedCustomerId),
+            eq(mspCustomersTable.mspId, user.mspId),
+          ))
+          .limit(1);
+        if (!customer) {
+          res.status(403).json({ error: "Access to this customer is not permitted" });
+          return;
+        }
+        next();
+      } catch {
+        res.status(500).json({ error: "Customer scope verification failed" });
+      }
+      return;
+    }
+
+    // CustomerUser and Free: can only access their own customer (token-claim check)
+    if (user.customerId !== requestedCustomerId) {
+      res.status(403).json({ error: "Access to this customer is not permitted" });
+      return;
+    }
+
+    next();
+  };
 }

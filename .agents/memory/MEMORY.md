@@ -30,3 +30,4 @@
 - [Engine-scoped signal rule import/export](engine-scoped-signal-import-export.md) — scope by category prefix (LIKE 'prefix:%'), never DELETE the whole shared rules table; reference groups by signalKey not DB id
 - [SOW debug page pattern](sow-debug-page.md) — testMode generation + correlationId ring buffer lets an admin debug page reuse real generation logic without persisting or duplicating it
 - [Engine registry pattern](engine-registry-pattern.md) — 7 intelligence engines share one EngineDef contract + generic admin routes/EnginePanel UI instead of per-engine dashboards
+- [MSP Portal Foundation](msp-portal-foundation.md) — portal at /portal/, 15-min JWT + 7-day refresh, ROLE_ORDER RBAC, ownerType auto-derived in event bus, msp.test.ts JWT mock pattern

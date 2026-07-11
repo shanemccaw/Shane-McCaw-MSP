@@ -2099,3 +2099,5 @@ export const clientPresentationsTable = pgTable("client_presentations", {
 
 export type InsertClientPresentation = typeof clientPresentationsTable.$inferInsert;
 export type ClientPresentation = typeof clientPresentationsTable.$inferSelect;
+
+export * from "./msp";
