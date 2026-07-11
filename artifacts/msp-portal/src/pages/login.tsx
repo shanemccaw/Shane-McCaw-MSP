@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug, getStoredSlug } from "@/lib/slug-context";
 import {
   Card,
   CardContent,
@@ -49,15 +50,12 @@ function useTenantBranding(slug: string | null): TenantBranding | null {
       .then((data: TenantBranding | null) => {
         if (data) {
           setBranding(data);
-          // Apply brand color as a CSS variable override for this session
           if (data.primaryColor) {
             document.documentElement.style.setProperty("--msp-brand-login-color", data.primaryColor);
           }
         }
       })
-      .catch(() => {
-        // Fail silently — platform branding is the fallback
-      });
+      .catch(() => {});
 
     return () => {
       document.documentElement.style.removeProperty("--msp-brand-login-color");
@@ -172,7 +170,6 @@ function MfaChallenge({
     );
   }
 
-  // Fallback for non-TOTP methods (passkey, SMS — full implementation is a follow-up)
   return (
     <Card className="border-sidebar-border bg-card/95 backdrop-blur">
       <CardHeader className="pb-4">
@@ -201,14 +198,18 @@ function MfaChallenge({
 // ── Main login page ───────────────────────────────────────────────────────────
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const [, navigate] = useLocation();
   const search = useSearch();
   const [serverError, setServerError] = useState<string | null>(null);
   const [mfaState, setMfaState] = useState<{ mfaToken: string; methods: string[] } | null>(null);
 
-  // Read tenant slug from ?t= query param (set by branded portal URL or tenant entry route)
-  const tenantSlug = new URLSearchParams(search).get("t") ?? null;
+  // Slug from context (slug-scoped router) takes priority over ?t= query param
+  // (which is kept for backwards compatibility with any direct links).
+  const ctxSlug = useMspSlug();
+  const querySlug = new URLSearchParams(search).get("t") ?? null;
+  const tenantSlug = ctxSlug ?? querySlug;
+
   const branding = useTenantBranding(tenantSlug);
 
   const {
@@ -216,6 +217,18 @@ export default function LoginPage() {
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
+
+  // If already authenticated, redirect to landing page.
+  // In slug-scoped context navigate("/dashboard") auto-resolves to /portal/{slug}/dashboard.
+  // In flat context it resolves to /portal/dashboard — acceptable fallback.
+  const defaultLanding =
+    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      navigate(defaultLanding, { replace: true });
+    }
+  }, [isLoading, user, navigate, defaultLanding]);
 
   async function onSubmit(data: LoginForm) {
     setServerError(null);
@@ -225,7 +238,23 @@ export default function LoginPage() {
         setMfaState({ mfaToken: result.mfaToken, methods: result.methods ?? [] });
         return;
       }
-      navigate("/dashboard");
+
+      if (ctxSlug) {
+        // Inside slug-scoped router — navigate() auto-prefixes the slug.
+        // e.g. "/dashboard" → /portal/{slug}/dashboard
+        navigate(defaultLanding);
+      } else {
+        // Flat /login context — no inner router to add the slug prefix.
+        // Build the slug-prefixed path manually.
+        const slug = tenantSlug ?? getStoredSlug();
+        if (slug) {
+          navigate(`/${slug}${defaultLanding}`);
+        } else {
+          // No slug in URL, query, or storage — go to root and let
+          // RootRedirect try again once auth state propagates.
+          navigate("/");
+        }
+      }
     } catch (err) {
       setServerError(err instanceof Error ? err.message : "Login failed");
     }
@@ -265,7 +294,14 @@ export default function LoginPage() {
           <MfaChallenge
             mfaToken={mfaState.mfaToken}
             methods={mfaState.methods}
-            onSuccess={() => navigate("/dashboard")}
+            onSuccess={() => {
+              if (ctxSlug) {
+                navigate(defaultLanding);
+              } else {
+                const slug = tenantSlug ?? getStoredSlug();
+                navigate(slug ? `/${slug}${defaultLanding}` : "/");
+              }
+            }}
             onCancel={() => setMfaState(null)}
           />
           <p className="text-center text-xs text-sidebar-foreground/40">

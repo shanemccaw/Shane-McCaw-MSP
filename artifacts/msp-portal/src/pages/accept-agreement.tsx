@@ -25,7 +25,7 @@ interface AgreementData {
 }
 
 export default function AcceptAgreementPage() {
-  const { fetchWithAuth, logout } = useAuth();
+  const { fetchWithAuth, logout, user } = useAuth();
   const [, navigate] = useLocation();
 
   const [agreement, setAgreement] = useState<AgreementData | null>(null);
@@ -33,6 +33,10 @@ export default function AcceptAgreementPage() {
   const [checked, setChecked] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Role-aware landing: resolves relative to the current router base.
+  // Inside slug scope → /portal/{slug}/dashboard or /portal/{slug}/customer-home.
+  const defaultLanding = user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
 
   useEffect(() => {
     fetch("/api/platform/agreement/current")
@@ -68,7 +72,7 @@ export default function AcceptAgreementPage() {
         return;
       }
 
-      navigate("/dashboard");
+      navigate(defaultLanding);
     } catch {
       setError("A network error occurred. Please try again.");
     } finally {
@@ -91,7 +95,7 @@ export default function AcceptAgreementPage() {
 
   if (!agreement) {
     // No published agreement — allow through
-    navigate("/dashboard");
+    navigate(defaultLanding);
     return null;
   }
 
@@ -150,14 +154,14 @@ export default function AcceptAgreementPage() {
               disabled={!checked || submitting}
             >
               {submitting && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {submitting ? "Recording…" : "Accept &amp; Continue"}
+              {submitting ? "Recording…" : "Accept & Continue"}
             </Button>
             <Button
               variant="outline"
               onClick={handleDecline}
               disabled={submitting}
             >
-              Decline &amp; sign out
+              Decline & sign out
             </Button>
           </CardFooter>
         </Card>

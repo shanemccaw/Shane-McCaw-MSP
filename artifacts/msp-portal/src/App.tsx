@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { SlugProvider, getStoredSlug } from "@/lib/slug-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
@@ -47,7 +48,7 @@ import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
 const queryClient = new QueryClient({
@@ -56,27 +57,31 @@ const queryClient = new QueryClient({
   },
 });
 
+/** Vite base path, e.g. "/portal" */
+const BASE_PATH = import.meta.env.BASE_URL.replace(/\/$/, "");
+
 // ── Tenant slug entry point ────────────────────────────────────────────────────
-// Handles /portal/{tenantSlug} URLs — validates the slug via the API, then
-// redirects to the login page with the tenant's branding context in the URL.
+// Handles /{tenantSlug} URLs inside the outer router.
+// Validates the slug via the API, then redirects to /{slug}/login.
 // Falls back to NotFound if the slug does not correspond to any MSP.
 
 function TenantEntryPage() {
-  const { tenantSlug } = useParams<{ tenantSlug: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const [, navigate] = useLocation();
   const [state, setState] = useState<"loading" | "redirect" | "notfound">("loading");
 
   useEffect(() => {
-    if (!tenantSlug) { setState("notfound"); return; }
-    fetch(`/api/portal/tenant/${encodeURIComponent(tenantSlug)}`)
+    if (!slug) { setState("notfound"); return; }
+    fetch(`/api/portal/tenant/${encodeURIComponent(slug)}`)
       .then((r) => {
         if (!r.ok) { setState("notfound"); return; }
-        // Tenant exists — redirect to login with the slug context
-        navigate(`/login?t=${encodeURIComponent(tenantSlug)}`, { replace: true });
+        // Tenant exists — redirect to the slug-scoped login page.
+        // In the outer router (base=/portal), "/{slug}/login" becomes /portal/{slug}/login.
+        navigate(`/${slug}/login`, { replace: true });
         setState("redirect");
       })
       .catch(() => setState("notfound"));
-  }, [tenantSlug, navigate]);
+  }, [slug, navigate]);
 
   if (state === "notfound") return <NotFound />;
   return (
@@ -87,9 +92,6 @@ function TenantEntryPage() {
 }
 
 // ── Agreement gate ────────────────────────────────────────────────────────────
-// After authentication, check whether the user has accepted the current
-// platform agreement. PlatformAdmin users that have MFA enrolled will
-// already be challenged at login; all MSP users are gated here.
 
 function useAgreementGate(): { loading: boolean; required: boolean } {
   const { user, fetchWithAuth } = useAuth();
@@ -102,7 +104,6 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
       setRequired(false);
       return;
     }
-    // Only gate users that have an MSP role (not plain client/admin portal users)
     if (!user.mspRole) {
       setLoading(false);
       setRequired(false);
@@ -114,7 +115,6 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
         setRequired(!!(data.required && !data.accepted));
       })
       .catch(() => {
-        // Don't block on network failure — fail open
         setRequired(false);
       })
       .finally(() => setLoading(false));
@@ -124,6 +124,9 @@ function useAgreementGate(): { loading: boolean; required: boolean } {
 }
 
 // ── Protected route with agreement gate ───────────────────────────────────────
+// Redirects to /login and /accept-agreement — both are valid relative paths
+// inside the slug-scoped inner router, so they resolve correctly to
+// /portal/{slug}/login and /portal/{slug}/accept-agreement automatically.
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -148,30 +151,25 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
-function Router() {
+// ── Slug-scoped inner switch ───────────────────────────────────────────────────
+// Rendered inside a WouterRouter whose base is /portal/{slug}.
+// Every navigate() and <Link> in this subtree automatically resolves relative
+// to /portal/{slug}, so no page needs to know the slug explicitly.
+
+function SlugInnerSwitch() {
   const { user, isLoading } = useAuth();
 
-  // Determine the default landing page based on role
   const defaultLanding =
     !isLoading && user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
 
   return (
     <Switch>
-      {/* Public routes */}
+      {/* Public slug-scoped routes */}
       <Route path="/login">
         {!isLoading && user ? <Redirect to={defaultLanding} /> : <LoginPage />}
       </Route>
-      <Route path="/signup/success">
-        <SignupSuccessPage />
-      </Route>
-      <Route path="/signup">
-        {!isLoading && user ? <Redirect to="/dashboard" /> : <SignupPage />}
-      </Route>
-      <Route path="/trust">
-        <TrustPage />
-      </Route>
 
-      {/* Auth-required but no agreement gate (the gate page itself) */}
+      {/* Agreement gate page — auth-required but not gated itself */}
       <Route path="/accept-agreement">
         <AcceptAgreementPage />
       </Route>
@@ -297,19 +295,162 @@ function Router() {
         <ProtectedRoute component={SalesBundlesPage} />
       </Route>
 
-      {/* Root redirect — role-aware */}
+      {/* Slug root — role-aware landing */}
       <Route path="/">
         {isLoading ? (
           <div className="min-h-screen flex items-center justify-center bg-background">
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
-        ) : (
+        ) : user ? (
           <Redirect to={defaultLanding} />
+        ) : (
+          <Redirect to="/login" />
         )}
       </Route>
 
-      {/* Branded tenant entry — /portal/{tenantSlug} validates slug then redirects to login */}
-      <Route path="/:tenantSlug">
+      <Route component={NotFound} />
+    </Switch>
+  );
+}
+
+// ── Slug scope wrapper ─────────────────────────────────────────────────────────
+// Extracts the slug param from the outer route and creates a new WouterRouter
+// whose base is /portal/{slug}. All links, redirects, and navigate() calls
+// inside this subtree automatically resolve to slug-prefixed URLs.
+
+function SlugScope() {
+  const { slug } = useParams<{ slug: string }>();
+
+  if (!slug) return <NotFound />;
+
+  return (
+    <SlugProvider slug={slug}>
+      <WouterRouter base={`${BASE_PATH}/${slug}`}>
+        <SlugInnerSwitch />
+      </WouterRouter>
+    </SlugProvider>
+  );
+}
+
+// ── Root redirect ─────────────────────────────────────────────────────────────
+// Handles /portal/ with no slug. If a slug was used previously in this session,
+// redirect to the slug-scoped URL; otherwise show the flat login.
+
+function RootRedirect() {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const stored = getStoredSlug();
+    if (stored) {
+      // User has a known slug — go to the slug-scoped landing.
+      // If already authenticated, the inner router's /login route will
+      // immediately redirect to /dashboard or /customer-home.
+      navigate(`/${stored}/login`, { replace: true });
+    } else {
+      navigate("/login", { replace: true });
+    }
+  }, [isLoading, navigate, user]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
+
+// ── Flat logged-in redirect ───────────────────────────────────────────────────
+// Used in the flat /login route when the user is already authenticated but
+// there is no slug in the URL.
+//
+// If a slug is stored in sessionStorage, redirect to the slug-scoped landing.
+// If no slug is known at all, render a stable "you're signed in" screen
+// instead of navigating — this prevents a /login ↔ / redirect loop.
+
+function FlatLoggedInRedirect() {
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+  const storedSlug = getStoredSlug();
+
+  useEffect(() => {
+    if (storedSlug) {
+      const landing = user?.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
+      navigate(`/${storedSlug}/${landing}`, { replace: true });
+    }
+    // No slug known — stay on this component; do NOT navigate to "/" (would loop)
+  }, [storedSlug, user, navigate]);
+
+  // While redirect is pending (storedSlug exists), show spinner
+  if (storedSlug) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // No slug known — stable fallback: prompt the user to navigate to their portal URL
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+      <div className="w-full max-w-sm text-center text-sidebar-foreground space-y-4">
+        <ShieldCheck className="mx-auto size-10 text-sidebar-primary" />
+        <div>
+          <h1 className="text-lg font-semibold tracking-tight">You're signed in</h1>
+          <p className="text-sm text-sidebar-foreground/60 mt-1">
+            Please navigate to your organisation's portal URL to continue.
+          </p>
+          <p className="text-xs text-sidebar-foreground/40 mt-2 font-mono">
+            /portal/your-org-slug
+          </p>
+        </div>
+        <button
+          className="text-sm text-sidebar-foreground/50 hover:text-sidebar-foreground underline"
+          onClick={() => void logout()}
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Outer router ──────────────────────────────────────────────────────────────
+// Flat routes (no slug) live here. Everything under a slug goes through SlugScope.
+
+function Router() {
+  const { user, isLoading } = useAuth();
+
+  return (
+    <Switch>
+      {/* Flat public routes — must come before /:slug to avoid slug conflicts */}
+      <Route path="/login">
+        {/* If user is already authenticated but no slug in the URL, send them
+            to the slug-scoped landing. Otherwise render the unbranded login. */}
+        {!isLoading && user ? <FlatLoggedInRedirect /> : <LoginPage />}
+      </Route>
+      <Route path="/signup/success">
+        <SignupSuccessPage />
+      </Route>
+      <Route path="/signup">
+        <SignupPage />
+      </Route>
+      <Route path="/trust">
+        <TrustPage />
+      </Route>
+
+      {/* Root — redirect to last-used slug or flat login */}
+      <Route path="/">
+        <RootRedirect />
+      </Route>
+
+      {/* Slug + sub-path — rendered inside a slug-scoped inner router */}
+      <Route path="/:slug/*">
+        <SlugScope />
+      </Route>
+
+      {/* Slug only (no sub-path) — branded tenant entry, redirects to /:slug/login */}
+      <Route path="/:slug">
         <TenantEntryPage />
       </Route>
 
@@ -332,7 +473,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <WouterRouter base={BASE_PATH}>
             <AppInner />
           </WouterRouter>
           <Toaster richColors position="top-right" theme="dark" />
