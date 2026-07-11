@@ -336,3 +336,53 @@ export function broadcastDiagnosticsRunError(runId: string, message: string): vo
 export function clearDiagnosticsRunSSEState(runId: string): void {
   lastDiagnosticsRunState.delete(runId);
 }
+
+// ── Offer pipeline SSE ─────────────────────────────────────────────────────────
+// Two keyed channels:
+//   mspOfferSSEClients      — keyed by mspId     (MSP Portal Offer Pipeline page)
+//   customerOfferSSEClients — keyed by customerId (Customer Portal Offer page)
+// Broadcasts whenever an offer changes state so open tabs can refresh immediately.
+
+const mspOfferSSEClients = new Map<number, Set<Response>>();
+
+export function registerMspOfferSSEClient(mspId: number, res: Response, onClose: () => void): void {
+  if (!mspOfferSSEClients.has(mspId)) mspOfferSSEClients.set(mspId, new Set());
+  const clients = mspOfferSSEClients.get(mspId)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) mspOfferSSEClients.delete(mspId);
+    onClose();
+  });
+}
+
+export function broadcastMspOfferChange(mspId: number, event: Record<string, unknown>): void {
+  const clients = mspOfferSSEClients.get(mspId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "offer_changed", ...event })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+const customerOfferSSEClients = new Map<number, Set<Response>>();
+
+export function registerCustomerOfferSSEClient(customerId: number, res: Response, onClose: () => void): void {
+  if (!customerOfferSSEClients.has(customerId)) customerOfferSSEClients.set(customerId, new Set());
+  const clients = customerOfferSSEClients.get(customerId)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) customerOfferSSEClients.delete(customerId);
+    onClose();
+  });
+}
+
+export function broadcastCustomerOfferChange(customerId: number, event: Record<string, unknown>): void {
+  const clients = customerOfferSSEClients.get(customerId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify({ type: "offer_changed", ...event })}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}

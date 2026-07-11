@@ -1,0 +1,414 @@
+/**
+ * msp-sales-offers.ts
+ *
+ * MSP Portal-scoped Sales Offer endpoints.
+ *
+ * Auth: requireRole("MSPOperator") — MSP JWT with at least MSPOperator role.
+ * Plan: requirePlanFeature("sales_offers") on write operations.
+ * Scope: all queries are automatically filtered to the caller's mspId.
+ *        PlatformAdmin may pass ?mspId= to operate on any MSP's offers.
+ *
+ * Routes:
+ *   GET    /api/msp/sales-offers              — list offers for this MSP
+ *   GET    /api/msp/sales-offers/sse          — SSE stream for real-time updates
+ *   POST   /api/msp/sales-offers/generate     — run engine + persist drafts
+ *   POST   /api/msp/sales-offers/expire-stale — expire overdue sent offers
+ *   GET    /api/msp/sales-offers/:id          — get single offer
+ *   GET    /api/msp/sales-offers/:id/events   — get offer event log
+ *   PATCH  /api/msp/sales-offers/:id          — edit title / rationale (draft only)
+ *   PATCH  /api/msp/sales-offers/:id/state    — transition offer state
+ *   DELETE /api/msp/sales-offers/:id          — delete draft offer
+ */
+
+import { Router, type IRouter, type Request, type Response } from "express";
+import jwt from "jsonwebtoken";
+import { db } from "@workspace/db";
+import {
+  salesOffersTable,
+  salesOfferEventsTable,
+  SALES_OFFER_STATES,
+  type SalesOfferState,
+} from "@workspace/db";
+import { eq, and, desc, asc, inArray } from "drizzle-orm";
+import { requireRole } from "../middlewares/requireAuth";
+import { requirePlanFeature } from "../lib/msp-entitlement";
+import {
+  runSalesOfferEngineForTenant,
+  persistSalesOfferCandidates,
+  transitionOfferState,
+  expireStaleSalesOffers,
+} from "../lib/sales-offer-engine";
+import {
+  registerMspOfferSSEClient,
+  broadcastMspOfferChange,
+  broadcastCustomerOfferChange,
+} from "../lib/sse-broadcast";
+import { logger } from "../lib/logger";
+import type { AuthUser } from "../middlewares/requireAuth";
+
+const router: IRouter = Router();
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+function apiErr(res: Response, status: number, message: string): void {
+  res.status(status).json({ error: message });
+}
+
+/** Resolve the calling MSP's id from the JWT.
+ *  PlatformAdmin can override with ?mspId= query param. */
+function resolveMspId(req: Request): number | null {
+  const user = req.user!;
+  if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
+    const q = req.query["mspId"] ? parseInt(String(req.query["mspId"]), 10) : NaN;
+    return isNaN(q) ? null : q;
+  }
+  return user.mspId ?? null;
+}
+
+// ── GET /api/msp/sales-offers ─────────────────────────────────────────────────
+
+router.get(
+  "/msp/sales-offers",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const state = req.query["state"] as SalesOfferState | undefined;
+      const tenantId = req.query["tenantId"] ? parseInt(String(req.query["tenantId"]), 10) : undefined;
+      const limit = Math.min(parseInt(String(req.query["limit"] ?? "200"), 10) || 200, 500);
+      const offset = parseInt(String(req.query["offset"] ?? "0"), 10) || 0;
+
+      const conditions = [eq(salesOffersTable.mspId, mspId)];
+      if (state && SALES_OFFER_STATES.includes(state)) conditions.push(eq(salesOffersTable.state, state));
+      if (tenantId != null && !isNaN(tenantId)) conditions.push(eq(salesOffersTable.tenantId, tenantId));
+
+      const offers = await db
+        .select()
+        .from(salesOffersTable)
+        .where(and(...conditions))
+        .orderBy(desc(salesOffersTable.score), desc(salesOffersTable.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      res.json({ offers, limit, offset });
+    } catch (err) {
+      logger.error({ err, mspId }, "GET /api/msp/sales-offers failed");
+      apiErr(res, 500, "Failed to list offers");
+    }
+  },
+);
+
+// ── GET /api/msp/sales-offers/sse ─────────────────────────────────────────────
+// SSE channel for real-time offer state changes.
+// EventSource cannot set Authorization headers, so we accept the JWT via ?token=.
+
+router.get("/msp/sales-offers/sse", (req: Request, res: Response): void => {
+  const token = String(req.query["token"] ?? "");
+  const secret = process.env["JWT_SECRET"];
+  if (!token || !secret) {
+    res.status(401).json({ error: "Missing token" });
+    return;
+  }
+
+  let user: AuthUser;
+  try {
+    user = jwt.verify(token, secret) as AuthUser;
+  } catch {
+    res.status(401).json({ error: "Invalid or expired token" });
+    return;
+  }
+
+  const effectiveMspRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  const ROLE_ORDER = ["Free", "CustomerUser", "ServiceAccount", "MSPOperator", "MSPAdmin", "PlatformAdmin"];
+  if (ROLE_ORDER.indexOf(effectiveMspRole ?? "") < ROLE_ORDER.indexOf("MSPOperator")) {
+    res.status(403).json({ error: "Insufficient privileges" });
+    return;
+  }
+
+  const mspId = user.role === "admin" || user.mspRole === "PlatformAdmin"
+    ? (req.query["mspId"] ? parseInt(String(req.query["mspId"]), 10) : null)
+    : (user.mspId ?? null);
+
+  if (!mspId || isNaN(mspId)) {
+    res.status(400).json({ error: "mspId required" });
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  res.write(`data: ${JSON.stringify({ type: "connected", mspId })}\n\n`);
+
+  const heartbeat = setInterval(() => {
+    try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
+  }, 30_000);
+
+  registerMspOfferSSEClient(mspId, res, () => {
+    clearInterval(heartbeat);
+    logger.debug({ mspId }, "msp-sales-offers: SSE client disconnected");
+  });
+});
+
+// ── POST /api/msp/sales-offers/generate ──────────────────────────────────────
+
+router.post(
+  "/msp/sales-offers/generate",
+  requireRole("MSPOperator"),
+  requirePlanFeature("sales_offers"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const { tenantId } = req.body as { tenantId?: number };
+      if (!tenantId || isNaN(Number(tenantId))) {
+        apiErr(res, 400, "tenantId is required");
+        return;
+      }
+
+      const engineOutput = await runSalesOfferEngineForTenant(Number(tenantId), mspId);
+      const insertedIds = await persistSalesOfferCandidates(
+        engineOutput.candidates,
+        Number(tenantId),
+        mspId,
+        engineOutput as unknown as Record<string, unknown>,
+      );
+
+      if (insertedIds.length > 0) {
+        broadcastMspOfferChange(mspId, { offersGenerated: insertedIds.length, tenantId: Number(tenantId) });
+      }
+
+      logger.info({ mspId, tenantId, insertedCount: insertedIds.length }, "POST /api/msp/sales-offers/generate completed");
+      res.status(201).json({
+        insertedOfferIds: insertedIds,
+        candidateCount: engineOutput.candidates.length,
+        firedSignals: engineOutput.firedSignals,
+      });
+    } catch (err) {
+      logger.error({ err, mspId }, "POST /api/msp/sales-offers/generate failed");
+      apiErr(res, 500, "Failed to generate sales offers");
+    }
+  },
+);
+
+// ── POST /api/msp/sales-offers/expire-stale ──────────────────────────────────
+
+router.post(
+  "/msp/sales-offers/expire-stale",
+  requireRole("MSPOperator"),
+  requirePlanFeature("sales_offers"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const expired = await expireStaleSalesOffers();
+      res.json({ expired });
+    } catch (err) {
+      logger.error({ err, mspId }, "POST /api/msp/sales-offers/expire-stale failed");
+      apiErr(res, 500, "Failed to expire stale offers");
+    }
+  },
+);
+
+// ── GET /api/msp/sales-offers/:id ────────────────────────────────────────────
+
+router.get(
+  "/msp/sales-offers/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const id = parseInt(String(req.params["id"] ?? ""), 10);
+      if (isNaN(id)) { apiErr(res, 400, "Invalid offer id"); return; }
+
+      const [offer] = await db
+        .select()
+        .from(salesOffersTable)
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
+        .limit(1);
+
+      if (!offer) { apiErr(res, 404, "Offer not found"); return; }
+      res.json({ offer });
+    } catch (err) {
+      logger.error({ err, mspId }, "GET /api/msp/sales-offers/:id failed");
+      apiErr(res, 500, "Failed to fetch offer");
+    }
+  },
+);
+
+// ── GET /api/msp/sales-offers/:id/events ─────────────────────────────────────
+
+router.get(
+  "/msp/sales-offers/:id/events",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const id = parseInt(String(req.params["id"] ?? ""), 10);
+      if (isNaN(id)) { apiErr(res, 400, "Invalid offer id"); return; }
+
+      const [offer] = await db
+        .select({ id: salesOffersTable.id })
+        .from(salesOffersTable)
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
+        .limit(1);
+      if (!offer) { apiErr(res, 404, "Offer not found"); return; }
+
+      const events = await db
+        .select()
+        .from(salesOfferEventsTable)
+        .where(eq(salesOfferEventsTable.offerId, id))
+        .orderBy(asc(salesOfferEventsTable.createdAt));
+
+      res.json({ events });
+    } catch (err) {
+      logger.error({ err, mspId }, "GET /api/msp/sales-offers/:id/events failed");
+      apiErr(res, 500, "Failed to fetch offer events");
+    }
+  },
+);
+
+// ── PATCH /api/msp/sales-offers/:id — edit title / rationale ─────────────────
+
+router.patch(
+  "/msp/sales-offers/:id",
+  requireRole("MSPOperator"),
+  requirePlanFeature("sales_offers"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const id = parseInt(String(req.params["id"] ?? ""), 10);
+      if (isNaN(id)) { apiErr(res, 400, "Invalid offer id"); return; }
+
+      const { title, rationale } = req.body as { title?: string; rationale?: string };
+      if (title == null && rationale == null) {
+        apiErr(res, 400, "At least one of title or rationale must be provided");
+        return;
+      }
+
+      const [existing] = await db
+        .select({ id: salesOffersTable.id, state: salesOffersTable.state, mspId: salesOffersTable.mspId })
+        .from(salesOffersTable)
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) { apiErr(res, 404, "Offer not found"); return; }
+      if (existing.state !== "draft") {
+        apiErr(res, 422, `Only draft offers can be edited (current state: ${existing.state})`);
+        return;
+      }
+
+      const updates: Partial<typeof salesOffersTable.$inferInsert> = { updatedAt: new Date() };
+      if (title != null) updates.title = title.trim();
+      if (rationale != null) updates.rationale = rationale.trim() || null;
+
+      const [updated] = await db
+        .update(salesOffersTable)
+        .set(updates)
+        .where(eq(salesOffersTable.id, id))
+        .returning();
+
+      broadcastMspOfferChange(mspId, { offerId: id, state: updated.state });
+      res.json({ offer: updated });
+    } catch (err) {
+      logger.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id failed");
+      apiErr(res, 500, "Failed to update offer");
+    }
+  },
+);
+
+// ── PATCH /api/msp/sales-offers/:id/state ────────────────────────────────────
+
+router.patch(
+  "/msp/sales-offers/:id/state",
+  requireRole("MSPOperator"),
+  requirePlanFeature("sales_offers"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const id = parseInt(String(req.params["id"] ?? ""), 10);
+      if (isNaN(id)) { apiErr(res, 400, "Invalid offer id"); return; }
+
+      const { newState, rejectionReason } = req.body as { newState?: string; rejectionReason?: string };
+      if (!newState || !SALES_OFFER_STATES.includes(newState as SalesOfferState)) {
+        apiErr(res, 400, `newState must be one of: ${SALES_OFFER_STATES.join(", ")}`);
+        return;
+      }
+
+      const [existing] = await db
+        .select({ id: salesOffersTable.id, tenantId: salesOffersTable.tenantId, mspId: salesOffersTable.mspId })
+        .from(salesOffersTable)
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) { apiErr(res, 404, "Offer not found"); return; }
+
+      const actorId = req.user?.id ?? null;
+      const updated = await transitionOfferState(id, newState as SalesOfferState, actorId, { rejectionReason });
+
+      broadcastMspOfferChange(mspId, { offerId: id, state: newState });
+      if (existing.tenantId) {
+        broadcastCustomerOfferChange(existing.tenantId, { offerId: id, state: newState });
+      }
+
+      res.json({ offer: updated });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.startsWith("Invalid transition") || message.includes("not found")) {
+        res.status(422).json({ error: message });
+        return;
+      }
+      logger.error({ err, mspId }, "PATCH /api/msp/sales-offers/:id/state failed");
+      apiErr(res, 500, "Failed to transition offer state");
+    }
+  },
+);
+
+// ── DELETE /api/msp/sales-offers/:id ─────────────────────────────────────────
+
+router.delete(
+  "/msp/sales-offers/:id",
+  requireRole("MSPOperator"),
+  requirePlanFeature("sales_offers"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = resolveMspId(req);
+    if (!mspId) { apiErr(res, 400, "mspId required"); return; }
+
+    try {
+      const id = parseInt(String(req.params["id"] ?? ""), 10);
+      if (isNaN(id)) { apiErr(res, 400, "Invalid offer id"); return; }
+
+      const [offer] = await db
+        .select({ id: salesOffersTable.id, state: salesOffersTable.state })
+        .from(salesOffersTable)
+        .where(and(eq(salesOffersTable.id, id), eq(salesOffersTable.mspId, mspId)))
+        .limit(1);
+      if (!offer) { apiErr(res, 404, "Offer not found"); return; }
+      if (offer.state !== "draft") {
+        apiErr(res, 422, "Only draft offers may be deleted");
+        return;
+      }
+
+      await db.delete(salesOffersTable).where(eq(salesOffersTable.id, id));
+      broadcastMspOfferChange(mspId, { offerId: id, deleted: true });
+      res.json({ deleted: true, id });
+    } catch (err) {
+      logger.error({ err, mspId }, "DELETE /api/msp/sales-offers/:id failed");
+      apiErr(res, 500, "Failed to delete offer");
+    }
+  },
+);
+
+export default router;
