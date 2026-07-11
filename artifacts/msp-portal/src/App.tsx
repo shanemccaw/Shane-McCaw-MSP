@@ -27,6 +27,8 @@ import OperatorTasksPage from "@/pages/operator-tasks";
 import DlqPage from "@/pages/dlq";
 import RunsPage from "@/pages/runs";
 import RunDetailPage from "@/pages/run-detail";
+import CustomerSlaPage from "@/pages/customer-sla";
+import CustomerScopePage from "@/pages/customer-scope";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -183,6 +185,12 @@ function Router() {
       </Route>
       <Route path="/customer-sow/:id">
         <ProtectedRoute component={CustomerSowPage} />
+      </Route>
+      <Route path="/customer-sla">
+        <ProtectedRoute component={CustomerSlaPage} />
+      </Route>
+      <Route path="/customer-scope">
+        <ProtectedRoute component={CustomerScopePage} />
       </Route>
 
       {/* Root redirect — role-aware */}

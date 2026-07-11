@@ -20,7 +20,9 @@ import {
   Clock,
   FileText,
   FolderOpen,
+  FolderSync,
   MessageSquare,
+  ShieldCheck,
   Zap,
 } from "lucide-react";
 
@@ -166,6 +168,36 @@ export default function CustomerHomePage() {
                 <div>
                   <p className="text-sm font-medium">Diagnostics</p>
                   <p className="text-xs text-muted-foreground">Offers & findings</p>
+                </div>
+                <ArrowRight className="size-3.5 text-muted-foreground ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/customer-sla">
+            <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
+              <CardContent className="flex items-center gap-3 py-5">
+                <div className="size-9 rounded-lg bg-emerald-500/15 flex items-center justify-center group-hover:bg-emerald-500/25 transition-colors">
+                  <ShieldCheck className="size-4 text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Service Levels</p>
+                  <p className="text-xs text-muted-foreground">Response & compliance</p>
+                </div>
+                <ArrowRight className="size-3.5 text-muted-foreground ml-auto" />
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/customer-scope">
+            <Card className="cursor-pointer hover:border-primary/50 transition-colors group">
+              <CardContent className="flex items-center gap-3 py-5">
+                <div className="size-9 rounded-lg bg-sky-500/15 flex items-center justify-center group-hover:bg-sky-500/25 transition-colors">
+                  <FolderSync className="size-4 text-sky-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Project Scope</p>
+                  <p className="text-xs text-muted-foreground">Scope & timeline</p>
                 </div>
                 <ArrowRight className="size-3.5 text-muted-foreground ml-auto" />
               </CardContent>
