@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson } from "lucide-react";
 import LiveMonitorPanel from "@/pages/LiveMonitorPanel";
+import EngineRuleEditor from "@/components/EngineRuleEditor";
 
 export interface EngineDefLite {
   key: string;
@@ -50,9 +51,6 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [def, setDef] = useState<EngineDefLite | null>(null);
   const [dashboard, setDashboard] = useState<DashboardResult | null>(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [config, setConfig] = useState<{ rules: ConfigRow[]; groups: ConfigRow[] } | null>(null);
-  const [configLoading, setConfigLoading] = useState(false);
-
   const [testTenantId, setTestTenantId] = useState("");
   const [testPayload, setTestPayload] = useState('{\n  "profileUpdates": {},\n  "parsedFindings": []\n}');
   const [testRunning, setTestRunning] = useState(false);
@@ -60,6 +58,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [previewResult, setPreviewResult] = useState<unknown | null>(null);
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [importing, setImporting] = useState(false);
+  const [importRevision, setImportRevision] = useState(0);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importJsonText, setImportJsonText] = useState("");
 
@@ -76,19 +75,6 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   }, [engineKey, fetchWithAuth, toast]);
 
-  const loadConfig = useCallback(async () => {
-    setConfigLoading(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/configuration`);
-      if (!res.ok) throw new Error("Failed to load configuration");
-      setConfig(await res.json());
-    } catch (err) {
-      toast({ title: "Configuration load failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setConfigLoading(false);
-    }
-  }, [engineKey, fetchWithAuth, toast]);
-
   const loadLogs = useCallback(async () => {
     try {
       const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/logs`);
@@ -102,9 +88,8 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
 
   useEffect(() => {
     void loadDashboard();
-    void loadConfig();
     void loadLogs();
-  }, [loadDashboard, loadConfig, loadLogs]);
+  }, [loadDashboard, loadLogs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,7 +210,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error((data as { error?: string }).error ?? "Import failed");
       toast({ title: "Import complete", description: `Imported ${(data as { imported?: number }).imported ?? 0} rule(s) across ${(data as { groupsImported?: number }).groupsImported ?? 0} group(s).` });
-      void loadConfig();
+      setImportRevision(v => v + 1);
     } catch (err) {
       toast({ title: "Import failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
@@ -366,40 +351,13 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               Download import template
             </Button>
           </div>
-          {configLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="w-4 h-4 animate-spin" />Loading…</div>
-          ) : (
-            <div className="space-y-4">
-              <Card>
-                <CardHeader><CardTitle className="text-sm">Rule groups ({config?.groups.length ?? 0})</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {(config?.groups ?? []).map(g => (
-                    <div key={g.id} className="text-xs border rounded p-2 flex items-center justify-between">
-                      <span>{g.signalKey}</span>
-                      <Badge variant="outline">{String(g.category ?? "")}</Badge>
-                    </div>
-                  ))}
-                  {(config?.groups ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No rule groups tagged for this engine yet.</p> : null}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader><CardTitle className="text-sm">Rules ({config?.rules.length ?? 0})</CardTitle></CardHeader>
-                <CardContent className="space-y-2">
-                  {(config?.rules ?? []).map(r => (
-                    <div key={r.id} className="text-xs border rounded p-2 flex items-center justify-between">
-                      <span>{r.signalKey}</span>
-                      <Badge variant="outline">{String(r.category ?? "")}</Badge>
-                    </div>
-                  ))}
-                  {(config?.rules ?? []).length === 0 ? <p className="text-sm text-muted-foreground">No rules tagged for this engine yet.</p> : null}
-                </CardContent>
-              </Card>
-              <p className="text-xs text-muted-foreground">
-                To edit rule/group weights and thresholds, use the Tenant Signals page — it manages the underlying
-                rows shared by all engines. Tag a rule's category as <code>{`${def?.categoryPrefix ?? ""}:...`}</code> to
-                surface it here.
-              </p>
-            </div>
+          {def && (
+            <EngineRuleEditor
+              engineKey={engineKey}
+              categoryPrefix={def.categoryPrefix}
+              engineLabel={def.label}
+              importRevision={importRevision}
+            />
           )}
         </TabsContent>
       </Tabs>
