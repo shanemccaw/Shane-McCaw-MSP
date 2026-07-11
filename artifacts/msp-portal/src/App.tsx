@@ -17,6 +17,10 @@ import WebhooksPage from "@/pages/webhooks";
 import InitiateOnboardingPage from "@/pages/initiate-onboarding";
 import AcceptAgreementPage from "@/pages/accept-agreement";
 import TrustPage from "@/pages/trust";
+import CustomerHomePage from "@/pages/customer-home";
+import CustomerDocumentsPage from "@/pages/customer-documents";
+import CustomerDiagnosticsPage from "@/pages/customer-diagnostics";
+import CustomerSowPage from "@/pages/customer-sow";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -92,11 +96,15 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   const { user, isLoading } = useAuth();
 
+  // Determine the default landing page based on role
+  const defaultLanding =
+    !isLoading && user?.mspRole === "CustomerUser" ? "/customer-home" : "/dashboard";
+
   return (
     <Switch>
       {/* Public routes */}
       <Route path="/login">
-        {!isLoading && user ? <Redirect to="/dashboard" /> : <LoginPage />}
+        {!isLoading && user ? <Redirect to={defaultLanding} /> : <LoginPage />}
       </Route>
       <Route path="/trust">
         <TrustPage />
@@ -107,7 +115,7 @@ function Router() {
         <AcceptAgreementPage />
       </Route>
 
-      {/* Protected routes */}
+      {/* MSP-facing pages */}
       <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
       </Route>
@@ -139,9 +147,31 @@ function Router() {
         <ProtectedRoute component={InitiateOnboardingPage} />
       </Route>
 
-      <Route path="/">
-        <Redirect to="/dashboard" />
+      {/* Customer-facing pages */}
+      <Route path="/customer-home">
+        <ProtectedRoute component={CustomerHomePage} />
       </Route>
+      <Route path="/customer-documents">
+        <ProtectedRoute component={CustomerDocumentsPage} />
+      </Route>
+      <Route path="/customer-diagnostics">
+        <ProtectedRoute component={CustomerDiagnosticsPage} />
+      </Route>
+      <Route path="/customer-sow/:id">
+        <ProtectedRoute component={CustomerSowPage} />
+      </Route>
+
+      {/* Root redirect — role-aware */}
+      <Route path="/">
+        {isLoading ? (
+          <div className="min-h-screen flex items-center justify-center bg-background">
+            <Loader2 className="size-6 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <Redirect to={defaultLanding} />
+        )}
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );

@@ -35,12 +35,14 @@ import {
   ChevronRight,
   Cog,
   FileText,
+  Home,
   LayoutDashboard,
   LogOut,
   Menu,
   Search,
   Shield,
   Users,
+  Zap,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -71,7 +73,35 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: "Overview",
     items: [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
+      {
+        icon: LayoutDashboard,
+        label: "Dashboard",
+        href: "/dashboard",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+    ],
+  },
+  {
+    label: "My Portal",
+    items: [
+      {
+        icon: Home,
+        label: "Home",
+        href: "/customer-home",
+        roles: ["CustomerUser"],
+      },
+      {
+        icon: FileText,
+        label: "Documents",
+        href: "/customer-documents",
+        roles: ["CustomerUser"],
+      },
+      {
+        icon: Zap,
+        label: "Diagnostics & Offers",
+        href: "/customer-diagnostics",
+        roles: ["CustomerUser"],
+      },
     ],
   },
   {
