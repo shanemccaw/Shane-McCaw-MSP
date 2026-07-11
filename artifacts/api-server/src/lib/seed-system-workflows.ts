@@ -180,12 +180,13 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         {
           id: "save",
-          type: "system_action",
+          type: "sql_query",
           position: { x: 300, y: 860 },
           data: {
-            nodeType: "system_action",
+            nodeType: "sql_query",
             label: "Save Phases",
-            task: "save_presentation_phases",
+            query: "WITH raw AS (SELECT gen_random_uuid()::text AS id, COALESCE(elem->>'title','Phase') AS title, COALESCE(elem->>'description','') AS descr, COALESCE(elem->'subtasks','[]'::jsonb) AS subtasks, COALESCE((elem->>'priceWeight')::numeric, 1.0/GREATEST(jsonb_array_length($1::jsonb),1)) AS wt, ordinality AS rn FROM jsonb_array_elements($1::jsonb) WITH ORDINALITY AS t(elem, ordinality)), total AS (SELECT GREATEST(SUM(wt),0.0001) AS s FROM raw), priced AS (SELECT id, title, descr, subtasks, rn, ROUND($2::numeric * wt / (SELECT s FROM total), 2) AS price FROM raw), upd AS (UPDATE quick_win_presentations SET sow_phases=(SELECT jsonb_agg(jsonb_build_object('id',id,'title',title,'description',descr,'price',price,'selected',true,'subtasks',subtasks) ORDER BY rn) FROM priced), selected_phase_ids=(SELECT jsonb_agg(id ORDER BY rn) FROM priced), updated_at=NOW() WHERE id=$3::int RETURNING id) SELECT (SELECT COUNT(*)::int FROM priced) AS phase_count",
+            params: ["{{value}}", "{{totalPrice}}", "{{presentationId}}"],
           },
         },
         {
@@ -213,12 +214,13 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         {
           id: "save_title",
-          type: "system_action",
+          type: "sql_query",
           position: { x: 300, y: 1280 },
           data: {
-            nodeType: "system_action",
+            nodeType: "sql_query",
             label: "Save Project Title",
-            task: "save_presentation_title",
+            query: "UPDATE quick_win_presentations SET project_title=$1, updated_at=NOW() WHERE id=$2::int RETURNING project_title AS \"projectTitle\"",
+            params: ["{{value.projectTitle}}", "{{presentationId}}"],
           },
         },
         {
@@ -309,9 +311,9 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     triggerType: "startup",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Startup" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Reconcile Orphaned Runs", task: "reconcile_orphaned_runs" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start", type: "start",                   position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Startup" } },
+        { id: "act",   type: "reconcile_orphaned_runs", position: { x: 100, y: 230 }, data: { nodeType: "reconcile_orphaned_runs", label: "Reconcile Orphaned Runs", task: "reconcile_orphaned_runs" } },
+        { id: "end",   type: "end",                     position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
       ],
       edges: [
         { id: "e1", source: "start", target: "act" },
@@ -326,9 +328,9 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     cron: "*/5 * * * *",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Reconcile Late Stuck-Queued", task: "reconcile_late_stuck_queued" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start", type: "start",                   position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
+        { id: "act",   type: "reconcile_orphaned_runs", position: { x: 100, y: 230 }, data: { nodeType: "reconcile_orphaned_runs", label: "Reconcile Late Stuck-Queued", task: "reconcile_late_stuck_queued" } },
+        { id: "end",   type: "end",                     position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
       ],
       edges: [
         { id: "e1", source: "start", target: "act" },
@@ -343,47 +345,129 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     cron: "0 3 * * *",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 03:00" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Cleanup Old Runs", task: "cleanup_old_runs" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start",  type: "start",     position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 03:00" } },
+        {
+          id: "cleanup",
+          type: "sql_query",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "sql_query",
+            label: "Delete Old Runs",
+            query: "WITH deleted AS (DELETE FROM wf_runs WHERE created_at < NOW() - INTERVAL '90 days' RETURNING id) SELECT COUNT(*)::int AS deleted FROM deleted",
+          },
+        },
+        { id: "end",    type: "end",      position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
       ],
       edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act",   target: "end" },
+        { id: "e1", source: "start",   target: "cleanup" },
+        { id: "e2", source: "cleanup", target: "end"     },
       ],
     },
   },
   {
     name: "__system__: Escalation Check",
-    description: "Daily check (08:00 UTC) for manual script cards stalled in Waiting on Customer.",
+    description: "Daily check (08:00 UTC) for manual script cards stalled in Waiting on Customer for more than 7 days. Creates an in-app notification if any are found.",
     triggerType: "schedule",
     cron: "0 8 * * *",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 08:00" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Check Escalations", task: "check_escalations" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 08:00" } },
+        {
+          id: "check",
+          type: "sql_query",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "sql_query",
+            label: "Find Stalled Cards",
+            query: "SELECT COUNT(*)::int AS stalled_count FROM kanban_tasks kt JOIN projects p ON p.id = kt.project_id WHERE kt.\"column\" = 'waiting_on_customer' AND kt.task_type = 'manualScript' AND kt.updated_at < NOW() - INTERVAL '7 days' AND (kt.task_metadata->>'lastEscalationAlertSentAt' IS NULL OR (kt.task_metadata->>'lastEscalationAlertSentAt')::timestamptz < NOW() - INTERVAL '24 hours')",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 100, y: 360 },
+          data: { nodeType: "condition", label: "Any Stalled?", expression: "stalled_count > 0" },
+        },
+        {
+          id: "notify",
+          type: "create_notification",
+          position: { x: 100, y: 490 },
+          data: {
+            nodeType: "create_notification",
+            label: "Escalation Alert",
+            title: "{{stalled_count}} manual script card(s) need escalation",
+            body: "{{stalled_count}} kanban card(s) have been in Waiting on Customer for more than 7 days without a recent escalation alert.",
+            type: "general",
+          },
+        },
+        { id: "end",      type: "end", position: { x: 100, y: 620 }, data: { nodeType: "end", label: "Done" } },
+        { id: "end_skip", type: "end", position: { x: 250, y: 360 }, data: { nodeType: "end", label: "No escalations" } },
       ],
       edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act",   target: "end" },
+        { id: "e1", source: "start",  target: "check"    },
+        { id: "e2", source: "check",  target: "branch"   },
+        { id: "e3", source: "branch", target: "notify",   sourceHandle: "true"  },
+        { id: "e4", source: "branch", target: "end_skip", sourceHandle: "false" },
+        { id: "e5", source: "notify", target: "end"      },
       ],
     },
   },
   {
     name: "__system__: Monthly Insights",
-    description: "Monthly insights automation runner (cron 0 9 1 * *) — fires all enabled insights automations whose next_run_at has arrived.",
+    description: "Monthly insights automation runner (cron 0 9 1 * *) — claims all enabled insights automations whose next_run_at has arrived and advances their schedule by 30 days.",
     triggerType: "schedule",
     cron: "0 9 1 * *",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 1st of month" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Run Monthly Insights", task: "run_monthly_insights" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron 1st of month" } },
+        {
+          id: "fix_stale",
+          type: "sql_query",
+          position: { x: 100, y: 230 },
+          data: {
+            nodeType: "sql_query",
+            label: "Fix Stale Automations",
+            query: "UPDATE insights_automations SET next_run_at = NOW() WHERE enabled = true AND next_run_at IS NULL",
+          },
+        },
+        {
+          id: "claim",
+          type: "sql_query",
+          position: { x: 100, y: 360 },
+          data: {
+            nodeType: "sql_query",
+            label: "Claim Due Automations",
+            query: "WITH due AS (SELECT id FROM insights_automations WHERE enabled = true AND next_run_at IS NOT NULL AND next_run_at <= NOW() ORDER BY id), claimed AS (UPDATE insights_automations SET next_run_at = NOW() + INTERVAL '30 days' WHERE id IN (SELECT id FROM due)) SELECT COUNT(*)::int AS fired_count FROM due",
+          },
+        },
+        {
+          id: "branch",
+          type: "condition",
+          position: { x: 100, y: 490 },
+          data: { nodeType: "condition", label: "Any Fired?", expression: "fired_count > 0" },
+        },
+        {
+          id: "notify",
+          type: "create_notification",
+          position: { x: 100, y: 620 },
+          data: {
+            nodeType: "create_notification",
+            label: "Insights Run Report",
+            title: "Monthly Insights: {{fired_count}} automation(s) scheduled",
+            body: "{{fired_count}} insights automation(s) were claimed this cycle. Their next_run_at windows have been advanced by 30 days.",
+            type: "general",
+          },
+        },
+        { id: "end",      type: "end", position: { x: 100, y: 750 }, data: { nodeType: "end", label: "Done" } },
+        { id: "end_skip", type: "end", position: { x: 250, y: 490 }, data: { nodeType: "end", label: "Nothing due" } },
       ],
       edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act",   target: "end" },
+        { id: "e1", source: "start",    target: "fix_stale" },
+        { id: "e2", source: "fix_stale", target: "claim"    },
+        { id: "e3", source: "claim",    target: "branch"    },
+        { id: "e4", source: "branch",   target: "notify",   sourceHandle: "true"  },
+        { id: "e5", source: "branch",   target: "end_skip", sourceHandle: "false" },
+        { id: "e6", source: "notify",   target: "end"       },
       ],
     },
   },
@@ -393,13 +477,27 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
     triggerType: "startup",
     graph: {
       nodes: [
-        { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start", label: "kanban.card_moved" } },
-        { id: "act",   type: "system_action",  position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Auto-fire Kanban Card", task: "auto_fire_kanban" } },
-        { id: "end",   type: "end",            position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "kanban.card_moved" } },
+        {
+          id: "guard",
+          type: "condition",
+          position: { x: 100, y: 230 },
+          data: { nodeType: "condition", label: "Has Client?", expression: "clientUserId > 0" },
+        },
+        {
+          id: "execute",
+          type: "monitor_execute_package",
+          position: { x: 100, y: 360 },
+          data: { nodeType: "monitor_execute_package", label: "Auto-fire Card", clientId: "{{clientUserId}}", action: "{{action}}" },
+        },
+        { id: "end",      type: "end", position: { x: 100, y: 490 }, data: { nodeType: "end", label: "Done" } },
+        { id: "end_skip", type: "end", position: { x: 250, y: 230 }, data: { nodeType: "end", label: "No client — skip" } },
       ],
       edges: [
-        { id: "e1", source: "start", target: "act" },
-        { id: "e2", source: "act",   target: "end" },
+        { id: "e1", source: "start",   target: "guard"    },
+        { id: "e2", source: "guard",   target: "execute",  sourceHandle: "true"  },
+        { id: "e3", source: "guard",   target: "end_skip", sourceHandle: "false" },
+        { id: "e4", source: "execute", target: "end"       },
       ],
     },
   },
@@ -1132,6 +1230,163 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify("{{clientUserId}}")],
         );
         logger.info({ defId }, "seed-system-workflows: patched SOW Generation — fixed clientId field contract for generate_document, update_m365_profile, and update_intelligence_tables nodes");
+      } else if (seed.name === "Presentation Phase Generator") {
+        // Patch v1: replace deprecated system_action nodes with composable sql_query nodes.
+        // Guard: fires when the save node still carries type:"system_action".
+        const savePhrasesQuery = "WITH raw AS (SELECT gen_random_uuid()::text AS id, COALESCE(elem->>'title','Phase') AS title, COALESCE(elem->>'description','') AS descr, COALESCE(elem->'subtasks','[]'::jsonb) AS subtasks, COALESCE((elem->>'priceWeight')::numeric, 1.0/GREATEST(jsonb_array_length($2::jsonb),1)) AS wt, ordinality AS rn FROM jsonb_array_elements($2::jsonb) WITH ORDINALITY AS t(elem, ordinality)), total AS (SELECT GREATEST(SUM(wt),0.0001) AS s FROM raw), priced AS (SELECT id, title, descr, subtasks, rn, ROUND($3::numeric * wt / (SELECT s FROM total), 2) AS price FROM raw), upd AS (UPDATE quick_win_presentations SET sow_phases=(SELECT jsonb_agg(jsonb_build_object('id',id,'title',title,'description',descr,'price',price,'selected',true,'subtasks',subtasks) ORDER BY rn) FROM priced), selected_phase_ids=(SELECT jsonb_agg(id ORDER BY rn) FROM priced), updated_at=NOW() WHERE id=$4::int RETURNING id) SELECT (SELECT COUNT(*)::int FROM priced) AS phase_count";
+        const saveTitleQuery = "UPDATE quick_win_presentations SET project_title=$1, updated_at=NOW() WHERE id=$2::int RETURNING project_title AS \"projectTitle\"";
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->>'id' = 'save' AND node->>'type' = 'system_action'
+                      THEN jsonb_build_object(
+                             'id', 'save', 'type', 'sql_query',
+                             'position', node->'position',
+                             'data', jsonb_build_object(
+                               'nodeType', 'sql_query', 'label', 'Save Phases',
+                               'query', $2::text,
+                               'params', $3::jsonb
+                             ))
+                      WHEN node->>'id' = 'save_title' AND node->>'type' = 'system_action'
+                      THEN jsonb_build_object(
+                             'id', 'save_title', 'type', 'sql_query',
+                             'position', node->'position',
+                             'data', jsonb_build_object(
+                               'nodeType', 'sql_query', 'label', 'Save Project Title',
+                               'query', $4::text,
+                               'params', $5::jsonb
+                             ))
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> '[{"id":"save","type":"system_action"}]'`,
+          [
+            defId,
+            savePhrasesQuery,
+            JSON.stringify(["{{value}}", "{{totalPrice}}", "{{presentationId}}"]),
+            saveTitleQuery,
+            JSON.stringify(["{{value.projectTitle}}", "{{presentationId}}"]),
+          ],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Presentation Phase Generator — replaced system_action nodes with sql_query");
+      } else if (seed.name === "__system__: Orphan Reconciliation") {
+        // Patch v1: replace system_action node with reconcile_orphaned_runs typed node.
+        // Guard: fires when the act node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->>'id' = 'act' AND node->>'type' = 'system_action'
+                      THEN jsonb_build_object(
+                             'id', 'act', 'type', 'reconcile_orphaned_runs',
+                             'position', node->'position',
+                             'data', jsonb_build_object(
+                               'nodeType', 'reconcile_orphaned_runs',
+                               'label', 'Reconcile Orphaned Runs',
+                               'task', 'reconcile_orphaned_runs'
+                             ))
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Orphan Reconciliation — replaced system_action with reconcile_orphaned_runs");
+      } else if (seed.name === "__system__: Late Auto-Fire Reconciliation") {
+        // Patch v1: replace system_action node with reconcile_orphaned_runs typed node (task: reconcile_late_stuck_queued).
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = jsonb_set(
+                graph,
+                '{nodes}',
+                (
+                  SELECT jsonb_agg(
+                    CASE
+                      WHEN node->>'id' = 'act' AND node->>'type' = 'system_action'
+                      THEN jsonb_build_object(
+                             'id', 'act', 'type', 'reconcile_orphaned_runs',
+                             'position', node->'position',
+                             'data', jsonb_build_object(
+                               'nodeType', 'reconcile_orphaned_runs',
+                               'label', 'Reconcile Late Stuck-Queued',
+                               'task', 'reconcile_late_stuck_queued'
+                             ))
+                      ELSE node
+                    END
+                  )
+                  FROM jsonb_array_elements(graph->'nodes') AS node
+                )
+              )
+           WHERE definition_id = $1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Late Auto-Fire Reconciliation — replaced system_action with reconcile_orphaned_runs");
+      } else if (seed.name === "__system__: Workflow Cleanup") {
+        // Patch v1: replace system_action node with sql_query DELETE and replace edges.
+        // Guard: fires when the act node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Workflow Cleanup — replaced system_action with sql_query");
+      } else if (seed.name === "__system__: Escalation Check") {
+        // Patch v1: replace single system_action node with sql_query + condition + create_notification graph.
+        // Guard: fires when the act node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Escalation Check — replaced system_action with composable sql_query + condition + notification graph");
+      } else if (seed.name === "__system__: Monthly Insights") {
+        // Patch v1: replace single system_action node with fix_stale + claim sql_queries + condition + notification graph.
+        // Guard: fires when the act node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Monthly Insights — replaced system_action with sql_query + condition + notification graph");
+      } else if (seed.name === "__system__: Kanban Auto-fire") {
+        // Patch v1: replace single system_action node with condition + monitor_execute_package graph.
+        // Guard: fires when the act node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"act","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire — replaced system_action with condition + monitor_execute_package");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)

@@ -31,3 +31,4 @@
 - [SOW debug page pattern](sow-debug-page.md) — testMode generation + correlationId ring buffer lets an admin debug page reuse real generation logic without persisting or duplicating it
 - [Engine registry pattern](engine-registry-pattern.md) — 7 intelligence engines share one EngineDef contract + generic admin routes/EnginePanel UI instead of per-engine dashboards
 - [MSP Portal Foundation](msp-portal-foundation.md) — portal at /portal/, 15-min JWT + 7-day refresh, ROLE_ORDER RBAC, ownerType auto-derived in event bus, msp.test.ts JWT mock pattern
+- [system_action retirement pattern](system-action-retirement.md) — how to promote an opaque system_action task into a documented composable node type; WfNode union in lib/db/src/schema/index.ts must be updated; compat patches replace live graph nodes via jsonb_set or full graph swap guarded by @> '[{"type":"system_action"}]'

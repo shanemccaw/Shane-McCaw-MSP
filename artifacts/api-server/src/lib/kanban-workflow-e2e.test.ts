@@ -5,13 +5,14 @@
  *   emitWorkflowEvent('kanban.card_moved', { action, clientUserId })
  *     → trigger matched in wf_triggers
  *     → fireWorkflowForDefinition creates a run
- *     → executeWorkflowRun BFS traverses the kanban auto-fire graph
- *     → system_action node calls handleSystemAction('auto_fire_kanban', payload)
- *     → handler calls the correct downstream function(s) based on action
+ *     → executeWorkflowRun BFS traverses the kanban auto-fire graph:
+ *         start → condition (clientUserId > 0) → monitor_execute_package → end
+ *     → monitor_execute_package node calls the correct kanban-auto-fire function
+ *       based on the `action` field in the payload
  *
  * Uses Vitest because Vitest resolves TypeScript imports transparently
  * (no explicit .ts extensions needed), which lets it stub the module graph
- * through the real workflow-executor → system-action-handlers chain.
+ * through the real workflow-executor → kanban-auto-fire chain.
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
@@ -28,15 +29,21 @@ const state = vi.hoisted(() => ({
 }));
 
 // ── The kanban auto-fire workflow graph (matches seed-system-workflows.ts) ─────
+// start → condition (clientUserId > 0) → monitor_execute_package → end
+//                                      ↘ end_skip (no client)
 const KANBAN_GRAPH = {
   nodes: [
-    { id: "start", type: "start",         position: { x: 100, y: 100 }, data: { nodeType: "start",         label: "kanban.card_moved" } },
-    { id: "act",   type: "system_action", position: { x: 100, y: 230 }, data: { nodeType: "system_action", label: "Auto-fire Kanban Card", task: "auto_fire_kanban" } },
-    { id: "end",   type: "end",           position: { x: 100, y: 360 }, data: { nodeType: "end",            label: "Done" } },
+    { id: "start",    type: "start",                   position: { x: 100, y: 100 }, data: { nodeType: "start",                   label: "kanban.card_moved" } },
+    { id: "guard",    type: "condition",                position: { x: 100, y: 230 }, data: { nodeType: "condition",                label: "Has Client?",       expression: "clientUserId > 0" } },
+    { id: "execute",  type: "monitor_execute_package",  position: { x: 100, y: 360 }, data: { nodeType: "monitor_execute_package",  label: "Auto-fire Card",    clientId: "{{clientUserId}}", action: "{{action}}" } },
+    { id: "end",      type: "end",                      position: { x: 100, y: 490 }, data: { nodeType: "end",                      label: "Done" } },
+    { id: "end_skip", type: "end",                      position: { x: 250, y: 230 }, data: { nodeType: "end",                      label: "No client — skip" } },
   ],
   edges: [
-    { id: "e1", source: "start", target: "act" },
-    { id: "e2", source: "act",   target: "end" },
+    { id: "e1", source: "start",   target: "guard"    },
+    { id: "e2", source: "guard",   target: "execute",  sourceHandle: "true"  },
+    { id: "e3", source: "guard",   target: "end_skip", sourceHandle: "false" },
+    { id: "e4", source: "execute", target: "end"       },
   ],
 };
 
@@ -121,8 +128,10 @@ vi.mock("./kanban-auto-fire", () => ({
     state.documentCalls++;
     state.lastDocumentClientId = clientUserId;
   },
-  reconcileOrphanedRuns:  async () => {},
-  reconcileStalledPhases: async () => {},
+  autoFireRunWorkflowCards:            async () => {},
+  reconcileOrphanedRuns:               async () => {},
+  reconcileStalledPhases:              async () => {},
+  reconcileLateStuckQueuedCompletions: async () => {},
 }));
 
 // ── Mock azure-automation (no real Azure calls) ───────────────────────────────
@@ -186,7 +195,9 @@ function seedDbQueue(runPayload: Record<string, unknown>) {
     // 6. executeWorkflowRun: SELECT version WHERE id=5
     [FAKE_VERSION],
     // (UPDATE wf_runs SET status='running' — no-op via update mock)
-    // 7-9. BFS cancellation checks (one per graph node: start, act, end)
+    // 7-10. BFS cancellation checks (one per traversed node: start, guard, execute, end)
+    // For the no-clientUserId path only 3 are consumed (start, guard, end_skip); extra is harmless.
+    [{ status: "running" }],
     [{ status: "running" }],
     [{ status: "running" }],
     [{ status: "running" }],
@@ -279,8 +290,8 @@ describe("kanban.card_moved e2e — event name mismatch (no matching trigger)", 
 
 // =============================================================================
 // Edge case: missing clientUserId in the event payload
-// The workflow still runs (trigger matches) but handleSystemAction must
-// return { skipped: true } without crashing and without calling either function.
+// The workflow still runs (trigger matches) but the condition node evaluates
+// `clientUserId > 0` as false, routing to end_skip without calling any function.
 // =============================================================================
 
 describe("kanban.card_moved e2e — missing clientUserId in payload", () => {

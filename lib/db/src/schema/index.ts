@@ -1983,8 +1983,10 @@ export interface WfNode {
     // Data
     | "find_object"
     | "compose"
-    // System
-    | "system_action"
+    // System (internal / seeded workflows)
+    | "system_action"           // retired — kept for backward-compat graph parsing only
+    | "reconcile_orphaned_runs" // replaces system_action: reconcile_orphaned_runs / reconcile_late_stuck_queued
+    | "monitor_execute_package" // replaces system_action: auto_fire_kanban
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

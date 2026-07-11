@@ -79,8 +79,8 @@ import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
-import { handleSystemAction } from "./system-action-handlers";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
+import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -813,6 +813,15 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       logger.info({ psTarget, psSound }, "workflow-executor [dry-run]: play_sound would play");
       return { dryRun: true, soundPlayed: false, soundTarget: psTarget, skipped: true };
     }
+
+    case "reconcile_orphaned_runs":
+      return { dryRun: true, reconciled: false, task: (node.data.task as string | undefined) ?? "reconcile_orphaned_runs", note: "dry run — reconciliation skipped" };
+
+    case "monitor_execute_package":
+      return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "", note: "dry run — kanban auto-fire skipped" };
+
+    case "system_action":
+      return { dryRun: true, skipped: true, task: node.data.task ?? "(none)", note: "system_action is retired — workflow graph needs re-seeding" };
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -2111,22 +2120,43 @@ async function executeNode(
             }
           }
         } else if (actionType === "sql_query") {
-          // Execute a read-only SQL query and spread first-row fields into the step output
-          // so downstream condition nodes can branch on them (e.g. status, age_ms).
-          // {{token}} placeholders in the query are resolved from the current payload via interp().
-          // WARNING: values are string-interpolated — only use with trusted internal event payloads.
+          // Execute a SQL statement and spread first-row fields into the step output.
+          // Supports both interpolated queries and parameterized queries via node.data.params.
+          //
+          // node.data.params — optional JSON array of template expressions. Each expression is
+          // resolved with resolveExprNative() and passed as a positional parameter ($1, $2, ...).
+          // Objects and arrays are serialized to JSON string for PostgreSQL JSONB parameters.
+          // Use this for trusted-but-interpolation-unsafe values (e.g. AI-generated JSON).
+          //
+          // {{token}} interpolation in the query text is also supported for simple scalar values.
+          // WARNING: string-interpolated values are never sanitized — only use with trusted sources.
           const rawQuery = node.data.query as string | undefined;
           if (!rawQuery?.trim()) {
             nodeError = true;
             output = { error: "sql_query: node.data.query is empty" };
           } else {
             const interpolatedQuery = interp(rawQuery, payload) ?? rawQuery;
+            // Build positional params from node.data.params array (optional)
+            const rawParamsField = node.data.params as unknown;
+            const queryParams: unknown[] = [];
+            if (Array.isArray(rawParamsField)) {
+              for (const paramExpr of rawParamsField as string[]) {
+                const native = resolveExprNative(String(paramExpr), payload);
+                const pgVal = (native !== null && native !== undefined && typeof native === "object")
+                  ? JSON.stringify(native)
+                  : native;
+                queryParams.push(pgVal);
+              }
+            }
             try {
-              const result = await pool.query(interpolatedQuery);
+              const result = await pool.query(
+                interpolatedQuery,
+                queryParams.length > 0 ? queryParams : undefined,
+              );
               const firstRow = (result.rows[0] as Record<string, unknown> | undefined) ?? null;
               output = firstRow
                 ? { rowCount: result.rowCount ?? result.rows.length, ...firstRow }
-                : { rowCount: 0 };
+                : { rowCount: result.rowCount ?? 0 };
               logger.info({ runId, rowCount: result.rowCount ?? result.rows.length }, "wf-executor: sql_query node executed");
             } catch (queryErr) {
               nodeError = true;
@@ -4155,12 +4185,12 @@ async function executeNode(
       }
 
       case "save_presentation_phases": {
-        const spPayload = {
-          presentationId: interp(node.data.presentationId as string | undefined, payload),
-          totalPrice: interp(node.data.totalPrice as string | undefined, payload),
-          value: interp(node.data.value as string | undefined, payload),
-        };
-        output = await handleSystemAction("save_presentation_phases", spPayload);
+        // This node type is retired. The seeded Presentation Phase Generator now uses
+        // a sql_query node with a CTE that computes price weights and upserts the
+        // quick_win_presentations row directly. Graphs still using this node type
+        // receive a compat patch from seedSystemWorkflows on next server startup.
+        logger.warn({ runId, nodeId: node.id }, "wf-executor: save_presentation_phases is retired — graph needs re-seeding via seedSystemWorkflows");
+        output = { skipped: true, note: "save_presentation_phases is retired — use sql_query instead" };
         break;
       }
 
@@ -5202,12 +5232,78 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       }
 
       case "system_action": {
-        const task = node.data.task as string | undefined;
-        if (!task) {
-          output = { skipped: true, reason: "no task configured" };
+        // RETIRED NODE TYPE — system_action has been removed from the platform.
+        // Seeded workflows that still carry this node type (pre-migration DBs) will
+        // receive a no-op result and a warning log. Admins should let the server
+        // restart to pick up the rebuilt seeded graphs via seed-system-workflows.ts.
+        const legacyTask = node.data.task as string | undefined;
+        logger.warn({ runId, nodeId: node.id, task: legacyTask },
+          "wf-executor: system_action node is retired — returning no-op. Allow the server to re-seed this workflow.");
+        output = { skipped: true, reason: "system_action is retired — workflow graph needs re-seeding" };
+        break;
+      }
+
+      case "reconcile_orphaned_runs": {
+        // Promoted node type: inspects live process state after a restart to recover
+        // orphaned kanban runs, stalled phases, and late stuck-queued completions.
+        // This is the one legitimate "internal" node because inspecting live process
+        // state is not expressible generically with sql_query or other node types.
+        const rorTask = (node.data.task as string | undefined) ?? "reconcile_orphaned_runs";
+        if (rorTask === "reconcile_late_stuck_queued") {
+          await reconcileLateStuckQueuedCompletions();
+          logger.info("wf-executor: reconcile_orphaned_runs — reconcile_late_stuck_queued completed");
+          output = { reconciled: true, task: rorTask };
         } else {
-          output = await handleSystemAction(task, payload);
+          await reconcileOrphanedRuns();
+          await reconcileStalledPhases();
+          await reconcileLateStuckQueuedCompletions();
+          logger.info("wf-executor: reconcile_orphaned_runs completed");
+          output = { reconciled: true, task: rorTask };
         }
+        break;
+      }
+
+      case "monitor_execute_package": {
+        // Fires the appropriate kanban auto-fire function based on the `action`
+        // field in the payload (set by the upstream kanban.card_moved event).
+        //   action = "script"   → autoFireFirstBacklogScript (Azure runbook execution)
+        //   action = "document" → autoFireDocumentCard (AI document generation)
+        //   action = "workflow" → autoFireRunWorkflowCards (child workflow launch)
+        // Calls are fire-and-forget; errors are logged as warnings (non-fatal).
+        const mepClientIdRaw = interp(node.data.clientId as string | undefined, payload)
+          ?? String((payload.clientUserId as number | string | undefined) ?? "");
+        const mepClientId = mepClientIdRaw ? parseInt(mepClientIdRaw, 10) : NaN;
+        const mepAction   = (interp(node.data.action as string | undefined, payload)
+          ?? String(payload.action ?? "")) as string;
+
+        if (isNaN(mepClientId)) {
+          logger.warn({ runId, nodeId: node.id }, "monitor_execute_package: no clientId — skipping");
+          output = { skipped: true, reason: "no clientId" };
+          break;
+        }
+
+        const mepFires: string[] = [];
+        if (mepAction === "script" || !mepAction) {
+          void autoFireFirstBacklogScript(mepClientId).catch((err) => {
+            logger.warn({ err, mepClientId }, "monitor_execute_package: script fire error (non-fatal)");
+          });
+          mepFires.push("script");
+        }
+        if (mepAction === "document") {
+          void autoFireDocumentCard(mepClientId).catch((err) => {
+            logger.warn({ err, mepClientId }, "monitor_execute_package: document fire error (non-fatal)");
+          });
+          mepFires.push("document");
+        }
+        if (mepAction === "workflow") {
+          void autoFireRunWorkflowCards(mepClientId).catch((err) => {
+            logger.warn({ err, mepClientId }, "monitor_execute_package: workflow fire error (non-fatal)");
+          });
+          mepFires.push("workflow");
+        }
+
+        logger.info({ runId, mepClientId, mepAction, mepFires }, "wf-executor: monitor_execute_package dispatched");
+        output = { fired: true, clientId: mepClientId, action: mepAction, dispatched: mepFires };
         break;
       }
 

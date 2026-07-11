@@ -1401,18 +1401,54 @@ All seven share one config shape and one output shape — only the underlying en
 
 These node types are used internally by the executor and seeded system workflows. They are not available in the builder's node palette for custom workflows.
 
-### `system_action`
+### `reconcile_orphaned_runs`
 
-Executes a named server-side task registered in the executor. Used exclusively by system workflows. The `task` field maps to an internal function.
+Inspects live in-process state after a server restart to recover kanban cards orphaned by a mid-run crash. Not expressible as a generic `sql_query` because it requires access to live process state (in-memory run maps and timers). Used by the Orphan Reconciliation and Late Auto-Fire Reconciliation seeded system workflows.
 
 | Config Field | Type | Description |
 |---|---|---|
-| `task` | string | Internal task name: `reconcile_orphaned_runs`, `cleanup_old_runs`, `check_escalations`, `run_monthly_insights`, `auto_fire_kanban`, `save_presentation_phases`, `save_presentation_title` |
+| `task` | string | One of: `reconcile_orphaned_runs` (default — runs all three reconcilers), `reconcile_late_stuck_queued` (only fixes stuck-queued completions) |
 | `label` | string | Display label |
 
-**Outputs:** Task-dependent.
+**Outputs:**
 
-**Dry-run:** Task is executed normally (system tasks are non-destructive reads/cleanup operations).
+| Field | Type | Description |
+|---|---|---|
+| `reconciled` | boolean | Always `true` on success |
+| `task` | string | The task name that was executed |
+
+**Dry-run:** Returns `{ dryRun: true, reconciled: false, task, note }` — reconciliation is skipped.
+
+---
+
+### `monitor_execute_package`
+
+Dispatches the appropriate kanban auto-fire function based on the `action` field in the payload. Calls are **fire-and-forget** — the node completes immediately after dispatching without waiting for the downstream Azure runbook or document generation to finish. Used by the Kanban Auto-fire seeded system workflow.
+
+| Config Field | Type | Description |
+|---|---|---|
+| `clientId` | template string | Client user ID to auto-fire for (e.g. `{{clientUserId}}`). Falls back to `payload.clientUserId` when absent. |
+| `action` | template string | Dispatch action: `"script"` (or empty) → `autoFireFirstBacklogScript`; `"document"` → `autoFireDocumentCard`; `"workflow"` → `autoFireRunWorkflowCards`. Falls back to `payload.action` when absent. |
+| `label` | string | Display label |
+
+**Outputs:**
+
+| Field | Type | Description |
+|---|---|---|
+| `fired` | boolean | `true` if at least one function was dispatched |
+| `clientId` | number | Resolved client user ID |
+| `action` | string | Resolved action string |
+| `dispatched` | string[] | List of dispatched action names (e.g. `["script"]`) |
+
+If `clientId` cannot be resolved or is `NaN`, the node returns `{ skipped: true, reason: "no clientId" }` without dispatching anything.
+
+**Dry-run:** Returns `{ dryRun: true, fired: false, clientId: 0, action, note }` — no functions are called.
+
+---
+
+### `system_action` _(retired)_
+
+**This node type is retired.** All seeded system workflows that previously used `system_action` have been rebuilt using composable typed nodes (`sql_query`, `reconcile_orphaned_runs`, `monitor_execute_package`). Any graph still containing a `system_action` node will receive a compat patch on next server startup via `seedSystemWorkflows`. In live runs, the executor logs a deprecation warning and returns `{ skipped: true }` without performing any action.
 
 ---
 
