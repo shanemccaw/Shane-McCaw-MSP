@@ -42,6 +42,7 @@ import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
 import ReportsPage from "@/pages/reports";
+import SalesBundlesPage from "@/pages/sales-bundles";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
@@ -285,6 +286,11 @@ function Router() {
       {/* AI Billing */}
       <Route path="/ai-billing">
         <ProtectedRoute component={AiBillingPage} />
+      </Route>
+
+      {/* Sales Bundles */}
+      <Route path="/sales-bundles">
+        <ProtectedRoute component={SalesBundlesPage} />
       </Route>
 
       {/* Root redirect — role-aware */}

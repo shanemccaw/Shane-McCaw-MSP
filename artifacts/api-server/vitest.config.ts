@@ -35,6 +35,7 @@ export default defineConfig({
       "src/lib/__tests__/monitor-executor.test.ts",
       "src/lib/msp-mailer.test.ts",
       "src/routes/msp-custom-domain.test.ts",
+      "src/routes/msp-sales-bundles.test.ts",
     ],
     coverage: {
       provider: "v8",

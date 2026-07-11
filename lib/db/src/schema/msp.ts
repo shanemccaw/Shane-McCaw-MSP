@@ -1237,6 +1237,10 @@ export const monitoringPackagesTable = pgTable("monitoring_packages", {
   description: text("description"),
   engines: jsonb("engines").$type<string[]>().notNull().default([]),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  /** Platform-set cost to the MSP per assigned tenant per month (in cents). 0 = no charge. */
+  platformCostCents: integer("platform_cost_cents").notNull().default(0),
+  /** Which plan tier is required to include this package in a Sales Bundle. null = all tiers. */
+  requiredPlanFeature: text("required_plan_feature"),
   createdByAdminId: integer("created_by_admin_id"),
   updatedByAdminId: integer("updated_by_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1428,3 +1432,74 @@ export const mspCustomDomainsTable = pgTable("msp_custom_domains", {
 
 export type MspCustomDomain = typeof mspCustomDomainsTable.$inferSelect;
 export type InsertMspCustomDomain = typeof mspCustomDomainsTable.$inferInsert;
+
+// ── MSP Sales Bundles ──────────────────────────────────────────────────────────
+// MSP-owned metadata representing a named, priced collection of Monitoring
+// Packages that MSPs market and sell to their customers. The MSP never authors
+// the underlying Monitor Checks or Monitoring Packages — those stay
+// platform-only. The MSP sets their own resale price with unrestricted markup.
+
+export const MSP_SALES_BUNDLE_STATUS = ["draft", "active", "archived"] as const;
+export type MspSalesBundleStatus = typeof MSP_SALES_BUNDLE_STATUS[number];
+
+export const mspSalesBundlesTable = pgTable("msp_sales_bundles", {
+  id: serial("id").primaryKey(),
+  bundleId: uuid("bundle_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  /** Ordered list of monitoring_packages.key values included in this bundle */
+  monitoringPackageKeys: jsonb("monitoring_package_keys").$type<string[]>().notNull().default([]),
+  /** Platform-computed MSP internal cost in cents (sum of platformCostCents per package) */
+  internalCostCents: integer("internal_cost_cents").notNull().default(0),
+  /** MSP-set resale price in cents (unrestricted markup) */
+  resalePriceCents: integer("resale_price_cents").notNull().default(0),
+  status: text("status", { enum: MSP_SALES_BUNDLE_STATUS }).notNull().default("draft"),
+  /** Optional trial period in days the MSP offers to customers (null = no trial) */
+  trialDays: integer("trial_days"),
+  createdByUserId: integer("created_by_user_id"),
+  updatedByUserId: integer("updated_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sales_bundles_msp_id_idx").on(t.mspId),
+  index("msp_sales_bundles_status_idx").on(t.status),
+]);
+
+export type MspSalesBundle = typeof mspSalesBundlesTable.$inferSelect;
+export type InsertMspSalesBundle = typeof mspSalesBundlesTable.$inferInsert;
+
+// ── MSP Sales Bundle Assignments ───────────────────────────────────────────────
+// One row per (bundle, customer) assignment. Activates the underlying monitoring
+// packages' execution for the customer's tenantId.
+
+export const MSP_BUNDLE_ASSIGNMENT_STATUS = ["active", "suspended", "revoked"] as const;
+export type MspBundleAssignmentStatus = typeof MSP_BUNDLE_ASSIGNMENT_STATUS[number];
+
+export const mspSalesBundleAssignmentsTable = pgTable("msp_sales_bundle_assignments", {
+  id: serial("id").primaryKey(),
+  assignmentId: uuid("assignment_id").notNull().unique().defaultRandom(),
+  bundleId: uuid("bundle_id").notNull().references(() => mspSalesBundlesTable.bundleId, { onDelete: "restrict" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "restrict" }),
+  /** M365 tenant GUID — drives package execution routing */
+  tenantId: text("tenant_id"),
+  status: text("status", { enum: MSP_BUNDLE_ASSIGNMENT_STATUS }).notNull().default("active"),
+  /** When execution of the underlying packages was activated */
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  /** When a trial (if any) expires — null if no trial */
+  trialExpiresAt: timestamp("trial_expires_at", { withTimezone: true }),
+  assignedByUserId: integer("assigned_by_user_id"),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_sales_bundle_assignments_bundle_idx").on(t.bundleId),
+  index("msp_sales_bundle_assignments_msp_id_idx").on(t.mspId),
+  index("msp_sales_bundle_assignments_customer_id_idx").on(t.customerId),
+  index("msp_sales_bundle_assignments_status_idx").on(t.status),
+]);
+
+export type MspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferSelect;
+export type InsertMspSalesBundleAssignment = typeof mspSalesBundleAssignmentsTable.$inferInsert;
