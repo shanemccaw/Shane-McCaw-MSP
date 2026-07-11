@@ -1,6 +1,7 @@
 import { logger } from "./logger";
-import { db, tenantConsentTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, tenantConsentTable, tenantMonitorProfilesTable } from "@workspace/db";
+import { eq, ne, and } from "drizzle-orm";
+import { createAuditLog } from "./audit";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -160,16 +161,53 @@ export class ConsentRevokedError extends Error {
 }
 
 /**
- * Flip a tenant's consent status to "revoked" in the DB and evict its token cache.
+ * Flip a tenant's consent status to "revoked" in a single DB transaction and evict
+ * its token cache. Also marks all non-revoked monitor profile rows for the tenant as
+ * `consent_revoked` atomically, then emits a canonical audit event so the event log
+ * captures the machine-source revocation.
+ *
+ * The consent-row + monitor-profile updates execute inside one transaction so they
+ * can never end up in a half-revoked state if the second update fails.
+ *
  * Safe to call from any catch-block that catches ConsentRevokedError.
+ * Never throws — all DB/audit errors are caught and logged.
  */
 export async function markTenantConsentRevoked(tenantId: string): Promise<void> {
   tenantTokenCache.delete(tenantId);
   try {
-    await db
-      .update(tenantConsentTable)
-      .set({ consentStatus: "revoked", revokedAt: new Date(), updatedAt: new Date() })
-      .where(eq(tenantConsentTable.tenantId, tenantId));
+    const now = new Date();
+
+    // Atomic: flip consent row + all monitor profiles in one transaction
+    await db.transaction(async (tx) => {
+      // 1. Flip tenant consent row
+      await tx
+        .update(tenantConsentTable)
+        .set({ consentStatus: "revoked", revokedAt: now, updatedAt: now })
+        .where(eq(tenantConsentTable.tenantId, tenantId));
+
+      // 2. Mark all non-revoked monitor profile rows for this tenant as consent_revoked
+      //    so the MSP portal can surface "re-authorize" without waiting for a re-run.
+      await tx
+        .update(tenantMonitorProfilesTable)
+        .set({ status: "consent_revoked" })
+        .where(
+          and(
+            eq(tenantMonitorProfilesTable.tenantId, tenantId),
+            ne(tenantMonitorProfilesTable.status, "consent_revoked"),
+          ),
+        );
+    });
+
+    // 3. Emit canonical audit event (outside transaction — non-fatal if this fails)
+    await createAuditLog({
+      actorUserId: null,
+      actorName: "system:graph-auto-revoke",
+      actorRole: "admin",
+      actionType: "tenant_consent_revoked",
+      entityType: "tenant_consent",
+      entityId: tenantId,
+      metadata: { tenantId, autoRevoked: true, source: "graph_401_response" },
+    });
   } catch (err) {
     logger.error({ err, tenantId }, "markTenantConsentRevoked: DB update failed");
   }
@@ -194,9 +232,26 @@ export function buildAdminConsentUrl(
 }
 
 /**
+ * Returns true if a Graph error response body signals that the tenant's
+ * admin consent has been revoked or was never fully granted.
+ */
+function isConsentErrorBody(body: string): boolean {
+  return (
+    body.includes("invalid_grant") ||
+    body.includes("AADSTS65001") ||
+    body.includes("consent_required") ||
+    body.includes("InvalidAuthenticationToken")
+  );
+}
+
+/**
  * Perform a Graph API call against a specific customer tenant.
- * Automatically handles 401 responses by marking consent revoked and
- * re-throwing ConsentRevokedError — callers must NOT silently swallow it.
+ * Automatically handles 401 responses AND non-2xx responses whose body signals
+ * a consent error (invalid_grant, AADSTS65001, consent_required,
+ * InvalidAuthenticationToken). On detection:
+ *   1. Token cache evicted.
+ *   2. markTenantConsentRevoked() called — flips tenant_consent + monitor profiles + audit log.
+ *   3. ConsentRevokedError thrown — callers must NOT silently swallow it.
  */
 export async function graphFetchForTenant(
   tenantId: string,
@@ -214,13 +269,26 @@ export async function graphFetchForTenant(
   });
 
   if (res.status === 401) {
-    // Clone the response so we can read the body for diagnostics and still throw
     const text = await res.text();
-    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — revoking consent");
-    // Evict from cache immediately
+    logger.warn({ tenantId, status: 401, body: text }, "Graph tenant call: 401 — auto-revoking consent");
     tenantTokenCache.delete(tenantId);
     await markTenantConsentRevoked(tenantId);
     throw new ConsentRevokedError(tenantId);
+  }
+
+  // Also catch consent errors embedded in 400/403 response bodies
+  // (e.g. token returned successfully but Graph rejects with invalid_grant on use)
+  if (res.status === 400 || res.status === 403) {
+    const text = await res.text();
+    if (isConsentErrorBody(text)) {
+      logger.warn({ tenantId, status: res.status, body: text }, "Graph tenant call: consent error in body — auto-revoking consent");
+      tenantTokenCache.delete(tenantId);
+      await markTenantConsentRevoked(tenantId);
+      throw new ConsentRevokedError(tenantId);
+    }
+    // Non-consent 400/403 — return the response with the body already consumed.
+    // Re-wrap as a synthetic Response so callers can still check ok/status.
+    return new Response(text, { status: res.status, headers: res.headers });
   }
 
   return res;
