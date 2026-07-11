@@ -18,7 +18,9 @@ import {
   ArrowRight,
   CheckCircle2,
   DollarSign,
+  FileBarChart2,
   PercentCircle,
+  TrendingDown,
   Users,
 } from "lucide-react";
 
@@ -59,6 +61,16 @@ interface DashboardData {
   periodStart: string;
 }
 
+interface LicenseWasteData {
+  totalCustomers: number;
+  customersWithWaste: number;
+  estimatedAnnualSavings: number;
+  estimatedAnnualSavingsFormatted: string;
+  totalUnusedLicenses: number;
+  reportsGenerated: number;
+  hasData: boolean;
+}
+
 function StatCard({
   title,
   value,
@@ -96,6 +108,7 @@ export default function DashboardPage() {
   const { user, fetchWithAuth } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wasteData, setWasteData] = useState<LicenseWasteData | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -109,6 +122,16 @@ export default function DashboardPage() {
       .finally(() => {
         if (mounted) setLoading(false);
       });
+
+    // License waste tile — independent fetch
+    fetchWithAuth("/api/msp/reports/license-waste")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const json = (await res.json()) as LicenseWasteData;
+        if (mounted) setWasteData(json);
+      })
+      .catch(() => {});
+
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -156,7 +179,7 @@ export default function DashboardPage() {
         </div>
 
         {/* KPI stat cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Signals Fired"
             value={data?.signalsFiredThisMonth ?? 0}
@@ -178,6 +201,30 @@ export default function DashboardPage() {
             icon={DollarSign}
             loading={loading}
           />
+          {/* License Waste tile */}
+          <Link href="/reports">
+            <Card className="cursor-pointer hover:border-primary/40 transition-colors group">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium">License Waste</CardTitle>
+                <TrendingDown className="size-4 text-amber-400" />
+              </CardHeader>
+              <CardContent>
+                {loading || wasteData === null ? (
+                  <Skeleton className="h-8 w-20 mt-1" />
+                ) : (
+                  <div className="text-2xl font-bold text-amber-400">
+                    {wasteData.estimatedAnnualSavingsFormatted}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                  {wasteData
+                    ? `${wasteData.customersWithWaste} of ${wasteData.totalCustomers} customers`
+                    : "Identifiable annual savings"}
+                  <FileBarChart2 className="size-3 ml-auto text-muted-foreground/50 group-hover:text-primary transition-colors" />
+                </p>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* Customer breakdown */}

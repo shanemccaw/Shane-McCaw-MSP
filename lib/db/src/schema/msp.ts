@@ -1305,3 +1305,91 @@ export const monitorCheckAuditLogTable = pgTable("monitor_check_audit_log", {
 ]);
 
 export type MonitorCheckAuditLog = typeof monitorCheckAuditLogTable.$inferSelect;
+
+// ── Report Definitions ─────────────────────────────────────────────────────────
+// MSP-authored templates that describe what to generate, for whom, and how to
+// deliver it. One definition can be triggered many times (→ report_runs rows).
+
+export const REPORT_DOC_TYPES = [
+  "executive_summary",
+  "full_readiness_report",
+  "security_posture_report",
+  "governance_maturity_report",
+  "data_exposure_risk_report",
+  "license_optimization_report",
+  "license_waste_report",
+] as const;
+export type ReportDocType = typeof REPORT_DOC_TYPES[number];
+
+export const REPORT_DELIVERY_METHODS = ["in_app", "email", "both"] as const;
+export type ReportDeliveryMethod = typeof REPORT_DELIVERY_METHODS[number];
+
+export const mspReportDefinitionsTable = pgTable("msp_report_definitions", {
+  id: serial("id").primaryKey(),
+  definitionId: uuid("definition_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // Optional scope — null means "across all customers"
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull().default("executive_summary"),
+  // Delivery preferences
+  deliveryMethod: text("delivery_method", { enum: REPORT_DELIVERY_METHODS }).notNull().default("in_app"),
+  // For email delivery — to address (resolved from customer if null)
+  deliveryEmail: text("delivery_email"),
+  // Optional extra context fed into the AI prompt
+  fieldMappings: jsonb("field_mappings").$type<Record<string, unknown>>().notNull().default({}),
+  // Workflow schedule/trigger config
+  scheduleConfig: jsonb("schedule_config").$type<Record<string, unknown>>().notNull().default({}),
+  isActive: boolean("is_active").notNull().default(true),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_defs_msp_id_idx").on(t.mspId),
+  index("msp_report_defs_customer_id_idx").on(t.customerId),
+]);
+
+export type MspReportDefinition = typeof mspReportDefinitionsTable.$inferSelect;
+export type InsertMspReportDefinition = typeof mspReportDefinitionsTable.$inferInsert;
+
+// ── Report Runs ────────────────────────────────────────────────────────────────
+// One row per triggered generation. Tracks lifecycle, stores the generated PDF
+// as base64 in pdfContent (for in-app download), and records delivery outcome.
+
+export const REPORT_RUN_STATUSES = ["pending", "generating", "generated", "delivering", "delivered", "failed"] as const;
+export type ReportRunStatus = typeof REPORT_RUN_STATUSES[number];
+
+export const mspReportRunsTable = pgTable("msp_report_runs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().unique().defaultRandom(),
+  definitionId: uuid("definition_id").notNull().references(() => mspReportDefinitionsTable.definitionId, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  docType: text("doc_type", { enum: REPORT_DOC_TYPES }).notNull(),
+  status: text("status", { enum: REPORT_RUN_STATUSES }).notNull().default("pending"),
+  // Generated HTML content
+  htmlContent: text("html_content"),
+  // Generated PDF as base64 (null until generated)
+  pdfBase64: text("pdf_base64"),
+  pdfSizeBytes: integer("pdf_size_bytes"),
+  // Delivery outcome
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  deliveryEmail: text("delivery_email"),
+  // Error message if failed
+  errorMessage: text("error_message"),
+  // Workflow run reference (if generated via workflow)
+  workflowRunId: uuid("workflow_run_id"),
+  triggeredByUserId: integer("triggered_by_user_id"),
+  generatedAt: timestamp("generated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_report_runs_msp_id_idx").on(t.mspId),
+  index("msp_report_runs_def_id_idx").on(t.definitionId),
+  index("msp_report_runs_status_idx").on(t.status),
+]);
+
+export type MspReportRun = typeof mspReportRunsTable.$inferSelect;
+export type InsertMspReportRun = typeof mspReportRunsTable.$inferInsert;

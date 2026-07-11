@@ -36,6 +36,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Cog,
+  FileBarChart2,
   FileText,
   FolderSync,
   GitBranch,
@@ -168,6 +169,17 @@ const NAV_SECTIONS: NavSection[] = [
         icon: GitBranch,
         label: "Scope Creep",
         href: "/scope-creep",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+    ],
+  },
+  {
+    label: "Reports",
+    items: [
+      {
+        icon: FileBarChart2,
+        label: "Report Builder",
+        href: "/reports",
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
     ],

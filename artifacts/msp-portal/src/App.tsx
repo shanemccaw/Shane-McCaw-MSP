@@ -40,6 +40,7 @@ import SlaDashboardPage from "@/pages/sla-dashboard";
 import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import ScriptLibraryPage from "@/pages/scripts";
 import AiBillingPage from "@/pages/ai-billing";
+import ReportsPage from "@/pages/reports";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
@@ -240,6 +241,11 @@ function Router() {
       </Route>
       <Route path="/support">
         <ProtectedRoute component={SupportChatPage} />
+      </Route>
+
+      {/* Reports */}
+      <Route path="/reports">
+        <ProtectedRoute component={ReportsPage} />
       </Route>
 
       {/* AI Billing */}

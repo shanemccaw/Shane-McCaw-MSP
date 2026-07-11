@@ -90,6 +90,7 @@ import mspPlanManagementRouter from "./msp-plan-management";
 import mspAuditLogRouter from "./msp-audit-log";
 import supportChatRouter from "./support-chat";
 import adminMonitorChecksRouter from "./admin-monitor-checks";
+import mspReportsRouter from "./msp-reports";
 
 const router: IRouter = Router();
 
@@ -191,6 +192,7 @@ router.use(mspPlanManagementRouter);
 router.use(mspAuditLogRouter);
 router.use(supportChatRouter);
 router.use(adminMonitorChecksRouter);
+router.use(mspReportsRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

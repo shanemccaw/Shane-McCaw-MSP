@@ -23,6 +23,7 @@ import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { registerDocPipelineHandlers } from "./doc-pipeline-nodes";
+import { registerReportNodes } from "./report-nodes";
 
 // ── Template interpolation ────────────────────────────────────────────────────
 // Resolves {{key}} and {{steps.nodeId.field}} tokens from the execution input.
@@ -284,5 +285,8 @@ export function registerBuiltinHandlers(): void {
   // Document pipeline nodes — registered here so they are available to all workflows.
   registerDocPipelineHandlers();
 
-  logger.info({}, "portal-wf: built-in node handlers registered (start, http_call, db_write, emit_event, wait, condition + doc pipeline)");
+  // Report generation node
+  registerReportNodes();
+
+  logger.info({}, "portal-wf: built-in node handlers registered (start, http_call, db_write, emit_event, wait, condition + doc pipeline + report)");
 }

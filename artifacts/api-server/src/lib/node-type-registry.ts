@@ -123,6 +123,12 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "AI-generated consulting document / report / SOW",
   },
   {
+    nodeType: "generate_report",
+    isAIDependent: true,
+    aiCostOwner: "msp",
+    description: "AI-generated MSP report from a report definition — PDF pipeline + optional email delivery",
+  },
+  {
     nodeType: "generate_sow",
     isAIDependent: true,
     aiCostOwner: "msp",
