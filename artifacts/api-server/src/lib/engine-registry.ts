@@ -65,9 +65,8 @@ export interface EngineDef {
   /**
    * "platform" — rules owned and edited only by Shane/PlatformAdmin.
    * "msp"      — MSP operators can add/override rules for their own organisation.
-   * Defaults to "platform" when absent.
    */
-  ruleOwnership?: "platform" | "msp";
+  ruleOwnership: "platform" | "msp";
 }
 
 // ── pricing engine ──────────────────────────────────────────────────────────
@@ -174,6 +173,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Ranks tenants by summing priorityScoreContribution across currently-fired, enabled signals.",
     categoryPrefix: "priority",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculatePriorityScore(tenantId),
     runForPayload: (input) => {
       const { firedSignals } = computeTenantSignals(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys);
@@ -197,6 +197,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Sums pricingImpact / pricingValueContribution across currently-fired, enabled signals.",
     categoryPrefix: "pricing",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculatePricingImpact(tenantId),
     runForPayload: (input) => computePricingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
   },
@@ -206,6 +207,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Sums governance/security/compliance/adoption/copilot/architecture impact into an overall health score.",
     categoryPrefix: "governance",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateArchitectureHealthScore(tenantId),
     runForPayload: (input) => computeHealthEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
   },
@@ -215,6 +217,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Reduces drift-tagged rules/groups that evaluated true into a driftScore + trendDirection.",
     categoryPrefix: "drift",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateDriftForTenant(tenantId),
     runForPayload: (input) => computeDriftEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
   },
@@ -224,6 +227,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Sums trendValue * decayFactor across fired signals with a non-zero trend.",
     categoryPrefix: "forecasting",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateForecastForTenant(tenantId),
     runForPayload: (input) => computeForecastingEngine(input.mergedProfile, input.parsedFindings, input.rules, input.groups, input.disabledSignalKeys),
   },
@@ -233,6 +237,7 @@ export const ENGINE_DEFS: EngineDef[] = [
     description: "Sums the five CRM contribution fields (fit/pain/maturity/intent/urgency) across fired crm:* signals.",
     categoryPrefix: "crm",
     tenantScoped: true,
+    ruleOwnership: "platform",
     runForTenant: (tenantId) => calculateCrmScore(tenantId),
     runForPayload: (input) => {
       const weights = [...input.groups, ...input.rules].map(r => ({

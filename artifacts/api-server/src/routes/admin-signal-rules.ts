@@ -139,22 +139,28 @@ export function parseIntelligenceFields(
 // ── Raw DB helpers ─────────────────────────────────────────────────────────────
 
 export async function getAllRules(): Promise<SignalDerivationRule[]> {
+  // Scoped to platform-owned rows only (msp_id IS NULL).
+  // MSP override rows are managed through MSP-specific routes and must not
+  // appear in admin snapshots, import/export, or platform evaluation.
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
            source_key AS "sourceKey", compare_value AS "compareValue", description,
            sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
            ${INTELLIGENCE_FIELDS_SELECT}
     FROM signal_derivation_rules
+    WHERE msp_id IS NULL
     ORDER BY signal_key, sort_order, id
   `);
   return rows.rows as unknown as SignalDerivationRule[];
 }
 
 export async function getAllGroups(): Promise<SignalRuleGroup[]> {
+  // Scoped to platform-owned rows only (msp_id IS NULL). See getAllRules() note.
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
            ${INTELLIGENCE_FIELDS_SELECT}
     FROM signal_rule_groups
+    WHERE msp_id IS NULL
     ORDER BY signal_key, sort_order, id
   `);
   return rows.rows as unknown as SignalRuleGroup[];
@@ -1076,8 +1082,19 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
     let projectLinkCount = 0;
 
     await db.transaction(async (tx) => {
-      await tx.execute(sql`DELETE FROM signal_derivation_rules`);
-      await tx.execute(sql`DELETE FROM signal_rule_groups`);
+      // Only delete platform-owned rows (msp_id IS NULL).
+      // MSP override rows are scoped to their mspId and must not be wiped by a platform import.
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE msp_id IS NULL`);
+      // Skip platform groups that MSP-owned rules reference via group_id.
+      // ON DELETE SET NULL would silently null those foreign keys, corrupting MSP override rows.
+      await tx.execute(sql`
+        DELETE FROM signal_rule_groups
+        WHERE msp_id IS NULL
+          AND id NOT IN (
+            SELECT group_id FROM signal_derivation_rules
+            WHERE msp_id IS NOT NULL AND group_id IS NOT NULL
+          )
+      `);
 
       const groupIdMap = new Map<number, number>();
 
@@ -1216,12 +1233,14 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
     const adminId = (req as unknown as { user?: { id: number } }).user?.id ?? null;
 
     await db.transaction(async (tx) => {
-      // Remove existing rules for this signal
-      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE signal_key = ${signalKey}`);
-      // Remove orphaned groups (no remaining rules reference them) for this signal
+      // Remove existing platform-owned rules for this signal only (msp_id IS NULL).
+      // MSP override rows are scoped to their mspId and must not be wiped by platform import.
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE signal_key = ${signalKey} AND msp_id IS NULL`);
+      // Remove orphaned platform groups (no remaining rules reference them) for this signal
       await tx.execute(sql`
         DELETE FROM signal_rule_groups
         WHERE signal_key = ${signalKey}
+          AND msp_id IS NULL
           AND id NOT IN (SELECT COALESCE(group_id, -1) FROM signal_derivation_rules WHERE group_id IS NOT NULL)
       `);
 
@@ -1408,15 +1427,26 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
     let ruleCount = 0;
 
     await db.transaction(async (tx) => {
-      await tx.execute(sql`DELETE FROM signal_derivation_rules`);
-      await tx.execute(sql`DELETE FROM signal_rule_groups`);
+      // Only delete platform-owned rows (msp_id IS NULL).
+      // MSP override rows must survive version restores — they are scoped to their mspId.
+      await tx.execute(sql`DELETE FROM signal_derivation_rules WHERE msp_id IS NULL`);
+      // Skip platform groups referenced by MSP-owned rules to avoid ON DELETE SET NULL
+      // silently nulling group_id on MSP override rows.
+      await tx.execute(sql`
+        DELETE FROM signal_rule_groups
+        WHERE msp_id IS NULL
+          AND id NOT IN (
+            SELECT group_id FROM signal_derivation_rules
+            WHERE msp_id IS NOT NULL AND group_id IS NOT NULL
+          )
+      `);
 
       const groupIdMap = new Map<number, number>();
       if (Array.isArray(snapshot.groups)) {
         for (const g of snapshot.groups as Array<Record<string, unknown>>) {
           const result = await tx.execute(sql`
-            INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
-            VALUES (${g.signalKey as string}, ${(g.logic ?? "OR") as string}, ${g.label ?? null}, ${(g.sortOrder ?? 0) as number})
+            INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order, msp_id)
+            VALUES (${g.signalKey as string}, ${(g.logic ?? "OR") as string}, ${g.label ?? null}, ${(g.sortOrder ?? 0) as number}, NULL)
             RETURNING id
           `);
           const newId = (result.rows[0] as { id: number }).id;
@@ -1429,9 +1459,9 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
           const originalGroupId = r.groupId;
           const mappedGroupId = originalGroupId ? (groupIdMap.get(Number(originalGroupId)) ?? null) : null;
           await tx.execute(sql`
-            INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
+            INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id)
             VALUES (${r.signalKey as string}, ${mappedGroupId}, ${r.ruleType as string}, ${r.sourceKey as string},
-                    ${r.compareValue ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number})
+                    ${r.compareValue ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number}, NULL)
           `);
           ruleCount++;
         }
@@ -1824,9 +1854,11 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
       key: string; label: string; description: string; expected_impact: string; is_adjustment: boolean;
     }>;
 
+    // Only publish platform-owned rows (msp_id IS NULL).
+    // MSP override rows are scoped to individual MSPs and must never be promoted to prod platform defaults.
     const devGroupRows = await db.execute(sql`
       SELECT id, signal_key, logic, label, sort_order
-      FROM signal_rule_groups ORDER BY signal_key, sort_order, id
+      FROM signal_rule_groups WHERE msp_id IS NULL ORDER BY signal_key, sort_order, id
     `);
     const devGroups = devGroupRows.rows as Array<{
       id: number; signal_key: string; logic: string; label: string | null; sort_order: number;
@@ -1834,7 +1866,7 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
 
     const devRuleRows = await db.execute(sql`
       SELECT signal_key, group_id, rule_type, source_key, compare_value, description, sort_order
-      FROM signal_derivation_rules ORDER BY signal_key, sort_order, id
+      FROM signal_derivation_rules WHERE msp_id IS NULL ORDER BY signal_key, sort_order, id
     `);
     const devRules = devRuleRows.rows as Array<{
       signal_key: string; group_id: number | null; rule_type: string; source_key: string;
@@ -1846,11 +1878,12 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
 
     try {
       if (dryRun) {
-        // Read prod state and compute diff without writing
+        // Read prod state and compute diff without writing.
+        // Count only platform-owned rows (msp_id IS NULL) so MSP overrides don't skew the diff.
         const [prodCustomRes, prodGroupsRes, prodRulesRes] = await Promise.all([
           client.query<{ key: string }>(`SELECT key FROM custom_signals`),
-          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_rule_groups`),
-          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_derivation_rules`),
+          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_rule_groups WHERE msp_id IS NULL`),
+          client.query<{ count: string }>(`SELECT COUNT(*) AS count FROM signal_derivation_rules WHERE msp_id IS NULL`),
         ]);
         const prodCustomKeys = new Set(prodCustomRes.rows.map(r => r.key));
         const devCustomKeys = new Set(devCustomSignals.map(s => s.key));
@@ -1876,10 +1909,18 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
       // Actual write
       await client.query("BEGIN");
 
-      // 1. Delete all existing prod rules (FK references groups)
-      await client.query("DELETE FROM signal_derivation_rules");
-      // 2. Delete all existing prod groups
-      await client.query("DELETE FROM signal_rule_groups");
+      // 1. Delete all existing prod platform rules (msp_id IS NULL — MSP override rows must not be wiped)
+      await client.query("DELETE FROM signal_derivation_rules WHERE msp_id IS NULL");
+      // 2. Delete prod platform groups, but skip any that MSP-owned rules reference via group_id.
+      //    ON DELETE SET NULL would silently null those FKs, corrupting MSP override rows.
+      await client.query(`
+        DELETE FROM signal_rule_groups
+        WHERE msp_id IS NULL
+          AND id NOT IN (
+            SELECT group_id FROM signal_derivation_rules
+            WHERE msp_id IS NOT NULL AND group_id IS NOT NULL
+          )
+      `);
       // 3. Delete all existing prod custom signals
       await client.query("DELETE FROM custom_signals");
 
@@ -1892,24 +1933,26 @@ router.post("/admin/signal-rules/publish-to-prod", requireAdmin, async (req: Req
         );
       }
 
-      // 5. Insert groups, capturing dev id → prod id mapping
+      // 5. Insert groups, capturing dev id → prod id mapping.
+      // Explicitly set msp_id = NULL: these are platform-owned rows.
       const groupIdMap = new Map<number, number>();
       for (const g of devGroups) {
         const result = await client.query(
-          `INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order)
-           VALUES ($1, $2, $3, $4) RETURNING id`,
+          `INSERT INTO signal_rule_groups (signal_key, logic, label, sort_order, msp_id)
+           VALUES ($1, $2, $3, $4, NULL) RETURNING id`,
           [g.signal_key, g.logic, g.label, g.sort_order]
         );
         const newId = (result.rows[0] as { id: number }).id;
         groupIdMap.set(g.id, newId);
       }
 
-      // 6. Insert rules with remapped group IDs
+      // 6. Insert rules with remapped group IDs.
+      // Explicitly set msp_id = NULL: these are platform-owned rows.
       for (const r of devRules) {
         const prodGroupId = r.group_id != null ? (groupIdMap.get(r.group_id) ?? null) : null;
         await client.query(
-          `INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          `INSERT INTO signal_derivation_rules (signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)`,
           [r.signal_key, prodGroupId, r.rule_type, r.source_key, r.compare_value, r.description, r.sort_order]
         );
       }

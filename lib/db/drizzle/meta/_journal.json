@@ -1275,6 +1275,13 @@
       "when": 1752278400000,
       "tag": "0172_services_class_delivery_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1783802176089,
+      "tag": "0173_signal_rules_msp_id",
+      "breakpoints": true
     }
   ]
 }

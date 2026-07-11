@@ -33,7 +33,10 @@ function requirePlanFeature(_feature: string) {
   };
 }
 
-const MSP_OWNED_ENGINES = new Set(["sla", "scope_creep"]);
+// Derived from ENGINE_DEFS so the set stays in sync with ruleOwnership declarations.
+const MSP_OWNED_ENGINES = new Set(
+  ENGINE_DEFS.filter(e => e.ruleOwnership === "msp").map(e => e.key),
+);
 
 // ── GET /api/msp/engines — list engines available to this MSP ─────────────────
 
@@ -48,7 +51,7 @@ router.get(
         description: e.description,
         categoryPrefix: e.categoryPrefix,
         tenantScoped: e.tenantScoped,
-        ruleOwnership: e.ruleOwnership ?? "platform",
+        ruleOwnership: e.ruleOwnership,
         mspEditable: MSP_OWNED_ENGINES.has(e.key),
       })),
     });
@@ -125,7 +128,7 @@ router.get(
       res.json({
         engine: key,
         categoryPrefix: def.categoryPrefix,
-        ruleOwnership: def.ruleOwnership ?? "platform",
+        ruleOwnership: def.ruleOwnership,
         mspEditable: isMspOwned,
         mspId,
         groups: groupRows.rows,

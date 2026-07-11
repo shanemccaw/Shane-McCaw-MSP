@@ -86,26 +86,55 @@ const SIGNAL_INTELLIGENCE_COLUMNS_SQL = sql`
  * intelligence field (not just the subset `computeTenantSignals` itself
  * needs), so downstream engines like this one can read `priorityScoreContribution`,
  * `weight`, etc. without re-querying.
+ *
+ * Ownership scoping:
+ * - When `mspId` is omitted or null → `WHERE msp_id IS NULL` (platform-owned rows only).
+ *   This is the correct scope for all platform-level engine evaluation: priority, health,
+ *   CRM, drift, forecasting, SOW generation, and portfolio risk.
+ * - When `mspId` is a number → `WHERE msp_id IS NULL OR msp_id = <mspId>` (platform
+ *   defaults + the specific MSP's override rows). Pass this when evaluating rules in the
+ *   context of a specific MSP tenant whose overrides should take effect.
  */
-export async function fetchSignalRulesAndGroups(): Promise<{
+export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<{
   rules: SignalDerivationRule[];
   groups: SignalRuleGroup[];
 }> {
+  const scopedMspId = typeof mspId === "number" ? mspId : null;
   const [rulesRes, groupsRes] = await Promise.all([
-    db.execute(sql`
-      SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-             source_key AS "sourceKey", compare_value AS "compareValue", description,
-             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
-             ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
-      FROM signal_derivation_rules
-      ORDER BY signal_key, sort_order, id
-    `),
-    db.execute(sql`
-      SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
-             ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
-      FROM signal_rule_groups
-      ORDER BY signal_key, sort_order, id
-    `),
+    scopedMspId != null
+      ? db.execute(sql`
+          SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
+                 source_key AS "sourceKey", compare_value AS "compareValue", description,
+                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                 ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
+          FROM signal_derivation_rules
+          WHERE msp_id IS NULL OR msp_id = ${scopedMspId}
+          ORDER BY signal_key, sort_order, id
+        `)
+      : db.execute(sql`
+          SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
+                 source_key AS "sourceKey", compare_value AS "compareValue", description,
+                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                 ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
+          FROM signal_derivation_rules
+          WHERE msp_id IS NULL
+          ORDER BY signal_key, sort_order, id
+        `),
+    scopedMspId != null
+      ? db.execute(sql`
+          SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+                 ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
+          FROM signal_rule_groups
+          WHERE msp_id IS NULL OR msp_id = ${scopedMspId}
+          ORDER BY signal_key, sort_order, id
+        `)
+      : db.execute(sql`
+          SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt",
+                 ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
+          FROM signal_rule_groups
+          WHERE msp_id IS NULL
+          ORDER BY signal_key, sort_order, id
+        `),
   ]);
 
   return {

@@ -1,6 +1,7 @@
 import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
+import { mspsTable } from "./msp";
 
 export interface WizardOption {
   id: string;
@@ -614,6 +615,8 @@ export const signalRuleGroupsTable = pgTable("signal_rule_groups", {
   label: text("label"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  /** null = platform-owned (default); non-null = MSP override row scoped to that mspId */
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   ...SIGNAL_INTELLIGENCE_FIELDS,
 });
 
@@ -631,6 +634,8 @@ export const signalDerivationRulesTable = pgTable("signal_derivation_rules", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  /** null = platform-owned (default); non-null = MSP override row scoped to that mspId */
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "set null" }),
   ...SIGNAL_INTELLIGENCE_FIELDS,
 });
 
