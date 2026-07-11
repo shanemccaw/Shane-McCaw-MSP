@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import LoginPage from "@/pages/login";
 import DashboardPage from "@/pages/dashboard";
+import OffboardingPage from "@/pages/offboarding";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -43,6 +44,9 @@ function Router() {
       </Route>
       <Route path="/dashboard">
         <ProtectedRoute component={DashboardPage} />
+      </Route>
+      <Route path="/offboarding">
+        <ProtectedRoute component={OffboardingPage} />
       </Route>
       <Route path="/">
         <Redirect to="/dashboard" />

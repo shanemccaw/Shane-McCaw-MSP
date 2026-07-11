@@ -67,6 +67,7 @@ import adminEnginesRouter from "./admin-engines";
 import crmPreviewStatsRouter from "./crm-preview-stats";
 import adminSowDebugRouter from "./admin-sow-debug";
 import consentRouter from "./consent";
+import mspPortalRouter from "./msp-portal";
 
 const router: IRouter = Router();
 
@@ -146,5 +147,6 @@ router.use(adminEnginesRouter);
 router.use(crmPreviewStatsRouter);
 router.use(adminSowDebugRouter);
 router.use(consentRouter);
+router.use(mspPortalRouter);
 
 export default router;

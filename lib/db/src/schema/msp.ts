@@ -24,6 +24,9 @@ import { createInsertSchema } from "drizzle-zod";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
+export const MSP_OFFBOARDING_STATES = ["cancellation_requested", "export_ready", "archival_flagged"] as const;
+export type MspOffboardingState = typeof MSP_OFFBOARDING_STATES[number];
+
 export const mspsTable = pgTable("msps", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
@@ -33,6 +36,11 @@ export const mspsTable = pgTable("msps", {
   primaryColor: text("primary_color"),
   status: text("status", { enum: ["active", "suspended", "trial"] }).notNull().default("active"),
   trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+  // Offboarding state machine: null → cancellation_requested → export_ready → archival_flagged
+  // Never silently deleted — customer owns their data per the hybrid model.
+  offboardingState: text("offboarding_state", { enum: MSP_OFFBOARDING_STATES }),
+  offboardingRequestedAt: timestamp("offboarding_requested_at", { withTimezone: true }),
+  exportReadyAt: timestamp("export_ready_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
