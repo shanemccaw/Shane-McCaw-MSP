@@ -237,7 +237,7 @@ function DraggableCard({
 
   const customerMeta = (task.taskMetadata ?? {}) as Record<string, unknown>;
   const clientDeliverables = (customerMeta.clientDeliverables ?? []) as string[];
-  const linkedRunbook = customerMeta.linkedRunbook as { scriptId: string; azureRunbookName: string; scriptTitle: string } | null | undefined;
+  const linkedRunbook = customerMeta.linkedRunbook as { scriptId: string; scriptTitle: string } | null | undefined;
   const hasCustomerContent = Boolean(
     task.taskType ||
     clientDeliverables.length > 0 ||
@@ -557,7 +557,7 @@ function DraggableCard({
                   Running…
                 </span>
               )}
-              {linkedRunbook?.azureRunbookName && !scriptRunning && task.taskType !== "script" && (
+              {linkedRunbook?.scriptId && !scriptRunning && task.taskType !== "script" && (
                 <button
                   onClick={e => { e.stopPropagation(); if (!scriptRunning) setConfirmRunOpen(true); }}
                   disabled={scriptRunning}
@@ -599,10 +599,9 @@ function DraggableCard({
       </div>
 
       {/* Confirm run dialog — clicking Run Script fires the Azure job directly, no second dialog */}
-      {confirmRunOpen && linkedRunbook?.azureRunbookName && (
+      {confirmRunOpen && linkedRunbook?.scriptId && (
         <RunScriptConfirmDialog
           scriptTitle={linkedRunbook.scriptTitle}
-          azureRunbookName={linkedRunbook.azureRunbookName}
           clientName={clientName ?? null}
           disabled={scriptRunning}
           onConfirm={() => {
@@ -2716,8 +2715,8 @@ export default function ProjectDetailPage() {
                 <div className="space-y-2">
                   {exhaustedCards.map(card => {
                     const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
-                    const runbook = meta.linkedRunbook as { scriptTitle?: string; azureRunbookName?: string } | null | undefined;
-                    const scriptLabel = runbook?.scriptTitle ?? runbook?.azureRunbookName ?? card.title;
+                    const runbook = meta.linkedRunbook as { scriptTitle?: string } | null | undefined;
+                    const scriptLabel = runbook?.scriptTitle ?? card.title;
                     const isRetrying = retryingTaskIds.has(card.id);
                     return (
                       <div key={card.id} className="flex items-center justify-between gap-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">

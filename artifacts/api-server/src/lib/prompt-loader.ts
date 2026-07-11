@@ -158,7 +158,7 @@ STEP 1 — CLASSIFY every task as one of THREE categories:
     • Defender/Purview/Sensitivity Labels/DLP/Retention policies via Graph Application permissions
     • Reporting and data export via Graph Application permissions
 
-  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as a service principal or Azure Automation runbook. Use this category for:
+  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as an app-only service principal. Use this category for:
     • ALL mailbox migration tasks: New-MigrationBatch, Start-MigrationBatch, Get-MigrationBatch, Set-MigrationBatch, Remove-MigrationBatch, Get-MigrationStatistics — these cmdlets have NO app-only equivalent
     • ALL Connect-MicrosoftTeams operations — the Teams PowerShell module requires delegated auth; it does not support service-principal-only connections for most administrative operations
     • Connect-ExchangeOnline without -AppId/-CertificateThumbprint — any script using the EXO v2/v3 module interactively
@@ -187,8 +187,8 @@ STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQU
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable for their respective streams
   - Inline comments explaining each logical section
-  - NEVER write output to files — all results, status messages, and summaries MUST go to the output stream via Write-Output so they appear in the Azure Runbook job output
-  - FORBIDDEN cmdlets (never use): Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — file writes are silently lost in Azure Automation; Write-Host bypasses the pipeline entirely
+  - NEVER write output to files — all results, status messages, and summaries MUST go to the output stream via Write-Output
+  - FORBIDDEN cmdlets (never use): Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — Write-Host bypasses the pipeline entirely
 
 STEP 3 — Choose output shape based on task classification:
   - ALL tasks are HUMAN_ONLY (nothing can be scripted) → type "human-only": explanatory note only, no script
@@ -560,7 +560,7 @@ Rules:
 - Tasks about configuring SharePoint, Teams, DLP, policies → governanceSetup
 - Tasks about Power Automate, Power Apps, flows → automationBuild
 - Tasks about discovery workshops, requirements gathering → discovery
-- Tasks about running PowerShell scripts, Azure Automation Runbooks → script
+- Tasks about running PowerShell scripts, automation scripts → script
 
 Return ONLY a JSON array of objects with exactly these keys: id (number) and taskType (string).
 Example: [{"id": 1, "taskType": "discovery"}]
@@ -578,7 +578,7 @@ Do not include any explanation or markdown — only the raw JSON array.`,
     body: `You are classifying Microsoft 365 workflow tasks to determine automation eligibility for PowerShell scripting.
 
 Classify the task as exactly one of:
-- AUTOMATABLE: Can be fully or partially automated with PowerShell (provisioning accounts/sites/groups, configuring policies, bulk operations, reports, running cmdlets, setting permissions, Azure Automation runbooks)
+- AUTOMATABLE: Can be fully or partially automated with PowerShell (provisioning accounts/sites/groups, configuring policies, bulk operations, reports, running cmdlets, setting permissions, app-only service principal scripts)
 - USER_ACCOUNT_REQUIRED: Requires admin UI interaction but a helper or companion script could assist (enabling features in admin center, tasks with PowerShell equivalents, hybrid tasks mixing UI and scripting)
 - HUMAN_ONLY: Inherently human with no meaningful script component: meetings, training sessions, document writing, stakeholder communication, strategic decisions, reviews requiring human judgment
 

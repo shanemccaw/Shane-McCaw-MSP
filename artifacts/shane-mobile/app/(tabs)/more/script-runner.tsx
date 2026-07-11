@@ -27,7 +27,6 @@ interface DbScript {
   title: string;
   description?: string | null;
   category: string;
-  azureRunbookName: string | null;
   azureSyncedAt?: string | null;
   tags?: string[];
 }
@@ -93,7 +92,7 @@ export default function ScriptRunnerScreen() {
       const res = await fetchWithAuth("/api/admin/ps-scripts");
       if (!res.ok) throw new Error("Failed to load scripts");
       const json = await res.json() as DbScript[];
-      return json.filter((s) => !!s.azureRunbookName);
+      return json;
     },
   });
 
@@ -260,9 +259,9 @@ export default function ScriptRunnerScreen() {
               >
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.scriptName, { color: colors.text }]}>{s.title}</Text>
-                  {s.azureRunbookName && (
+                  {s.description && (
                     <Text style={[styles.scriptDesc, { color: colors.mutedForeground }]} numberOfLines={1}>
-                      {s.azureRunbookName}
+                      {s.description}
                     </Text>
                   )}
                 </View>

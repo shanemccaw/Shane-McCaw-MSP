@@ -244,8 +244,8 @@ const NODE_OUTPUTS: Record<string, Array<{ key: string; label: string; enumValue
   convert_to_opportunity: [{ key: "opportunityId", label: "Created opportunity ID" }, { key: "leadId", label: "Source lead ID" }],
   create_client:          [{ key: "clientId", label: "Created client user ID" }, { key: "clientEmail", label: "Client email" }],
   create_project:         [{ key: "projectId", label: "Created project ID" }, { key: "projectTitle", label: "Project title" }],
-  execute_runbook:        [{ key: "jobId", label: "Azure Automation job ID (single mode)" }, { key: "jobStatus", label: "Final job status (single mode)" }, { key: "runbookName", label: "Runbook name (single mode)" }, { key: "jobOutput", label: "Script output text (single mode)" }, { key: "allSucceeded", label: "true when every runbook succeeded (multi mode)" }, { key: "results", label: "Array of per-runbook result objects (multi mode)" }, { key: "succeeded", label: "Array of runbook names that succeeded (multi mode)" }, { key: "failed", label: "Array of runbook names that failed (multi mode)" }],
-  update_m365_profile:    [{ key: "jobId", label: "Azure Automation job ID" }, { key: "jobStatus", label: "Initial job status" }],
+  execute_runbook:        [{ key: "jobId", label: "Azure job ID (single mode)" }, { key: "jobStatus", label: "Final job status (single mode)" }, { key: "scriptName", label: "Script name (single mode)" }, { key: "jobOutput", label: "Script output text (single mode)" }, { key: "allSucceeded", label: "true when every script succeeded (multi mode)" }, { key: "results", label: "Array of per-script result objects (multi mode)" }, { key: "succeeded", label: "Array of script names that succeeded (multi mode)" }, { key: "failed", label: "Array of script names that failed (multi mode)" }],
+  update_m365_profile:    [{ key: "jobId", label: "Azure job ID" }, { key: "jobStatus", label: "Initial job status" }],
   generate_document:      [{ key: "documentId", label: "Created document ID" }, { key: "docType", label: "Document type", enumValues: ["executive_summary","full_readiness_report","security_posture_report","governance_maturity_report","data_exposure_risk_report","license_optimization_report","consolidated_sow","sow","task_execution_guide","remediation_plan","deployment_plan","governance_framework","security_hardening_plan","copilot_enablement_plan","identity_modernization_plan","copilot_readiness"] }, { key: "name", label: "Document name" }, { key: "htmlContent", label: "Full HTML of the generated document (task_execution_guide only)" }],
   run_workflow:           [{ key: "childRunId", label: "Child run ID" }],
   calculate_pricing:      [{ key: "documentId", label: "Document ID (echoed)" }, { key: "totalPrice", label: "Computed total price (USD)" }, { key: "lineCount", label: "Number of pricing lines written" }],
@@ -990,8 +990,8 @@ const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: string; lab
   {
     name: "Azure",
     nodes: [
-      { type: "execute_runbook",     label: "Execute Runbook",      description: "Trigger an Azure Automation runbook",                tags: ["azure", "runbook", "automation", "m365"] },
-      { type: "update_m365_profile", label: "Update M365 Profile",  description: "Update a client's M365 profile via Azure Automation", tags: ["azure", "m365", "profile", "runbook"] },
+      { type: "execute_runbook",     label: "Execute Script",       description: "Trigger an Azure script execution",                  tags: ["azure", "script", "automation", "m365"] },
+      { type: "update_m365_profile", label: "Update M365 Profile",  description: "Update a client's M365 profile via Azure",            tags: ["azure", "m365", "profile", "script"] },
       { type: "generate_document",   label: "Generate Document",    description: "Create a document record for a client",              tags: ["document", "client", "report", "generate"] },
       { type: "calculate_pricing",   label: "Calculate Pricing",    description: "Parse SOW HTML and write sowPricingLines to the DB",  tags: ["document", "sow", "pricing", "calculate"] },
     ],
@@ -3265,7 +3265,7 @@ function NodeConfigPanel({
                 <PayloadField label="Runbook Name" value={(node.data.runbookName as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookName: v })} placeholder="M365-Health-Check" ancestorOutputs={ancestorOutputs} />
                 <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
                 <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                  <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+                  <p className="text-[10px] text-[#484F58]">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
                 </div>
               </>
             )}
@@ -3319,7 +3319,7 @@ function NodeConfigPanel({
                 <PayloadField label="Project ID (optional)" value={(node.data.projectId as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, projectId: v })} placeholder="{{projectId}}" ancestorOutputs={ancestorOutputs} />
                 {!isMulti && (
                   <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-                    <p className="text-[10px] text-[#484F58]">Requires Azure Automation secrets. Provide Runbook Name <span className="italic">or</span> Runbook ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{runbookName}}"}</span>.</p>
+                    <p className="text-[10px] text-[#484F58]">Requires Azure secrets. Provide Script Name <span className="italic">or</span> Script ID (fills one clears the other). Polls until completion (10 min max). Outputs: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobStatus}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{jobOutput}}"}</span>, <span className="font-mono text-[#7D8590]">{"{{scriptName}}"}</span>.</p>
                   </div>
                 )}
               </>
@@ -3716,7 +3716,7 @@ function NodeConfigPanel({
             </div>
             <PayloadField label="Parameters (JSON)" value={(node.data.runbookParams as string) ?? ""} onChange={v => onChange(node.id, { ...node.data, runbookParams: v })} placeholder='{"TenantId": "{{payload.tenantId}}"}' multiline ancestorOutputs={ancestorOutputs} />
             <div className="rounded-lg bg-[#0D1117] border border-[#30363D] p-2.5">
-              <p className="text-[10px] text-[#484F58]">Triggers an Azure Automation runbook against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
+              <p className="text-[10px] text-[#484F58]">Triggers an Azure script against the client's M365 tenant. Output: <span className="font-mono text-[#7D8590]">{"{{jobId}}"}</span>.</p>
             </div>
           </>
         )}
@@ -4656,7 +4656,7 @@ function NodeConfigPanel({
               hint="Expression evaluated for each item to determine its group. Use {{currentItem.*}} to access item fields."
               value={(node.data.keyExpression as string) ?? ""}
               onChange={v => onChange(node.id, { ...node.data, keyExpression: v })}
-              placeholder="{{currentItem.taskMetadata.linkedRunbook.azureRunbookName}}"
+              placeholder="{{currentItem.taskMetadata.linkedRunbook.scriptId}}"
               ancestorOutputs={ancestorOutputs}
               expressionType="value"
               fetchWithAuth={fetchWithAuth}

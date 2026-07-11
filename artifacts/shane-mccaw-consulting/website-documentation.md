@@ -1407,7 +1407,7 @@ Architecture design sessions and whiteboarding · Governance policy authoring an
 
 ### Layout / Sections
 
-1. **Architecture Prose** — Azure Automation Account → PowerShell Runbooks → Microsoft Graph API → Structured JSON findings → AI scoring (Claude/Anthropic) → Signal Engine → SOW generation
+1. **Architecture Prose** — PowerShell Scripts → Microsoft Graph API → Structured JSON findings → AI scoring (Claude/Anthropic) → Signal Engine → SOW generation
 2. **Security & Privacy** — Read-only App Registration (customer creates it, can revoke it); no data stored beyond engagement scope; customer controls described
 3. **Signal Engine** — Explains how structured findings map to engagement projects and fixed-price deliverables; projects are triggered by scored signal keys from the runbook output
 4. **Compliance Standards Alignment** — How assessment output maps to HIPAA, CMMC, FedRAMP, FISMA, ITAR, SOC 2

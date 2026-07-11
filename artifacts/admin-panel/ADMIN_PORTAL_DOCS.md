@@ -30,7 +30,7 @@ All routes declared in `src/App.tsx`. Every route requires `RequireAdmin` except
 | `/email-templates` | `EmailTemplatesPage` | Transactional email template editor |
 | `/coupons` | `CouponsPage` | Stripe coupon management |
 | `/service-page-triggers` | `ServicePageTriggersPage` | Service-page keyword trigger config |
-| `/script-runner` | `ScriptRunnerPage` | Azure Automation Runbook executor |
+| `/script-runner` | `ScriptRunnerPage` | Azure script executor |
 | `/crm/leads` | `LeadsPage` | Lead list |
 | `/crm/leads/:id` | `LeadDetailPage` | Lead detail and AI scoring |
 | `/crm/clients` | `ClientsPage` | Client list |
@@ -297,14 +297,14 @@ List view of all client projects across all engagement types.
 
 **Route:** `/script-runner` · **Component:** `src/pages/ScriptRunner.tsx`
 
-Executes Azure Automation Runbooks against client tenants directly from the admin panel.
+Executes Azure scripts against client tenants directly from the admin panel.
 
 #### Configuration Panel (left column)
 
 | Element | Description |
 |---|---|
-| **Customer dropdown** | Lists registered Azure credentials (client tenants). Select one to load that tenant's runbooks. |
-| **Runbook dropdown** | Populated from Azure Automation after a customer is selected. Shows runbook name; description appears below when selected. Disabled until a customer is chosen. |
+| **Customer dropdown** | Lists registered Azure credentials (client tenants). Select one to load that tenant's scripts. |
+| **Script dropdown** | Populated from Azure after a customer is selected. Shows script name; description appears below when selected. Disabled until a customer is chosen. |
 | **Governance Areas picker** | `GovernanceAreasPicker` component — optional multi-select of governance focus areas passed as parameters to the runbook (e.g. Security, Compliance). When left empty, the runbook uses its own defaults. |
 | **Run Runbook button** | Disabled until both customer and runbook are selected (and governance areas valid). Sends `POST /api/admin/runbook-jobs`. Shows animated spinner while running. |
 | **Customers sidebar** | Below the form, lists all registered credentials with credential type. Includes a "Manage in CRM →" link to `/crm/clients` and per-row link to the client's detail page. |
@@ -322,7 +322,7 @@ Executes Azure Automation Runbooks against client tenants directly from the admi
 
 #### Azure Not Configured Banner
 
-When the Azure secrets are absent, an amber warning panel lists all 7 required secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_KEY_VAULT_URL`, `AZURE_SUBSCRIPTION_ID`, `AZURE_AUTOMATION_RESOURCE_GROUP`, `AZURE_AUTOMATION_ACCOUNT_NAME`) with descriptions and the required RBAC roles.
+When the Azure secrets are absent, an amber warning panel lists the required secrets (`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_KEY_VAULT_URL`) with descriptions and the required RBAC roles.
 
 ---
 

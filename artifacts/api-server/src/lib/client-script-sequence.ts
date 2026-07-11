@@ -35,7 +35,7 @@ import {
 import { eq, and, asc, inArray } from "drizzle-orm";
 import {
   pushScriptToAzure,
-  createRunbookJob,
+  createScriptJob,
   getJobStatus,
   getJobOutput,
   isTerminalStatus,
@@ -108,7 +108,7 @@ async function runAutoAnalysis(
 ): Promise<{ summary: string; risks: string[]; recommendations: string[]; nextSteps: string[] } | null> {
   if (!output.trim()) return null;
 
-  const prompt = `You are a Microsoft 365 and Azure automation expert. Analyze the following PowerShell runbook execution output and provide a structured assessment.
+  const prompt = `You are a Microsoft 365 and Azure automation expert. Analyze the following PowerShell script execution output and provide a structured assessment.
 
 Runbook: ${runbookName}
 Customer Tenant: ${clientName}
@@ -409,22 +409,16 @@ export async function runClientScriptSequence(
           })
           .where(eq(clientAutomationRunsTable.id, runId));
 
-        let runbookName: string;
-        if (mod.azureRunbookName?.trim()) {
-          runbookName = mod.azureRunbookName.trim();
-          logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: using existing Azure runbook (skipping push)");
-        } else {
-          runbookName = `client-${clientUserId}-${mod.id}`;
-          logger.info({ runId, clientUserId, runbookName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
-          await pushScriptToAzure(runbookName, mod.content);
-          await db
-            .update(scriptModulesTable)
-            .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
-            .where(eq(scriptModulesTable.id, mod.id));
-        }
+        const scriptPushName = `client-${clientUserId}-${mod.id}`;
+        logger.info({ runId, clientUserId, scriptPushName, module: mod.filename }, "client-script-sequence: pushing module to Azure");
+        await pushScriptToAzure(scriptPushName, mod.content);
+        await db
+          .update(scriptModulesTable)
+          .set({ azureSyncedAt: new Date() })
+          .where(eq(scriptModulesTable.id, mod.id));
 
-        const { jobId } = await createRunbookJob({
-          runbookName,
+        const { jobId } = await createScriptJob({
+          runbookName: scriptPushName,
           parameters: {
             TenantId: appReg.tenantId,
             ClientId: appReg.azureClientId,
@@ -433,7 +427,7 @@ export async function runClientScriptSequence(
         });
 
         lastJobId = jobId;
-        logger.info({ runId, clientUserId, jobId, runbookName }, "client-script-sequence: job created, polling");
+        logger.info({ runId, clientUserId, jobId, scriptName: scriptPushName }, "client-script-sequence: job created, polling");
 
         const result = await pollJobToCompletion(jobId);
 
@@ -472,7 +466,7 @@ export async function runClientScriptSequence(
             });
 
             // WRITE 2: patch AI analysis (non-fatal if it fails)
-            const aiAnalysis = await runAutoAnalysis(accumulatedOutput, runbookName, clientLabel);
+            const aiAnalysis = await runAutoAnalysis(accumulatedOutput, scriptPushName, clientLabel);
             if (aiAnalysis) {
               await patchKanbanAiAnalysis(kanbanTaskId, aiAnalysis);
             }

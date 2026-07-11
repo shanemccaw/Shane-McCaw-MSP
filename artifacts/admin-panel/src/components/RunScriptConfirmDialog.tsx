@@ -1,13 +1,12 @@
 interface Props {
   scriptTitle: string;
-  azureRunbookName: string;
   clientName?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
   disabled?: boolean;
 }
 
-export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, clientName, onConfirm, onCancel, disabled }: Props) {
+export default function RunScriptConfirmDialog({ scriptTitle, clientName, onConfirm, onCancel, disabled }: Props) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={onCancel}>
       <div
@@ -24,10 +23,6 @@ export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, 
               <span className="text-[10px] font-bold uppercase tracking-wider text-[#484F58] w-20 flex-shrink-0 pt-0.5">Script</span>
               <span className="text-xs text-[#E6EDF3] font-medium leading-snug">{scriptTitle}</span>
             </div>
-            <div className="flex items-start gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#484F58] w-20 flex-shrink-0 pt-0.5">Runbook</span>
-              <span className="text-xs text-[#7D8590] font-mono leading-snug break-all">{azureRunbookName}</span>
-            </div>
             {clientName && (
               <div className="flex items-start gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-[#484F58] w-20 flex-shrink-0 pt-0.5">Client</span>
@@ -36,7 +31,7 @@ export default function RunScriptConfirmDialog({ scriptTitle, azureRunbookName, 
             )}
           </div>
           <p className="text-xs text-[#7D8590] leading-relaxed">
-            This will run the script on Azure Automation. The card will move to{" "}
+            This will run the script on Azure. The card will move to{" "}
             <span className="text-blue-400 font-semibold">In Progress</span> immediately. You can close the execution panel at any time — the script keeps running and you'll get a notification when it finishes.
           </p>
         </div>

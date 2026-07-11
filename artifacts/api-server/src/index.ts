@@ -611,7 +611,7 @@ app.listen(port, (err) => {
   pool.query(`
     DO $$ BEGIN
       -- Drop FK constraints (both possible names) so we can change the column
-      -- from uuid to text — it now stores Azure Automation runbook names.
+      -- from uuid to text — it now stores Azure script execution names.
       ALTER TABLE workflow_template_step_tasks
         DROP CONSTRAINT IF EXISTS workflow_template_step_tasks_runbook_id_fkey;
       ALTER TABLE workflow_template_step_tasks

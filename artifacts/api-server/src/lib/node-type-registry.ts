@@ -357,7 +357,7 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
   {
     nodeType: "execute_runbook",
     isAIDependent: false,
-    description: "Executes an Azure Automation runbook — no AI",
+    description: "Executes a PowerShell script via Azure — no AI",
   },
   {
     nodeType: "update_m365_profile",

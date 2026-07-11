@@ -66,7 +66,6 @@ interface PsScriptListItem {
   description: string | null;
   category: string;
   tags: string[];
-  azureRunbookName: string | null;
   azureSyncedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -84,7 +83,6 @@ interface ScriptModuleItem {
   filename: string;
   description: string | null;
   content: string;
-  azureRunbookName?: string | null;
   permissions?: PsScriptPermissions;
   sourceTaskIds?: number[] | null;
 }
@@ -832,7 +830,7 @@ function PackagePushProgressDialog({
             </svg>
           </div>
           <div>
-            <h2 className="text-sm font-semibold text-[#E6EDF3]">Publishing to Azure Automation</h2>
+            <h2 className="text-sm font-semibold text-[#E6EDF3]">Publishing to Azure</h2>
             <p className="text-[10px] text-[#7D8590]">Each module becomes its own runbook</p>
           </div>
         </div>
@@ -894,7 +892,7 @@ function PackageDrawerPushButton({ packageId, token, modules }: { packageId: str
       <button
         onClick={() => setOpen(true)}
         className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-[#0078D4]/35 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 transition-colors"
-        title="Push each module as its own Azure Automation runbook"
+        title="Push each module to Azure"
       >
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
         Push to Azure
@@ -973,10 +971,9 @@ function PackageDrawer({
               description: em.description,
               content: em.content,
               sortOrder: i,
-              azureRunbookName: em.azureRunbookName?.trim() || null,
             }),
           });
-          savedModules.push({ id: em.id, filename: em.filename, description: em.description, content: em.content, azureRunbookName: em.azureRunbookName?.trim() || null });
+          savedModules.push({ id: em.id, filename: em.filename, description: em.description, content: em.content });
         } else {
           const created = await apiFetch(`/admin/ps-scripts/packages/${pkg.id}/modules`, token, {
             method: "POST",
@@ -985,7 +982,6 @@ function PackageDrawer({
               description: em.description,
               content: em.content,
               sortOrder: i,
-              azureRunbookName: em.azureRunbookName?.trim() || null,
             }),
           }) as ScriptModuleItem;
           savedModules.push(created);
@@ -1031,7 +1027,6 @@ function PackageDrawer({
       filename: `Module${editModules.length + 1}.ps1`,
       description: null,
       content: "",
-      azureRunbookName: null,
     };
     setEditModules((prev) => [...prev, newMod]);
     setActiveModuleIdx(editModules.length);
@@ -1219,16 +1214,6 @@ function PackageDrawer({
                           </button>
                         </div>
                       </div>
-                      {/* Azure Runbook Name */}
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-[#161B22] border-b border-[#30363D]">
-                        <span className="text-[10px] font-medium text-[#484F58] whitespace-nowrap">Azure Runbook</span>
-                        <input
-                          className="flex-1 bg-[#0D1117] border border-[#30363D] rounded px-2.5 py-1 text-xs font-mono text-[#C9D1D9] focus:outline-none focus:border-[#0078D4]/60 placeholder-[#3D444D]"
-                          value={(activeModule as EditableModule).azureRunbookName ?? ""}
-                          onChange={(e) => updateEditModule((activeModule as EditableModule)._key, { azureRunbookName: e.target.value || null })}
-                          placeholder="e.g. my-onboarding-runbook (leave blank to push script)"
-                        />
-                      </div>
                       {/* Content editor */}
                       <div className="min-h-[300px] max-h-[520px] overflow-auto">
                         <CodeMirror
@@ -1340,7 +1325,7 @@ function ModulePackageView({
             <button
               onClick={() => setPushDialogOpen(true)}
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-[#0078D4]/15 border border-[#0078D4]/35 text-[#58A6FF] hover:bg-[#0078D4]/25 transition-colors"
-              title="Push each module as its own Azure Automation runbook"
+              title="Push each module to Azure"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
               Push to Azure
@@ -1637,11 +1622,6 @@ function LibrarySidebar({
                             <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
                           </span>
                         )}
-                        {!s.azureRunbookName && (
-                          <span title="Not published to Azure Automation" className="flex-shrink-0">
-                            <svg className="w-3 h-3 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 12v6m0 0l-2-2m2 2l2-2" /></svg>
-                          </span>
-                        )}
                         {s.tags?.includes("manual") && (
                           <span className="flex-shrink-0 text-[8px] font-semibold px-1 py-0.5 rounded bg-yellow-500/20 border border-yellow-500/40 text-yellow-400 uppercase tracking-wide">M</span>
                         )}
@@ -1777,11 +1757,6 @@ function LibrarySidebar({
                               {!mod.sourceTaskIds?.length && (
                                 <span title="Not linked to a task" className="flex-shrink-0">
                                   <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                </span>
-                              )}
-                              {!mod.azureRunbookName && (
-                                <span title="Not published to Azure Automation" className="flex-shrink-0">
-                                  <svg className="w-3 h-3 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 12v6m0 0l-2-2m2 2l2-2" /></svg>
                                 </span>
                               )}
                             </button>
@@ -1982,9 +1957,7 @@ function InlineScriptRunner({
           setRunbooks(list);
           // Pre-select: the editor script's runbook if available.
           // (auto-select ADHOC_SENTINEL when nothing is pre-selected is handled in the separate effect below)
-          if (editorScript?.azureRunbookName) {
-            setSelectedRunbook(editorScript.azureRunbookName);
-          }
+          
         } else if (res.status === 503) {
           setAzureConfigured(false);
         }
@@ -2009,7 +1982,7 @@ function InlineScriptRunner({
     const isAdHoc = selectedRunbook === ADHOC_SENTINEL;
     if (isAdHoc && !scriptBody.trim()) return;
     const actualRunbook = isAdHoc
-      ? (editorScript?.azureRunbookName ?? ADHOC_RUNBOOK_NAME)
+      ? ADHOC_RUNBOOK_NAME
       : selectedRunbook;
 
     // Pre-flight: validate PowerShell syntax for ad-hoc runs (local script body)
@@ -2051,7 +2024,7 @@ function InlineScriptRunner({
       };
       if (isAdHoc) {
         body["adHocContent"] = scriptBody;
-        // Prefer the editor script's UUID so the route resolves the correct Azure runbook slot
+        // Prefer the editor script's UUID so the route resolves the correct Azure script slot
         if (editorScript?.id) body["scriptId"] = editorScript.id;
       } else {
         if (!editorScript?.id) {
@@ -2138,7 +2111,6 @@ function InlineScriptRunner({
   const selectedClient = clients.find(c => c.id === selectedClientId);
   const canRun = !!selectedClientId && !!selectedClient?.appRegistration && selectedRunbook !== "" && !running && !(isAdHocSelected && !scriptBody.trim());
   const statusColor = INLINE_JOB_COLORS[jobStatus] ?? "text-[#7D8590]";
-  const currentRunbookName = editorScript?.azureRunbookName ?? null;
   const hasEditorContent = scriptBody.trim().length > 0;
 
   if (azureConfigured === false) {
@@ -2210,14 +2182,10 @@ function InlineScriptRunner({
                 <option value="">Select runbook…</option>
                 {hasEditorContent && (
                   <option value={ADHOC_SENTINEL}>
-                    ▶ Run current script{currentRunbookName ? ` → ${currentRunbookName}` : ` → ${ADHOC_RUNBOOK_NAME}`}
+                    ▶ Run current script → {ADHOC_RUNBOOK_NAME}
                   </option>
                 )}
-                {currentRunbookName && (
-                  <option value={currentRunbookName}>★ {currentRunbookName} (saved runbook)</option>
-                )}
                 {runbooks
-                  .filter(r => r.name !== currentRunbookName)
                   .map(r => <option key={r.name} value={r.name}>{r.name}</option>)}
               </select>
             )}
@@ -3565,7 +3533,7 @@ function GenerateFromServiceDialog({
         <div className="flex items-center justify-between px-5 py-3.5 border-t border-[#21262D] flex-shrink-0 gap-3">
           <p className="text-[10px] text-[#484F58] leading-relaxed">
             {packageResult
-              ? "Each module will be created/updated as its own Azure Automation runbook."
+              ? "Each module will be created/updated as its own runbook."
               : manualResult
               ? "Script saved to your Scripts library. Open in editor or close to continue."
               : "AI classifies M365/Azure-automatable tasks and generates production-ready scripts. Human-only tasks are listed but not automated."}
@@ -4107,9 +4075,6 @@ export default function ScriptGeneratorPage() {
   const [pushSyntaxErrors, setPushSyntaxErrors] = useState<Array<{ line: number; column: number; message: string }>>([]);
 
   // ── Link existing runbook state ───────────────────────────────────────────────
-  const [linkRunbookOpen, setLinkRunbookOpen] = useState(false);
-  const [linkRunbookValue, setLinkRunbookValue] = useState("");
-  const [linkRunbookSaving, setLinkRunbookSaving] = useState(false);
 
   // ── Confirm dialog state ─────────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<{
@@ -4421,25 +4386,6 @@ export default function ScriptGeneratorPage() {
     }
   };
 
-  const linkExistingRunbook = async () => {
-    if (!editorScript?.id || !linkRunbookValue.trim()) return;
-    setLinkRunbookSaving(true);
-    try {
-      const updated = await apiFetch(`/admin/ps-scripts/${editorScript.id}`, token, {
-        method: "PUT",
-        body: JSON.stringify({ azureRunbookName: linkRunbookValue.trim() }),
-      }) as PsScriptDetail;
-      setEditorScript(prev => prev ? { ...prev, azureRunbookName: updated.azureRunbookName } : prev);
-      setScripts(prev => prev.map(s => s.id === updated.id ? { ...s, azureRunbookName: updated.azureRunbookName } : s));
-      setLinkRunbookOpen(false);
-      setLinkRunbookValue("");
-      toast({ title: "Runbook linked", description: `Script is now linked to "${updated.azureRunbookName}" in Azure Automation.` });
-    } catch (e) {
-      toast({ title: "Failed to link runbook", description: e instanceof Error ? e.message : "Unknown error", variant: "destructive" });
-    } finally {
-      setLinkRunbookSaving(false);
-    }
-  };
 
   const publishToProd = async () => {
     if (!editorScript?.id) return;
@@ -4610,7 +4556,6 @@ export default function ScriptGeneratorPage() {
         description: module.description,
         category: pkg.category,
         tags: pkg.tags,
-        azureRunbookName: null,
         azureSyncedAt: null,
         createdAt: pkg.createdAt,
         updatedAt: pkg.createdAt,
@@ -4764,16 +4709,6 @@ export default function ScriptGeneratorPage() {
               </button>
             )}
             {editorScript?.id && (
-              <button onClick={pushToAzure} disabled={azurePushDialog.open || modulePushOpen || pushValidating} title="Push to Azure Automation" className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#0078D4]/30 bg-[#0078D4]/10 text-[#58A6FF] hover:bg-[#0078D4]/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                {pushValidating ? (
-                  <div className="w-3 h-3 border border-[#58A6FF]/40 border-t-[#58A6FF] rounded-full animate-spin" />
-                ) : (
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                )}
-                {pushValidating ? "Validating…" : "Azure"}
-              </button>
-            )}
-            {editorScript?.id && (
               <button
                 onClick={() => void publishToProd()}
                 disabled={publishingToProd || prodDbConnected === false}
@@ -4785,33 +4720,6 @@ export default function ScriptGeneratorPage() {
                   : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
                 {publishingToProd ? "Publishing…" : "Publish to Prod"}
               </button>
-            )}
-            {editorScript?.id && !editingModuleId && (
-              linkRunbookOpen ? (
-                <span className="flex items-center gap-1">
-                  <input
-                    autoFocus
-                    value={linkRunbookValue}
-                    onChange={e => setLinkRunbookValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") void linkExistingRunbook(); if (e.key === "Escape") { setLinkRunbookOpen(false); setLinkRunbookValue(""); } }}
-                    placeholder={editorScript.azureRunbookName ?? "runbook-name-in-azure"}
-                    className="text-[11px] px-2 py-1 rounded border border-[#30363D] bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:border-[#0078D4] w-48"
-                  />
-                  <button onClick={() => void linkExistingRunbook()} disabled={linkRunbookSaving || !linkRunbookValue.trim()} className="text-[11px] px-2 py-1 rounded bg-[#0078D4]/20 border border-[#0078D4]/40 text-[#58A6FF] hover:bg-[#0078D4]/30 disabled:opacity-50 transition-colors">
-                    {linkRunbookSaving ? "…" : "Link"}
-                  </button>
-                  <button onClick={() => { setLinkRunbookOpen(false); setLinkRunbookValue(""); }} className="text-[11px] px-1 py-1 text-[#484F58] hover:text-[#8B949E]">✕</button>
-                </span>
-              ) : (
-                <button
-                  onClick={() => { setLinkRunbookOpen(true); setLinkRunbookValue(editorScript.azureRunbookName ?? ""); }}
-                  title={editorScript.azureRunbookName ? `Linked: ${editorScript.azureRunbookName} — click to change` : "Link an existing Azure runbook name to this script"}
-                  className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[#30363D] bg-transparent text-[#484F58] hover:text-[#8B949E] hover:border-[#484F58] transition-colors"
-                >
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                  {editorScript.azureRunbookName ? editorScript.azureRunbookName : "Link runbook"}
-                </button>
-              )
             )}
             {loadedPackage?.id && !editorScript?.id && (
               <button
@@ -5245,7 +5153,6 @@ export default function ScriptGeneratorPage() {
         <RunLibraryScriptDialog
           scriptId={runLibraryScriptTarget.id}
           scriptTitle={runLibraryScriptTarget.title}
-          azureRunbookName={runLibraryScriptTarget.azureRunbookName}
           onClose={() => setRunLibraryScriptTarget(null)}
         />
       )}

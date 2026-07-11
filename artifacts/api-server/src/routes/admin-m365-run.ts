@@ -2,7 +2,7 @@
  * admin-m365-run.ts
  *
  * Script execution pipeline for the M365 Command Center.
- * Runs Library scripts (powershell_scripts table) via Azure Automation runbooks.
+ * Runs Library scripts (powershell_scripts table) via Azure script execution.
  *
  * POST /api/admin/run-script        — execute a single library script
  * POST /api/admin/scores/update     — directly upsert client M365 scores
@@ -31,7 +31,7 @@ import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { advancePhaseIfComplete, syncProjectProgress } from "../lib/kanban-phase-advance";
 import { broadcastKanbanChange } from "../lib/sse-broadcast";
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
+import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus } from "../lib/azure-automation";
 import { runAiAnalyzer } from "../lib/ai-analyzer";
 import { parseM365ScriptOutput } from "../lib/parse-m365-script-output";
 import { getSecretValue } from "../lib/azure-keyvault";
@@ -226,7 +226,7 @@ const snapshotHealthFromProfile = snapshotHealthFromProfileShared;
 
 /**
  * Given a triggering kanban task ID, returns the IDs of all kanban tasks in the
- * same project that share the same `linkedRunbook.azureRunbookName` in their
+ * same project that share the same `linkedRunbook.scriptId` in their
  * task metadata. The triggering task is always included in the result.
  */
 async function resolveSiblingTaskIds(kanbanTaskId: number): Promise<number[]> {
@@ -239,10 +239,10 @@ async function resolveSiblingTaskIds(kanbanTaskId: number): Promise<number[]> {
   if (!task) return [kanbanTaskId];
 
   const meta = (task.taskMetadata ?? {}) as Record<string, unknown>;
-  const linkedRunbook = meta.linkedRunbook as { azureRunbookName?: string } | null | undefined;
-  const azureRunbookName = linkedRunbook?.azureRunbookName;
+  const linkedRunbook = meta.linkedRunbook as { scriptId?: string } | null | undefined;
+  const scriptId = linkedRunbook?.scriptId;
 
-  if (!azureRunbookName) return [kanbanTaskId];
+  if (!scriptId) return [kanbanTaskId];
 
   const siblings = await db
     .select({ id: kanbanTasksTable.id })
@@ -250,7 +250,7 @@ async function resolveSiblingTaskIds(kanbanTaskId: number): Promise<number[]> {
     .where(
       and(
         eq(kanbanTasksTable.projectId, task.projectId),
-        sql`task_metadata->'linkedRunbook'->>'azureRunbookName' = ${azureRunbookName}`,
+        sql`task_metadata->'linkedRunbook'->>'scriptId' = ${scriptId}`,
       )
     );
 
@@ -593,11 +593,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
       res.status(404).json({ error: `Module ${moduleId} not found` });
       return;
     }
-    if (!mod.azureRunbookName) {
-      res.status(400).json({ error: "This module has not been pushed to Azure Automation yet — push it first from the Script Sets editor" });
-      return;
-    }
-    resolvedRunbookName = mod.azureRunbookName;
+    resolvedRunbookName = `module-${mod.id}`;
     resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
   } else {
     // Running a standalone library script — or a script_modules UUID injected via kanban enrichment
@@ -618,18 +614,10 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
         res.status(404).json({ error: `Library script ${libraryScriptId} not found` });
         return;
       }
-      if (!mod.azureRunbookName) {
-        res.status(400).json({ error: "This module has not been pushed to Azure Automation yet — push it first from the Script Sets editor" });
-        return;
-      }
-      resolvedRunbookName = mod.azureRunbookName;
+      resolvedRunbookName = `module-${mod.id}`;
       resolvedScriptName = mod.filename ? mod.filename.replace(/\.ps1$/i, "") : null;
     } else {
-      if (!script.azureRunbookName) {
-        res.status(400).json({ error: "This script has not been pushed to Azure Automation yet — push it first from the Library editor" });
-        return;
-      }
-      resolvedRunbookName = script.azureRunbookName;
+      resolvedRunbookName = `script-${script.id}`;
       resolvedLibraryScriptId = libraryScriptId;
       resolvedScriptName = script.title ?? null;
     }
@@ -660,7 +648,7 @@ router.post("/admin/run-script", requireAdmin, async (req: Request, res: Respons
   // Trigger runbook
   let jobId: string;
   try {
-    const job = await createRunbookJob({
+    const job = await createScriptJob({
       runbookName: resolvedRunbookName,
       parameters: {
         TenantId: tenantId,

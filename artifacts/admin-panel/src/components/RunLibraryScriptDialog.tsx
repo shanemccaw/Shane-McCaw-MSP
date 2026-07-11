@@ -22,7 +22,6 @@ interface Props {
   scriptId?: string;
   moduleId?: string;
   scriptTitle: string;
-  azureRunbookName?: string | null;
   onClose: () => void;
   initialClientId?: number | null;
   /** Pre-validated App Registration ID from the parent's pre-flight check.
@@ -36,7 +35,7 @@ interface Props {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, azureRunbookName, onClose, initialClientId, initialAppRegistrationId, kanbanTaskId, onRunComplete, autoRun }: Props) {
+export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle, onClose, initialClientId, initialAppRegistrationId, kanbanTaskId, onRunComplete, autoRun }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
 
@@ -146,10 +145,6 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
     }
     if (!moduleId && scriptId && !UUID_RE.test(scriptId)) {
       toast({ title: "Script metadata is invalid", description: "The script ID is malformed — re-link this card to a library script.", variant: "destructive" });
-      return;
-    }
-    if (!moduleId && !azureRunbookName) {
-      toast({ title: "Script not pushed to Azure", description: "Push this script to Azure Automation first from the Library editor.", variant: "destructive" });
       return;
     }
     if (!appRegistrationId) {
@@ -296,9 +291,6 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
           <div className="min-w-0">
             <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-0.5">Run Script</p>
             <p className="text-sm font-semibold text-[#E6EDF3] truncate">{scriptTitle}</p>
-            {azureRunbookName && (
-              <p className="text-xs text-[#484F58] mt-0.5 truncate">Runbook: {azureRunbookName}</p>
-            )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0 ml-3">
             {autoRun && loadingClients && !running && !jobRef && (
@@ -321,9 +313,9 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {!azureRunbookName && !moduleId && (
+          {!scriptId && !moduleId && (
             <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-4 py-3">
-              <p className="text-xs text-yellow-400 font-medium">This script has not been pushed to Azure Automation yet. Push it first from the Library editor before running.</p>
+              <p className="text-xs text-yellow-400 font-medium">This card has no script linked. Re-link it to a library script before running.</p>
             </div>
           )}
 
@@ -362,7 +354,7 @@ export default function RunLibraryScriptDialog({ scriptId, moduleId, scriptTitle
           {/* Run button */}
           <button
             onClick={() => void handleRun()}
-            disabled={running || (!azureRunbookName && !moduleId) || !appRegistrationId}
+            disabled={running || (!scriptId && !moduleId) || !appRegistrationId}
             className="w-full flex items-center justify-center gap-2 bg-[#0078D4] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#006CBE] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {running ? (

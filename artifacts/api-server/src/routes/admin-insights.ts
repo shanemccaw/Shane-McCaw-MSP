@@ -60,7 +60,7 @@ import {
   ensureSharePointFolderAtRoot,
 } from "../lib/graph";
 import {
-  createRunbookJob,
+  createScriptJob,
   isAzureConfigured,
 } from "../lib/azure-automation";
 import { sendWebPushToAdmins } from "../lib/web-push";
@@ -2536,39 +2536,27 @@ export async function executeAutomation(
   }
 
   try {
-    // ── 1. Trigger linked Azure runbook (if configured) ─────────────────────
+    // ── 1. Trigger linked Azure script (if configured) ─────────────────────
     if (automation.linkedRunbookScriptId) {
       if (isAzureConfigured()) {
-        log("info", "Resolving linked Azure runbook…");
+        log("info", "Resolving linked Azure script…");
         try {
-          // Resolve the runbook name from the powershell_scripts table
-          const [psScript] = await db.select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
-            .from(powershellScriptsTable)
-            .where(eq(powershellScriptsTable.id, automation.linkedRunbookScriptId))
-            .limit(1);
-
-          const runbookName = psScript?.azureRunbookName;
-          if (runbookName) {
-            const job = await createRunbookJob({ runbookName });
-            logger.info(
-              { automationId, runbookName, jobId: job.jobId },
-              "insights: automation triggered Azure runbook job",
-            );
-            log("info", `Triggered Azure runbook "${runbookName}" (job ${job.jobId})`);
-          } else {
-            logger.warn(
-              { automationId, linkedRunbookScriptId: automation.linkedRunbookScriptId },
-              "insights: linked script has no azureRunbookName — skipping Azure trigger",
-            );
-            log("warn", "Linked script has no Azure runbook name — runbook trigger skipped");
-          }
-        } catch (runbookErr) {
-          logger.warn({ runbookErr, automationId }, "insights: Azure runbook trigger failed (non-fatal)");
-          log("warn", `Azure runbook trigger failed (non-fatal): ${String(runbookErr)}`);
+          // Use the script ID as the job name (script name column has been removed)
+          const scriptId = automation.linkedRunbookScriptId;
+          const scriptName = `script-${scriptId}`;
+          const job = await createScriptJob({ runbookName: scriptName });
+          logger.info(
+            { automationId, scriptId, jobId: job.jobId },
+            "insights: automation triggered Azure script job",
+          );
+          log("info", `Triggered Azure script job ${job.jobId} for script ${scriptId}`);
+        } catch (scriptErr) {
+          logger.warn({ scriptErr, automationId }, "insights: Azure script trigger failed (non-fatal)");
+          log("warn", `Azure script trigger failed (non-fatal): ${String(scriptErr)}`);
         }
       } else {
-        logger.info({ automationId }, "insights: Azure not configured — skipping runbook trigger");
-        log("warn", "Azure not configured — runbook trigger skipped");
+        logger.info({ automationId }, "insights: Azure not configured — skipping script trigger");
+        log("warn", "Azure not configured — script trigger skipped");
       }
     }
 

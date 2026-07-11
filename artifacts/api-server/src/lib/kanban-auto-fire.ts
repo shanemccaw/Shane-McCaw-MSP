@@ -10,9 +10,9 @@
  *  1. Find the client's projects.
  *  2. Find the first "backlog" script card in an in_progress workflow step.
  *  3. Get the client's verified App Registration and fetch the secret from Key Vault.
- *  4. Resolve sibling cards that share the same azureRunbookName in the project.
+ *  4. Resolve sibling cards that share the same scriptId in the project.
  *  5. Bulk-move all sibling cards to "in_progress" and stamp runningJobRef.
- *  6. Create the Azure Automation runbook job.
+ *  6. Create the Azure script execution job.
  *  7. Poll the job to completion in the background (detached — does NOT block the response).
  *  8. On completion: move cards to "completed" (or leave in "in_progress" on failure),
  *     call advancePhaseIfComplete, and sync project progress.
@@ -35,7 +35,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, isNotNull, sql, count } from "drizzle-orm";
 import { logger } from "./logger";
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, findActiveJobForRunbook } from "./azure-automation";
+import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, findActiveJobForScript } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { advancePhaseIfComplete, syncProjectProgress } from "./kanban-phase-advance";
 import { broadcastKanbanChange } from "./sse-broadcast";
@@ -250,7 +250,6 @@ async function alertDocumentAutoFireExhausted(opts: {
 
 interface LinkedRunbook {
   scriptId: string;
-  azureRunbookName: string;
   scriptTitle: string;
 }
 
@@ -317,7 +316,7 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   for (const card of candidates) {
     const meta = (card.taskMetadata ?? {}) as Record<string, unknown>;
     const lr = meta.linkedRunbook as LinkedRunbook | null | undefined;
-    if (lr?.azureRunbookName) {
+    if (lr?.scriptId) {
       return { id: card.id, projectId: card.projectId, workflowStepId: card.workflowStepId, linkedRunbook: lr };
     }
   }
@@ -369,11 +368,11 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
 
   const [moduleRows, scriptRows] = await Promise.all([
     uuidIds.length > 0
-      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description, azureRunbookName: scriptModulesTable.azureRunbookName })
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
           .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidIds))
       : Promise.resolve([]),
     uuidIds.length > 0
-      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
+      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title })
           .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, uuidIds))
       : Promise.resolve([]),
   ]);
@@ -385,15 +384,11 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
     if (!UUID_RE.test(runbookId)) return null;
     const mod = moduleMap.get(runbookId);
     if (mod) {
-      if (!mod.azureRunbookName) {
-        logger.warn({ runbookId, filename: mod.filename }, "kanban-auto-fire: module not yet pushed to Azure — skipping");
-        return null;
-      }
-      return { scriptId: mod.id, azureRunbookName: mod.azureRunbookName, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+      return { scriptId: mod.id, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
     }
     const script = scriptMap.get(runbookId);
-    if (script?.azureRunbookName) {
-      return { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+    if (script) {
+      return { scriptId: script.id, scriptTitle: script.title };
     }
     return null;
   }
@@ -424,14 +419,14 @@ async function findFirstBacklogScriptCard(clientUserId: number): Promise<Eligibl
   return null;
 }
 
-async function resolveSiblingIds(taskId: number, projectId: number, azureRunbookName: string): Promise<number[]> {
+async function resolveSiblingIds(taskId: number, projectId: number, scriptId: string): Promise<number[]> {
   const siblings = await db
     .select({ id: kanbanTasksTable.id })
     .from(kanbanTasksTable)
     .where(
       and(
         eq(kanbanTasksTable.projectId, projectId),
-        sql`task_metadata->'linkedRunbook'->>'azureRunbookName' = ${azureRunbookName}`,
+        sql`task_metadata->'linkedRunbook'->>'scriptId' = ${scriptId}`,
         // Never pull already-completed cards back into a new job's sibling set.
         // Without this, firing the next backlog card (same runbook) would move the
         // just-completed sibling back to in_progress, erasing its completed state.
@@ -1475,7 +1470,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       return;
     }
 
-    const siblingIds = await resolveSiblingIds(card.id, card.projectId, card.linkedRunbook.azureRunbookName);
+    const siblingIds = await resolveSiblingIds(card.id, card.projectId, card.linkedRunbook.scriptId);
 
     // Move all cards to in_progress immediately
     await db.update(kanbanTasksTable)
@@ -1487,12 +1482,12 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       for (const t of inProgressRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
     }
 
-    // Dedup: if Azure already has a Queued/Running job for this runbook,
+    // Dedup: if Azure already has a Queued/Running job for this script,
     // adopt it instead of stacking another one on the queue.
-    const existingJobId = await findActiveJobForRunbook(card.linkedRunbook.azureRunbookName).catch(() => null);
+    const existingJobId = await findActiveJobForScript(card.linkedRunbook.scriptId).catch(() => null);
     if (existingJobId) {
       logger.info(
-        { clientUserId, existingJobId, runbook: card.linkedRunbook.azureRunbookName },
+        { clientUserId, existingJobId, scriptId: card.linkedRunbook.scriptId },
         "kanban-auto-fire: adopting existing active Azure job — skipping duplicate submission",
       );
     }
@@ -1503,8 +1498,8 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       if (existingJobId) {
         jobId = existingJobId;
       } else {
-        ({ jobId } = await createRunbookJob({
-          runbookName: card.linkedRunbook.azureRunbookName,
+        ({ jobId } = await createScriptJob({
+          runbookName: card.linkedRunbook.scriptId,
           parameters: {
             TenantId:     appReg.tenantId,
             ClientId:     appReg.azureClientId,
@@ -1555,7 +1550,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
       for (const t of createFailRevertedRows) broadcastKanbanChange(card.projectId, { action: "updated", task: t });
 
       logger.error(
-        { azErr, clientUserId, runbook: card.linkedRunbook.azureRunbookName, createFailCount, createFailExhausted },
+        { azErr, clientUserId, scriptId: card.linkedRunbook.scriptId, createFailCount, createFailExhausted },
         "kanban-auto-fire: Azure job creation failed — cards reverted to backlog with retry budget",
       );
 
@@ -1566,7 +1561,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
           clientUserId,
           jobId:        "N/A (job creation failed)",
           lastStatus:   "JobCreationError",
-          scriptTitle:  card.linkedRunbook.azureRunbookName,
+          scriptTitle:  card.linkedRunbook.scriptTitle,
           failureCount: createFailCount,
         });
       }
@@ -1590,7 +1585,7 @@ export async function autoFireFirstBacklogScript(clientUserId: number): Promise<
     }
 
     logger.info(
-      { clientUserId, jobId, runbook: card.linkedRunbook.azureRunbookName, cardIds: siblingIds },
+      { clientUserId, jobId, scriptId: card.linkedRunbook.scriptId, cardIds: siblingIds },
       "kanban-auto-fire: job started — polling in background",
     );
 
@@ -2162,7 +2157,7 @@ export async function reconcileStalledPhases(): Promise<void> {
           and(
             eq(kanbanTasksTable.workflowStepId, step.stepId),
             eq(kanbanTasksTable.column, "backlog"),
-            isNotNull(sql`task_metadata->'linkedRunbook'->>'azureRunbookName'`),
+            isNotNull(sql`task_metadata->'linkedRunbook'->>'scriptId'`),
             sql`"completion_status" IS DISTINCT FROM 'auto_fire_exhausted'`,
           ),
         )

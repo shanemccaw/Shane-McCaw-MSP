@@ -59,7 +59,7 @@ async function resolveTemplateTaskMetadata(
   clientDeliverables: string[];
   checklistState: Record<string, never>;
   uploadedArtifacts: never[];
-  linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null;
+  linkedRunbook: { scriptId: string; scriptTitle: string } | null;
   customerDownload: { scriptId: string; scriptTitle: string } | null;
   triggersHealthScore: boolean;
   documentGeneration: { category: string; docType: string; title: string } | null;
@@ -83,11 +83,11 @@ async function resolveTemplateTaskMetadata(
     linkedArtIds.length  > 0 ? db.select().from(artifactSetsTable).where(inArray(artifactSetsTable.id, linkedArtIds)) : Promise.resolve([]),
     linkedDelIds.length  > 0 ? db.select().from(deliverableSetsTable).where(inArray(deliverableSetsTable.id, linkedDelIds)) : Promise.resolve([]),
     uuidRunIds.length > 0
-      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description, azureRunbookName: scriptModulesTable.azureRunbookName })
+      ? db.select({ id: scriptModulesTable.id, filename: scriptModulesTable.filename, description: scriptModulesTable.description })
           .from(scriptModulesTable).where(inArray(scriptModulesTable.id, uuidRunIds))
       : Promise.resolve([]),
     uuidRunIds.length > 0
-      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title, azureRunbookName: powershellScriptsTable.azureRunbookName })
+      ? db.select({ id: powershellScriptsTable.id, title: powershellScriptsTable.title })
           .from(powershellScriptsTable).where(inArray(powershellScriptsTable.id, uuidRunIds))
       : Promise.resolve([]),
     allDlIds.length > 0
@@ -105,15 +105,15 @@ async function resolveTemplateTaskMetadata(
   const dlScriptMap      = new Map(dlScriptRows.map(r => [r.id, r]));
 
   return templateTasks.map(t => {
-    let linkedRunbook: { scriptId: string; azureRunbookName: string; scriptTitle: string } | null = null;
+    let linkedRunbook: { scriptId: string; scriptTitle: string } | null = null;
     if (t.runbookId && UUID_RE.test(t.runbookId)) {
       const mod = moduleRunbookMap.get(t.runbookId);
-      if (mod?.azureRunbookName) {
-        linkedRunbook = { scriptId: mod.id, azureRunbookName: mod.azureRunbookName, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
-      } else if (!mod) {
+      if (mod) {
+        linkedRunbook = { scriptId: mod.id, scriptTitle: mod.description ?? mod.filename.replace(/\.ps1$/i, "") };
+      } else {
         const script = scriptRunbookMap.get(t.runbookId);
-        if (script?.azureRunbookName) {
-          linkedRunbook = { scriptId: script.id, azureRunbookName: script.azureRunbookName, scriptTitle: script.title };
+        if (script) {
+          linkedRunbook = { scriptId: script.id, scriptTitle: script.title };
         }
       }
     }

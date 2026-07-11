@@ -1767,7 +1767,7 @@ function AutomationTab({
         <p className="text-gray-500 text-xs mt-1">Format: minute hour day month weekday — e.g. <code>0 9 1 * *</code> = 9am on 1st of month</p>
       </div>
       <div>
-        <label className="text-gray-400 text-xs mb-1.5 block">Linked Runbook Script ID (optional — triggers Azure runbook on fire)</label>
+        <label className="text-gray-400 text-xs mb-1.5 block">Linked Script ID (optional — triggers Azure script execution on fire)</label>
         <input value={wLinkedScript} onChange={e => setWLinkedScript(e.target.value)}
           className="w-full bg-[#0D1117] border border-gray-700/50 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="UUID of PowerShell script…" />
       </div>

@@ -60,7 +60,7 @@ import {
   type WfNode,
 } from "@workspace/db";
 
-import { createRunbookJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveRunbookNameById, findActiveJobForRunbook } from "./azure-automation";
+import { createScriptJob, getJobStatus, getJobOutput, isTerminalStatus, isAzureConfigured, resolveScriptById, findActiveJobForScript } from "./azure-automation";
 import { getSecretValue } from "./azure-keyvault";
 import { generateScriptFromService, generateScriptFromDocument } from "./ps-script-gen.js";
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
@@ -1437,38 +1437,28 @@ const PROMOTED_ACTION_TYPES = new Set([
 //      in manually via the builder's Runbook ID field.
 // Internal UUIDs never match Azure's ARM-style `rb.id` values, so they must be
 // resolved against our own tables FIRST; only fall back to the Azure ARM-ID
-// lookup (resolveRunbookNameById) when the value isn't one of our UUIDs.
+// lookup (resolveScriptById) when the value isn't one of our UUIDs.
 const RUNBOOK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function resolveExecuteRunbookId(runbookId: string): Promise<string> {
   if (RUNBOOK_UUID_RE.test(runbookId)) {
+    // The script name column has been removed — use the script UUID as the identifier
     const [script] = await db
-      .select({ azureRunbookName: powershellScriptsTable.azureRunbookName })
+      .select({ id: powershellScriptsTable.id })
       .from(powershellScriptsTable)
       .where(eq(powershellScriptsTable.id, runbookId))
       .limit(1);
-    if (script) {
-      if (!script.azureRunbookName) {
-        throw new Error(`Script "${runbookId}" has not been pushed to Azure Automation yet — no linked runbook name`);
-      }
-      return script.azureRunbookName;
-    }
+    if (script) return script.id;
 
     const [mod] = await db
-      .select({ azureRunbookName: scriptModulesTable.azureRunbookName })
+      .select({ id: scriptModulesTable.id })
       .from(scriptModulesTable)
       .where(eq(scriptModulesTable.id, runbookId))
       .limit(1);
-    if (mod) {
-      if (!mod.azureRunbookName) {
-        throw new Error(`Script module "${runbookId}" has not been pushed to Azure Automation yet — no linked runbook name`);
-      }
-      return mod.azureRunbookName;
-    }
-    // Not a known internal script/module UUID — fall through to the Azure
-    // ARM-ID lookup below in case it happens to also look like a UUID.
+    if (mod) return mod.id;
+    // Not a known internal script/module UUID — fall through.
   }
-  return resolveRunbookNameById(runbookId);
+  return resolveScriptById(runbookId);
 }
 
 // ── Node execution ────────────────────────────────────────────────────────────
@@ -1708,7 +1698,7 @@ async function executeNode(
 
               // Create all jobs in parallel (allSettled so one creation failure doesn't abort the rest)
               const jobSettled = await Promise.allSettled(
-                runbookList.map(name => createRunbookJob({ runbookName: name, parameters: { ...sharedParameters } })),
+                runbookList.map(name => createScriptJob({ runbookName: name, parameters: { ...sharedParameters } })),
               );
 
               // Poll all created jobs in parallel; map creation failures to immediate failed results
@@ -1807,7 +1797,7 @@ async function executeNode(
               }
             }
             if (!nodeError) {
-            const job = await createRunbookJob({ runbookName: runbookName!, parameters });
+            const job = await createScriptJob({ runbookName: runbookName!, parameters });
             if (actionType === "execute_runbook") {
               // Poll until the job reaches a terminal status (max 10 minutes).
               const POLL_INTERVAL_MS = 5_000;
@@ -1834,7 +1824,7 @@ async function executeNode(
                   if (Date.now() - firstQueuedAt >= STUCK_QUEUED_MS) {
                     nodeError = true;
                     output = {
-                      error: `Azure job stuck in "${finalStatus}" for 2+ minutes — ensure the runbook "${runbookName}" is Published (not Draft) in Azure Automation and the account has available workers`,
+                      error: `Script job stuck in "${finalStatus}" for 2+ minutes — ensure the script is published and the Azure account has available workers`,
                       jobId: job.jobId,
                     };
                     break;
@@ -2873,9 +2863,9 @@ async function executeNode(
           output = { error: "validate_m365_permissions requires clientId" };
         } else if (!isAzureConfigured()) {
           nodeError = true;
-          output = { error: "Azure Automation is not configured — add required secrets" };
+          output = { error: "Azure is not configured — add required secrets" };
         } else {
-          const job = await createRunbookJob({ runbookName, parameters: { ClientId: vpClientIdRaw } });
+          const job = await createScriptJob({ runbookName, parameters: { ClientId: vpClientIdRaw } });
           output = { permissionsValid: true, missingCount: 0, jobId: job.jobId };
         }
         break;
@@ -5572,7 +5562,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
       case "kanban_auto_fire": {
         // Fires the appropriate kanban auto-fire function based on the `action`
         // field in the payload (set by the upstream kanban.card_moved event).
-        //   action = "script"   → autoFireFirstBacklogScript (Azure runbook execution)
+        //   action = "script"   → autoFireFirstBacklogScript (Azure script execution)
         //   action = "document" → autoFireDocumentCard (AI document generation)
         //   action = "workflow" → autoFireRunWorkflowCards (child workflow launch)
         // Calls are fire-and-forget; errors are logged as warnings (non-fatal).

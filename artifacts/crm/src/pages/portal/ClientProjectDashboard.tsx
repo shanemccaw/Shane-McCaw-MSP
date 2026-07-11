@@ -771,7 +771,7 @@ export default function ClientProjectDashboard() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-bold text-white">Action Required: Connect Your Azure Automation</p>
-                <p className="text-xs text-white/60 mt-0.5">Shane needs access to your Azure tenant to run automation scripts. This unlocks provisioning, governance, and PowerShell runbooks for your engagement.</p>
+                <p className="text-xs text-white/60 mt-0.5">Shane needs access to your Azure tenant to run automation scripts. This unlocks provisioning, governance, and PowerShell scripts for your engagement.</p>
               </div>
             </div>
             <div className="flex-shrink-0">

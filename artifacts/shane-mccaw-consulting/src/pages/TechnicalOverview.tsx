@@ -113,7 +113,7 @@ export default function TechnicalOverview() {
 
           <DocSection title="1. Azure Automation Architecture">
             <Para>
-              Shane's practice uses Microsoft Azure Automation — a managed runbook execution service — as the runtime environment for all tenant-side PowerShell scripts. Azure Automation is a first-party Microsoft service, hosted within Shane's Azure subscription, and communicates with your tenant exclusively through Microsoft's own API surface (Microsoft Graph and Exchange Online PowerShell).
+              Shane's practice uses Microsoft Azure — a managed script execution environment — as the runtime for all tenant-side PowerShell scripts. Azure is a first-party Microsoft service, hosted within Shane's Azure subscription, and communicates with your tenant exclusively through Microsoft's own API surface (Microsoft Graph and Exchange Online PowerShell).
             </Para>
             <SubSection title="Execution flow">
               <Para>When a runbook is triggered (either on a schedule or manually):</Para>
@@ -127,7 +127,7 @@ export default function TechnicalOverview() {
             </SubSection>
             <SubSection title="Scheduling">
               <Para>
-                For one-time assessments, runbooks are triggered manually when the engagement begins. For retainer clients, a recurring Azure Automation schedule runs each runbook on a monthly cadence (default: first Monday of each month at 02:00 UTC). Schedules can be paused, modified, or deleted by Shane at any time, and by you at any time by deleting or suspending your App Registration.
+                For one-time assessments, scripts are triggered manually when the engagement begins. For retainer clients, a recurring Azure schedule runs each script on a monthly cadence (default: first Monday of each month at 02:00 UTC). Schedules can be paused, modified, or deleted by Shane at any time, and by you at any time by deleting or suspending your App Registration.
               </Para>
             </SubSection>
           </DocSection>

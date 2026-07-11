@@ -109,7 +109,7 @@ export default function MicroOffers() {
               {
                 n: 3,
                 title: "Diagnose",
-                body: "Azure Runbooks run a complete read-only diagnostic. Takes 10–60 minutes depending on tenant size.",
+                body: "Azure scripts run a complete read-only diagnostic. Takes 10–60 minutes depending on tenant size.",
               },
               {
                 n: 4,

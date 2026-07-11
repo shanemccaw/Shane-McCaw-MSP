@@ -357,7 +357,7 @@ export default function PortalAppRegistration() {
         <div className="bg-white border border-border rounded-xl p-5">
           <h2 className="text-sm font-bold text-[#0A2540] mb-2">Why this is needed</h2>
           <p className="text-sm text-gray-600 leading-relaxed">
-            Shane's Script Runner executes PowerShell runbooks in Azure Automation to provision SharePoint sites, manage Teams channels, configure governance policies, and handle bulk M365 tasks inside your tenant. To do this securely, the runbook needs a service identity — an Azure App Registration — that has exactly the permissions required, with no more access than necessary. You create and own this App Registration in your Azure portal, which means you maintain full control and can revoke access at any time.
+            Shane's Script Runner executes PowerShell scripts in Azure to provision SharePoint sites, manage Teams channels, configure governance policies, and handle bulk M365 tasks inside your tenant. To do this securely, the script needs a service identity — an Azure App Registration — that has exactly the permissions required, with no more access than necessary. You create and own this App Registration in your Azure portal, which means you maintain full control and can revoke access at any time.
           </p>
         </div>
 

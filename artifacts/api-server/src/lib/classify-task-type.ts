@@ -49,7 +49,7 @@ Rules:
 - Tasks about configuring SharePoint, Teams, DLP, policies → governanceSetup
 - Tasks about Power Automate, Power Apps, flows → automationBuild
 - Tasks about discovery workshops, requirements gathering → discovery
-- Tasks about running PowerShell scripts, Azure Automation Runbooks → script
+- Tasks about running PowerShell scripts, automation scripts → script
 
 Return ONLY a JSON array of objects with exactly these keys: id (number) and taskType (string).
 Example: [{"id": 1, "taskType": "discovery"}]
@@ -96,7 +96,7 @@ async function callAI(
 const SCRIPT_AUTOMATABLE_PROMPT = `You are classifying Microsoft 365 workflow tasks to determine automation eligibility for PowerShell scripting.
 
 Classify the task as exactly one of:
-- AUTOMATABLE: Can be fully or partially automated with PowerShell (provisioning accounts/sites/groups, configuring policies, bulk operations, reports, running cmdlets, setting permissions, Azure Automation runbooks)
+- AUTOMATABLE: Can be fully or partially automated with PowerShell (provisioning accounts/sites/groups, configuring policies, bulk operations, reports, running cmdlets, setting permissions, app-only service principal scripts)
 - USER_ACCOUNT_REQUIRED: Requires admin UI interaction but a helper or companion script could assist (enabling features in admin center, tasks with PowerShell equivalents, hybrid tasks mixing UI and scripting)
 - HUMAN_ONLY: Inherently human with no meaningful script component: meetings, training sessions, document writing, stakeholder communication, strategic decisions, reviews requiring human judgment
 

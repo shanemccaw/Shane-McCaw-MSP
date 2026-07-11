@@ -594,7 +594,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   {
     name: "__system__: Kanban Auto-fire",
-    description: "Handles kanban.card_moved events to auto-fire Azure runbook scripts and document generation for client cards.",
+    description: "Handles kanban.card_moved events to auto-fire scripts and document generation for client cards.",
     triggerType: "startup",
     graph: {
       nodes: [

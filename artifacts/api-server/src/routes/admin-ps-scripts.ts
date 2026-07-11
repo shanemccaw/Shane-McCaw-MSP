@@ -319,10 +319,10 @@ You will receive a consulting service definition and its delivery workflow (phas
 
 STEP 1 — CLASSIFY every task as one of THREE categories:
 
-  AUTOMATABLE — runs UNATTENDED inside an Azure Automation Runbook as a service principal (App Registration with client credentials grant). Key constraints:
+  AUTOMATABLE — runs UNATTENDED as an app-only service principal (App Registration with client credentials grant). Key constraints:
     ★ APPLICATION PERMISSIONS ONLY — never Delegated permissions. There is no signed-in user; only Microsoft Graph Application permission scopes are valid (e.g. User.Read.All, not User.Read).
     ★ NO interactive login, no licensed user account, no MFA prompt — the script must authenticate entirely via -ClientId / -ClientSecret or a certificate.
-    ★ Output via Write-Output ONLY — Azure Automation captures only the output stream. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
+    ★ Output via Write-Output ONLY — only the output stream is captured. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
     Eligible operations:
     • Entra ID / Azure AD: user/group/license management, Conditional Access policies, app registrations, directory queries
     • Exchange Online (app-only Graph): mailbox property reads/writes that support Application permissions (Mail.ReadWrite, Calendars.ReadWrite, MailboxSettings.Read)
@@ -332,7 +332,7 @@ STEP 1 — CLASSIFY every task as one of THREE categories:
     • Defender/Purview/Sensitivity Labels/DLP/Retention policies via Graph Application permissions
     • Reporting and data export via Graph Application permissions
 
-  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as a service principal or Azure Automation runbook. Use this category for:
+  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as an app-only service principal. Use this category for:
     • ALL mailbox migration tasks: New-MigrationBatch, Start-MigrationBatch, Get-MigrationBatch, Set-MigrationBatch, Remove-MigrationBatch, Get-MigrationStatistics — these cmdlets have NO app-only equivalent
     • ALL Connect-MicrosoftTeams operations — the Teams PowerShell module requires delegated auth; it does not support service-principal-only connections for most administrative operations
     • Connect-ExchangeOnline without -AppId/-CertificateThumbprint — any script using the EXO v2/v3 module interactively
@@ -351,10 +351,10 @@ STEP 1 — CLASSIFY every task as one of THREE categories:
     • Physical / in-person tasks, vendor negotiations
 
 STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQUIRED), write a complete production-ready PowerShell script:
-  For AUTOMATABLE tasks (Azure Runbook / unattended):
+  For AUTOMATABLE tasks (app-only / unattended):
   - [CmdletBinding()] attribute + param() block with typed, documented parameters (-TenantId, -ClientId, -ClientSecret where applicable)
   - Authentication MUST use app-only credentials: Connect-MgGraph -ClientId -TenantId -ClientSecret (or certificate), Connect-PnPOnline -ClientId/-ClientSecret, Connect-AzAccount -ServicePrincipal
-  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the runbook has no signed-in user
+  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the script has no signed-in user
   - permissions.appPermissions must list ONLY Microsoft Graph Application scopes or Azure RBAC roles; permissions.delegatedPermissions MUST be [] (empty)
   For USER_ACCOUNT_REQUIRED tasks:
   - [CmdletBinding()] attribute + param() block — OMIT -ClientId, -ClientSecret, -CertificateThumbprint entirely
@@ -364,8 +364,8 @@ STEP 2 — For every task that can be scripted (AUTOMATABLE or USER_ACCOUNT_REQU
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable for their respective streams
   - Inline comments explaining each logical section
-  - NEVER write output to files — all results, status messages, and summaries MUST go to the output stream via Write-Output so they appear in the Azure Runbook job output
-  - FORBIDDEN cmdlets (never use): Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — file writes are silently lost in Azure Automation; Write-Host bypasses the pipeline entirely
+  - NEVER write output to files — all results, status messages, and summaries MUST go to the output stream via Write-Output
+  - FORBIDDEN cmdlets (never use): Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — Write-Host bypasses the pipeline entirely
 
 STEP 3 — Choose output shape based on the NUMBER OF SCRIPTABLE TASKS (AUTOMATABLE + USER_ACCOUNT_REQUIRED combined), not by phase count:
 
@@ -401,7 +401,7 @@ Manual script shape (use when ANY task is USER_ACCOUNT_REQUIRED) — JSON envelo
   "permissions": {
     "appPermissions": [],
     "delegatedPermissions": ["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)", "User.Read (Microsoft Graph Delegated)"],
-    "notes": "Must be run interactively under a licensed user account. Cannot run as an Azure Automation runbook or service principal."
+    "notes": "Must be run interactively under a licensed user account. Cannot run as an unattended Azure script or service principal."
   }
 }
 \`\`\`
@@ -465,7 +465,7 @@ Rules:
   # WARNING: MANUAL EXECUTION REQUIRED
   # This script uses delegated/interactive authentication and MUST be run
   # locally under a licensed user account with appropriate permissions.
-  # It cannot run as an Azure Automation runbook or service principal.
+  # It cannot run as an app-only service principal.
   # ===========================================================================
 - At the top of EVERY powershell script (after the # file: line and after any banner), insert a comment block listing human-only tasks that apply:
   # ─── HUMAN ACTION REQUIRED — steps NOT automated by this script ───────────────
@@ -926,7 +926,6 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
             savedScript: {
               id: savedSingle.id, title: savedSingle.title, description: savedSingle.description,
               category: savedSingle.category, tags: savedSingle.tags,
-              azureRunbookName: savedSingle.azureRunbookName,
               azureSyncedAt: savedSingle.azureSyncedAt?.toISOString() ?? null,
               createdAt: savedSingle.createdAt.toISOString(), updatedAt: savedSingle.updatedAt.toISOString(),
               scriptBody: savedSingle.scriptBody, permissions: savedSingle.permissions,
@@ -1418,7 +1417,6 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
             description: saved.description,
             category: saved.category,
             tags: saved.tags,
-            azureRunbookName: saved.azureRunbookName,
             azureSyncedAt: saved.azureSyncedAt?.toISOString() ?? null,
             createdAt: saved.createdAt.toISOString(),
             updatedAt: saved.updatedAt.toISOString(),
@@ -1460,7 +1458,6 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
           description: savedSingle.description,
           category: savedSingle.category,
           tags: savedSingle.tags,
-          azureRunbookName: savedSingle.azureRunbookName,
           azureSyncedAt: savedSingle.azureSyncedAt?.toISOString() ?? null,
           createdAt: savedSingle.createdAt.toISOString(),
           updatedAt: savedSingle.updatedAt.toISOString(),
@@ -1491,12 +1488,12 @@ const GENERATE_FROM_TASK_SYSTEM = `You are an expert Microsoft 365 PowerShell sc
 Given a single workflow task, classify it and generate an appropriate PowerShell script.
 
 CLASSIFY the task as one of:
-  AUTOMATABLE — runs UNATTENDED inside an Azure Automation Runbook as a service principal (App Registration with client credentials).
+  AUTOMATABLE — runs UNATTENDED as an app-only service principal (App Registration with client credentials).
     ★ APPLICATION PERMISSIONS ONLY — never Delegated permissions. There is no signed-in user; only Microsoft Graph Application scopes are valid (e.g. User.Read.All, not User.Read).
     ★ NO interactive login, no licensed user account, no MFA — must authenticate entirely via -ClientId / -ClientSecret or a certificate.
-    ★ Output via Write-Output ONLY — Azure Automation captures only the output stream. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
+    ★ Output via Write-Output ONLY — only the output stream is captured. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
     ★ permissions.delegatedPermissions MUST be [] for every AUTOMATABLE script.
-  USER_ACCOUNT_REQUIRED — can be scripted but REQUIRES a real licensed user account with delegated/interactive auth. CANNOT run as an Azure Automation runbook or service principal.
+  USER_ACCOUNT_REQUIRED — can be scripted but REQUIRES a real licensed user account with delegated/interactive auth. CANNOT run as an app-only service principal.
   HUMAN_ONLY — cannot be scripted at all (meetings, approvals, document review, client calls, business decisions)
 
 Classification rules:
@@ -1506,10 +1503,10 @@ Classification rules:
   - Reporting, Entra, SharePoint (PnP app-only), Intune via Graph Application → AUTOMATABLE
   - If unsure whether a cmdlet supports app-only auth → USER_ACCOUNT_REQUIRED
 
-For AUTOMATABLE tasks (Azure Runbook / unattended):
+For AUTOMATABLE tasks (app-only / unattended):
   - [CmdletBinding()] attribute + typed param() block with -TenantId, -ClientId, -ClientSecret where applicable
   - Authentication MUST use app-only credentials: Connect-MgGraph -ClientId -TenantId -ClientSecret (or cert), Connect-PnPOnline -ClientId/-ClientSecret, Connect-AzAccount -ServicePrincipal
-  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the runbook has no signed-in user
+  - NEVER use -Scopes, -Interactive, or any delegated auth flow — the script has no signed-in user
   - Inline comments explaining each logical section
 
 For USER_ACCOUNT_REQUIRED tasks:
@@ -1521,8 +1518,8 @@ Both types:
   - $ErrorActionPreference = "Stop"
   - Structured try/catch/finally error handling
   - Write-Output (NOT Write-Host) for all console output — Write-Error and Write-Warning are acceptable
-  - NEVER write output to files — all results MUST go to the output stream via Write-Output so they appear in the Azure Runbook job output
-  - FORBIDDEN: Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — file writes are silently lost in Azure Automation; Write-Host bypasses the pipeline
+  - NEVER write output to files — all results MUST go to the output stream via Write-Output
+  - FORBIDDEN: Export-Csv, Out-File, Set-Content, Add-Content, New-Item (for file creation), Write-Host — Write-Host bypasses the pipeline
 
 Output EXACTLY ONE of these three shapes — no prose outside the fences:
 
@@ -1542,7 +1539,7 @@ Single automatable script (AUTOMATABLE — Application permissions only, delegat
 
 Interactive script (USER_ACCOUNT_REQUIRED — Delegated permissions only, appPermissions MUST be []):
 \`\`\`json
-{"type":"manual","title":"Brief script title max 60 chars","permissions":{"appPermissions":[],"delegatedPermissions":["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)"],"notes":"Must run interactively under a licensed user account. Cannot run as an Azure Automation runbook."}}
+{"type":"manual","title":"Brief script title max 60 chars","permissions":{"appPermissions":[],"delegatedPermissions":["e.g. MailboxSettings.ReadWrite (Microsoft Graph Delegated)"],"notes":"Must run interactively under a licensed user account. Cannot run as an app-only service principal."}}
 \`\`\`
 \`\`\`powershell
 # file: script.ps1
@@ -1550,7 +1547,7 @@ Interactive script (USER_ACCOUNT_REQUIRED — Delegated permissions only, appPer
 # WARNING: MANUAL EXECUTION REQUIRED
 # This script uses delegated/interactive authentication and MUST be run
 # locally under a licensed user account with appropriate permissions.
-# It cannot run as an Azure Automation runbook or service principal.
+# It cannot run as an app-only service principal.
 # ===========================================================================
 # Complete production-ready script body using interactive auth
 \`\`\``;
@@ -1653,10 +1650,10 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
 
     const tags: string[] = type === "manual" ? ["manual"] : [];
 
-    const savedRow = await pool.query<{ id: string; title: string; azure_runbook_name: string | null }>(
+    const savedRow = await pool.query<{ id: string; title: string }>(
       `INSERT INTO powershell_scripts (title, category, script_body, permissions, tags, source_task_id)
        VALUES ($1, 'task', $2, $3::jsonb, $4::text[], $5)
-       RETURNING id, title, azure_runbook_name`,
+       RETURNING id, title`,
       [title, scriptBody, JSON.stringify(permissions), tags, taskId],
     );
     const saved = savedRow.rows[0]!;
@@ -1683,8 +1680,8 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
   const scriptId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(scriptId)) { res.status(400).json({ error: "Invalid id" }); return; }
   try {
-    const row = await pool.query<{ source_task_id: number | null; title: string; azure_runbook_name: string | null }>(
-      `SELECT source_task_id, title, azure_runbook_name FROM powershell_scripts WHERE id = $1`,
+    const row = await pool.query<{ source_task_id: number | null; title: string }>(
+      `SELECT source_task_id, title FROM powershell_scripts WHERE id = $1`,
       [scriptId],
     );
     if (row.rowCount === 0) { res.status(404).json({ error: "Script not found" }); return; }
@@ -1753,10 +1750,10 @@ router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Respons
   try {
     const result = await pool.query<{
       id: string; title: string; description: string | null; category: string;
-      tags: string[]; azure_runbook_name: string | null; azure_synced_at: string | null;
+      tags: string[]; azure_synced_at: string | null;
       created_at: string; updated_at: string; source_task_id: number | null;
     }>(
-      `SELECT id, title, description, category, tags, azure_runbook_name, azure_synced_at,
+      `SELECT id, title, description, category, tags, azure_synced_at,
               created_at, updated_at, source_task_id
        FROM powershell_scripts ORDER BY created_at DESC`,
     );
@@ -1766,7 +1763,6 @@ router.get("/admin/ps-scripts", requireAdmin, async (_req: Request, res: Respons
       description: r.description,
       category: r.category,
       tags: r.tags,
-      azureRunbookName: r.azure_runbook_name,
       azureSyncedAt: r.azure_synced_at,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
@@ -2003,12 +1999,11 @@ router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: 
   const pkgId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
+  const { filename, description, content, sortOrder } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
-    azureRunbookName?: string | null;
   };
 
   if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
@@ -2029,7 +2024,6 @@ router.post("/admin/ps-scripts/packages/:id/modules", requireAdmin, async (req: 
         description: description?.trim() ?? null,
         content,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
-        azureRunbookName: azureRunbookName?.trim() || null,
       })
       .returning();
     res.status(201).json(created);
@@ -2045,12 +2039,11 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
   const moduleId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder, azureRunbookName, permissions } = req.body as {
+  const { filename, description, content, sortOrder, permissions } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
-    azureRunbookName?: string | null;
     permissions?: PsScriptPermissions;
   };
 
@@ -2062,7 +2055,6 @@ router.put("/admin/ps-scripts/modules/:id", requireAdmin, async (req: Request, r
         ...(description !== undefined && { description: description?.trim() ?? null }),
         ...(content !== undefined && { content }),
         ...(sortOrder !== undefined && { sortOrder }),
-        ...(azureRunbookName !== undefined && { azureRunbookName: azureRunbookName?.trim() || null }),
         ...(permissions !== undefined && { permissions }),
       })
       .where(eq(scriptModulesTable.id, moduleId))
@@ -2127,12 +2119,11 @@ router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Requ
   const pkgId = String(req.params["id"] ?? "");
   if (!UUID_RE.test(pkgId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { filename, description, content, sortOrder, azureRunbookName } = req.body as {
+  const { filename, description, content, sortOrder } = req.body as {
     filename?: string;
     description?: string;
     content?: string;
     sortOrder?: number;
-    azureRunbookName?: string | null;
   };
 
   if (!filename || typeof filename !== "string" || filename.trim().length === 0) {
@@ -2151,7 +2142,6 @@ router.post("/admin/script-packages/:id/modules", requireAdmin, async (req: Requ
         description: description?.trim() ?? null,
         content,
         sortOrder: typeof sortOrder === "number" ? sortOrder : 999,
-        azureRunbookName: azureRunbookName?.trim() || null,
       })
       .returning();
     res.status(201).json(created);
@@ -2309,14 +2299,13 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
   const id = String(req.params["id"] ?? "");
   if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
 
-  const { title, description, category, scriptBody, permissions, tags, azureRunbookName } = req.body as {
+  const { title, description, category, scriptBody, permissions, tags } = req.body as {
     title?: string;
     description?: string;
     category?: string;
     scriptBody?: string;
     permissions?: PsScriptPermissions;
     tags?: string[];
-    azureRunbookName?: string | null;
   };
 
   try {
@@ -2329,7 +2318,6 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
         ...(scriptBody !== undefined && { scriptBody: scriptBody.trim() }),
         ...(permissions !== undefined && { permissions }),
         ...(tags !== undefined && { tags }),
-        ...(azureRunbookName !== undefined && { azureRunbookName: azureRunbookName?.trim() || null }),
         updatedAt: new Date(),
       })
       .where(eq(powershellScriptsTable.id, id))
@@ -2851,7 +2839,6 @@ router.post("/admin/ps-scripts/:id/publish-to-prod", requireAdmin, async (req: R
         scriptBody: script.scriptBody,
         permissions: script.permissions,
         tags: script.tags,
-        azureRunbookName: script.azureRunbookName,
         azureSyncedAt: script.azureSyncedAt,
         createdAt: script.createdAt,
         updatedAt: script.updatedAt,
@@ -2865,7 +2852,6 @@ router.post("/admin/ps-scripts/:id/publish-to-prod", requireAdmin, async (req: R
           scriptBody: script.scriptBody,
           permissions: script.permissions,
           tags: script.tags,
-          azureRunbookName: script.azureRunbookName,
           azureSyncedAt: script.azureSyncedAt,
           updatedAt: new Date(),
         },
@@ -2941,7 +2927,6 @@ router.post("/admin/ps-scripts/packages/:id/publish-to-prod", requireAdmin, asyn
           description: mod.description,
           content: mod.content,
           sortOrder: mod.sortOrder,
-          azureRunbookName: mod.azureRunbookName,
           sourceScriptId: mod.sourceScriptId,
           sourceTaskIds: mod.sourceTaskIds,
           azureSyncedAt: mod.azureSyncedAt,
@@ -2955,7 +2940,6 @@ router.post("/admin/ps-scripts/packages/:id/publish-to-prod", requireAdmin, asyn
             description: mod.description,
             content: mod.content,
             sortOrder: mod.sortOrder,
-            azureRunbookName: mod.azureRunbookName,
             permissions: mod.permissions,
           },
         });

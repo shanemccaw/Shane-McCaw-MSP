@@ -86,8 +86,8 @@ function buildResponse(input: string, snap: PortalSnapshot): string {
     return "Contracts are managed per project. You can view and sign contracts from any **Project Detail** page under the Contracts tab, or from the Billing section.";
   }
 
-  if (q.match(/\b(automat|azure|power(shell|automate)|runbook|script)\b/)) {
-    return "Automation is set up through the **Automation Setup** page. You'll need to connect your Azure tenant so Shane can run PowerShell runbooks and provisioning scripts on your behalf.";
+  if (q.match(/\b(automat|azure|power(shell|automate)|script)\b/)) {
+    return "Automation is set up through the **Automation Setup** page. You'll need to connect your Azure tenant so Shane can run PowerShell scripts and provisioning scripts on your behalf.";
   }
 
   if (q.match(/\b(retainer|subscription|monthly|renewal)\b/)) {

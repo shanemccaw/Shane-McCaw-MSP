@@ -1032,13 +1032,13 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
       setMovingToInProgress(false);
     }
 
-    // Optimistically move sibling cards (same azureRunbookName) to In Progress
-    if (onSiblingUpdate && boardTasks && linkedRunbook?.azureRunbookName) {
+    // Optimistically move sibling cards (same scriptId) to In Progress
+    if (onSiblingUpdate && boardTasks && linkedRunbook?.scriptId) {
       for (const bt of boardTasks) {
         if (bt.id === localTask.id) continue;
         const btMeta = (bt.taskMetadata ?? {}) as Record<string, unknown>;
-        const btRunbook = btMeta.linkedRunbook as { azureRunbookName?: string } | null | undefined;
-        if (btRunbook?.azureRunbookName === linkedRunbook.azureRunbookName && bt.column !== "in_progress") {
+        const btRunbook = btMeta.linkedRunbook as { scriptId?: string } | null | undefined;
+        if (btRunbook?.scriptId === linkedRunbook.scriptId && bt.column !== "in_progress") {
           onSiblingUpdate({ ...bt, column: "in_progress" });
         }
       }
@@ -1067,7 +1067,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
   const checkedCount = checklist.filter(item => checklistState[item.id]).length;
   const banner = getTypedStatusBanner(localTask.taskType, localTask.taskMetadata);
   const typeCfg = localTask.taskType ? TASK_TYPE_CONFIG[localTask.taskType as TaskType] : null;
-  const linkedRunbook = meta.linkedRunbook as { scriptId: string; azureRunbookName: string; scriptTitle: string } | null | undefined;
+  const linkedRunbook = meta.linkedRunbook as { scriptId: string; scriptTitle: string } | null | undefined;
 
   // Build a single consolidated output string from all output sources.
   const _scriptOutput = meta.scriptOutput as string | undefined;
@@ -1111,8 +1111,8 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
               )}
             </div>
 
-            {/* Run Script button (when linked runbook present) */}
-            {!editing && linkedRunbook?.azureRunbookName && (
+            {/* Run Script button (when linked script present) */}
+            {!editing && linkedRunbook?.scriptId && (
               <button
                 onClick={() => { if (!scriptRunning) setConfirmRunOpen(true); }}
                 disabled={movingToInProgress || scriptRunning}
@@ -1170,7 +1170,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
 
                     {credsMissing && (
                       <span
-                        title="Azure Automation secrets are not set in Replit — add AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_AUTOMATION_RESOURCE_GROUP, and AZURE_AUTOMATION_ACCOUNT_NAME"
+                        title="Azure secrets are not fully configured in Replit Secrets — see replit.md for the required variable names"
                         className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-red-400 bg-red-500/10 border border-red-500/20 rounded px-1.5 py-0.5 cursor-help"
                       >
                         <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -1311,7 +1311,7 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
                   taskId={localTask.id}
                   fetchWithAuth={fetchWithAuth}
                   onMetadataUpdate={handleMetadataUpdate}
-                  onRunScript={linkedRunbook?.azureRunbookName ? () => setConfirmRunOpen(true) : undefined}
+                  onRunScript={linkedRunbook?.scriptId ? () => setConfirmRunOpen(true) : undefined}
                   onOpenScript={() => setLocation("/command/scripts")}
                 />
               )}
@@ -1687,10 +1687,9 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
     </Dialog>
 
     {/* Run Script confirm dialog */}
-    {confirmRunOpen && linkedRunbook?.azureRunbookName && (
+    {confirmRunOpen && linkedRunbook?.scriptId && (
       <RunScriptConfirmDialog
         scriptTitle={linkedRunbook.scriptTitle}
-        azureRunbookName={linkedRunbook.azureRunbookName}
         clientName={clientName ?? null}
         onConfirm={() => void handleConfirmRun()}
         onCancel={() => setConfirmRunOpen(false)}
@@ -1698,11 +1697,10 @@ function GenericKanbanCardModal({ task, stepTitle, open, onClose, mode = "client
       />
     )}
 
-    {runDialogOpen && linkedRunbook?.azureRunbookName && (
+    {runDialogOpen && linkedRunbook?.scriptId && (
       <RunLibraryScriptDialog
         scriptId={linkedRunbook.scriptId}
         scriptTitle={linkedRunbook.scriptTitle}
-        azureRunbookName={linkedRunbook.azureRunbookName}
         initialClientId={clientId}
         initialAppRegistrationId={confirmedAppRegId}
         kanbanTaskId={localTask.id}

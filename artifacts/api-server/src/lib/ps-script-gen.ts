@@ -30,7 +30,7 @@ You will receive a consulting service definition and its delivery workflow (phas
 
 STEP 1 — CLASSIFY every task as one of THREE categories:
 
-  AUTOMATABLE — runs UNATTENDED inside an Azure Automation Runbook as a service principal (App Registration with client credentials grant). Key constraints:
+  AUTOMATABLE — runs UNATTENDED as an app-only service principal (App Registration with client credentials grant). Key constraints:
     ★ APPLICATION PERMISSIONS ONLY — never Delegated permissions. There is no signed-in user; only Microsoft Graph Application permission scopes are valid (e.g. User.Read.All, not User.Read).
     ★ NO interactive login, no licensed user account, no MFA prompt — the script must authenticate entirely via -ClientId / -ClientSecret or a certificate.
     ★ Output via Write-Output ONLY — Azure Automation captures only the output stream. Write-Host, Export-Csv, Out-File, Set-Content are silently lost.
@@ -43,7 +43,7 @@ STEP 1 — CLASSIFY every task as one of THREE categories:
     • Defender/Purview/Sensitivity Labels/DLP/Retention policies via Graph Application permissions
     • Reporting and data export via Graph Application permissions
 
-  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as a service principal or Azure Automation runbook. Use this category for:
+  USER_ACCOUNT_REQUIRED — can be scripted in PowerShell but REQUIRES a real licensed user account (delegated/interactive auth). CANNOT run as an app-only service principal. Use this category for:
     • ALL mailbox migration tasks: New-MigrationBatch, Start-MigrationBatch, etc.
     • ALL Connect-MicrosoftTeams operations
     • Connect-ExchangeOnline without -AppId/-CertificateThumbprint

@@ -22,7 +22,7 @@ const sections = [
     title: "Automation Runs Inside Your Tenant",
     subtitle: "Live data, not survey answers",
     body: [
-      "Once connected, Shane's PowerShell runbooks execute inside your tenant via Azure Automation — Microsoft's managed runbook service. The automation reads your environment directly from Microsoft Graph and Azure AD APIs. Nothing is approximated or estimated.",
+      "Once connected, Shane's PowerShell scripts execute inside your tenant via Azure — Microsoft's managed automation service. The automation reads your environment directly from Microsoft Graph and Azure AD APIs. Nothing is approximated or estimated.",
       "Depending on the engagement type, the runbooks collect: licensing state and SKU assignments across all users, security policy configuration (MFA, Conditional Access, Defender, DLP), SharePoint site inventory and permission structures, Teams membership and guest access configuration, Exchange Online settings and mailbox health, OneDrive adoption rates, sensitivity label deployment, retention policies, Copilot license assignments and readiness prerequisites.",
     ],
     detail: "Runbooks are idempotent — they read only, make no changes, and can be re-run safely at any time.",
