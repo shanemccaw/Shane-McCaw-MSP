@@ -27,6 +27,7 @@ import PortalM365Profile from "@/pages/portal/PortalM365Profile";
 import PortalAppRegistration from "@/pages/portal/PortalAppRegistration";
 import PortalSecurity from "@/pages/portal/PortalSecurity";
 import PortalInsights from "@/pages/portal/PortalInsights";
+import PortalPrivacy from "@/pages/portal/PortalPrivacy";
 import PortalJourneyMap from "@/pages/portal/PortalJourneyMap";
 import PortalHealthScore from "@/pages/portal/PortalHealthScore";
 import QuickWinResultsPage from "@/pages/QuickWinResultsPage";
@@ -312,6 +313,9 @@ function Router() {
       </Route>
       <Route path="/portal/health">
         <RequireAuth role="client"><RequireEngagement><PortalHealthScore /></RequireEngagement></RequireAuth>
+      </Route>
+      <Route path="/portal/privacy">
+        <RequireAuth role="client"><RequireEngagement><PortalPrivacy /></RequireEngagement></RequireAuth>
       </Route>
       <Route path="/portal/quick-wins">
         <RequireAuth role="client"><RequireEngagement><QuickWinResultsPage /></RequireEngagement></RequireAuth>

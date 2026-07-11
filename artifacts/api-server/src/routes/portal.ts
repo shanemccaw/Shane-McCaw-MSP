@@ -13558,4 +13558,176 @@ router.patch("/admin/fulfillment-sla-config/:key", requireAdmin, async (req: Req
   }
 });
 
+// ── Portal: data export (right to portability) ────────────────────────────────
+// GET /api/portal/data-export
+// Returns a JSON archive of all data the authenticated client owns.
+router.get("/portal/data-export", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const [user] = await db.select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      company: usersTable.company,
+      phone: usersTable.phone,
+      createdAt: usersTable.createdAt,
+    }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    const projects = await db.select({
+      id: projectsTable.id,
+      title: projectsTable.title,
+      status: projectsTable.status,
+      createdAt: projectsTable.createdAt,
+    }).from(projectsTable).where(eq(projectsTable.clientUserId, userId)).orderBy(desc(projectsTable.createdAt));
+
+    const projectIds = projects.map(p => p.id);
+
+    const documents = projectIds.length > 0
+      ? await db.select({
+          id: documentsTable.id,
+          name: documentsTable.name,
+          filename: documentsTable.filename,
+          projectId: documentsTable.projectId,
+          createdAt: documentsTable.createdAt,
+        }).from(documentsTable).where(inArray(documentsTable.projectId, projectIds)).orderBy(desc(documentsTable.createdAt))
+      : [];
+
+    const invoices = await db.select({
+      id: invoicesTable.id,
+      amount: invoicesTable.amount,
+      status: invoicesTable.status,
+      description: invoicesTable.description,
+      createdAt: invoicesTable.createdAt,
+    }).from(invoicesTable).where(eq(invoicesTable.clientUserId, userId)).orderBy(desc(invoicesTable.createdAt));
+
+    const messages = await db.select({
+      id: messagesTable.id,
+      body: messagesTable.body,
+      senderUserId: messagesTable.senderUserId,
+      createdAt: messagesTable.createdAt,
+    }).from(messagesTable).where(eq(messagesTable.clientUserId, userId)).orderBy(desc(messagesTable.createdAt));
+
+    const [m365Profile] = await db.select({
+      profile: clientM365ProfilesTable.profile,
+      updatedAt: clientM365ProfilesTable.updatedAt,
+    }).from(clientM365ProfilesTable).where(eq(clientM365ProfilesTable.clientId, userId)).limit(1);
+
+    const clientDocs = await db.select({
+      id: clientDocumentsTable.id,
+      filename: clientDocumentsTable.filename,
+      mimeType: clientDocumentsTable.mimeType,
+      createdAt: clientDocumentsTable.createdAt,
+    }).from(clientDocumentsTable).where(eq(clientDocumentsTable.clientUserId, userId)).orderBy(desc(clientDocumentsTable.createdAt));
+
+    const auditEntries = await db.select({
+      actionType: auditLogsTable.actionType,
+      entityType: auditLogsTable.entityType,
+      createdAt: auditLogsTable.createdAt,
+    }).from(auditLogsTable)
+      .where(eq(auditLogsTable.actorUserId, userId))
+      .orderBy(desc(auditLogsTable.createdAt))
+      .limit(500);
+
+    const quizResults = await db.select({
+      id: quizLeadsTable.id,
+      email: quizLeadsTable.email,
+      tier: quizLeadsTable.tier,
+      categoryScores: quizLeadsTable.categoryScores,
+      createdAt: quizLeadsTable.createdAt,
+    }).from(quizLeadsTable).where(eq(quizLeadsTable.email, user.email)).orderBy(desc(quizLeadsTable.createdAt));
+
+    const archive = {
+      exportedAt: new Date().toISOString(),
+      exportVersion: "1",
+      notice: "This archive contains all personal and project data held by Shane McCaw Consulting LLC for your account. Invoices and signed contracts are retained per legal requirements and are visible here but not deleted upon account deletion requests.",
+      profile: user,
+      projects,
+      documents,
+      invoices,
+      messages,
+      m365Profile: m365Profile ?? null,
+      clientDocuments: clientDocs,
+      auditActivity: auditEntries,
+      quizResults,
+    };
+
+    void createAuditLog({
+      actorUserId: userId,
+      actorName: user.name ?? user.email,
+      actorRole: "client",
+      actionType: "data_export_downloaded",
+      entityType: "user",
+      entityId: userId,
+      clientId: userId,
+      metadata: { exportedAt: archive.exportedAt },
+    });
+
+    const filename = `data-export-${user.email.replace(/[^a-zA-Z0-9]/g, "_")}-${new Date().toISOString().slice(0, 10)}.json`;
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.json(archive);
+  } catch (err) {
+    req.log.error({ err }, "portal: data-export failed");
+    res.status(500).json({ error: "Failed to generate data export" });
+  }
+});
+
+// ── Portal: deletion request (right to erasure) ───────────────────────────────
+// POST /api/portal/deletion-request
+// Records a deletion request and notifies the platform operator.
+router.post("/portal/deletion-request", requireAuth, async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  try {
+    const [user] = await db.select({
+      id: usersTable.id,
+      name: usersTable.name,
+      email: usersTable.email,
+      company: usersTable.company,
+    }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+    void createAuditLog({
+      actorUserId: userId,
+      actorName: user.name ?? user.email,
+      actorRole: "client",
+      actionType: "deletion_request_submitted",
+      entityType: "user",
+      entityId: userId,
+      clientId: userId,
+      metadata: { requestedAt: new Date().toISOString() },
+    });
+
+    const adminEmailAddr = process.env.ADMIN_EMAIL ?? process.env.CRM_ADMIN_EMAIL;
+    if (adminEmailAddr) {
+      const html = `
+        <p>A client has submitted a <strong>data deletion request</strong>.</p>
+        <table style="border-collapse:collapse;width:100%;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Name</td><td style="padding:6px 0;">${user.name ?? "—"}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Email</td><td style="padding:6px 0;">${user.email}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Company</td><td style="padding:6px 0;">${user.company ?? "—"}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">User ID</td><td style="padding:6px 0;">${user.id}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Requested at</td><td style="padding:6px 0;">${new Date().toUTCString()}</td></tr>
+        </table>
+        <p style="margin-top:16px;">
+          <strong>Action required within 30 days:</strong> process this deletion via the Admin Panel (CRM → Clients → Delete Client), retain signed contracts and invoices per legal requirements, then send the client the standard retention notice.
+        </p>
+        <p>See the <a href="https://shanemccaw.com/admin-panel">Admin Panel</a> and the <code>data-subject-rights.md</code> runbook for the full procedure.</p>
+      `;
+      void sendEmail(adminEmailAddr, `Data Deletion Request — ${user.name ?? user.email}`, html);
+    }
+
+    res.json({
+      ok: true,
+      message: "Your deletion request has been received. We will process it within 30 days and send a confirmation to your email address. Note: signed contracts and invoices are retained for 7 years as required by law.",
+    });
+  } catch (err) {
+    req.log.error({ err }, "portal: deletion-request failed");
+    res.status(500).json({ error: "Failed to submit deletion request" });
+  }
+});
+
 export default router;
+
