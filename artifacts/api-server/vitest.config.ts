@@ -46,6 +46,7 @@ export default defineConfig({
       "src/routes/admin-services-catalog.test.ts",
       "src/lib/__tests__/node-type-registry.test.ts",
       "src/routes/msp-suspended-banner.test.ts",
+      "src/routes/msp-customers-bulk.test.ts",
     ],
     coverage: {
       provider: "v8",

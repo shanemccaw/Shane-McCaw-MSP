@@ -63,8 +63,9 @@ export const mspCustomersTable = pgTable("msp_customers", {
   domain: text("domain"),
   industry: text("industry"),
   tenantId: text("tenant_id"),
-  status: text("status", { enum: ["active", "inactive", "onboarding"] }).notNull().default("onboarding"),
+  status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
   ownerType: text("owner_type", { enum: ["customer", "msp", "platform"] }).notNull().default("customer"),
+  tags: text("tags").array().notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [

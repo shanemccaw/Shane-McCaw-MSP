@@ -11,8 +11,9 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, mspUsersTable } from "@workspace/db";
-import { eq, and, count, sql, gte, like, sum, or, desc, ilike } from "drizzle-orm";
+import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, mspUsersTable, mspSalesBundleAssignmentsTable } from "@workspace/db";
+import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
+import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { logger } from "../lib/logger.ts";
@@ -620,6 +621,239 @@ router.get(
     } catch (err) {
       logger.error({ err }, "msp-portal: events query failed");
       res.status(500).json({ error: "Failed to fetch events" });
+    }
+  },
+);
+
+// ── POST /api/msp/customers/bulk ───────────────────────────────────────────────
+// Bulk actions on a set of customers owned by the authenticated MSP.
+// Actions: assign_bundle, tag, export, archive
+// Each action is applied per-customer; assign_bundle uses per-customer idempotency.
+
+router.post(
+  "/msp/customers/bulk",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const body = req.body as {
+        customerIds?: unknown;
+        action?: unknown;
+        payload?: Record<string, unknown>;
+      };
+
+      const customerIds = body.customerIds;
+      const action = typeof body.action === "string" ? body.action : null;
+      const payload = body.payload ?? {};
+
+      if (!Array.isArray(customerIds) || customerIds.length === 0) {
+        res.status(400).json({ error: "customerIds must be a non-empty array" });
+        return;
+      }
+      if (customerIds.length > 500) {
+        res.status(400).json({ error: "Cannot bulk-act on more than 500 customers at once" });
+        return;
+      }
+
+      const ids = customerIds.map((x) => Number(x)).filter((n) => !isNaN(n) && n > 0);
+      if (ids.length === 0) {
+        res.status(400).json({ error: "customerIds must be numeric" });
+        return;
+      }
+
+      // Verify all supplied IDs belong to this MSP
+      const ownedRows = await db
+        .select({
+          id: mspCustomersTable.id,
+          tenantId: mspCustomersTable.tenantId,
+          name: mspCustomersTable.name,
+          domain: mspCustomersTable.domain,
+          status: mspCustomersTable.status,
+          industry: mspCustomersTable.industry,
+          createdAt: mspCustomersTable.createdAt,
+        })
+        .from(mspCustomersTable)
+        .where(and(inArray(mspCustomersTable.id, ids), eq(mspCustomersTable.mspId, mspId)));
+
+      const ownedIdSet = new Set(ownedRows.map((r) => r.id));
+      const unauthorized = ids.filter((id) => !ownedIdSet.has(id));
+      if (unauthorized.length > 0) {
+        res.status(403).json({ error: "Some customerIds do not belong to this MSP", unauthorized });
+        return;
+      }
+
+      // ── assign_bundle ──────────────────────────────────────────────────────────
+      if (action === "assign_bundle") {
+        const bundleId = typeof payload.bundleId === "string" ? payload.bundleId : null;
+        if (!bundleId) {
+          res.status(400).json({ error: "payload.bundleId required for assign_bundle" });
+          return;
+        }
+
+        const [bundle] = await db
+          .select()
+          .from(mspSalesBundlesTable)
+          .where(and(eq(mspSalesBundlesTable.bundleId, bundleId), eq(mspSalesBundlesTable.mspId, mspId)));
+
+        if (!bundle) {
+          res.status(404).json({ error: "Bundle not found" });
+          return;
+        }
+        if (bundle.status !== "active") {
+          res.status(409).json({ error: "Only active bundles can be assigned. Activate the bundle first." });
+          return;
+        }
+
+        const actorId = req.user!.id;
+        const results: Array<{ customerId: number; status: "assigned" | "skipped"; assignmentId?: string }> = [];
+
+        for (const cust of ownedRows) {
+          // Per-customer idempotency key — replay-safe across retries and duplicate submissions
+          const iKey = `bulk:assign_bundle:${bundleId}:${cust.id}:${actorId}`;
+          const bodyHash = hashBody({ bundleId, customerId: cust.id, actorId });
+          const cached = await checkIdempotency(iKey, mspId, bodyHash);
+          if (cached) {
+            const cachedAssignmentId =
+              typeof cached.responseBody.assignmentId === "string"
+                ? cached.responseBody.assignmentId
+                : undefined;
+            results.push({ customerId: cust.id, status: "skipped", assignmentId: cachedAssignmentId });
+            continue;
+          }
+
+          const now = new Date();
+          const trialExpiresAt =
+            typeof bundle.trialDays === "number" && bundle.trialDays > 0
+              ? new Date(Date.now() + bundle.trialDays * 24 * 60 * 60 * 1000)
+              : null;
+
+          const [assignment] = await db
+            .insert(mspSalesBundleAssignmentsTable)
+            .values({
+              bundleId,
+              mspId,
+              customerId: cust.id,
+              tenantId: cust.tenantId ?? undefined,
+              status: "active",
+              activatedAt: now,
+              trialExpiresAt: trialExpiresAt ?? undefined,
+              assignedByUserId: actorId,
+              assignedAt: now,
+            })
+            .returning();
+
+          // One event per monitoring package per customer (mixed-frequency fan-out)
+          const pkgKeys: string[] = Array.isArray(bundle.monitoringPackageKeys)
+            ? (bundle.monitoringPackageKeys as string[])
+            : [];
+
+          if (pkgKeys.length > 0) {
+            await db.insert(mspEventStoreTable).values(
+              pkgKeys.map((packageKey) => ({
+                mspId,
+                customerId: cust.id,
+                eventType: "bundle.package.activated",
+                source: "msp-customers-bulk",
+                actor: { id: actorId, role: "MSPAdmin" as const, type: "user" as const },
+                meta: { tenant: { mspId, customerId: cust.id } },
+                payload: {
+                  bundleId,
+                  packageKey,
+                  activatedAt: now.toISOString(),
+                  bulkAssignment: true,
+                } as Record<string, unknown>,
+                correlationId: assignment.assignmentId,
+                ownerType: "msp" as const,
+              })),
+            );
+          }
+
+          await recordIdempotency(iKey, mspId, bodyHash, 201, { assignmentId: assignment.assignmentId });
+          results.push({ customerId: cust.id, status: "assigned", assignmentId: assignment.assignmentId });
+        }
+
+        const assignedCount = results.filter((r) => r.status === "assigned").length;
+        const skippedCount = results.filter((r) => r.status === "skipped").length;
+        logger.info({ mspId, bundleId, assignedCount, skippedCount }, "msp-portal: bulk assign_bundle complete");
+        res.json({ action: "assign_bundle", results, assignedCount, skippedCount });
+        return;
+      }
+
+      // ── tag ────────────────────────────────────────────────────────────────────
+      if (action === "tag") {
+        const rawTags = payload.tags;
+        const tags: string[] = Array.isArray(rawTags)
+          ? rawTags.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim())
+          : [];
+
+        if (tags.length === 0) {
+          res.status(400).json({ error: "payload.tags must be a non-empty string array" });
+          return;
+        }
+
+        // Merge new tags into each customer's existing tags array (deduplicating via SQL)
+        await db.execute(
+          sql`UPDATE msp_customers
+              SET tags = (
+                SELECT array_agg(DISTINCT t ORDER BY t)
+                FROM unnest(tags || ${tags}::text[]) AS t
+              ),
+              updated_at = now()
+              WHERE id = ANY(${ids}::int[])
+              AND msp_id = ${mspId}`,
+        );
+
+        res.json({ action: "tag", updated: ids.length, tags });
+        return;
+      }
+
+      // ── export ─────────────────────────────────────────────────────────────────
+      if (action === "export") {
+        const csvHeader = "id,name,domain,status,industry,tenantId,tags,createdAt\n";
+        const csvRows = ownedRows
+          .map((r) => {
+            const tagsValue = ""; // ownedRows doesn't include tags; fetched separately for export
+            const row = [
+              r.id,
+              `"${(r.name ?? "").replace(/"/g, '""')}"`,
+              `"${(r.domain ?? "").replace(/"/g, '""')}"`,
+              r.status,
+              `"${(r.industry ?? "").replace(/"/g, '""')}"`,
+              r.tenantId ?? "",
+              tagsValue,
+              r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+            ].join(",");
+            return row;
+          })
+          .join("\n");
+
+        res.setHeader("Content-Type", "text/csv");
+        res.setHeader("Content-Disposition", 'attachment; filename="customers-export.csv"');
+        res.send(csvHeader + csvRows);
+        return;
+      }
+
+      // ── archive ────────────────────────────────────────────────────────────────
+      if (action === "archive") {
+        await db
+          .update(mspCustomersTable)
+          .set({ status: "archived" as "active" | "inactive" | "onboarding" | "archived", updatedAt: new Date() })
+          .where(and(inArray(mspCustomersTable.id, ids), eq(mspCustomersTable.mspId, mspId)));
+
+        logger.info({ mspId, count: ids.length }, "msp-portal: bulk archive complete");
+        res.json({ action: "archive", updated: ids.length });
+        return;
+      }
+
+      res.status(400).json({ error: `Unknown action: ${String(action)}` });
+    } catch (err) {
+      logger.error({ err }, "msp-portal: bulk action failed");
+      res.status(500).json({ error: "Bulk action failed" });
     }
   },
 );

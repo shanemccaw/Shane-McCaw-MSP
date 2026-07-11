@@ -1,6 +1,12 @@
 /**
  * Customers page — MSP's book of business.
- * Features: search, status filter, bulk actions, pagination.
+ * Features: search, status filter, multi-select, bulk actions, pagination.
+ *
+ * Bulk actions (available when ≥1 row is selected):
+ *   - Assign Bundle  — picker dialog → POST /api/msp/customers/bulk
+ *   - Tag            — tag input dialog → POST /api/msp/customers/bulk
+ *   - Export CSV     — downloads a CSV of selected customers
+ *   - Archive        — confirm modal → POST /api/msp/customers/bulk
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -21,11 +27,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -38,9 +45,9 @@ import { ConfirmModal } from "@/components/confirm-modal";
 import { toast } from "sonner";
 import {
   Archive,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Download,
   ExternalLink,
   Loader2,
   Plus,
@@ -68,6 +75,12 @@ interface CustomerListResponse {
   pageSize: number;
 }
 
+interface Bundle {
+  bundleId: string;
+  name: string;
+  status: string;
+}
+
 // ── Status helpers ─────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
@@ -92,7 +105,21 @@ export default function CustomersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+
+  // Dialog states
   const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
+  const [tagDialogOpen, setTagDialogOpen] = useState(false);
+
+  // Bundle picker
+  const [bundles, setBundles] = useState<Bundle[]>([]);
+  const [bundlesLoading, setBundlesLoading] = useState(false);
+  const [selectedBundleId, setSelectedBundleId] = useState<string>("");
+
+  // Tag input
+  const [tagInput, setTagInput] = useState("");
+
+  const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
 
   const fetchCustomers = useCallback(
     async (p = page, q = search, status = statusFilter) => {
@@ -151,55 +178,115 @@ export default function CustomersPage() {
     });
   }
 
-  async function bulkArchive() {
+  async function postBulk(action: string, payload: Record<string, unknown> = {}) {
     setBulkLoading(true);
-    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
     try {
       const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
         method: "POST",
-        body: JSON.stringify({ action: "archive", ids: [...selected] }),
+        body: JSON.stringify({ customerIds: [...selected], action, payload }),
       });
-      if (res.ok) {
+      return res;
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function bulkArchive() {
+    try {
+      const res = await postBulk("archive");
+      if (res?.ok) {
         toast.success(`${selected.size} customer(s) archived`);
         setSelected(new Set());
         void fetchCustomers(page, search, statusFilter);
       }
-    } finally {
-      setBulkLoading(false);
+    } catch {
+      // handled by fetchWithAuth
     }
   }
 
-  async function bulkAssignBundle() {
-    setBulkLoading(true);
-    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
+  async function openBundleDialog() {
+    setBundleDialogOpen(true);
+    setSelectedBundleId("");
+    setBundlesLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
-        method: "POST",
-        body: JSON.stringify({ action: "assign_bundle", ids: [...selected] }),
-      });
+      const params = new URLSearchParams({ limit: "50", offset: "0" });
+      if (mspSlug) params.set("slug", mspSlug);
+      const res = await fetchWithAuth(`/api/msp/sales-bundles?${params}`);
       if (res.ok) {
-        toast.success(`Sales Bundle assigned to ${selected.size} customer(s)`);
-        setSelected(new Set());
-        void fetchCustomers(page, search, statusFilter);
+        const data = (await res.json()) as { bundles: Bundle[] };
+        setBundles((data.bundles ?? []).filter((b) => b.status === "active"));
       }
+    } catch {
+      // toast handled by fetchWithAuth
     } finally {
-      setBulkLoading(false);
+      setBundlesLoading(false);
     }
   }
 
-  async function bulkTriggerMonitoring() {
-    setBulkLoading(true);
-    const slugParam = mspSlug ? `?slug=${encodeURIComponent(mspSlug)}` : "";
+  async function confirmAssignBundle() {
+    if (!selectedBundleId) {
+      toast.error("Please select a bundle");
+      return;
+    }
+    setBundleDialogOpen(false);
     try {
-      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
-        method: "POST",
-        body: JSON.stringify({ action: "trigger_monitoring", ids: [...selected] }),
-      });
-      if (res.ok) {
-        toast.success(`Monitoring triggered for ${selected.size} customer(s)`);
+      const res = await postBulk("assign_bundle", { bundleId: selectedBundleId });
+      if (res?.ok) {
+        const data = (await res.json()) as { assignedCount: number; skippedCount: number };
+        const msg = data.skippedCount > 0
+          ? `Bundle assigned to ${data.assignedCount} customer(s); ${data.skippedCount} already assigned (skipped).`
+          : `Bundle assigned to ${data.assignedCount} customer(s).`;
+        toast.success(msg);
         setSelected(new Set());
         void fetchCustomers(page, search, statusFilter);
       }
+    } catch {
+      // handled
+    }
+  }
+
+  async function confirmTag() {
+    const rawTags = tagInput
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+    if (rawTags.length === 0) {
+      toast.error("Enter at least one tag");
+      return;
+    }
+    setTagDialogOpen(false);
+    setTagInput("");
+    try {
+      const res = await postBulk("tag", { tags: rawTags });
+      if (res?.ok) {
+        toast.success(`Tagged ${selected.size} customer(s) with: ${rawTags.join(", ")}`);
+        setSelected(new Set());
+        void fetchCustomers(page, search, statusFilter);
+      }
+    } catch {
+      // handled
+    }
+  }
+
+  async function exportCSV() {
+    setBulkLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/bulk${slugParam}`, {
+        method: "POST",
+        body: JSON.stringify({ customerIds: [...selected], action: "export", payload: {} }),
+      });
+      if (res?.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "customers-export.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.success(`Exported ${selected.size} customer(s)`);
+      }
+    } catch {
+      // handled
     } finally {
       setBulkLoading(false);
     }
@@ -265,28 +352,42 @@ export default function CustomersPage() {
             <span className="text-sm font-medium text-primary">
               {selected.size} selected
             </span>
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center gap-2 ml-auto flex-wrap">
               {bulkLoading && <Loader2 className="size-4 animate-spin text-muted-foreground" />}
+
               <Button
                 size="sm"
                 variant="outline"
                 className="h-7 gap-1.5 text-xs"
                 disabled={bulkLoading}
-                onClick={() => void bulkAssignBundle()}
+                onClick={() => void openBundleDialog()}
               >
                 <Tag className="size-3.5" />
-                Assign Sales Bundle
+                Assign Bundle
               </Button>
+
               <Button
                 size="sm"
                 variant="outline"
                 className="h-7 gap-1.5 text-xs"
                 disabled={bulkLoading}
-                onClick={() => void bulkTriggerMonitoring()}
+                onClick={() => { setTagInput(""); setTagDialogOpen(true); }}
               >
-                <RefreshCw className="size-3.5" />
-                Trigger Monitoring
+                <Tag className="size-3.5" />
+                Tag
               </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                disabled={bulkLoading}
+                onClick={() => void exportCSV()}
+              >
+                <Download className="size-3.5" />
+                Export CSV
+              </Button>
+
               <Button
                 size="sm"
                 variant="outline"
@@ -297,6 +398,7 @@ export default function CustomersPage() {
                 <Archive className="size-3.5" />
                 Archive
               </Button>
+
               <Button
                 size="sm"
                 variant="ghost"
@@ -435,6 +537,7 @@ export default function CustomersPage() {
         </div>
       </div>
 
+      {/* Archive confirm modal */}
       <ConfirmModal
         open={archiveConfirm}
         onOpenChange={setArchiveConfirm}
@@ -444,6 +547,86 @@ export default function CustomersPage() {
         variant="destructive"
         onConfirm={bulkArchive}
       />
+
+      {/* Assign Bundle dialog */}
+      <Dialog open={bundleDialogOpen} onOpenChange={setBundleDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Sales Bundle</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Select a bundle to assign to {selected.size} customer(s). One assignment event will be created per customer.
+            </p>
+            {bundlesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading bundles…
+              </div>
+            ) : bundles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No active bundles found. Create and activate a bundle first.
+              </p>
+            ) : (
+              <Select value={selectedBundleId} onValueChange={setSelectedBundleId}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="Choose a bundle…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {bundles.map((b) => (
+                    <SelectItem key={b.bundleId} value={b.bundleId}>
+                      {b.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setBundleDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!selectedBundleId || bundlesLoading}
+              onClick={() => void confirmAssignBundle()}
+            >
+              Assign to {selected.size} customer{selected.size !== 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tag dialog */}
+      <Dialog open={tagDialogOpen} onOpenChange={setTagDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Tags</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Tags will be merged with existing tags on {selected.size} customer(s). Separate multiple tags with commas.
+            </p>
+            <Input
+              placeholder="e.g. enterprise, priority, renewal-2026"
+              value={tagInput}
+              onChange={(e) => setTagInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void confirmTag();
+              }}
+              className="h-9 text-sm"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setTagDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" disabled={!tagInput.trim()} onClick={() => void confirmTag()}>
+              Apply Tags
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
