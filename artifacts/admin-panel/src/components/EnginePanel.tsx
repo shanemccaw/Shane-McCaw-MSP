@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Play, Eye, Gauge, FlaskConical, Settings, Download, Upload, FileJson } from "lucide-react";
 import LiveMonitorPanel from "@/pages/LiveMonitorPanel";
 
@@ -58,7 +60,8 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
   const [previewResult, setPreviewResult] = useState<unknown | null>(null);
   const [logs, setLogs] = useState<Array<Record<string, unknown>>>([]);
   const [importing, setImporting] = useState(false);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importJsonText, setImportJsonText] = useState("");
 
   const loadDashboard = useCallback(async () => {
     setDashboardLoading(true);
@@ -202,31 +205,26 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
     }
   };
 
-  const handleImportFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
+  const handleImportFromPaste = async () => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(importJsonText);
+    } catch {
+      toast({ title: "Invalid JSON", description: "The pasted text is not valid JSON.", variant: "destructive" });
+      return;
+    }
+    setShowImportDialog(false);
+    setImportJsonText("");
     setImporting(true);
     try {
-      const text = await file.text();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch {
-        throw new Error("Selected file is not valid JSON");
-      }
-      const confirmed = window.confirm(
-        `Importing will REPLACE all current ${def?.label ?? engineKey} rules and groups. A backup snapshot is taken automatically. Continue?`,
-      );
-      if (!confirmed) return;
       const res = await fetchWithAuth(`/api/admin/engines/${engineKey}/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Import failed");
-      toast({ title: "Import complete", description: `Imported ${data.imported} rule(s) across ${data.groupsImported} group(s).` });
+      if (!res.ok) throw new Error((data as { error?: string }).error ?? "Import failed");
+      toast({ title: "Import complete", description: `Imported ${(data as { imported?: number }).imported ?? 0} rule(s) across ${(data as { groupsImported?: number }).groupsImported ?? 0} group(s).` });
       void loadConfig();
     } catch (err) {
       toast({ title: "Import failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
@@ -237,13 +235,6 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
 
   return (
     <div className="p-6 space-y-4">
-      <input
-        ref={importInputRef}
-        type="file"
-        accept="application/json,.json"
-        className="hidden"
-        onChange={handleImportFileSelected}
-      />
       <div>
         <h1 className="text-xl font-semibold">{def?.label ?? engineKey}</h1>
         <p className="text-sm text-muted-foreground">{def?.description}</p>
@@ -366,7 +357,7 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
               <Download className="w-3.5 h-3.5 mr-1.5" />
               Export JSON
             </Button>
-            <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()} disabled={importing}>
+            <Button size="sm" variant="outline" onClick={() => { setImportJsonText(""); setShowImportDialog(true); }} disabled={importing}>
               {importing ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 mr-1.5" />}
               Import JSON
             </Button>
@@ -412,6 +403,43 @@ export default function EnginePanel({ engineKey }: { engineKey: string }) {
           )}
         </TabsContent>
       </Tabs>
+
+      <Dialog open={showImportDialog} onOpenChange={(open) => { if (!open) setShowImportDialog(false); }}>
+        <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Import JSON</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-gray-400">
+              Paste the JSON export below. This will <strong>replace</strong> all current {def?.label ?? engineKey} rules and groups — a backup snapshot is taken automatically.
+            </p>
+            <Textarea
+              value={importJsonText}
+              onChange={(e) => setImportJsonText(e.target.value)}
+              placeholder="Paste JSON here…"
+              rows={14}
+              className="bg-[#0D1117] border-[#30363D] text-white font-mono text-xs resize-none"
+              spellCheck={false}
+            />
+            {importJsonText.trim() && (() => {
+              try { JSON.parse(importJsonText); return <p className="text-sm font-medium text-green-400">✓ Valid JSON</p>; }
+              catch (e) { return <p className="text-sm font-medium text-red-400">{e instanceof Error ? e.message : "Invalid JSON"}</p>; }
+            })()}
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setShowImportDialog(false)} className="text-gray-400">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => void handleImportFromPaste()}
+              disabled={!importJsonText.trim() || (() => { try { JSON.parse(importJsonText); return false; } catch { return true; } })()}
+              className="bg-[#0078D4] hover:bg-[#006cbf] text-white disabled:opacity-50"
+            >
+              Import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
