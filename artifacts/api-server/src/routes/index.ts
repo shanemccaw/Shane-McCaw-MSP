@@ -34,6 +34,8 @@ import adminServicePageTriggersRouter from "./admin-service-page-triggers";
 import publicServicePageTriggersRouter from "./public-service-page-triggers";
 import adminAzureCredentialsRouter from "./admin-azure-credentials";
 import adminScriptRunnerRouter from "./admin-script-runner";
+import scriptIngestionRouter from "./script-ingestion";
+import portalScriptLibraryRouter from "./portal-script-library";
 import adminClientDocumentsRouter from "./admin-client-documents";
 import bookingRouter from "./booking";
 import mfaRouter from "./mfa";
@@ -173,6 +175,8 @@ router.use(mspOnboardingRouter);
 router.use(mspSignupRouter);
 router.use(mspBillingWebhookRouter);
 router.use(portalCustomerEnginesRouter);
+router.use(scriptIngestionRouter);
+router.use(portalScriptLibraryRouter);
 
 // MSP platform API — versioned surface
 router.use("/msp/v1", mspV1Router);

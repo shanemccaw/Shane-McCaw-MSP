@@ -22,7 +22,6 @@ import {
 import { eq, desc, asc, inArray, and, sql, isNotNull, isNull } from "drizzle-orm";
 import { logger } from "../lib/logger.ts";
 import { hasPsKeywordsFullText } from "../lib/ps-guard.ts";
-import { isAzureConfigured, pushScriptToAzure } from "../lib/azure-automation.ts";
 import { getPrompt } from "../lib/prompt-loader.ts";
 import {
   normalizeAppPerms,
@@ -33,43 +32,16 @@ import {
   extractJsonArray,
 } from "../lib/ps-script-gen.ts";
 
-// ─── Runbook name helpers ─────────────────────────────────────────────────────
+const router = Router();
 
-function titleToRunbookName(title: string): string {
+/** Converts a title to a safe filename slug (alphanumeric + hyphens, max 63 chars). */
+function titleToSlug(title: string): string {
   return title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 63) || "script";
 }
-
-/** Derives the Azure Automation runbook name from a module filename.
- *  Strips the .ps1 extension then applies the same sanitization as
- *  titleToRunbookName — numeric sort prefixes (e.g. "01-") are KEPT so
- *  the name matches what the push-to-azure endpoints register in Azure.
- */
-function filenameToRunbookName(filename: string): string {
-  return titleToRunbookName(filename.replace(/\.ps1$/i, ""));
-}
-
-async function tryPushPsScriptToAzure(scriptId: string, runbookName: string, psCode: string): Promise<void> {
-  if (!isAzureConfigured()) {
-    logger.warn({ scriptId }, "admin-ps-scripts: Azure not configured — skipping push to Azure Automation");
-    return;
-  }
-  try {
-    await pushScriptToAzure(runbookName, psCode);
-    await db
-      .update(powershellScriptsTable)
-      .set({ azureSyncedAt: new Date() })
-      .where(eq(powershellScriptsTable.id, scriptId));
-    logger.info({ scriptId, runbookName }, "admin-ps-scripts: pushed to Azure Automation and stamped azureSyncedAt");
-  } catch (err) {
-    logger.warn({ err, scriptId, runbookName }, "admin-ps-scripts: push to Azure failed (non-fatal)");
-  }
-}
-
-const router = Router();
 
 // ─── Script-task Kanban association helpers ───────────────────────────────────
 
@@ -1272,9 +1244,6 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
             const assignedModule = validModules[assignedMi]!;
 
             const isStub = assignedModule.filename.includes("-stub.ps1");
-            // Derive runbook name using the same formula as the push-to-azure endpoints,
-            // so the name written to Kanban metadata exactly matches the Azure runbook name.
-            const runbookName = filenameToRunbookName(assignedModule.filename);
 
             // Find kanban cards that resemble this template task, excluding already-processed cards.
             const templateWords = titleToWords(templateTask.title);
@@ -1298,10 +1267,9 @@ Required filename (FIRST LINE of your output): ${group.filename}`.trim();
               const meta = ((freshCard?.taskMetadata ?? kanbanTask.taskMetadata ?? {}) as Record<string, unknown>);
 
               if (kanbanTask.taskType === "script") {
-                // Automated: write runbookName so "Run Runbook" button appears.
                 await db
                   .update(kanbanTasksTable)
-                  .set({ taskMetadata: { ...meta, runbookName }, updatedAt: new Date() })
+                  .set({ taskMetadata: { ...meta }, updatedAt: new Date() })
                   .where(eq(kanbanTasksTable.id, kanbanTask.id));
                 kanbanTasksUpdated++;
               } else if (kanbanTask.taskType === "manualScript") {
@@ -1684,7 +1652,6 @@ router.post("/admin/ps-scripts/generate-from-task", requireAdmin, async (req: Re
     }
 
     const tags: string[] = type === "manual" ? ["manual"] : [];
-    const runbookName = titleToRunbookName(title);
 
     const savedRow = await pool.query<{ id: string; title: string; azure_runbook_name: string | null }>(
       `INSERT INTO powershell_scripts (title, category, script_body, permissions, tags, source_task_id)
@@ -1742,7 +1709,7 @@ router.post("/admin/ps-scripts/:id/assign-task", requireAdmin, async (req: Reque
 
 // ─── GET /api/admin/ps-scripts/published ─────────────────────────────────────
 // Returns a merged list of all runnable entries for the "Linked Runbook" dropdown:
-//   • Published scripts (azureRunbookName IS NOT NULL) — id = powershell_scripts UUID
+//   • Platform-published scripts — id = powershell_scripts UUID
 //   • All script modules — id = script_modules UUID
 // All IDs are UUIDs (FK-compatible with workflow_template_step_tasks.runbook_id).
 
@@ -1753,10 +1720,9 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
         .select({
           id: powershellScriptsTable.id,
           title: powershellScriptsTable.title,
-          azureRunbookName: powershellScriptsTable.azureRunbookName,
+          platformPublished: powershellScriptsTable.platformPublished,
         })
         .from(powershellScriptsTable)
-        .where(isNotNull(powershellScriptsTable.azureRunbookName))
         .orderBy(powershellScriptsTable.title),
       db
         .select({
@@ -1768,7 +1734,7 @@ router.get("/admin/ps-scripts/published", requireAdmin, async (_req: Request, re
         .orderBy(scriptModulesTable.sortOrder),
     ]);
 
-    const scriptEntries = scripts.map(s => ({ id: s.id, title: s.title, azureRunbookName: s.azureRunbookName }));
+    const scriptEntries = scripts.map(s => ({ id: s.id, title: s.title, platformPublished: s.platformPublished }));
     const moduleEntries = modules.map(m => ({
       id: m.id,
       title: m.title ?? m.filename.replace(/\.ps1$/i, "").replace(/-/g, " "),
@@ -1833,8 +1799,6 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
     return;
   }
 
-  const runbookName = titleToRunbookName(title.trim());
-
   try {
     const [created] = await db.insert(powershellScriptsTable).values({
       title: title.trim(),
@@ -1843,11 +1807,7 @@ router.post("/admin/ps-scripts", requireAdmin, async (req: Request, res: Respons
       scriptBody: scriptBody.trim(),
       permissions: permissions ?? { appPermissions: [], delegatedPermissions: [], notes: "" },
       tags: tags ?? [],
-      azureRunbookName: runbookName,
     }).returning();
-
-    // Fire-and-forget push to Azure Automation
-    void tryPushPsScriptToAzure(created.id, runbookName, scriptBody.trim());
 
     res.status(201).json(created);
   } catch (err) {
@@ -2303,7 +2263,7 @@ router.post("/admin/ps-scripts/:id/associate-to-package", requireAdmin, async (r
     const [pkg] = await db.select({ id: scriptPackagesTable.id }).from(scriptPackagesTable).where(eq(scriptPackagesTable.id, packageId));
     if (!pkg) { res.status(404).json({ error: "Package not found" }); return; }
 
-    const filename = `${titleToRunbookName(script.title)}.ps1`;
+    const filename = `${titleToSlug(script.title)}.ps1`;
     const [mod] = await db.insert(scriptModulesTable).values({
       packageId,
       filename,
@@ -2376,212 +2336,10 @@ router.put("/admin/ps-scripts/:id", requireAdmin, async (req: Request, res: Resp
       .returning();
     if (!updated) { res.status(404).json({ error: "Script not found" }); return; }
 
-    // Re-push to Azure when script body changed and a runbook name is set
-    const bodyToSync = scriptBody?.trim() ?? updated.scriptBody;
-    if (updated.azureRunbookName && bodyToSync) {
-      void tryPushPsScriptToAzure(id, updated.azureRunbookName, bodyToSync);
-    }
-
     res.json(updated);
   } catch (err) {
     logger.error({ err }, "Failed to update PS script");
     res.status(500).json({ error: "Failed to update script" });
-  }
-});
-
-// ─── POST /api/admin/ps-scripts/:id/push-to-azure ─────────────────────────────
-
-router.post("/admin/ps-scripts/:id/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
-  const id = String(req.params["id"] ?? "");
-  if (!UUID_RE.test(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-
-  // Not configured: return a non-fatal warning (200) so the UI can show an
-  // informational message without treating it as an error.
-  if (!isAzureConfigured()) {
-    logger.warn({ id }, "admin-ps-scripts: push-to-azure skipped — Azure not configured");
-    res.json({ ok: false, warning: "Azure Automation is not configured on this server — push skipped" });
-    return;
-  }
-
-  try {
-    const [script] = await db
-      .select()
-      .from(powershellScriptsTable)
-      .where(eq(powershellScriptsTable.id, id))
-      .limit(1);
-
-    if (!script) { res.status(404).json({ error: "Script not found" }); return; }
-
-    if (!script.scriptBody?.trim()) {
-      res.status(400).json({ error: "Script has no body to push" });
-      return;
-    }
-
-    const runbookName = script.azureRunbookName ?? titleToRunbookName(script.title);
-
-    await pushScriptToAzure(runbookName, script.scriptBody.trim());
-
-    const [updatedRows] = await db
-      .update(powershellScriptsTable)
-      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
-      .where(eq(powershellScriptsTable.id, id))
-      .returning({ azureRunbookName: powershellScriptsTable.azureRunbookName, azureSyncedAt: powershellScriptsTable.azureSyncedAt });
-
-    res.json({ ok: true, ...updatedRows });
-  } catch (err) {
-    logger.error({ err, id }, "admin-ps-scripts: push-to-azure failed");
-    const msg = err instanceof Error ? err.message : "Push to Azure failed";
-    res.status(500).json({ error: msg });
-  }
-});
-
-// ─── POST /api/admin/ps-scripts/packages/:packageId/push-module ──────────────
-// Pushes a single module by filename — used by the client to sequence pushes
-// one-at-a-time so it can show real per-module progress in the dialog.
-
-router.post("/admin/ps-scripts/packages/:packageId/push-module", requireAdmin, async (req: Request, res: Response) => {
-  const packageId = String(req.params["packageId"] ?? "");
-  const { filename } = req.body as { filename?: string };
-
-  if (!UUID_RE.test(packageId)) { res.status(400).json({ error: "Invalid packageId" }); return; }
-  if (!filename || typeof filename !== "string") { res.status(400).json({ error: "filename required" }); return; }
-
-  if (!isAzureConfigured()) {
-    res.json({ ok: false, warning: "Azure Automation is not configured on this server" });
-    return;
-  }
-
-  try {
-    const [mod] = await db
-      .select()
-      .from(scriptModulesTable)
-      .where(and(eq(scriptModulesTable.packageId, packageId), eq(scriptModulesTable.filename, filename)))
-      .limit(1);
-
-    if (!mod) { res.status(404).json({ error: "Module not found" }); return; }
-
-    const content = mod.content?.trim() ?? "";
-    if (!content) { res.status(400).json({ error: "Module has no content" }); return; }
-
-    const runbookName = filenameToRunbookName(filename);
-
-    await pushScriptToAzure(runbookName, content);
-
-    await db
-      .update(scriptModulesTable)
-      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
-      .where(eq(scriptModulesTable.id, mod.id));
-
-    logger.info({ packageId, filename, runbookName, moduleId: mod.id }, "admin-ps-scripts: push-module stamped azureRunbookName");
-    res.json({ ok: true, filename, runbookName });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Push failed";
-    logger.error({ err, packageId, filename }, "admin-ps-scripts: push-module failed");
-    res.status(500).json({ ok: false, filename, error: msg });
-  }
-});
-
-// ─── POST /api/admin/ps-scripts/modules/:moduleId/push-to-azure ─────────────
-// Pushes a single module by its UUID, using the existing azureRunbookName if set
-// (falling back to filenameToRunbookName). This preserves the stored runbook name
-// so it stays consistent with any kanban card metadata already populated.
-
-router.post("/admin/ps-scripts/modules/:moduleId/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
-  const moduleId = String(req.params["moduleId"] ?? "");
-  if (!UUID_RE.test(moduleId)) { res.status(400).json({ error: "Invalid moduleId" }); return; }
-
-  if (!isAzureConfigured()) {
-    res.json({ ok: false, warning: "Azure Automation is not configured on this server" });
-    return;
-  }
-
-  try {
-    const [mod] = await db
-      .select()
-      .from(scriptModulesTable)
-      .where(eq(scriptModulesTable.id, moduleId))
-      .limit(1);
-
-    if (!mod) { res.status(404).json({ error: "Module not found" }); return; }
-
-    const content = mod.content?.trim() ?? "";
-    if (!content) { res.status(400).json({ error: "Module has no content" }); return; }
-
-    const runbookName = mod.azureRunbookName ?? filenameToRunbookName(mod.filename ?? "module.ps1");
-
-    await pushScriptToAzure(runbookName, content);
-
-    await db
-      .update(scriptModulesTable)
-      .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
-      .where(eq(scriptModulesTable.id, mod.id));
-
-    logger.info({ moduleId, runbookName }, "admin-ps-scripts: pushed module to Azure by ID");
-    res.json({ ok: true, moduleId, runbookName });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Push failed";
-    logger.error({ err, moduleId }, "admin-ps-scripts: push-module-by-id failed");
-    res.status(500).json({ ok: false, error: msg });
-  }
-});
-
-// ─── POST /api/admin/ps-scripts/packages/:packageId/push-to-azure ────────────
-
-router.post("/admin/ps-scripts/packages/:packageId/push-to-azure", requireAdmin, async (req: Request, res: Response) => {
-  const packageId = String(req.params["packageId"] ?? "");
-  if (!UUID_RE.test(packageId)) { res.status(400).json({ error: "Invalid packageId" }); return; }
-
-  if (!isAzureConfigured()) {
-    res.json({ ok: false, warning: "Azure Automation is not configured on this server — push skipped", results: [] });
-    return;
-  }
-
-  try {
-    const mods = await db
-      .select()
-      .from(scriptModulesTable)
-      .where(eq(scriptModulesTable.packageId, packageId))
-      .orderBy(asc(scriptModulesTable.sortOrder));
-
-    if (mods.length === 0) {
-      res.status(404).json({ error: "No modules found for this package" });
-      return;
-    }
-
-    // filenameToRunbookName is defined at module scope — reuse it here.
-    type ModuleResult = { filename: string; runbookName: string; ok: boolean; error?: string };
-    const results: ModuleResult[] = [];
-
-    for (const mod of mods) {
-      const filename = mod.filename ?? "module.ps1";
-      const content = mod.content?.trim() ?? "";
-      const runbookName = filenameToRunbookName(filename);
-
-      if (!content) {
-        results.push({ filename, runbookName, ok: false, error: "Module has no content" });
-        continue;
-      }
-
-      try {
-        await pushScriptToAzure(runbookName, content);
-        await db
-          .update(scriptModulesTable)
-          .set({ azureRunbookName: runbookName, azureSyncedAt: new Date() })
-          .where(eq(scriptModulesTable.id, mod.id));
-        results.push({ filename, runbookName, ok: true });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Push failed";
-        results.push({ filename, runbookName, ok: false, error: msg });
-      }
-    }
-
-    const allOk = results.every((r) => r.ok);
-    logger.info({ packageId, results }, "admin-ps-scripts: package push-to-azure complete");
-    res.json({ ok: allOk, results });
-  } catch (err) {
-    logger.error({ err, packageId }, "admin-ps-scripts: package push-to-azure failed");
-    const msg = err instanceof Error ? err.message : "Push to Azure failed";
-    res.status(500).json({ error: msg });
   }
 });
 

@@ -1621,12 +1621,35 @@ export const powershellScriptsTable = pgTable("powershell_scripts", {
   tags: text("tags").array().notNull().default([]),
   azureRunbookName: text("azure_runbook_name"),
   azureSyncedAt: timestamp("azure_synced_at", { withTimezone: true }),
+  platformPublished: boolean("platform_published").notNull().default(false),
+  scriptType: text("script_type"),
+  schemaVersion: text("schema_version"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type InsertPowershellScript = typeof powershellScriptsTable.$inferInsert;
 export type PowershellScript = typeof powershellScriptsTable.$inferSelect;
+
+// Script Download Tokens — single-use, scoped tokens injected into downloaded script bodies
+// for token-authenticated results ingestion (no session required).
+export const scriptDownloadTokensTable = pgTable("script_download_tokens", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  scriptId: uuid("script_id").notNull().references(() => powershellScriptsTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id").references(() => usersTable.id, { onDelete: "set null" }),
+  clientUserId: integer("client_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  runResultId: integer("run_result_id").references(() => scriptRunResultsTable.id, { onDelete: "set null" }),
+  label: text("label").notNull().default(""),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type InsertScriptDownloadToken = typeof scriptDownloadTokensTable.$inferInsert;
+export type ScriptDownloadToken = typeof scriptDownloadTokensTable.$inferSelect;
 
 export const scriptPackagesTable = pgTable("script_packages", {
   id: uuid("id").primaryKey().defaultRandom(),

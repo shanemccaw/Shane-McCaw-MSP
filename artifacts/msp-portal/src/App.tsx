@@ -31,6 +31,7 @@ import CustomerSlaPage from "@/pages/customer-sla";
 import CustomerScopePage from "@/pages/customer-scope";
 import SlaDashboardPage from "@/pages/sla-dashboard";
 import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
+import ScriptLibraryPage from "@/pages/scripts";
 import NotFound from "@/pages/not-found";
 import ActivityFeedPage from "@/pages/activity-feed";
 import { Loader2 } from "lucide-react";
@@ -168,6 +169,9 @@ function Router() {
       </Route>
       <Route path="/activity">
         <ProtectedRoute component={ActivityFeedPage} />
+      </Route>
+      <Route path="/scripts">
+        <ProtectedRoute component={ScriptLibraryPage} />
       </Route>
       <Route path="/scope-creep">
         <ProtectedRoute component={ScopeCreepDashboardPage} />
