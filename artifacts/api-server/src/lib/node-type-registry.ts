@@ -114,6 +114,16 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Executes a PowerShell script via Azure Automation — no AI",
   },
+  {
+    nodeType: "msp_dunning_advance",
+    isAIDependent: false,
+    description: "Advances MSP dunning states for past-due subscriptions — no AI",
+  },
+  {
+    nodeType: "msp_overage_meter",
+    isAIDependent: false,
+    description: "Meters MSP tenant overage for billing — no AI",
+  },
 
   // ── AI-dependent — billed to MSP ──────────────────────────────────────────
   {

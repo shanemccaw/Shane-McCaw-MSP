@@ -81,6 +81,7 @@ import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire";
+import { handleSystemAction } from "./system-action-handlers";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -873,8 +874,11 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, criticalChangeDetected: false, eventCount: 0, criticalCount: 0, tenantId: mpaTenantIdDry, contentType: mpaContentTypeDry, note: "dry run — poll skipped" };
     }
 
-    case "system_action":
-      return { dryRun: true, skipped: true, task: node.data.task ?? "(none)", note: "system_action is retired — workflow graph needs re-seeding" };
+    case "msp_dunning_advance":
+      return { dryRun: true, checked: 0, advanced: 0, suspended: 0, revoked: 0, archived: 0, note: "dry run — dunning advancement skipped" };
+
+    case "msp_overage_meter":
+      return { dryRun: true, subscriptionsChecked: 0, metered: 0, totalOverageTenants: 0, note: "dry run — overage metering skipped" };
 
     case "send_browser_notification": {
       const dryTitle   = interp(node.data.title    as string | undefined, payload) ?? "(no title)";
@@ -1068,8 +1072,11 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       return { dryRun: true, value: dryRawValue };
     }
 
-    case "system_action":
-      return { dryRun: true, skipped: true, task: node.data.task ?? "unknown" };
+    case "msp_dunning_advance":
+      return { dryRun: true, checked: 0, advanced: 0, note: "dry run — dunning advancement skipped" };
+
+    case "msp_overage_meter":
+      return { dryRun: true, subscriptionsChecked: 0, metered: 0, note: "dry run — overage metering skipped" };
 
     case "generate_image": {
       const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
@@ -5528,15 +5535,17 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
-      case "system_action": {
-        // RETIRED NODE TYPE — system_action has been removed from the platform.
-        // Seeded workflows that still carry this node type (pre-migration DBs) will
-        // receive a no-op result and a warning log. Admins should let the server
-        // restart to pick up the rebuilt seeded graphs via seed-system-workflows.ts.
-        const legacyTask = node.data.task as string | undefined;
-        logger.warn({ runId, nodeId: node.id, task: legacyTask },
-          "wf-executor: system_action node is retired — returning no-op. Allow the server to re-seed this workflow.");
-        output = { skipped: true, reason: "system_action is retired — workflow graph needs re-seeding" };
+      case "msp_dunning_advance": {
+        // Promoted node type: advances MSP dunning states for past-due subscriptions.
+        // Delegates to the handler in system-action-handlers.ts which contains all DB logic.
+        output = await handleSystemAction("msp_dunning_advance", node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "msp_overage_meter": {
+        // Promoted node type: meters MSP tenant overage for monthly billing.
+        // Delegates to the handler in system-action-handlers.ts which contains all DB logic.
+        output = await handleSystemAction("msp_overage_meter", node.data as Record<string, unknown>);
         break;
       }
 

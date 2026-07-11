@@ -77,6 +77,8 @@ vi.mock("@workspace/db", () => {
     "workflowStepsTable", "clientPresentationsTable", "deviceTokensTable",
     "insightsGeneratedDocumentsTable", "quickWinPresentationsTable",
     "campaignAssetsTable", "couponsTable",
+    "mspSubscriptionsTable", "mspsTable", "mspEventStoreTable", "mspCustomersTable",
+    "servicesTable",
   ];
   for (const name of tableNames) {
     stub[name] = {
@@ -681,18 +683,24 @@ describe("unknown node type — live path", () => {
 });
 
 // =============================================================================
-// system_action — no task configured (live)
+// msp_dunning_advance — live path (no overdue subscriptions)
 // =============================================================================
 
-describe("system_action — no task configured (live)", () => {
+describe("msp_dunning_advance — live (no overdue subscriptions)", () => {
   beforeEach(async () => {
     resetState();
-    seedDb(singleNodeGraph("system_action", {}));
+    seedDb(singleNodeGraph("msp_dunning_advance", {
+      dayReminder: 3, daySuspend: 7, dayRevoke: 14, dayArchive: 30,
+    }));
     await executeWorkflowRun(1);
   });
 
-  it("output.skipped is true", () => {
-    expect(capturedOutput().skipped).toBe(true);
+  it("output.checked is 0", () => {
+    expect(capturedOutput().checked).toBe(0);
+  });
+
+  it("output.advanced is 0", () => {
+    expect(capturedOutput().advanced).toBe(0);
   });
 
   it("node status is ok", () => {
@@ -700,10 +708,14 @@ describe("system_action — no task configured (live)", () => {
   });
 });
 
-describe("system_action — dry-run skips execution", () => {
+// =============================================================================
+// msp_overage_meter — dry-run
+// =============================================================================
+
+describe("msp_overage_meter — dry-run skips execution", () => {
   beforeEach(async () => {
     resetState();
-    seedDb(singleNodeGraph("system_action", { task: "check_escalations" }));
+    seedDb(singleNodeGraph("msp_overage_meter", {}));
     await executeWorkflowRun(1, { dryRun: true });
   });
 
@@ -711,8 +723,8 @@ describe("system_action — dry-run skips execution", () => {
     expect(capturedOutput().dryRun).toBe(true);
   });
 
-  it("output.skipped is true", () => {
-    expect(capturedOutput().skipped).toBe(true);
+  it("output.subscriptionsChecked is 0", () => {
+    expect(capturedOutput().subscriptionsChecked).toBe(0);
   });
 });
 

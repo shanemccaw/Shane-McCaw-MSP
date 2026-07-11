@@ -169,12 +169,11 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         {
           id: "dunning",
-          type: "system_action",
+          type: "msp_dunning_advance",
           position: { x: 300, y: 200 },
           data: {
-            nodeType: "system_action",
+            nodeType: "msp_dunning_advance",
             label: "Advance Dunning States",
-            task: "msp_dunning_advance",
             // Configurable day thresholds — edit these to adjust dunning timing
             dayReminder: 3,
             daySuspend: 7,
@@ -211,12 +210,11 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         },
         {
           id: "meter",
-          type: "system_action",
+          type: "msp_overage_meter",
           position: { x: 300, y: 200 },
           data: {
-            nodeType: "system_action",
+            nodeType: "msp_overage_meter",
             label: "Meter Tenant Overage",
-            task: "msp_overage_meter",
           },
         },
         {
@@ -1696,6 +1694,30 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         logger.info({ defId }, "seed-system-workflows: patched Kanban Auto-fire v2 — renamed execute node type monitor_execute_package → kanban_auto_fire");
+      } else if (seed.name === "MSP Dunning State Machine") {
+        // Patch v1: replace system_action node with msp_dunning_advance typed node.
+        // Guard: fires when the dunning node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"dunning","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched MSP Dunning State Machine — replaced system_action with msp_dunning_advance");
+      } else if (seed.name === "MSP Overage Metering") {
+        // Patch v1: replace system_action node with msp_overage_meter typed node.
+        // Guard: fires when the meter node still uses type:"system_action".
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"meter","type":"system_action"}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched MSP Overage Metering — replaced system_action with msp_overage_meter");
       } else if (seed.name === "On Purchase — Run Monitoring Package") {
         // Patch v1: upgrade graphs seeded without monitor_get_package (find_object → execute_pkg directly).
         // Guard: fires when execute_pkg node takes its packageKey from resolve_pkg (not get_pkg),
