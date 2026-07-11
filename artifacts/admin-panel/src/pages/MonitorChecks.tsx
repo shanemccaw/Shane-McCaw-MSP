@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useJsonImportExport } from "@/hooks/useJsonImportExport";
+import { ImportJsonDialog } from "@/components/ImportJsonDialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -83,7 +84,7 @@ const MONITOR_CHECK_TEMPLATE = {
 export default function MonitorChecksPage() {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
-  const { exportJson, downloadTemplate, importJson } = useJsonImportExport();
+  const { exportJson, downloadTemplate, openImportDialog, importDialogOpen, closeImportDialog } = useJsonImportExport();
   const [checks, setChecks] = useState<MonitorCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -107,13 +108,7 @@ export default function MonitorChecksPage() {
 
   useEffect(() => { void loadChecks(); }, [loadChecks]);
 
-  const handleImport = () => {
-    importJson(async (records) => {
-      const first = records[0] as Record<string, unknown> | undefined;
-      if (first && "__parseError" in (first ?? {})) {
-        toast({ title: "Import failed", description: String(first.__parseError), variant: "destructive" });
-        return;
-      }
+  const handleImportConfirm = async (records: unknown[]) => {
       let created = 0, updated = 0, failed = 0;
       const existingKeys = new Set(checks.map(c => c.key));
       for (const raw of records) {
@@ -139,7 +134,6 @@ export default function MonitorChecksPage() {
         variant: failed > 0 ? "destructive" : "default",
       });
       void loadChecks();
-    });
   };
 
   const openCreate = () => { setEditingCheck({ ...EMPTY_CHECK }); setShowDialog(true); };
@@ -215,7 +209,7 @@ export default function MonitorChecksPage() {
           <Button
             variant="outline"
             size="sm"
-            onClick={handleImport}
+            onClick={() => openImportDialog()}
             className="border-[#30363D] text-gray-300 hover:text-white hover:border-gray-400 text-xs"
           >
             Import JSON
@@ -308,6 +302,12 @@ export default function MonitorChecksPage() {
           ))}
         </div>
       )}
+
+      <ImportJsonDialog
+        open={importDialogOpen}
+        onClose={closeImportDialog}
+        onConfirm={handleImportConfirm}
+      />
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="bg-[#161B22] border-[#30363D] text-white max-w-2xl max-h-[90vh] overflow-y-auto">
