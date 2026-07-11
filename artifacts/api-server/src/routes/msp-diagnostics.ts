@@ -32,6 +32,7 @@ import {
 import { eq, and, desc, count } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-broadcast";
 import jwt from "jsonwebtoken";
@@ -40,15 +41,6 @@ const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function resolveMspId(req: Request): number {
-  const user = req.user!;
-  if (user.role === "admin") {
-    const q = parseInt(String((req.query as Record<string, unknown>).mspId ?? ""), 10);
-    return isNaN(q) ? 0 : q;
-  }
-  if (!user.mspId) throw new Error("No mspId on token");
-  return user.mspId;
-}
 
 async function assertCustomerBelongsToMsp(customerId: number, mspId: number): Promise<void> {
   if (!mspId) return;
@@ -72,7 +64,7 @@ router.post(
       const customerId = parseInt(req.params["customerId"] as string, 10);
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       await assertCustomerBelongsToMsp(customerId, mspId);
 
       const packageKey = String((req.body as Record<string, unknown>).packageKey ?? "default");
@@ -131,7 +123,7 @@ router.get(
       const customerId = parseInt(req.params["customerId"] as string, 10);
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       await assertCustomerBelongsToMsp(customerId, mspId);
 
       const limit = Math.min(parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10), 100);
@@ -171,7 +163,7 @@ router.get(
       const runId = req.params["runId"] as string;
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       await assertCustomerBelongsToMsp(customerId, mspId);
 
       const [run] = await db

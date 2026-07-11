@@ -405,12 +405,16 @@ function RootRedirect() {
 // instead of navigating — this prevents a /login ↔ / redirect loop.
 
 function FlatLoggedInRedirect() {
-  const { user, logout } = useAuth();
+  const { user, logout, fetchWithAuth } = useAuth();
   const [, navigate] = useLocation();
   const storedSlug = getStoredSlug();
 
   // Resolve slug: prefer stored (from a previous visit), then JWT claim.
   const resolvedSlug = storedSlug ?? user?.mspSlug ?? null;
+
+  // For PlatformAdmin with no stored/JWT slug, look up their first MSP dynamically.
+  const [adminLookupDone, setAdminLookupDone] = useState(false);
+  const isPlatformAdmin = user?.role === "admin";
 
   useEffect(() => {
     if (resolvedSlug) {
@@ -418,12 +422,30 @@ function FlatLoggedInRedirect() {
       if (!storedSlug) storeSlug(resolvedSlug);
       const landing = user?.mspRole === "CustomerUser" ? "customer-home" : "dashboard";
       navigate(`/${resolvedSlug}/${landing}`, { replace: true });
+      return;
+    }
+
+    // PlatformAdmin: fetch first MSP from the admin API and redirect to its dashboard.
+    if (isPlatformAdmin && !adminLookupDone) {
+      setAdminLookupDone(true);
+      fetchWithAuth("/api/admin/msps?limit=1")
+        .then(async (res) => {
+          if (!res.ok) return;
+          const data = (await res.json()) as { msps?: Array<{ slug: string }> };
+          const firstSlug = data.msps?.[0]?.slug;
+          if (firstSlug) {
+            storeSlug(firstSlug);
+            navigate(`/${firstSlug}/dashboard`, { replace: true });
+          }
+        })
+        .catch(() => {});
     }
     // No slug known — stay on this component; do NOT navigate to "/" (would loop)
-  }, [resolvedSlug, storedSlug, user, navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedSlug]);
 
-  // While redirect is pending (slug resolved), show spinner
-  if (resolvedSlug) {
+  // While redirect is pending (slug resolved or admin lookup in flight), show spinner
+  if (resolvedSlug || (isPlatformAdmin && !adminLookupDone)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />

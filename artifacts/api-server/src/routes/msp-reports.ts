@@ -33,6 +33,7 @@ import {
 import { eq, and, desc, or, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { sendMailViaGraph } from "../lib/graph";
@@ -41,15 +42,6 @@ const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function resolveMspId(req: Request): number {
-  const user = req.user!;
-  if (user.role === "admin") {
-    const q = parseInt(String((req.query as Record<string, unknown>).mspId ?? ""), 10);
-    return isNaN(q) ? 0 : q;
-  }
-  if (!user.mspId) throw new Error("No mspId on token");
-  return user.mspId;
-}
 
 function stripHtml(html: string): string {
   return html
@@ -232,7 +224,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const customerId = req.query["customerId"] ? Number(req.query["customerId"]) : undefined;
 
       const conditions = mspId
@@ -262,7 +254,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const user = req.user!;
       const {
         name, description, docType = "executive_summary",
@@ -318,7 +310,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const { defId } = req.params as { defId: string };
 
       const [def] = await db
@@ -347,7 +339,7 @@ router.patch(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const { defId } = req.params as { defId: string };
 
       const allowed = ["name", "description", "docType", "deliveryMethod", "deliveryEmail", "fieldMappings", "scheduleConfig", "isActive", "customerId"];
@@ -382,7 +374,7 @@ router.delete(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const { defId } = req.params as { defId: string };
 
       const [deleted] = await db
@@ -411,7 +403,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const user = req.user!;
       const { defId } = req.params as { defId: string };
 
@@ -473,7 +465,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const limit = Math.min(Number(req.query["limit"] ?? 50), 100);
       const defId = req.query["definitionId"] ? String(req.query["definitionId"]) : undefined;
 
@@ -522,7 +514,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const { runId } = req.params as { runId: string };
 
       const [run] = await db
@@ -566,7 +558,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const { runId } = req.params as { runId: string };
 
       const [run] = await db
@@ -636,7 +628,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       // PlatformAdmins browsing without a specific MSP context get a zeroed response
       // rather than a query scoped to msp_id = 0 (which would never match real rows).

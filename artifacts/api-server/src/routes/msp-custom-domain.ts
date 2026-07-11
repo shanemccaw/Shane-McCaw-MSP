@@ -20,6 +20,7 @@ import { z } from "zod";
 import { randomBytes } from "crypto";
 import { resolveTxt } from "dns/promises";
 import { logger } from "../lib/logger.ts";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 
 const router: IRouter = Router();
 
@@ -27,14 +28,6 @@ function apiError(res: Response, status: number, message: string) {
   res.status(status).json({ error: message });
 }
 
-function resolveMspId(req: Request): number | null {
-  const user = req.user!;
-  if (user.role === "admin") {
-    const q = parseInt(String((req.query as Record<string, unknown>).mspId ?? ""), 10);
-    return isNaN(q) ? null : q;
-  }
-  return user.mspId ?? null;
-}
 
 // ── Public: GET /api/portal/branding ──────────────────────────────────────────
 // Resolve branding for a given MSP, keyed by ?slug=xxx or the Host header.
@@ -151,7 +144,7 @@ router.get("/portal/tenant/:slug", async (req: Request, res: Response) => {
 // ── GET /api/msp/settings/custom-domain ───────────────────────────────────────
 
 router.get("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
-  const mspId = resolveMspId(req);
+  const mspId = await resolveMspId(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
   const [msp] = await db
@@ -201,7 +194,7 @@ const addDomainSchema = z.object({
 });
 
 router.post("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
-  const mspId = resolveMspId(req);
+  const mspId = await resolveMspId(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
   const parsed = addDomainSchema.safeParse(req.body);
@@ -269,7 +262,7 @@ router.post("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: 
 // Rate-limited to avoid hammering DNS resolvers.
 
 router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
-  const mspId = resolveMspId(req);
+  const mspId = await resolveMspId(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
   const [row] = await db
@@ -348,7 +341,7 @@ router.post("/msp/settings/custom-domain/verify", requireRole("MSPAdmin"), async
 // ── DELETE /api/msp/settings/custom-domain ────────────────────────────────────
 
 router.delete("/msp/settings/custom-domain", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
-  const mspId = resolveMspId(req);
+  const mspId = await resolveMspId(req);
   if (!mspId) return apiError(res, 400, "No MSP context");
 
   const [row] = await db

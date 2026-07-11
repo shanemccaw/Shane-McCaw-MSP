@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useAuth, type MspRole } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -453,6 +454,7 @@ interface AppShellProps {
 
 export function AppShell({ children, title, actions }: AppShellProps) {
   const { user, logout, fetchWithAuth } = useAuth();
+  const slug = useMspSlug();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -460,16 +462,22 @@ export function AppShell({ children, title, actions }: AppShellProps) {
 
   const mspRole = user?.mspRole;
 
-  // Fetch MSP profile for real white-label branding
+  // Fetch MSP profile for real white-label branding.
+  // For PlatformAdmin (no mspId on token), pass ?slug= so the backend can resolve the MSP.
   useEffect(() => {
     if (!user) return;
-    fetchWithAuth("/api/msp/profile")
+    const isPlatformAdmin = user.role === "admin" || user.mspRole === "PlatformAdmin";
+    const url =
+      isPlatformAdmin && slug
+        ? `/api/msp/profile?slug=${encodeURIComponent(slug)}`
+        : "/api/msp/profile";
+    fetchWithAuth(url)
       .then(async (res) => {
         if (res.ok) setProfile(await res.json() as MspProfile);
       })
       .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.mspId]);
+  }, [user?.mspId, slug]);
 
   // Inject MSP primary color as CSS custom property (safe: server-controlled)
   useEffect(() => {

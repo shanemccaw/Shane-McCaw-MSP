@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
+import { useMspSlug } from "@/lib/slug-context";
 import { Link } from "wouter";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -116,6 +117,7 @@ function StatCard({
 
 export default function DashboardPage() {
   const { user, fetchWithAuth } = useAuth();
+  const slug = useMspSlug();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -123,7 +125,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let mounted = true;
-    fetchWithAuth("/api/msp/dashboard")
+
+    // For PlatformAdmin (no mspId on token), append ?slug= so the backend resolves the MSP.
+    const isPlatformAdmin = user?.role === "admin" || user?.mspRole === "PlatformAdmin";
+    const slugParam = isPlatformAdmin && slug ? `?slug=${encodeURIComponent(slug)}` : "";
+
+    fetchWithAuth(`/api/msp/dashboard${slugParam}`)
       .then(async (res) => {
         if (!res.ok) {
           if (mounted) setError(true);
@@ -140,7 +147,7 @@ export default function DashboardPage() {
       });
 
     // License waste tile — independent fetch
-    fetchWithAuth("/api/msp/reports/license-waste")
+    fetchWithAuth(`/api/msp/reports/license-waste${slugParam}`)
       .then(async (res) => {
         if (!res.ok) return;
         const json = (await res.json()) as LicenseWasteData;
@@ -150,7 +157,7 @@ export default function DashboardPage() {
 
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [slug]);
 
   const periodLabel = data?.periodStart
     ? new Date(data.periodStart).toLocaleString("default", {

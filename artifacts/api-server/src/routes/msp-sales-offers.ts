@@ -44,6 +44,7 @@ import {
   broadcastCustomerOfferChange,
 } from "../lib/sse-broadcast";
 import { logger } from "../lib/logger";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 import type { AuthUser } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -56,14 +57,6 @@ function apiErr(res: Response, status: number, message: string): void {
 
 /** Resolve the calling MSP's id from the JWT.
  *  PlatformAdmin can override with ?mspId= query param. */
-function resolveMspId(req: Request): number | null {
-  const user = req.user!;
-  if (user.role === "admin" || user.mspRole === "PlatformAdmin") {
-    const q = req.query["mspId"] ? parseInt(String(req.query["mspId"]), 10) : NaN;
-    return isNaN(q) ? null : q;
-  }
-  return user.mspId ?? null;
-}
 
 // ── GET /api/msp/sales-offers ─────────────────────────────────────────────────
 
@@ -71,7 +64,7 @@ router.get(
   "/msp/sales-offers",
   requireRole("MSPOperator"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -161,7 +154,7 @@ router.post(
   requireRole("MSPOperator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -203,7 +196,7 @@ router.post(
   requireRole("MSPOperator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -222,7 +215,7 @@ router.get(
   "/msp/sales-offers/:id",
   requireRole("MSPOperator"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -250,7 +243,7 @@ router.get(
   "/msp/sales-offers/:id/events",
   requireRole("MSPOperator"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -285,7 +278,7 @@ router.patch(
   requireRole("MSPOperator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -335,7 +328,7 @@ router.patch(
   requireRole("MSPOperator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {
@@ -383,7 +376,7 @@ router.delete(
   requireRole("MSPOperator"),
   requirePlanFeature("sales_offers"),
   async (req: Request, res: Response): Promise<void> => {
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     if (!mspId) { apiErr(res, 400, "mspId required"); return; }
 
     try {

@@ -33,16 +33,12 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { broadcastNotification, broadcastUnreadCount } from "../lib/sse-broadcast.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
+import { resolveMspId } from "../lib/resolve-msp-id.ts";
 
 const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function resolveMspId(req: Request): number | null {
-  const user = req.user!;
-  if (user.mspId) return user.mspId;
-  return null;
-}
 
 function relativeDate(d: Date): string {
   const diffDays = Math.floor((Date.now() - d.getTime()) / 86_400_000);
@@ -262,7 +258,7 @@ router.post(
       return;
     }
 
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     const customerId = user.customerId ?? null;
     const isCustomerUser = user.mspRole === "CustomerUser";
 
@@ -343,7 +339,7 @@ router.post(
     const user = req.user!;
     const { question } = req.body as { question?: string };
 
-    const mspId = resolveMspId(req);
+    const mspId = await resolveMspId(req);
     const isCustomerUser = user.mspRole === "CustomerUser";
 
     await escalateToAdmin({

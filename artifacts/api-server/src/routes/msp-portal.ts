@@ -16,6 +16,7 @@ import { eq, and, count, sql, gte, like, sum } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
 import { logger } from "../lib/logger.ts";
+import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 
 const router: IRouter = Router();
 
@@ -29,16 +30,6 @@ function startOfMonth(): Date {
 }
 
 /** Returns the mspId to use for the request — throws if none available. */
-function resolveMspId(req: Request): number {
-  const user = req.user!;
-  if (user.role === "admin") {
-    // PlatformAdmin: accept explicit mspId query param, else 0 = cross-platform view
-    const q = parseInt(String((req.query as Record<string, unknown>).mspId ?? ""), 10);
-    return isNaN(q) ? 0 : q;
-  }
-  if (!user.mspId) throw new Error("No mspId on token");
-  return user.mspId;
-}
 
 // ── GET /api/msp/dashboard ─────────────────────────────────────────────────────
 
@@ -47,7 +38,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const monthStart = startOfMonth();
 
@@ -276,7 +267,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;
@@ -356,7 +347,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       if (!mspId) {
         res.status(400).json({ error: "mspId required" });
         return;

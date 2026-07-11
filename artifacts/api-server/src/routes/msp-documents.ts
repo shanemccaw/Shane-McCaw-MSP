@@ -28,6 +28,7 @@ import {
 import { eq, and, desc, sql } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
+import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { createRun, executeRun } from "../lib/portal-workflow-engine";
 import { DEFAULT_DOC_PIPELINE_GRAPH } from "../lib/doc-pipeline-nodes";
 import { resolveConnectorSiteId } from "../lib/sharepoint-connector";
@@ -36,15 +37,6 @@ const router: IRouter = Router();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function resolveMspId(req: Request): number {
-  const user = req.user!;
-  if (user.role === "admin") {
-    const q = parseInt(String((req.query as Record<string, unknown>).mspId ?? ""), 10);
-    return isNaN(q) ? 0 : q;
-  }
-  if (!user.mspId) throw new Error("No mspId on token");
-  return user.mspId;
-}
 
 /** Ensure the default doc pipeline workflow exists, creating it if not. */
 async function ensureDocPipelineWorkflow(): Promise<void> {
@@ -74,7 +66,7 @@ router.post(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const {
         title,
         documentType = "general",
@@ -168,7 +160,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const customerIdFilter = req.query.customerId
         ? parseInt(String(req.query.customerId), 10)
         : undefined;
@@ -205,7 +197,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [document] = await db
         .select()
@@ -252,7 +244,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [document] = await db
         .select()
@@ -314,7 +306,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [document] = await db
         .select({ documentId: mspDocumentsTable.documentId })
@@ -365,7 +357,7 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const { documentId, versionId } = req.params as { documentId: string; versionId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [document] = await db
         .select({ documentId: mspDocumentsTable.documentId })
@@ -410,7 +402,7 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const { documentId } = req.params as { documentId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const publishedByUserId = req.user!.id ?? 0;
 
       const [document] = await db
@@ -467,7 +459,7 @@ router.get(
   requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const connectors = await db
         .select({
@@ -499,7 +491,7 @@ router.post(
   requireRole("MSPAdmin"),
   async (req: Request, res: Response) => {
     try {
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
       const {
         label,
         tenantId,
@@ -572,7 +564,7 @@ router.patch(
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [existing] = await db
         .select({ connectorId: mspSharepointConnectorsTable.connectorId })
@@ -635,7 +627,7 @@ router.delete(
   async (req: Request, res: Response) => {
     try {
       const { connectorId } = req.params as { connectorId: string };
-      const mspId = resolveMspId(req);
+      const mspId = await resolveMspIdOrZero(req);
 
       const [updated] = await db
         .update(mspSharepointConnectorsTable)
