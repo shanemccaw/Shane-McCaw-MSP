@@ -167,6 +167,23 @@ export default function FulfillmentTypes() {
     }
   }
 
+  async function handleDownloadTemplate() {
+    try {
+      const res = await fetchWithAuth("/api/admin/fulfillment-types/import-template");
+      if (!res.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
+      const data = await res.json() as unknown;
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "fulfillment-types-import-template.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
+  }
+
   async function handleExport() {
     try {
       const res = await fetchWithAuth("/api/admin/fulfillment-types/export");
@@ -260,6 +277,13 @@ export default function FulfillmentTypes() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => void handleDownloadTemplate()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"
+            title="Download import template"
+          >
+            <Download className="w-3.5 h-3.5" /> Download Template
+          </button>
           <button
             onClick={() => void handleExport()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm bg-[#21262D] border border-[#30363D] text-[#E6EDF3] hover:bg-[#30363D] transition-colors"

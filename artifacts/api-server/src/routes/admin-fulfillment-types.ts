@@ -88,6 +88,55 @@ router.get("/admin/fulfillment-types", requireAdmin, async (_req: Request, res: 
   }
 });
 
+// ── Export fulfillment types as JSON ──────────────────────────────────────────
+// NOTE: must be registered before /:key so Express does not swallow "export" as a key param.
+
+router.get("/admin/fulfillment-types/export", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(fulfillmentTypesTable).orderBy(desc(fulfillmentTypesTable.createdAt));
+    const records = rows.map(r => ({
+      key: r.key,
+      label: r.label,
+      description: r.description,
+      firedWhen: r.firedWhen,
+      recurring: r.recurring,
+      isActive: r.isActive,
+    }));
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      records,
+      fulfillmentTypes: records,
+    };
+    res.setHeader("Content-Disposition", 'attachment; filename="fulfillment-types-export.json"');
+    res.json(payload);
+  } catch (err) {
+    logger.error({ err }, "admin-fulfillment-types: export failed");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
+  }
+});
+
+// ── Import template ────────────────────────────────────────────────────────────
+// NOTE: must be registered before /:key for the same reason as /export above.
+
+router.get("/admin/fulfillment-types/import-template", requireAdmin, (_req: Request, res: Response) => {
+  const template = {
+    version: 1,
+    fulfillmentTypes: [
+      {
+        key: "example_type",
+        label: "Example Type",
+        description: "Fires when a client completes an example action.",
+        firedWhen: ["purchase"],
+        recurring: false,
+        isActive: true,
+      },
+    ],
+  };
+  res.setHeader("Content-Disposition", 'attachment; filename="fulfillment-types-import-template.json"');
+  res.json(template);
+});
+
 // ── Get one ────────────────────────────────────────────────────────────────────
 
 router.get("/admin/fulfillment-types/:key", requireAdmin, async (req: Request, res: Response) => {
@@ -227,33 +276,6 @@ router.post("/admin/fulfillment-types/resolve", requireAdmin, async (req: Reques
   });
 
   res.json(result);
-});
-
-// ── Export fulfillment types as JSON ──────────────────────────────────────────
-
-router.get("/admin/fulfillment-types/export", requireAdmin, async (_req: Request, res: Response) => {
-  try {
-    const rows = await db.select().from(fulfillmentTypesTable).orderBy(desc(fulfillmentTypesTable.createdAt));
-    const records = rows.map(r => ({
-      key: r.key,
-      label: r.label,
-      description: r.description,
-      firedWhen: r.firedWhen,
-      recurring: r.recurring,
-      isActive: r.isActive,
-    }));
-    const payload = {
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      records,
-      fulfillmentTypes: records,
-    };
-    res.setHeader("Content-Disposition", 'attachment; filename="fulfillment-types-export.json"');
-    res.json(payload);
-  } catch (err) {
-    logger.error({ err }, "admin-fulfillment-types: export failed");
-    res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
-  }
 });
 
 // ── Import fulfillment types from JSON ────────────────────────────────────────
