@@ -11,6 +11,12 @@
  *   PUT  /api/msp/settings/connector/exchange   — save EXO credentials to Key Vault
  *   DELETE /api/msp/settings/connector/exchange — remove EXO credentials + disable
  *
+ * MSP Mailbox (outbound email routing):
+ *   GET  /api/msp/settings/connector/mailbox            — get mailbox connector status
+ *   POST /api/msp/settings/connector/mailbox/connect    — initiate OAuth admin-consent for Mail.Send
+ *   GET  /api/msp/settings/connector/mailbox/callback   — OAuth callback (Microsoft redirect)
+ *   DELETE /api/msp/settings/connector/mailbox          — disconnect MSP mailbox
+ *
  * Service Accounts (API keys):
  *   GET  /api/msp/settings/service-accounts     — list service accounts (no key values)
  *   POST /api/msp/settings/service-accounts     — create service account (returns key once)
@@ -50,19 +56,23 @@ import {
   mspEmailTemplatesTable,
   mspRefreshTokensTable,
   mspAuditLogsTable,
+  mspMailboxConnectorsTable,
+  mspMailboxConsentStatesTable,
   usersTable,
   MSP_LOCKED_EMAIL_KEYS,
   MSP_EMAIL_TEMPLATE_KEYS,
   type MspEmailTemplateKey,
   type MspConnectorMode,
 } from "@workspace/db";
-import { eq, and, desc, isNull, inArray } from "drizzle-orm";
+import { eq, and, desc, isNull, inArray, gte } from "drizzle-orm";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { z } from "zod";
 import { randomBytes, createHash } from "crypto";
 import { logger } from "../lib/logger.ts";
 import { setSecretValue, getSecretMetadata } from "../lib/azure-keyvault.ts";
 import { getStripeKey } from "../lib/stripe.ts";
+import { buildAdminConsentUrl, mtAppCredentialsPresent } from "../lib/graph.ts";
+import { getPortalBaseUrl } from "../lib/portal-url.ts";
 
 const router: IRouter = Router();
 
@@ -800,6 +810,211 @@ router.put("/msp/settings/agreement-template", requireRole("MSPAdmin"), async (r
     req,
     actionType: "agreement_template.update",
     entityType: "msp_connector_config",
+    entityId: String(mspId),
+    mspId,
+  });
+
+  res.json({ ok: true });
+});
+
+// ── MSP Mailbox Connector (outbound email) ────────────────────────────────────
+//
+// Flow:
+//   1. MSP admin GETs /mailbox to see current status.
+//   2. POSTs /mailbox/connect with { mailboxUpn, fromDisplayName } to get a consentUrl.
+//   3. Opens the consentUrl — Microsoft admin-consent screen for their tenant.
+//   4. Microsoft redirects to /mailbox/callback — server burns state, upserts connector.
+//   5. MSP is redirected back to the portal Settings page.
+//
+// No client secret is stored. The platform MT app's client_credentials grant is used
+// after admin consent is granted for the MSP's tenant with Mail.Send scope.
+// ──────────────────────────────────────────────────────────────────────────────
+
+router.get("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const [row] = await db
+    .select({
+      connectorId: mspMailboxConnectorsTable.connectorId,
+      tenantId: mspMailboxConnectorsTable.tenantId,
+      mailboxUpn: mspMailboxConnectorsTable.mailboxUpn,
+      fromDisplayName: mspMailboxConnectorsTable.fromDisplayName,
+      isActive: mspMailboxConnectorsTable.isActive,
+      consentedAt: mspMailboxConnectorsTable.consentedAt,
+      revokedAt: mspMailboxConnectorsTable.revokedAt,
+      updatedAt: mspMailboxConnectorsTable.updatedAt,
+    })
+    .from(mspMailboxConnectorsTable)
+    .where(eq(mspMailboxConnectorsTable.mspId, mspId))
+    .limit(1);
+
+  res.json({
+    connected: !!(row?.isActive),
+    mtAppConfigured: mtAppCredentialsPresent(),
+    connector: row ?? null,
+  });
+});
+
+const mailboxConnectSchema = z.object({
+  mailboxUpn: z.string().email("mailboxUpn must be a valid email address"),
+  fromDisplayName: z.string().min(2).max(120),
+  returnPath: z.string().optional(),
+});
+
+router.post("/msp/settings/connector/mailbox/connect", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  if (!mtAppCredentialsPresent()) {
+    apiError(res, 503, "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID / MT_APP_CLIENT_SECRET). Contact the platform admin.");
+    return;
+  }
+
+  const parsed = mailboxConnectSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  const state = randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  await db.insert(mspMailboxConsentStatesTable).values({
+    state,
+    mspId,
+    mailboxUpn: parsed.data.mailboxUpn,
+    fromDisplayName: parsed.data.fromDisplayName,
+    returnPath: parsed.data.returnPath ?? "/settings/connector",
+    requestedByUserId: req.user!.id,
+    expiresAt,
+  });
+
+  // Build callback URL — uses the same base-URL helper as the consent flow
+  const portalBase = getPortalBaseUrl();
+  const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+  const callbackBase = portalBase ?? `${proto}://${host}`;
+  const callbackUrl = `${callbackBase}/api/msp/settings/connector/mailbox/callback`;
+
+  // We use "common" as the tenant hint so the MSP's admin can use their own tenant login
+  const consentUrl = buildAdminConsentUrl("common", state, callbackUrl);
+
+  await writeAuditLog({
+    req,
+    actionType: "mailbox_connector.connect.initiated",
+    entityType: "msp_mailbox_connector",
+    entityId: String(mspId),
+    mspId,
+    metadata: { mailboxUpn: parsed.data.mailboxUpn, fromDisplayName: parsed.data.fromDisplayName },
+  });
+
+  res.json({ consentUrl, state, expiresAt });
+});
+
+// OAuth callback — Microsoft redirects here after admin consent
+router.get("/msp/settings/connector/mailbox/callback", async (req: Request, res: Response) => {
+  const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
+
+  const portalBase = getPortalBaseUrl() ?? "";
+
+  // ── Declined ────────────────────────────────────────────────────────────────
+  if (error === "access_denied" || error_subcode === "cancel") {
+    logger.warn({ tenant, state, error }, "MSP mailbox consent: admin declined");
+    if (state) {
+      await db
+        .update(mspMailboxConsentStatesTable)
+        .set({ usedAt: new Date() })
+        .where(eq(mspMailboxConsentStatesTable.state, state));
+    }
+    res.redirect(`${portalBase}/portal/settings/connector?mailbox_consent=declined`);
+    return;
+  }
+
+  // ── Success validation ──────────────────────────────────────────────────────
+  if (!tenant || admin_consent?.toLowerCase() !== "true" || !state) {
+    logger.warn({ tenant, admin_consent, state }, "MSP mailbox consent: unexpected callback params");
+    res.status(400).send("Invalid consent callback parameters.");
+    return;
+  }
+
+  // Validate and burn the state token
+  const now = new Date();
+  const [stateRow] = await db
+    .select()
+    .from(mspMailboxConsentStatesTable)
+    .where(
+      and(
+        eq(mspMailboxConsentStatesTable.state, state),
+        isNull(mspMailboxConsentStatesTable.usedAt),
+        gte(mspMailboxConsentStatesTable.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (!stateRow) {
+    logger.warn({ state, tenant }, "MSP mailbox consent: state token invalid, expired, or already used");
+    res.status(400).send("This consent link has expired or has already been used. Please request a new one.");
+    return;
+  }
+
+  // Burn the state token
+  await db
+    .update(mspMailboxConsentStatesTable)
+    .set({ usedAt: now })
+    .where(eq(mspMailboxConsentStatesTable.state, state));
+
+  // Upsert the mailbox connector
+  await db
+    .insert(mspMailboxConnectorsTable)
+    .values({
+      mspId: stateRow.mspId,
+      tenantId: tenant,
+      mailboxUpn: stateRow.mailboxUpn,
+      fromDisplayName: stateRow.fromDisplayName,
+      isActive: true,
+      consentedAt: now,
+      revokedAt: undefined,
+      createdByUserId: stateRow.requestedByUserId ?? undefined,
+    })
+    .onConflictDoUpdate({
+      target: mspMailboxConnectorsTable.mspId,
+      set: {
+        tenantId: tenant,
+        mailboxUpn: stateRow.mailboxUpn,
+        fromDisplayName: stateRow.fromDisplayName,
+        isActive: true,
+        consentedAt: now,
+        revokedAt: undefined,
+        updatedAt: now,
+      },
+    });
+
+  logger.info({ mspId: stateRow.mspId, tenant, mailboxUpn: stateRow.mailboxUpn }, "MSP mailbox connector activated");
+
+  const returnPath = stateRow.returnPath ?? "/settings/connector";
+  res.redirect(`${portalBase}/portal${returnPath}?mailbox_consent=success`);
+});
+
+router.delete("/msp/settings/connector/mailbox", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = resolveMspId(req);
+  if (!mspId) { apiError(res, 400, "No MSP context"); return; }
+
+  const [row] = await db
+    .update(mspMailboxConnectorsTable)
+    .set({ isActive: false, revokedAt: new Date(), updatedAt: new Date() })
+    .where(eq(mspMailboxConnectorsTable.mspId, mspId))
+    .returning({ connectorId: mspMailboxConnectorsTable.connectorId });
+
+  if (!row) {
+    apiError(res, 404, "No mailbox connector found for this MSP");
+    return;
+  }
+
+  await writeAuditLog({
+    req,
+    actionType: "mailbox_connector.disconnect",
+    entityType: "msp_mailbox_connector",
     entityId: String(mspId),
     mspId,
   });

@@ -1101,6 +1101,67 @@ export const mspEmailTemplatesTable = pgTable("msp_email_templates", {
 export type MspEmailTemplate = typeof mspEmailTemplatesTable.$inferSelect;
 export type InsertMspEmailTemplate = typeof mspEmailTemplatesTable.$inferInsert;
 
+// ── MSP Mailbox Connectors ─────────────────────────────────────────────────────
+// Stores per-MSP Exchange Online mailbox connections for outbound email.
+// When connected, emails to that MSP's customers are sent through their mailbox,
+// achieving real domain / SPF / DKIM / DMARC alignment.
+//
+// Auth flow: admin-consent with Mail.Send scope on the platform MT app for the
+// MSP's own tenant. No client secret stored — uses the MT app's client_credentials
+// grant after the tenant admin has consented.
+//
+// Fallback: when no connector row exists or isActive = false, the platform mailbox
+// is used but the From/Reply-To is set to the MSP's business name.
+
+export const mspMailboxConnectorsTable = pgTable("msp_mailbox_connectors", {
+  id: serial("id").primaryKey(),
+  connectorId: uuid("connector_id").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }).unique(),
+  // MSP's Azure AD tenant ID — used to acquire an MT-app token for this tenant
+  tenantId: text("tenant_id").notNull(),
+  // UPN of the mailbox to send from (e.g. "noreply@contoso.com")
+  mailboxUpn: text("mailbox_upn").notNull(),
+  // Display name used as the "From" header (e.g. "Contoso IT Services")
+  fromDisplayName: text("from_display_name").notNull(),
+  // Whether this connector is active and eligible for routing
+  isActive: boolean("is_active").notNull().default(true),
+  consentedAt: timestamp("consented_at", { withTimezone: true }),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdByUserId: integer("created_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_mailbox_connectors_msp_id_idx").on(t.mspId),
+]);
+
+export type MspMailboxConnector = typeof mspMailboxConnectorsTable.$inferSelect;
+export type InsertMspMailboxConnector = typeof mspMailboxConnectorsTable.$inferInsert;
+
+// ── MSP Mailbox Consent States ─────────────────────────────────────────────────
+// Short-lived in-flight OAuth state tokens for the mailbox-connect flow.
+// One row per pending consent request; burned on first use or expiry (10 minutes).
+
+export const mspMailboxConsentStatesTable = pgTable("msp_mailbox_consent_states", {
+  state: text("state").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // The mailbox UPN the admin intends to use — recorded at request time
+  mailboxUpn: text("mailbox_upn").notNull(),
+  // Display name for the "From" header
+  fromDisplayName: text("from_display_name").notNull(),
+  // Which portal path to redirect to after consent
+  returnPath: text("return_path"),
+  requestedByUserId: integer("requested_by_user_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_mailbox_consent_states_msp_id_idx").on(t.mspId),
+  index("msp_mailbox_consent_states_expires_at_idx").on(t.expiresAt),
+]);
+
+export type MspMailboxConsentState = typeof mspMailboxConsentStatesTable.$inferSelect;
+export type InsertMspMailboxConsentState = typeof mspMailboxConsentStatesTable.$inferInsert;
+
 // ── MSP Impersonation Tokens ───────────────────────────────────────────────────
 // Tracks impersonation sessions issued by PlatformAdmin. Used to extend the
 // Active Sessions view — shows both refresh-token sessions and impersonation tokens.

@@ -410,6 +410,50 @@ const legacyMigrations = [
       ON CONFLICT ("key") DO NOTHING;
     `,
   },
+  {
+    name: "msp_mailbox_connectors",
+    sql: `
+      CREATE TABLE IF NOT EXISTS "msp_mailbox_connectors" (
+        "id"                 SERIAL PRIMARY KEY,
+        "connector_id"       UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+        "msp_id"             INTEGER     NOT NULL UNIQUE REFERENCES "msps"("id") ON DELETE CASCADE,
+        "tenant_id"          TEXT        NOT NULL,
+        "mailbox_upn"        TEXT        NOT NULL,
+        "from_display_name"  TEXT        NOT NULL,
+        "is_active"          BOOLEAN     NOT NULL DEFAULT TRUE,
+        "consented_at"       TIMESTAMPTZ,
+        "revoked_at"         TIMESTAMPTZ,
+        "created_by_user_id" INTEGER,
+        "created_at"         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updated_at"         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS "msp_mailbox_connectors_msp_id_idx"
+        ON "msp_mailbox_connectors" ("msp_id");
+    `,
+  },
+  {
+    name: "msp_mailbox_consent_states",
+    sql: `
+      CREATE TABLE IF NOT EXISTS "msp_mailbox_consent_states" (
+        "state"                TEXT        PRIMARY KEY,
+        "msp_id"               INTEGER     NOT NULL REFERENCES "msps"("id") ON DELETE CASCADE,
+        "mailbox_upn"          TEXT        NOT NULL,
+        "from_display_name"    TEXT        NOT NULL,
+        "return_path"          TEXT,
+        "requested_by_user_id" INTEGER,
+        "expires_at"           TIMESTAMPTZ NOT NULL,
+        "used_at"              TIMESTAMPTZ,
+        "created_at"           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE INDEX IF NOT EXISTS "msp_mailbox_consent_states_msp_id_idx"
+        ON "msp_mailbox_consent_states" ("msp_id");
+
+      CREATE INDEX IF NOT EXISTS "msp_mailbox_consent_states_expires_at_idx"
+        ON "msp_mailbox_consent_states" ("expires_at");
+    `,
+  },
 ];
 
 // ---------------------------------------------------------------------------

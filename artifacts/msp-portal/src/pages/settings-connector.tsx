@@ -11,10 +11,22 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Globe, Loader2, Save, ShieldAlert, Trash2, Zap } from "lucide-react";
-import { Link } from "wouter";
+import {
+  ArrowLeft,
+  Check,
+  Globe,
+  Loader2,
+  Save,
+  ShieldAlert,
+  Trash2,
+  Zap,
+  Mail,
+  ExternalLink,
+  AlertCircle,
+  XCircle,
+} from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 interface ConnectorConfig {
   connectorMode: "agent" | "api_key" | "delegated";
@@ -24,6 +36,23 @@ interface ConnectorConfig {
   hasExchangeClientSecret: boolean;
   auditLoggingEnabled: boolean;
   updatedAt: string | null;
+}
+
+interface MailboxConnector {
+  connectorId: string;
+  tenantId: string;
+  mailboxUpn: string;
+  fromDisplayName: string;
+  isActive: boolean;
+  consentedAt: string | null;
+  revokedAt: string | null;
+  updatedAt: string | null;
+}
+
+interface MailboxConnectorStatus {
+  connected: boolean;
+  mtAppConfigured: boolean;
+  connector: MailboxConnector | null;
 }
 
 const CONNECTOR_MODES = [
@@ -46,7 +75,9 @@ const CONNECTOR_MODES = [
 
 export default function SettingsConnectorPage() {
   const { fetchWithAuth } = useAuth();
+  const [location] = useLocation();
   const [config, setConfig] = useState<ConnectorConfig | null>(null);
+  const [mailboxStatus, setMailboxStatus] = useState<MailboxConnectorStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingMode, setSavingMode] = useState(false);
   const [savingExchange, setSavingExchange] = useState(false);
@@ -54,16 +85,38 @@ export default function SettingsConnectorPage() {
   const [selectedMode, setSelectedMode] = useState<"agent" | "api_key" | "delegated">("delegated");
   const [exoForm, setExoForm] = useState({ tenantId: "", clientId: "", clientSecret: "" });
   const [exoFormVisible, setExoFormVisible] = useState(false);
+  const [mailboxForm, setMailboxForm] = useState({ mailboxUpn: "", fromDisplayName: "" });
+  const [mailboxFormVisible, setMailboxFormVisible] = useState(false);
+  const [connectingMailbox, setConnectingMailbox] = useState(false);
+  const [disconnectingMailbox, setDisconnectingMailbox] = useState(false);
+
+  // Show toast for OAuth callback result in URL params
+  useEffect(() => {
+    const params = new URLSearchParams(location.split("?")[1] ?? "");
+    const consentResult = params.get("mailbox_consent");
+    if (consentResult === "success") {
+      toast.success("Exchange Online mailbox connected — outbound email will now route through your tenant.");
+      setMailboxStatus((s) => s ? { ...s, connected: true } : s);
+    } else if (consentResult === "declined") {
+      toast.error("Admin consent was declined. You can try again when ready.");
+    }
+  }, [location]);
 
   useEffect(() => {
-    fetchWithAuth("/api/msp/settings/connector")
-      .then((r) => r.json())
-      .then((data: ConnectorConfig) => {
-        setConfig(data);
-        setSelectedMode(data.connectorMode);
+    let cancelled = false;
+    Promise.all([
+      fetchWithAuth("/api/msp/settings/connector").then((r) => r.json()) as Promise<ConnectorConfig>,
+      fetchWithAuth("/api/msp/settings/connector/mailbox").then((r) => r.json()) as Promise<MailboxConnectorStatus>,
+    ])
+      .then(([connectorData, mailboxData]) => {
+        if (cancelled) return;
+        setConfig(connectorData);
+        setSelectedMode(connectorData.connectorMode);
+        setMailboxStatus(mailboxData);
       })
-      .catch(() => toast.error("Failed to load connector config"))
-      .finally(() => setLoading(false));
+      .catch(() => toast.error("Failed to load connector settings"))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [fetchWithAuth]);
 
   async function handleSaveMode() {
@@ -126,6 +179,55 @@ export default function SettingsConnectorPage() {
       }
     } finally {
       setRemovingExchange(false);
+    }
+  }
+
+  async function handleConnectMailbox(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mailboxForm.mailboxUpn || !mailboxForm.fromDisplayName) {
+      toast.error("Both fields are required");
+      return;
+    }
+    setConnectingMailbox(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/settings/connector/mailbox/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mailboxUpn: mailboxForm.mailboxUpn,
+          fromDisplayName: mailboxForm.fromDisplayName,
+          returnPath: "/settings/connector",
+        }),
+      });
+      if (!res.ok) {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Failed to initiate OAuth flow");
+        return;
+      }
+      const data = (await res.json()) as { consentUrl: string };
+      // Open the Microsoft admin-consent page in a new tab
+      window.open(data.consentUrl, "_blank", "noopener,noreferrer");
+      toast.info("Opened Microsoft admin-consent in a new tab. After consenting, return to this page.");
+      setMailboxFormVisible(false);
+      setMailboxForm({ mailboxUpn: "", fromDisplayName: "" });
+    } finally {
+      setConnectingMailbox(false);
+    }
+  }
+
+  async function handleDisconnectMailbox() {
+    if (!confirm("Disconnect this Exchange Online mailbox? Emails will fall back to the platform mailbox with your business name as the sender display name.")) return;
+    setDisconnectingMailbox(true);
+    try {
+      const res = await fetchWithAuth("/api/msp/settings/connector/mailbox", { method: "DELETE" });
+      if (res.ok) {
+        toast.success("Mailbox connector disconnected");
+        setMailboxStatus((s) => s ? { ...s, connected: false, connector: s.connector ? { ...s.connector, isActive: false } : null } : s);
+      } else {
+        toast.error("Failed to disconnect mailbox");
+      }
+    } finally {
+      setDisconnectingMailbox(false);
     }
   }
 
@@ -210,15 +312,167 @@ export default function SettingsConnectorPage() {
 
         <Separator />
 
-        {/* Exchange Online */}
+        {/* Outbound Email — MSP Mailbox Connector */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Mail className="size-4 text-muted-foreground" />
+              Outbound Email — Exchange Online
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Connect your own Exchange Online mailbox so emails to your customers come from your real domain
+              with proper SPF / DKIM / DMARC alignment. Without a connected mailbox, emails are sent via the
+              platform mailbox with your business name as the display name.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!mailboxStatus?.mtAppConfigured && (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+                <span>
+                  The platform multi-tenant app credentials are not configured. Contact your platform admin to
+                  enable Exchange Online mailbox connections.
+                </span>
+              </div>
+            )}
+
+            {mailboxStatus?.connected && mailboxStatus.connector ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-green-600 font-medium">
+                  <Check className="size-4" />
+                  Exchange Online mailbox connected
+                </div>
+                <div className="rounded-md bg-muted/40 px-3 py-2.5 space-y-1.5 text-xs font-mono text-muted-foreground">
+                  <div><span className="text-foreground font-semibold">Mailbox:</span> {mailboxStatus.connector.mailboxUpn}</div>
+                  <div><span className="text-foreground font-semibold">Display name:</span> {mailboxStatus.connector.fromDisplayName}</div>
+                  <div><span className="text-foreground font-semibold">Tenant:</span> {mailboxStatus.connector.tenantId}</div>
+                  {mailboxStatus.connector.consentedAt && (
+                    <div><span className="text-foreground font-semibold">Connected:</span> {new Date(mailboxStatus.connector.consentedAt).toLocaleDateString()}</div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ShieldAlert className="size-3.5" />
+                  No credentials stored — uses Microsoft admin consent only.
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => setMailboxFormVisible((v) => !v)}
+                    disabled={!mailboxStatus.mtAppConfigured}
+                  >
+                    Update Connection
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="gap-1.5"
+                    disabled={disconnectingMailbox}
+                    onClick={() => void handleDisconnectMailbox()}
+                  >
+                    {disconnectingMailbox ? <Loader2 className="size-3.5 animate-spin" /> : <XCircle className="size-3.5" />}
+                    Disconnect
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <p className="text-sm text-muted-foreground">No mailbox connected.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Emails route via the platform mailbox with your business name as the sender.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setMailboxFormVisible((v) => !v)}
+                  disabled={!mailboxStatus?.mtAppConfigured}
+                >
+                  Connect
+                </Button>
+              </div>
+            )}
+
+            {mailboxFormVisible && (
+              <form onSubmit={(e) => void handleConnectMailbox(e)} className="space-y-3 border-t border-border pt-4">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Enter the mailbox you want to send from. Your tenant admin will be asked to grant
+                  <strong> Mail.Send</strong> permission to the platform app.
+                </p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mailbox-upn" className="text-xs">Sending mailbox (UPN)</Label>
+                  <Input
+                    id="mailbox-upn"
+                    type="email"
+                    value={mailboxForm.mailboxUpn}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, mailboxUpn: e.target.value }))}
+                    placeholder="noreply@yourcompany.com"
+                    className="h-8 text-sm"
+                    required
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    The email address must exist in your Exchange Online tenant.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="display-name" className="text-xs">From display name</Label>
+                  <Input
+                    id="display-name"
+                    value={mailboxForm.fromDisplayName}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, fromDisplayName: e.target.value }))}
+                    placeholder="Contoso IT Services"
+                    className="h-8 text-sm"
+                    required
+                    minLength={2}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Shown in the recipient's inbox as the sender name.
+                  </p>
+                </div>
+                <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+                  <strong>What happens next:</strong> Clicking "Open Consent" will open a Microsoft
+                  admin-consent page in a new tab. Your tenant Global Admin must approve the{" "}
+                  <strong>Mail.Send</strong> permission. After approval, the mailbox is automatically
+                  activated — return to this page to confirm.
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={connectingMailbox}
+                    className="gap-1.5"
+                  >
+                    {connectingMailbox ? <Loader2 className="size-3.5 animate-spin" /> : <ExternalLink className="size-3.5" />}
+                    Open Consent
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setMailboxFormVisible(false); setMailboxForm({ mailboxUpn: "", fromDisplayName: "" }); }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        <Separator />
+
+        {/* Exchange Online (monitoring/management credentials) */}
         <Card>
           <CardHeader>
             <CardTitle className="text-sm flex items-center gap-2">
               <Globe className="size-4 text-muted-foreground" />
-              Exchange Online Integration
+              Exchange Online Monitoring
             </CardTitle>
             <CardDescription className="text-xs">
-              Connect to Exchange Online for mailbox monitoring. Credentials are stored in Azure Key Vault — never in the database.
+              App Registration credentials for mailbox monitoring and management. Credentials are stored in
+              Azure Key Vault — never in the database.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -260,7 +514,7 @@ export default function SettingsConnectorPage() {
               </div>
             ) : (
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">Exchange Online is not connected.</p>
+                <p className="text-sm text-muted-foreground">Exchange Online monitoring is not connected.</p>
                 <Button size="sm" variant="outline" onClick={() => setExoFormVisible((v) => !v)}>
                   Configure
                 </Button>

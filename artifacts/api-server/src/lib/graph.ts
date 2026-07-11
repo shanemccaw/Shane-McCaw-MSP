@@ -428,6 +428,77 @@ export async function sendMailViaGraph(opts: {
   }
 }
 
+/**
+ * Send an email through an MSP's own Exchange Online tenant.
+ * Uses the platform multi-tenant app's client_credentials grant for the MSP's
+ * tenant (admin consent with Mail.Send scope must already be granted).
+ *
+ * Throws on token failure (ConsentRevokedError) or Graph API error — the caller
+ * is responsible for falling back to the platform mailbox.
+ */
+export async function sendMailViaGraphForMsp(opts: {
+  mspTenantId: string;
+  fromMailboxUpn: string;
+  fromDisplayName: string;
+  to: string;
+  subject: string;
+  htmlBody: string;
+  attachments?: Array<{ filename: string; content: Buffer | string; contentType?: string }>;
+}): Promise<void> {
+  const token = await getAccessTokenForTenant(opts.mspTenantId);
+
+  const toRecipients: GraphMailRecipient[] = [
+    { emailAddress: { address: opts.to } },
+  ];
+
+  const attachments: GraphMailAttachment[] = (opts.attachments ?? []).map((a) => ({
+    "@odata.type": "#microsoft.graph.fileAttachment",
+    name: a.filename,
+    contentType: a.contentType ?? "application/octet-stream",
+    contentBytes: Buffer.isBuffer(a.content)
+      ? a.content.toString("base64")
+      : Buffer.from(a.content).toString("base64"),
+  }));
+
+  const body: Record<string, unknown> = {
+    message: {
+      subject: opts.subject,
+      body: { contentType: "HTML", content: opts.htmlBody },
+      toRecipients,
+      from: {
+        emailAddress: {
+          address: opts.fromMailboxUpn,
+          name: opts.fromDisplayName,
+        },
+      },
+      ...(attachments.length > 0 ? { attachments } : {}),
+    },
+    saveToSentItems: false,
+  };
+
+  const res = await fetch(
+    `${GRAPH_BASE}/users/${encodeURIComponent(opts.fromMailboxUpn)}/sendMail`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  );
+
+  if (!res.ok && res.status !== 202) {
+    const text = await res.text();
+    if (res.status === 401) {
+      tenantTokenCache.delete(opts.mspTenantId);
+      await markTenantConsentRevoked(opts.mspTenantId);
+      throw new ConsentRevokedError(opts.mspTenantId);
+    }
+    throw new Error(`Graph MSP sendMail failed: ${res.status} ${text}`);
+  }
+}
+
 // ─── SharePoint / Groups ───────────────────────────────────────────────────────
 
 export interface GraphDriveItem {

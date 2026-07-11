@@ -1,7 +1,7 @@
-import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable } from "@workspace/db";
+import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
-import { graphCredentialsPresent, sendMailViaGraph } from "./graph";
+import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph";
 import { computeTenantHealthVars } from "./tenant-signals";
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
@@ -207,6 +207,163 @@ export async function sendEmailWithAttachmentOrThrow(
   }
   await sender(to, subject, html, attachments);
   logger.info({ to, subject, files: attachments.map((a) => a.filename) }, "Email with attachments sent");
+}
+
+// ─── MSP-scoped email routing ─────────────────────────────────────────────────
+
+/**
+ * Look up the active mailbox connector for an MSP, if any.
+ * Returns null when the MSP has no connected mailbox or the connector is inactive.
+ */
+export async function getMspMailboxConnector(mspId: number): Promise<{
+  tenantId: string;
+  mailboxUpn: string;
+  fromDisplayName: string;
+} | null> {
+  try {
+    const [row] = await db
+      .select({
+        tenantId: mspMailboxConnectorsTable.tenantId,
+        mailboxUpn: mspMailboxConnectorsTable.mailboxUpn,
+        fromDisplayName: mspMailboxConnectorsTable.fromDisplayName,
+      })
+      .from(mspMailboxConnectorsTable)
+      .where(eq(mspMailboxConnectorsTable.mspId, mspId))
+      .limit(1);
+    if (!row) return null;
+    return row;
+  } catch (err) {
+    logger.warn({ err, mspId }, "getMspMailboxConnector: DB lookup failed");
+    return null;
+  }
+}
+
+/**
+ * Get an MSP's business name for display-name override fallback.
+ * Returns null when the MSP row is not found.
+ */
+async function getMspName(mspId: number): Promise<string | null> {
+  try {
+    const [row] = await db
+      .select({ name: mspsTable.name })
+      .from(mspsTable)
+      .where(eq(mspsTable.id, mspId))
+      .limit(1);
+    return row?.name ?? null;
+  } catch (err) {
+    logger.warn({ err, mspId }, "getMspName: DB lookup failed");
+    return null;
+  }
+}
+
+/**
+ * Send an email on behalf of an MSP.
+ *
+ * Routing logic:
+ *   1. If the MSP has an active mailbox connector AND the MT app credentials are
+ *      present, send via the MSP's own Exchange Online tenant (real domain/SPF/DKIM).
+ *   2. Fallback A: If the platform Graph mailbox is configured, send via the
+ *      platform mailbox but inject the MSP's business name as the From display name
+ *      and Reply-To address so replies land in context.
+ *   3. Fallback B: No Graph credentials at all — log a warning and no-op.
+ *
+ * Errors are caught and logged — use sendEmailForMspOrThrow when you need
+ * confirmed delivery.
+ */
+export async function sendEmailForMsp(
+  mspId: number,
+  to: string,
+  subject: string,
+  bodyHtml: string,
+  opts?: { skipWrapper?: boolean },
+): Promise<void> {
+  try {
+    await sendEmailForMspOrThrow(mspId, to, subject, bodyHtml, opts);
+  } catch (err) {
+    logger.warn({ err, mspId, to, subject }, "sendEmailForMsp: Failed to send email");
+  }
+}
+
+/**
+ * Like sendEmailForMsp but throws on transport failure.
+ * Use this when the caller needs confirmed delivery.
+ */
+export async function sendEmailForMspOrThrow(
+  mspId: number,
+  to: string,
+  subject: string,
+  bodyHtml: string,
+  opts?: { skipWrapper?: boolean },
+): Promise<void> {
+  const html = opts?.skipWrapper ? bodyHtml : await brandedEmail(bodyHtml);
+
+  // ── Path 1: MSP-owned mailbox (preferred) ────────────────────────────────────
+  if (mtAppCredentialsPresent()) {
+    const connector = await getMspMailboxConnector(mspId);
+    if (connector) {
+      try {
+        await sendMailViaGraphForMsp({
+          mspTenantId: connector.tenantId,
+          fromMailboxUpn: connector.mailboxUpn,
+          fromDisplayName: connector.fromDisplayName,
+          to,
+          subject,
+          htmlBody: html,
+        });
+        logger.info({ mspId, to, subject, path: "msp_mailbox" }, "Email sent via MSP mailbox");
+        db.insert(emailEventsTable).values({
+          emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+          eventType: "sent",
+          recipient: to,
+          subject,
+          metadata: { mspId, via: "msp_mailbox" },
+        }).catch((e: unknown) => logger.warn({ e }, "Failed to record email_event"));
+        return;
+      } catch (err) {
+        if (err instanceof ConsentRevokedError) {
+          logger.warn({ mspId, tenantId: connector.tenantId }, "sendEmailForMspOrThrow: MSP mailbox consent revoked — deactivating connector and falling back to platform mailbox");
+          // Mark the connector inactive so future sends skip straight to fallback
+          db.update(mspMailboxConnectorsTable)
+            .set({ isActive: false, revokedAt: new Date(), updatedAt: new Date() })
+            .where(eq(mspMailboxConnectorsTable.mspId, mspId))
+            .catch((e: unknown) => logger.warn({ e }, "Failed to deactivate MSP mailbox connector"));
+        } else {
+          logger.warn({ err, mspId, to }, "sendEmailForMspOrThrow: MSP mailbox send failed — falling back to platform mailbox");
+        }
+        // Fall through to platform mailbox
+      }
+    }
+  }
+
+  // ── Path 2: Platform mailbox with display-name override ──────────────────────
+  const platformUserId = process.env.GRAPH_MAIL_USER_ID;
+  if (platformUserId && graphCredentialsPresent()) {
+    // Get MSP name for display override
+    const mspName = await getMspName(mspId);
+    const displayName = mspName ?? "Your IT Service Provider";
+
+    await sendMailViaGraph({
+      fromUserId: platformUserId,
+      fromDisplayName: displayName,
+      to,
+      subject,
+      htmlBody: html,
+    });
+    logger.info({ mspId, to, subject, path: "platform_mailbox_display_override" }, "Email sent via platform mailbox with MSP display-name override");
+    db.insert(emailEventsTable).values({
+      emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+      eventType: "sent",
+      recipient: to,
+      subject,
+      metadata: { mspId, via: "platform_display_override", displayName },
+    }).catch((e: unknown) => logger.warn({ e }, "Failed to record email_event"));
+    return;
+  }
+
+  // ── Path 3: No transport ──────────────────────────────────────────────────────
+  throw new Error(
+    `No email transport available for MSP ${mspId} — configure Exchange Online credentials (GRAPH_MAIL_USER_ID) or connect an MSP mailbox`,
+  );
 }
 
 // ─── Named template helpers ───────────────────────────────────────────────────

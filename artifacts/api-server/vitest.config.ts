@@ -33,6 +33,7 @@ export default defineConfig({
       "src/tests/doc-pipeline.test.ts",
       "src/routes/support-chat.test.ts",
       "src/lib/__tests__/monitor-executor.test.ts",
+      "src/lib/msp-mailer.test.ts",
     ],
     coverage: {
       provider: "v8",
