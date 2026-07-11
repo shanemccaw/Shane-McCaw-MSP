@@ -211,11 +211,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Boot: attempt silent refresh ─────────────────────────────────────────
 
   useEffect(() => {
-    void doRefresh().then((token) => {
+    const BOOT_TIMEOUT_MS = 5_000;
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), BOOT_TIMEOUT_MS),
+    );
+
+    // Keep a reference to the underlying refresh promise so we can attach a
+    // late-success handler independently of the race.
+    const refreshPromise = doRefresh();
+
+    // Unblock the UI as soon as either the refresh or the timeout resolves.
+    void Promise.race([refreshPromise, timeout]).then((token) => {
       if (!token) {
+        // Timeout won (or refresh returned nothing) — unblock the UI so the
+        // login form can render immediately.
         setState((s) => ({ ...s, isLoading: false }));
       } else {
-        // Start periodic silent access-token refresh
+        // Refresh resolved within the timeout window — start the interval.
+        silentRefreshTimerRef.current = setInterval(() => {
+          void doRefresh();
+        }, SILENT_REFRESH_INTERVAL_MS);
+      }
+    });
+
+    // If the timeout fires first but the refresh later resolves successfully,
+    // still start the silent-refresh interval (the race discards this case).
+    void refreshPromise.then((token) => {
+      if (token && !silentRefreshTimerRef.current) {
         silentRefreshTimerRef.current = setInterval(() => {
           void doRefresh();
         }, SILENT_REFRESH_INTERVAL_MS);

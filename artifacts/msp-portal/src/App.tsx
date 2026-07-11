@@ -179,15 +179,10 @@ function SlugInnerSwitch() {
     <Switch>
       {/* Public slug-scoped routes */}
       <Route path="/login">
-        {isLoading ? (
-          <div className="min-h-screen flex items-center justify-center bg-sidebar">
-            <Loader2 className="size-6 animate-spin text-sidebar-foreground/40" />
-          </div>
-        ) : user ? (
-          <Redirect to={defaultLanding} />
-        ) : (
-          <LoginPage />
-        )}
+        {/* Render LoginPage immediately — it has its own useEffect that
+            redirects to the dashboard if the user is already authenticated.
+            This avoids a blank screen while the boot refresh is in flight. */}
+        <LoginPage />
       </Route>
 
       {/* Agreement gate page — auth-required but not gated itself */}
@@ -329,17 +324,12 @@ function SlugInnerSwitch() {
         <ProtectedRoute component={CustomerOffersPage} />
       </Route>
 
-      {/* Slug root — role-aware landing */}
+      {/* Slug root — role-aware landing.
+          Don't gate on isLoading: redirect to /login immediately so the form
+          renders at once; LoginPage's own useEffect handles the redirect back
+          to the dashboard once the boot refresh completes. */}
       <Route path="/">
-        {isLoading ? (
-          <div className="min-h-screen flex items-center justify-center bg-background">
-            <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : user ? (
-          <Redirect to={defaultLanding} />
-        ) : (
-          <Redirect to="/login" />
-        )}
+        {user ? <Redirect to={defaultLanding} /> : <Redirect to="/login" />}
       </Route>
 
       <Route component={NotFound} />
@@ -371,25 +361,25 @@ function SlugScope() {
 // redirect to the slug-scoped URL; otherwise show the flat login.
 
 function RootRedirect() {
-  const { user, isLoading } = useAuth();
   const [, navigate] = useLocation();
 
+  // Navigate immediately — don't wait for the boot refresh to complete.
+  // The target /login route renders the form optimistically and its own
+  // useEffect handles the redirect-to-dashboard if the user is authenticated.
   useEffect(() => {
-    if (isLoading) return;
     const stored = getStoredSlug();
     if (stored) {
-      // User has a known slug — go to the slug-scoped landing.
-      // If already authenticated, the inner router's /login route will
-      // immediately redirect to /dashboard or /customer-home.
+      // User has a known slug — go to the slug-scoped login.
       navigate(`/${stored}/login`, { replace: true });
     } else {
       navigate("/login", { replace: true });
     }
-  }, [isLoading, navigate, user]);
+  }, [navigate]);
 
+  // Brief placeholder while the navigation resolves (single paint frame).
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Loader2 className="size-6 animate-spin text-muted-foreground" />
+    <div className="min-h-screen flex items-center justify-center bg-sidebar">
+      <Loader2 className="size-6 animate-spin text-white/70" />
     </div>
   );
 }
