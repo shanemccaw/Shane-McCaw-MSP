@@ -253,7 +253,7 @@ router.patch("/admin/platform-agreements/:id/publish", requireRole("PlatformAdmi
     if (!target) { res.status(404).json({ error: "Agreement not found" }); return; }
 
     // In a transaction: unset current from all others, then publish this one
-    await db.transaction(async (tx: typeof db) => {
+    await db.transaction(async (tx) => {
       await tx
         .update(platformAgreementsTable)
         .set({ isCurrentVersion: false, updatedAt: new Date() });

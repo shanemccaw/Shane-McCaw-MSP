@@ -74,9 +74,17 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
     return af - bf;
   });
 
-  const totalChips = sorted.reduce((n, g) => n + g.outputs.length, 0);
+  // Exclude "sample unavailable" sentinels from the chip count badge
+  const totalChips = sorted.reduce(
+    (n, g) => n + g.outputs.filter(o => o.key !== "__sample_unavailable__").length,
+    0,
+  );
 
-  if (totalChips === 0) return null;
+  if (totalChips === 0 && sorted.every(g => g.outputs.every(o => o.key === "__sample_unavailable__"))) {
+    // All groups contain only sentinels — still render so the user sees the message
+  } else if (totalChips === 0) {
+    return null;
+  }
 
   return (
     <div className="rounded-lg border border-[#30363D] bg-[#0D1117] overflow-hidden">
@@ -143,6 +151,23 @@ export function VariableChipPanel({ ancestorOutputs, onInsert, noTargetHint }: V
                 {/* Chips */}
                 <div className="flex flex-wrap gap-1">
                   {group.outputs.map(o => {
+                    // Special sentinel — dynamic node with no captured sample yet
+                    if (o.key === "__sample_unavailable__") {
+                      return (
+                        <div
+                          key="__sample_unavailable__"
+                          className="w-full flex items-center gap-1.5 rounded px-2 py-1.5 bg-amber-950/30 border border-amber-700/25"
+                        >
+                          <svg className="w-3 h-3 text-amber-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="text-[10px] text-amber-300/80 leading-snug">
+                            Run a Test Run to populate sample data
+                          </span>
+                        </div>
+                      );
+                    }
+
                     const tokenPath = group.isStartNode
                       ? o.key
                       : `steps.${group.nodeId}.${o.key}`;

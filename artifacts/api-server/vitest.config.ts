@@ -22,6 +22,7 @@ export default defineConfig({
       "src/lib/engine-determinism.test.ts",
       "src/lib/msp.test.ts",
       "src/lib/portal-workflow-engine.test.ts",
+      "src/lib/workflow-node-output-samples.test.ts",
       "src/routes/consent.test.ts",
       "src/routes/msp-portal.test.ts",
       "src/routes/msp-onboarding.test.ts",

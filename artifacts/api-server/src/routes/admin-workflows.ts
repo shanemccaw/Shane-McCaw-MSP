@@ -36,11 +36,13 @@ import {
   wfRunsTable,
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
+  wfNodeOutputSamplesTable,
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
   type WfGraph,
 } from "@workspace/db";
+import { STATIC_NODE_SAMPLES, DYNAMIC_SHAPE_NODE_TYPES } from "../lib/workflow-node-default-samples";
 import { eq, and, desc, asc, count, sql, gte, lte, inArray } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -560,6 +562,108 @@ router.post("/admin/workflows/definitions/:id/versions/:vid/publish", requireAdm
     res.json(published);
   } catch (err) {
     sendError(res, 500, "Failed to publish version");
+  }
+});
+
+// ── Node Output Samples ────────────────────────────────────────────────────────
+// Returns captured output samples for every node in a definition, merged with
+// static hand-authored defaults for fixed-shape node types.
+// Used by the Config Panel variable-picker so it shows real sample keys.
+//
+// GET  /api/admin/workflows/definitions/:id/node-output-samples
+//   → { samples: { [nodeId]: { nodeType, sample, capturedAt, sourceRunId } } }
+//
+// POST /api/admin/workflows/definitions/:id/node-output-samples/seed-defaults
+//   → seeds static default samples for every node in the latest version graph
+//     whose type matches a fixed-shape entry in STATIC_NODE_SAMPLES.
+
+router.get("/admin/workflows/definitions/:id/node-output-samples", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  if (isNaN(defId)) return sendError(res, 400, "Invalid id");
+
+  try {
+    const rows = await db
+      .select()
+      .from(wfNodeOutputSamplesTable)
+      .where(eq(wfNodeOutputSamplesTable.definitionId, defId));
+
+    // Key by nodeId for easy client-side lookup
+    const byNodeId: Record<string, {
+      nodeType: string;
+      sample: Record<string, unknown>;
+      capturedAt: Date;
+      sourceRunId: number | null;
+    }> = {};
+
+    for (const row of rows) {
+      byNodeId[row.nodeId] = {
+        nodeType: row.nodeType,
+        sample: row.sample,
+        capturedAt: row.capturedAt,
+        sourceRunId: row.sourceRunId,
+      };
+    }
+
+    res.json({ samples: byNodeId });
+  } catch (err) {
+    req.log.error({ err }, "node-output-samples: fetch failed");
+    sendError(res, 500, "Failed to fetch node output samples");
+  }
+});
+
+router.post("/admin/workflows/definitions/:id/node-output-samples/seed-defaults", requireAdmin, async (req: Request, res: Response) => {
+  const defId = parseInt(req.params.id as string);
+  if (isNaN(defId)) return sendError(res, 400, "Invalid id");
+
+  try {
+    // Load the latest version graph to find all node IDs and types
+    const [latestVersion] = await db
+      .select({ graph: wfVersionsTable.graph })
+      .from(wfVersionsTable)
+      .where(eq(wfVersionsTable.definitionId, defId))
+      .orderBy(desc(wfVersionsTable.versionNumber))
+      .limit(1);
+
+    if (!latestVersion) return sendError(res, 404, "No version found");
+
+    const graph = latestVersion.graph as { nodes?: Array<{ id: string; type: string; data?: Record<string, unknown> }> };
+    const nodes = graph.nodes ?? [];
+
+    // Collect nodes that have a static default sample
+    const seeded: string[] = [];
+    const skipped: string[] = [];
+
+    for (const node of nodes) {
+      const resolvedType = (node.data?.actionType as string | undefined) ?? node.type;
+      const staticSample = STATIC_NODE_SAMPLES[resolvedType];
+
+      if (!staticSample) {
+        skipped.push(node.id);
+        continue;
+      }
+
+      // Only insert if no captured sample already exists (don't overwrite real runs)
+      await db
+        .insert(wfNodeOutputSamplesTable)
+        .values({
+          definitionId: defId,
+          nodeId: node.id,
+          nodeType: resolvedType,
+          sample: staticSample,
+          capturedAt: new Date(),
+          sourceRunId: null,
+        })
+        .onConflictDoNothing()
+        .catch(() => { /* non-fatal */ });
+
+      seeded.push(node.id);
+    }
+
+    req.log.info({ defId, seeded: seeded.length, skipped: skipped.length }, "node-output-samples: seeded defaults");
+    res.json({ seeded: seeded.length, skipped: skipped.length, seededNodeIds: seeded });
+  } catch (err) {
+    req.log.error({ err }, "node-output-samples: seed-defaults failed");
+    sendError(res, 500, "Failed to seed default samples");
   }
 });
 

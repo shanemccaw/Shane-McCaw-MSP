@@ -1392,15 +1392,91 @@ function StartNodePayloadFields({
 
 // ── Ancestor output resolver + variable picker ───────────────────────────────
 // Core logic lives in ./ancestorOutputs.ts (framework-free, unit-tested).
-// This wrapper injects the app-level KNOWN_EVENTS and NODE_OUTPUTS registries.
+// This wrapper injects the app-level KNOWN_EVENTS and NODE_OUTPUTS registries,
+// optionally augmented with real captured samples from wf_node_output_samples.
+
+/** Node types whose output schema depends entirely on runtime data. */
+const DYNAMIC_SHAPE_NODE_TYPES_CLIENT = new Set([
+  "sql_query", "find_object", "foreach", "for",
+]);
+
+/**
+ * Build an augmented NodeOutputRegistry by merging real captured sample keys
+ * on top of the static NODE_OUTPUTS. Keys from the captured sample take
+ * precedence; labels from the static registry are preserved when they match.
+ */
+function buildAugmentedNodeOutputs(
+  nodes: Node[],
+  capturedSamples: Record<string, { nodeType: string; sample: Record<string, unknown>; capturedAt: string; sourceRunId: number | null }>,
+): typeof NODE_OUTPUTS {
+  const augmented = { ...NODE_OUTPUTS };
+
+  for (const node of nodes) {
+    const sample = capturedSamples[node.id];
+    if (!sample || Object.keys(sample.sample).length === 0) continue;
+
+    const resolvedType = (node.data?.actionType as string | undefined) ?? (node.data?.nodeType as string | undefined) ?? node.type ?? "unknown";
+    const sampleKeys = Object.keys(sample.sample).filter(k => k !== "error" && k !== "reason");
+
+    if (sampleKeys.length === 0) continue;
+
+    const staticOutputs: Array<{ key: string; label: string; enumValues?: string[] }> = augmented[resolvedType] ?? [];
+
+    // Merge: keep label from static registry when it exists, otherwise use the key itself
+    const merged: Array<{ key: string; label: string; enumValues?: string[] }> = sampleKeys.map(key => {
+      const staticEntry = staticOutputs.find(o => o.key === key);
+      return {
+        key,
+        label: staticEntry?.label ?? key.replace(/_/g, " "),
+        ...(staticEntry?.enumValues ? { enumValues: staticEntry.enumValues } : {}),
+      };
+    });
+
+    // For dynamic node types, use per-nodeId key in augmented registry
+    // (avoids polluting other nodes of the same type with different dynamic schemas)
+    if (DYNAMIC_SHAPE_NODE_TYPES_CLIENT.has(resolvedType)) {
+      augmented[node.id] = merged;
+    } else {
+      // Fixed-shape types: update the type-level registry (all nodes of this type share the same schema)
+      augmented[resolvedType] = merged;
+    }
+  }
+
+  return augmented;
+}
 
 function getAncestorOutputs(
   nodeId: string,
   nodes: Node[],
   edges: Edge[],
   eventTriggers: WfTrigger[] = [],
+  capturedSamples: Record<string, { nodeType: string; sample: Record<string, unknown>; capturedAt: string; sourceRunId: number | null }> = {},
 ): AncestorGroup[] {
-  return _getAncestorOutputs(nodeId, nodes, edges, eventTriggers, KNOWN_EVENTS, NODE_OUTPUTS);
+  const augmentedOutputs = buildAugmentedNodeOutputs(nodes, capturedSamples);
+  const groups = _getAncestorOutputs(nodeId, nodes, edges, eventTriggers, KNOWN_EVENTS, augmentedOutputs);
+
+  // For dynamic nodes, replace the type-level lookup with the per-nodeId lookup we built above
+  return groups.map(group => {
+    const sample = capturedSamples[group.nodeId];
+    const node = nodes.find(n => n.id === group.nodeId);
+    if (!node) return group;
+    const resolvedType = (node.data?.actionType as string | undefined) ?? (node.data?.nodeType as string | undefined) ?? node.type ?? "unknown";
+
+    if (DYNAMIC_SHAPE_NODE_TYPES_CLIENT.has(resolvedType)) {
+      const perNodeOutputs = augmentedOutputs[group.nodeId];
+      if (perNodeOutputs) {
+        return { ...group, outputs: perNodeOutputs };
+      }
+      // No captured sample for this dynamic node — inject a sentinel so the panel can show a message
+      if (!sample) {
+        return {
+          ...group,
+          outputs: [{ key: "__sample_unavailable__", label: "Run a Test Run to populate sample data" }],
+        };
+      }
+    }
+    return group;
+  });
 }
 
 // ── Field hint tooltip ────────────────────────────────────────────────────────
@@ -2727,7 +2803,31 @@ function NodeConfigPanel({
       return r.json();
     },
   });
-  const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges, triggers);
+
+  // Fetch real captured output samples — variable picker uses these directly instead of AI guesses.
+  const qc = useQueryClient();
+  const { data: samplesData } = useQuery<{
+    samples: Record<string, { nodeType: string; sample: Record<string, unknown>; capturedAt: string; sourceRunId: number | null }>;
+  }>({
+    queryKey: ["wf-node-output-samples", defId],
+    queryFn: async () => {
+      const r = await fetchWithAuth(`/api/admin/workflows/definitions/${defId}/node-output-samples`);
+      if (!r.ok) return { samples: {} };
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+  const capturedSamples = samplesData?.samples ?? {};
+
+  // Seed static default samples for fixed-shape nodes (idempotent — onConflictDoNothing).
+  // Fires once per definition when the panel first mounts; no-ops if already seeded.
+  useEffect(() => {
+    fetchWithAuth(`/api/admin/workflows/definitions/${defId}/node-output-samples/seed-defaults`, { method: "POST" })
+      .then(r => { if (r.ok) qc.invalidateQueries({ queryKey: ["wf-node-output-samples", defId] }); })
+      .catch(() => { /* non-fatal */ });
+  }, [defId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ancestorOutputs = getAncestorOutputs(node.id, nodes, edges, triggers, capturedSamples);
 
   // ── Focus tracker (chip insert target) ──────────────────────────────────
   const focusedFieldRef  = useRef<FocusedFieldInfo | null>(null); // last focused field

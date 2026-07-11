@@ -20,6 +20,7 @@ import {
   wfDefinitionsTable,
   wfRunNodeLogsTable,
   wfRunNodeOutputsTable,
+  wfNodeOutputSamplesTable,
   wfTriggersTable,
   wfTriggerEventsTable,
   pendingApprovalsTable,
@@ -79,6 +80,7 @@ import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { handleSystemAction } from "./system-action-handlers";
+import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -6699,6 +6701,34 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
     status,
     errorMessage: nodeError ? (output.error as string ?? "node error") : null,
   }).catch(() => { /* non-fatal */ });
+
+  // ── Capture output sample for the variable picker ─────────────────────────
+  // Upsert a sample for this (definition, node) pair when the node succeeded.
+  // This lets the Config Panel variable-picker show real sample keys without
+  // an AI call. Skip on error so we never store a partial/error shape.
+  // Wrapped in Promise.resolve().then() so any synchronous throw (e.g. in
+  // test mocks that don't implement onConflictDoUpdate) is caught too.
+  if (!nodeError && definitionId != null) {
+    const resolvedNodeType = (node.data?.actionType as string | undefined) ?? node.type;
+    Promise.resolve().then(() =>
+      db.insert(wfNodeOutputSamplesTable).values({
+        definitionId,
+        nodeId: node.id,
+        nodeType: resolvedNodeType,
+        sample: output,
+        capturedAt: new Date(),
+        sourceRunId: runId,
+      }).onConflictDoUpdate({
+        target: [wfNodeOutputSamplesTable.definitionId, wfNodeOutputSamplesTable.nodeId],
+        set: {
+          nodeType: resolvedNodeType,
+          sample: output,
+          capturedAt: new Date(),
+          sourceRunId: runId,
+        },
+      })
+    ).catch(() => { /* non-fatal — capture failure must never affect the run */ });
+  }
 
   const completionMeta: Record<string, unknown> | undefined =
     !nodeError &&
