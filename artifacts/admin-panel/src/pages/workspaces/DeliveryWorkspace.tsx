@@ -8,6 +8,7 @@ import WorkflowsPage from "@/pages/Workflows";
 import ActivityLogPage from "@/pages/ActivityLog";
 import SharePointPage from "@/pages/SharePoint";
 import EnginePanel from "@/components/EnginePanel";
+import FulfillmentQueuePage from "@/pages/FulfillmentQueue";
 
 const ENGINE_NAV_KEYS = ["priority", "pricing", "health", "drift", "forecasting", "crm", "msp"] as const;
 const ENGINE_LABELS: Record<(typeof ENGINE_NAV_KEYS)[number], string> = {
@@ -84,6 +85,15 @@ const NAV_ITEMS: WorkspaceNavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "Fulfillment Queue",
+    path: "/delivery/fulfillment-queue",
+    icon: (
+      <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+      </svg>
+    ),
+  },
   ...ENGINE_NAV_KEYS.map((key): WorkspaceNavItem => ({
     label: ENGINE_LABELS[key],
     path: `/delivery/engines/${key}`,
@@ -107,6 +117,7 @@ function getContent(section: string): ReactNode {
     case "workflows":            return <WorkflowsPage />;
     case "activity-logs":        return <ActivityLogPage />;
     case "hub-storage":          return <SharePointPage />;
+    case "fulfillment-queue":    return <FulfillmentQueuePage />;
     default:                     return <ProjectsPage />;
   }
 }

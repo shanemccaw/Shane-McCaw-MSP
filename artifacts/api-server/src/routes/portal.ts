@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -13184,6 +13184,377 @@ router.patch("/admin/presentations/:id/phase-dates", requireAdmin, async (req: R
   } catch (err) {
     req.log.error({ err }, "admin: failed to update SOW phase delivery dates");
     res.status(500).json({ error: "Failed to update delivery dates" });
+  }
+});
+
+
+// ─── FULFILLMENT QUEUE ────────────────────────────────────────────────────────
+
+/**
+ * Derive the SLA due date from a purchase timestamp and threshold.
+ * Adds thresholdDays business-calendar days (simplified as calendar days).
+ */
+function deriveSlaDate(purchasedAt: Date | null, thresholdDays: number): Date | null {
+  if (!purchasedAt) return null;
+  const d = new Date(purchasedAt.getTime());
+  d.setDate(d.getDate() + thresholdDays);
+  return d;
+}
+
+/**
+ * Fetch per-source-type SLA thresholds from the config table.
+ * Falls back to 7 days if not configured.
+ */
+async function getSlaThresholds(): Promise<Record<string, number>> {
+  try {
+    const rows = await db.select().from(fulfillmentSlaConfigTable);
+    const map: Record<string, number> = { default: 7, offer: 7, sow: 7, bundle: 7 };
+    for (const r of rows) {
+      map[r.key] = r.thresholdDays;
+    }
+    return map;
+  } catch {
+    return { default: 7, offer: 7, sow: 7, bundle: 7 };
+  }
+}
+
+// GET /api/admin/fulfillment-queue
+// Returns the paginated, filterable fulfillment worklist.
+router.get("/admin/fulfillment-queue", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { status, sourceType, overdue, q } = req.query as Record<string, string | undefined>;
+
+    const conditions: ReturnType<typeof eq>[] = [];
+    if (status && (FULFILLMENT_DELIVERY_STATUSES as readonly string[]).includes(status)) {
+      conditions.push(eq(fulfillmentQueueTable.deliveryStatus, status as FulfillmentDeliveryStatus));
+    }
+    if (sourceType && (FULFILLMENT_SOURCE_TYPES as readonly string[]).includes(sourceType)) {
+      conditions.push(eq(fulfillmentQueueTable.sourceType, sourceType as typeof FULFILLMENT_SOURCE_TYPES[number]));
+    }
+
+    const now = new Date();
+
+    let rows = await db
+      .select()
+      .from(fulfillmentQueueTable)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(fulfillmentQueueTable.createdAt));
+
+    // Apply overdue filter and text search in memory (small table)
+    const ql = q?.toLowerCase().trim();
+    rows = rows.filter(r => {
+      if (ql) {
+        const haystack = [r.clientName, r.clientEmail, r.customerName, r.mspName, r.itemTitle]
+          .join(" ").toLowerCase();
+        if (!haystack.includes(ql)) return false;
+      }
+      if (overdue === "1") {
+        const isOverdue = r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered";
+        if (!isOverdue) return false;
+      }
+      return true;
+    });
+
+    const byStatus = { not_started: 0, in_progress: 0, delivered: 0, blocked: 0 } as Record<FulfillmentDeliveryStatus, number>;
+    let overdueCount = 0;
+    const enriched = rows.map(r => {
+      byStatus[r.deliveryStatus as FulfillmentDeliveryStatus] = (byStatus[r.deliveryStatus as FulfillmentDeliveryStatus] ?? 0) + 1;
+      const isOverdue = r.slaDueAt != null && new Date(r.slaDueAt) < now && r.deliveryStatus !== "delivered";
+      if (isOverdue) overdueCount++;
+      return { ...r, isOverdue };
+    });
+
+    res.json({
+      items: enriched,
+      meta: {
+        total: enriched.length,
+        overdue: overdueCount,
+        byStatus,
+      },
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin: fulfillment-queue list failed");
+    res.status(500).json({ error: "Failed to load fulfillment queue" });
+  }
+});
+
+// PATCH /api/admin/fulfillment-queue/:id/status
+// Update delivery status for a queue entry. Audit-logged.
+router.patch("/admin/fulfillment-queue/:id/status", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id ?? ""), 10);
+    if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
+
+    const { deliveryStatus, statusNote } = req.body as { deliveryStatus?: string; statusNote?: string | null };
+    if (!deliveryStatus || !(FULFILLMENT_DELIVERY_STATUSES as readonly string[]).includes(deliveryStatus)) {
+      res.status(400).json({ error: `deliveryStatus must be one of: ${FULFILLMENT_DELIVERY_STATUSES.join(", ")}` });
+      return;
+    }
+
+    const [existing] = await db.select().from(fulfillmentQueueTable)
+      .where(eq(fulfillmentQueueTable.id, id)).limit(1);
+    if (!existing) { res.status(404).json({ error: "Queue item not found" }); return; }
+
+    const previousStatus = existing.deliveryStatus;
+    const now = new Date();
+
+    await db.update(fulfillmentQueueTable)
+      .set({
+        deliveryStatus: deliveryStatus as FulfillmentDeliveryStatus,
+        statusNote: statusNote ?? null,
+        statusUpdatedAt: now,
+        statusUpdatedByUserId: req.user?.id ?? null,
+        updatedAt: now,
+      })
+      .where(eq(fulfillmentQueueTable.id, id));
+
+    await createAuditLog({
+      actorUserId: req.user?.id ?? null,
+      actorName: req.user?.email ?? "admin",
+      actorRole: "admin",
+      actionType: "fulfillment_status_update",
+      entityType: "fulfillment_queue",
+      entityId: id,
+      entityLabel: existing.itemTitle,
+      metadata: {
+        previousStatus,
+        newStatus: deliveryStatus,
+        statusNote: statusNote ?? null,
+        clientEmail: existing.clientEmail,
+        sourceType: existing.sourceType,
+        sourceId: existing.sourceId,
+      },
+    });
+
+    req.log.info({ id, previousStatus, newStatus: deliveryStatus }, "admin: fulfillment status updated");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin: fulfillment status update failed");
+    res.status(500).json({ error: "Failed to update fulfillment status" });
+  }
+});
+
+// POST /api/admin/fulfillment-queue/sync
+// Seeds/refreshes the queue from existing purchase paths:
+//   offer   = paid invoices (invoiceType = 'instant' or 'retainer') with a linked project
+//   sow     = signed + paid quick_win presentations
+//   bundle  = active client_services
+// Uses ON CONFLICT DO NOTHING so it is safe to call repeatedly.
+router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const thresholds = await getSlaThresholds();
+    let added = 0;
+
+    // ── 1. OFFER path — paid invoices ────────────────────────────────────────
+    const paidInvoices = await db
+      .select({
+        id: invoicesTable.id,
+        invoiceNumber: invoicesTable.invoiceNumber,
+        description: invoicesTable.description,
+        amount: invoicesTable.amount,
+        paidAt: invoicesTable.paidAt,
+        clientUserId: invoicesTable.clientUserId,
+        projectId: invoicesTable.projectId,
+      })
+      .from(invoicesTable)
+      .where(and(eq(invoicesTable.status, "paid"), isNotNull(invoicesTable.paidAt)));
+
+    // Bulk-fetch client info
+    const offerClientIds = [...new Set(paidInvoices.map(i => i.clientUserId).filter((id): id is number => id != null))];
+    const offerClients = offerClientIds.length > 0
+      ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+          .from(usersTable).where(inArray(usersTable.id, offerClientIds))
+      : [];
+    const offerClientMap = new Map(offerClients.map(c => [c.id, c]));
+
+    for (const inv of paidInvoices) {
+      const client = inv.clientUserId ? offerClientMap.get(inv.clientUserId) : null;
+      const purchasedAt = inv.paidAt ? new Date(inv.paidAt) : null;
+      const threshold = thresholds["offer"] ?? thresholds["default"] ?? 7;
+      const slaDueAt = deriveSlaDate(purchasedAt, threshold);
+      const amountCents = inv.amount ? Math.round(parseFloat(String(inv.amount)) * 100) : null;
+
+      try {
+        await db.insert(fulfillmentQueueTable).values({
+          sourceType: "offer",
+          sourceId: String(inv.id),
+          clientUserId: inv.clientUserId ?? null,
+          clientName: client?.name ?? null,
+          clientEmail: client?.email ?? null,
+          itemTitle: inv.description ?? inv.invoiceNumber ?? `Invoice #${inv.id}`,
+          purchasedAt,
+          purchaseAmountCents: amountCents,
+          projectId: inv.projectId ?? null,
+          invoiceId: inv.id,
+          slaDueAt,
+          slaThresholdDays: threshold,
+        }).onConflictDoNothing();
+        added++;
+      } catch { /* skip duplicates */ }
+    }
+
+    // ── 2. SOW path — signed + paid presentations ────────────────────────────
+    const signedPresentations = await db
+      .select({
+        id: quickWinPresentationsTable.id,
+        clientUserId: quickWinPresentationsTable.clientUserId,
+        projectId: quickWinPresentationsTable.projectId,
+        scopedTotalPrice: quickWinPresentationsTable.scopedTotalPrice,
+        signedAt: quickWinPresentationsTable.signedAt,
+        signerName: quickWinPresentationsTable.signerName,
+        status: quickWinPresentationsTable.status,
+      })
+      .from(quickWinPresentationsTable)
+      .where(inArray(quickWinPresentationsTable.status, ["signed", "paid"]));
+
+    const sowClientIds = [...new Set(signedPresentations.map(p => p.clientUserId).filter((id): id is number => id != null))];
+    const sowClients = sowClientIds.length > 0
+      ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+          .from(usersTable).where(inArray(usersTable.id, sowClientIds))
+      : [];
+    const sowClientMap = new Map(sowClients.map(c => [c.id, c]));
+
+    for (const pres of signedPresentations) {
+      const client = pres.clientUserId ? sowClientMap.get(pres.clientUserId) : null;
+      const purchasedAt = pres.signedAt ? new Date(pres.signedAt) : null;
+      const threshold = thresholds["sow"] ?? thresholds["default"] ?? 14;
+      const slaDueAt = deriveSlaDate(purchasedAt, threshold);
+      const clientLabel = pres.signerName ?? client?.name ?? client?.email ?? `Client #${pres.clientUserId}`;
+
+      try {
+        await db.insert(fulfillmentQueueTable).values({
+          sourceType: "sow",
+          sourceId: String(pres.id),
+          clientUserId: pres.clientUserId ?? null,
+          clientName: client?.name ?? pres.signerName ?? null,
+          clientEmail: client?.email ?? null,
+          itemTitle: `SOW — ${clientLabel}`,
+          purchasedAt,
+          purchaseAmountCents: pres.scopedTotalPrice ?? null,
+          projectId: pres.projectId ?? null,
+          presentationId: pres.id,
+          slaDueAt,
+          slaThresholdDays: threshold,
+        }).onConflictDoNothing();
+        added++;
+      } catch { /* skip duplicates */ }
+    }
+
+    // ── 3. BUNDLE path — active client services ───────────────────────────────
+    const activeServices = await db
+      .select({
+        id: clientServicesTable.id,
+        clientUserId: clientServicesTable.clientUserId,
+        serviceId: clientServicesTable.serviceId,
+        projectId: clientServicesTable.projectId,
+        status: clientServicesTable.status,
+        purchasedAt: clientServicesTable.purchasedAt,
+      })
+      .from(clientServicesTable)
+      .where(eq(clientServicesTable.status, "active"));
+
+    const bundleClientIds = [...new Set(activeServices.map(s => s.clientUserId).filter((id): id is number => id != null))];
+    const bundleServiceIds = [...new Set(activeServices.map(s => s.serviceId).filter((id): id is number => id != null))];
+
+    const [bundleClients, bundleServices] = await Promise.all([
+      bundleClientIds.length > 0
+        ? db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+            .from(usersTable).where(inArray(usersTable.id, bundleClientIds))
+        : Promise.resolve([]),
+      bundleServiceIds.length > 0
+        ? db.select({ id: servicesTable.id, name: servicesTable.name, description: servicesTable.description })
+            .from(servicesTable).where(inArray(servicesTable.id, bundleServiceIds))
+        : Promise.resolve([]),
+    ]);
+
+    const bundleClientMap = new Map(bundleClients.map(c => [c.id, c]));
+    const bundleServiceMap = new Map(bundleServices.map(s => [s.id, s]));
+
+    for (const svc of activeServices) {
+      const client = svc.clientUserId ? bundleClientMap.get(svc.clientUserId) : null;
+      const service = svc.serviceId ? bundleServiceMap.get(svc.serviceId) : null;
+      const purchasedAt = svc.purchasedAt ? new Date(String(svc.purchasedAt)) : null;
+      const threshold = thresholds["bundle"] ?? thresholds["default"] ?? 10;
+      const slaDueAt = deriveSlaDate(purchasedAt, threshold);
+
+      try {
+        await db.insert(fulfillmentQueueTable).values({
+          sourceType: "bundle",
+          sourceId: String(svc.id),
+          clientUserId: svc.clientUserId ?? null,
+          clientName: client?.name ?? null,
+          clientEmail: client?.email ?? null,
+          itemTitle: service?.name ?? `Service #${svc.serviceId}`,
+          itemDescription: service?.description ?? null,
+          purchasedAt,
+          projectId: svc.projectId ?? null,
+          slaDueAt,
+          slaThresholdDays: threshold,
+        }).onConflictDoNothing();
+        added++;
+      } catch { /* skip duplicates */ }
+    }
+
+    req.log.info({ added }, "admin: fulfillment-queue sync completed");
+    res.json({ ok: true, added });
+  } catch (err) {
+    req.log.error({ err }, "admin: fulfillment-queue sync failed");
+    res.status(500).json({ error: "Sync failed" });
+  }
+});
+
+// GET /api/admin/fulfillment-sla-config
+router.get("/admin/fulfillment-sla-config", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const rows = await db.select().from(fulfillmentSlaConfigTable).orderBy(asc(fulfillmentSlaConfigTable.key));
+    res.json(rows.map(r => ({
+      id: r.id,
+      key: r.key,
+      label: r.label,
+      thresholdDays: r.thresholdDays,
+      updatedAt: r.updatedAt,
+    })));
+  } catch (err) {
+    res.status(500).json({ error: "Failed to load SLA config" });
+  }
+});
+
+// PATCH /api/admin/fulfillment-sla-config/:key
+router.patch("/admin/fulfillment-sla-config/:key", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const key = String(req.params.key ?? "");
+    const { thresholdDays } = req.body as { thresholdDays?: unknown };
+    const days = typeof thresholdDays === "number" ? thresholdDays : parseInt(String(thresholdDays ?? ""), 10);
+    if (isNaN(days) || days < 1 || days > 365) {
+      res.status(400).json({ error: "thresholdDays must be 1–365" }); return;
+    }
+
+    const [row] = await db.select({ id: fulfillmentSlaConfigTable.id })
+      .from(fulfillmentSlaConfigTable)
+      .where(eq(fulfillmentSlaConfigTable.key, key))
+      .limit(1);
+    if (!row) { res.status(404).json({ error: "SLA config key not found" }); return; }
+
+    await db.update(fulfillmentSlaConfigTable)
+      .set({ thresholdDays: days, updatedAt: new Date(), updatedByUserId: req.user?.id ?? null })
+      .where(eq(fulfillmentSlaConfigTable.key, key));
+
+    await createAuditLog({
+      actorUserId: req.user?.id ?? null,
+      actorName: req.user?.email ?? "admin",
+      actorRole: "admin",
+      actionType: "fulfillment_sla_config_update",
+      entityType: "fulfillment_sla_config",
+      entityId: key,
+      entityLabel: `SLA config: ${key}`,
+      metadata: { thresholdDays: days },
+    });
+
+    req.log.info({ key, thresholdDays: days }, "admin: fulfillment SLA config updated");
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin: fulfillment SLA config update failed");
+    res.status(500).json({ error: "Failed to update SLA config" });
   }
 });
 

@@ -302,3 +302,85 @@ export const mspAuditLogsTable = pgTable("msp_audit_logs", {
 
 export type MspAuditLog = typeof mspAuditLogsTable.$inferSelect;
 export type InsertMspAuditLog = typeof mspAuditLogsTable.$inferInsert;
+
+// ── Fulfillment Queue ──────────────────────────────────────────────────────────
+// Single cross-MSP worklist aggregating everything sold that requires delivery:
+// accepted offers, signed SOWs, and new bundle assignments.
+
+export const FULFILLMENT_DELIVERY_STATUSES = ["not_started", "in_progress", "delivered", "blocked"] as const;
+export type FulfillmentDeliveryStatus = typeof FULFILLMENT_DELIVERY_STATUSES[number];
+
+export const FULFILLMENT_SOURCE_TYPES = ["offer", "sow", "bundle"] as const;
+export type FulfillmentSourceType = typeof FULFILLMENT_SOURCE_TYPES[number];
+
+export const fulfillmentQueueTable = pgTable("fulfillment_queue", {
+  id: serial("id").primaryKey(),
+
+  // ── Purchase path that generated this entry ─────────────────────────────────
+  sourceType: text("source_type", { enum: FULFILLMENT_SOURCE_TYPES }).notNull(),
+  sourceId: text("source_id").notNull(),            // invoice.id, presentation.id, or client_service.id (as string)
+
+  // ── Client context ──────────────────────────────────────────────────────────
+  clientUserId: integer("client_user_id"),
+  clientName: text("client_name"),
+  clientEmail: text("client_email"),
+
+  // ── MSP context ─────────────────────────────────────────────────────────────
+  // Stored as plain integers (denormalized) so the queue functions independently
+  // of whether the MSP base tables have been provisioned in this environment.
+  mspId: integer("msp_id"),
+  mspName: text("msp_name"),
+  customerId: integer("customer_id"),
+  customerName: text("customer_name"),
+
+  // ── What was purchased ──────────────────────────────────────────────────────
+  itemTitle: text("item_title").notNull(),
+  itemDescription: text("item_description"),
+  purchasedAt: timestamp("purchased_at", { withTimezone: true }),
+  purchaseAmountCents: integer("purchase_amount_cents"),
+
+  // ── Delivery status ─────────────────────────────────────────────────────────
+  deliveryStatus: text("delivery_status", { enum: FULFILLMENT_DELIVERY_STATUSES })
+    .notNull()
+    .default("not_started"),
+  statusUpdatedAt: timestamp("status_updated_at", { withTimezone: true }),
+  statusUpdatedByUserId: integer("status_updated_by_user_id"),
+  statusNote: text("status_note"),
+
+  // ── Deep-link targets ───────────────────────────────────────────────────────
+  projectId: integer("project_id"),
+  presentationId: integer("presentation_id"),
+  invoiceId: integer("invoice_id"),
+
+  // ── Internal SLA tracking ───────────────────────────────────────────────────
+  slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
+  slaThresholdDays: integer("sla_threshold_days"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("fulfillment_queue_source_idx").on(t.sourceType, t.sourceId),
+  index("fulfillment_queue_status_idx").on(t.deliveryStatus),
+  index("fulfillment_queue_msp_id_idx").on(t.mspId),
+  index("fulfillment_queue_sla_due_at_idx").on(t.slaDueAt),
+  uniqueIndex("fulfillment_queue_source_unique_idx").on(t.sourceType, t.sourceId),
+]);
+
+export type FulfillmentQueueRow = typeof fulfillmentQueueTable.$inferSelect;
+export type InsertFulfillmentQueueRow = typeof fulfillmentQueueTable.$inferInsert;
+
+// ── Fulfillment SLA Configuration ─────────────────────────────────────────────
+// Operator-configurable per-source-type SLA thresholds. A missing row means the
+// global default (key = "default") applies.
+
+export const fulfillmentSlaConfigTable = pgTable("fulfillment_sla_config", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),              // "default" | "offer" | "sow" | "bundle"
+  label: text("label").notNull(),
+  thresholdDays: integer("threshold_days").notNull().default(7),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedByUserId: integer("updated_by_user_id"),
+});
+
+export type FulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferSelect;
+export type InsertFulfillmentSlaConfig = typeof fulfillmentSlaConfigTable.$inferInsert;
