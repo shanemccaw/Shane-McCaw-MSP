@@ -433,6 +433,21 @@ const legacyMigrations = [
     `,
   },
   {
+    name: "0018_monitoring_packages_missing_columns",
+    sql: `
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT FROM information_schema.tables
+          WHERE table_schema = 'public' AND table_name = 'monitoring_packages'
+        ) THEN
+          ALTER TABLE "monitoring_packages" ADD COLUMN IF NOT EXISTS "platform_cost_cents" integer NOT NULL DEFAULT 0;
+          ALTER TABLE "monitoring_packages" ADD COLUMN IF NOT EXISTS "required_plan_feature" text;
+        END IF;
+      END $$;
+    `,
+  },
+  {
     name: "msp_mailbox_consent_states",
     sql: `
       CREATE TABLE IF NOT EXISTS "msp_mailbox_consent_states" (

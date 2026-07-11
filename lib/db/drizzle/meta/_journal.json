@@ -1219,6 +1219,13 @@
       "when": 1752364800000,
       "tag": "0164_sales_offer_engine",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "7",
+      "when": 1752710400000,
+      "tag": "0165_monitoring_packages_missing_columns",
+      "breakpoints": true
     }
   ]
 }
