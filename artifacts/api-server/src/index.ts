@@ -10,6 +10,7 @@ import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
+import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
@@ -118,6 +119,12 @@ app.listen(port, (err) => {
 
   seedSlaRunbooks().catch((err) => {
     logger.warn({ err }, "SLA runbook seed failed (non-fatal)");
+  });
+
+  // ── Portal Workflow Engine: initialize on startup ─────────────────────────
+  // Loads start mappings and registers event bus listener.
+  initPortalWorkflowEngine().catch((err: unknown) => {
+    logger.warn({ err }, "portal-wf: engine init failed (non-fatal)");
   });
 
   // ── Workflow Engine: seed system workflows then fire startup triggers ──────

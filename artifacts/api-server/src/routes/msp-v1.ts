@@ -38,6 +38,7 @@ import {
 } from "../lib/api-helpers.ts";
 import { cancelJob, requeueJob } from "../lib/msp-jobs.ts";
 import webhooksRouter from "./msp-webhooks.ts";
+import portalWfRouter from "./portal-wf-api.ts";
 
 /** Coerce Express 5 params (typed as string | string[]) to a plain string */
 function p(val: string | string[] | undefined): string {
@@ -54,6 +55,9 @@ router.use(mspRateLimit);
 
 // ── Webhook sub-router (mounted before express.json() body parsing) ────────────
 router.use("/webhooks", webhooksRouter);
+
+// ── Portal Workflow Engine API ────────────────────────────────────────────────
+router.use("/portal-wf", portalWfRouter);
 
 // ── Health (unauthenticated) ──────────────────────────────────────────────────
 router.get("/health", (_req: Request, res: Response) => {

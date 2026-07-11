@@ -88,6 +88,53 @@ function buildMeta(
   };
 }
 
+// ── In-process event listeners ────────────────────────────────────────────────
+// Lightweight pub/sub for in-process subscribers (e.g. portal-workflow-engine).
+// Listeners receive a DispatchedEvent enriched with tenant context so they can
+// make routing decisions without hitting the DB again.
+
+export type EventListener = (
+  event: DispatchedEvent & {
+    mspId?: number | null;
+    customerId?: number | null;
+    payload?: Record<string, unknown>;
+  },
+) => void;
+
+const eventListeners: EventListener[] = [];
+
+/**
+ * Register an in-process listener for all dispatched events.
+ * Returns an unsubscribe function.
+ */
+export function addEventListener(fn: EventListener): () => void {
+  eventListeners.push(fn);
+  return () => {
+    const i = eventListeners.indexOf(fn);
+    if (i !== -1) eventListeners.splice(i, 1);
+  };
+}
+
+function notifyListeners(
+  dispatched: DispatchedEvent,
+  opts: EventDispatchOptions,
+): void {
+  if (eventListeners.length === 0) return;
+  const enriched = {
+    ...dispatched,
+    mspId: opts.mspId ?? null,
+    customerId: opts.customerId ?? null,
+    payload: opts.payload ?? {},
+  };
+  for (const fn of eventListeners) {
+    try {
+      fn(enriched);
+    } catch (err) {
+      logger.error({ err, eventType: dispatched.eventType }, "event-bus: listener threw");
+    }
+  }
+}
+
 // ── Core dispatch ─────────────────────────────────────────────────────────────
 
 /**
@@ -140,6 +187,8 @@ export async function dispatchUnsafe(opts: EventDispatchOptions): Promise<Dispat
     customerId: opts.customerId ?? null,
   });
 
+  const dispatched: DispatchedEvent = { eventId, eventType: opts.eventType, occurredAt };
+
   // Fan out to registered outbound webhooks (fire-and-forget, never throws)
   void fanOutWebhooks({
     eventId,
@@ -150,7 +199,10 @@ export async function dispatchUnsafe(opts: EventDispatchOptions): Promise<Dispat
     payload: opts.payload,
   });
 
-  return { eventId, eventType: opts.eventType, occurredAt };
+  // Notify in-process listeners (fire-and-forget; never throws)
+  notifyListeners(dispatched, normalized);
+
+  return dispatched;
 }
 
 // ── Actor builders ────────────────────────────────────────────────────────────

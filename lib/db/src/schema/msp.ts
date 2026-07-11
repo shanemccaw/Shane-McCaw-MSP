@@ -605,3 +605,133 @@ export const mspAgreementAcceptancesTable = pgTable("msp_agreement_acceptances",
 
 export type MspAgreementAcceptance = typeof mspAgreementAcceptancesTable.$inferSelect;
 export type InsertMspAgreementAcceptance = typeof mspAgreementAcceptancesTable.$inferInsert;
+
+// ── Portal Workflow Engine ─────────────────────────────────────────────────────
+// Tenant-aware, durable, idempotent workflow engine for the MSP Portal.
+// Tables are prefixed with portal_wf_ to distinguish them from the GUI-builder
+// wf_* tables (which power the Shane consulting business workflows).
+
+export const portalWfWorkflowsTable = pgTable("portal_wf_workflows", {
+  id: serial("id").primaryKey(),
+  workflowKey: text("workflow_key").notNull().unique(),
+  label: text("label").notNull(),
+  description: text("description"),
+  graph: jsonb("graph").$type<Record<string, unknown>>().notNull().default({ nodes: [], edges: [] }),
+  retryPolicy: jsonb("retry_policy").$type<Record<string, unknown>>().notNull().default({ maxAttempts: 3, backoffBaseSeconds: 30, backoffMultiplier: 2 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type PortalWfWorkflow = typeof portalWfWorkflowsTable.$inferSelect;
+export type InsertPortalWfWorkflow = typeof portalWfWorkflowsTable.$inferInsert;
+
+export const portalWfStartMappingsTable = pgTable("portal_wf_start_mappings", {
+  id: serial("id").primaryKey(),
+  eventPattern: text("event_pattern").notNull(),
+  workflowKey: text("workflow_key").notNull().references(() => portalWfWorkflowsTable.workflowKey, { onDelete: "cascade" }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_wf_start_mappings_event_pattern_idx").on(t.eventPattern),
+  index("portal_wf_start_mappings_workflow_key_idx").on(t.workflowKey),
+  uniqueIndex("portal_wf_start_mappings_pattern_wf_idx").on(t.eventPattern, t.workflowKey),
+]);
+
+export type PortalWfStartMapping = typeof portalWfStartMappingsTable.$inferSelect;
+export type InsertPortalWfStartMapping = typeof portalWfStartMappingsTable.$inferInsert;
+
+export const PORTAL_WF_RUN_STATUS = ["pending", "running", "completed", "failed", "cancelled"] as const;
+export type PortalWfRunStatus = typeof PORTAL_WF_RUN_STATUS[number];
+
+export const portalWfRunsTable = pgTable("portal_wf_runs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().unique().defaultRandom(),
+  workflowKey: text("workflow_key").notNull(),
+  tenantContext: jsonb("tenant_context").$type<Record<string, unknown>>().notNull().default({}),
+  status: text("status", { enum: PORTAL_WF_RUN_STATUS }).notNull().default("pending"),
+  triggerEventId: uuid("trigger_event_id"),
+  triggerEventType: text("trigger_event_type"),
+  inputPayload: jsonb("input_payload").$type<Record<string, unknown>>().notNull().default({}),
+  output: jsonb("output").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_wf_runs_workflow_key_idx").on(t.workflowKey),
+  index("portal_wf_runs_status_idx").on(t.status),
+  index("portal_wf_runs_msp_id_idx").on(t.mspId),
+  index("portal_wf_runs_customer_id_idx").on(t.customerId),
+  index("portal_wf_runs_created_at_idx").on(t.createdAt),
+]);
+
+export type PortalWfRun = typeof portalWfRunsTable.$inferSelect;
+export type InsertPortalWfRun = typeof portalWfRunsTable.$inferInsert;
+
+export const PORTAL_WF_NODE_STATUS = ["pending", "running", "completed", "failed", "skipped"] as const;
+export type PortalWfNodeStatus = typeof PORTAL_WF_NODE_STATUS[number];
+
+export const portalWfNodeOutputsTable = pgTable("portal_wf_node_outputs", {
+  id: serial("id").primaryKey(),
+  runId: uuid("run_id").notNull().references(() => portalWfRunsTable.runId, { onDelete: "cascade" }),
+  nodeId: text("node_id").notNull(),
+  nodeType: text("node_type").notNull(),
+  status: text("status", { enum: PORTAL_WF_NODE_STATUS }).notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  inputPayload: jsonb("input_payload").$type<Record<string, unknown>>(),
+  outputPayload: jsonb("output_payload").$type<Record<string, unknown>>(),
+  errorMessage: text("error_message"),
+  errorStack: text("error_stack"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_wf_node_outputs_run_id_idx").on(t.runId),
+  uniqueIndex("portal_wf_node_outputs_run_node_idx").on(t.runId, t.nodeId),
+]);
+
+export type PortalWfNodeOutput = typeof portalWfNodeOutputsTable.$inferSelect;
+export type InsertPortalWfNodeOutput = typeof portalWfNodeOutputsTable.$inferInsert;
+
+export const PORTAL_WF_OPERATOR_TASK_STATUS = ["open", "acknowledged", "resolved"] as const;
+export type PortalWfOperatorTaskStatus = typeof PORTAL_WF_OPERATOR_TASK_STATUS[number];
+
+export const portalWfOperatorTasksTable = pgTable("portal_wf_operator_tasks", {
+  id: serial("id").primaryKey(),
+  taskId: uuid("task_id").notNull().unique().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => portalWfRunsTable.runId, { onDelete: "cascade" }),
+  workflowKey: text("workflow_key").notNull(),
+  nodeId: text("node_id"),
+  severity: text("severity", { enum: ["error", "warning"] }).notNull().default("error"),
+  title: text("title").notNull(),
+  description: text("description"),
+  deepLink: text("deep_link"),
+  status: text("status", { enum: PORTAL_WF_OPERATOR_TASK_STATUS }).notNull().default("open"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  resolvedByUserId: integer("resolved_by_user_id"),
+  mspId: integer("msp_id"),
+  customerId: integer("customer_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_wf_operator_tasks_run_id_idx").on(t.runId),
+  index("portal_wf_operator_tasks_status_idx").on(t.status),
+  index("portal_wf_operator_tasks_msp_id_idx").on(t.mspId),
+]);
+
+export type PortalWfOperatorTask = typeof portalWfOperatorTasksTable.$inferSelect;
+export type InsertPortalWfOperatorTask = typeof portalWfOperatorTasksTable.$inferInsert;
+
+export const portalWfIdempotencyTable = pgTable("portal_wf_idempotency", {
+  id: serial("id").primaryKey(),
+  sideEffectKey: text("side_effect_key").notNull().unique(),
+  runId: uuid("run_id").notNull(),
+  nodeId: text("node_id").notNull(),
+  executedAt: timestamp("executed_at", { withTimezone: true }).notNull().defaultNow(),
+  result: jsonb("result").$type<Record<string, unknown>>(),
+}, (t) => [
+  index("portal_wf_idempotency_run_id_idx").on(t.runId),
+]);
