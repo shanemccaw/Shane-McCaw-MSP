@@ -29,3 +29,9 @@ id = "B1RJMGf0c6-O1pPPw722Q"
 uri = "file://.local/tasks/ALL_PLANS_COMBINED.md"
 type = "text"
 title = "MSP Portal — All Task Plans (Combined)"
+
+[[outputs]]
+id = "imWZF-D5jhtVIDbRfpwAq"
+uri = "file://.local/tasks/shane-mccaw-consulting-spec.md"
+type = "text"
+title = "Shane McCaw Consulting — Technical Specification (As-Built)"
