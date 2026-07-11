@@ -176,3 +176,33 @@ export function broadcastPresentationProjectReady(presentationId: number, projec
     try { res.write(line); } catch { }
   }
 }
+
+// ── MSP Engine Events SSE ──────────────────────────────────────────────────────
+// Keyed by mspId. Delivers SLA breach and scope-creep violation events to open
+// MSP Portal tabs so dashboards can refresh without polling.
+
+const mspEngineEventClients = new Map<number, Set<Response>>();
+
+export function registerMspEngineEventClient(mspId: number, res: Response, onClose: () => void): void {
+  if (!mspEngineEventClients.has(mspId)) mspEngineEventClients.set(mspId, new Set());
+  const clients = mspEngineEventClients.get(mspId)!;
+  clients.add(res);
+  res.on("close", () => {
+    clients.delete(res);
+    if (clients.size === 0) mspEngineEventClients.delete(mspId);
+    onClose();
+  });
+}
+
+export function broadcastMspEngineEvent(mspId: number, event: Record<string, unknown>): void {
+  const clients = mspEngineEventClients.get(mspId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function getMspEngineEventClientCount(mspId: number): number {
+  return mspEngineEventClients.get(mspId)?.size ?? 0;
+}

@@ -29,6 +29,8 @@ import RunsPage from "@/pages/runs";
 import RunDetailPage from "@/pages/run-detail";
 import CustomerSlaPage from "@/pages/customer-sla";
 import CustomerScopePage from "@/pages/customer-scope";
+import SlaDashboardPage from "@/pages/sla-dashboard";
+import ScopeCreepDashboardPage from "@/pages/scope-creep-dashboard";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -159,6 +161,12 @@ function Router() {
       </Route>
       <Route path="/initiate-onboarding">
         <ProtectedRoute component={InitiateOnboardingPage} />
+      </Route>
+      <Route path="/sla">
+        <ProtectedRoute component={SlaDashboardPage} />
+      </Route>
+      <Route path="/scope-creep">
+        <ProtectedRoute component={ScopeCreepDashboardPage} />
       </Route>
       <Route path="/operator-tasks">
         <ProtectedRoute component={OperatorTasksPage} />

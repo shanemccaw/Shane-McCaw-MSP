@@ -27,6 +27,7 @@ export default defineConfig({
       "src/routes/msp-onboarding.test.ts",
       "src/lib/__tests__/msp-subscription.test.ts",
       "src/lib/resolve-fulfillment.test.ts",
+      "src/routes/msp-sla-scope-creep.test.ts",
     ],
     coverage: {
       provider: "v8",
