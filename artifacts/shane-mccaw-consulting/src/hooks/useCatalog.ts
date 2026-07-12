@@ -151,7 +151,7 @@ export function useCatalog(): CatalogState {
     setLoading(true);
 
     Promise.all([
-      fetchServices("monitoring"),
+      fetchServices("monitoring_tier"),
       fetchServices("retainer"),
       fetchServices("msp"),
     ])
