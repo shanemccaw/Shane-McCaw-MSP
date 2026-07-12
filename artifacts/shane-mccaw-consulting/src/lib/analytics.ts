@@ -13,6 +13,14 @@
  *   - click          — all other internal links/buttons
  * Exit events are flushed via sendBeacon on pagehide/visibilitychange.
  *
+ * Named conversion events (fire to internal API + gtag when present):
+ *   trackAssessmentStarted   — quiz first-question render
+ *   trackAssessmentCompleted — results page load
+ *   trackCheckoutStarted     — checkout page mount (with product_type)
+ *   trackCheckoutCompleted   — provisioning confirmation
+ *   trackMspSignupStarted    — MSP tier selection
+ *   trackMspSignupCompleted  — MSP checkout confirmation
+ *
  * `trackEvent` (quiz upsell helper) is preserved for backward compatibility.
  */
 
@@ -245,6 +253,69 @@ export async function trackPageview(page: string): Promise<void> {
       _pageviewId = json.pageviewId ?? null;
     }
   } catch { /* non-fatal */ }
+}
+
+// ─── Named conversion events ──────────────────────────────────────────────────
+
+/** Fire when the user reaches the first question of any assessment quiz. */
+export function trackAssessmentStarted(
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  if (typeof window.gtag === "function") window.gtag("event", "assessment_started", params ?? {});
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "assessment_started", ...(params ?? {}) });
+}
+
+/** Fire when the assessment results page loads after quiz completion. */
+export function trackAssessmentCompleted(
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  if (typeof window.gtag === "function") window.gtag("event", "assessment_completed", params ?? {});
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "assessment_completed", ...(params ?? {}) });
+}
+
+/**
+ * Fire on checkout page mount.
+ * @param productType e.g. "micro_offer" | "retainer" | "project" | "msp_tier"
+ */
+export function trackCheckoutStarted(
+  productType: string,
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  const props = { product_type: productType, ...(params ?? {}) };
+  if (typeof window.gtag === "function") window.gtag("event", "checkout_started", props);
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "checkout_started", ...props });
+}
+
+/** Fire on provisioning confirmation page load. */
+export function trackCheckoutCompleted(
+  productType: string,
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  const props = { product_type: productType, ...(params ?? {}) };
+  if (typeof window.gtag === "function") window.gtag("event", "checkout_completed", props);
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "checkout_completed", ...props });
+}
+
+/** Fire when an MSP selects a platform tier on the MSP signup page. */
+export function trackMspSignupStarted(
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  if (typeof window.gtag === "function") window.gtag("event", "msp_signup_started", params ?? {});
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "msp_signup_started", ...(params ?? {}) });
+}
+
+/** Fire when an MSP completes the MSP checkout confirmation step. */
+export function trackMspSignupCompleted(
+  params?: Record<string, string | number | boolean>,
+): void {
+  if (!isEnabled()) return;
+  if (typeof window.gtag === "function") window.gtag("event", "msp_signup_completed", params ?? {});
+  beacon("/api/analytics/event", { sessionId: _sessionId, page: _currentPage, eventType: "msp_signup_completed", ...(params ?? {}) });
 }
 
 // ─── Quiz upsell helper (backward compat) ─────────────────────────────────────

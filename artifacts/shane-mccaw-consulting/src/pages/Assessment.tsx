@@ -2,6 +2,7 @@ import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
 
 export default function Assessment() {
+
   return (
     <Layout>
       <SEOMeta

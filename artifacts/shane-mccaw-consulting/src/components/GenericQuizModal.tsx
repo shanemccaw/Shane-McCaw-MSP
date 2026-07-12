@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { X, ChevronRight, CheckCircle, Loader2, BarChart3, Award, Zap, ArrowRight, Link2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { trackEvent, identifyLead } from "@/lib/analytics";
+import { trackEvent, identifyLead, trackAssessmentStarted } from "@/lib/analytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Message {
@@ -220,6 +220,7 @@ export function GenericQuizModal({ config, onClose }: { config: QuizConfig; onCl
 
   async function startQuiz() {
     setState("questioning");
+    trackAssessmentStarted({ quiz_type: config.quizType });
     setLoading(true);
     try {
       const data = await apiPost<{ content: string }>("/quiz/chat", { messages: [], quizType: config.quizType });

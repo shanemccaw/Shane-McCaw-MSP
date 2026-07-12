@@ -45,6 +45,16 @@ export default function SignupSuccessPage() {
     checkStatus();
   }, [sessionId, pollCount]);
 
+  useEffect(() => {
+    if (state?.status === "provisioned") {
+      fetch(`${BASE}/api/analytics/event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "msp_signup_completed" }),
+      }).catch(() => {});
+    }
+  }, [state?.status]);
+
   if (error) {
     return (
       <div className="min-h-screen bg-sidebar flex items-center justify-center p-4">

@@ -1,20 +1,11 @@
-import { useState } from "react";
-import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { RetainerCard } from "@/components/RetainerCard";
 import { Link } from "wouter";
 import {
   CheckCircle, ArrowRight, Shield, Lock, Eye,
-  AlertTriangle, Key, Server, Users, BarChart3
+  AlertTriangle, Key, Server, Users, BarChart3,
 } from "lucide-react";
-import { useServices, formatPriceDisplay, useServiceHasPdf } from "@/hooks/useServices";
-import { FollowOnProjects } from "@/components/FollowOnProjects";
-import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
-import { EngagementProjectCard } from "@/components/EngagementProjectCard";
-import { useEngagementProjects } from "@/hooks/useEngagementProjects";
-import { AfterPurchaseSection } from "@/components/AfterPurchaseSection";
 
 const RISK_AREAS = [
   {
@@ -62,8 +53,8 @@ const WHY_SHANE = [
     desc: "IBM's 2024 data confirms it: misconfiguration — not zero-day exploits — causes the majority of cloud breaches. Shane's assessment targets exactly these gaps before they become incidents.",
   },
   {
-    title: "Fixed Scope, No Billing Surprises",
-    desc: "A defined security hardening engagement with a clear deliverable set — not an open-ended consulting retainer that expands without warning. You know what you're getting before you sign.",
+    title: "Fixed Scope, Clear Deliverables",
+    desc: "A defined security hardening engagement with a clear deliverable set — assessment, roadmap, and report. You know what you're getting before you start.",
   },
   {
     title: "Practitioner, Not a Generalist",
@@ -72,19 +63,11 @@ const WHY_SHANE = [
 ];
 
 export default function SecurityHardening() {
-  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
-  const { projects: engagementProjects, loading: engagementLoading } = useEngagementProjects();
-  const matchedProjects = engagementProjects.filter(
-    (p) => p.isVisible && p.pages.includes("security-hardening")
-  );
-  const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("/services/security-hardening");
-
   return (
     <Layout>
       <SEOMeta
         title="Microsoft 365 Security Hardening | Shane McCaw Consulting"
-        description="Tenant security assessment and hardening for Microsoft 365 — built on NASA-proven methodology. Fix misconfigurations before they become breaches. Fixed-price engagement."
+        description="Tenant security assessment and hardening for Microsoft 365 — built on NASA-proven methodology. Fix misconfigurations before they become breaches."
         ogUrl="https://shanemccawconsulting.com/services/security-hardening"
         jsonLd={{
           "@context": "https://schema.org",
@@ -96,13 +79,13 @@ export default function SecurityHardening() {
           "areaServed": { "@type": "Country", "name": "United States" },
           "audience": {
             "@type": "Audience",
-            "audienceType": "Mid-market and regulated organizations with Microsoft 365 tenants"
+            "audienceType": "Mid-market and regulated organizations with Microsoft 365 tenants",
           },
           "provider": {
             "@type": "Person",
             "name": "Shane McCaw",
             "jobTitle": "Lead Microsoft 365 Architect",
-            "url": "https://shanemccawconsulting.com"
+            "url": "https://shanemccawconsulting.com",
           },
         }}
       />
@@ -121,22 +104,8 @@ export default function SecurityHardening() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             Misconfiguration is the #1 cause of cloud breaches. A structured security assessment finds and prioritizes every exploitable gap in your M365 tenant.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4 items-center">
-            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
-            <a
-              href="/crm/portal/onboarding/select?service=security-hardening-assessment"
-              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
-            >
-              Get Started <ArrowRight className="w-4 h-4" />
-            </a>
-            {hasPdf && (
-              <button
-                onClick={() => setModalOpen(true)}
-                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
-              >
-                Download Overview <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+          <div className="mt-10">
+            <CTAButton href="/assessment">Start Your Free Assessment</CTAButton>
           </div>
         </div>
       </section>
@@ -147,8 +116,8 @@ export default function SecurityHardening() {
           <div className="rounded-2xl bg-red-50 border border-red-200 p-8 flex flex-col md:flex-row md:items-center gap-8">
             <div className="flex-1 flex flex-col md:flex-row md:items-center gap-6">
               <div className="flex-shrink-0 text-center">
-                <p className="text-5xl font-black text-red-600 leading-none tracking-tight">~$4.9M</p>
-                <p className="text-sm font-bold text-red-500 uppercase tracking-widest mt-1">Avg Breach Cost</p>
+                <p className="text-5xl font-black text-red-600 leading-none tracking-tight">4.9M</p>
+                <p className="text-sm font-bold text-red-500 uppercase tracking-widest mt-1">Avg Breach Cost (USD)</p>
               </div>
               <div className="border-l-0 md:border-l border-red-200 md:pl-6">
                 <p className="text-xs font-bold text-red-500 uppercase tracking-widest mb-1">Cost of Inaction</p>
@@ -156,13 +125,13 @@ export default function SecurityHardening() {
                   The average cost of a breach where misconfiguration was the root cause.
                 </h3>
                 <p className="text-red-700 text-sm leading-relaxed">
-                  Organizations with unaddressed M365 misconfigurations face an average breach cost of <strong>$4.9M</strong> — IBM Cost of a Data Breach Report 2024. Conditional Access gaps, over-privileged accounts, and missing DLP policies are not theoretical risks. They are the documented root causes of real incidents.
+                  Organizations with unaddressed M365 misconfigurations face an average breach cost of <strong>4.9 million USD</strong> — IBM Cost of a Data Breach Report 2024. Conditional Access gaps, over-privileged accounts, and missing DLP policies are not theoretical risks. They are the documented root causes of real incidents.
                 </p>
                 <p className="text-red-400 text-xs mt-2">Source: IBM Cost of a Data Breach Report 2024 — misconfiguration is the #1 breach vector.</p>
               </div>
             </div>
             <div className="flex-shrink-0">
-              <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
+              <CTAButton href="/assessment">Start Your Free Assessment</CTAButton>
             </div>
           </div>
         </div>
@@ -207,19 +176,8 @@ export default function SecurityHardening() {
         </div>
       </section>
 
-      {/* ── OFFICIAL OFFER ───────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">M365 Security Hardening Assessment</h2>
-          </div>
-          <FixedPriceOfferCard slug="security-hardening-assessment" ctaLabel="Get Started" />
-        </div>
-      </section>
-
       {/* ── DELIVERABLES ─────────────────────────────────────────────────── */}
-      <section className="bg-white py-20">
+      <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
             <div>
@@ -265,97 +223,8 @@ export default function SecurityHardening() {
         </div>
       </section>
 
-      {/* ── PROJECT ENGAGEMENTS ──────────────────────────────────────────── */}
-      {(engagementLoading || matchedProjects.length > 0) && (
-        <section className="bg-[#F7F9FC] py-20">
-          <div className="max-w-[1200px] mx-auto px-6">
-            <div className="text-center mb-12">
-              <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Project Engagements</p>
-              <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Common Project Engagements</h2>
-              <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-                Security assessments regularly surface remediation work. Shane can lead that work through a scoped project engagement.
-              </p>
-            </div>
-            {engagementLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[0, 1].map((i) => (
-                  <div key={i} className="rounded-xl border bg-white border-border p-8 h-56 animate-pulse" />
-                ))}
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
-                {matchedProjects.map((project, i) => (
-                  <EngagementProjectCard key={project.id} project={project} index={i} />
-                ))}
-              </div>
-            )}
-          </div>
-        </section>
-      )}
-
-      {/* ── FOLLOW-ON ENGAGEMENTS ────────────────────────────────────────── */}
-      <section className="bg-white py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Optional Next Steps</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Follow-On Engagements</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              Assessments surface remediation work. Shane can lead that work through a governance package or an ongoing retainer.
-            </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto mb-8">
-            <div className="bg-[#F7F9FC] border border-border rounded-2xl p-7 flex flex-col md:flex-row md:items-center gap-6">
-              <div className="flex-1">
-                <p className="text-[#0078D4] text-xs font-bold uppercase tracking-widest mb-2">Remediation Package</p>
-                <h3 className="text-xl font-bold text-[#0A2540] mb-2">Governance Foundations Package</h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  For organizations whose assessment surfaces governance gaps — covering DLP policies, sensitivity labeling, lifecycle management, Teams/SharePoint governance, and admin role rationalization.
-                </p>
-              </div>
-              <Link
-                href="/services/governance"
-                className="flex-shrink-0 inline-flex items-center gap-2 text-[#0078D4] font-semibold hover:underline whitespace-nowrap text-sm"
-              >
-                View Package Details <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          </div>
-
-          <div className="max-w-4xl mx-auto mb-2">
-            <FollowOnProjects pageSlug="security-hardening" />
-          </div>
-
-          <div className="max-w-4xl mx-auto">
-            <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {retainerLoading
-                ? [0, 1, 2].map((i) => (
-                    <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
-                      <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-                      <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
-                      <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
-                      <div className="h-16 bg-gray-100 rounded" />
-                    </div>
-                  ))
-                : retainerServices.map((tier, i) => (
-                    <RetainerCard
-                      key={tier.slug ?? tier.name}
-                      plan={tier}
-                      index={i}
-                    />
-                  ))}
-            </div>
-            <p className="text-center text-sm text-muted-foreground mt-5">
-              All retainers are month-to-month.{" "}
-              <Link href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</Link>
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* ── WHO THIS IS FOR ──────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
+      <section className="bg-white py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Ideal Clients</p>
@@ -370,7 +239,7 @@ export default function SecurityHardening() {
               "Companies enabling Copilot for M365 and needing a secure baseline first",
               "Organizations that have experienced a security incident and need a post-incident hardening review",
             ].map((item) => (
-              <div key={item} className="flex items-start gap-3 bg-white border border-border rounded-xl p-5">
+              <div key={item} className="flex items-start gap-3 bg-[#F7F9FC] border border-border rounded-xl p-5">
                 <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
                 <span className="text-[#0A2540] text-sm leading-relaxed">{item}</span>
               </div>
@@ -380,7 +249,7 @@ export default function SecurityHardening() {
       </section>
 
       {/* ── WHY SHANE ────────────────────────────────────────────────────── */}
-      <section className="bg-white py-20">
+      <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Credentials</p>
@@ -388,7 +257,7 @@ export default function SecurityHardening() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {WHY_SHANE.map((item) => (
-              <div key={item.title} className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-[#F7F9FC] transition-all">
+              <div key={item.title} className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-white transition-all">
                 <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
                 <div>
                   <h3 className="font-bold text-[#0A2540] mb-2">{item.title}</h3>
@@ -400,7 +269,7 @@ export default function SecurityHardening() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────────────── */}
+      {/* ── ASSESSMENT CTA ───────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] py-20">
         <div className="max-w-[1200px] mx-auto px-6 text-center">
           <p className="text-red-400 text-sm font-semibold uppercase tracking-[0.12em] mb-4">Don't Wait for an Incident</p>
@@ -408,29 +277,13 @@ export default function SecurityHardening() {
             Find Your Gaps Before an Attacker Does
           </h2>
           <p className="text-white/60 text-lg mb-10 max-w-xl mx-auto leading-relaxed">
-            A structured M365 security assessment costs a fraction of a breach response. Book a 30-minute discovery call to discuss your environment.
+            A structured M365 security assessment starts with a free readiness check — answer 10 questions on identity, permissions, DLP, and audit logging to see where you stand.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
-            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
-            <Link
-              href="/services/governance"
-              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
-            >
-              See Governance Package <ArrowRight className="w-4 h-4" />
-            </Link>
+            <CTAButton href="/assessment">Start Your Free Assessment</CTAButton>
           </div>
         </div>
       </section>
-
-      <AfterPurchaseSection serviceName="M365 Security Hardening Assessment" />
-
-      {hasPdf && (
-        <ServiceOverviewModal
-          serviceName="M365 Security Hardening Assessment"
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
     </Layout>
   );
 }

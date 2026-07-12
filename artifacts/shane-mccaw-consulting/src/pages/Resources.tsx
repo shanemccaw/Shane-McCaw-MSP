@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
+import { trackEvent } from "@/lib/analytics";
 import { ConsultationCTA } from "@/components/ConsultationCTA";
 import { Download, ArrowRight, Share2, Loader2, Shield, BookOpen, ClipboardCheck, MessageSquare, CheckCircle2 } from "lucide-react";
 import { FaLinkedin, FaXTwitter } from "react-icons/fa6";
@@ -70,13 +71,10 @@ export default function Resources() {
         body: JSON.stringify({ asset: "copilot-readiness" }),
       }).catch(() => {});
 
-      const w = window as unknown as { gtag?: (...args: unknown[]) => void };
-      if (typeof w.gtag === "function") {
-        w.gtag("event", "checklist_downloaded", {
-          event_category: "lead_magnet",
-          event_label: "M365-Copilot-Readiness-Checklist",
-        });
-      }
+      trackEvent("checklist_downloaded", {
+        event_category: "lead_magnet",
+        event_label: "M365-Copilot-Readiness-Checklist",
+      });
     } catch {
       // PDF generation failed silently — success state still shown
     }

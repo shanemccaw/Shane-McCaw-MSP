@@ -1,18 +1,10 @@
-import { useState } from "react";
-import { ServiceOverviewModal } from "@/components/ServiceOverviewModal";
-import { TestimonialDiscountCallout } from "@/components/TestimonialDiscountCallout";
 import { SEOMeta } from "@/components/SEOMeta";
 import { Layout } from "@/components/Layout";
 import { CTAButton } from "@/components/CTAButton";
-import { CopilotQuizCTA } from "@/components/CopilotQuizCTA";
-import { RetainerCard } from "@/components/RetainerCard";
-import { useServices, useServiceHasPdf } from "@/hooks/useServices";
-import { Link } from "wouter";
 import {
-  CheckCircle, ArrowRight, Clock, DollarSign,
-  Mail, MessageSquare, FolderOpen, Bot, Zap, Server
+  CheckCircle, ArrowRight,
+  Mail, MessageSquare, FolderOpen, Bot, Zap, Server,
 } from "lucide-react";
-import FixedPriceOfferCard from "@/components/FixedPriceOfferCard";
 
 const MODULES = [
   {
@@ -88,29 +80,7 @@ const WHY_WORKS = [
   },
 ];
 
-const ADD_ONS = [
-  {
-    name: "M365 Tenant Health Audit",
-    desc: "Before training, know what your tenant actually looks like. A Tenant Health Audit surfaces configuration gaps and oversharing risks that training alone cannot fix.",
-    href: "/services/microsoft-365",
-    price: "$4,500–$7,500",
-    duration: "2 weeks",
-  },
-  {
-    name: "Governance Foundations Package",
-    desc: "For organizations whose governance isn't in place yet — naming conventions, lifecycle policies, DLP, and Teams/SharePoint governance built before training begins.",
-    href: "/services/governance",
-    price: "$12,000–$18,000",
-    duration: "6 weeks",
-  },
-];
-
-
 export default function M365Training() {
-  const { services: retainerServices, loading: retainerLoading } = useServices("retainer");
-  const [modalOpen, setModalOpen] = useState(false);
-  const hasPdf = useServiceHasPdf("/services/m365-training");
-
   return (
     <Layout>
       <SEOMeta
@@ -135,15 +105,6 @@ export default function M365Training() {
             "jobTitle": "Lead Microsoft 365 Architect",
             "url": "https://shanemccawconsulting.com",
           },
-          "offers": [
-            {
-              "@type": "Offer",
-              "name": "Microsoft 365 Training & Enablement",
-              "priceRange": "$3,000–$7,500",
-              "priceCurrency": "USD",
-              "url": "https://shanemccawconsulting.com/services/m365-training",
-            },
-          ],
         }}
       />
 
@@ -161,22 +122,8 @@ export default function M365Training() {
           <p className="text-white/65 text-xl mt-6 max-w-2xl leading-relaxed">
             Live, instructor-led training built on NASA methodology — tailored to your tools, your configuration, and your team.
           </p>
-          <div className="mt-10 flex flex-wrap gap-4 items-center">
-            <CTAButton href="/book">Book a Free Discovery Call</CTAButton>
-            <a
-              href="/crm/portal/onboarding/select?service=microsoft-365-training--enablement"
-              className="inline-flex items-center gap-2 text-white/80 font-semibold hover:text-white transition-colors text-sm border border-white/20 px-6 py-3 rounded-xl hover:border-white/40"
-            >
-              Get Started <ArrowRight className="w-4 h-4" />
-            </a>
-            {hasPdf && (
-              <button
-                onClick={() => setModalOpen(true)}
-                className="inline-flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm"
-              >
-                Download Overview <ArrowRight className="w-4 h-4" />
-              </button>
-            )}
+          <div className="mt-10">
+            <CTAButton href="/assessment">Start Your Free Assessment</CTAButton>
           </div>
         </div>
       </section>
@@ -222,19 +169,8 @@ export default function M365Training() {
         </div>
       </section>
 
-      {/* ── OFFER ────────────────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Fixed-Price Engagement</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Microsoft 365 Training &amp; Enablement</h2>
-          </div>
-          <FixedPriceOfferCard slug="microsoft-365-training--enablement" ctaLabel="Get Started" />
-        </div>
-      </section>
-
       {/* ── TRAINING MODULES ─────────────────────────────────────────────── */}
-      <section className="bg-white py-20">
+      <section className="bg-[#F7F9FC] py-20">
         <div className="max-w-[1200px] mx-auto px-6">
           <div className="text-center mb-12">
             <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Curriculum</p>
@@ -247,7 +183,7 @@ export default function M365Training() {
             {MODULES.map((mod) => (
               <div
                 key={mod.title}
-                className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-[#F7F9FC] transition-all"
+                className="flex gap-4 p-6 rounded-2xl border border-border hover:border-[#0078D4]/30 hover:bg-white transition-all"
               >
                 <div className="w-10 h-10 rounded-xl bg-[#0078D4]/10 flex items-center justify-center text-[#0078D4] flex-shrink-0">
                   {mod.icon}
@@ -256,6 +192,24 @@ export default function M365Training() {
                   <h3 className="font-bold text-[#0A2540] mb-1.5 text-sm">{mod.title}</h3>
                   <p className="text-muted-foreground text-sm leading-relaxed">{mod.desc}</p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── WHAT'S INCLUDED ──────────────────────────────────────────────── */}
+      <section className="bg-white py-20">
+        <div className="max-w-[1200px] mx-auto px-6">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Inclusions</p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">What's Included in Every Engagement</h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+            {INCLUSIONS.map((item) => (
+              <div key={item} className="flex items-start gap-3 bg-[#F7F9FC] border border-border rounded-xl p-5">
+                <CheckCircle className="w-5 h-5 text-[#0078D4] flex-shrink-0 mt-0.5" />
+                <span className="text-[#0A2540] text-sm leading-snug">{item}</span>
               </div>
             ))}
           </div>
@@ -301,105 +255,27 @@ export default function M365Training() {
         </div>
       </section>
 
-      <CopilotQuizCTA />
-
-      {/* ── OPTIONAL ADD-ONS ─────────────────────────────────────────────── */}
-      <section className="bg-[#F7F9FC] py-20">
-        <div className="max-w-[1200px] mx-auto px-6">
-          <div className="text-center mb-12">
-            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-3">Optional Add-Ons</p>
-            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540]">Before or After Training</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">
-              Training is more effective when the environment is ready and the governance is in place. These engagements pair well.
-            </p>
-          </div>
-
-          <div className="max-w-4xl mx-auto space-y-4 mb-12">
-            {ADD_ONS.map((item) => (
-              <div key={item.name} className="bg-white border border-border rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center gap-5">
-                <div className="flex-1">
-                  <p className="font-bold text-[#0A2540] mb-1">{item.name}</p>
-                  <p className="text-muted-foreground text-sm leading-relaxed">{item.desc}</p>
-                </div>
-                <div className="flex-shrink-0 flex items-center gap-6">
-                  <div className="text-right">
-                    <p className="text-[#0A2540] font-bold text-sm">{item.price}</p>
-                    <p className="text-muted-foreground text-xs flex items-center gap-1 justify-end mt-0.5">
-                      <Clock className="w-3 h-3" /> {item.duration}
-                    </p>
-                  </div>
-                  <Link href={item.href} className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold hover:underline text-sm whitespace-nowrap">
-                    Details <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="text-center text-sm font-semibold text-muted-foreground uppercase tracking-widest mb-6">Fractional M365 Architect Retainers</p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {retainerLoading
-              ? [0, 1, 2].map((i) => (
-                  <div key={i} className="rounded-2xl p-8 border bg-white border-border animate-pulse">
-                    <div className="h-5 w-32 bg-gray-200 rounded mb-4" />
-                    <div className="h-10 w-24 bg-gray-200 rounded mb-2" />
-                    <div className="h-4 w-20 bg-gray-200 rounded mb-4" />
-                    <div className="h-16 bg-gray-100 rounded" />
-                  </div>
-                ))
-              : retainerServices.map((tier, i) => (
-                  <RetainerCard key={tier.slug ?? tier.name} plan={tier} index={i} />
-                ))}
-          </div>
-          <p className="text-center text-sm text-muted-foreground mt-5">
-            All retainers are month-to-month.{" "}
-            <Link href="/pricing" className="text-[#0078D4] hover:underline font-medium">See full pricing →</Link>
-          </p>
-        </div>
-      </section>
-
-      {/* ── FINAL CTA ────────────────────────────────────────────────────── */}
-      <TestimonialDiscountCallout />
+      {/* ── ASSESSMENT CTA ───────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] py-24 relative overflow-hidden">
         <div
           className="absolute inset-0 pointer-events-none"
           style={{ background: "radial-gradient(ellipse 700px 400px at 50% 100%, rgba(0,120,212,0.15) 0%, transparent 70%)" }}
         />
         <div className="max-w-[1200px] mx-auto px-6 relative text-center">
-          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Ready to Start?</p>
+          <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.12em] mb-4">Free Assessment</p>
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-4">
-            Give Your Team the Training They Actually Need
+            Find Out Where Your Team's M365 Adoption Stands
           </h2>
           <p className="text-white/60 text-lg max-w-xl mx-auto mb-10">
-            A 30-minute consultation to scope the right training format, modules, and schedule for your organization.
+            A short assessment covering adoption gaps, licensing utilization, and training priorities. Get personalised recommendations — no sales call required.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <CTAButton href="/book" className="px-8 py-3.5 text-base">
-              Book a Training Consultation
+            <CTAButton href="/assessment" className="px-8 py-3.5 text-base">
+              Start Your Free Assessment
             </CTAButton>
-            {hasPdf ? (
-              <button
-                onClick={() => setModalOpen(true)}
-                className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
-              >
-                Download the Training Overview <ArrowRight className="w-4 h-4" />
-              </button>
-            ) : (
-              <a
-                href="/contact?intent=training-overview"
-                className="inline-flex items-center gap-2 text-white/80 hover:text-white font-semibold border border-white/20 hover:border-white/40 px-8 py-3.5 rounded-xl transition-colors text-base"
-              >
-                Download the Training Overview <ArrowRight className="w-4 h-4" />
-              </a>
-            )}
           </div>
         </div>
       </section>
-      <ServiceOverviewModal
-        serviceName="M365 Training & Enablement"
-        isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
-      />
     </Layout>
   );
 }

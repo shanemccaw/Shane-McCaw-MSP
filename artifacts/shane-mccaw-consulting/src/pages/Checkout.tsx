@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier } from "@/hooks/useCatalog";
+import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
 
 type AnyTier = MonitoringTier | RetainerTier | MspTier;
 
@@ -170,6 +171,9 @@ export default function Checkout() {
   const contractIdRef = useRef<number | null>(null);
   const consentFetched = useRef(false);
 
+  // Fire analytics on mount
+  useEffect(() => { trackCheckoutStarted("service_catalog"); }, []);
+
   // Once catalog loads, resolve the service and handle Stripe return params
   useEffect(() => {
     if (catalogLoading) return;
@@ -204,6 +208,7 @@ export default function Checkout() {
     if (checkoutStatus === "success") {
       const saved = loadGuestInfo(slug);
       if (saved) setGuestInfo(saved);
+      trackCheckoutCompleted(svc.billingType ?? "service", { service_id: String(svc.id) });
       setStep("confirmed");
       navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
       return;

@@ -455,6 +455,11 @@ export default function PortalBilling() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
       setAlert({ type: "success", message: "Payment successful! Your invoice will be marked as paid shortly." });
+      fetch("/api/analytics/event", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "checkout_completed", properties: { product_type: "service" } }),
+      }).catch(() => {});
     } else if (params.get("payment") === "cancelled") {
       setAlert({ type: "error", message: "Payment was cancelled. You can try again at any time." });
     }

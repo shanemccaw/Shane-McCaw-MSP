@@ -77,7 +77,7 @@ export default function QuizResultsPage() {
         }
         return res.json() as Promise<QuizResultsData>;
       })
-      .then((d) => setData(d))
+      .then((d) => { setData(d); import("@/lib/analytics").then(({ trackAssessmentCompleted }) => trackAssessmentCompleted({ quiz_type: d.quizType })).catch(() => {}); })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load results."))
       .finally(() => setLoading(false));
   }, [leadId, token]);
