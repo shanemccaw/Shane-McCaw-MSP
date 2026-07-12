@@ -72,16 +72,21 @@ router.get("/services", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/public/consent-url", (_req, res: Response) => {
-  const clientId = process.env.GRAPH_CLIENT_ID;
+router.get("/public/consent-url", (req: Request, res: Response) => {
+  const clientId = process.env.MT_APP_CLIENT_ID;
   if (!clientId) {
     res.json({ url: null });
     return;
   }
-  const redirectUri = encodeURIComponent(
-    "https://login.microsoftonline.com/common/oauth2/nativeclient",
-  );
-  const url = `https://login.microsoftonline.com/common/adminconsent?client_id=${clientId}&redirect_uri=${redirectUri}`;
+  // Derive the real callback URL from the incoming request headers — same
+  // host-derivation approach used in consent.ts getCallbackUrl().
+  // (getCallbackUrl is not exported from consent.ts, so the two-line logic
+  // is inlined here rather than duplicated into a shared helper.)
+  const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host;
+  const redirectUri = `${proto}://${host}/api/consent/callback`;
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri });
+  const url = `https://login.microsoftonline.com/common/adminconsent?${params.toString()}`;
   res.json({ url });
 });
 
