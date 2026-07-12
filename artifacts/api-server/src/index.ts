@@ -10,6 +10,7 @@ import { seedEmailTemplates } from "./lib/seed-email-templates";
 import { seedSlaRunbooks } from "./lib/seed-sla-runbooks";
 import { seedScopeCreepRunbooks } from "./lib/seed-scope-creep-runbooks";
 import { seedMspPlatformAdmin } from "./lib/seed-msp-platform-admin";
+import { seedMarketingServices } from "./lib/seed-portal";
 import { ensureScopeCreepTables } from "./lib/scope-creep-engine";
 import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
@@ -137,6 +138,10 @@ app.listen(port, (err) => {
 
   seedMspPlatformAdmin().catch((err) => {
     logger.warn({ err }, "MSP platform admin seed failed (non-fatal)");
+  });
+
+  seedMarketingServices().catch((err) => {
+    logger.warn({ err }, "Marketing services seed failed (non-fatal)");
   });
 
   // ── MSP Job Worker ────────────────────────────────────────────────────────

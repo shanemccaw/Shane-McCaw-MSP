@@ -104,6 +104,20 @@ export async function seedMarketingServices(): Promise<void> {
     for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
       await db.update(servicesTable).set({ pageHref, pageSlug }).where(and(eq(servicesTable.slug, slug), isNull(servicesTable.pageHref)));
     }
+
+    // Backfill fulfillmentTypeKey on any retainer rows that are missing it.
+    // Safe to run repeatedly — only touches rows with a null fulfillmentTypeKey.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "retainer" })
+      .where(and(eq(servicesTable.serviceType, "retainer"), isNull(servicesTable.fulfillmentTypeKey)));
+
+    // Backfill fulfillmentTypeKey on any MSP platform tier rows that are missing it.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
+      .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
+
     void sqlTag;
     return;
   }
@@ -289,6 +303,7 @@ export async function seedMarketingServices(): Promise<void> {
       highlighted: false,
       sortOrder: 0,
       isPublic: true,
+      fulfillmentTypeKey: "retainer",
     },
     {
       slug: "architect-growth",
@@ -311,6 +326,7 @@ export async function seedMarketingServices(): Promise<void> {
       badge: "Most Popular",
       sortOrder: 1,
       isPublic: true,
+      fulfillmentTypeKey: "retainer",
     },
     {
       slug: "architect-enterprise",
@@ -333,6 +349,136 @@ export async function seedMarketingServices(): Promise<void> {
       highlighted: false,
       sortOrder: 2,
       isPublic: true,
+      fulfillmentTypeKey: "retainer",
+    },
+  ];
+
+  // ── MSP Platform Subscription Tiers ──────────────────────────────────────────
+  // These tiers are discoverable via both /api/services?type=msp (public checkout)
+  // and /api/msp/signup/tiers (MSP self-service signup). They require:
+  //   - serviceType: "msp"               → useCatalog fetchServices("msp") finds them
+  //   - fulfillmentType: "msp_monthly_subscription" → msp-signup.ts finds them
+  //   - fulfillmentTypeKey: "msp_monthly_subscription" → checkout can proceed past "unavailable"
+  const mspTiers = [
+    {
+      slug: "msp-platform-starter",
+      name: "MSP Platform — Starter",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "0.00",
+      allowFreeCheckout: true,
+      tagline: "Get started with the Shane McCaw Consulting partner platform at no cost.",
+      description: "Free tier for MSP partners — includes access to the partner portal, up to 5 managed tenants, and standard reporting.",
+      category: "Platform",
+      badge: "Free",
+      highlighted: false,
+      sortOrder: 0,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Up to 5 managed tenants",
+        "Partner portal access",
+        "Standard tenant health reporting",
+        "Email support",
+      ],
+      inclusions: ["Partner portal access", "Onboarding session"],
+      typeAttributes: {
+        tenantAllowance: 5,
+        aiCreditAllowancePlatformValue: 100,
+        aiCreditAllowanceMspValue: 50,
+        aiCreditOverageRateCents: 10,
+        overageRateCents: 2000,
+        tierCapabilities: {
+          advanced_signals: false,
+          custom_workflows: false,
+          sla_scope_creep_custom_rules: false,
+          sales_offers: false,
+          custom_bundle_composition: false,
+        },
+      },
+    },
+    {
+      slug: "msp-platform-pro",
+      name: "MSP Platform — Pro",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "499.00",
+      tagline: "Grow your MSP practice with advanced signals, custom workflows, and expanded tenant capacity.",
+      description: "Pro tier for growing MSP partners — includes advanced tenant signals, custom workflow automation, and up to 50 managed tenants.",
+      category: "Platform",
+      badge: "Most Popular",
+      highlighted: true,
+      sortOrder: 1,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Up to 50 managed tenants",
+        "Advanced tenant signals",
+        "Custom workflow automation",
+        "Priority support",
+        "SOW generation",
+        "AI credit allowance",
+      ],
+      inclusions: ["All Starter features", "Advanced signals", "Workflow builder", "Priority onboarding"],
+      typeAttributes: {
+        tenantAllowance: 50,
+        aiCreditAllowancePlatformValue: 1000,
+        aiCreditAllowanceMspValue: 500,
+        aiCreditOverageRateCents: 5,
+        overageRateCents: 1500,
+        tierCapabilities: {
+          advanced_signals: true,
+          custom_workflows: true,
+          sla_scope_creep_custom_rules: false,
+          sales_offers: false,
+          custom_bundle_composition: false,
+        },
+      },
+    },
+    {
+      slug: "msp-platform-enterprise",
+      name: "MSP Platform — Enterprise",
+      serviceType: "msp",
+      billingType: "recurring_monthly" as const,
+      fulfillmentType: "msp_monthly_subscription" as const,
+      fulfillmentTypeKey: "msp_monthly_subscription",
+      price: "1499.00",
+      tagline: "Full platform access for high-volume MSPs with custom rules, sales offers, and unlimited capacity.",
+      description: "Enterprise tier — unlimited tenants, full AI credit allocation, custom bundle composition, and dedicated account management.",
+      category: "Platform",
+      badge: "Enterprise",
+      highlighted: false,
+      sortOrder: 2,
+      isPublic: true,
+      visibility: "public" as const,
+      features: [
+        "Unlimited managed tenants",
+        "Full AI credit allocation",
+        "Custom bundle composition",
+        "Sales offer engine",
+        "SLA + scope-creep custom rules",
+        "Dedicated account management",
+        "White-label reporting",
+      ],
+      inclusions: ["All Pro features", "Custom rules engine", "Sales offers", "White-label reports", "Dedicated onboarding"],
+      typeAttributes: {
+        tenantAllowance: 999,
+        aiCreditAllowancePlatformValue: 5000,
+        aiCreditAllowanceMspValue: 2500,
+        aiCreditOverageRateCents: 3,
+        overageRateCents: 1000,
+        tierCapabilities: {
+          advanced_signals: true,
+          custom_workflows: true,
+          sla_scope_creep_custom_rules: true,
+          sales_offers: true,
+          custom_bundle_composition: true,
+        },
+      },
     },
   ];
 
@@ -405,13 +551,26 @@ export async function seedMarketingServices(): Promise<void> {
     },
   ];
 
-  for (const record of [...retainers, ...serviceAreas]) {
+  for (const record of [...retainers, ...mspTiers, ...serviceAreas]) {
     const { slug, ...rest } = record as Record<string, unknown> & { slug: string };
     await db
       .insert(servicesTable)
       .values({ slug, ...(rest as typeof servicesTable.$inferInsert) })
       .onConflictDoNothing({ target: servicesTable.slug });
   }
+
+  // Always backfill fulfillmentTypeKey for existing rows even on a fresh seed run,
+  // in case rows were pre-populated by an admin import without the key.
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "retainer" })
+    .where(and(eq(servicesTable.serviceType, "retainer"), isNull(servicesTable.fulfillmentTypeKey)));
+
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
+    .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
+
   void sqlTag;
 }
 
