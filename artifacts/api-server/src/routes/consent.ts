@@ -24,8 +24,9 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable } from "@workspace/db";
-import { eq, and, isNull, gte, desc } from "drizzle-orm";
+import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable } from "@workspace/db";
+import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
+import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
@@ -210,10 +211,12 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // If the state was a checkout session UUID, mark it consented and thread it
   // into the redirect so ConsentSuccessPage can show the "Continue to payment" CTA.
   let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
+  // Hoisted so the consent.granted emission block below can read slug + email without a second DB round-trip.
+  let updatedSession: { id: string; email: string; productSlug: string } | undefined;
 
   if (isCheckoutSession && state) {
     const now = new Date();
-    const [updatedSession] = await db
+    [updatedSession] = await db
       .update(checkoutSessionsTable)
       .set({
         status: "consented",
@@ -226,7 +229,11 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
           gte(checkoutSessionsTable.expiresAt, now),
         ),
       )
-      .returning({ id: checkoutSessionsTable.id, email: checkoutSessionsTable.email });
+      .returning({
+        id: checkoutSessionsTable.id,
+        email: checkoutSessionsTable.email,
+        productSlug: checkoutSessionsTable.productSlug,
+      });
 
     if (updatedSession) {
       // Copy the session admin email onto the tenant_consent row so it's available for provisioning
@@ -243,6 +250,73 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     } else {
       logger.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
     }
+  }
+
+  // ── Emit consent.granted workflow event ─────────────────────────────────────
+  // Runs for both paths (invite-link and checkout-session). Skips emission with
+  // a warning rather than crashing the redirect flow if context is unresolvable.
+  try {
+    // clientId: from invite token (invite-link path) or email→users lookup (checkout-session path)
+    let clientId: number | null = inviteRecord?.clientUserId ?? null;
+    let packageKey: string | null = null;
+
+    if (isCheckoutSession && state) {
+      // Re-fetch the session if the update didn't match (expired/not found) — we still want
+      // packageKey even if updatedSession is null.
+      let productSlug: string | null = null;
+      let sessionEmail: string | null = null;
+
+      if (updatedSession) {
+        productSlug = updatedSession.productSlug;
+        sessionEmail = updatedSession.email;
+      } else {
+        // Session not updated (expired or not found) — try a direct read for the slug
+        const [existing] = await db
+          .select({ productSlug: checkoutSessionsTable.productSlug, email: checkoutSessionsTable.email })
+          .from(checkoutSessionsTable)
+          .where(eq(checkoutSessionsTable.id, state))
+          .limit(1);
+        productSlug = existing?.productSlug ?? null;
+        sessionEmail = existing?.email ?? null;
+      }
+
+      // Resolve packageKey via services.type_attributes->>'packageKey'
+      if (productSlug) {
+        const [svcRow] = await db
+          .select({ pk: sql<string>`type_attributes->>'packageKey'` })
+          .from(servicesTable)
+          .where(eq(servicesTable.slug, productSlug))
+          .limit(1);
+        packageKey = svcRow?.pk ?? null;
+      }
+
+      // Resolve clientId from email if a user account already exists (may not yet for pre-payment consent)
+      if (clientId == null && sessionEmail) {
+        const [userRow] = await db
+          .select({ id: usersTable.id })
+          .from(usersTable)
+          .where(eq(usersTable.email, sessionEmail))
+          .limit(1);
+        clientId = userRow?.id ?? null;
+      }
+    }
+    // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context)
+
+    if (packageKey == null) {
+      logger.warn(
+        { tenant, isCheckoutSession, hasInviteRecord: inviteRecord != null },
+        "consent.granted: packageKey unresolvable — skipping event emission",
+      );
+    } else {
+      void emitWorkflowEvent("consent.granted", {
+        tenantId: tenant,
+        packageKey,
+        ...(clientId != null ? { clientId } : {}),
+      });
+      logger.info({ tenant, packageKey, clientId }, "consent.granted: event emitted");
+    }
+  } catch (err) {
+    logger.warn({ err, tenant }, "consent.granted: event emission error — non-fatal, redirect proceeds");
   }
 
   res.redirect(successRedirect);
