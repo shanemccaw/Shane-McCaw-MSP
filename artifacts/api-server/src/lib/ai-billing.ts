@@ -130,13 +130,14 @@ async function fetchMspPeriodAllowanceCents(mspId: number): Promise<number> {
     if (!sub) return 0;
 
     const [svc] = await db
-      .select({ aiCreditAllowance: servicesTable.aiCreditAllowance })
+      .select({ typeAttributes: servicesTable.typeAttributes })
       .from(servicesTable)
       .where(eq(servicesTable.id, sub.serviceId))
       .limit(1);
 
-    // aiCreditAllowance = 0 means unlimited; treat as no cap for alert purposes
-    const allowanceCents = (svc?.aiCreditAllowance ?? 0) * 100; // stored as integer cents already? Actually the field is named "aiCreditAllowance" — let's treat it as raw cents per the "all monetary values in cents" rule
+    // aiCreditAllowancePlatformValue lives in typeAttributes (moved from flat column)
+    const attrs = (svc?.typeAttributes ?? {}) as Record<string, unknown>;
+    const allowanceCents = Number(attrs.aiCreditAllowancePlatformValue ?? 0);
     return allowanceCents;
   } catch {
     return 0;

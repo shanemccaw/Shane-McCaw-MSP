@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, serviceScriptSetsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -687,12 +687,8 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       return;
     }
 
-    // Join service_script_sets → script_packages to gather linked package IDs
-    const pkgRows = await db
-      .select({ packageId: scriptPackagesTable.id, permissions: scriptPackagesTable.permissions })
-      .from(serviceScriptSetsTable)
-      .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
-      .where(inArray(serviceScriptSetsTable.serviceId, serviceIds));
+    // service_script_sets was dropped; package permissions aggregated via service.required_app_permissions.
+    const pkgRows: { packageId: string; permissions: Record<string, unknown> | null }[] = [];
 
     type RawPerms = { appPermissions?: (string | { scope?: string; reason?: string })[] } | null;
 
@@ -785,20 +781,9 @@ router.get("/portal/required-permissions", async (req: Request, res: Response) =
       }
     }
 
-    // 4. Direct service → required scripts mapping (service_required_scripts table)
-    //    Populated via the Admin Panel service editor "Required Scripts" section.
-    if (serviceIds.length > 0) {
-      const inClause = sql.join(serviceIds.map(id => sql`${id}`), sql`, `);
-      const srsResult = await db.execute(sql`
-        SELECT ps.permissions
-        FROM service_required_scripts srs
-        JOIN powershell_scripts ps ON ps.id = srs.script_id
-        WHERE srs.service_id IN (${inClause})
-      `);
-      for (const row of ((srsResult as unknown as { rows: Array<{ permissions: unknown }> }).rows ?? [])) {
-        addPerms(row.permissions as RawPerms);
-      }
-    }
+    // 4. service_required_scripts join table was dropped in catalog cleanup (migration 0177).
+    //    Required permissions are now stored in services.requiredAppPermissions (jsonb)
+    //    and are already aggregated in step 1 above — no further join needed.
 
     const permissions: PermEntry[] = Array.from(seen.entries()).map(([scope, reason]) => ({ scope, reason }));
     res.json({ permissions });
@@ -844,17 +829,18 @@ async function getRequiredPermissionsForClient(clientUserId: number): Promise<st
 
   const serviceIds = activeServices.map(s => s.serviceId);
 
-  const rows = await db
-    .select({ permissions: scriptPackagesTable.permissions })
-    .from(serviceScriptSetsTable)
-    .innerJoin(scriptPackagesTable, eq(serviceScriptSetsTable.scriptPackageId, scriptPackagesTable.id))
-    .where(inArray(serviceScriptSetsTable.serviceId, serviceIds));
+  // Aggregate required App Registration scopes from services.requiredAppPermissions (jsonb).
+  // This replaced the old service_required_scripts join table (dropped in migration 0177).
+  const serviceRows = await db
+    .select({ requiredAppPermissions: servicesTable.requiredAppPermissions })
+    .from(servicesTable)
+    .where(inArray(servicesTable.id, serviceIds));
 
   const seen = new Set<string>();
   const result: string[] = [];
-  for (const row of rows) {
-    for (const p of row.permissions?.appPermissions ?? []) {
-      const scope = typeof p === "string" ? p : p.scope;
+  for (const svc of serviceRows) {
+    for (const p of svc.requiredAppPermissions ?? []) {
+      const scope = p.scope;
       if (!seen.has(scope)) { seen.add(scope); result.push(scope); }
     }
   }

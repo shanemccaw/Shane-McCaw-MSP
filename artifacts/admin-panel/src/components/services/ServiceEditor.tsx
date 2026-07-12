@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useForm, Controller, useFieldArray } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   ChevronDown, ChevronUp, Plus, Trash2, Save, Loader2,
-  CheckCircle, Clock, Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
+  Sparkles, Cloud, Bot, Shield, Zap, Server, Users,
   Layout as LayoutIcon, ShieldCheck, Lock, Globe, Settings, FileText,
   BarChart2, Award, Briefcase, Target, Code, Database, Monitor, Cpu,
-  BookOpen, MessageSquare, Calendar, Star, Layers, ArrowLeft, type LucideIcon,
+  BookOpen, MessageSquare, Calendar, Star, Layers, ArrowLeft, CheckCircle, Clock,
+  type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -22,7 +23,10 @@ import ArrayEditor from "./ArrayEditor";
 import ServiceEditorSidePanel from "./ServiceEditorSidePanel";
 import CategoryPickerDropdown from "./CategoryPickerDropdown";
 import type { WizardStep, WizardOption } from "@/hooks/useServices";
-import { detectProductType, PRODUCT_TYPE_CONFIGS, PRODUCT_TYPE_LIST, type ProductTypeKey } from "@/lib/productTypeConfig";
+import {
+  detectProductType, PRODUCT_TYPE_CONFIGS, PRODUCT_TYPE_LIST,
+  type ProductTypeKey, type SectionDef, type FieldDef,
+} from "@/lib/productTypeConfig";
 import { useRegistryOptions } from "@/hooks/useRegistryOptions";
 
 function nanoid() { return Math.random().toString(36).slice(2, 10); }
@@ -41,10 +45,7 @@ function MultiCheckboxSelect({
   return (
     <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
       {options.map(opt => (
-        <label
-          key={opt.key}
-          className="flex items-start gap-2 cursor-pointer select-none group"
-        >
+        <label key={opt.key} className="flex items-start gap-2 cursor-pointer select-none group">
           <input
             type="checkbox"
             className="mt-0.5 shrink-0 rounded border-[#30363D] accent-cyan-500"
@@ -57,6 +58,67 @@ function MultiCheckboxSelect({
           </span>
         </label>
       ))}
+    </div>
+  );
+}
+
+function CapabilitiesEditor({
+  value,
+  onChange,
+}: {
+  value: Record<string, boolean>;
+  onChange: (v: Record<string, boolean>) => void;
+}) {
+  const [newKey, setNewKey] = useState("");
+  const entries = Object.entries(value);
+  return (
+    <div className="space-y-2">
+      {entries.map(([k, v]) => (
+        <div key={k} className="flex items-center gap-2">
+          <code className="text-xs text-[#7D8590] flex-1">{k}</code>
+          <label className="flex items-center gap-1.5 text-xs text-[#E6EDF3]">
+            <input
+              type="checkbox"
+              checked={v}
+              onChange={e => onChange({ ...value, [k]: e.target.checked })}
+              className="rounded border-[#30363D] accent-[#0078D4]"
+            />
+            {v ? "Enabled" : "Disabled"}
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              const next = { ...value };
+              delete next[k];
+              onChange(next);
+            }}
+            className="text-red-400 hover:text-red-300"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      ))}
+      <div className="flex gap-2 mt-2">
+        <input
+          type="text"
+          value={newKey}
+          onChange={e => setNewKey(e.target.value)}
+          placeholder="capability key"
+          className="flex-1 border border-[#30363D] rounded-lg px-2 py-1 text-xs bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]"
+        />
+        <button
+          type="button"
+          disabled={!newKey.trim()}
+          onClick={() => {
+            if (!newKey.trim()) return;
+            onChange({ ...value, [newKey.trim()]: true });
+            setNewKey("");
+          }}
+          className="text-xs border border-[#30363D] px-2 py-1 rounded-lg hover:bg-[#1C2128] text-[#7D8590] disabled:opacity-40"
+        >
+          <Plus className="w-3 h-3" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -81,7 +143,6 @@ const CONSULTING_SITE_ROUTES: Array<string | RegExp> = [
   "/services/cloud-migration", "/quick-wins", "/pricing", "/resources",
   /^\/resources\/[^/]+$/, "/contact", "/book", "/privacy", "/admin",
 ];
-const KNOWN_PAGE_HREFS = CONSULTING_SITE_ROUTES.filter((r): r is string => typeof r === "string");
 
 function validatePageHref(href: string | null | undefined): "empty" | "no-slash" | "unknown" | "ok" {
   if (!href) return "empty";
@@ -99,7 +160,7 @@ const serviceSchema = z.object({
   maxPrice: z.string().nullable(),
   durationDays: z.number().nullable(),
   turnaround: z.string().nullable(),
-  billingType: z.enum(["one_time", "recurring_monthly", "recurring", "fixed"]),
+  billingType: z.enum(["one_time", "recurring_monthly"]),
   visibility: z.enum(["public", "private", "landing_page_only"]),
   serviceType: z.string().nullable(),
   tagline: z.string().nullable(),
@@ -122,22 +183,11 @@ const serviceSchema = z.object({
   triggeringSignalKeys: z.array(z.string()),
   customerAgreementTemplate: z.string().nullable(),
   isFreeOffering: z.boolean(),
-  // Monitoring Tier fields
-  tenantTierLabel: z.string().nullable(),
-  seatMin: z.number().nullable(),
-  seatMax: z.number().nullable(),
-  includedEngines: z.array(z.string()),
-  includedFeatures: z.array(z.string()),
-  pricePerUserMonth: z.string().nullable(),
-  seatCountFloor: z.number().nullable(),
-  minMspPlanTier: z.string().nullable(),
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
 
 interface WorkflowTemplateMeta { id: number; name: string; }
-interface ScriptSetItem { scriptPackageId: string; displayOrder: number; title: string; category: string; tags: string[]; }
-interface ScriptPackageMeta { id: string; title: string; category: string; }
 interface Client { id: number; email: string; name: string | null; company: string | null; }
 
 function WorkflowBuilder({ serviceId, serviceName, onClose }: { serviceId: number; serviceName: string; onClose: () => void }) {
@@ -280,6 +330,277 @@ function WorkflowBuilder({ serviceId, serviceName, onClose }: { serviceId: numbe
   );
 }
 
+function PermissionsArrayEditor({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (val: unknown) => void;
+}) {
+  const entries: { scope: string; reason: string }[] = Array.isArray(value)
+    ? (value as { scope: string; reason: string }[]).map(e =>
+        e && typeof e === "object"
+          ? { scope: String((e as Record<string, unknown>).scope ?? ""), reason: String((e as Record<string, unknown>).reason ?? "") }
+          : { scope: "", reason: "" }
+      )
+    : [];
+  const cls = "border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-1 focus:ring-[#0078D4]";
+  const update = (i: number, key: "scope" | "reason", val: string) => {
+    const next = entries.map((e, idx) => idx === i ? { ...e, [key]: val } : e);
+    onChange(next.length > 0 ? next : null);
+  };
+  const remove = (i: number) => {
+    const next = entries.filter((_, idx) => idx !== i);
+    onChange(next.length > 0 ? next : null);
+  };
+  const add = () => onChange([...entries, { scope: "", reason: "" }]);
+  return (
+    <div className="space-y-2">
+      {entries.map((e, i) => (
+        <div key={i} className="flex gap-2 items-start">
+          <div className="flex-1 grid grid-cols-2 gap-2">
+            <input value={e.scope} onChange={ev => update(i, "scope", ev.target.value)} placeholder="Scope (e.g. User.Read.All)" className={cls} />
+            <input value={e.reason} onChange={ev => update(i, "reason", ev.target.value)} placeholder="Reason" className={cls} />
+          </div>
+          <button type="button" onClick={() => remove(i)} className="text-red-400 hover:text-red-300 mt-2"><Trash2 className="w-4 h-4" /></button>
+        </div>
+      ))}
+      <button type="button" onClick={add} className="flex items-center gap-1.5 text-xs font-semibold text-[#0078D4] hover:text-[#58A6FF]">
+        <Plus className="w-3.5 h-3.5" />Add permission
+      </button>
+    </div>
+  );
+}
+
+interface FieldContext {
+  fulfillmentTypes: { key: string; label: string }[];
+  tenantSignals: { key: string; label: string }[];
+  registryEngines: { key: string; label: string }[];
+  registryFeatures: { key: string; label: string }[];
+  workflowTemplates: WorkflowTemplateMeta[];
+  allCategoryPaths: string[];
+}
+
+interface FieldRendererProps {
+  field: FieldDef;
+  coreValue: unknown;
+  onCoreChange: (val: unknown) => void;
+  taValue: unknown;
+  onTaChange: (val: unknown) => void;
+  ctx: FieldContext;
+}
+
+function FieldRenderer({ field, coreValue, onCoreChange, taValue, onTaChange, ctx }: FieldRendererProps) {
+  const isTA = field.target === "typeAttributes";
+  const value = isTA ? taValue : coreValue;
+  const onChange = isTA ? onTaChange : onCoreChange;
+
+  const cls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]";
+
+  switch (field.kind) {
+    case "text":
+      return (
+        <input
+          type="text"
+          value={(value as string | null | undefined) ?? ""}
+          onChange={e => onChange(e.target.value || null)}
+          placeholder={field.placeholder}
+          className={cls}
+        />
+      );
+
+    case "textarea":
+      return (
+        <textarea
+          rows={4}
+          value={(value as string | null | undefined) ?? ""}
+          onChange={e => onChange(e.target.value || null)}
+          placeholder={field.placeholder}
+          className={`${cls} resize-none`}
+        />
+      );
+
+    case "number":
+      return (
+        <input
+          type="number"
+          value={(value as number | null | undefined) ?? ""}
+          onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))}
+          placeholder={field.placeholder}
+          className={cls}
+        />
+      );
+
+    case "currency":
+      return (
+        <div className="relative">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-[#7D8590]">$</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={(value as string | number | null | undefined) ?? ""}
+            onChange={e => onChange(e.target.value === "" ? null : e.target.value)}
+            placeholder="0.00"
+            className={`${cls} pl-7`}
+          />
+        </div>
+      );
+
+    case "boolean":
+      return (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={e => onChange(e.target.checked)}
+            className="rounded border-[#30363D] accent-[#0078D4] w-4 h-4"
+          />
+          <span className="text-sm text-[#E6EDF3]">{field.label}</span>
+        </label>
+      );
+
+    case "select": {
+      const staticOpts = field.options ?? [];
+      const dynamicOpts =
+        field.key === "fulfillmentTypeKey" ? ctx.fulfillmentTypes.map(f => ({ value: f.key, label: f.label })) :
+        field.key === "billingType" ? [{ value: "one_time", label: "One-time" }, { value: "recurring_monthly", label: "Monthly" }] :
+        staticOpts;
+      return (
+        <select
+          value={(value as string | null | undefined) ?? ""}
+          onChange={e => onChange(e.target.value || null)}
+          className={cls}
+        >
+          <option value="">— None —</option>
+          {dynamicOpts.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      );
+    }
+
+    case "multiselect": {
+      const staticOpts = field.options ?? [];
+      const dynamicOpts =
+        field.key === "triggeringSignalKeys" ? ctx.tenantSignals.map(s => ({ value: s.key, label: s.label })) :
+        staticOpts;
+      const currentArr = Array.isArray(value) ? (value as string[]) : [];
+      const toggle = (v: string) =>
+        onChange(currentArr.includes(v) ? currentArr.filter(x => x !== v) : [...currentArr, v]);
+      if (dynamicOpts.length === 0) {
+        return <p className="text-xs text-[#7D8590] italic">No options available</p>;
+      }
+      return (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+          {dynamicOpts.map(opt => (
+            <label key={opt.value} className="flex items-start gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="mt-0.5 shrink-0 rounded border-[#30363D] accent-[#0078D4]"
+                checked={currentArr.includes(opt.value)}
+                onChange={() => toggle(opt.value)}
+              />
+              <span className="text-xs text-[#E6EDF3] leading-tight">{opt.label}</span>
+            </label>
+          ))}
+        </div>
+      );
+    }
+
+    case "jsonb-array": {
+      const arr = Array.isArray(value) ? (value as string[]) : [];
+      return <ArrayEditor value={arr} onChange={v => onChange(v)} placeholder={field.placeholder} />;
+    }
+
+    case "seat-range": {
+      const pair = (value as [number | null, number | null] | null | undefined) ?? [null, null];
+      return (
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-[10px] text-[#7D8590] mb-1">Min seats</label>
+            <input
+              type="number"
+              min="0"
+              value={pair[0] ?? ""}
+              onChange={e => onChange([e.target.value === "" ? null : Number(e.target.value), pair[1]])}
+              className={cls}
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] text-[#7D8590] mb-1">Max seats</label>
+            <input
+              type="number"
+              min="0"
+              value={pair[1] ?? ""}
+              onChange={e => onChange([pair[0], e.target.value === "" ? null : Number(e.target.value)])}
+              className={cls}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    case "engine-picker": {
+      const selected = Array.isArray(value) ? (value as string[]) : [];
+      return (
+        <MultiCheckboxSelect
+          options={ctx.registryEngines}
+          value={selected}
+          onChange={v => onChange(v)}
+        />
+      );
+    }
+
+    case "feature-picker": {
+      const selected = Array.isArray(value) ? (value as string[]) : [];
+      return (
+        <MultiCheckboxSelect
+          options={ctx.registryFeatures}
+          value={selected}
+          onChange={v => onChange(v)}
+        />
+      );
+    }
+
+    case "capabilities-editor": {
+      const caps = (value && typeof value === "object" && !Array.isArray(value))
+        ? (value as Record<string, boolean>)
+        : {};
+      return <CapabilitiesEditor value={caps} onChange={v => onChange(v)} />;
+    }
+
+    case "icon-picker": {
+      const cls = "w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]";
+      return (
+        <select
+          value={(value as string | null | undefined) ?? ""}
+          onChange={e => onChange(e.target.value || null)}
+          className={cls}
+        >
+          <option value="">— None —</option>
+          {ICON_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+      );
+    }
+
+    case "category-path":
+      return (
+        <CategoryPickerDropdown
+          value={(value as string | null | undefined) ?? null}
+          onChange={v => onChange(v)}
+          allCategoryPaths={ctx.allCategoryPaths}
+        />
+      );
+
+    case "permissions-array":
+      return <PermissionsArrayEditor value={value} onChange={onChange} />;
+
+    default:
+      return <p className="text-xs text-[#7D8590] italic">Unsupported field kind</p>;
+  }
+}
+
 interface Props {
   id: number | null;
   onClose: () => void;
@@ -300,19 +621,9 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
 
   const [clients, setClients] = useState<Client[]>([]);
   const [workflowTemplates, setWorkflowTemplates] = useState<WorkflowTemplateMeta[]>([]);
-  const [scriptSets, setScriptSets] = useState<ScriptSetItem[]>([]);
-  const [allPackages, setAllPackages] = useState<ScriptPackageMeta[]>([]);
-  const [scriptSetAddId, setScriptSetAddId] = useState("");
-  const [scriptSetSaving, setScriptSetSaving] = useState(false);
-
-  interface RequiredScriptItem { scriptId: string; title: string; category: string; tags: string[]; }
-  const [requiredScripts, setRequiredScripts] = useState<RequiredScriptItem[]>([]);
-  const [allPsScripts, setAllPsScripts] = useState<{ id: string; title: string; category: string }[]>([]);
-  const [reqScriptAddId, setReqScriptAddId] = useState("");
-  const [reqScriptSaving, setReqScriptSaving] = useState(false);
-
   const [fulfillmentTypes, setFulfillmentTypes] = useState<{ key: string; label: string }[]>([]);
   const [tenantSignals, setTenantSignals] = useState<{ key: string; label: string }[]>([]);
+  const [typeAttrs, setTypeAttrs] = useState<Record<string, unknown>>({});
 
   const [showWorkflow, setShowWorkflow] = useState(false);
   const [showAssign, setShowAssign] = useState(false);
@@ -325,7 +636,6 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   const [bulkResults, setBulkResults] = useState<{ succeeded: number; failed: number } | null>(null);
   const [discardOpen, setDiscardOpen] = useState(false);
 
-  // New service creation state
   const [createType, setCreateType] = useState<ProductTypeKey | null>(null);
   const [createName, setCreateName] = useState("");
   const [createSlug, setCreateSlug] = useState("");
@@ -341,8 +651,8 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     maxPrice: service?.maxPrice ?? null,
     durationDays: service?.durationDays ?? null,
     turnaround: service?.turnaround ?? null,
-    billingType: service?.billingType ?? "one_time",
-    visibility: service?.visibility ?? "private",
+    billingType: (service?.billingType === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
+    visibility: (service?.visibility as "public" | "private" | "landing_page_only") ?? "private",
     serviceType: service?.serviceType ?? null,
     tagline: service?.tagline ?? null,
     targetAudience: service?.targetAudience ?? null,
@@ -364,25 +674,21 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     triggeringSignalKeys: service?.triggeringSignalKeys ?? [],
     customerAgreementTemplate: service?.customerAgreementTemplate ?? null,
     isFreeOffering: service?.isFreeOffering ?? false,
-    tenantTierLabel: service?.tenantTierLabel ?? null,
-    seatMin: service?.seatMin ?? null,
-    seatMax: service?.seatMax ?? null,
-    includedEngines: service?.includedEngines ?? [],
-    includedFeatures: service?.includedFeatures ?? [],
-    pricePerUserMonth: service?.pricePerUserMonth ?? null,
-    seatCountFloor: service?.seatCountFloor ?? null,
-    minMspPlanTier: service?.minMspPlanTier ?? null,
   }), [service]);
 
-  const { register, handleSubmit, control, watch, reset, formState: { errors, isDirty } } = useForm<ServiceFormValues>({
+  const { register, handleSubmit, reset, watch, control, formState: { errors, isDirty }, setValue } = useForm<ServiceFormValues>({
     resolver: zodResolver(serviceSchema),
     defaultValues,
   });
 
-  useEffect(() => { if (service) reset(defaultValues); }, [service, reset, defaultValues]);
+  useEffect(() => {
+    if (service) {
+      reset(defaultValues);
+      setTypeAttrs((service.typeAttributes as Record<string, unknown> | null) ?? {});
+    }
+  }, [service, reset, defaultValues]);
 
   const formWatch = watch();
-  const { fields: appPermFields, append: appendAppPerm, remove: removeAppPerm } = useFieldArray({ control, name: "requiredAppPermissions" });
 
   useEffect(() => {
     void (async () => {
@@ -410,31 +716,6 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!id) return;
-    void (async () => {
-      try {
-        const [sr, pr, rsr, psr] = await Promise.all([
-          fetchWithAuth(`/api/admin/services/${id}/script-sets`),
-          fetchWithAuth("/api/admin/ps-scripts/packages"),
-          fetchWithAuth(`/api/admin/services/${id}/required-scripts`),
-          fetchWithAuth("/api/admin/ps-scripts"),
-        ]);
-        if (sr.ok) setScriptSets(await sr.json() as ScriptSetItem[]);
-        if (pr.ok) {
-          const d = await pr.json() as { id: string; title: string; category: string }[];
-          setAllPackages(d.map(p => ({ id: p.id, title: p.title, category: p.category })));
-        }
-        if (rsr.ok) setRequiredScripts(await rsr.json() as RequiredScriptItem[]);
-        if (psr.ok) {
-          const d = await psr.json() as { id: string; title: string; category: string }[];
-          setAllPsScripts(d.map(p => ({ id: p.id, title: p.title, category: p.category })));
-        }
-      } catch { /* ignore */ }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
-
   const handleCreate = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createName.trim() || !createType) return;
@@ -449,6 +730,7 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
         isPublic: false,
         serviceClass: typeConfig.serviceClass ?? undefined,
         deliveryType: typeConfig.deliveryType ?? undefined,
+        fulfillmentType: typeConfig.fulfillmentType ?? undefined,
       });
       toast({ title: "Service created" });
       onSaved?.(created.id);
@@ -477,16 +759,8 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
           isFreeOffering: values.isFreeOffering,
           serviceClass: service?.serviceClass ?? null,
           deliveryType: service?.deliveryType ?? null,
-          // Note: serviceClass/deliveryType are type-identity fields set at creation;
-          // they are preserved from the stored service record, not editable here.
-          tenantTierLabel: values.tenantTierLabel ?? null,
-          seatMin: values.seatMin ?? null,
-          seatMax: values.seatMax ?? null,
-          includedEngines: values.includedEngines.length > 0 ? values.includedEngines : null,
-          includedFeatures: values.includedFeatures.length > 0 ? values.includedFeatures : null,
-          pricePerUserMonth: values.pricePerUserMonth ?? null,
-          seatCountFloor: values.seatCountFloor ?? null,
-          minMspPlanTier: values.minMspPlanTier ?? null,
+          fulfillmentType: service?.fulfillmentType ?? undefined,
+          typeAttributes: Object.keys(typeAttrs).length > 0 ? typeAttrs : undefined,
         },
       });
       toast({ title: "Service saved" });
@@ -497,13 +771,11 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
       toast({ title: (err as Error).message, variant: "destructive" });
       return false;
     }
-  }, [id, service, updateService, toast, reset, onSaved]);
+  }, [id, service, updateService, toast, reset, onSaved, typeAttrs]);
 
   const handleSaveAndClose = useCallback(async () => {
     let succeeded = false;
-    await handleSubmit(async (values) => {
-      succeeded = await onSubmit(values);
-    })();
+    await handleSubmit(async (values) => { succeeded = await onSubmit(values); })();
     if (succeeded) onClose();
   }, [handleSubmit, onSubmit, onClose]);
 
@@ -561,46 +833,6 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     finally { setBulkGenerating(false); }
   };
 
-  const handleScriptSetAdd = async () => {
-    if (!id || !scriptSetAddId) return;
-    setScriptSetSaving(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/services/${id}/script-sets`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scriptPackageId: scriptSetAddId }),
-      });
-      if (res.ok) { const data = await res.json(); if (Array.isArray(data)) { setScriptSets(data as ScriptSetItem[]); } setScriptSetAddId(""); }
-      else toast({ title: "Failed to add script set", variant: "destructive" });
-    } finally { setScriptSetSaving(false); }
-  };
-
-  const handleScriptSetRemove = async (scriptPackageId: string) => {
-    if (!id) return;
-    const res = await fetchWithAuth(`/api/admin/services/${id}/script-sets/${scriptPackageId}`, { method: "DELETE" });
-    if (res.ok) setScriptSets(prev => prev.filter(s => s.scriptPackageId !== scriptPackageId));
-    else toast({ title: "Failed to remove script set", variant: "destructive" });
-  };
-
-  const handleRequiredScriptAdd = async () => {
-    if (!id || !reqScriptAddId) return;
-    setReqScriptSaving(true);
-    try {
-      const res = await fetchWithAuth(`/api/admin/services/${id}/required-scripts`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scriptId: reqScriptAddId }),
-      });
-      if (res.ok) { setRequiredScripts(await res.json() as RequiredScriptItem[]); setReqScriptAddId(""); }
-      else toast({ title: "Failed to add required script", variant: "destructive" });
-    } finally { setReqScriptSaving(false); }
-  };
-
-  const handleRequiredScriptRemove = async (scriptId: string) => {
-    if (!id) return;
-    const res = await fetchWithAuth(`/api/admin/services/${id}/required-scripts/${scriptId}`, { method: "DELETE" });
-    if (res.ok) setRequiredScripts(prev => prev.filter(s => s.scriptId !== scriptId));
-    else toast({ title: "Failed to remove required script", variant: "destructive" });
-  };
-
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault(); setAssignError(""); setAssigning(true);
     try {
@@ -621,19 +853,63 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     } finally { setAssigning(false); }
   };
 
-  const PageHrefIcon = ({ href }: { href: string | null }) => {
-    const v = validatePageHref(href);
-    if (v === "no-slash") return <span className="text-amber-400">⚠</span>;
-    if (v === "unknown") return <span className="text-amber-400">⚠</span>;
-    return null;
-  };
+  const fieldCtx: FieldContext = useMemo(() => ({
+    fulfillmentTypes,
+    tenantSignals,
+    registryEngines: registryEngines.map(e => ({ key: e.key, label: e.label })),
+    registryFeatures: registryFeatures.map(f => ({ key: f.key, label: f.label })),
+    workflowTemplates,
+    allCategoryPaths,
+  }), [fulfillmentTypes, tenantSignals, registryEngines, registryFeatures, workflowTemplates, allCategoryPaths]);
 
-  const previewIcon = resolveIcon(formWatch.iconName ?? null);
-  const Icon = previewIcon;
+  // Helper: get/set value for a FieldDef on core form vs typeAttrs
+  const getCoreValue = useCallback((key: string): unknown => {
+    return (formWatch as Record<string, unknown>)[key] ?? null;
+  }, [formWatch]);
+
+  const setCoreValue = useCallback((key: string, val: unknown) => {
+    setValue(key as keyof ServiceFormValues, val as never, { shouldDirty: true });
+  }, [setValue]);
+
+  const getTaValue = useCallback((key: string): unknown => {
+    return typeAttrs[key] ?? null;
+  }, [typeAttrs]);
+
+  const setTaValue = useCallback((key: string, val: unknown) => {
+    setTypeAttrs(prev => ({ ...prev, [key]: val }));
+  }, []);
+
+  // Render a config-driven section as a card
+  const renderSection = useCallback((section: SectionDef) => {
+    return (
+      <div key={section.key} className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
+        <div>
+          <h3 className="text-sm font-bold text-[#E6EDF3]">{section.label}</h3>
+        </div>
+        <div className="space-y-4">
+          {section.fields.map(f => (
+            <div key={f.key}>
+              {f.kind !== "boolean" && (
+                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">{f.label}</label>
+              )}
+              {f.hint && <p className="text-xs text-[#7D8590] mb-1.5">{f.hint}</p>}
+              <FieldRenderer
+                field={f}
+                coreValue={getCoreValue(f.key)}
+                onCoreChange={val => setCoreValue(f.key, val)}
+                taValue={getTaValue(f.key)}
+                onTaChange={val => setTaValue(f.key, val)}
+                ctx={fieldCtx}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }, [getCoreValue, setCoreValue, getTaValue, setTaValue, fieldCtx]);
 
   // ---- New service creation form ----
   if (isNew) {
-    // Step 0: type picker
     if (!createType) {
       return (
         <div className="flex h-full overflow-hidden">
@@ -679,7 +955,6 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
       );
     }
 
-    // Step 1: name + slug form
     const selectedTypeConfig = PRODUCT_TYPE_CONFIGS[createType];
     return (
       <div className="flex h-full overflow-hidden">
@@ -725,12 +1000,11 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     );
   }
 
-  // ---- Edit form skeleton ----
+  // ---- Loading skeleton ----
   if (isLoading || !service) {
     return (
       <div className="flex h-full overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
-          {/* Header skeleton */}
           <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
             <div className="w-7 h-7 rounded-lg bg-[#21262D] animate-pulse" />
             <div className="flex-1 space-y-1.5">
@@ -743,12 +1017,6 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
               <div className="h-7 w-16 rounded-lg bg-[#0078D4]/30 animate-pulse" />
             </div>
           </div>
-          {/* Action bar skeleton */}
-          <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#30363D] bg-[#0D1117] flex-shrink-0">
-            <div className="h-7 w-28 rounded-lg bg-[#21262D] animate-pulse" />
-            <div className="h-7 w-24 rounded-lg bg-[#21262D] animate-pulse" />
-          </div>
-          {/* Form skeleton */}
           <div className="flex-1 overflow-y-auto p-6 space-y-5">
             <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
               {[...Array(6)].map((_, i) => (
@@ -757,18 +1025,9 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                   <div className="h-9 rounded-lg bg-[#21262D] animate-pulse" style={{ width: `${60 + (i * 17) % 40}%` }} />
                 </div>
               ))}
-              <div className="grid grid-cols-3 gap-4">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="space-y-1.5">
-                    <div className="h-3 w-16 rounded bg-[#21262D] animate-pulse" />
-                    <div className="h-9 rounded-lg bg-[#21262D] animate-pulse" />
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>
-        {/* Side panel skeleton */}
         <aside className="w-64 flex-shrink-0 border-l border-[#30363D] bg-[#161B22] p-4 space-y-4">
           {[...Array(5)].map((_, i) => (
             <div key={i} className="space-y-1.5">
@@ -782,7 +1041,7 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   }
 
   const saving = updateService.isPending;
-  const productType = detectProductType(service.serviceClass, service.deliveryType);
+  const productType = detectProductType(service.serviceClass, service.deliveryType, service.billingType, service.fulfillmentType);
   const typeConfig = PRODUCT_TYPE_CONFIGS[productType];
 
   const TYPE_BADGE_COLORS: Record<string, string> = {
@@ -791,11 +1050,15 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     project: "bg-purple-500/15 text-purple-400 border-purple-500/20",
     retainer: "bg-amber-500/15 text-amber-400 border-amber-500/20",
     monitoring_tier: "bg-cyan-500/15 text-cyan-400 border-cyan-500/20",
+    recurring_addon: "bg-orange-500/15 text-orange-400 border-orange-500/20",
+    document_product: "bg-rose-500/15 text-rose-400 border-rose-500/20",
+    platform_subscription_tier: "bg-violet-500/15 text-violet-400 border-violet-500/20",
   };
+
+  const Icon = resolveIcon(formWatch.iconName ?? null);
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-[#30363D] bg-[#161B22] flex-shrink-0">
@@ -805,10 +1068,13 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
               <ArrowLeft className="w-4 h-4" />
             </button>
           )}
+          <div className="flex items-center gap-2 w-8 h-8 rounded-lg bg-[#0078D4]/10 shrink-0 justify-center">
+            <Icon className="w-4 h-4 text-[#0078D4]" />
+          </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-[#E6EDF3] truncate">{service.name}</h2>
-              <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide ${TYPE_BADGE_COLORS[productType]}`}>
+              <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide ${TYPE_BADGE_COLORS[productType] ?? "bg-[#21262D] text-[#7D8590] border-[#30363D]"}`}>
                 {typeConfig.label}
               </span>
               {isDirty && (
@@ -820,7 +1086,7 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
             {service.slug && <p className="text-xs font-mono text-[#484F58]">{service.slug}</p>}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button type="button" onClick={() => { reset(defaultValues); }}
+            <button type="button" onClick={() => { reset(defaultValues); setTypeAttrs((service.typeAttributes as Record<string, unknown> | null) ?? {}); }}
               disabled={!isDirty || saving}
               className="px-3 py-1.5 text-xs font-medium border border-[#30363D] text-[#7D8590] rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-40 transition-colors">
               Discard
@@ -882,7 +1148,9 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
           </div>
         </div>
 
+        {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
           {/* Assign panel */}
           {showAssign && (
             <div className="bg-[#1C2128] border border-[#30363D] rounded-xl p-5">
@@ -917,592 +1185,31 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
           )}
 
           {/* Workflow builder */}
-          {showWorkflow && (
-            <WorkflowBuilder serviceId={id} serviceName={service.name} onClose={() => setShowWorkflow(false)} />
-          )}
+          {showWorkflow && <WorkflowBuilder serviceId={id} serviceName={service.name} onClose={() => setShowWorkflow(false)} />}
 
-          {/* Main form */}
+          {/* Config-driven form sections */}
           <form id="service-form" onSubmit={e => void handleSubmit(onSubmit)(e)}>
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
-              {/* Core fields */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
-                  <input {...register("name")} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                  {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name.message}</p>}
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Slug</label>
-                  <input {...register("slug")} placeholder="url-friendly-slug" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm font-mono bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
+            <div className="space-y-5">
+              {typeConfig.sections.map(section => renderSection(section))}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Category</label>
-                  <input {...register("category")} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tagline</label>
-                  <input {...register("tagline")} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Description</label>
-                <textarea {...register("description")} rows={3} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
-              </div>
-
-              {/* Pricing — type-conditional */}
-              {(typeConfig.showFields.priceFixed || typeConfig.showFields.priceRange) && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {typeConfig.showFields.priceFixed && (
-                    <div>
-                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
-                      <input {...register("price", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                    </div>
-                  )}
-                  {typeConfig.showFields.priceRange && (
-                    <>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Base Price ($)</label>
-                        <input {...register("basePrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range min" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Price ($)</label>
-                        <input {...register("maxPrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range max" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Duration / Turnaround — type-conditional */}
-              {(typeConfig.showFields.duration || typeConfig.showFields.turnaround) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {typeConfig.showFields.duration && (
-                    <div>
-                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Duration (days)</label>
-                      <input {...register("durationDays", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                    </div>
-                  )}
-                  {typeConfig.showFields.turnaround && (
-                    <div>
-                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Turnaround</label>
-                      <input {...register("turnaround")} placeholder="e.g. 5 business days" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Billing type */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Billing Type</label>
-                <Controller name="billingType" control={control} render={({ field }) => (
-                  <div className="flex flex-wrap gap-3">
-                    {([
-                      { v: "one_time" as const, label: "One-time" },
-                      { v: "recurring_monthly" as const, label: "Monthly retainer" },
-                      { v: "recurring" as const, label: "Recurring" },
-                      { v: "fixed" as const, label: "Fixed-price" },
-                    ]).map(opt => (
-                      <label key={opt.v} className={`flex items-center gap-2.5 flex-1 min-w-[8rem] border rounded-xl p-3 cursor-pointer transition-all ${field.value === opt.v ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}>
-                        <input type="radio" value={opt.v} checked={field.value === opt.v} onChange={() => field.onChange(opt.v)} className="text-[#0078D4]" />
-                        <span className="text-sm font-medium text-[#E6EDF3]">{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                )} />
-              </div>
-
-              {/* Visibility */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Visibility</label>
-                <Controller name="visibility" control={control} render={({ field }) => (
-                  <div className="flex gap-2">
-                    {([
-                      { v: "public" as const, label: "Public", hint: "Listed on site" },
-                      { v: "private" as const, label: "Private", hint: "Admin only" },
-                      { v: "landing_page_only" as const, label: "LP Only", hint: "Via landing page" },
-                    ]).map(opt => (
-                      <label key={opt.v} className={`flex flex-col flex-1 border rounded-xl p-2.5 cursor-pointer transition-all text-center ${field.value === opt.v ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}>
-                        <input type="radio" value={opt.v} checked={field.value === opt.v} onChange={() => field.onChange(opt.v)} className="sr-only" />
-                        <span className="text-xs font-bold text-[#E6EDF3]">{opt.label}</span>
-                        <span className="text-[10px] text-[#7D8590] mt-0.5">{opt.hint}</span>
-                      </label>
-                    ))}
-                  </div>
-                )} />
-              </div>
-
-              {/* Workflow template */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Linked Workflow Template</label>
-                <Controller name="workflowTemplateId" control={control} render={({ field }) => (
-                  <select value={field.value ?? ""} onChange={e => field.onChange(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
-                    <option value="">— None —</option>
-                    {workflowTemplates.map(wf => <option key={wf.id} value={wf.id}>{wf.name}</option>)}
-                  </select>
-                )} />
-                <p className="mt-1 text-xs text-[#7D8590]">When a client activates this service, these workflow steps are seeded automatically.</p>
-              </div>
-
-              {/* Deliverables */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Deliverables</label>
-                <Controller name="deliverables" control={control} render={({ field }) => (
-                  <ArrayEditor value={field.value} onChange={field.onChange} placeholder="Add a deliverable…" />
-                )} />
-              </div>
-            </div>
-
-            {/* Marketing fields */}
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5 mt-5">
-              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider">Marketing Fields</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Service Type</label>
-                  <select {...register("serviceType")} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
-                    <option value="">— none —</option>
-                    <option value="micro_offer">micro_offer</option>
-                    <option value="retainer">retainer</option>
-                    <option value="optional">optional</option>
-                    <option value="service_area">service_area</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Service Tier</label>
-                  <select {...register("tier")} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
-                    <option value="">— none —</option>
-                    <option value="entry">Entry Tier</option>
-                    <option value="core">Core Tier</option>
-                    <option value="strategic">Strategic Tier</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Target Audience</label>
-                <textarea {...register("targetAudience")} rows={2} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Inclusions</label>
-                <Controller name="inclusions" control={control} render={({ field }) => (
-                  <ArrayEditor value={field.value} onChange={field.onChange} placeholder="Add an inclusion…" />
-                )} />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Features</label>
-                <Controller name="features" control={control} render={({ field }) => (
-                  <ArrayEditor value={field.value} onChange={field.onChange} placeholder="Add a feature…" />
-                )} />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Badge</label>
-                  <input {...register("badge")} placeholder="e.g. Most requested" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Hours / Month</label>
-                  <input {...register("hoursPerMonth")} placeholder="e.g. 10 hours" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Icon</label>
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-[#0078D4]/10 flex items-center justify-center flex-shrink-0">
-                      <Icon className="w-4 h-4 text-[#0078D4]" />
-                    </div>
-                    <select {...register("iconName")} className="flex-1 border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
-                      <option value="">— Default (Sparkles) —</option>
-                      {ICON_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Sort Order</label>
-                  <input {...register("sortOrder", { setValueAs: v => Number(v) || 0 })} type="number" min="0" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Page Href</label>
-                <div className="relative">
-                  <input
-                    {...register("pageHref")}
-                    list="service-page-hrefs"
-                    placeholder="e.g. /services/microsoft-365"
-                    className={`w-full border rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] pr-8 ${(() => { const v = validatePageHref(formWatch.pageHref); return v === "no-slash" || v === "unknown" ? "border-amber-400" : "border-[#30363D]"; })()}`}
-                  />
-                  <datalist id="service-page-hrefs">{KNOWN_PAGE_HREFS.map(p => <option key={p} value={p} />)}</datalist>
-                  <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                    <PageHrefIcon href={formWatch.pageHref ?? null} />
-                  </div>
-                </div>
-                {validatePageHref(formWatch.pageHref) === "no-slash" && (
-                  <p className="mt-1 text-xs text-amber-500">⚠ Must start with /</p>
-                )}
-                {validatePageHref(formWatch.pageHref) === "unknown" && (
-                  <p className="mt-1 text-xs text-amber-500">⚠ Path not found on consulting site</p>
-                )}
-              </div>
-
-              <div className="flex items-center gap-3">
-                <input {...register("highlighted")} type="checkbox" id="highlighted-edit" className="rounded border-[#30363D] text-[#0078D4] bg-[#0D1117]" />
-                <label htmlFor="highlighted-edit" className="text-sm font-medium text-[#C9D1D9] cursor-pointer">Highlighted (Most Popular)</label>
-              </div>
-            </div>
-
-            {/* Script Sets */}
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
-              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-1">Script Sets</p>
-              <p className="text-xs text-[#7D8590] mb-3">Script packages automatically run for clients of this service.</p>
-              {scriptSets.length > 0 ? (
-                <div className="space-y-1.5 mb-3">
-                  {scriptSets.map(ss => (
-                    <div key={ss.scriptPackageId} className="flex items-center justify-between gap-2 bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
-                      <div>
-                        <p className="text-xs font-medium text-[#E6EDF3]">{ss.title}</p>
-                        <p className="text-[10px] text-[#7D8590]">{ss.category}</p>
-                      </div>
-                      <button type="button" onClick={() => void handleScriptSetRemove(ss.scriptPackageId)} className="text-[#484F58] hover:text-red-400 transition-colors flex-shrink-0">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-xs text-[#7D8590] mb-3">No script sets linked.</p>}
-              <div className="flex gap-2">
-                <select value={scriptSetAddId} onChange={e => setScriptSetAddId(e.target.value)} className="flex-1 border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3]">
-                  <option value="">— Add script package —</option>
-                  {allPackages.filter(p => !scriptSets.find(s => s.scriptPackageId === p.id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                </select>
-                <button type="button" onClick={() => void handleScriptSetAdd()} disabled={!scriptSetAddId || scriptSetSaving}
-                  className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors">
-                  {scriptSetSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}Add
-                </button>
-              </div>
-            </div>
-
-            {/* App Registration Permissions */}
-            <div className="bg-[#161B22] rounded-xl border border-amber-600/30 p-6 mt-5">
-              <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-1">App Registration Permissions</p>
-              <p className="text-xs text-[#7D8590] mb-4">These appear in the client contract as permissions the client must grant in their Azure AD App Registration. Add one row per permission scope.</p>
-              {appPermFields.length > 0 && (
-                <div className="space-y-2 mb-3">
-                  <div className="grid grid-cols-[1fr_1.5fr_auto] gap-2 mb-1">
-                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider px-1">Scope</p>
-                    <p className="text-[10px] font-semibold text-[#7D8590] uppercase tracking-wider px-1">Reason (shown to client)</p>
-                    <span />
-                  </div>
-                  {appPermFields.map((field, idx) => (
-                    <div key={field.id} className="grid grid-cols-[1fr_1.5fr_auto] gap-2 items-center">
-                      <input
-                        {...register(`requiredAppPermissions.${idx}.scope`)}
-                        placeholder="e.g. User.Read.All"
-                        className="border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] font-mono"
-                      />
-                      <input
-                        {...register(`requiredAppPermissions.${idx}.reason`)}
-                        placeholder="e.g. Enumerate users and licenses"
-                        className="border border-[#30363D] rounded-lg px-3 py-2 text-xs bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58]"
-                      />
-                      <button type="button" onClick={() => removeAppPerm(idx)} className="text-[#484F58] hover:text-red-400 transition-colors p-1">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={() => appendAppPerm({ scope: "", reason: "" })}
-                className="flex items-center gap-1.5 text-xs bg-amber-600/20 text-amber-400 border border-amber-600/30 px-3 py-2 rounded-lg hover:bg-amber-600/30 transition-colors"
-              >
-                <Plus className="w-3 h-3" />Add Permission
-              </button>
-              {appPermFields.length > 0 && (
-                <p className="text-[10px] text-amber-400/60 mt-2">Click Save to persist changes to the contract.</p>
-              )}
-            </div>
-
-            {/* Required Scripts (for App Registration permissions on agreement) */}
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
-              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-1">Required Scripts</p>
-              <p className="text-xs text-[#7D8590] mb-3">Scripts whose App Registration permissions appear on the client agreement. Select each script that runs automatically for this service.</p>
-              {requiredScripts.length > 0 ? (
-                <div className="space-y-1.5 mb-3">
-                  {requiredScripts.map(rs => (
-                    <div key={rs.scriptId} className="flex items-center justify-between gap-2 bg-[#1C2128] border border-[#30363D] rounded-lg px-3 py-2">
-                      <div>
-                        <p className="text-xs font-medium text-[#E6EDF3]">{rs.title}</p>
-                        <p className="text-[10px] text-[#7D8590]">{rs.category}</p>
-                      </div>
-                      <button type="button" onClick={() => void handleRequiredScriptRemove(rs.scriptId)} className="text-[#484F58] hover:text-red-400 transition-colors flex-shrink-0">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : <p className="text-xs text-[#7D8590] mb-3">No required scripts linked.</p>}
-              <div className="flex gap-2">
-                <select value={reqScriptAddId} onChange={e => setReqScriptAddId(e.target.value)} className="flex-1 border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3]">
-                  <option value="">— Add script —</option>
-                  {allPsScripts.filter(p => !requiredScripts.find(s => s.scriptId === p.id)).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-                </select>
-                <button type="button" onClick={() => void handleRequiredScriptAdd()} disabled={!reqScriptAddId || reqScriptSaving}
-                  className="flex items-center gap-1.5 text-xs bg-[#0078D4] text-white px-3 py-2 rounded-lg hover:bg-[#006CBE] disabled:opacity-50 transition-colors">
-                  {reqScriptSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />}Add
-                </button>
-              </div>
-            </div>
-
-            {/* Offer card preview */}
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5">
-              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider mb-4">Card Preview</p>
-              <div className="max-w-sm">
-                <div className="bg-[#1C2128] rounded-xl border border-[#30363D] p-5 flex flex-col shadow-sm">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 rounded-lg bg-[#0078D4]/10 flex items-center justify-center">
-                      <Icon className="w-5 h-5 text-[#0078D4]" />
-                    </div>
-                    {formWatch.badge && <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#0078D4]/10 text-[#0078D4]">{formWatch.badge}</span>}
-                  </div>
-                  {formWatch.category && <p className="text-xs text-[#7D8590] uppercase tracking-wider mb-1">{formWatch.category}</p>}
-                  <p className="text-[#0078D4] text-2xl font-extrabold mb-0.5">
-                    {(formWatch.basePrice && formWatch.maxPrice) ? `$${parseFloat(formWatch.basePrice).toLocaleString()}–$${parseFloat(formWatch.maxPrice).toLocaleString()}` :
-                      formWatch.price ? `$${parseFloat(formWatch.price).toLocaleString()}` : "Contact for pricing"}
-                  </p>
-                  <h3 className="text-base font-bold text-[#E6EDF3] mb-1">{formWatch.name || <span className="text-[#484F58]">Untitled Service</span>}</h3>
-                  {formWatch.tagline && <p className="text-xs italic text-[#7D8590] mb-2">{formWatch.tagline}</p>}
-                  {formWatch.description && <p className="text-xs text-[#C9D1D9] leading-relaxed mb-3">{formWatch.description}</p>}
-                  {(formWatch.inclusions ?? []).length > 0 && (
-                    <ul className="space-y-1 mb-3">
-                      {(formWatch.inclusions ?? []).slice(0, 4).map((item, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-xs text-[#C9D1D9]">
-                          <CheckCircle className="w-3.5 h-3.5 text-[#0078D4] flex-shrink-0 mt-0.5" />{item}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <div className="w-full bg-[#0078D4]/70 text-white text-xs font-semibold text-center py-2 rounded-lg mt-2 opacity-70">Get Started</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Monitoring Tier fields — only shown for monitoring_tier type */}
-            {typeConfig.showFields.monitoringTier && (
-              <div className="bg-[#161B22] rounded-xl border border-cyan-600/30 p-6 mt-5 space-y-5">
-                <p className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1">Monitoring Tier</p>
-                <p className="text-xs text-[#7D8590] mb-3">Platform subscription tier settings — used for seat-based billing and engine gating.</p>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tier Label</label>
-                    <input {...register("tenantTierLabel")} placeholder="e.g. Core, Pro, Enterprise"
-                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                    <p className="text-[10px] text-[#484F58] mt-1">Human-readable tier name shown to MSPs.</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Min MSP Plan Tier</label>
-                    <input {...register("minMspPlanTier")} placeholder="e.g. starter, growth, enterprise"
-                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                    <p className="text-[10px] text-[#484F58] mt-1">Minimum MSP plan level required to purchase this tier.</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Min Seats</label>
-                    <input {...register("seatMin", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
-                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Seats</label>
-                    <input {...register("seatMax", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
-                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Seat Count Floor</label>
-                    <input {...register("seatCountFloor", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
-                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                    <p className="text-[10px] text-[#484F58] mt-1">Minimum billable seat count.</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Price Per User / Month ($)</label>
-                  <input {...register("pricePerUserMonth", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01"
-                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
-                  <p className="text-[10px] text-[#484F58] mt-1">Used for seat-based billing calculations.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Included Engines</label>
-                  <Controller name="includedEngines" control={control} render={({ field }) => (
-                    <MultiCheckboxSelect
-                      options={registryEngines}
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
-                  )} />
-                  <p className="text-[10px] text-[#484F58] mt-1.5">Select Engine Registry keys available on this tier.</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Included Features</label>
-                  <Controller name="includedFeatures" control={control} render={({ field }) => (
-                    <MultiCheckboxSelect
-                      options={registryFeatures}
-                      value={field.value}
-                      onChange={field.onChange}
-                    />
-                  )} />
-                  <p className="text-[10px] text-[#484F58] mt-1.5">Select plan-feature keys gated to this tier.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Product Catalog */}
-            <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5 space-y-5">
-              <p className="text-xs font-bold text-[#7D8590] uppercase tracking-wider">Product Catalog</p>
-
-              {/* Category Path */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Category Path</label>
-                <Controller
-                  name="categoryPath"
-                  control={control}
-                  render={({ field }) => (
-                    <CategoryPickerDropdown
-                      value={field.value}
-                      onChange={v => field.onChange(v ?? null)}
-                      allCategoryPaths={allCategoryPaths}
-                      placeholder="Select or create category…"
-                    />
-                  )}
-                />
-                <p className="text-[10px] text-[#484F58] mt-1">Determines which category node this service appears under in the left pane. Type a new path to create a category.</p>
-              </div>
-
-              {/* Tags */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tags</label>
-                <Controller
-                  name="tags"
-                  control={control}
-                  render={({ field }) => (
-                    <TagInput
-                      value={field.value}
-                      onChange={v => field.onChange(v ?? [])}
-                      placeholder="Type a tag and press Enter…"
-                    />
-                  )}
-                />
-              </div>
-
-              {/* Fulfillment Type */}
-              {fulfillmentTypes.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fulfillment Type</label>
-                  <Controller
-                    name="fulfillmentTypeKey"
-                    control={control}
-                    render={({ field }) => (
-                      <select
-                        value={field.value ?? ""}
-                        onChange={e => field.onChange(e.target.value || null)}
-                        className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]"
-                      >
-                        <option value="">— None —</option>
-                        {fulfillmentTypes.map(ft => <option key={ft.key} value={ft.key}>{ft.label}</option>)}
-                      </select>
-                    )}
-                  />
-                </div>
-              )}
-
-              {/* Triggering Signals */}
-              {tenantSignals.length > 0 && (
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Triggering Signals</label>
-                  <p className="text-[10px] text-[#484F58] mb-2">Tenant signals that automatically trigger this service's fulfillment.</p>
-                  <Controller
-                    name="triggeringSignalKeys"
-                    control={control}
-                    render={({ field }) => (
-                      <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                        {tenantSignals.map(sig => (
-                          <label key={sig.key} className="flex items-center gap-2.5 cursor-pointer group">
-                            <input
-                              type="checkbox"
-                              checked={(field.value ?? []).includes(sig.key)}
-                              onChange={e => {
-                                const current = field.value ?? [];
-                                field.onChange(e.target.checked ? [...current, sig.key] : current.filter(k => k !== sig.key));
-                              }}
-                              className="rounded border-[#30363D] bg-[#0D1117] text-[#0078D4]"
-                            />
-                            <span className="text-xs text-[#C9D1D9] group-hover:text-[#E6EDF3]">{sig.label}</span>
-                            <span className="text-[10px] text-[#484F58] font-mono">{sig.key}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  />
-                </div>
-              )}
-
-              {/* Customer Agreement Template */}
-              <div>
-                <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Customer Agreement Template</label>
-                <textarea
-                  {...register("customerAgreementTemplate")}
-                  placeholder="Per-service agreement text shown to clients on the portal…"
-                  rows={5}
-                  className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] placeholder-[#484F58] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-y"
-                />
-              </div>
-
-              {/* Free Offering */}
-              <div className="flex items-center gap-3 py-1">
-                <input
-                  {...register("isFreeOffering")}
-                  type="checkbox"
-                  id="is-free-offering"
-                  className="rounded border-[#30363D] bg-[#0D1117] text-emerald-500"
-                />
-                <div>
-                  <label htmlFor="is-free-offering" className="text-sm font-medium text-[#C9D1D9] cursor-pointer">Free Offering</label>
-                  <p className="text-[10px] text-[#484F58]">When checked, this service skips Stripe checkout entirely — clients accept at $0.</p>
-                </div>
-              </div>
             </div>
           </form>
         </div>
       </div>
 
-      {/* Right side panel */}
-      <ServiceEditorSidePanel form={formWatch} isNew={false} isDirty={isDirty} />
+      {/* Side panel */}
+      <ServiceEditorSidePanel form={formWatch} isDirty={isDirty} />
 
-      {/* Discard confirmation */}
+      {/* Discard dialog */}
       <AlertDialog open={discardOpen} onOpenChange={setDiscardOpen}>
-        <AlertDialogContent className="bg-[#161B22] border-[#30363D]">
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-[#E6EDF3]">Discard changes?</AlertDialogTitle>
-            <AlertDialogDescription className="text-[#7D8590]">
-              You have unsaved changes. Going back will discard them.
-            </AlertDialogDescription>
+            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
+            <AlertDialogDescription>You have unsaved changes. They will be lost if you go back.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="border-[#30363D] text-[#7D8590] hover:bg-[#1C2128]">Keep editing</AlertDialogCancel>
-            <AlertDialogAction onClick={onClose} className="bg-red-600 hover:bg-red-700 text-white border-0">Discard & go back</AlertDialogAction>
+            <AlertDialogCancel>Keep editing</AlertDialogCancel>
+            <AlertDialogAction onClick={onClose} className="bg-red-600 hover:bg-red-700 text-white">Discard changes</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

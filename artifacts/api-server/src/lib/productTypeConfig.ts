@@ -1,94 +1,152 @@
-export type ProductTypeKey = "credit_pack" | "assessment" | "project" | "retainer" | "monitoring_tier";
+// ─── Product Type Config (API Server) ────────────────────────────────────────
+// Single source of truth for product type detection, import/export field sets,
+// and JSON template generation. Shared with the admin panel frontend (same
+// module structure, duplicated per-artifact since we can't import across libs).
+
+export type ProductTypeKey =
+  | "credit_pack"
+  | "assessment"
+  | "project"
+  | "retainer"
+  | "monitoring_tier"
+  | "recurring_addon"
+  | "document_product"
+  | "platform_subscription_tier";
+
+// ── Detection ─────────────────────────────────────────────────────────────────
+
+export function detectProductType(
+  serviceClass: string | null | undefined,
+  deliveryType: string | null | undefined,
+  billingType?: string | null,
+  fulfillmentType?: string | null,
+): ProductTypeKey {
+  if (fulfillmentType === "msp_monthly_subscription") return "platform_subscription_tier";
+  if (serviceClass === "subscription" && deliveryType === "bundle_subscription") return "monitoring_tier";
+  if (serviceClass === "add_on" && deliveryType === "none") {
+    return billingType === "recurring_monthly" ? "recurring_addon" : "credit_pack";
+  }
+  if (deliveryType === "document_generation") return "document_product";
+  if (deliveryType === "assessment") return "assessment";
+  if (deliveryType === "retainer") return "retainer";
+  return "project";
+}
+
+// ── Common import fields (all types) ─────────────────────────────────────────
 
 export const COMMON_IMPORT_FIELDS = new Set([
   "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
   "billingType", "visibility", "isPublic", "isActive", "label",
   "tier", "highlighted", "badge", "iconName", "sortOrder", "tags", "isFreeOffering",
-  "serviceClass", "deliveryType",
+  "serviceClass", "deliveryType", "fulfillmentType",
+  "typeAttributes",
 ]);
+
+// ── Per-type import field allow-lists ─────────────────────────────────────────
 
 export const PRODUCT_TYPE_IMPORT_FIELDS: Record<ProductTypeKey, Set<string>> = {
   credit_pack: new Set([
     ...COMMON_IMPORT_FIELDS,
     "price", "deliverables", "inclusions", "features", "targetAudience",
+    "allowFreeCheckout",
   ]),
   assessment: new Set([
     ...COMMON_IMPORT_FIELDS,
     "basePrice", "maxPrice", "durationDays", "deliverables", "inclusions", "features",
     "requiredAppPermissions", "fulfillmentTypeKey", "triggeringSignalKeys",
     "customerAgreementTemplate", "workflowTemplateId", "targetAudience", "hoursPerMonth",
+    "allowFreeCheckout",
   ]),
   project: new Set([
     ...COMMON_IMPORT_FIELDS,
     "price", "basePrice", "maxPrice", "durationDays", "turnaround", "deliverables",
     "inclusions", "features", "requiredAppPermissions", "fulfillmentTypeKey",
     "triggeringSignalKeys", "customerAgreementTemplate", "workflowTemplateId",
-    "targetAudience", "hoursPerMonth",
+    "targetAudience", "hoursPerMonth", "allowFreeCheckout",
   ]),
   retainer: new Set([
     ...COMMON_IMPORT_FIELDS,
     "price", "hoursPerMonth", "deliverables", "inclusions", "features",
     "requiredAppPermissions", "fulfillmentTypeKey", "triggeringSignalKeys",
-    "customerAgreementTemplate", "workflowTemplateId", "targetAudience",
+    "customerAgreementTemplate", "workflowTemplateId", "targetAudience", "allowFreeCheckout",
   ]),
   monitoring_tier: new Set([
     ...COMMON_IMPORT_FIELDS,
-    "tenantTierLabel", "seatMin", "seatMax", "includedEngines", "includedFeatures",
-    "pricePerUserMonth", "seatCountFloor", "minMspPlanTier",
+    // All monitoring-tier-specific data goes into typeAttributes
+  ]),
+  recurring_addon: new Set([
+    ...COMMON_IMPORT_FIELDS,
+    "price", "deliverables", "inclusions", "features", "targetAudience",
+    "allowFreeCheckout",
+  ]),
+  document_product: new Set([
+    ...COMMON_IMPORT_FIELDS,
+    "price", "basePrice", "maxPrice", "deliverables", "inclusions", "features",
+    "targetAudience", "allowFreeCheckout",
+  ]),
+  platform_subscription_tier: new Set([
+    ...COMMON_IMPORT_FIELDS,
+    "price", "features", "inclusions", "badge", "highlighted", "sortOrder",
+    "fulfillmentTypeKey",
   ]),
 };
 
-export function detectProductType(
-  serviceClass: string | null | undefined,
-  deliveryType: string | null | undefined,
-): ProductTypeKey {
-  if (serviceClass === "subscription" && deliveryType === "bundle_subscription") return "monitoring_tier";
-  if (serviceClass === "add_on" && deliveryType === "none") return "credit_pack";
-  if (deliveryType === "assessment") return "assessment";
-  if (deliveryType === "retainer") return "retainer";
-  if (serviceClass === "project") return "project";
-  return "project";
-}
+// ── Per-type export field lists ───────────────────────────────────────────────
+
+const COMMON_EXPORT_FIELDS = [
+  "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
+  "billingType", "visibility", "isPublic", "tier", "highlighted", "badge",
+  "iconName", "sortOrder", "tags", "isFreeOffering", "serviceClass", "deliveryType",
+];
 
 export const PRODUCT_TYPE_EXPORT_FIELDS: Record<ProductTypeKey, string[]> = {
   credit_pack: [
-    "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
-    "billingType", "price", "visibility", "isPublic", "tier", "highlighted", "badge",
-    "iconName", "sortOrder", "tags", "isFreeOffering", "serviceClass", "deliveryType",
-    "deliverables", "inclusions", "features", "targetAudience",
+    ...COMMON_EXPORT_FIELDS,
+    "price", "deliverables", "inclusions", "features", "targetAudience", "allowFreeCheckout",
+    "typeAttributes",
   ],
   assessment: [
-    "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
-    "billingType", "basePrice", "maxPrice", "durationDays", "visibility", "isPublic",
-    "tier", "highlighted", "badge", "iconName", "sortOrder", "tags", "isFreeOffering",
-    "serviceClass", "deliveryType", "deliverables", "inclusions", "features", "targetAudience",
-    "hoursPerMonth", "requiredAppPermissions", "fulfillmentTypeKey", "triggeringSignalKeys",
-    "customerAgreementTemplate", "workflowTemplateId",
+    ...COMMON_EXPORT_FIELDS,
+    "basePrice", "maxPrice", "durationDays", "deliverables", "inclusions", "features",
+    "targetAudience", "hoursPerMonth", "requiredAppPermissions", "fulfillmentTypeKey",
+    "triggeringSignalKeys", "customerAgreementTemplate", "workflowTemplateId",
+    "allowFreeCheckout", "typeAttributes",
   ],
   project: [
-    "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
-    "billingType", "price", "basePrice", "maxPrice", "durationDays", "turnaround",
-    "visibility", "isPublic", "tier", "highlighted", "badge", "iconName", "hoursPerMonth",
-    "sortOrder", "tags", "isFreeOffering", "serviceClass", "deliveryType", "deliverables",
-    "inclusions", "features", "targetAudience", "requiredAppPermissions", "fulfillmentTypeKey",
-    "triggeringSignalKeys", "customerAgreementTemplate", "workflowTemplateId",
+    ...COMMON_EXPORT_FIELDS,
+    "price", "basePrice", "maxPrice", "durationDays", "turnaround", "deliverables",
+    "inclusions", "features", "targetAudience", "hoursPerMonth", "requiredAppPermissions",
+    "fulfillmentTypeKey", "triggeringSignalKeys", "customerAgreementTemplate",
+    "workflowTemplateId", "allowFreeCheckout", "typeAttributes",
   ],
   retainer: [
-    "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
-    "billingType", "price", "visibility", "isPublic", "tier", "highlighted", "badge",
-    "iconName", "hoursPerMonth", "sortOrder", "tags", "isFreeOffering", "serviceClass",
-    "deliveryType", "deliverables", "inclusions", "features", "targetAudience",
+    ...COMMON_EXPORT_FIELDS,
+    "price", "hoursPerMonth", "deliverables", "inclusions", "features", "targetAudience",
     "requiredAppPermissions", "fulfillmentTypeKey", "triggeringSignalKeys",
-    "customerAgreementTemplate", "workflowTemplateId",
+    "customerAgreementTemplate", "workflowTemplateId", "allowFreeCheckout", "typeAttributes",
   ],
   monitoring_tier: [
-    "slug", "name", "description", "category", "categoryPath", "tagline", "serviceType",
-    "billingType", "visibility", "isPublic", "tier", "highlighted", "badge", "iconName",
-    "sortOrder", "tags", "isFreeOffering", "serviceClass", "deliveryType",
-    "tenantTierLabel", "seatMin", "seatMax", "includedEngines", "includedFeatures",
-    "pricePerUserMonth", "seatCountFloor", "minMspPlanTier",
+    ...COMMON_EXPORT_FIELDS,
+    "typeAttributes",
+  ],
+  recurring_addon: [
+    ...COMMON_EXPORT_FIELDS,
+    "price", "deliverables", "inclusions", "features", "targetAudience",
+    "allowFreeCheckout", "typeAttributes",
+  ],
+  document_product: [
+    ...COMMON_EXPORT_FIELDS,
+    "price", "basePrice", "maxPrice", "deliverables", "inclusions", "features",
+    "targetAudience", "allowFreeCheckout", "typeAttributes",
+  ],
+  platform_subscription_tier: [
+    ...COMMON_EXPORT_FIELDS,
+    "fulfillmentType", "price", "features", "inclusions", "badge", "highlighted",
+    "sortOrder", "fulfillmentTypeKey", "typeAttributes",
   ],
 };
+
+// ── JSON download templates ───────────────────────────────────────────────────
 
 export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unknown>> = {
   credit_pack: {
@@ -110,6 +168,7 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     inclusions: ["Immediate activation"],
     features: ["AI credit top-up", "No expiry"],
     targetAudience: "MSPs who need additional AI credits",
+    typeAttributes: {},
   },
   assessment: {
     serviceClass: null,
@@ -133,18 +192,19 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     features: ["Actionable recommendations", "Executive summary"],
     targetAudience: "IT leaders evaluating their M365 posture",
     requiredAppPermissions: [
-      { scope: "User.Read.All", reason: "Enumerate licensed users" }
+      { scope: "User.Read.All", reason: "Enumerate licensed users" },
     ],
     fulfillmentTypeKey: null,
     triggeringSignalKeys: [],
     customerAgreementTemplate: null,
     workflowTemplateId: null,
     hoursPerMonth: null,
+    typeAttributes: {},
   },
   project: {
     serviceClass: "project",
     deliveryType: null,
-    billingType: "fixed",
+    billingType: "one_time",
     slug: "example-project",
     name: "Example Project",
     description: "A scoped implementation project requiring a signed SOW.",
@@ -170,6 +230,7 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     customerAgreementTemplate: null,
     workflowTemplateId: null,
     hoursPerMonth: null,
+    typeAttributes: {},
   },
   retainer: {
     serviceClass: null,
@@ -196,6 +257,7 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     triggeringSignalKeys: [],
     customerAgreementTemplate: null,
     workflowTemplateId: null,
+    typeAttributes: {},
   },
   monitoring_tier: {
     serviceClass: "subscription",
@@ -203,7 +265,7 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     billingType: "recurring_monthly",
     slug: "example-monitoring-tier",
     name: "Example Monitoring Tier",
-    description: "An MSP platform subscription tier with per-seat pricing.",
+    description: "An MSP monitoring bundle with per-seat pricing and included engines.",
     category: "Monitoring",
     categoryPath: "Monitoring",
     visibility: "private",
@@ -211,13 +273,99 @@ export const PRODUCT_TYPE_TEMPLATES: Record<ProductTypeKey, Record<string, unkno
     isFreeOffering: false,
     sortOrder: 0,
     tags: ["monitoring", "msp"],
-    tenantTierLabel: "Core",
-    seatMin: 1,
-    seatMax: 50,
-    includedEngines: ["priority", "health", "drift"],
-    includedFeatures: ["advanced_signals", "custom_workflows"],
-    pricePerUserMonth: 8.00,
-    seatCountFloor: 5,
-    minMspPlanTier: "starter",
+    typeAttributes: {
+      tenantTierLabel: "Core",
+      seatMin: 1,
+      seatMax: 50,
+      includedEngines: ["priority", "health", "drift"],
+      includedFeatures: ["advanced_signals", "custom_workflows"],
+      pricePerUserMonth: "8.00",
+      seatCountFloor: 5,
+      minMspPlanTier: "starter",
+      flatMonthlySurcharge: null,
+    },
+  },
+  recurring_addon: {
+    serviceClass: "add_on",
+    deliveryType: "none",
+    billingType: "recurring_monthly",
+    slug: "example-recurring-addon",
+    name: "Example Recurring Add-on",
+    description: "A monthly recurring add-on with a flat monthly price.",
+    category: "Add-ons",
+    categoryPath: "Add-ons",
+    visibility: "private",
+    isPublic: false,
+    isFreeOffering: false,
+    sortOrder: 0,
+    tags: ["addon", "recurring"],
+    deliverables: [],
+    inclusions: [],
+    features: [],
+    targetAudience: null,
+    typeAttributes: {
+      flatMonthlyPrice: "29.00",
+    },
+  },
+  document_product: {
+    serviceClass: null,
+    deliveryType: "document_generation",
+    billingType: "one_time",
+    slug: "example-document-product",
+    name: "Example Document Product",
+    description: "An automated document generation product.",
+    category: "Documents",
+    categoryPath: "Documents",
+    price: 199,
+    basePrice: 149,
+    maxPrice: 299,
+    visibility: "private",
+    isPublic: false,
+    isFreeOffering: false,
+    sortOrder: 0,
+    tags: ["document", "report"],
+    deliverables: ["Generated document"],
+    inclusions: [],
+    features: [],
+    targetAudience: null,
+    typeAttributes: {
+      documentTier: "standard",
+      relatedProductSlug: null,
+    },
+  },
+  platform_subscription_tier: {
+    serviceClass: "subscription",
+    deliveryType: "bundle_subscription",
+    fulfillmentType: "msp_monthly_subscription",
+    billingType: "recurring_monthly",
+    slug: "example-platform-tier",
+    name: "Example Platform Tier",
+    description: "An MSP platform subscription tier.",
+    category: "Platform",
+    categoryPath: "Platform",
+    price: 99,
+    visibility: "private",
+    isPublic: false,
+    isFreeOffering: false,
+    sortOrder: 0,
+    badge: null,
+    highlighted: false,
+    tags: ["platform", "msp"],
+    features: ["Dedicated MSP dashboard", "Priority support"],
+    inclusions: ["Platform access", "Onboarding session"],
+    typeAttributes: {
+      tenantAllowance: 50,
+      aiCreditAllowancePlatformValue: 1000,
+      aiCreditAllowanceMspValue: 500,
+      aiCreditOverageRateCents: 5,
+      overageRateCents: 1000,
+      tierCapabilities: {
+        advanced_signals: true,
+        custom_workflows: false,
+        sla_scope_creep_custom_rules: false,
+        sales_offers: false,
+        custom_bundle_composition: false,
+      },
+    },
   },
 };

@@ -59,7 +59,10 @@ export interface ServiceRow {
   // MSP Billing / Checkout Classification
   serviceClass: "project" | "add_on" | "subscription" | null;
   deliveryType: "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none" | null;
-  // Monitoring Tier fields
+  // MSP Catalog classification
+  fulfillmentType: string | null;
+  typeAttributes: Record<string, unknown> | null;
+  // Monitoring Tier fields (legacy flat columns — still returned by API for backward compat)
   tenantTierLabel: string | null;
   seatMin: number | null;
   seatMax: number | null;
@@ -79,6 +82,7 @@ export type ServiceCreate = {
   isPublic?: boolean;
   serviceClass?: "project" | "add_on" | "subscription" | null;
   deliveryType?: "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none" | null;
+  fulfillmentType?: string | null;
 };
 
 export const SERVICES_QUERY_KEY = ["services"] as const;

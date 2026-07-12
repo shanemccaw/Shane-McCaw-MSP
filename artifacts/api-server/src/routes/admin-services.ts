@@ -74,9 +74,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       requiredAppPermissions,
       categoryPath, tags, customerAgreementTemplate, isFreeOffering,
       fulfillmentTypeKey, triggeringSignalKeys,
-      serviceClass, deliveryType,
-      tenantTierLabel, seatMin, seatMax, includedEngines, includedFeatures,
-      pricePerUserMonth, seatCountFloor, minMspPlanTier,
+      serviceClass, deliveryType, fulfillmentType,
+      typeAttributes,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -93,6 +92,10 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
     const resolvedDeliveryType = validDeliveryTypes.includes(deliveryType as typeof validDeliveryTypes[number])
       ? (deliveryType as "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none")
       : null;
+    const validFulfillmentTypes = ["standard", "msp_monthly_subscription"] as const;
+    const resolvedFulfillmentType = validFulfillmentTypes.includes(fulfillmentType as typeof validFulfillmentTypes[number])
+      ? (fulfillmentType as "standard" | "msp_monthly_subscription")
+      : undefined;
     const [updated] = await db
       .update(servicesTable)
       .set({
@@ -105,7 +108,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         maxPrice: maxPrice != null ? String(maxPrice) : null,
         durationDays: durationDays != null ? Number(durationDays) : null,
         turnaround: (turnaround as string | null) ?? null,
-        billingType: ((billingType as string) ?? "one_time") as "one_time" | "recurring_monthly" | "recurring" | "fixed",
+        billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
         isPublic: resolvedVisibility != null ? resolvedVisibility === "public" : (isPublic != null ? Boolean(isPublic) : false),
         visibility: resolvedVisibility ?? "private",
         slug: (slug as string | null) ?? null,
@@ -133,14 +136,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         triggeringSignalKeys: parseStringArray(triggeringSignalKeys),
         serviceClass: resolvedServiceClass,
         deliveryType: resolvedDeliveryType,
-        tenantTierLabel: (tenantTierLabel as string | null) ?? null,
-        seatMin: seatMin != null ? Number(seatMin) : null,
-        seatMax: seatMax != null ? Number(seatMax) : null,
-        includedEngines: Array.isArray(includedEngines) ? (includedEngines as string[]) : null,
-        includedFeatures: Array.isArray(includedFeatures) ? (includedFeatures as string[]) : null,
-        pricePerUserMonth: pricePerUserMonth != null ? String(pricePerUserMonth) : null,
-        seatCountFloor: seatCountFloor != null ? Number(seatCountFloor) : null,
-        minMspPlanTier: (minMspPlanTier as string | null) ?? null,
+        ...(resolvedFulfillmentType !== undefined ? { fulfillmentType: resolvedFulfillmentType } : {}),
+        typeAttributes: typeAttributes != null ? (typeAttributes as Record<string, unknown>) : undefined,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
@@ -156,7 +153,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -177,10 +174,8 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
     const resolvedCreateDeliveryType = validDeliveryTypesCreate.includes(deliveryType as typeof validDeliveryTypesCreate[number])
       ? (deliveryType as "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none")
       : null;
-    const validBillingTypes = ["one_time", "recurring_monthly", "recurring", "fixed"] as const;
-    const resolvedBillingType = validBillingTypes.includes(billingType as typeof validBillingTypes[number])
-      ? (billingType as typeof validBillingTypes[number])
-      : "one_time";
+    const resolvedBillingType: "one_time" | "recurring_monthly" =
+      (billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time";
     const [created] = await db
       .insert(servicesTable)
       .values({
@@ -194,6 +189,12 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         features: parseStringArray(features),
         serviceClass: resolvedCreateServiceClass,
         deliveryType: resolvedCreateDeliveryType,
+        fulfillmentType: (["standard", "msp_monthly_subscription"] as const).includes(fulfillmentType as "standard" | "msp_monthly_subscription")
+          ? (fulfillmentType as "standard" | "msp_monthly_subscription")
+          : "standard",
+        typeAttributes: (typeAttributes != null && typeof typeAttributes === "object" && !Array.isArray(typeAttributes))
+          ? (typeAttributes as Record<string, unknown>)
+          : undefined,
       })
       .returning();
     res.status(201).json(created);
@@ -481,16 +482,20 @@ router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Reques
 
         const cols = [
           s.slug, s.name, s.description, s.category,
-          JSON.stringify(s.deliverables ?? []),
+          s.deliverables != null ? JSON.stringify(s.deliverables) : null,
           s.price, s.basePrice, s.maxPrice,
-          s.orderWorkflow != null ? JSON.stringify(s.orderWorkflow) : null,
           s.durationDays, s.turnaround, s.billingType,
           s.isPublic, s.visibility, s.serviceType, s.tagline, s.targetAudience,
           s.inclusions != null ? JSON.stringify(s.inclusions) : null,
           s.features != null ? JSON.stringify(s.features) : null,
           s.badge, s.highlighted, s.hoursPerMonth, s.iconName,
-          s.pageHref, s.pageSlug, s.sortOrder, s.tier, s.bestFor,
-          s.triggers != null ? JSON.stringify(s.triggers) : null,
+          s.pageHref, s.sortOrder, s.tier,
+          s.tags != null ? JSON.stringify(s.tags) : null,
+          s.categoryPath, s.isFreeOffering, s.serviceClass, s.deliveryType,
+          s.fulfillmentType ?? "standard",
+          s.typeAttributes != null ? JSON.stringify(s.typeAttributes) : null,
+          s.fulfillmentTypeKey,
+          s.triggeringSignalKeys != null ? JSON.stringify(s.triggeringSignalKeys) : null,
         ];
 
         if (prodId != null) {
@@ -498,14 +503,20 @@ router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Reques
             UPDATE services SET
               slug=$1, name=$2, description=$3, category=$4,
               deliverables=$5::jsonb, price=$6, base_price=$7, max_price=$8,
-              order_workflow=$9::jsonb, duration_days=$10, turnaround=$11,
-              billing_type=$12, is_public=$13, visibility=$14,
-              service_type=$15, tagline=$16, target_audience=$17,
-              inclusions=$18::jsonb, features=$19::jsonb,
-              badge=$20, highlighted=$21, hours_per_month=$22, icon_name=$23,
-              page_href=$24, page_slug=$25, sort_order=$26, tier=$27,
-              best_for=$28, triggers=$29::jsonb, updated_at=now()
-            WHERE id=$30`,
+              duration_days=$9, turnaround=$10,
+              billing_type=$11, is_public=$12, visibility=$13,
+              service_type=$14, tagline=$15, target_audience=$16,
+              inclusions=$17::jsonb, features=$18::jsonb,
+              badge=$19, highlighted=$20, hours_per_month=$21, icon_name=$22,
+              page_href=$23, sort_order=$24, tier=$25,
+              tags=$26::jsonb, category_path=$27,
+              is_free_offering=$28, service_class=$29, delivery_type=$30,
+              fulfillment_type=$31,
+              type_attributes=$32::jsonb,
+              fulfillment_type_key=$33,
+              triggering_signal_keys=$34::jsonb,
+              updated_at=now()
+            WHERE id=$35`,
             [...cols, prodId]
           );
           touchedProdIds.add(prodId);
@@ -514,17 +525,22 @@ router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Reques
             INSERT INTO services (
               slug, name, description, category,
               deliverables, price, base_price, max_price,
-              order_workflow, duration_days, turnaround, billing_type,
+              duration_days, turnaround, billing_type,
               is_public, visibility, service_type, tagline, target_audience,
               inclusions, features, badge, highlighted, hours_per_month, icon_name,
-              page_href, page_slug, sort_order, tier, best_for, triggers
+              page_href, sort_order, tier,
+              tags, category_path, is_free_offering, service_class, delivery_type,
+              fulfillment_type, type_attributes,
+              fulfillment_type_key, triggering_signal_keys
             ) VALUES (
               $1, $2, $3, $4,
               $5::jsonb, $6, $7, $8,
-              $9::jsonb, $10, $11, $12,
-              $13, $14, $15, $16, $17,
-              $18::jsonb, $19::jsonb, $20, $21, $22, $23,
-              $24, $25, $26, $27, $28, $29::jsonb
+              $9, $10, $11,
+              $12, $13, $14, $15, $16,
+              $17::jsonb, $18::jsonb, $19, $20, $21, $22,
+              $23, $24, $25,
+              $26::jsonb, $27, $28, $29, $30,
+              $31, $32::jsonb, $33, $34::jsonb
             ) RETURNING id`,
             cols
           );
@@ -568,10 +584,10 @@ router.get("/admin/catalog/export", requireAdmin, async (req: Request, res: Resp
     const records = services
       .filter(s => {
         if (!typeFilter) return true;
-        return detectProductType(s.serviceClass, s.deliveryType) === typeFilter;
+        return detectProductType(s.serviceClass, s.deliveryType, s.billingType, s.fulfillmentType) === typeFilter;
       })
       .map(s => {
-        const pType = detectProductType(s.serviceClass, s.deliveryType);
+        const pType = detectProductType(s.serviceClass, s.deliveryType, s.billingType, s.fulfillmentType);
         const allowedFields = new Set(PRODUCT_TYPE_EXPORT_FIELDS[pType]);
         const raw: Record<string, unknown> = {
           slug: s.slug,
@@ -609,14 +625,8 @@ router.get("/admin/catalog/export", requireAdmin, async (req: Request, res: Resp
           isFreeOffering: s.isFreeOffering,
           serviceClass: s.serviceClass,
           deliveryType: s.deliveryType,
-          tenantTierLabel: s.tenantTierLabel,
-          seatMin: s.seatMin,
-          seatMax: s.seatMax,
-          includedEngines: s.includedEngines,
-          includedFeatures: s.includedFeatures,
-          pricePerUserMonth: s.pricePerUserMonth,
-          seatCountFloor: s.seatCountFloor,
-          minMspPlanTier: s.minMspPlanTier,
+          fulfillmentType: s.fulfillmentType,
+          typeAttributes: s.typeAttributes ?? {},
         };
         const record: Record<string, unknown> = { _productType: pType };
         for (const [k, v] of Object.entries(raw)) {
@@ -644,7 +654,7 @@ router.get("/admin/catalog/export", requireAdmin, async (req: Request, res: Resp
 
 router.get("/admin/catalog/import-template", requireAdmin, (req: Request, res: Response) => {
   const typeFilter = req.query.type as ProductTypeKey | undefined;
-  const allKeys: ProductTypeKey[] = ["credit_pack", "assessment", "project", "retainer", "monitoring_tier"];
+  const allKeys: ProductTypeKey[] = ["credit_pack", "assessment", "project", "retainer", "monitoring_tier", "recurring_addon", "document_product", "platform_subscription_tier"];
   const keys = typeFilter && allKeys.includes(typeFilter) ? [typeFilter] : allKeys;
   const services = keys.map(k => ({ _productType: k, ...PRODUCT_TYPE_TEMPLATES[k] }));
   const template = { version: 1, services };
@@ -683,6 +693,8 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
       const pType = detectProductType(
         item.serviceClass as string | null,
         item.deliveryType as string | null,
+        item.billingType as string | null,
+        item.fulfillmentType as string | null,
       );
       const allowedFields = PRODUCT_TYPE_IMPORT_FIELDS[pType];
       const foreignFields = Object.keys(item).filter(k => {
@@ -695,6 +707,8 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
         continue;
       }
 
+      const resolvedBillingTypeImport: "one_time" | "recurring_monthly" =
+        (item.billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time";
       try {
         await db.execute(sql`
           INSERT INTO services (
@@ -704,13 +718,12 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             sort_order, deliverables, inclusions, features, target_audience, tags,
             required_app_permissions, fulfillment_type_key, triggering_signal_keys,
             customer_agreement_template, is_free_offering,
-            service_class, delivery_type,
-            tenant_tier_label, seat_min, seat_max, included_engines, included_features,
-            price_per_user_month, seat_count_floor, min_msp_plan_tier
+            service_class, delivery_type, fulfillment_type,
+            type_attributes
           ) VALUES (
             ${slug}, ${name}, ${item.description ?? null}, ${item.category ?? null},
             ${item.categoryPath ?? null}, ${item.tagline ?? null}, ${item.serviceType ?? null},
-            ${item.billingType ?? null}, ${item.price ?? null}, ${item.basePrice ?? null},
+            ${resolvedBillingTypeImport}, ${item.price ?? null}, ${item.basePrice ?? null},
             ${item.maxPrice ?? null}, ${item.durationDays ?? null}, ${item.turnaround ?? null},
             ${item.isPublic ?? item.isActive ?? false}, ${item.visibility ?? "private"}, ${item.tier ?? null},
             ${item.highlighted ?? false}, ${item.badge ?? null}, ${item.iconName ?? null},
@@ -726,11 +739,8 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             ${item.customerAgreementTemplate ?? null},
             ${item.isFreeOffering ?? false},
             ${item.serviceClass ?? null}, ${item.deliveryType ?? null},
-            ${item.tenantTierLabel ?? null}, ${item.seatMin ?? null}, ${item.seatMax ?? null},
-            ${item.includedEngines ? JSON.stringify(item.includedEngines) : null}::jsonb,
-            ${item.includedFeatures ? JSON.stringify(item.includedFeatures) : null}::jsonb,
-            ${item.pricePerUserMonth ?? null}, ${item.seatCountFloor ?? null},
-            ${item.minMspPlanTier ?? null}
+            ${item.fulfillmentType ?? "standard"},
+            ${item.typeAttributes ? JSON.stringify(item.typeAttributes) : null}::jsonb
           )
           ON CONFLICT (slug) DO UPDATE SET
             name = EXCLUDED.name,
@@ -765,14 +775,8 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             is_free_offering = EXCLUDED.is_free_offering,
             service_class = EXCLUDED.service_class,
             delivery_type = EXCLUDED.delivery_type,
-            tenant_tier_label = EXCLUDED.tenant_tier_label,
-            seat_min = EXCLUDED.seat_min,
-            seat_max = EXCLUDED.seat_max,
-            included_engines = EXCLUDED.included_engines,
-            included_features = EXCLUDED.included_features,
-            price_per_user_month = EXCLUDED.price_per_user_month,
-            seat_count_floor = EXCLUDED.seat_count_floor,
-            min_msp_plan_tier = EXCLUDED.min_msp_plan_tier,
+            fulfillment_type = EXCLUDED.fulfillment_type,
+            type_attributes = EXCLUDED.type_attributes,
             updated_at = now()
         `);
         imported++;

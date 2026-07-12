@@ -140,7 +140,7 @@ export const servicesTable = pgTable("services", {
   orderWorkflow: jsonb("order_workflow").$type<WizardStep[]>(),
   durationDays: integer("duration_days"),
   turnaround: text("turnaround"),
-  billingType: text("billing_type", { enum: ["one_time", "recurring_monthly", "recurring", "fixed"] }).notNull().default("one_time"),
+  billingType: text("billing_type", { enum: ["one_time", "recurring_monthly"] }).notNull().default("one_time"),
   isPublic: boolean("is_public").notNull().default(true),
   visibility: text("visibility", { enum: ["public", "private", "landing_page_only"] }).notNull().default("public"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -173,22 +173,13 @@ export const servicesTable = pgTable("services", {
   // App Registration permissions required from the client before automation can run.
   // Shown in the contract agreement as a numbered section the client must acknowledge.
   requiredAppPermissions: jsonb("required_app_permissions").$type<{ scope: string; reason: string }[]>(),
-  // ── MSP Platform Subscription fields ─────────────────────────────────────────
+  // ── MSP Platform Subscription discriminator ───────────────────────────────
   // Products with fulfillmentType = "msp_monthly_subscription" are MSP platform
-  // tiers — separate from per-project/per-offer billing. These fields are only
-  // meaningful when fulfillmentType = "msp_monthly_subscription".
+  // tiers. Tier-specific data (tenantAllowance, tierCapabilities, etc.) lives
+  // in typeAttributes jsonb.
   fulfillmentType: text("fulfillment_type", {
     enum: ["standard", "msp_monthly_subscription"],
   }).notNull().default("standard"),
-  // Number of customer tenants included in the flat platform fee (0 = unlimited)
-  tenantAllowance: integer("tenant_allowance"),
-  // Monthly AI credit allowance for Copilot/signal generation (0 = unlimited)
-  aiCreditAllowance: integer("ai_credit_allowance"),
-  // Per-additional-tenant overage rate in cents (USD) billed monthly via usage records
-  overageRateCents: integer("overage_rate_cents"),
-  // Map of capability keys → true/false for tier gating. Missing key = not gated.
-  // Example: { "advanced_signals": true, "custom_workflows": false }
-  tierCapabilities: jsonb("tier_capabilities").$type<Record<string, boolean>>(),
   // ── Fulfillment Engine ─────────────────────────────────────────────────────
   // FK into fulfillment_types.key — what lifecycle type this service triggers.
   // Resolved by resolve_fulfillment at checkout / signal fire.
@@ -238,24 +229,11 @@ export const servicesTable = pgTable("services", {
   // When true, the service is offered at $0 — skips Stripe checkout entirely.
   isFreeOffering: boolean("is_free_offering").notNull().default(false),
 
-  // ── Monitoring Tier fields ─────────────────────────────────────────────────
-  // Only meaningful when serviceClass = 'subscription' AND
-  // deliveryType = 'bundle_subscription'.
-  // Human-readable tier name shown to MSPs (e.g. "Core", "Pro").
-  tenantTierLabel: text("tenant_tier_label"),
-  // Inclusive seat range for this tier.
-  seatMin: integer("seat_min"),
-  seatMax: integer("seat_max"),
-  // Keys referencing the Engine Registry (e.g. ["priority","health"]).
-  includedEngines: jsonb("included_engines").$type<string[]>(),
-  // Plan-feature keys gated by this tier (e.g. ["advanced_signals"]).
-  includedFeatures: jsonb("included_features").$type<string[]>(),
-  // Per-user per-month price in USD (used for seat-based billing).
-  pricePerUserMonth: numeric("price_per_user_month", { precision: 10, scale: 2 }),
-  // Minimum billable seat count — MSPs are charged for at least this many.
-  seatCountFloor: integer("seat_count_floor"),
-  // Minimum MSP plan tier required to assign this product (e.g. "starter").
-  minMspPlanTier: text("min_msp_plan_tier"),
+  // ── Type-specific attributes ───────────────────────────────────────────────
+  // All product-type-specific fields (monitoring tier seat ranges, platform
+  // subscription tier capabilities, document product tiers, etc.) live here.
+  // Shape is validated by productTypeConfig.ts at import/export time.
+  typeAttributes: jsonb("type_attributes").$type<Record<string, unknown>>(),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;
@@ -1745,17 +1723,6 @@ export const scriptModulesTable = pgTable("script_modules", {
 export type InsertScriptModule = typeof scriptModulesTable.$inferInsert;
 export type ScriptModule = typeof scriptModulesTable.$inferSelect;
 
-// Service Script Sets — links services (many) to script packages (many)
-export const serviceScriptSetsTable = pgTable("service_script_sets", {
-  serviceId: integer("service_id").notNull().references(() => servicesTable.id, { onDelete: "cascade" }),
-  scriptPackageId: uuid("script_package_id").notNull().references(() => scriptPackagesTable.id, { onDelete: "cascade" }),
-  displayOrder: integer("display_order").notNull().default(0),
-}, (t) => ({
-  pk: primaryKey({ columns: [t.serviceId, t.scriptPackageId] }),
-}));
-
-export type InsertServiceScriptSet = typeof serviceScriptSetsTable.$inferInsert;
-export type ServiceScriptSet = typeof serviceScriptSetsTable.$inferSelect;
 
 // ─── Client Automation Runs — tracks sequential script package execution ──────
 export const clientAutomationRunsTable = pgTable("client_automation_runs", {

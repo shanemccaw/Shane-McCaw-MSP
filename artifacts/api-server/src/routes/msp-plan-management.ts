@@ -62,10 +62,7 @@ router.get("/admin/plan-management/tiers", requireAdmin, async (_req: Request, r
       name: servicesTable.name,
       slug: servicesTable.slug,
       price: servicesTable.price,
-      tenantAllowance: servicesTable.tenantAllowance,
-      aiCreditAllowance: servicesTable.aiCreditAllowance,
-      overageRateCents: servicesTable.overageRateCents,
-      tierCapabilities: servicesTable.tierCapabilities,
+      typeAttributes: servicesTable.typeAttributes,
       isPublic: servicesTable.isPublic,
     })
     .from(servicesTable)

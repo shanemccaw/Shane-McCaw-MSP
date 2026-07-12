@@ -25,7 +25,6 @@ import {
   db,
   clientAutomationRunsTable,
   clientServicesTable,
-  serviceScriptSetsTable,
   scriptPackagesTable,
   scriptModulesTable,
   usersTable,
@@ -314,27 +313,15 @@ export async function runClientScriptSequence(
       return;
     }
 
+    // service_script_sets join table was dropped in the catalog schema cleanup (migration 0177).
+    // Script packages are no longer linked to services via a join table; scriptSets is empty
+    // until a replacement linkage mechanism is implemented. The run proceeds through the
+    // normal path and completes cleanly with 0 modules when no packages are found.
     const serviceIds = activeServices.map(s => s.serviceId);
-    const scriptSets = await db
-      .select({ scriptPackageId: serviceScriptSetsTable.scriptPackageId, displayOrder: serviceScriptSetsTable.displayOrder })
-      .from(serviceScriptSetsTable)
-      .where(inArray(serviceScriptSetsTable.serviceId, serviceIds))
-      .orderBy(asc(serviceScriptSetsTable.displayOrder));
+    const scriptSets: { scriptPackageId: string; displayOrder: number }[] = [];
+    void serviceIds; // kept for future linkage logic
 
-    if (scriptSets.length === 0) {
-      await db.update(clientAutomationRunsTable)
-        .set({
-          status: "completed",
-          modulesCompleted: 0,
-          modulesTotal: 0,
-          finishedAt: new Date(),
-          lastLogSnippet: "No script packages linked to active services.",
-        })
-        .where(eq(clientAutomationRunsTable.id, runId));
-      return;
-    }
-
-    const packageIds = [...new Set(scriptSets.map(s => s.scriptPackageId))];
+    const packageIds: string[] = [];
 
     const packages = await db.select().from(scriptPackagesTable)
       .where(inArray(scriptPackagesTable.id, packageIds));
@@ -454,11 +441,12 @@ export async function runClientScriptSequence(
           }).catch(() => {});
 
           if (kanbanTaskId) {
+            const taskId = kanbanTaskId as number;
             const accumulatedOutput = accumulatedOutputParts.join("\n");
 
             // WRITE 1: persist raw output immediately (never lost even if AI fails)
             await saveKanbanOutput({
-              kanbanTaskId,
+              kanbanTaskId: taskId,
               scriptOutput: accumulatedOutput,
               success: false,
               lastJobStatus: result.lastStatus,
@@ -467,16 +455,18 @@ export async function runClientScriptSequence(
 
             // WRITE 2: patch AI analysis (non-fatal if it fails)
             const aiAnalysis = await runAutoAnalysis(accumulatedOutput, scriptPushName, clientLabel);
-            if (aiAnalysis) {
-              await patchKanbanAiAnalysis(kanbanTaskId, aiAnalysis);
+            if (aiAnalysis != null) {
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+              await patchKanbanAiAnalysis(taskId, aiAnalysis!);
             }
           }
 
           const adminEmail = process.env.CRM_ADMIN_EMAIL;
           if (adminEmail) {
+            const emailAddr = adminEmail as string;
             await sendEmailFromTemplate(
               "script-run-failed",
-              adminEmail,
+              emailAddr,
               {
                 clientLabel,
                 moduleFilename: mod.filename,
@@ -517,6 +507,7 @@ export async function runClientScriptSequence(
     }).catch(() => {});
 
     if (kanbanTaskId) {
+      const taskId = kanbanTaskId as number;
       const accumulatedOutput = accumulatedOutputParts.join("\n");
 
       // Derive a representative runbook name from the last module
@@ -529,7 +520,7 @@ export async function runClientScriptSequence(
 
       // WRITE 1: persist raw output immediately
       await saveKanbanOutput({
-        kanbanTaskId,
+        kanbanTaskId: taskId,
         scriptOutput: accumulatedOutput,
         success: true,
         lastJobStatus: "Completed",
@@ -538,8 +529,9 @@ export async function runClientScriptSequence(
 
       // WRITE 2: patch AI analysis
       const aiAnalysis = await runAutoAnalysis(accumulatedOutput, finalRunbookName, clientLabel);
-      if (aiAnalysis) {
-        await patchKanbanAiAnalysis(kanbanTaskId, aiAnalysis);
+      if (aiAnalysis != null) {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        await patchKanbanAiAnalysis(taskId, aiAnalysis!);
       }
     }
   } catch (err) {

@@ -29,7 +29,7 @@ const router: IRouter = Router();
 
 router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
   try {
-    const tiers = await db
+    const rawTiers = await db
       .select({
         id: servicesTable.id,
         slug: servicesTable.slug,
@@ -38,19 +38,31 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
         tagline: servicesTable.tagline,
         price: servicesTable.price,
         billingType: servicesTable.billingType,
-        tenantAllowance: servicesTable.tenantAllowance,
-        aiCreditAllowance: servicesTable.aiCreditAllowance,
-        overageRateCents: servicesTable.overageRateCents,
-        tierCapabilities: servicesTable.tierCapabilities,
         features: servicesTable.features,
         inclusions: servicesTable.inclusions,
         badge: servicesTable.badge,
         highlighted: servicesTable.highlighted,
         sortOrder: servicesTable.sortOrder,
+        typeAttributes: servicesTable.typeAttributes,
       })
       .from(servicesTable)
       .where(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"))
       .orderBy(servicesTable.sortOrder);
+
+    // Flatten typeAttributes into the response for backward compat with the signup UI
+    const tiers = rawTiers.map(t => {
+      const attrs = (t.typeAttributes ?? {}) as Record<string, unknown>;
+      return {
+        ...t,
+        tenantAllowance: attrs.tenantAllowance ?? null,
+        aiCreditAllowance: attrs.aiCreditAllowancePlatformValue ?? attrs.aiCreditAllowance ?? null,
+      aiCreditAllowancePlatformValue: attrs.aiCreditAllowancePlatformValue ?? null,
+      aiCreditAllowanceMspValue: attrs.aiCreditAllowanceMspValue ?? null,
+      aiCreditOverageRateCents: attrs.aiCreditOverageRateCents ?? null,
+        overageRateCents: attrs.overageRateCents ?? null,
+        tierCapabilities: attrs.tierCapabilities ?? {},
+      };
+    });
 
     res.json({ tiers });
   } catch (err) {

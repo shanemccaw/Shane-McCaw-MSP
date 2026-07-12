@@ -132,8 +132,7 @@ export async function handleMspOverageMeter(
       stripeSubscriptionId: mspSubscriptionsTable.stripeSubscriptionId,
       stripeCustomerId: mspSubscriptionsTable.stripeCustomerId,
       tenantCountSnapshot: mspSubscriptionsTable.tenantCountSnapshot,
-      tenantAllowance: servicesTable.tenantAllowance,
-      overageRateCents: servicesTable.overageRateCents,
+      typeAttributes: servicesTable.typeAttributes,
     })
     .from(mspSubscriptionsTable)
     .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
@@ -157,8 +156,9 @@ export async function handleMspOverageMeter(
       updatedAt: new Date(),
     }).where(eq(mspSubscriptionsTable.id, sub.id));
 
-    const allowance = sub.tenantAllowance ?? 0;
-    const overageRateCents = sub.overageRateCents ?? 0;
+    const attrs = (sub.typeAttributes ?? {}) as Record<string, unknown>;
+    const allowance = Number(attrs.tenantAllowance ?? 0);
+    const overageRateCents = Number(attrs.overageRateCents ?? 0);
 
     if (allowance === 0 || overageRateCents === 0) continue;
 

@@ -183,7 +183,7 @@ router.post(
           deliveryType: servicesTable.deliveryType,
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
-          minMspPlanTier: servicesTable.minMspPlanTier,
+          typeAttributes: servicesTable.typeAttributes,
         })
         .from(servicesTable)
         .where(eq(servicesTable.id, offer.serviceId))
@@ -196,10 +196,11 @@ router.post(
         trialPeriodDays = svc.trialPeriodDays ?? null;
         allowFreeCheckout = svc.allowFreeCheckout;
 
-        // Gate Monitoring Tier services on minMspPlanTier
+        // Gate Monitoring Tier services on minMspPlanTier (now in typeAttributes)
         const pType = detectProductType(svc.serviceClass, svc.deliveryType);
-        if (pType === "monitoring_tier" && svc.minMspPlanTier) {
-          const tierCheck = await checkMspMinTierSatisfied(mspId, svc.minMspPlanTier);
+        const minMspPlanTier = ((svc.typeAttributes ?? {}) as Record<string, unknown>).minMspPlanTier as string | undefined;
+        if (pType === "monitoring_tier" && minMspPlanTier) {
+          const tierCheck = await checkMspMinTierSatisfied(mspId, minMspPlanTier);
           if (!tierCheck.ok) {
             apiErr(res, 402, `This Monitoring Tier service requires a "${tierCheck.requiredTier}" platform subscription or higher. Your current tier is "${tierCheck.currentTier}". Please upgrade to continue.`);
             return;

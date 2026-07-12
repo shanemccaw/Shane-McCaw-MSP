@@ -41,17 +41,26 @@ async function loadTier(mspId: number) {
       serviceId: mspSubscriptionsTable.serviceId,
       status: mspSubscriptionsTable.status,
       dunningState: mspSubscriptionsTable.dunningState,
-      tenantAllowance: servicesTable.tenantAllowance,
-      aiCreditAllowance: servicesTable.aiCreditAllowance,
-      overageRateCents: servicesTable.overageRateCents,
-      tierCapabilities: servicesTable.tierCapabilities,
+      typeAttributes: servicesTable.typeAttributes,
       tierName: servicesTable.name,
     })
     .from(mspSubscriptionsTable)
     .innerJoin(servicesTable, eq(servicesTable.id, mspSubscriptionsTable.serviceId))
     .where(eq(mspSubscriptionsTable.mspId, mspId))
     .limit(1);
-  return sub ?? null;
+  if (!sub) return null;
+
+  // Extract MSP platform tier fields from typeAttributes jsonb
+  const attrs = (sub.typeAttributes ?? {}) as Record<string, unknown>;
+  return {
+    ...sub,
+    tenantAllowance: typeof attrs.tenantAllowance === "number" ? attrs.tenantAllowance : null,
+    aiCreditAllowance: typeof attrs.aiCreditAllowancePlatformValue === "number"
+      ? attrs.aiCreditAllowancePlatformValue
+      : (typeof attrs.aiCreditAllowance === "number" ? attrs.aiCreditAllowance : null),
+    overageRateCents: typeof attrs.overageRateCents === "number" ? attrs.overageRateCents : null,
+    tierCapabilities: (attrs.tierCapabilities ?? {}) as Record<string, boolean>,
+  };
 }
 
 /**
