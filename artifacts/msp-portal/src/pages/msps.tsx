@@ -8,8 +8,23 @@ import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -22,6 +37,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -31,6 +47,7 @@ import { toast } from "sonner";
 interface Msp {
   id: number;
   name: string;
+  slug: string;
   status: string;
   customerCount?: number;
   offboardingState?: string | null;
@@ -49,9 +66,29 @@ const STATUS_COLORS: Record<string, string> = {
   inactive: "bg-muted text-muted-foreground border-border",
   suspended: "bg-amber-500/15 text-amber-400 border-amber-500/20",
   archived: "bg-muted text-muted-foreground border-border",
+  trial: "bg-blue-500/15 text-blue-400 border-blue-500/20",
 };
 
 const PAGE_SIZE = 20;
+
+const SLUG_RE = /^[a-z0-9-]*$/;
+
+interface CreateMspForm {
+  name: string;
+  slug: string;
+  domain: string;
+  status: "trial" | "active";
+}
+
+const EMPTY_FORM: CreateMspForm = { name: "", slug: "", domain: "", status: "trial" };
+
+function slugify(str: string) {
+  return str
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export default function MspsPage() {
   const { fetchWithAuth, user } = useAuth();
@@ -60,6 +97,13 @@ export default function MspsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Create MSP dialog state
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [form, setForm] = useState<CreateMspForm>(EMPTY_FORM);
+  const [slugManual, setSlugManual] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
   const fetchMsps = useCallback(
     async (p = page, q = search) => {
@@ -86,6 +130,68 @@ export default function MspsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  function openDialog() {
+    setForm(EMPTY_FORM);
+    setSlugManual(false);
+    setServerError(null);
+    setDialogOpen(true);
+  }
+
+  function handleNameChange(name: string) {
+    setForm((prev) => ({
+      ...prev,
+      name,
+      slug: slugManual ? prev.slug : slugify(name),
+    }));
+  }
+
+  function handleSlugChange(slug: string) {
+    if (SLUG_RE.test(slug)) {
+      setForm((prev) => ({ ...prev, slug }));
+      setSlugManual(true);
+    }
+  }
+
+  function validate(): string | null {
+    if (form.name.trim().length < 2) return "Name must be at least 2 characters.";
+    if (form.slug.length < 2) return "Slug must be at least 2 characters.";
+    if (!SLUG_RE.test(form.slug)) return "Slug must be lowercase letters, numbers, and hyphens only.";
+    return null;
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const err = validate();
+    if (err) { setServerError(err); return; }
+
+    setServerError(null);
+    setSubmitting(true);
+    try {
+      const res = await fetchWithAuth("/api/admin/msps", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          slug: form.slug,
+          domain: form.domain.trim() || undefined,
+          status: form.status,
+        }),
+      });
+      const body = (await res.json()) as Msp & { error?: string };
+      if (!res.ok) {
+        setServerError(body.error ?? "Failed to create MSP");
+        return;
+      }
+      toast.success(`MSP "${body.name}" created`);
+      setDialogOpen(false);
+      setMsps((prev) => [body, ...prev]);
+      setTotal((t) => t + 1);
+    } catch {
+      setServerError("Unexpected error — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   if (user?.mspRole !== "PlatformAdmin") {
     return (
       <AppShell title="MSPs">
@@ -99,7 +205,7 @@ export default function MspsPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const actions = (
-    <Button size="sm" className="gap-1.5" onClick={() => toast.info("MSP creation coming soon")}>
+    <Button size="sm" className="gap-1.5" onClick={openDialog}>
       <Plus className="size-3.5" />
       Add MSP
     </Button>
@@ -208,6 +314,95 @@ export default function MspsPage() {
           </div>
         </div>
       </div>
+
+      {/* Create MSP dialog */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!submitting) setDialogOpen(open); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add MSP</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="msp-name">Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="msp-name"
+                placeholder="Contoso IT Services"
+                value={form.name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                disabled={submitting}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="msp-slug">
+                Slug <span className="text-destructive">*</span>
+                <span className="ml-1 text-xs text-muted-foreground font-normal">(URL-safe identifier)</span>
+              </Label>
+              <Input
+                id="msp-slug"
+                placeholder="contoso-it"
+                value={form.slug}
+                onChange={(e) => handleSlugChange(e.target.value)}
+                disabled={submitting}
+                className="h-9 text-sm font-mono"
+              />
+              <p className="text-xs text-muted-foreground">
+                Lowercase letters, numbers, and hyphens only.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="msp-domain">Domain <span className="text-muted-foreground text-xs font-normal">(optional)</span></Label>
+              <Input
+                id="msp-domain"
+                placeholder="contoso.com"
+                value={form.domain}
+                onChange={(e) => setForm((prev) => ({ ...prev, domain: e.target.value }))}
+                disabled={submitting}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="msp-status">Status</Label>
+              <Select
+                value={form.status}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, status: v as "trial" | "active" }))}
+                disabled={submitting}
+              >
+                <SelectTrigger id="msp-status" className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trial">Trial</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {serverError && (
+              <p className="text-sm text-destructive">{serverError}</p>
+            )}
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setDialogOpen(false)}
+                disabled={submitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={submitting}>
+                {submitting && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                Create MSP
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }

@@ -16,6 +16,7 @@ import { useMspSlug } from "@/lib/slug-context";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,6 +56,24 @@ import {
   Search,
   Tag,
 } from "lucide-react";
+
+// ── Create Customer form ───────────────────────────────────────────────────────
+
+interface CreateCustomerForm {
+  name: string;
+  domain: string;
+  industry: string;
+  tenantId: string;
+  status: "active" | "onboarding" | "inactive";
+}
+
+const EMPTY_CUSTOMER_FORM: CreateCustomerForm = {
+  name: "",
+  domain: "",
+  industry: "",
+  tenantId: "",
+  status: "onboarding",
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -110,6 +129,12 @@ export default function CustomersPage() {
   const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [bundleDialogOpen, setBundleDialogOpen] = useState(false);
   const [tagDialogOpen, setTagDialogOpen] = useState(false);
+
+  // Create customer dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateCustomerForm>(EMPTY_CUSTOMER_FORM);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Bundle picker
   const [bundles, setBundles] = useState<Bundle[]>([]);
@@ -268,6 +293,50 @@ export default function CustomersPage() {
     }
   }
 
+  function openCreateDialog() {
+    setCreateForm(EMPTY_CUSTOMER_FORM);
+    setCreateError(null);
+    setCreateDialogOpen(true);
+  }
+
+  async function handleCreateSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (createForm.name.trim().length < 2) {
+      setCreateError("Name must be at least 2 characters.");
+      return;
+    }
+    setCreateError(null);
+    setCreateSubmitting(true);
+    try {
+      const params = new URLSearchParams();
+      if (mspSlug) params.set("slug", mspSlug);
+      const url = `/api/msp/customers${params.toString() ? `?${params}` : ""}`;
+      const res = await fetchWithAuth(url, {
+        method: "POST",
+        body: JSON.stringify({
+          name: createForm.name.trim(),
+          domain: createForm.domain.trim() || undefined,
+          industry: createForm.industry.trim() || undefined,
+          tenantId: createForm.tenantId.trim() || undefined,
+          status: createForm.status,
+        }),
+      });
+      const body = (await res.json()) as Customer & { error?: string };
+      if (!res.ok) {
+        setCreateError(body.error ?? "Failed to create customer");
+        return;
+      }
+      toast.success(`Customer "${body.name}" created`);
+      setCreateDialogOpen(false);
+      setCustomers((prev) => [body, ...prev]);
+      setTotal((t) => t + 1);
+    } catch {
+      setCreateError("Unexpected error — please try again.");
+    } finally {
+      setCreateSubmitting(false);
+    }
+  }
+
   async function exportCSV() {
     setBulkLoading(true);
     try {
@@ -297,11 +366,7 @@ export default function CustomersPage() {
   const someChecked = selected.size > 0 && selected.size < customers.length;
 
   const actions = (
-    <Button
-      size="sm"
-      className="gap-1.5"
-      onClick={() => toast.info("Customer creation coming soon")}
-    >
+    <Button size="sm" className="gap-1.5" onClick={openCreateDialog}>
       <Plus className="size-3.5" />
       Add Customer
     </Button>
@@ -625,6 +690,113 @@ export default function CustomersPage() {
               Apply Tags
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Customer dialog */}
+      <Dialog
+        open={createDialogOpen}
+        onOpenChange={(open) => { if (!createSubmitting) setCreateDialogOpen(open); }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Customer</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => void handleCreateSubmit(e)} className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-name">Name <span className="text-destructive">*</span></Label>
+              <Input
+                id="cust-name"
+                placeholder="Acme Corporation"
+                value={createForm.name}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+                disabled={createSubmitting}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-domain">
+                Domain <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="cust-domain"
+                placeholder="acme.com"
+                value={createForm.domain}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, domain: e.target.value }))}
+                disabled={createSubmitting}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-industry">
+                Industry <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="cust-industry"
+                placeholder="Manufacturing"
+                value={createForm.industry}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, industry: e.target.value }))}
+                disabled={createSubmitting}
+                className="h-9 text-sm"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-tenant">
+                M365 Tenant ID <span className="text-muted-foreground text-xs font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="cust-tenant"
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                value={createForm.tenantId}
+                onChange={(e) => setCreateForm((prev) => ({ ...prev, tenantId: e.target.value }))}
+                disabled={createSubmitting}
+                className="h-9 text-sm font-mono"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-status">Status</Label>
+              <Select
+                value={createForm.status}
+                onValueChange={(v) =>
+                  setCreateForm((prev) => ({ ...prev, status: v as "active" | "onboarding" | "inactive" }))
+                }
+                disabled={createSubmitting}
+              >
+                <SelectTrigger id="cust-status" className="h-9 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="onboarding">Onboarding</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {createError && (
+              <p className="text-sm text-destructive">{createError}</p>
+            )}
+
+            <DialogFooter className="pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setCreateDialogOpen(false)}
+                disabled={createSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={createSubmitting}>
+                {createSubmitting && <Loader2 className="size-3.5 mr-1.5 animate-spin" />}
+                Create Customer
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </AppShell>

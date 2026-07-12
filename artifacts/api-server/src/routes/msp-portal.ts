@@ -13,6 +13,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, mspsTable, mspCustomersTable, mspEventStoreTable, mspAuditLogsTable, salesOffersTable, mspSalesBundlesTable, mspUsersTable, mspSalesBundleAssignmentsTable } from "@workspace/db";
 import { eq, and, count, sql, gte, like, sum, or, desc, ilike, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { hashBody, checkIdempotency, recordIdempotency } from "../lib/idempotency.ts";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { getAiBalance } from "../lib/ai-billing.ts";
@@ -853,6 +854,70 @@ router.post(
     } catch (err) {
       req.log.error({ err }, "msp-portal: bulk action failed");
       res.status(500).json({ error: "Bulk action failed" });
+    }
+  },
+);
+
+// ── POST /api/msp/customers ────────────────────────────────────────────────────
+// Manually create a customer under the authenticated MSP.
+// PlatformAdmin may pass ?slug= to target a specific MSP.
+
+const createCustomerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(200),
+  domain: z.string().max(253).optional(),
+  industry: z.string().max(120).optional(),
+  tenantId: z.string().max(36).optional(),
+  status: z.enum(["active", "onboarding", "inactive"]).default("onboarding"),
+});
+
+router.post(
+  "/msp/customers",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = await resolveMspIdOrZero(req);
+      if (!mspId) {
+        res.status(400).json({ error: "mspId required" });
+        return;
+      }
+
+      const parsed = createCustomerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+        return;
+      }
+      const data = parsed.data;
+
+      const [customer] = await db
+        .insert(mspCustomersTable)
+        .values({
+          mspId,
+          name: data.name,
+          domain: data.domain ?? undefined,
+          industry: data.industry ?? undefined,
+          tenantId: data.tenantId ?? undefined,
+          status: data.status,
+          ownerType: "customer",
+        })
+        .returning();
+
+      await db.insert(mspAuditLogsTable).values({
+        actorUserId: req.user!.id,
+        actorRole: req.user!.mspRole ?? "MSPAdmin",
+        mspId,
+        actionType: "customer.create",
+        entityType: "customer",
+        entityId: String(customer!.id),
+        entityLabel: customer!.name,
+        outcome: "success",
+        metadata: { domain: data.domain, industry: data.industry, status: data.status },
+      });
+
+      req.log.info({ mspId, customerId: customer!.id }, "msp-portal: customer created");
+      res.status(201).json(customer);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer create failed");
+      res.status(500).json({ error: "Failed to create customer" });
     }
   },
 );
