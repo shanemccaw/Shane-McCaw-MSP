@@ -994,6 +994,59 @@ router.get(
   },
 );
 
+// ── GET /api/msp/customers/:id ────────────────────────────────────────────────
+// Returns full detail for a single customer scoped to the authenticated MSP.
+
+router.get(
+  "/msp/customers/:id",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(String(req.params.id ?? ""), 10);
+      if (isNaN(customerId)) {
+        res.status(400).json({ error: "Invalid customer id" });
+        return;
+      }
+      const mspId = await resolveMspIdOrZero(req);
+
+      const rows = await db
+        .select({
+          id: mspCustomersTable.id,
+          name: mspCustomersTable.name,
+          domain: mspCustomersTable.domain,
+          status: mspCustomersTable.status,
+          tenantId: mspCustomersTable.tenantId,
+          industry: mspCustomersTable.industry,
+          ownerType: mspCustomersTable.ownerType,
+          tags: mspCustomersTable.tags,
+          mspId: mspCustomersTable.mspId,
+          mspName: mspsTable.name,
+          createdAt: mspCustomersTable.createdAt,
+          updatedAt: mspCustomersTable.updatedAt,
+        })
+        .from(mspCustomersTable)
+        .innerJoin(mspsTable, eq(mspsTable.id, mspCustomersTable.mspId))
+        .where(
+          and(
+            eq(mspCustomersTable.id, customerId),
+            ...(mspId ? [eq(mspCustomersTable.mspId, mspId)] : []),
+          ),
+        )
+        .limit(1);
+
+      if (rows.length === 0) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      res.json(rows[0]);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer detail failed");
+      res.status(500).json({ error: "Failed to fetch customer" });
+    }
+  },
+);
+
 // ── GET /api/portal/msp-suspension ────────────────────────────────────────────
 // Customer-facing endpoint: returns whether the customer's parent MSP has been
 // suspended for 7+ days. Deliberately omits billing/payment specifics — only
