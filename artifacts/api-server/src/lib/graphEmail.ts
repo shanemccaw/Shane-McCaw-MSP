@@ -1,5 +1,5 @@
 import { logger } from "./logger";
-import { getAccessToken, graphCredentialsPresent } from "./graph";
+import { getAccessToken, graphCredentialsPresent, markTenantConsentRevoked } from "./graph";
 
 export class GraphMailConfigError extends Error {
   constructor(message: string) {
@@ -316,6 +316,14 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
     if (res.status === 401) {
       const text = await res.text();
       logger.warn({ status: 401, body: text }, "sendMessage: Graph returned 401");
+      const isConsentError =
+        res.status === 401 ||
+        text.includes("invalid_grant") ||
+        text.includes("AADSTS65001") ||
+        text.includes("consent_required");
+      if (isConsentError) {
+        await markTenantConsentRevoked(process.env.GRAPH_TENANT_ID ?? "");
+      }
       throw new GraphMailConfigError(
         "Exchange Online authentication failed (401) — credentials may be expired or the service principal is missing the Mail.Send application permission"
       );
@@ -324,6 +332,13 @@ export async function sendMessage(opts: SendMessageOpts): Promise<boolean> {
     if (res.status === 403) {
       const text = await res.text();
       logger.warn({ status: 403, body: text }, "sendMessage: Graph returned 403");
+      if (
+        text.includes("invalid_grant") ||
+        text.includes("AADSTS65001") ||
+        text.includes("consent_required")
+      ) {
+        await markTenantConsentRevoked(process.env.GRAPH_TENANT_ID ?? "");
+      }
       throw new GraphMailConfigError(
         "Exchange Online authorization failed (403) — ensure the Mail.Send application permission has been admin-consented in Azure AD"
       );

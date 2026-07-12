@@ -1446,12 +1446,6 @@ If `clientId` cannot be resolved or is `NaN`, the node returns `{ skipped: true,
 
 ---
 
-### `system_action` _(retired)_
-
-**This node type is retired.** All seeded system workflows that previously used `system_action` have been rebuilt using composable typed nodes (`sql_query`, `reconcile_orphaned_runs`, `monitor_execute_package`). Any graph still containing a `system_action` node will receive a compat patch on next server startup via `seedSystemWorkflows`. In live runs, the executor logs a deprecation warning and returns `{ skipped: true }` without performing any action.
-
----
-
 ### `error`
 
 A visual error handler node. Placed on `onError` edges. Has no special execution logic — it is a structural marker node that the builder uses to render error paths clearly. Execution falls through to any downstream nodes.

@@ -36,11 +36,13 @@ export function mspRequestLog(req: Request, res: Response, next: NextFunction): 
   const user = req.user as AuthUser | undefined;
 
   const mspId = user?.mspId ?? null;
+  const customerId = (user as (AuthUser & { customerId?: number | null }) | undefined)?.customerId ?? null;
   const actor = user ? { id: user.id, role: user.mspRole ?? user.role } : null;
 
   res.locals["traceId"] = traceId;
   res.locals["requestId"] = traceId;
   res.locals["mspId"] = mspId;
+  res.locals["customerId"] = customerId;
   res.locals["actor"] = actor;
 
   // Echo the traceId so the caller can find their logs
@@ -50,7 +52,7 @@ export function mspRequestLog(req: Request, res: Response, next: NextFunction): 
   // pino-http attaches a child logger as req.log — we rebind it here.
   const reqAny = req as Request & { log?: { child?: (bindings: Record<string, unknown>) => unknown } };
   if (reqAny.log?.child) {
-    reqAny.log = reqAny.log.child({ traceId, mspId, actor }) as typeof reqAny.log;
+    reqAny.log = reqAny.log.child({ traceId, mspId, customerId, actor }) as typeof reqAny.log;
   }
 
   next();

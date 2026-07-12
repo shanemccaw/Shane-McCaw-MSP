@@ -4,7 +4,7 @@ import {
   workflowStepsTable, kanbanTasksTable, invoicesTable, notificationsTable, projectUpdatesTable,
   workflowTemplatesTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, isNull, and } from "drizzle-orm";
 
 /**
  * Seeds the "M365 Onboarding Workflow" template and the "M365 Health Check Project"
@@ -76,7 +76,7 @@ export async function seedMarketingServices(): Promise<void> {
   await db
     .update(servicesTable)
     .set({ serviceType: "retainer", pageHref: "/pricing" })
-    .where(inArray(servicesTable.slug, staleSlugs));
+    .where(and(inArray(servicesTable.slug, staleSlugs), isNull(servicesTable.pageHref)));
 
   // Guard: if any of our canonical seed slugs already exist, this environment was
   // previously seeded. Respect admin deletions — never re-insert a service that
@@ -102,7 +102,7 @@ export async function seedMarketingServices(): Promise<void> {
       { slug: "microsoft-365-training--enablement",     pageHref: "/quick-wins/m365-training-enablement",      pageSlug: "m365-training-enablement" },
     ];
     for (const { slug, pageHref, pageSlug } of microOfferPageHrefs) {
-      await db.update(servicesTable).set({ pageHref, pageSlug }).where(eq(servicesTable.slug, slug));
+      await db.update(servicesTable).set({ pageHref, pageSlug }).where(and(eq(servicesTable.slug, slug), isNull(servicesTable.pageHref)));
     }
     void sqlTag;
     return;
@@ -267,7 +267,7 @@ export async function seedMarketingServices(): Promise<void> {
     await db
       .update(servicesTable)
       .set({ pageHref, pageSlug })
-      .where(eq(servicesTable.slug, slug));
+      .where(and(eq(servicesTable.slug, slug), isNull(servicesTable.pageHref)));
   }
   const retainers = [
     {
