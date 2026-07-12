@@ -386,7 +386,7 @@ export default function Checkout() {
         productSlug: slug,
         fullName: data.name,
         email: data.email,
-        seats,
+        seats: effectiveSeats,
       });
       saveSessionId(newSessionId);
       // Cache guestInfo in localStorage so it survives the cross-origin consent redirect.
