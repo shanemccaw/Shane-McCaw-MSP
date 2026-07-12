@@ -124,7 +124,7 @@ export default function ConsentDeclinedPage() {
           <Button
             className="flex-1"
             onClick={() => {
-              window.location.href = "/portal";
+              window.location.href = "/portal/";
             }}
           >
             Return to portal

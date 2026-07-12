@@ -58,7 +58,7 @@ export default function ConsentSuccessPage() {
         <Button
           className="w-full"
           onClick={() => {
-            window.location.href = "/portal";
+            window.location.href = "/portal/";
           }}
         >
           Go to portal
