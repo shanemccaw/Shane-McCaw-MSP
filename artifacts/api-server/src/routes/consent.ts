@@ -10,6 +10,7 @@
  *   GET  /api/consent/callback
  *     Microsoft redirects here after the customer's admin approves (or declines).
  *     Burns the single-use token, upserts tenant_consent, redirects to a result page.
+ *     Also handles checkout-session state (UUID) — marks the session consented.
  *
  *   GET  /api/consent/declined
  *     Shown when the admin clicked "No" at the Microsoft screen — never a blank page.
@@ -23,7 +24,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable } from "@workspace/db";
+import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
@@ -31,6 +32,9 @@ import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
+
+// UUID v4 pattern — checkout session IDs are UUIDs, invite tokens are 64-char hex.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -110,7 +114,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   if (error === "access_denied" || error_subcode === "cancel") {
     logger.warn({ tenant, state, error, error_subcode }, "Consent callback: admin declined");
 
-    if (state) {
+    if (state && !UUID_RE.test(state)) {
+      // Burn the invite token on decline too
       await db
         .update(consentInviteTokensTable)
         .set({ usedAt: new Date() })
@@ -142,9 +147,12 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     return;
   }
 
-  // Validate and burn the invite token
+  // Determine whether `state` is a checkout session UUID or an MSP invite token.
+  const isCheckoutSession = !!state && UUID_RE.test(state);
+
+  // Validate and burn the invite token (only for non-UUID state values)
   let inviteRecord: { customerId: number | null; clientUserId: number | null } | null = null;
-  if (state) {
+  if (state && !isCheckoutSession) {
     const now = new Date();
     const [row] = await db
       .select({ customerId: consentInviteTokensTable.customerId, clientUserId: consentInviteTokensTable.clientUserId })
@@ -197,9 +205,47 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       },
     });
 
-  logger.info({ tenant, customerId: inviteRecord?.customerId }, "Tenant admin consent granted");
+  logger.info({ tenant, customerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
 
-  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`);
+  // If the state was a checkout session UUID, mark it consented and thread it
+  // into the redirect so ConsentSuccessPage can show the "Continue to payment" CTA.
+  let successRedirect = `${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`;
+
+  if (isCheckoutSession && state) {
+    const now = new Date();
+    const [updatedSession] = await db
+      .update(checkoutSessionsTable)
+      .set({
+        status: "consented",
+        tenantId: tenant,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(checkoutSessionsTable.id, state),
+          gte(checkoutSessionsTable.expiresAt, now),
+        ),
+      )
+      .returning({ id: checkoutSessionsTable.id, email: checkoutSessionsTable.email });
+
+    if (updatedSession) {
+      // Copy the session admin email onto the tenant_consent row so it's available for provisioning
+      await db
+        .update(tenantConsentTable)
+        .set({ adminEmail: updatedSession.email, updatedAt: new Date() })
+        .where(eq(tenantConsentTable.tenantId, tenant))
+        .catch(() => {
+          // adminEmail column may not exist in all environments — non-fatal
+        });
+
+      successRedirect += `&session=${encodeURIComponent(state)}`;
+      logger.info({ sessionId: state, tenant }, "Checkout session marked consented via consent callback");
+    } else {
+      logger.warn({ sessionId: state, tenant }, "Consent callback: checkout session not found or expired — redirect proceeds without session");
+    }
+  }
+
+  res.redirect(successRedirect);
 });
 
 // ── GET /api/consent/declined ──────────────────────────────────────────────────

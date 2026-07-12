@@ -1,12 +1,53 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShieldCheck, ArrowRight } from "lucide-react";
+import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
+
+interface CheckoutSessionInfo {
+  productSlug: string;
+  status: string;
+}
+
+const PRODUCT_NAMES: Record<string, string> = {
+  "m365-jumpstart": "Microsoft 365 Jumpstart",
+  "copilot-readiness": "Copilot AI Readiness Assessment",
+  "sharepoint-intranet": "SharePoint Intranet Build",
+  "governance-health": "Governance Health Check",
+  "power-automate": "Power Platform Automation",
+  "tenant-migration": "Microsoft 365 Tenant Migration",
+};
+
+function getProductName(slug: string): string {
+  return PRODUCT_NAMES[slug] ?? slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 export default function ConsentSuccessPage() {
   const params = new URLSearchParams(
     typeof window !== "undefined" ? window.location.search : "",
   );
   const tenant = params.get("tenant");
+  const sessionId = params.get("session");
+
+  const [sessionInfo, setSessionInfo] = useState<CheckoutSessionInfo | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(!!sessionId);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    setSessionLoading(true);
+    fetch(`/api/public/checkout-session/${encodeURIComponent(sessionId)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<CheckoutSessionInfo>) : null))
+      .then((d) => setSessionInfo(d))
+      .catch(() => setSessionInfo(null))
+      .finally(() => setSessionLoading(false));
+  }, [sessionId]);
+
+  const productName = sessionInfo ? getProductName(sessionInfo.productSlug) : null;
+
+  function handleContinueToPayment() {
+    if (!sessionInfo) return;
+    const base = window.location.origin;
+    window.location.href = `${base}/checkout?product=${encodeURIComponent(sessionInfo.productSlug)}&session=${encodeURIComponent(sessionId ?? "")}`;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -54,16 +95,36 @@ export default function ConsentSuccessPage() {
           </ol>
         </div>
 
-        {/* Action */}
-        <Button
-          className="w-full"
-          onClick={() => {
-            window.location.href = "/portal/";
-          }}
-        >
-          Go to portal
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Button>
+        {/* Action — shows "Continue to payment" when session is present, else portal link */}
+        {sessionId ? (
+          sessionLoading ? (
+            <Button className="w-full" disabled>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading…
+            </Button>
+          ) : sessionInfo ? (
+            <Button className="w-full" onClick={handleContinueToPayment}>
+              Continue to payment{productName ? ` for ${productName}` : ""}
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          ) : (
+            <Button
+              className="w-full"
+              onClick={() => { window.location.href = "/portal/"; }}
+            >
+              Go to portal
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          )
+        ) : (
+          <Button
+            className="w-full"
+            onClick={() => { window.location.href = "/portal/"; }}
+          >
+            Go to portal
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        )}
 
         <p className="text-center text-xs text-muted-foreground">
           If you have any questions, please contact your MSP directly.

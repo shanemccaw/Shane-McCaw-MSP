@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -5031,6 +5031,37 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
           await db.update(contractsTable)
             .set({ userId: webhookUserIdOverride })
             .where(and(eq(contractsTable.guestEmail, guestEmailMeta), isNull(contractsTable.userId)));
+
+          // Mark checkout_session as paid (if one was created for this email).
+          // Also back-populate tenant_consent with the new client user ID so that
+          // admins can see which Microsoft tenant the buyer's organisation is on.
+          const now = new Date();
+          const [paidSession] = await db
+            .update(checkoutSessionsTable)
+            .set({ status: "paid", updatedAt: now })
+            .where(
+              and(
+                eq(checkoutSessionsTable.email, guestEmailMeta),
+                eq(checkoutSessionsTable.status, "consented"),
+                gte(checkoutSessionsTable.expiresAt, now),
+              ),
+            )
+            .returning({ tenantId: checkoutSessionsTable.tenantId });
+
+          if (paidSession?.tenantId) {
+            // Populate tenant_consent.client_user_id with the newly-created account.
+            // Note: tenant_consent.customer_id references msp_customers.id (FK constrained).
+            // For direct-buyer checkout flows there is no msp_customers record, so
+            // customer_id remains null. client_user_id is the correct field to link here.
+            await db
+              .update(tenantConsentTable)
+              .set({ clientUserId: acct.id, updatedAt: now })
+              .where(eq(tenantConsentTable.tenantId, paidSession.tenantId))
+              .catch((linkErr: unknown) => {
+                req.log.warn({ err: linkErr, tenantId: paidSession.tenantId }, "onboarding_purchase: failed to link clientUserId to tenant_consent (non-fatal)");
+              });
+            req.log.info({ tenantId: paidSession.tenantId, userId: acct.id }, "onboarding_purchase: checkout_session marked paid, tenant_consent linked");
+          }
         }
       }
 

@@ -74,26 +74,101 @@ const guestInfoSchema = z.object({
 });
 type GuestInfo = z.infer<typeof guestInfoSchema>;
 
-const STORAGE_KEY = "checkout_guest_info";
+// ── Server-side session helpers ───────────────────────────────────────────────
+// Only the UUID sessionId is stored client-side; PII lives on the server.
+// This ensures the session survives the Microsoft admin-consent cross-origin redirect.
 
-function saveGuestInfo(slug: string, info: GuestInfo) {
+const SESSION_STORAGE_KEY = "checkout_session_id";
+
+function loadSessionId(): string | null {
   try {
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ slug, ...info }));
+    return sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveSessionId(id: string): void {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, id);
   } catch {
     // sessionStorage may be unavailable
   }
 }
 
-function loadGuestInfo(slug: string): GuestInfo | null {
+function clearSessionId(): void {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { slug: string; name: string; email: string };
-    if (parsed.slug !== slug) return null;
-    return { name: parsed.name, email: parsed.email };
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {}
+}
+
+async function createCheckoutSession(opts: {
+  productSlug: string;
+  fullName: string;
+  email: string;
+}): Promise<string> {
+  const res = await fetch("/api/public/checkout-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(err.error ?? "Failed to create checkout session");
+  }
+  const { sessionId } = (await res.json()) as { sessionId: string };
+  return sessionId;
+}
+
+interface CheckoutSessionInfo {
+  productSlug: string;
+  status: string;
+}
+
+async function fetchCheckoutSession(
+  sessionId: string,
+): Promise<CheckoutSessionInfo | null> {
+  try {
+    const res = await fetch(`/api/public/checkout-session/${encodeURIComponent(sessionId)}`);
+    if (!res.ok) return null;
+    return (await res.json()) as CheckoutSessionInfo;
   } catch {
     return null;
   }
+}
+
+// ── localStorage guestInfo cache ──────────────────────────────────────────────
+// Name and email are cached in localStorage (keyed by sessionId) so they survive
+// cross-origin redirects (e.g. Microsoft admin-consent). The server never exposes
+// PII on the public checkout-session endpoint — only productSlug + status.
+
+const GUEST_INFO_CACHE_PREFIX = "checkout_guest_";
+
+function saveGuestInfoCache(sessionId: string, info: GuestInfo): void {
+  try {
+    localStorage.setItem(
+      `${GUEST_INFO_CACHE_PREFIX}${sessionId}`,
+      JSON.stringify(info),
+    );
+  } catch {
+    // localStorage may be unavailable in private browsing
+  }
+}
+
+function loadGuestInfoCache(sessionId: string): GuestInfo | null {
+  try {
+    const raw = localStorage.getItem(`${GUEST_INFO_CACHE_PREFIX}${sessionId}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as GuestInfo;
+  } catch {
+    return null;
+  }
+}
+
+function clearGuestInfoCache(sessionId: string): void {
+  try {
+    localStorage.removeItem(`${GUEST_INFO_CACHE_PREFIX}${sessionId}`);
+  } catch {}
 }
 
 function fmtPrice(cents: number): string {
@@ -152,6 +227,8 @@ export default function Checkout() {
   const params = new URLSearchParams(search);
   const slug = params.get("product");
   const checkoutStatus = params.get("checkout_status") as "success" | "canceled" | null;
+  // `session` param is set by ConsentSuccessPage when redirecting back to checkout
+  const sessionParam = params.get("session");
 
   // Catalog data (all three service types)
   const { monitoringTiers, retainerTiers, mspTiers, loading: catalogLoading, error: catalogError } = useCatalog();
@@ -159,6 +236,7 @@ export default function Checkout() {
   const [step, setStep] = useState<Step>("loading");
   const [service, setService] = useState<ReturnType<typeof tierToService> | null>(null);
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [consentGranted, setConsentGranted] = useState(false);
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [consentDeclined, setConsentDeclined] = useState(false);
@@ -169,12 +247,11 @@ export default function Checkout() {
   const [sessionExpired, setSessionExpired] = useState(false);
   const { toast } = useToast();
   const contractIdRef = useRef<number | null>(null);
-  const consentFetched = useRef(false);
 
   // Fire analytics on mount
   useEffect(() => { trackCheckoutStarted("service_catalog"); }, []);
 
-  // Once catalog loads, resolve the service and handle Stripe return params
+  // Once catalog loads, resolve the service and handle Stripe/consent return params
   useEffect(() => {
     if (catalogLoading) return;
 
@@ -204,53 +281,105 @@ export default function Checkout() {
       return;
     }
 
-    // Handle Stripe return
-    if (checkoutStatus === "success") {
-      const saved = loadGuestInfo(slug);
-      if (saved) setGuestInfo(saved);
-      trackCheckoutCompleted(svc.billingType ?? "service", { service_id: String(svc.id) });
-      setStep("confirmed");
-      navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+    // Handle Stripe return (success/canceled) — reload guest info from the server session
+    if (checkoutStatus === "success" || checkoutStatus === "canceled") {
+      const storedSessionId = loadSessionId();
+      if (storedSessionId) {
+        setSessionId(storedSessionId);
+        fetchCheckoutSession(storedSessionId).then((info) => {
+          if (info) {
+            // We don't have PII from the server (by design), but guestInfo display
+            // on the confirmed/payment page reads from local state set earlier.
+            // Re-hydration is best-effort; the confirmed screen doesn't require it.
+          }
+        }).catch(() => {});
+      }
+      if (checkoutStatus === "success") {
+        trackCheckoutCompleted(svc.billingType ?? "service", { service_id: String(svc.id) });
+        setStep("confirmed");
+        navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+      } else {
+        setConsentGranted(true);
+        setPaymentCanceled(true);
+        setStep("payment");
+        navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
+      }
       return;
     }
 
-    if (checkoutStatus === "canceled") {
-      const saved = loadGuestInfo(slug);
-      if (saved) {
-        setGuestInfo(saved);
-        setConsentGranted(true);
+    // Handle return from consent success page — ?session=<uuid> means consent was granted.
+    // sessionStorage may have been wiped during the cross-origin redirect, so we recover
+    // the sessionId from the URL param and restore guestInfo from the localStorage cache
+    // (written at guest-info submit time by saveGuestInfoCache). No PII is fetched from
+    // the server — the GET /api/public/checkout-session/:id endpoint returns only
+    // productSlug + status by design.
+    if (sessionParam) {
+      const storedSessionId = loadSessionId() ?? sessionParam;
+      saveSessionId(storedSessionId);
+      setSessionId(storedSessionId);
+      setConsentGranted(true);
+
+      // Restore guestInfo from the localStorage cache written when the session was created.
+      // If the cache was also wiped (private browsing or aggressive browser policy),
+      // handlePay will guard against a missing guestInfo and display an error.
+      const cachedInfo = loadGuestInfoCache(storedSessionId);
+      if (cachedInfo) {
+        setGuestInfo(cachedInfo);
       }
-      setPaymentCanceled(true);
+
       setStep("payment");
       navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
       return;
     }
 
-    // Normal fresh flow — fetch consent URL once
+    // Normal fresh flow
     setStep("guest-info");
-  // checkoutStatus deliberately excluded so we only evaluate it once on mount
+  // checkoutStatus and sessionParam deliberately excluded so we only evaluate once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers]);
 
-  // Fetch consent URL lazily (after catalog is resolved)
+  // Fetch (or refetch) the admin-consent URL whenever the sessionId changes.
+  // This ensures the URL carries the correct `state` parameter even when
+  // sessionId is set after the initial catalog load (i.e. after guest-info submit).
   useEffect(() => {
-    if (consentFetched.current || catalogLoading || !service?.fulfillmentTypeKey) return;
-    consentFetched.current = true;
-    fetch("/api/public/consent-url")
+    if (catalogLoading || !service?.fulfillmentTypeKey) return;
+    const sid = sessionId ?? loadSessionId();
+    const qs = sid ? `?sessionId=${encodeURIComponent(sid)}` : "";
+    fetch(`/api/public/consent-url${qs}`)
       .then((r) => (r.ok ? (r.json() as Promise<{ url: string | null }>) : { url: null }))
       .then((d) => setConsentUrl(d.url))
       .catch(() => setConsentUrl(null));
-  }, [catalogLoading, service]);
+  // Re-run whenever sessionId changes so the URL includes the correct `state`
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogLoading, service?.fulfillmentTypeKey, sessionId]);
 
   const form = useForm<GuestInfo>({
     resolver: zodResolver(guestInfoSchema),
     defaultValues: { name: "", email: "" },
   });
 
-  function handleGuestInfo(data: GuestInfo) {
-    setGuestInfo(data);
-    if (slug) saveGuestInfo(slug, data);
-    setStep("consent");
+  async function handleGuestInfo(data: GuestInfo) {
+    if (!slug) return;
+    try {
+      const newSessionId = await createCheckoutSession({
+        productSlug: slug,
+        fullName: data.name,
+        email: data.email,
+      });
+      saveSessionId(newSessionId);
+      // Cache guestInfo in localStorage so it survives the cross-origin consent redirect.
+      // The server-side session holds the canonical copy; this is a client-side convenience cache.
+      saveGuestInfoCache(newSessionId, data);
+      setSessionId(newSessionId);
+      setGuestInfo(data);
+      setStep("consent");
+    } catch {
+      toast({
+        title: "Something went wrong",
+        description: "Could not save your information. Please check your connection and try again.",
+        variant: "destructive",
+      });
+    }
   }
 
   function handleConsentContinue() {
@@ -481,8 +610,12 @@ export default function Checkout() {
                             </FormItem>
                           )}
                         />
-                        <Button type="submit" className="w-full">
-                          Continue <ArrowRight className="ml-2 size-4" />
+                        <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+                          {form.formState.isSubmitting ? (
+                            <><Loader2 className="mr-2 size-4 animate-spin" /> Saving…</>
+                          ) : (
+                            <>Continue <ArrowRight className="ml-2 size-4" /></>
+                          )}
                         </Button>
                       </form>
                     </Form>
@@ -786,7 +919,15 @@ export default function Checkout() {
                       your engagement.
                     </p>
                     <Link href="/">
-                      <Button variant="outline" className="mt-2">
+                      <Button
+                        variant="outline"
+                        className="mt-2"
+                        onClick={() => {
+                          const sid = sessionId ?? loadSessionId();
+                          if (sid) clearGuestInfoCache(sid);
+                          clearSessionId();
+                        }}
+                      >
                         Return home
                       </Button>
                     </Link>

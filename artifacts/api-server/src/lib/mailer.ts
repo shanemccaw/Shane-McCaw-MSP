@@ -1,8 +1,34 @@
-import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable } from "@workspace/db";
+import { db, emailTemplatesTable, emailEventsTable, clientHealthHistoryTable, mspMailboxConnectorsTable, mspsTable, failedNotificationsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { logger } from "./logger";
 import { graphCredentialsPresent, sendMailViaGraph, sendMailViaGraphForMsp, mtAppCredentialsPresent, ConsentRevokedError } from "./graph";
 import { computeTenantHealthVars } from "./tenant-signals";
+
+// ─── Credential check (logged at startup / first call) ────────────────────────
+// IMPLEMENTATION REPORT: GRAPH_MAIL_USER_ID and Mail.Send status.
+// If GRAPH_MAIL_USER_ID is absent the transport is unconfigured — retries cannot
+// help and the real fix is setting the secret and granting Mail.Send (Application)
+// to the service principal in Azure AD. The check below flags this at call time.
+let _credentialCheckLogged = false;
+function warnIfCredentialsMissing(): void {
+  if (_credentialCheckLogged) return;
+  _credentialCheckLogged = true;
+  const userId = process.env.GRAPH_MAIL_USER_ID;
+  if (!userId) {
+    logger.warn(
+      "EMAIL CONFIG ISSUE: GRAPH_MAIL_USER_ID secret is not set. " +
+      "All email sends will fail. To fix: set GRAPH_MAIL_USER_ID to the UPN or object ID " +
+      "of the sending mailbox, and grant the service principal Mail.Send (Application) " +
+      "permission in Azure AD with admin consent.",
+    );
+  } else if (!graphCredentialsPresent()) {
+    logger.warn(
+      "EMAIL CONFIG ISSUE: GRAPH_MAIL_USER_ID is set but Graph app credentials " +
+      "(GRAPH_CLIENT_ID / GRAPH_CLIENT_SECRET / GRAPH_TENANT_ID) are missing. " +
+      "Ensure the service principal has Mail.Send (Application) permission in Azure AD.",
+    );
+  }
+}
 
 // ─── Brand constants ──────────────────────────────────────────────────────────
 const BRAND_FROM = "Shane McCaw Consulting <noreply@shanemccaw.com>";
@@ -127,12 +153,14 @@ function getGraphSender(): Sender | null {
  * unless you pass `{ skipWrapper: true }`.
  *
  * Errors are caught and logged — use sendEmailOrThrow when you need confirmed delivery.
+ *
+ * @param opts.templateName - forwarded to sendEmailOrThrow for failed_notifications logging.
  */
 export async function sendEmail(
   to: string,
   subject: string,
   bodyHtml: string,
-  opts?: { skipWrapper?: boolean },
+  opts?: { skipWrapper?: boolean; templateName?: string },
 ): Promise<void> {
   try {
     await sendEmailOrThrow(to, subject, bodyHtml, opts);
@@ -145,27 +173,62 @@ export async function sendEmail(
  * Like sendEmail but throws on transport failure or missing configuration.
  * Use this when the caller needs confirmed delivery (e.g. a route that must
  * return an error to the client if the email could not be sent).
+ *
+ * Retry behaviour: if the Graph send throws, one retry fires after a 2-second
+ * delay to absorb transient throttling and token-refresh races. If the retry
+ * also fails, a `failed_notifications` row is written before rethrowing so
+ * admins can identify recipients who never got their email.
+ *
+ * @param opts.templateName - optional template slug, stored in failed_notifications
+ *   so the record is actionable (e.g. "account-setup", "purchase-confirmation").
  */
 export async function sendEmailOrThrow(
   to: string,
   subject: string,
   bodyHtml: string,
-  opts?: { skipWrapper?: boolean },
+  opts?: { skipWrapper?: boolean; templateName?: string },
 ): Promise<void> {
+  warnIfCredentialsMissing();
   const sender = getGraphSender();
   if (!sender) {
     throw new Error("No email transport configured — Exchange Online credentials (GRAPH_MAIL_USER_ID) are required");
   }
   const html = opts?.skipWrapper ? bodyHtml : await brandedEmail(bodyHtml);
-  await sender(to, subject, html);
-  logger.info({ to, subject }, "Email sent");
-  db.insert(emailEventsTable).values({
-    emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
-    eventType: "sent",
-    recipient: to,
-    subject,
-    metadata: {},
-  }).catch((err: unknown) => logger.warn({ err }, "Failed to record email_event"));
+
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await sender(to, subject, html);
+      logger.info({ to, subject, attempt }, "Email sent");
+      db.insert(emailEventsTable).values({
+        emailId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        eventType: "sent",
+        recipient: to,
+        subject,
+        metadata: { attempt },
+      }).catch((err: unknown) => logger.warn({ err }, "Failed to record email_event"));
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 1) {
+        logger.warn({ err, to, subject, attempt }, "Email send failed — retrying once after 2s delay");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+  }
+
+  // Both attempts failed — await a failed_notifications row write before rethrowing
+  // so the persistent record is guaranteed before the caller sees the error.
+  const errorMessage = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  await db.insert(failedNotificationsTable).values({
+    recipientEmail: to,
+    templateName: opts?.templateName ?? subject,
+    errorMessage,
+  }).catch((dbErr: unknown) =>
+    logger.warn({ dbErr, to, subject }, "failed_notifications: DB insert itself failed"),
+  );
+  logger.error({ err: lastErr, to, subject, templateName: opts?.templateName }, "Email send failed after retry — failed_notification written");
+  throw lastErr;
 }
 
 /**
@@ -817,6 +880,9 @@ export async function getTenantHealthBlockHtml(clientUserId: number | null | und
  * Send an email using the stored DB template (with variable substitution), falling back
  * to the provided subject/body if no template row exists or the DB is unavailable.
  * Errors are caught and logged — fire-and-forget friendly.
+ *
+ * The slug is passed as `templateName` into the retry path so any failed_notifications
+ * row carries a meaningful, actionable identifier (e.g. "account-setup").
  */
 export async function sendEmailFromTemplate(
   slug: string,
@@ -826,5 +892,5 @@ export async function sendEmailFromTemplate(
   defaultBodyHtml: string,
 ): Promise<void> {
   const { subject, bodyHtml } = await getEmailTemplateOrFallback(slug, vars, defaultSubject, defaultBodyHtml);
-  await sendEmail(to, subject, bodyHtml);
+  await sendEmail(to, subject, bodyHtml, { templateName: slug });
 }

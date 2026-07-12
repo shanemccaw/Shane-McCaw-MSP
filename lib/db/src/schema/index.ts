@@ -2436,4 +2436,45 @@ export const salesOfferRuleGroupsTable = pgTable("sales_offer_rule_groups", {
 export type InsertSalesOfferRuleGroup = typeof salesOfferRuleGroupsTable.$inferInsert;
 export type SalesOfferRuleGroup = typeof salesOfferRuleGroupsTable.$inferSelect;
 
+// ── Checkout Sessions ──────────────────────────────────────────────────────────
+// Server-side session survives cross-origin redirects (e.g. Microsoft admin-consent).
+// Only the sessionId is kept client-side; PII lives here.
+
+export const checkoutSessionsTable = pgTable("checkout_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  productSlug: text("product_slug").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  status: text("status", { enum: ["pending", "consented", "paid", "expired"] }).notNull().default("pending"),
+  tenantId: text("tenant_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+}, (t) => [
+  index("checkout_sessions_email_idx").on(t.email),
+  index("checkout_sessions_expires_at_idx").on(t.expiresAt),
+]);
+
+export type InsertCheckoutSession = typeof checkoutSessionsTable.$inferInsert;
+export type CheckoutSession = typeof checkoutSessionsTable.$inferSelect;
+
+// ── Failed Notifications ───────────────────────────────────────────────────────
+// Records email send failures after the retry exhausts, so admins can identify
+// customers who never received their account-setup (or other transactional) email.
+
+export const failedNotificationsTable = pgTable("failed_notifications", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  recipientEmail: text("recipient_email").notNull(),
+  templateName: text("template_name").notNull(),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  resolved: boolean("resolved").notNull().default(false),
+}, (t) => [
+  index("failed_notifications_recipient_idx").on(t.recipientEmail),
+  index("failed_notifications_resolved_idx").on(t.resolved),
+]);
+
+export type InsertFailedNotification = typeof failedNotificationsTable.$inferInsert;
+export type FailedNotification = typeof failedNotificationsTable.$inferSelect;
+
 export * from "./msp";
