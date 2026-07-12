@@ -50,7 +50,7 @@ export default function MicroOffers() {
     <Layout>
       <SEOMeta
         title="Quick Win Packages — Fixed Price Microsoft 365 Services | Shane McCaw Consulting"
-        description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery — starting at $3,000. No hourly billing surprises."
+        description="Fixed-price Microsoft 365 quick-win packages by Shane McCaw. Clear scope, flat fees, and senior-level delivery. No hourly billing surprises."
         jsonLd={{
           "@context": "https://schema.org",
           "@type": "ItemList",

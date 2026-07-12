@@ -49,7 +49,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Critical · From $12,000",
+      badge: "Critical",
       name: "Governance Foundations Package",
       description:
         "Your Microsoft 365 security posture has significant gaps that represent real organisational risk. The Governance Foundations Package establishes the DLP policies, sensitivity labels, conditional access framework, and compliance controls your environment urgently needs.",
@@ -57,7 +57,7 @@ const config: QuizConfig = {
       ctaText: "Secure Your Environment Now",
     },
     Developing: {
-      badge: "Recommended · From $12,000",
+      badge: "Recommended",
       name: "Governance Foundations Package",
       description:
         "You have some controls in place but gaps in your DLP, compliance, or identity governance create exploitable risk. This engagement builds a complete, defensible security and governance framework across your M365 tenant.",
@@ -65,7 +65,7 @@ const config: QuizConfig = {
       ctaText: "Close Your Security Gaps",
     },
     Emerging: {
-      badge: "Next Step · From $12,000",
+      badge: "Next Step",
       name: "Governance Foundations Package",
       description:
         "Your security posture is developing well. Formalising your governance framework will transform your ad-hoc security controls into a documented, auditable, and defensible compliance posture.",
@@ -73,7 +73,7 @@ const config: QuizConfig = {
       ctaText: "Formalise Your Security Governance",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your security posture is strong. With solid identity, data protection, and compliance controls in place, you're well-positioned to deploy Copilot safely — assess your readiness and do it right.",
@@ -81,7 +81,7 @@ const config: QuizConfig = {
       ctaText: "Deploy Copilot Securely",
     },
     Ready: {
-      badge: "Enterprise Grade · From $5,000",
+      badge: "Enterprise Grade",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your M365 security is enterprise-grade. Copilot is the natural next step — validate your full deployment readiness and ensure Copilot inherits your strong security and compliance foundations.",

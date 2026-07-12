@@ -77,7 +77,7 @@ const ICP_ATTRIBUTES = [
   {
     icon: TrendingUp,
     label: "Revenue Band",
-    value: "$20M – $500M annually",
+    value: "Mid-market to upper-mid-market",
     sub: "Organizations with real technology complexity but no enterprise IT budget",
   },
   {
@@ -300,7 +300,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
                   color: "text-amber-600",
                   bg: "bg-amber-50 border-amber-100",
                   title: "Remediation costs escalate",
-                  desc: "The longer configuration drift continues, the more expensive and disruptive it becomes to fix. A $5,000 assessment today prevents a $50,000 emergency remediation later.",
+                  desc: "The longer configuration drift continues, the more expensive and disruptive it becomes to fix. A proactive assessment today prevents a far more costly emergency remediation later.",
                 },
                 {
                   icon: Zap,
@@ -476,7 +476,7 @@ export default function MicroOfferDetail({ params }: MicroOfferDetailProps) {
                   <p className="text-white/50 text-xs font-bold uppercase tracking-wider mb-5">The Alternative: Full-Time Hire</p>
                   <div className="space-y-3 mb-5">
                     {[
-                      { label: "Senior M365 Architect Salary", value: "$150,000–$220,000/yr" },
+                      { label: "Senior M365 Architect Salary", value: "Full salary + benefits + overhead" },
                       { label: "Benefits & Overhead", value: "+30–40%" },
                       { label: "Recruiting Timeline", value: "3–6 months" },
                       { label: "Risk if Wrong Hire", value: "100% sunk cost" },

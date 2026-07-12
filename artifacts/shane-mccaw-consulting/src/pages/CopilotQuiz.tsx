@@ -88,7 +88,7 @@ interface TierUpsell {
 
 const TIER_UPSELLS: Record<string, TierUpsell> = {
   Beginner: {
-    badge: "Start Here · From $4,500",
+    badge: "Start Here",
     name: "M365 Tenant Health Audit",
     description:
       "Before Copilot can succeed, your tenant needs a clean foundation. A comprehensive NASA-methodology assessment identifies every configuration gap, licensing issue, and security risk — with a prioritised roadmap so you know exactly where to start.",
@@ -98,7 +98,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
     servicePageLabel: "Microsoft 365",
   },
   Developing: {
-    badge: "Recommended · From $5,000",
+    badge: "Recommended",
     name: "Copilot for M365 Readiness Assessment",
     description:
       "You're building the right habits, but gaps remain before Copilot is safe to deploy. A targeted readiness assessment pinpoints exactly what to fix — and in what order — so your rollout doesn't stall or expose sensitive data.",
@@ -108,7 +108,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
     servicePageLabel: "Copilot AI",
   },
   Emerging: {
-    badge: "Next Step · From $5,000",
+    badge: "Next Step",
     name: "Copilot for M365 Readiness Assessment",
     description:
       "You're making solid progress. A formal Copilot readiness assessment will validate your environment, surface the remaining gaps, and give you a prioritised rollout roadmap so you can deploy with confidence — not guesswork.",
@@ -118,7 +118,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
     servicePageLabel: "Copilot AI",
   },
   Advanced: {
-    badge: "High Impact · From $6,000",
+    badge: "High Impact",
     name: "Power Platform Quick‑Start",
     description:
       "Your M365 environment is mature and you're ready to start automating. A focused 30-day sprint to design, build, and deploy one production-ready Power App or Power Automate flow — turning your Copilot investment into measurable business impact.",
@@ -128,7 +128,7 @@ const TIER_UPSELLS: Record<string, TierUpsell> = {
     servicePageLabel: "Power Platform",
   },
   Ready: {
-    badge: "Enterprise Grade · From $12,000",
+    badge: "Enterprise Grade",
     name: "Governance Foundations Package",
     description:
       "Your environment is Copilot-ready — now make sure it scales safely. A complete Microsoft 365 governance framework built to enterprise standards, ensuring your Copilot deployment remains secure, compliant, and audit-ready as adoption grows.",

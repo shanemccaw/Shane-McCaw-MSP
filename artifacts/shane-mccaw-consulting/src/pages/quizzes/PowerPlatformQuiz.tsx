@@ -37,7 +37,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Start Here · From $6,000",
+      badge: "Start Here",
       name: "Power Platform Quick-Start",
       description:
         "Your Power Platform practice needs a strong foundation before it can scale. A focused sprint to establish governance, deploy the CoE toolkit, and deliver your first production-ready app or flow — giving your team a proven pattern to follow.",
@@ -45,7 +45,7 @@ const config: QuizConfig = {
       ctaText: "Start Your Practice Right",
     },
     Developing: {
-      badge: "Recommended · From $6,000",
+      badge: "Recommended",
       name: "Power Platform Quick-Start",
       description:
         "You have makers building solutions, but without consistent governance and quality standards. This sprint establishes the guardrails — DLP policies, environment strategy, and maker training — and delivers a production-ready template app.",
@@ -53,7 +53,7 @@ const config: QuizConfig = {
       ctaText: "Build the Right Way",
     },
     Emerging: {
-      badge: "Next Step · From $6,000",
+      badge: "Next Step",
       name: "Power Platform Quick-Start",
       description:
         "Your practice is maturing. A focused Quick-Start sprint will formalise your governance, upskill your makers, and deliver one high-impact app or flow that demonstrates what a well-executed Power Platform solution looks like.",
@@ -61,7 +61,7 @@ const config: QuizConfig = {
       ctaText: "Accelerate Your Practice",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your Power Platform maturity is strong. The next frontier is AI — evaluate your Copilot readiness to understand how Power Platform's AI Builder and Copilot Studio features fit into your automation strategy.",
@@ -69,7 +69,7 @@ const config: QuizConfig = {
       ctaText: "Add AI to Your Automation",
     },
     Ready: {
-      badge: "Enterprise Grade · From $12,000",
+      badge: "Enterprise Grade",
       name: "Governance Foundations Package",
       description:
         "Your Power Platform practice is excellent. To sustain it at enterprise scale — especially as Copilot Studio and AI Builder deployments expand — formalise your broader M365 governance framework.",

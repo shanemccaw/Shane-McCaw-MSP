@@ -37,7 +37,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Start Here · From $4,500",
+      badge: "Start Here",
       name: "M365 Tenant Health Audit",
       description:
         "Before SharePoint architecture can be improved, your tenant foundation needs to be solid. A comprehensive audit identifies the licensing, governance, and configuration issues that will undermine any SharePoint redesign.",
@@ -45,7 +45,7 @@ const config: QuizConfig = {
       ctaText: "Fix the Foundation First",
     },
     Developing: {
-      badge: "Recommended · From $12,000",
+      badge: "Recommended",
       name: "Governance Foundations Package",
       description:
         "Your SharePoint environment needs a structured governance framework before it can scale. This engagement designs and implements naming conventions, lifecycle policies, and permission models that bring order to your environment.",
@@ -53,7 +53,7 @@ const config: QuizConfig = {
       ctaText: "Build Your Governance Framework",
     },
     Emerging: {
-      badge: "Next Step · From $12,000",
+      badge: "Next Step",
       name: "Governance Foundations Package",
       description:
         "You have the basics, but gaps in governance and lifecycle management are creating technical debt. Formalise your SharePoint governance before the complexity compounds further.",
@@ -61,7 +61,7 @@ const config: QuizConfig = {
       ctaText: "Formalise Your Governance",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your SharePoint environment is well-structured. With clean information architecture and good governance in place, you're in a strong position to evaluate Copilot — which relies heavily on well-organised SharePoint content.",
@@ -69,7 +69,7 @@ const config: QuizConfig = {
       ctaText: "Assess Copilot Readiness",
     },
     Ready: {
-      badge: "Enterprise Grade · From $5,000",
+      badge: "Enterprise Grade",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your SharePoint architecture is excellent. Copilot will be most effective when it has clean, well-governed content to work with — which you have. Validate your full M365 readiness and deploy Copilot confidently.",

@@ -92,7 +92,7 @@ export default function ArchitectGrowth() {
   const { services, loading: tiersLoading } = useServices("retainer");
 
   const growthSvc = services.find((s) => s.slug === "architect-growth");
-  const displayPrice = formatPrice(growthSvc?.price ?? null) ?? "$6,000";
+  const displayPrice = formatPrice(growthSvc?.price ?? null);
 
   const tiers = [...services]
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -104,7 +104,7 @@ export default function ArchitectGrowth() {
       current: s.pageHref === "/retainers/architect-growth",
     }));
 
-  const growthLivePrice = growthSvc?.price ?? "6000.00";
+  const growthLivePrice = growthSvc?.price ?? "";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -131,7 +131,7 @@ export default function ArchitectGrowth() {
   return (
     <Layout>
       <SEOMeta
-        title="Architect Growth Retainer — $6,000/mo | Shane McCaw Consulting"
+        title="Architect Growth Retainer | Shane McCaw Consulting"
         description="25 hrs/month of senior M365 architecture from NASA's Lead Architect. 2-hour priority response, Copilot readiness, governance frameworks, and proactive tenant monitoring for mid-market and regulated organisations."
         jsonLd={jsonLd}
       />
@@ -163,8 +163,8 @@ export default function ArchitectGrowth() {
           <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-4 leading-tight">
             Senior M365 Architecture.<br className="hidden md:block" /> Built to NASA Standards.
           </h1>
-          <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">{displayPrice}</p>
-          <p className="text-white/50 mb-6 text-lg">/month · cancel with 30 days' notice</p>
+          {displayPrice && <p className="text-[#00B4D8] text-5xl font-extrabold mb-2">{displayPrice}</p>}
+          <p className="text-white/50 mb-6 text-lg">{displayPrice ? "/month · cancel with 30 days' notice" : "Cancel with 30 days' notice"}</p>
           <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-10">
             The Architect Growth retainer gives mid-market and regulated organisations weekly access to a senior Microsoft 365 architect — no scoping delays, no proposals, no junior handoffs. You get 25 dedicated hours, 2-hour priority response, and a documented roadmap that makes your modernisation programme impossible to stall.
           </p>
@@ -173,7 +173,7 @@ export default function ArchitectGrowth() {
               href="/checkout?product=architect-growth"
               className="px-8 py-4 text-base"
             >
-              Start Architect Growth — {displayPrice}/month
+              Start Architect Growth
             </CTAButton>
             <Link
               href="/contact"
@@ -394,7 +394,7 @@ export default function ArchitectGrowth() {
         <div className="max-w-[900px] mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white rounded-2xl border border-border p-6">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Lighter workload?</p>
-            <h3 className="text-lg font-extrabold text-[#0A2540] mb-2">Architect Essentials — $1,500/mo</h3>
+            <h3 className="text-lg font-extrabold text-[#0A2540] mb-2">Architect Essentials</h3>
             <p className="text-muted-foreground text-sm mb-4">
               10 hours/month with a monthly strategy call and async support. Great if your environment is stable.
             </p>
@@ -407,7 +407,7 @@ export default function ArchitectGrowth() {
           </div>
           <div className="bg-white rounded-2xl border border-border p-6">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Need full dedication?</p>
-            <h3 className="text-lg font-extrabold text-[#0A2540] mb-2">Architect Enterprise — $5,500/mo</h3>
+            <h3 className="text-lg font-extrabold text-[#0A2540] mb-2">Architect Enterprise</h3>
             <p className="text-muted-foreground text-sm mb-4">
               50 hours/month with weekly calls, same-day emergency response, and a custom technology roadmap.
             </p>
@@ -447,7 +447,7 @@ export default function ArchitectGrowth() {
       <section className="bg-[#0A2540] py-20 px-6 text-center">
         <div className="max-w-[700px] mx-auto">
           <h2 className="text-3xl font-extrabold text-white mb-4">
-            Start Architect Growth — {displayPrice}/month
+            Start Architect Growth
           </h2>
           <p className="text-white/60 mb-8 text-lg">
             Speak directly with Shane. No salespeople. No pressure.
@@ -457,7 +457,7 @@ export default function ArchitectGrowth() {
               href="/checkout?product=architect-growth"
               className="px-8 py-4 text-base"
             >
-              Start Architect Growth — {displayPrice}/month
+              Start Architect Growth
             </CTAButton>
             <Link
               href="/contact"

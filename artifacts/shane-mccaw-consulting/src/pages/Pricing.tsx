@@ -29,7 +29,7 @@ const faqs = [
   },
   {
     q: "How are project-based engagements scoped and priced?",
-    a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing typically ranges from $7,500 to $35,000+ depending on complexity.",
+    a: "After the free discovery call, Shane provides a fixed-fee proposal with defined deliverables, a timeline, and a single project price. No hourly billing, no scope creep without a signed change order. Project pricing is scoped individually based on your assessment findings and requirements.",
   },
   {
     q: "Can I start with a Quick Win and move to a retainer?",
@@ -41,7 +41,7 @@ const faqs = [
   },
   {
     q: "What M365 licenses are required for Copilot?",
-    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the Copilot add-on ($30/user/month). However, licensing is only the starting point \u2014 data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
+    a: "Microsoft 365 Copilot requires an M365 E3 or E5 base license plus the per-user Copilot add-on license. However, licensing is only the starting point \u2014 data governance, sensitivity labeling, and permissions hygiene must be in place first. The Copilot Readiness Assessment covers all of this.",
   },
 ];
 
@@ -104,11 +104,11 @@ export default function Pricing() {
   // Fallback shown when no micro_offer services exist in the database yet
   const track01Range = microOfferPrices.length > 0
     ? `${fmtPrice(Math.min(...microOfferPrices))} \u2013 ${fmtPrice(Math.max(...microOfferPrices))}`
-    : "$3,000 \u2013 $18,000";
+    : "Contact for pricing";
 
   // Track 02 — core-tier (project) prices from DB
   // Fallback constant used when no core-tier services exist in the database yet
-  const TRACK02_FALLBACK_RANGE = "$7,500 \u2013 $35,000+";
+  const TRACK02_FALLBACK_RANGE = "Contact for pricing";
   const projectEngagements = allServices.filter((s) => s.tier?.toLowerCase() === "core");
   const projectPrices = projectEngagements
     .flatMap((s) => [
@@ -262,7 +262,7 @@ export default function Pricing() {
               },
               {
                 heading: "Enterprise value at a fraction of the cost.",
-                body: "A full-time senior M365 architect costs $150k–$220k/year. A fractional retainer delivers the same expertise at 10–20% of that.",
+                body: "A full-time senior M365 architect commands a significant salary with benefits and recruiting overhead. A fractional retainer delivers the same expertise at a fraction of that cost.",
               },
             ].map((item, i) => (
               <div key={i} className="flex items-start gap-3 bg-white rounded-xl border border-border p-5">
@@ -304,7 +304,7 @@ export default function Pricing() {
                 label: "Track 02",
                 tier: "Core",
                 title: "Engagement Projects",
-                range: "Starting from $3,000",
+                range: "Priced after assessment",
                 desc: "Projects are scoped from Tier 1 assessment telemetry via the Signal Engine — Shane builds your project scope directly from diagnostic findings. Priced automatically after your Tier 1 assessment completes.",
                 bestFor: "Organizations with a defined initiative — preparing for Copilot, remediating governance gaps, or executing a migration — that need structured delivery and committed outcomes.",
                 anchor: "#project-based",
@@ -408,7 +408,7 @@ export default function Pricing() {
               Each package has a fixed price, a specific deliverable, and a committed turnaround time. No discovery call required — the scope is defined in advance so you know what you're getting.
             </p>
             <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm bg-[#F7F9FC] border border-border rounded-lg px-4 py-3">
-              <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages ($3,000–$5,000) are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages ($8,000–$18,000) are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
+              <span className="font-semibold text-[#0A2540]">Two tiers within Track 01:</span> The lower-priced packages are tactical quick wins — fast-turnaround deliverables scoped around a single, well-defined need. The higher-priced packages are strategic assessments — deeper engagements that produce a comprehensive diagnostic, prioritized remediation roadmap, and executive briefing. Both serve different purposes and different moments in an organization's M365 journey.
             </p>
             <p className="text-muted-foreground max-w-2xl leading-relaxed text-sm mt-3 bg-[#0078D4]/8 border border-[#0078D4]/25 rounded-lg px-4 py-3">
               <span className="font-semibold text-[#0A2540]">No call required</span> — purchase directly and the automated diagnostic begins immediately.
@@ -441,7 +441,7 @@ export default function Pricing() {
             <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
               <div className="max-w-2xl">
                 <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4 leading-tight">
-                  Engagement Projects — Starting from $3,000
+                  Engagement Projects
                 </h2>
                 <p className="text-muted-foreground leading-relaxed mb-3">
                   Projects are scoped from Tier 1 assessment telemetry via the Signal Engine — Shane builds your project scope directly from diagnostic findings. Priced automatically after your Tier 1 assessment completes.
@@ -453,7 +453,7 @@ export default function Pricing() {
               <div className="flex-shrink-0">
                 <div className="bg-[#F7F9FC] rounded-xl border border-border p-5 mb-4 text-center lg:text-right">
                   <p className="text-xs font-bold text-[#0A2540] uppercase tracking-wider mb-1">Typical project range</p>
-                  <p className="text-2xl font-extrabold text-[#0078D4]">Starting from $3,000</p>
+                  <p className="text-2xl font-extrabold text-[#0078D4]">Priced after assessment</p>
                   <p className="text-muted-foreground text-xs mt-1">Priced automatically after your Tier 1 assessment.</p>
                 </div>
                 <CTAButton href="/quick-wins" className="text-sm w-full justify-center" data-testid="project-cta">
@@ -720,11 +720,11 @@ export default function Pricing() {
               <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-4">The Business Case</p>
               <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-6 leading-tight">Why Fractional Beats Full-Time</h2>
               <p className="text-muted-foreground leading-relaxed mb-8">
-                Most mid-market organizations can't justify a $150k–$220k full-time architect salary — but they absolutely need that level of expertise for the decisions they're making. Fractional architecture resolves that tension.
+                Most mid-market organizations can't justify a full-time senior architect salary — but they absolutely need that level of expertise for the decisions they're making. Fractional architecture resolves that tension.
               </p>
               <div className="space-y-4">
                 {[
-                  { label: "Full-time senior M365 architect", value: "$150k–$220k salary + benefits + recruiting overhead", dark: false },
+                  { label: "Full-time senior M365 architect", value: "Full salary + benefits + recruiting overhead", dark: false },
                   { label: "Fractional retainer with Shane", value: "10–20% of full-time cost. No benefits. No recruiting. Immediate start.", dark: true },
                 ].map((item, i) => (
                   <div key={i} className={`flex items-start gap-4 rounded-xl border p-5 ${item.dark ? "bg-[#0A2540] border-[#0078D4]/40" : "bg-[#F7F9FC] border-border"}`}>
@@ -828,7 +828,7 @@ export default function Pricing() {
                 },
                 {
                   heading: "Enterprise value at a fraction of enterprise cost.",
-                  body: "A full-time senior M365 architect costs $150,000–$200,000/year in salary alone. A fractional retainer delivers the same expertise — applied directly to your highest-priority problems — at a fraction of that cost.",
+                  body: "A full-time senior M365 architect commands a significant annual salary plus benefits and overhead. A fractional retainer delivers the same expertise — applied directly to your highest-priority problems — at a fraction of that cost.",
                 },
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-3" data-testid={`philosophy-point-${i}`}>

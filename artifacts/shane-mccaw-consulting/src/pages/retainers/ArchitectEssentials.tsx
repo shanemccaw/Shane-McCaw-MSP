@@ -137,7 +137,7 @@ export default function ArchitectEssentials() {
   return (
     <Layout>
       <SEOMeta
-        title="Architect Essentials — Fractional M365 Architecture from $1,500/mo | Shane McCaw Consulting"
+        title="Architect Essentials — Fractional M365 Architecture | Shane McCaw Consulting"
         description="Senior Microsoft 365 oversight for mid-market and regulated organizations. 10 hours/month of predictable expert access from NASA's Lead M365 Architect — no proposals, no retainer lock-in."
         jsonLd={jsonLd}
       />
@@ -395,7 +395,7 @@ export default function ArchitectEssentials() {
           <div className="bg-[#F7F9FC] rounded-2xl border border-border p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Actively modernizing?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth — $3,000/mo</h3>
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth</h3>
               <p className="text-muted-foreground text-sm max-w-md">
                 25 hours/month with priority 4-hour response, two strategy calls per month, and proactive tenant health monitoring. Built for organizations mid-stream on a Copilot rollout, SharePoint migration, or governance overhaul who need more hands-on delivery hours every week.
               </p>

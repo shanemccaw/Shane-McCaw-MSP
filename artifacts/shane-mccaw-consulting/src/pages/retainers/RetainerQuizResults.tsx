@@ -188,7 +188,7 @@ export default function RetainerQuizResults({ scores, onRetake }: Props) {
                 <h2 className="text-xl font-extrabold text-[#0A2540] mb-1 leading-snug">
                   {config.headline}
                 </h2>
-                <p className="text-sm text-muted-foreground mb-1">{config.hours} &middot; {config.price}/month</p>
+                <p className="text-sm text-muted-foreground mb-1">{config.hours}</p>
                 <p className="text-[#0A2540]/80 text-sm leading-relaxed mb-4">
                   {TIER_DESCRIPTIONS[recommended]}
                 </p>
@@ -247,7 +247,7 @@ export default function RetainerQuizResults({ scores, onRetake }: Props) {
                         {cfg.headline}
                       </h3>
                       <p className="text-muted-foreground text-sm leading-relaxed mb-2">
-                        {cfg.hours} &middot; {cfg.price}/month
+                        {cfg.hours}
                       </p>
                       <p className="text-xs text-muted-foreground bg-[#F7F9FC] rounded-lg px-3 py-2 border border-border mb-4 leading-relaxed">
                         {i === 0

@@ -36,7 +36,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Critical · From $12,000",
+      badge: "Critical",
       name: "Governance Foundations Package",
       description:
         "Your organisation is operating without the governance controls required to protect sensitive data, meet regulatory obligations, or pass an audit. The Governance Foundations Package builds the complete framework your environment needs — from DLP and sensitivity labels to retention schedules and compliance alignment.",
@@ -44,7 +44,7 @@ const config: QuizConfig = {
       ctaText: "Build Your Governance Framework",
     },
     Developing: {
-      badge: "Recommended · From $12,000",
+      badge: "Recommended",
       name: "Governance Foundations Package",
       description:
         "You have some governance controls, but gaps in your DLP, retention, or compliance alignment create real regulatory and security risk. This engagement builds the complete, defensible governance framework your organisation needs.",
@@ -52,7 +52,7 @@ const config: QuizConfig = {
       ctaText: "Close Your Governance Gaps",
     },
     Emerging: {
-      badge: "Next Step · From $12,000",
+      badge: "Next Step",
       name: "Governance Foundations Package",
       description:
         "Your governance is developing, but it's not yet complete or consistent. A formal Governance Foundations engagement will systematise your controls, fill the gaps, and produce the documentation required for audit readiness.",
@@ -60,7 +60,7 @@ const config: QuizConfig = {
       ctaText: "Complete Your Governance Framework",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your governance is mature and defensible. With strong DLP, sensitivity labels, and compliance controls in place, you're well-positioned to evaluate Copilot — which relies on exactly these controls to operate safely.",
@@ -68,7 +68,7 @@ const config: QuizConfig = {
       ctaText: "Assess Copilot Readiness",
     },
     Ready: {
-      badge: "Enterprise Grade · From $5,000",
+      badge: "Enterprise Grade",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your governance framework is excellent. Copilot will operate safely within your environment because the necessary data governance controls are already in place. Validate your full readiness and deploy with confidence.",

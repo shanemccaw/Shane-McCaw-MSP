@@ -96,7 +96,6 @@ const QUESTIONS: Question[] = [
 export const TIER_CONFIG: Record<TierKey, {
   href: string;
   bookHref: string;
-  price: string;
   hours: string;
   headline: string;
   explanation: string;
@@ -106,7 +105,6 @@ export const TIER_CONFIG: Record<TierKey, {
   Essentials: {
     href: "/retainers/architect-essentials",
     bookHref: "/checkout?product=architect-essentials",
-    price: "$1,500",
     hours: "10 hrs / month",
     headline: "Architect Essentials",
     explanation:
@@ -117,7 +115,6 @@ export const TIER_CONFIG: Record<TierKey, {
   Growth: {
     href: "/retainers/architect-growth",
     bookHref: "/checkout?product=architect-growth",
-    price: "$6,000",
     hours: "25 hrs / month",
     headline: "Architect Growth",
     explanation:
@@ -128,7 +125,6 @@ export const TIER_CONFIG: Record<TierKey, {
   Enterprise: {
     href: "/retainers/architect-enterprise",
     bookHref: "/checkout?product=architect-enterprise",
-    price: "$11,000",
     hours: "50 hrs / month",
     headline: "Architect Enterprise",
     explanation:
@@ -214,9 +210,7 @@ export function RetainerSelectorQuiz({ onComplete }: Props) {
           </div>
           <p className="text-[#00B4D8] text-xs font-bold uppercase tracking-widest mb-3">Your Best-Fit Retainer</p>
           <h2 className="text-3xl md:text-4xl font-extrabold text-white mb-2">{config.headline}</h2>
-          <p className="text-white/50 text-sm mb-2">{config.hours}</p>
-          <p className="text-[#00B4D8] text-4xl font-extrabold mb-1">{config.price}</p>
-          <p className="text-white/40 text-sm mb-8">/month · cancel with 30 days' notice</p>
+          <p className="text-white/50 text-sm mb-8">{config.hours}</p>
 
           <p className="text-white/70 text-base leading-relaxed mb-10 max-w-2xl mx-auto">
             {config.explanation}
@@ -252,7 +246,6 @@ export function RetainerSelectorQuiz({ onComplete }: Props) {
                   >
                     <p className={`text-[10px] font-bold uppercase tracking-wide mb-0.5 ${isCurrent ? "text-white/70" : "text-white/40"}`}>{cfg.hours}</p>
                     <p className="font-extrabold text-sm">{cfg.headline}</p>
-                    <p className={`text-xs font-semibold mt-0.5 ${isCurrent ? "text-white/80" : "text-[#00B4D8]"}`}>{cfg.price}/mo</p>
                   </Link>
                 );
               })}

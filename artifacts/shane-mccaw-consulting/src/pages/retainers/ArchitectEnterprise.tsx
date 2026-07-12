@@ -118,7 +118,7 @@ export default function ArchitectEnterprise() {
   const { services, loading: tiersLoading } = useServices("retainer");
 
   const enterpriseSvc = services.find((s) => s.slug === "architect-enterprise");
-  const displayPrice = formatPrice(enterpriseSvc?.price ?? null) ?? "$11,000";
+  const displayPrice = formatPrice(enterpriseSvc?.price ?? null);
 
   const tiers = [...services]
     .sort((a, b) => a.sortOrder - b.sortOrder)
@@ -130,7 +130,7 @@ export default function ArchitectEnterprise() {
       current: s.pageHref === "/retainers/architect-enterprise",
     }));
 
-  const livePrice = enterpriseSvc?.price ?? "11000.00";
+  const livePrice = enterpriseSvc?.price ?? "";
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -158,7 +158,7 @@ export default function ArchitectEnterprise() {
   return (
     <Layout>
       <SEOMeta
-        title="Architect Enterprise Retainer — $11,000/mo | Shane McCaw Consulting"
+        title="Architect Enterprise Retainer | Shane McCaw Consulting"
         description="Enterprise-grade M365 architecture from NASA's Lead Architect. 50 hours/month of senior-only consulting — weekly sessions, same-day response, governance builds, and Copilot deployment leadership for regulated and complex organizations."
         jsonLd={jsonLd}
       />
@@ -405,7 +405,7 @@ export default function ArchitectEnterprise() {
           <div className="bg-white rounded-2xl border border-border p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div>
               <p className="text-xs font-bold uppercase tracking-wider text-[#0078D4] mb-1">Smaller scope?</p>
-              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth — $3,000/mo</h3>
+              <h3 className="text-xl font-extrabold text-[#0A2540] mb-2">Architect Growth</h3>
               <p className="text-muted-foreground text-sm max-w-md">
                 25 hours/month with priority 4-hour response, two strategy calls, and proactive tenant health monitoring. Most popular for organizations actively modernizing who aren't yet at enterprise scale.
               </p>
@@ -457,7 +457,7 @@ export default function ArchitectEnterprise() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <CTAButton href="/book?plan=architect-enterprise" className="px-8 py-4 text-base">
-              Start Architect Enterprise — $11,000/month
+              Start Architect Enterprise
             </CTAButton>
             <Link
               href="/contact"

@@ -37,7 +37,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Start Here · From $4,500",
+      badge: "Start Here",
       name: "M365 Tenant Health Audit",
       description:
         "Your tenant has significant configuration gaps that need immediate attention. A structured NASA-methodology audit identifies every issue — licensing waste, security misconfigurations, governance debt — and delivers a prioritised remediation roadmap.",
@@ -45,7 +45,7 @@ const config: QuizConfig = {
       ctaText: "Book Your Audit",
     },
     Developing: {
-      badge: "Recommended · From $4,500",
+      badge: "Recommended",
       name: "M365 Tenant Health Audit",
       description:
         "You're making progress, but hidden gaps remain. A comprehensive tenant health audit uncovers the misconfigurations and adoption shortfalls that limit your M365 ROI — before they become security incidents.",
@@ -53,7 +53,7 @@ const config: QuizConfig = {
       ctaText: "Get Your Health Report",
     },
     Emerging: {
-      badge: "Next Step · From $4,500",
+      badge: "Next Step",
       name: "M365 Tenant Health Audit",
       description:
         "Your tenant is in reasonable shape, but a formal audit will surface the edge cases and technical debt that accumulate over time — giving you a clean, defensible configuration baseline.",
@@ -61,7 +61,7 @@ const config: QuizConfig = {
       ctaText: "Validate Your Tenant",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your tenant is mature and well-managed. The logical next step is evaluating Copilot readiness — assessing whether your data governance, identity, and adoption practices are ready for AI deployment.",
@@ -69,7 +69,7 @@ const config: QuizConfig = {
       ctaText: "Assess Copilot Readiness",
     },
     Ready: {
-      badge: "Enterprise Grade · From $12,000",
+      badge: "Enterprise Grade",
       name: "Governance Foundations Package",
       description:
         "Your tenant health is excellent. To maintain that standard at scale — especially through Copilot adoption or regulatory audits — formalise your governance framework before gaps creep back in.",

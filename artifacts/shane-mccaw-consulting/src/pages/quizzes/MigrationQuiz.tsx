@@ -36,7 +36,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Start Here · From $3,500",
+      badge: "Start Here",
       name: "Migration Readiness Assessment",
       description:
         "Your organisation has significant gaps in migration readiness that, if unaddressed, will lead to data loss, extended outages, or a failed migration. A structured readiness assessment identifies every gap and produces a sequenced remediation plan before a single mailbox moves.",
@@ -44,7 +44,7 @@ const config: QuizConfig = {
       ctaText: "Get Your Readiness Report",
     },
     Developing: {
-      badge: "Recommended · From $3,500",
+      badge: "Recommended",
       name: "Migration Readiness Assessment",
       description:
         "You've made progress, but critical readiness gaps remain. A formal readiness assessment will surface the identity, data governance, and stakeholder alignment issues that will derail your migration if left unaddressed.",
@@ -52,7 +52,7 @@ const config: QuizConfig = {
       ctaText: "Assess Your Readiness",
     },
     Emerging: {
-      badge: "Next Step · From $3,500",
+      badge: "Next Step",
       name: "Migration Readiness Assessment",
       description:
         "Your readiness is solid, but a formal assessment will validate your plans, identify edge cases, and give you a go/no-go recommendation — so you migrate with confidence rather than optimism.",
@@ -60,7 +60,7 @@ const config: QuizConfig = {
       ctaText: "Validate Your Migration Plan",
     },
     Advanced: {
-      badge: "High Impact · From $12,000",
+      badge: "High Impact",
       name: "Governance Foundations Package",
       description:
         "Your migration readiness is strong. Before you execute, ensure your governance framework is in place — DLP policies, sensitivity labels, and lifecycle controls should be configured before content arrives in Microsoft 365.",
@@ -68,7 +68,7 @@ const config: QuizConfig = {
       ctaText: "Govern Before You Migrate",
     },
     Ready: {
-      badge: "Enterprise Grade · From $3,500",
+      badge: "Enterprise Grade",
       name: "Migration Readiness Assessment",
       description:
         "Your organisation is well-prepared. A formal readiness assessment will validate your plans end-to-end and give you the go/no-go documentation your executive sponsors and compliance teams require.",

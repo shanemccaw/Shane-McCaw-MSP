@@ -36,7 +36,7 @@ const config: QuizConfig = {
   ],
   tierUpsells: {
     Beginner: {
-      badge: "Start Here · From $4,500",
+      badge: "Start Here",
       name: "M365 Tenant Health Audit",
       description:
         "Before Teams governance can be improved, your broader M365 tenant needs a clean foundation. A comprehensive audit identifies the configuration gaps, governance debt, and licensing inefficiencies that are limiting your Teams environment.",
@@ -44,7 +44,7 @@ const config: QuizConfig = {
       ctaText: "Fix the Foundation First",
     },
     Developing: {
-      badge: "Recommended · From $12,000",
+      badge: "Recommended",
       name: "Governance Foundations Package",
       description:
         "Your Teams environment needs formal governance before the sprawl becomes unmanageable. This engagement designs and implements lifecycle policies, naming conventions, and governance controls that keep Teams productive and auditable.",
@@ -52,7 +52,7 @@ const config: QuizConfig = {
       ctaText: "Govern Your Teams Environment",
     },
     Emerging: {
-      badge: "Next Step · From $12,000",
+      badge: "Next Step",
       name: "Governance Foundations Package",
       description:
         "You have good Teams usage, but gaps in governance and lifecycle management are creating technical debt. Formalise your framework before inactive teams and permission drift compound further.",
@@ -60,7 +60,7 @@ const config: QuizConfig = {
       ctaText: "Formalise Your Governance",
     },
     Advanced: {
-      badge: "High Impact · From $5,000",
+      badge: "High Impact",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your Teams environment is well-governed and actively used. The natural next step is Copilot — Teams is one of the primary surfaces for Copilot features like meeting summaries, chat drafting, and call recaps.",
@@ -68,7 +68,7 @@ const config: QuizConfig = {
       ctaText: "Add Copilot to Teams",
     },
     Ready: {
-      badge: "Enterprise Grade · From $5,000",
+      badge: "Enterprise Grade",
       name: "Copilot for M365 Readiness Assessment",
       description:
         "Your Teams environment is excellent. Copilot for Teams — with meeting summaries, intelligent recaps, and AI-assisted chat — will deliver immediate productivity gains on top of your strong foundation.",
