@@ -184,14 +184,13 @@ export default function Monitoring() {
         <div className="max-w-[860px] mx-auto">
           <div className="inline-flex items-center gap-2 bg-white/10 text-white text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full mb-6">
             <Eye className="size-3.5 text-[#00B4D8]" />
-            Continuous Tenant Monitoring
+            Your Assessment Was a Snapshot. This Keeps It Current.
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold text-white mb-6 leading-tight">
-            Know what's happening in your Microsoft 365 tenant — before it becomes a problem.
+            Continuous Microsoft 365 oversight, not a once-a-year checkup.
           </h1>
           <p className="text-white/70 text-lg max-w-2xl mx-auto leading-relaxed mb-8">
-            Configuration drift, security misconfigurations, and licence waste don't announce themselves.
-            Shane's monitoring packs watch your tenant continuously and surface actionable signals — so you can act before users, auditors, or attackers do.
+            The same signals your Assessment found — tracked, scored, and alerted on, every day.
           </p>
           <div className="flex flex-wrap justify-center gap-6 text-sm text-white/50">
             <span className="flex items-center gap-1.5"><CheckCircle2 className="size-4 text-[#00B4D8]" /> No agents to deploy</span>
@@ -210,7 +209,7 @@ export default function Monitoring() {
               <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-4">
                 <Zap className="size-8 text-[#0078D4]" />
               </div>
-              <h3 className="text-lg font-bold text-[#0A2540] mb-2">Connect</h3>
+              <h3 className="text-lg font-bold text-[#0A2540] mb-2">Connect once (consent, not credentials)</h3>
               <p className="text-sm text-foreground/70 leading-relaxed">
                 Grant read-only access to your Microsoft 365 tenant via admin consent. No agents, no software to install.
               </p>
@@ -219,7 +218,7 @@ export default function Monitoring() {
               <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-4">
                 <Eye className="size-8 text-[#0078D4]" />
               </div>
-              <h3 className="text-lg font-bold text-[#0A2540] mb-2">Watch</h3>
+              <h3 className="text-lg font-bold text-[#0A2540] mb-2">We watch continuously</h3>
               <p className="text-sm text-foreground/70 leading-relaxed">
                 Shane's monitoring engine continuously evaluates your tenant against your pack's signal library — configuration, security, licence, and compliance checks.
               </p>
@@ -228,7 +227,7 @@ export default function Monitoring() {
               <div className="w-16 h-16 rounded-full bg-[#0078D4]/10 flex items-center justify-center mb-4">
                 <Shield className="size-8 text-[#0078D4]" />
               </div>
-              <h3 className="text-lg font-bold text-[#0A2540] mb-2">Act</h3>
+              <h3 className="text-lg font-bold text-[#0A2540] mb-2">You act only when something actually changes.</h3>
               <p className="text-sm text-foreground/70 leading-relaxed">
                 Receive a weekly signal digest. Critical signals trigger an immediate notification so you can remediate fast — or escalate to Shane for hands-on help.
               </p>

@@ -94,7 +94,7 @@ export default function Home() {
           <div className="inline-flex items-center gap-2 bg-[#0078D4]/15 border border-[#0078D4]/40 rounded-full px-5 py-2 mb-8">
             <span className="w-2 h-2 rounded-full bg-[#00B4D8] animate-pulse" />
             <p className="text-[#00B4D8] text-sm font-semibold uppercase tracking-[0.1em]">
-              Microsoft 365 &amp; Copilot AI Specialist
+              NASA's M365 Architecture Standard, Applied to Your Tenant
             </p>
           </div>
 
@@ -112,17 +112,11 @@ export default function Home() {
 
           {/* Headline */}
           <h1 className="text-4xl md:text-5xl lg:text-[3.75rem] font-extrabold text-white leading-[1.1] mb-5 max-w-5xl mx-auto">
-            The Architect Who Built at NASA Scale —<br className="hidden md:block" /> Available to You.
+            Microsoft 365 governance built the way mission-critical systems are built.
           </h1>
 
-          <p className="text-base md:text-lg text-[#00B4D8] font-semibold max-w-2xl mx-auto mb-5">
-            Mission-critical Microsoft 365 architecture for mid-market and regulated organizations — without a full-time hire.
-          </p>
-
           <p className="text-lg md:text-xl text-white/70 max-w-3xl mx-auto mb-12 leading-relaxed">
-            Shane McCaw brings the same discipline he built at NASA to your organization.
-            Start with a free tenant assessment, or connect your environment for continuous monitoring.
-            Senior Microsoft expertise delivered personally — no account managers, no offshore handoffs.
+            30 years architecting Microsoft 365 at NASA scale — now protecting your tenant with the same rigor.
           </p>
 
           {/* CTAs */}
@@ -138,7 +132,7 @@ export default function Home() {
               href="/monitoring"
               className="inline-flex items-center gap-2 text-white/80 font-semibold text-base hover:text-white transition-colors border border-white/20 px-8 py-3.5 rounded-xl hover:border-white/40"
             >
-              Explore Monitoring <ArrowRight className="w-4 h-4" />
+              Already know you need ongoing oversight? See Monitoring plans. <ArrowRight className="w-4 h-4" />
             </Link>
           </div>
 
@@ -251,10 +245,10 @@ export default function Home() {
               30 Years of Microsoft Depth — Built at Mission-Critical Scale
             </h2>
             <p className="text-white/70 text-lg leading-relaxed mb-4">
-              Shane McCaw has spent three decades inside the Microsoft ecosystem — from early infrastructure deployments to leading Microsoft 365 architecture for one of the most compliance-intensive organizations on earth: NASA. As Lead M365 Architect, Shane designed and governed the systems used by scientists, engineers, and administrators whose work cannot fail.
+              2026 Forum Award Winner — architected the first large federal agency Copilot deployment at NASA; the resulting framework was distributed government-wide by the White House as the federal standard for secure Copilot adoption. Deep experience across GCC/GCC-High, HIPAA, and SBU environments.
             </p>
             <p className="text-white/70 text-lg leading-relaxed">
-              Most consultants learn compliance frameworks from documentation. Shane learned them under real-world conditions where misconfiguration carried legal and mission consequences. FedRAMP, FISMA, ITAR, and GCC High aren't checklists to him — they're the environment he operated in daily. That discipline is now available to your organization on a fractional basis.
+              Built and operated by the architect who deploys it. Every check, every finding, every alert — designed by the same standard that secured a federal Copilot rollout.
             </p>
           </div>
 
