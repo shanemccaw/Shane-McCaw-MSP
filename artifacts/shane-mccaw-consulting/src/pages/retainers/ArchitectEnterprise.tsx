@@ -208,7 +208,7 @@ export default function ArchitectEnterprise() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/crm/portal/onboarding/select?service=architect-enterprise" className="px-8 py-4 text-base">
+            <CTAButton href="/checkout?product=architect-enterprise" className="px-8 py-4 text-base">
               Get Started
             </CTAButton>
             <Link

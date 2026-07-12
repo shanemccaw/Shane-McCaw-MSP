@@ -105,7 +105,7 @@ export const TIER_CONFIG: Record<TierKey, {
 }> = {
   Essentials: {
     href: "/retainers/architect-essentials",
-    bookHref: "/crm/portal/onboarding/select?service=architect-essentials",
+    bookHref: "/checkout?product=architect-essentials",
     price: "$1,500",
     hours: "10 hrs / month",
     headline: "Architect Essentials",
@@ -116,7 +116,7 @@ export const TIER_CONFIG: Record<TierKey, {
   },
   Growth: {
     href: "/retainers/architect-growth",
-    bookHref: "/crm/portal/onboarding/select?service=architect-growth",
+    bookHref: "/checkout?product=architect-growth",
     price: "$6,000",
     hours: "25 hrs / month",
     headline: "Architect Growth",
@@ -127,7 +127,7 @@ export const TIER_CONFIG: Record<TierKey, {
   },
   Enterprise: {
     href: "/retainers/architect-enterprise",
-    bookHref: "/crm/portal/onboarding/select?service=architect-enterprise",
+    bookHref: "/checkout?product=architect-enterprise",
     price: "$11,000",
     hours: "50 hrs / month",
     headline: "Architect Enterprise",

@@ -24,7 +24,7 @@ export function OfferCard({
   ctaDisabled,
   onDownloadOverview,
 }: OfferCardProps) {
-  const resolvedHref = ctaHref ?? `/crm/portal/onboarding/select?service=${offer.slug ?? ""}`;
+  const resolvedHref = ctaHref ?? `/checkout?product=${offer.slug ?? ""}`;
   const priceDisplay = formatOfferPrice(offer.basePrice, offer.maxPrice);
   const hl = offer.highlighted;
   const triggers = offer.triggers ?? [];

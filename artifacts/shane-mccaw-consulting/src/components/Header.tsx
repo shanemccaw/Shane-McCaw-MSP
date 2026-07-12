@@ -379,7 +379,7 @@ export function Header() {
 
           <div className="flex items-center gap-2 shrink-0 ml-4">
             <a
-              href="/crm/"
+              href="/portal/"
               className="text-sm font-semibold px-4 py-2 rounded-lg border border-white/20 text-white/80 hover:text-white hover:border-white/40 hover:bg-white/5 transition-colors whitespace-nowrap"
             >
               Client Login
@@ -493,7 +493,7 @@ export function Header() {
 
           <div className="px-5 py-4 border-t border-white/10 flex flex-col gap-2.5">
             <a
-              href="/crm/"
+              href="/portal/"
               className="w-full text-center font-semibold py-2.5 px-6 rounded-lg border border-white/20 text-white/80 hover:text-white hover:bg-white/5 transition-colors text-sm"
               onClick={() => setMobileMenuOpen(false)}
             >

@@ -95,7 +95,7 @@ export function RetainerCard({ plan, index }: RetainerCardProps) {
       )}
 
       <div className="mt-auto space-y-3">
-        <CTAButton href={`/crm/portal/onboarding/select?service=${plan.slug}`} className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
+        <CTAButton href={`/checkout?product=${plan.slug}`} className="w-full justify-center text-sm" data-testid={`retainer-cta-${index}`}>
           Get Started
         </CTAButton>
         <div className="text-center">

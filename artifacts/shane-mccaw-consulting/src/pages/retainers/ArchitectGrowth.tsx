@@ -170,7 +170,7 @@ export default function ArchitectGrowth() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <CTAButton
-              href="/crm/portal/onboarding/select?service=architect-growth"
+              href="/checkout?product=architect-growth"
               className="px-8 py-4 text-base"
             >
               Start Architect Growth — {displayPrice}/month
@@ -454,7 +454,7 @@ export default function ArchitectGrowth() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <CTAButton
-              href="/crm/portal/onboarding/select?service=architect-growth"
+              href="/checkout?product=architect-growth"
               className="px-8 py-4 text-base"
             >
               Start Architect Growth — {displayPrice}/month

@@ -188,7 +188,7 @@ export default function ArchitectEssentials() {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/crm/portal/onboarding/select?service=architect-essentials" className="px-8 py-4 text-base">
+            <CTAButton href="/checkout?product=architect-essentials" className="px-8 py-4 text-base">
               Get Started
             </CTAButton>
             <Link
@@ -443,7 +443,7 @@ export default function ArchitectEssentials() {
             Start your onboarding. Shane will confirm your environment, agree on the first month's priorities, and have your first strategy call on the calendar within five business days.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <CTAButton href="/crm/portal/onboarding/select?service=architect-essentials" className="px-8 py-4 text-base">
+            <CTAButton href="/checkout?product=architect-essentials" className="px-8 py-4 text-base">
               Get Started — ${displayPrice}/mo
             </CTAButton>
             <Link

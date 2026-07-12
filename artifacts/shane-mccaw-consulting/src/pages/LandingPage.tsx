@@ -176,7 +176,7 @@ export default function LandingPage() {
         const err = await res.json() as { error?: string };
         throw new Error(err.error ?? "Unable to generate access token");
       }
-      const { token, serviceId, exp } = await res.json() as { token: string; serviceId: number; exp: number };
+      const { token, exp } = await res.json() as { token: string; serviceId: number; exp: number };
       sessionStorage.setItem("onboardingLpToken", token);
       if (typeof exp === "number") sessionStorage.setItem("onboardingLpTokenExp", String(exp));
       sessionStorage.setItem("onboardingLpUrl", window.location.href);
@@ -189,7 +189,8 @@ export default function LandingPage() {
           localStorage.setItem("onboardingLpLatestExp", String(exp));
         } catch { /* storage full or private browsing — silently skip */ }
       }
-      window.location.href = `/crm/portal/onboarding/select?serviceId=${serviceId}`;
+      const serviceSlug = page.linkedService?.slug;
+      window.location.href = serviceSlug ? `/checkout?product=${serviceSlug}` : `/assessment`;
     } catch (err) {
       setTokenError(err instanceof Error ? err.message : "Unable to continue. Please try again.");
       ctaClickedRef.current = false;
