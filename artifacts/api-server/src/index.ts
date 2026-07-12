@@ -15,6 +15,7 @@ import { pool } from "@workspace/db";
 import { triggerScheduledWorkflows, fireStartupTriggers, checkApprovalTimeouts, reconcileDuplicatePublishedVersions } from "./lib/workflow-executor";
 import { seedSystemWorkflows } from "./lib/seed-system-workflows";
 import { initPortalWorkflowEngine } from "./lib/portal-workflow-engine";
+import { registerReportNodes } from "./lib/report-nodes";
 import { startJobWorker } from "./lib/msp-jobs";
 import { db } from "@workspace/db";
 import { insightsGeneratedDocumentsTable, wfRunsTable } from "@workspace/db";
@@ -157,6 +158,13 @@ app.listen(port, (err) => {
   // the first poll tick can claim and dispatch them correctly.
   startJobWorker(5_000, 5);
   logger.info({}, "msp-jobs: inline worker started");
+
+  // ── Portal Workflow Engine: register node handlers ────────────────────────
+  // Node handlers must be registered BEFORE the engine initialises so the
+  // first run dispatch can find them. registerReportNodes() wires up the
+  // "generate_report" type into the portal-wf node handler registry.
+  registerReportNodes();
+  logger.info({}, "portal-wf: report nodes registered");
 
   // ── Portal Workflow Engine: initialize on startup ─────────────────────────
   // Loads start mappings and registers event bus listener.

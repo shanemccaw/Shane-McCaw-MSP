@@ -29,6 +29,7 @@ import PromptCenterEditPage from "@/pages/PromptCenterEdit";
 import MspAdminPage from "@/pages/MspAdmin";
 import PlanManagementPage from "@/pages/PlanManagement";
 import MspOverridesPage from "@/pages/MspOverrides";
+import MspReportsPage from "@/pages/MspReports";
 
 // ─── Standalone pages (remain at legacy paths, still need DashboardShell) ────
 import DocumentsPage from "@/pages/crm/Documents";
@@ -308,6 +309,9 @@ function Router() {
       </Route>
       <Route path="/msp/overrides">
         <AdminRoute><MspOverridesPage /></AdminRoute>
+      </Route>
+      <Route path="/msp/reports">
+        <AdminRoute><MspReportsPage /></AdminRoute>
       </Route>
 
       {/* ── Catch-all ── */}

@@ -168,6 +168,11 @@ const SECTION_LABELS: Record<string, { group: string; label: string }> = {
   "/workflows/list":          { group: "Workflows", label: "Workflows" },
   "/workflows/runs":          { group: "Workflows", label: "Run History" },
   "/workflows/json-viewer":   { group: "Workflows", label: "JSON Viewer" },
+  // MSP Platform
+  "/msp":          { group: "MSP Platform", label: "MSP Admin" },
+  "/msp/plans":    { group: "MSP Platform", label: "Plan Management" },
+  "/msp/overrides": { group: "MSP Platform", label: "Overrides" },
+  "/msp/reports":  { group: "MSP Platform", label: "Reports" },
 };
 
 // Prefix-based labels for detail pages that don't match exact paths
