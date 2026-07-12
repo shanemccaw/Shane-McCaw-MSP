@@ -1,7 +1,7 @@
 /**
- * Unit tests for handleSystemAction('auto_fire_kanban', payload) routing.
+ * Unit tests for handleAutoFireKanban(payload) routing.
  *
- * Verifies that the Kanban Auto-fire system-action handler correctly:
+ * Verifies that the auto-fire kanban handler correctly:
  *   1. Calls autoFireFirstBacklogScript (and NOT autoFireDocumentCard)
  *      when action='script'.
  *   2. Calls autoFireDocumentCard (and NOT autoFireFirstBacklogScript)
@@ -12,27 +12,25 @@
  *   5. clientUserId=0 (falsy) is treated as absent — same guard.
  *
  * Approach:
- *   - mock.module() stubs kanban-auto-fire and all heavy dependencies so
- *     no real DB connections or Azure calls are made.
+ *   - vi.mock() stubs kanban-auto-fire and logger so no real DB
+ *     connections or Azure calls are made.
  *   - Call counters let each test assert exactly which functions fired.
  *   - Because the handler fires functions with .catch() (fire-and-forget),
  *     a microtask flush (await Promise.resolve() x2) is needed before
  *     asserting.
- *   - IMPORTANT: mock specifiers must match the exact import strings used in
- *     system-action-handlers.ts (no .ts extension — the source uses bare
- *     relative paths like "./logger", "./kanban-auto-fire", etc.).
  *
  * Run with:
  *   pnpm --filter @workspace/api-server run test
  */
-import { describe, it, mock, before } from "node:test";
-import assert from "node:assert/strict";
+import { describe, it, vi, expect, beforeAll } from "vitest";
 
-// ── Call counters — reset before each test scenario ──────────────────────────
+// ── Call counters ─────────────────────────────────────────────────────────────
 let scriptCallCount = 0;
 let documentCallCount = 0;
 let lastScriptClientId: number | undefined;
 let lastDocumentClientId: number | undefined;
+let scriptShouldThrow = false;
+let documentShouldThrow = false;
 
 function resetCounters() {
   scriptCallCount = 0;
@@ -41,81 +39,32 @@ function resetCounters() {
   lastDocumentClientId = undefined;
 }
 
-// ── Stub kanban-auto-fire BEFORE importing system-action-handlers ─────────────
-// NOTE: specifier must match the exact string in system-action-handlers.ts:
-//   import { ... } from "./kanban-auto-fire.ts";
-//
-// scriptShouldThrow / documentShouldThrow are used by the resilience tests
-// further below. The flags must be declared before the mock so the closures
-// capture them.
-let scriptShouldThrow = false;
-let documentShouldThrow = false;
+// ── Stub kanban-auto-fire BEFORE importing auto-fire-kanban-handler ───────────
+vi.mock("./kanban-auto-fire", () => ({
+  autoFireFirstBacklogScript: vi.fn(async (clientUserId: number) => {
+    if (scriptShouldThrow) throw new Error("Azure Automation unreachable (simulated outage)");
+    scriptCallCount++;
+    lastScriptClientId = clientUserId;
+  }),
+  autoFireDocumentCard: vi.fn(async (clientUserId: number) => {
+    if (documentShouldThrow) throw new Error("AI generation failed (simulated error)");
+    documentCallCount++;
+    lastDocumentClientId = clientUserId;
+  }),
+  autoFireRunWorkflowCards: vi.fn(async () => {}),
+  reconcileOrphanedRuns: vi.fn(async () => {}),
+  reconcileStalledPhases: vi.fn(async () => {}),
+  reconcileLateStuckQueuedCompletions: vi.fn(async () => {}),
+}));
 
-mock.module("./kanban-auto-fire.ts", {
-  namedExports: {
-    autoFireFirstBacklogScript: async (clientUserId: number) => {
-      if (scriptShouldThrow) {
-        throw new Error("Azure Automation unreachable (simulated outage)");
-      }
-      scriptCallCount++;
-      lastScriptClientId = clientUserId;
-    },
-    autoFireDocumentCard: async (clientUserId: number) => {
-      if (documentShouldThrow) {
-        throw new Error("AI generation failed (simulated error)");
-      }
-      documentCallCount++;
-      lastDocumentClientId = clientUserId;
-    },
-    reconcileOrphanedRuns: async () => {},
-    reconcileStalledPhases: async () => {},
-    autoFireRunWorkflowCards: async () => {},
-  },
+vi.mock("./logger", () => {
+  const noop = () => {};
+  const noopLogger = { info: noop, warn: noop, error: noop, debug: noop, fatal: noop, trace: noop, child: () => noopLogger };
+  return { logger: noopLogger };
 });
 
-// ── Stub logger (imported as "./logger.ts") ───────────────────────────────────
-const noop = () => {};
-const noopLogger = {
-  info: noop, warn: noop, error: noop, debug: noop,
-  fatal: noop, trace: noop, child: () => noopLogger,
-};
-mock.module("./logger.ts", {
-  namedExports: { logger: noopLogger },
-});
-
-// ── Stub manual-script-escalation (imported as "./manual-script-escalation.ts") ──
-mock.module("./manual-script-escalation.ts", {
-  namedExports: {
-    checkManualScriptEscalations: async () => ({ alerted: 0, checked: 0, cardIds: [] }),
-  },
-});
-
-// ── Stub admin-insights (imported as "../routes/admin-insights.ts") ────────────
-mock.module("../routes/admin-insights.ts", {
-  namedExports: {
-    executeAutomation: async () => {},
-    nextRunFromCron: () => new Date(),
-  },
-});
-
-// ── Stub @workspace/db (no real DB) ───────────────────────────────────────────
-mock.module("@workspace/db", {
-  namedExports: {
-    pool: { query: async () => ({ rows: [], rowCount: 0 }) },
-    db: {
-      select: () => ({
-        from: () => ({ where: () => ({ then: (r: (v: unknown[]) => void) => r([]) }) }),
-      }),
-      update: () => ({ set: () => ({ where: async () => [] }) }),
-    },
-    insightsAutomationsTable: {},
-    quickWinPresentationsTable: {},
-    workflowStepsTable: {},
-  },
-});
-
-// ── Import the handler under test AFTER all mocks are registered ──────────────
-const { handleSystemAction } = await import("./system-action-handlers.ts");
+// Import after mocks are registered
+import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
 
 /** Flush all microtasks so fire-and-forget promises resolve before asserting. */
 async function flushMicrotasks() {
@@ -127,32 +76,29 @@ async function flushMicrotasks() {
 // action = 'script'  → only autoFireFirstBacklogScript should be called
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — action='script'", () => {
+describe("handleAutoFireKanban — action='script'", () => {
   let result: Record<string, unknown>;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
-    result = await handleSystemAction("auto_fire_kanban", {
-      clientUserId: 42,
-      action: "script",
-    });
+    result = await handleAutoFireKanban({ clientUserId: 42, action: "script" });
     await flushMicrotasks();
   });
 
   it("returns fired=true with the correct clientUserId and action", () => {
-    assert.deepEqual(result, { fired: true, clientUserId: 42, action: "script" });
+    expect(result).toEqual({ fired: true, clientUserId: 42, action: "script" });
   });
 
   it("calls autoFireFirstBacklogScript exactly once", () => {
-    assert.equal(scriptCallCount, 1, `expected 1 script call, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(1);
   });
 
   it("passes the correct clientUserId to autoFireFirstBacklogScript", () => {
-    assert.equal(lastScriptClientId, 42);
+    expect(lastScriptClientId).toBe(42);
   });
 
   it("does NOT call autoFireDocumentCard", () => {
-    assert.equal(documentCallCount, 0, `expected 0 document calls, got ${documentCallCount}`);
+    expect(documentCallCount).toBe(0);
   });
 });
 
@@ -160,32 +106,29 @@ describe("handleSystemAction auto_fire_kanban — action='script'", () => {
 // action = 'document'  → only autoFireDocumentCard should be called
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — action='document'", () => {
+describe("handleAutoFireKanban — action='document'", () => {
   let result: Record<string, unknown>;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
-    result = await handleSystemAction("auto_fire_kanban", {
-      clientUserId: 99,
-      action: "document",
-    });
+    result = await handleAutoFireKanban({ clientUserId: 99, action: "document" });
     await flushMicrotasks();
   });
 
   it("returns fired=true with the correct clientUserId and action", () => {
-    assert.deepEqual(result, { fired: true, clientUserId: 99, action: "document" });
+    expect(result).toEqual({ fired: true, clientUserId: 99, action: "document" });
   });
 
   it("calls autoFireDocumentCard exactly once", () => {
-    assert.equal(documentCallCount, 1, `expected 1 document call, got ${documentCallCount}`);
+    expect(documentCallCount).toBe(1);
   });
 
   it("passes the correct clientUserId to autoFireDocumentCard", () => {
-    assert.equal(lastDocumentClientId, 99);
+    expect(lastDocumentClientId).toBe(99);
   });
 
   it("does NOT call autoFireFirstBacklogScript", () => {
-    assert.equal(scriptCallCount, 0, `expected 0 script calls, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(0);
   });
 });
 
@@ -193,31 +136,30 @@ describe("handleSystemAction auto_fire_kanban — action='document'", () => {
 // action = 'both' (the default when action is omitted)
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — action='both' (default)", () => {
+describe("handleAutoFireKanban — action='both' (default)", () => {
   let result: Record<string, unknown>;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
-    // Omit 'action' to exercise the default-to-"both" path in the handler
-    result = await handleSystemAction("auto_fire_kanban", { clientUserId: 7 });
+    result = await handleAutoFireKanban({ clientUserId: 7 });
     await flushMicrotasks();
   });
 
   it("returns fired=true with action='both'", () => {
-    assert.deepEqual(result, { fired: true, clientUserId: 7, action: "both" });
+    expect(result).toEqual({ fired: true, clientUserId: 7, action: "both" });
   });
 
   it("calls autoFireFirstBacklogScript exactly once", () => {
-    assert.equal(scriptCallCount, 1, `expected 1 script call, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(1);
   });
 
   it("calls autoFireDocumentCard exactly once", () => {
-    assert.equal(documentCallCount, 1, `expected 1 document call, got ${documentCallCount}`);
+    expect(documentCallCount).toBe(1);
   });
 
   it("passes the correct clientUserId to both functions", () => {
-    assert.equal(lastScriptClientId, 7);
-    assert.equal(lastDocumentClientId, 7);
+    expect(lastScriptClientId).toBe(7);
+    expect(lastDocumentClientId).toBe(7);
   });
 });
 
@@ -225,32 +167,30 @@ describe("handleSystemAction auto_fire_kanban — action='both' (default)", () =
 // Edge case: missing clientUserId → graceful skip, no crash, no functions fired
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — missing clientUserId", () => {
+describe("handleAutoFireKanban — missing clientUserId", () => {
   let result: Record<string, unknown>;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
-    result = await handleSystemAction("auto_fire_kanban", { action: "script" });
+    result = await handleAutoFireKanban({ action: "script" });
     await flushMicrotasks();
   });
 
   it("returns skipped=true", () => {
-    assert.equal(result.skipped, true);
+    expect(result.skipped).toBe(true);
   });
 
   it("includes a non-empty reason string", () => {
-    assert.ok(
-      typeof result.reason === "string" && result.reason.length > 0,
-      `expected a non-empty reason string, got ${JSON.stringify(result.reason)}`,
-    );
+    expect(typeof result.reason).toBe("string");
+    expect((result.reason as string).length).toBeGreaterThan(0);
   });
 
   it("does NOT call autoFireFirstBacklogScript", () => {
-    assert.equal(scriptCallCount, 0, `expected 0 script calls, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(0);
   });
 
   it("does NOT call autoFireDocumentCard", () => {
-    assert.equal(documentCallCount, 0, `expected 0 document calls, got ${documentCallCount}`);
+    expect(documentCallCount).toBe(0);
   });
 });
 
@@ -258,55 +198,41 @@ describe("handleSystemAction auto_fire_kanban — missing clientUserId", () => {
 // Edge case: clientUserId = 0 (falsy — treated the same as absent)
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — clientUserId=0 (falsy, treated as absent)", () => {
+describe("handleAutoFireKanban — clientUserId=0 (falsy, treated as absent)", () => {
   let result: Record<string, unknown>;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
-    result = await handleSystemAction("auto_fire_kanban", {
-      clientUserId: 0,
-      action: "both",
-    });
+    result = await handleAutoFireKanban({ clientUserId: 0, action: "both" });
     await flushMicrotasks();
   });
 
   it("returns skipped=true (0 is falsy and treated as absent by the guard)", () => {
-    assert.equal(result.skipped, true);
+    expect(result.skipped).toBe(true);
   });
 
   it("does NOT call autoFireFirstBacklogScript", () => {
-    assert.equal(scriptCallCount, 0);
+    expect(scriptCallCount).toBe(0);
   });
 
   it("does NOT call autoFireDocumentCard", () => {
-    assert.equal(documentCallCount, 0);
+    expect(documentCallCount).toBe(0);
   });
 });
 
 // =============================================================================
-// Azure-outage resilience — when autoFireFirstBacklogScript throws (simulating
-// an Azure API being unreachable), the handler must NOT crash or throw.
-// The promise is fire-and-forget with .catch(), so the handler returns
-// { fired: true } immediately regardless of what happens inside the function.
-//
-// The scriptShouldThrow flag is declared at the top of this file (above the
-// mock.module() registration) and captured by the stub closure. Setting it to
-// true before calling the handler causes the stub to throw, simulating an
-// Azure outage without needing to re-register the module mock.
+// Azure-outage resilience — when autoFireFirstBacklogScript throws, handler must NOT crash
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — Azure outage (script function throws)", () => {
+describe("handleAutoFireKanban — Azure outage (script function throws)", () => {
   let result: Record<string, unknown>;
   let caughtError: unknown = null;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
     scriptShouldThrow = true;
     try {
-      result = await handleSystemAction("auto_fire_kanban", {
-        clientUserId: 55,
-        action: "script",
-      });
+      result = await handleAutoFireKanban({ clientUserId: 55, action: "script" });
     } catch (err) {
       caughtError = err;
     } finally {
@@ -316,39 +242,34 @@ describe("handleSystemAction auto_fire_kanban — Azure outage (script function 
   });
 
   it("does NOT throw — Azure outage is caught by fire-and-forget .catch()", () => {
-    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+    expect(caughtError).toBeNull();
   });
 
   it("still returns fired=true (handler is fire-and-forget — result is immediate)", () => {
-    assert.ok(result, "result should be defined");
-    assert.equal(result.fired, true);
-    assert.equal(result.clientUserId, 55);
+    expect(result).toBeDefined();
+    expect(result.fired).toBe(true);
+    expect(result.clientUserId).toBe(55);
   });
 
   it("does NOT surface the Azure error to the caller", () => {
-    assert.ok(!("error" in result), `result should not contain 'error' key`);
-    assert.ok(!("skipped" in result), `result should not be skipped`);
+    expect("error" in result).toBe(false);
+    expect("skipped" in result).toBe(false);
   });
 });
 
 // =============================================================================
-// Azure-outage resilience — action='both': even when the script function
-// throws (Azure down), the document function should still be attempted.
-// Each promise is attached its own .catch() independently.
+// Azure-outage resilience — action='both': even when script throws, document should still be attempted
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — Azure outage with action='both'", () => {
+describe("handleAutoFireKanban — Azure outage with action='both'", () => {
   let result: Record<string, unknown>;
   let caughtError: unknown = null;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
     scriptShouldThrow = true;
     try {
-      result = await handleSystemAction("auto_fire_kanban", {
-        clientUserId: 77,
-        action: "both",
-      });
+      result = await handleAutoFireKanban({ clientUserId: 77, action: "both" });
     } catch (err) {
       caughtError = err;
     } finally {
@@ -358,46 +279,36 @@ describe("handleSystemAction auto_fire_kanban — Azure outage with action='both
   });
 
   it("does NOT throw even when the script function fails", () => {
-    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+    expect(caughtError).toBeNull();
   });
 
   it("returns fired=true — handler is non-blocking", () => {
-    assert.ok(result, "result should be defined");
-    assert.equal(result.fired, true);
+    expect(result).toBeDefined();
+    expect(result.fired).toBe(true);
   });
 
   it("document function is still attempted independently (called once)", () => {
-    // The document stub did not throw, so it should have been called exactly once.
-    assert.equal(documentCallCount, 1, `expected 1 document call, got ${documentCallCount}`);
+    expect(documentCallCount).toBe(1);
   });
 
   it("passes the correct clientUserId to the document function", () => {
-    assert.equal(lastDocumentClientId, 77);
+    expect(lastDocumentClientId).toBe(77);
   });
 });
 
 // =============================================================================
-// Document AI failure — when autoFireDocumentCard throws (simulating an AI or
-// DB error during generation), the handler must NOT crash or throw.
-// The promise is fire-and-forget with .catch(), so the handler returns
-// { fired: true } immediately regardless of what happens inside the function.
-//
-// The documentShouldThrow flag is declared at the top of this file and
-// captured by the stub closure.
+// Document AI failure — when autoFireDocumentCard throws, handler must NOT crash
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — document AI failure (document function throws)", () => {
+describe("handleAutoFireKanban — document AI failure (document function throws)", () => {
   let result: Record<string, unknown>;
   let caughtError: unknown = null;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
     documentShouldThrow = true;
     try {
-      result = await handleSystemAction("auto_fire_kanban", {
-        clientUserId: 88,
-        action: "document",
-      });
+      result = await handleAutoFireKanban({ clientUserId: 88, action: "document" });
     } catch (err) {
       caughtError = err;
     } finally {
@@ -407,43 +318,38 @@ describe("handleSystemAction auto_fire_kanban — document AI failure (document 
   });
 
   it("does NOT throw — AI failure is caught by fire-and-forget .catch()", () => {
-    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+    expect(caughtError).toBeNull();
   });
 
   it("still returns fired=true (handler is fire-and-forget — result is immediate)", () => {
-    assert.ok(result, "result should be defined");
-    assert.equal(result.fired, true);
-    assert.equal(result.clientUserId, 88);
+    expect(result).toBeDefined();
+    expect(result.fired).toBe(true);
+    expect(result.clientUserId).toBe(88);
   });
 
   it("does NOT surface the AI error to the caller", () => {
-    assert.ok(!("error" in result), `result should not contain 'error' key`);
-    assert.ok(!("skipped" in result), `result should not be skipped`);
+    expect("error" in result).toBe(false);
+    expect("skipped" in result).toBe(false);
   });
 
   it("does NOT call autoFireFirstBacklogScript when action='document'", () => {
-    assert.equal(scriptCallCount, 0, `expected 0 script calls, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(0);
   });
 });
 
 // =============================================================================
-// Document AI failure with action='both' — even when the document function
-// throws (AI down), the script function should still be attempted independently.
-// Each promise is attached its own .catch() independently.
+// Document AI failure with action='both' — even when document throws, script should still be attempted
 // =============================================================================
 
-describe("handleSystemAction auto_fire_kanban — document AI failure with action='both'", () => {
+describe("handleAutoFireKanban — document AI failure with action='both'", () => {
   let result: Record<string, unknown>;
   let caughtError: unknown = null;
 
-  before(async () => {
+  beforeAll(async () => {
     resetCounters();
     documentShouldThrow = true;
     try {
-      result = await handleSystemAction("auto_fire_kanban", {
-        clientUserId: 101,
-        action: "both",
-      });
+      result = await handleAutoFireKanban({ clientUserId: 101, action: "both" });
     } catch (err) {
       caughtError = err;
     } finally {
@@ -453,19 +359,19 @@ describe("handleSystemAction auto_fire_kanban — document AI failure with actio
   });
 
   it("does NOT throw even when the document function fails", () => {
-    assert.equal(caughtError, null, `expected no error but got: ${String(caughtError)}`);
+    expect(caughtError).toBeNull();
   });
 
   it("returns fired=true — handler is non-blocking", () => {
-    assert.ok(result, "result should be defined");
-    assert.equal(result.fired, true);
+    expect(result).toBeDefined();
+    expect(result.fired).toBe(true);
   });
 
   it("script function is still attempted independently (called once)", () => {
-    assert.equal(scriptCallCount, 1, `expected 1 script call, got ${scriptCallCount}`);
+    expect(scriptCallCount).toBe(1);
   });
 
   it("passes the correct clientUserId to the script function", () => {
-    assert.equal(lastScriptClientId, 101);
+    expect(lastScriptClientId).toBe(101);
   });
 });

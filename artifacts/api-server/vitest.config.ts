@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       "src/lib/sow-pricing.test.ts",
       "src/lib/kanban-workflow-e2e.test.ts",
+      "src/lib/kanban-auto-fire-routing.test.ts",
       "src/lib/social-media-nodes.test.ts",
       "src/lib/ps-script-gen.test.ts",
       "src/lib/workflow-executor-generate-script.test.ts",

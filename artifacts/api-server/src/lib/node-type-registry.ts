@@ -629,11 +629,6 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Auto-fires kanban card actions — no AI",
   },
   {
-    nodeType: "system_action",
-    isAIDependent: false,
-    description: "Retired legacy action node — treated as no-op",
-  },
-  {
     nodeType: "generate_pdf",
     isAIDependent: false,
     description: "Renders HTML to PDF — no AI",

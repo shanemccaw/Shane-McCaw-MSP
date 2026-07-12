@@ -2029,11 +2029,10 @@ export interface WfNode {
     | "find_object"
     | "compose"
     // System (internal / seeded workflows)
-    | "system_action"           // retired — kept for backward-compat graph parsing only
-    | "reconcile_orphaned_runs" // replaces system_action: reconcile_orphaned_runs / reconcile_late_stuck_queued
-    | "kanban_auto_fire"        // replaces system_action: auto_fire_kanban (formerly misnamed monitor_execute_package)
-    | "msp_dunning_advance"     // replaces system_action: msp_dunning_advance
-    | "msp_overage_meter"       // replaces system_action: msp_overage_meter
+    | "reconcile_orphaned_runs"
+    | "kanban_auto_fire"
+    | "msp_dunning_advance"
+    | "msp_overage_meter"
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

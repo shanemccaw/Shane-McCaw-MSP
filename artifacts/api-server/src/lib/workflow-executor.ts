@@ -80,8 +80,9 @@ import fs from "fs/promises";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
-import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions, autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCards } from "./kanban-auto-fire";
-import { handleSystemAction } from "./system-action-handlers";
+import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
+import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
+import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import Ajv from "ajv";
 import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { persistSowPricing } from "./sow-pricing-persist.js";
@@ -1071,12 +1072,6 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       }
       return { dryRun: true, value: dryRawValue };
     }
-
-    case "msp_dunning_advance":
-      return { dryRun: true, checked: 0, advanced: 0, note: "dry run — dunning advancement skipped" };
-
-    case "msp_overage_meter":
-      return { dryRun: true, subscriptionsChecked: 0, metered: 0, note: "dry run — overage metering skipped" };
 
     case "generate_image": {
       const giAspect = (node.data.aspectRatio as string | undefined) ?? "landscape";
@@ -5527,15 +5522,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       case "msp_dunning_advance": {
         // Promoted node type: advances MSP dunning states for past-due subscriptions.
-        // Delegates to the handler in system-action-handlers.ts which contains all DB logic.
-        output = await handleSystemAction("msp_dunning_advance", node.data as Record<string, unknown>);
+        output = await handleMspDunningAdvance(node.data as Record<string, unknown>);
         break;
       }
 
       case "msp_overage_meter": {
         // Promoted node type: meters MSP tenant overage for monthly billing.
-        // Delegates to the handler in system-action-handlers.ts which contains all DB logic.
-        output = await handleSystemAction("msp_overage_meter", node.data as Record<string, unknown>);
+        output = await handleMspOverageMeter(node.data as Record<string, unknown>);
         break;
       }
 
@@ -5561,11 +5554,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
       case "kanban_auto_fire": {
         // Fires the appropriate kanban auto-fire function based on the `action`
-        // field in the payload (set by the upstream kanban.card_moved event).
+        // field in the node data / payload (set by the upstream kanban.card_moved event).
         //   action = "script"   → autoFireFirstBacklogScript (Azure script execution)
         //   action = "document" → autoFireDocumentCard (AI document generation)
         //   action = "workflow" → autoFireRunWorkflowCards (child workflow launch)
-        // Calls are fire-and-forget; errors are logged as warnings (non-fatal).
+        //   action = ""         → defaults to "script" (backwards-compatible)
+        // Delegated to handleAutoFireKanban for testable, isolated dispatch logic.
         const mepClientIdRaw = interp(node.data.clientId as string | undefined, payload)
           ?? String((payload.clientUserId as number | string | undefined) ?? "");
         const mepClientId = mepClientIdRaw ? parseInt(mepClientIdRaw, 10) : NaN;
@@ -5578,28 +5572,9 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           break;
         }
 
-        const mepFires: string[] = [];
-        if (mepAction === "script" || !mepAction) {
-          void autoFireFirstBacklogScript(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "kanban_auto_fire: script fire error (non-fatal)");
-          });
-          mepFires.push("script");
-        }
-        if (mepAction === "document") {
-          void autoFireDocumentCard(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "kanban_auto_fire: document fire error (non-fatal)");
-          });
-          mepFires.push("document");
-        }
-        if (mepAction === "workflow") {
-          void autoFireRunWorkflowCards(mepClientId).catch((err) => {
-            logger.warn({ err, mepClientId }, "kanban_auto_fire: workflow fire error (non-fatal)");
-          });
-          mepFires.push("workflow");
-        }
-
-        logger.info({ runId, mepClientId, mepAction, mepFires }, "wf-executor: kanban_auto_fire dispatched");
-        output = { fired: true, clientId: mepClientId, action: mepAction, dispatched: mepFires };
+        // Empty action defaults to "script" (original executor behaviour).
+        output = await handleAutoFireKanban({ clientUserId: mepClientId, action: mepAction || "script" });
+        logger.info({ runId, mepClientId, mepAction, output }, "wf-executor: kanban_auto_fire dispatched");
         break;
       }
 

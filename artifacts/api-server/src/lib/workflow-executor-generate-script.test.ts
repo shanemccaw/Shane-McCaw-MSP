@@ -192,8 +192,6 @@ vi.mock("./logger", () => {
   return { logger: l };
 });
 
-vi.mock("./system-action-handlers", () => ({ handleSystemAction: async () => {} }));
-
 vi.mock("./prompt-loader", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
   getDocumentStylePrefix: async () => "",
