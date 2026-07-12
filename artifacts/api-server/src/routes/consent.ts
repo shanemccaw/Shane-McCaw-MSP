@@ -255,6 +255,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   // ── Emit consent.granted workflow event ─────────────────────────────────────
   // Runs for both paths (invite-link and checkout-session). Skips emission with
   // a warning rather than crashing the redirect flow if context is unresolvable.
+  let resolvedPackageKey: string | null = null;
   try {
     // clientId: from invite token (invite-link path) or email→users lookup (checkout-session path)
     let clientId: number | null = inviteRecord?.clientUserId ?? null;
@@ -302,6 +303,8 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     }
     // invite-link path: clientId set from inviteRecord above; packageKey unavailable (no product context)
 
+    resolvedPackageKey = packageKey;
+
     if (packageKey == null) {
       logger.warn(
         { tenant, isCheckoutSession, hasInviteRecord: inviteRecord != null },
@@ -318,6 +321,22 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
   } catch (err) {
     logger.warn({ err, tenant }, "consent.granted: event emission error — non-fatal, redirect proceeds");
   }
+
+  // Fire-and-forget diagnostics run — must not delay the consent redirect.
+  // Uses dynamic import to avoid circular-dependency issues at module load time.
+  void (async () => {
+    try {
+      const { runDiagnostics } = await import("../lib/diagnostics-runner.js");
+      await runDiagnostics({
+        tenantId: tenant,
+        packageKey: resolvedPackageKey ?? "default",
+        triggeredByUserId: undefined,
+      });
+      logger.info({ tenant }, "consent.granted: diagnostics run started");
+    } catch (diagErr) {
+      logger.warn({ err: diagErr, tenant }, "consent.granted: diagnostics run failed (non-fatal)");
+    }
+  })();
 
   res.redirect(successRedirect);
 });

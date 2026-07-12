@@ -1552,7 +1552,8 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   id: serial("id").primaryKey(),
   runId: uuid("run_id").notNull().unique().defaultRandom(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
-  customerId: integer("customer_id").notNull().references(() => mspCustomersTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
+  tenantId: text("tenant_id"),
   packageKey: text("package_key").notNull().default("default"),
   status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
   triggeredByUserId: integer("triggered_by_user_id"),
@@ -1571,6 +1572,7 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
 }, (t) => [
   index("msp_diagnostic_runs_msp_id_idx").on(t.mspId),
   index("msp_diagnostic_runs_customer_id_idx").on(t.customerId),
+  index("msp_diagnostic_runs_tenant_id_idx").on(t.tenantId),
   index("msp_diagnostic_runs_status_idx").on(t.status),
   index("msp_diagnostic_runs_created_at_idx").on(t.createdAt),
 ]);
@@ -1591,7 +1593,7 @@ export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   findingId: uuid("finding_id").notNull().unique().defaultRandom(),
   runId: uuid("run_id").notNull().references(() => mspDiagnosticRunsTable.runId, { onDelete: "cascade" }),
   mspId: integer("msp_id").notNull(),
-  customerId: integer("customer_id").notNull(),
+  customerId: integer("customer_id"),
   checkKey: text("check_key").notNull(),
   checkLabel: text("check_label").notNull(),
   severity: text("severity", { enum: MSP_DIAGNOSTIC_FINDING_SEVERITY }).notNull().default("info"),

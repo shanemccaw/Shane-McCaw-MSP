@@ -1,19 +1,22 @@
 /**
  * diagnostics-runner.ts
  *
- * Core diagnostics pipeline. Triggered by MSP operators (or event-driven).
- * Executes Monitoring Package checks for a customer tenant, structures results
- * as findings, generates an HTML report routed through the Document Pipeline,
- * and surfaces failures as operator tasks.
+ * Core diagnostics pipeline. Triggered by MSP operators (manual) or
+ * automatically at consent (fire-and-forget, pre-customer).
  *
  * Sequence:
- *   1. Create msp_diagnostic_runs row (status = pending)
- *   2. Load monitoring package + checks
- *   3. Execute each check via executeMonitoringPackage (onProgress → SSE)
- *   4. Map check results → msp_diagnostic_findings rows
- *   5. Generate HTML report → msp_documents + doc pipeline
- *   6. Update run status = completed | failed | partial
- *   7. On failure: create portal_wf_runs stub + operator task
+ *   1. Resolve customer from tenantId or customerId
+ *   2. Create msp_diagnostic_runs row (status = pending)
+ *   3. Load monitoring package + checks
+ *   4. Execute each check via executeMonitoringPackage (onProgress → SSE)
+ *   5. Map check results → msp_diagnostic_findings rows
+ *   6. Generate HTML report → msp_documents + doc pipeline
+ *   7. Update run status = completed | failed | partial
+ *   8. On failure + known customer: create portal_wf_runs stub + operator task
+ *
+ * When customerId is null (pre-customer / orphaned run), findings and the
+ * report document are still persisted. The portal backfill in portal.ts
+ * will update customer_id once the purchase creates the msp_customers row.
  */
 
 import { db } from "@workspace/db";
@@ -197,14 +200,24 @@ function buildReportHtml(opts: {
 }
 
 // ── Operator task creation on failure ─────────────────────────────────────────
+// Skipped when customerId is null (pre-customer / orphaned run — no customer
+// record to surface the task against). A warning is logged instead.
 
 async function createFailureOperatorTask(opts: {
   runId: string;
   mspId: number;
-  customerId: number;
+  customerId: number | null;
   customerName: string;
   errorMessage: string;
 }): Promise<void> {
+  if (opts.customerId == null) {
+    logger.warn(
+      { runId: opts.runId, mspId: opts.mspId },
+      "diagnostics-runner: skipping operator task — customerId null (orphaned run)",
+    );
+    return;
+  }
+
   try {
     const stubRunId = randomUUID();
     await db.insert(portalWfRunsTable).values({
@@ -237,9 +250,17 @@ async function createFailureOperatorTask(opts: {
 
 // ── Main runner ───────────────────────────────────────────────────────────────
 
+/**
+ * Options for runDiagnostics.
+ *
+ * Provide at least one of `tenantId` or `customerId`:
+ * - `customerId` (manual trigger): runner looks up the customer → resolves mspId + tenantId
+ * - `tenantId` only (consent-triggered): runner looks up customer by tenantId; if not found,
+ *   creates an orphaned run (customerId = null) that the portal backfill will resolve later
+ */
 export interface DiagnosticsRunOpts {
-  mspId: number;
-  customerId: number;
+  tenantId?: string;
+  customerId?: number;
   packageKey?: string;
   triggeredByUserId?: number;
 }
@@ -256,17 +277,63 @@ export interface DiagnosticsRunResult {
 }
 
 export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<DiagnosticsRunResult> {
-  const { mspId, customerId, packageKey = "default", triggeredByUserId } = opts;
+  const { packageKey = "default", triggeredByUserId } = opts;
 
-  // 1. Resolve customer
-  const [customer] = await db
-    .select({ id: mspCustomersTable.id, name: mspCustomersTable.name, tenantId: mspCustomersTable.tenantId })
-    .from(mspCustomersTable)
-    .where(eq(mspCustomersTable.id, customerId))
-    .limit(1);
+  if (opts.customerId == null && opts.tenantId == null) {
+    throw new Error("runDiagnostics requires at least one of tenantId or customerId");
+  }
 
-  if (!customer) throw new Error(`Customer ${customerId} not found`);
-  const tenantId = customer.tenantId ?? String(customerId);
+  // 1. Resolve mspId, customerId, tenantId, and customerName
+  let mspId: number;
+  let customerId: number | null;
+  let resolvedTenantId: string;
+  let customerName: string;
+
+  if (opts.customerId != null) {
+    // Manual trigger path — customer record already exists
+    const [customer] = await db
+      .select({
+        id: mspCustomersTable.id,
+        name: mspCustomersTable.name,
+        mspId: mspCustomersTable.mspId,
+        tenantId: mspCustomersTable.tenantId,
+      })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.id, opts.customerId))
+      .limit(1);
+
+    if (!customer) throw new Error(`Customer ${opts.customerId} not found`);
+    mspId = customer.mspId;
+    customerId = customer.id;
+    resolvedTenantId = customer.tenantId ?? opts.tenantId ?? String(opts.customerId);
+    customerName = customer.name;
+  } else {
+    // Consent / self-serve path — look up by tenantId
+    const [customer] = await db
+      .select({
+        id: mspCustomersTable.id,
+        name: mspCustomersTable.name,
+        mspId: mspCustomersTable.mspId,
+        tenantId: mspCustomersTable.tenantId,
+      })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.tenantId, opts.tenantId!))
+      .limit(1);
+
+    if (customer) {
+      // Customer exists (re-consent, or race-condition where purchase completed first)
+      mspId = customer.mspId;
+      customerId = customer.id;
+      resolvedTenantId = customer.tenantId!;
+      customerName = customer.name;
+    } else {
+      // Brand-new self-serve tenant — orphaned run until purchase backfill runs
+      mspId = 1;
+      customerId = null;
+      resolvedTenantId = opts.tenantId!;
+      customerName = `Tenant ${opts.tenantId!.slice(0, 8)}`;
+    }
+  }
 
   // 2. Create run record
   const [runRow] = await db
@@ -274,6 +341,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     .values({
       mspId,
       customerId,
+      tenantId: resolvedTenantId,
       packageKey,
       status: "pending",
       triggeredByUserId: triggeredByUserId ?? null,
@@ -282,7 +350,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
   const runId = runRow!.runId;
 
-  logger.info({ runId, mspId, customerId, packageKey }, "diagnostics-runner: run started");
+  logger.info({ runId, mspId, customerId, resolvedTenantId, packageKey }, "diagnostics-runner: run started");
 
   // Update to running
   await db
@@ -296,7 +364,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
 
     const pkgResult = await executeMonitoringPackage({
       packageKey,
-      tenantId,
+      tenantId: resolvedTenantId,
       triggerId,
       onProgress: (evt) => {
         broadcastDiagnosticsRunProgress(runId, {
@@ -353,7 +421,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     let documentId: string | undefined;
     try {
       const reportHtml = buildReportHtml({
-        customerName: customer.name,
+        customerName,
         runId,
         packageKey,
         findings: findingRows.map(f => ({
@@ -370,7 +438,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
         generatedAt: new Date().toUTCString(),
       });
 
-      const docTitle = `Diagnostics Report — ${customer.name} — ${new Date().toISOString().split("T")[0]}`;
+      const docTitle = `Diagnostics Report — ${customerName} — ${new Date().toISOString().split("T")[0]}`;
       const [docRow] = await db
         .insert(mspDocumentsTable)
         .values({
@@ -515,7 +583,7 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
       runId,
       mspId,
       customerId,
-      customerName: customer.name,
+      customerName,
       errorMessage,
     });
 

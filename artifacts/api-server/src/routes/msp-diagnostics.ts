@@ -98,7 +98,7 @@ router.post(
             .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
             .where(eqFn(runTable.runId, runId));
 
-          await runDiagnostics({ mspId, customerId, packageKey, triggeredByUserId });
+          await runDiagnostics({ customerId, packageKey, triggeredByUserId });
         } catch (err) {
           logger.error({ err, runId }, "msp-diagnostics: async run failed");
         }

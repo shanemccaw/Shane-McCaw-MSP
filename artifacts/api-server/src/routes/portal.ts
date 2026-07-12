@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -5016,6 +5016,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       // Resolve the buyer: user sessions carry metadata.userId; guests are identified
       // by metadata.guestEmail (or the Stripe customer_details email).
       let webhookUserIdOverride: number | null = null;
+      let purchaseTenantId: string | null = null;
       const webhookMetaUserId = session.metadata?.userId;
       if (webhookMetaUserId) {
         webhookUserIdOverride = parseInt(webhookMetaUserId, 10) || null;
@@ -5061,11 +5062,46 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
                 req.log.warn({ err: linkErr, tenantId: paidSession.tenantId }, "onboarding_purchase: failed to link clientUserId to tenant_consent (non-fatal)");
               });
             req.log.info({ tenantId: paidSession.tenantId, userId: acct.id }, "onboarding_purchase: checkout_session marked paid, tenant_consent linked");
+            purchaseTenantId = paidSession.tenantId;
           }
         }
       }
 
       await provisionOnboardingProject(req, session, subId, webhookUserIdOverride ?? undefined);
+
+      // Backfill any orphaned diagnostic runs (created at consent, before msp_customers row existed)
+      // with the real customerId now that provisioning has created the customer record.
+      if (purchaseTenantId) {
+        void (async () => {
+          try {
+            const [customer] = await db
+              .select({ id: mspCustomersTable.id })
+              .from(mspCustomersTable)
+              .where(eq(mspCustomersTable.tenantId, purchaseTenantId!))
+              .limit(1);
+            if (customer) {
+              const updated = await db
+                .update(mspDiagnosticRunsTable)
+                .set({ customerId: customer.id, updatedAt: new Date() })
+                .where(
+                  and(
+                    isNull(mspDiagnosticRunsTable.customerId),
+                    eq(mspDiagnosticRunsTable.tenantId, purchaseTenantId!),
+                  ),
+                )
+                .returning({ runId: mspDiagnosticRunsTable.runId });
+              if (updated.length > 0) {
+                req.log.info(
+                  { tenantId: purchaseTenantId, customerId: customer.id, updatedRunIds: updated.map(r => r.runId) },
+                  "onboarding_purchase: backfilled diagnostic runs with real customerId",
+                );
+              }
+            }
+          } catch (backfillErr) {
+            req.log.warn({ err: backfillErr, tenantId: purchaseTenantId }, "onboarding_purchase: diagnostic run backfill failed (non-fatal)");
+          }
+        })();
+      }
 
       // SMS alert to Shane — look up buyer + services after provisioning
       try {
