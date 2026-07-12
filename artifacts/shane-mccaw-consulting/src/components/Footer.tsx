@@ -29,27 +29,38 @@ export function Footer() {
 
           <div className="flex flex-col gap-2">
             <span className="text-[10px] font-bold uppercase tracking-widest text-white/30">Quick Links</span>
+            <Link href="/monitoring" className="text-sm text-white/65 hover:text-white transition-colors">Monitoring</Link>
             <Link href="/how-it-works" className="text-sm text-white/65 hover:text-white transition-colors">How It Works</Link>
-            <Link href="/pricing" className="text-sm text-white/65 hover:text-white transition-colors">Pricing</Link>
-            <Link href="/quick-wins" className="text-sm text-white/65 hover:text-white transition-colors">Quick Wins</Link>
             <Link href="/resources" className="text-sm text-white/65 hover:text-white transition-colors">Resources</Link>
+            <Link href="/msp" className="text-sm text-white/65 hover:text-white transition-colors">MSP Partners</Link>
             <Link href="/contact" className="text-sm text-white/65 hover:text-white transition-colors">Contact</Link>
           </div>
 
-          <Link
-            href="/book"
-            className="inline-block self-start md:self-center bg-primary hover:bg-[#005A9E] transition-colors text-white text-sm font-medium px-5 py-2.5 rounded-md whitespace-nowrap"
-          >
-            Schedule a Consultation
-          </Link>
+          <div className="flex flex-col gap-3 self-start md:self-center">
+            <Link
+              href="/assessment"
+              className="inline-block bg-primary hover:bg-[#005A9E] transition-colors text-white text-sm font-medium px-5 py-2.5 rounded-md whitespace-nowrap text-center"
+            >
+              Free Assessment
+            </Link>
+            <Link
+              href="/monitoring"
+              className="inline-block border border-white/20 hover:border-white/40 hover:bg-white/5 transition-colors text-white/80 hover:text-white text-sm font-medium px-5 py-2.5 rounded-md whitespace-nowrap text-center"
+            >
+              Start Monitoring
+            </Link>
+          </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-white/10 text-center text-white/40 text-xs">
-          <p>
-            © {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.
-            {" · "}
-            <Link href="/privacy" className="hover:text-white/70 transition-colors underline underline-offset-2">
+        <div className="mt-8 pt-6 border-t border-white/10 text-center text-white/40 text-xs space-y-1">
+          <p>© {new Date().getFullYear()} Shane McCaw Consulting. All rights reserved.</p>
+          <p className="flex items-center justify-center gap-3">
+            <Link href="/legal/privacy" className="hover:text-white/70 transition-colors underline underline-offset-2">
               Privacy Policy
+            </Link>
+            <span aria-hidden="true">·</span>
+            <Link href="/legal/terms" className="hover:text-white/70 transition-colors underline underline-offset-2">
+              Terms of Service
             </Link>
           </p>
         </div>

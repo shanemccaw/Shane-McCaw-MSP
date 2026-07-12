@@ -209,18 +209,21 @@ export default function QuizResultsPage() {
                   {data.whyThisFits && (
                     <p className="text-white/70 text-sm leading-relaxed">{data.whyThisFits}</p>
                   )}
+                  <p className="text-white/50 text-xs italic">
+                    This snapshot reflects your environment at the time of the assessment. Your results may change as your M365 configuration evolves.
+                  </p>
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <a
-                      href="/contact"
+                      href="/monitoring"
                       className="flex-1 py-2.5 px-4 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                     >
-                      Discuss My Results <ArrowRight className="w-3.5 h-3.5" />
+                      Keep this current — Start Monitoring <ArrowRight className="w-3.5 h-3.5" />
                     </a>
                     <a
-                      href="/book"
+                      href="/contact"
                       className="flex-1 py-2.5 px-4 border border-white/20 hover:border-white/40 text-white/80 hover:text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                     >
-                      Book a Free Call
+                      Discuss my results
                     </a>
                   </div>
                 </div>

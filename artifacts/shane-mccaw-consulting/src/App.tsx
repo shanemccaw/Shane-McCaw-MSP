@@ -8,8 +8,6 @@ import NotFound from "@/pages/not-found";
 import Home from "@/pages/Home";
 import About from "@/pages/About";
 import Services from "@/pages/Services";
-import MicroOffers from "@/pages/MicroOffers";
-import Pricing from "@/pages/Pricing";
 import Resources from "@/pages/Resources";
 import Contact from "@/pages/Contact";
 import Book from "@/pages/Book";
@@ -21,10 +19,7 @@ import Governance from "@/pages/services/Governance";
 import CloudMigration from "@/pages/services/CloudMigration";
 import M365Training from "@/pages/services/M365Training";
 import SecurityHardening from "@/pages/services/SecurityHardening";
-import Privacy from "@/pages/Privacy";
 import ArticlePage from "@/pages/ArticlePage";
-import Admin from "@/pages/Admin";
-import CustomerCommandCenter from "@/pages/CustomerCommandCenter";
 import CopilotQuiz from "@/pages/CopilotQuiz";
 import M365HealthQuiz from "@/pages/quizzes/M365HealthQuiz";
 import SharePointQuiz from "@/pages/quizzes/SharePointQuiz";
@@ -48,6 +43,16 @@ import LandingPage from "@/pages/LandingPage";
 import Assessments from "@/pages/Assessments";
 import Checkout from "@/pages/Checkout";
 import OnboardingLink from "@/pages/OnboardingLink";
+import MicroOffers from "@/pages/MicroOffers";
+import Pricing from "@/pages/Pricing";
+import Privacy from "@/pages/Privacy";
+
+import Assessment from "@/pages/Assessment";
+import Monitoring from "@/pages/Monitoring";
+import Projects from "@/pages/Projects";
+import Msp from "@/pages/Msp";
+import Terms from "@/pages/legal/Terms";
+import LegalPrivacy from "@/pages/legal/Privacy";
 
 const queryClient = new QueryClient();
 
@@ -82,51 +87,55 @@ function Router() {
       <ScrollToTop />
       <AnalyticsTracker />
       <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/about" component={About} />
-      <Route path="/services" component={Services} />
-      <Route path="/services/microsoft-365" component={Microsoft365} />
-      <Route path="/services/copilot-ai" component={CopilotAI} />
-      <Route path="/services/sharepoint" component={SharePoint} />
-      <Route path="/services/power-platform" component={PowerPlatform} />
-      <Route path="/services/governance" component={Governance} />
-      <Route path="/services/cloud-migration" component={CloudMigration} />
-      <Route path="/services/m365-training" component={M365Training} />
-      <Route path="/services/security-hardening" component={SecurityHardening} />
-      <Route path="/quick-wins" component={MicroOffers} />
-      <Route path="/quick-wins/:slug" component={MicroOfferDetail} />
-      <Route path="/pricing" component={Pricing} />
-      <Route path="/resources" component={Resources} />
-      <Route path="/resources/:slug" component={ArticlePage} />
-      <Route path="/contact" component={Contact} />
-      <Route path="/book" component={Book} />
-      <Route path="/privacy" component={Privacy} />
-      <Route path="/admin" component={Admin} />
-      <Route path="/customer-command-center" component={CustomerCommandCenter} />
-      <Route path="/copilot-quiz" component={CopilotQuiz} />
-      <Route path="/m365-health-quiz" component={M365HealthQuiz} />
-      <Route path="/sharepoint-readiness-quiz" component={SharePointQuiz} />
-      <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
-      <Route path="/security-compliance-quiz" component={SecurityQuiz} />
-      <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
-      <Route path="/migration-readiness-quiz" component={MigrationQuiz} />
-      <Route path="/governance-maturity-quiz" component={GovernanceQuiz} />
-      <Route path="/quiz/results/:leadId" component={QuizResultsPage} />
-      <Route path="/retainers" component={RetainersOverview} />
-      <Route path="/quick-win-quiz" component={QuickWinQuiz} />
-      <Route path="/quick-win/results/:resultId" component={QuickWinResultsPage} />
-      <Route path="/retainer-quiz" component={RetainerQuiz} />
-      <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
-      <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
-      <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
-      <Route path="/how-it-works/technical" component={TechnicalOverview} />
-      <Route path="/how-it-works" component={HowItWorks} />
-      <Route path="/assessments" component={Assessments} />
-      <Route path="/lp/:slug" component={LandingPage} />
-      <Route path="/checkout" component={Checkout} />
-      <Route path="/onboarding/:token" component={OnboardingLink} />
-      <Route component={NotFound} />
-    </Switch>
+        <Route path="/" component={Home} />
+        <Route path="/about" component={About} />
+        <Route path="/assessment" component={Assessment} />
+        <Route path="/monitoring" component={Monitoring} />
+        <Route path="/retainers" component={RetainersOverview} />
+        <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
+        <Route path="/retainers/architect-growth" component={ArchitectGrowth} />
+        <Route path="/retainers/architect-enterprise" component={ArchitectEnterprise} />
+        <Route path="/projects" component={Projects} />
+        <Route path="/msp" component={Msp} />
+        <Route path="/services" component={Services} />
+        <Route path="/services/microsoft-365" component={Microsoft365} />
+        <Route path="/services/copilot-ai" component={CopilotAI} />
+        <Route path="/services/sharepoint" component={SharePoint} />
+        <Route path="/services/power-platform" component={PowerPlatform} />
+        <Route path="/services/governance" component={Governance} />
+        <Route path="/services/cloud-migration" component={CloudMigration} />
+        <Route path="/services/m365-training" component={M365Training} />
+        <Route path="/services/security-hardening" component={SecurityHardening} />
+        <Route path="/resources" component={Resources} />
+        <Route path="/resources/:slug" component={ArticlePage} />
+        <Route path="/contact" component={Contact} />
+        <Route path="/book" component={Book} />
+        <Route path="/checkout" component={Checkout} />
+        <Route path="/legal/terms" component={Terms} />
+        <Route path="/legal/privacy" component={LegalPrivacy} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/quick-wins" component={MicroOffers} />
+        <Route path="/quick-wins/:slug" component={MicroOfferDetail} />
+        <Route path="/pricing" component={Pricing} />
+        <Route path="/copilot-quiz" component={CopilotQuiz} />
+        <Route path="/m365-health-quiz" component={M365HealthQuiz} />
+        <Route path="/sharepoint-readiness-quiz" component={SharePointQuiz} />
+        <Route path="/power-platform-quiz" component={PowerPlatformQuiz} />
+        <Route path="/security-compliance-quiz" component={SecurityQuiz} />
+        <Route path="/teams-maturity-quiz" component={TeamsQuiz} />
+        <Route path="/migration-readiness-quiz" component={MigrationQuiz} />
+        <Route path="/governance-maturity-quiz" component={GovernanceQuiz} />
+        <Route path="/quiz/results/:leadId" component={QuizResultsPage} />
+        <Route path="/quick-win-quiz" component={QuickWinQuiz} />
+        <Route path="/quick-win/results/:resultId" component={QuickWinResultsPage} />
+        <Route path="/retainer-quiz" component={RetainerQuiz} />
+        <Route path="/how-it-works/technical" component={TechnicalOverview} />
+        <Route path="/how-it-works" component={HowItWorks} />
+        <Route path="/assessments" component={Assessments} />
+        <Route path="/lp/:slug" component={LandingPage} />
+        <Route path="/onboarding/:token" component={OnboardingLink} />
+        <Route component={NotFound} />
+      </Switch>
     </>
   );
 }

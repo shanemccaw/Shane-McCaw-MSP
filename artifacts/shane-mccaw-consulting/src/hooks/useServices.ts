@@ -59,7 +59,7 @@ export function formatPriceDisplay(service: PublicService): string {
 const _cache: Record<string, PublicService[]> = {};
 const _pending: Record<string, Promise<PublicService[]>> = {};
 
-function fetchServices(type?: string): Promise<PublicService[]> {
+export function fetchServices(type?: string): Promise<PublicService[]> {
   const key = type ?? "__all__";
   if (_cache[key]) return Promise.resolve(_cache[key]);
   if (!_pending[key]) {

@@ -204,15 +204,18 @@ export default function RetainerQuizResults({ scores, onRetake }: Props) {
                   {config.explanation}
                 </p>
 
+                <p className="text-xs text-[#0A2540]/50 italic">
+                  This recommendation is a snapshot based on your answers today. Your ideal plan may shift as your environment changes — monitoring it continuously keeps the picture current.
+                </p>
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <CTAButton href={config.href} className="px-6 py-2.5 text-sm">
-                    See the {config.headline} Plan
+                  <CTAButton href="/monitoring" className="px-6 py-2.5 text-sm">
+                    Keep this current — Start Monitoring
                   </CTAButton>
                   <CTAButton
-                    href="/book"
+                    href="/contact"
                     className="px-6 py-2.5 text-sm !bg-[#0A2540] hover:!bg-[#0A2540]/90"
                   >
-                    Book a Free Call First
+                    Discuss my results
                   </CTAButton>
                 </div>
               </div>
@@ -377,23 +380,23 @@ export default function RetainerQuizResults({ scores, onRetake }: Props) {
               </div>
             </div>
 
-            {/* Step 3 — discovery call */}
+            {/* Step 3 — discuss results */}
             <div className="bg-white rounded-2xl border border-border p-6 flex gap-5">
               <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-[#0078D4]/10 flex items-center justify-center">
                 <CalendarDays className="w-4 h-4 text-[#0078D4]" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-bold text-[#0A2540] text-sm mb-1">
-                  Book a free 30-minute discovery call
+                  Discuss my results with Shane
                 </p>
                 <p className="text-muted-foreground text-sm leading-relaxed mb-3">
-                  Talk through your results with Shane directly. No commitment — a focused conversation about your environment and which plan will move the needle fastest.
+                  Talk through your results directly. No commitment — a focused conversation about your environment and which plan will move the needle fastest.
                 </p>
                 <Link
-                  href="/book"
+                  href="/contact"
                   className="inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline"
                 >
-                  Book a call <ArrowRight className="w-3.5 h-3.5" />
+                  Discuss my results <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
               </div>
             </div>

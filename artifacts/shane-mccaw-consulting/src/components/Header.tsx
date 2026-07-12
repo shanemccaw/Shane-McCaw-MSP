@@ -56,17 +56,6 @@ const SERVICES_ITEMS: NavItem[] = withIcons([
   { label: "Cloud Migration",               href: "/services/cloud-migration" },
 ]);
 
-const MICRO_OFFERS_ITEMS: NavItem[] = withIcons([
-  { label: "All Quick Wins",                       href: "/quick-wins" },
-  { label: "Start Here",                           href: "/quick-win-quiz" },
-  { label: "Tenant Health Audit",                 href: "/quick-wins/tenant-health-audit" },
-  { label: "Power Platform Quick-Start",          href: "/quick-wins/power-platform-quick-start" },
-  { label: "Governance Foundations",              href: "/quick-wins/governance-foundations" },
-  { label: "Migration Readiness Assessment",      href: "/quick-wins/migration-readiness-assessment" },
-  { label: "Copilot Readiness Assessment",        href: "/quick-wins/copilot-readiness-assessment" },
-  { label: "Microsoft 365 Training & Enablement", href: "/quick-wins/m365-training-enablement" },
-]);
-
 const RETAINER_ITEMS: NavItem[] = withIcons([
   { label: "All Retainer Plans",   href: "/retainers" },
   { label: "Start Here",           href: "/retainer-quiz" },
@@ -92,12 +81,12 @@ const ASSESSMENTS_ITEMS: NavItem[] = [
 const COMPANY_ITEMS: NavItem[] = withIcons([
   { label: "About",        href: "/about" },
   { label: "How We Work",  href: "/how-it-works" },
-  { label: "Pricing",      href: "/pricing" },
+  { label: "Resources",    href: "/resources" },
   { label: "Contact",      href: "/contact" },
 ]);
 
 // ─── Menu key type ─────────────────────────────────────────────────────────────
-type MenuKey = "services" | "microOffers" | "retainers" | "assessments" | "company";
+type MenuKey = "services" | "retainers" | "assessments" | "company";
 
 // ─── Dropdown trigger ──────────────────────────────────────────────────────────
 function DropdownTrigger({
@@ -238,7 +227,6 @@ export function Header() {
   // Per-trigger refs so Escape can return focus to the button that opened the menu
   const triggerRefs: Record<MenuKey, React.RefObject<HTMLButtonElement | null>> = {
     services:    useRef<HTMLButtonElement>(null),
-    microOffers: useRef<HTMLButtonElement>(null),
     retainers:   useRef<HTMLButtonElement>(null),
     assessments: useRef<HTMLButtonElement>(null),
     company:     useRef<HTMLButtonElement>(null),
@@ -289,12 +277,12 @@ export function Header() {
     setMobileExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  const isMonitoringActive  = location === "/monitoring";
   const isServicesActive    = location.startsWith("/services");
-  const isMicroActive       = location.startsWith("/quick-wins");
   const isRetainersActive   = location.startsWith("/retainers") || location === "/retainer-quiz";
   const isAssessmentsActive = ASSESSMENTS_ITEMS.some((i) => location === i.href);
-  const isResourcesActive   = location.startsWith("/resources");
-  const isCompanyActive     = ["/about", "/pricing", "/contact", "/how-it-works"].includes(location) || location.startsWith("/how-it-works");
+  const isMspActive         = location === "/msp";
+  const isCompanyActive     = ["/about", "/contact", "/how-it-works", "/resources"].includes(location) || location.startsWith("/how-it-works") || location.startsWith("/resources");
 
   const headerClasses = cn(
     "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
@@ -305,7 +293,6 @@ export function Header() {
 
   const MOBILE_SECTIONS = [
     { key: "services",    label: "Services",    items: SERVICES_ITEMS },
-    { key: "microOffers", label: "Quick Wins",  items: MICRO_OFFERS_ITEMS },
     { key: "retainers",   label: "Retainers",   items: RETAINER_ITEMS },
     { key: "assessments", label: "Assessments", items: ASSESSMENTS_ITEMS },
     { key: "company",     label: "Company",     items: COMPANY_ITEMS },
@@ -324,20 +311,20 @@ export function Header() {
         <nav className="hidden lg:flex flex-1 items-center justify-between" aria-label="Main navigation" role="navigation">
           <ul ref={navRef} className="flex items-center gap-0.5">
 
-            {/* Services */}
-            <li className="relative">
-              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} triggerRef={triggerRefs.services} />
-              {openMenu === "services" && (
-                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.services} />
-              )}
-            </li>
-
-            {/* Quick Wins */}
-            <li className="relative">
-              <DropdownTrigger menuKey="microOffers" label="Quick Wins" isActive={isMicroActive} isOpen={openMenu === "microOffers"} onToggle={toggle} triggerRef={triggerRefs.microOffers} />
-              {openMenu === "microOffers" && (
-                <DropdownPanel items={MICRO_OFFERS_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.microOffers} />
-              )}
+            {/* Monitoring — direct link */}
+            <li>
+              <Link
+                href="/monitoring"
+                data-track="nav"
+                className={cn(
+                  "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
+                  isMonitoringActive
+                    ? "text-primary"
+                    : "text-white/80 hover:text-white hover:bg-white/5"
+                )}
+              >
+                Monitoring
+              </Link>
             </li>
 
             {/* Retainers */}
@@ -345,6 +332,14 @@ export function Header() {
               <DropdownTrigger menuKey="retainers" label="Retainers" isActive={isRetainersActive} isOpen={openMenu === "retainers"} onToggle={toggle} triggerRef={triggerRefs.retainers} />
               {openMenu === "retainers" && (
                 <DropdownPanel items={RETAINER_ITEMS} location={location} width="w-56" onClose={closeAll} triggerRef={triggerRefs.retainers} />
+              )}
+            </li>
+
+            {/* Services */}
+            <li className="relative">
+              <DropdownTrigger menuKey="services" label="Services" isActive={isServicesActive} isOpen={openMenu === "services"} onToggle={toggle} triggerRef={triggerRefs.services} />
+              {openMenu === "services" && (
+                <DropdownPanel items={SERVICES_ITEMS} location={location} twoCol onClose={closeAll} triggerRef={triggerRefs.services} />
               )}
             </li>
 
@@ -356,23 +351,23 @@ export function Header() {
               )}
             </li>
 
-            {/* Resources — plain top-level link */}
+            {/* MSP/Partners — direct link */}
             <li>
               <Link
-                href="/resources"
+                href="/msp"
                 data-track="nav"
                 className={cn(
                   "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                  isResourcesActive
+                  isMspActive
                     ? "text-primary"
                     : "text-white/80 hover:text-white hover:bg-white/5"
                 )}
               >
-                Resources
+                MSP/Partners
               </Link>
             </li>
 
-            {/* Company dropdown (About / Pricing / Contact) */}
+            {/* Company dropdown (About / Resources / Contact) */}
             <li className="relative">
               <DropdownTrigger menuKey="company" label="Company" isActive={isCompanyActive} isOpen={openMenu === "company"} onToggle={toggle} triggerRef={triggerRefs.company} />
               {openMenu === "company" && (
@@ -389,7 +384,7 @@ export function Header() {
             >
               Client Login
             </a>
-            <CTAButton href="/book" className="text-sm px-5 py-2 whitespace-nowrap">Book a Call</CTAButton>
+            <CTAButton href="/assessment" className="text-sm px-5 py-2 whitespace-nowrap">Free Assessment</CTAButton>
           </div>
         </nav>
 
@@ -464,17 +459,32 @@ export function Header() {
               </div>
             ))}
 
-            {/* Resources — standalone direct link */}
+            {/* Monitoring — standalone direct link */}
             <div>
               <Link
-                href="/resources"
+                href="/monitoring"
                 onClick={() => setMobileMenuOpen(false)}
                 className={cn(
                   "flex items-center px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors",
-                  isResourcesActive ? "text-primary" : "text-white/40 hover:text-white/60"
+                  isMonitoringActive ? "text-primary" : "text-white/40 hover:text-white/60"
                 )}
               >
-                Resources
+                Monitoring
+              </Link>
+              <div className="border-t border-white/10 mx-3" />
+            </div>
+
+            {/* MSP/Partners — standalone direct link */}
+            <div>
+              <Link
+                href="/msp"
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "flex items-center px-3 py-2.5 text-[11px] font-bold uppercase tracking-widest transition-colors",
+                  isMspActive ? "text-primary" : "text-white/40 hover:text-white/60"
+                )}
+              >
+                MSP/Partners
               </Link>
               <div className="border-t border-white/10 mx-3" />
             </div>
@@ -489,7 +499,7 @@ export function Header() {
             >
               Client Login
             </a>
-            <CTAButton href="/book" className="w-full justify-center">Book a Call</CTAButton>
+            <CTAButton href="/assessment" className="w-full justify-center">Free Assessment</CTAButton>
           </div>
         </div>
       )}
