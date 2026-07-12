@@ -104,6 +104,18 @@ const CATALOG_FIELDS: FieldDef[] = [
       { value: "landing_page_only", label: "Landing Page Only" },
     ],
   },
+  {
+    key: "serviceType", label: "Service Type", kind: "select", target: "core",
+    hint: "Controls which catalog filter returns this service (e.g. monitoring_tier → /monitoring page)",
+    options: [
+      { value: "", label: "— none —" },
+      { value: "monitoring_tier", label: "monitoring_tier" },
+      { value: "retainer", label: "retainer" },
+      { value: "micro_offer", label: "micro_offer" },
+      { value: "service_area", label: "service_area" },
+      { value: "msp", label: "msp" },
+    ],
+  },
   { key: "isFreeOffering", label: "Free Offering", kind: "boolean", target: "core", hint: "Skips Stripe checkout — clients accept at $0" },
 ];
 
