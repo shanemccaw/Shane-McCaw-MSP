@@ -237,6 +237,25 @@ export const servicesTable = pgTable("services", {
   customerAgreementTemplate: text("customer_agreement_template"),
   // When true, the service is offered at $0 — skips Stripe checkout entirely.
   isFreeOffering: boolean("is_free_offering").notNull().default(false),
+
+  // ── Monitoring Tier fields ─────────────────────────────────────────────────
+  // Only meaningful when serviceClass = 'subscription' AND
+  // deliveryType = 'bundle_subscription'.
+  // Human-readable tier name shown to MSPs (e.g. "Core", "Pro").
+  tenantTierLabel: text("tenant_tier_label"),
+  // Inclusive seat range for this tier.
+  seatMin: integer("seat_min"),
+  seatMax: integer("seat_max"),
+  // Keys referencing the Engine Registry (e.g. ["priority","health"]).
+  includedEngines: jsonb("included_engines").$type<string[]>(),
+  // Plan-feature keys gated by this tier (e.g. ["advanced_signals"]).
+  includedFeatures: jsonb("included_features").$type<string[]>(),
+  // Per-user per-month price in USD (used for seat-based billing).
+  pricePerUserMonth: numeric("price_per_user_month", { precision: 10, scale: 2 }),
+  // Minimum billable seat count — MSPs are charged for at least this many.
+  seatCountFloor: integer("seat_count_floor"),
+  // Minimum MSP plan tier required to assign this product (e.g. "starter").
+  minMspPlanTier: text("min_msp_plan_tier"),
 });
 
 export type InsertService = typeof servicesTable.$inferInsert;

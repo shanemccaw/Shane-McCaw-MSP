@@ -22,8 +22,44 @@ import ArrayEditor from "./ArrayEditor";
 import ServiceEditorSidePanel from "./ServiceEditorSidePanel";
 import CategoryPickerDropdown from "./CategoryPickerDropdown";
 import type { WizardStep, WizardOption } from "@/hooks/useServices";
+import { detectProductType, PRODUCT_TYPE_CONFIGS, PRODUCT_TYPE_LIST, type ProductTypeKey } from "@/lib/productTypeConfig";
+import { useRegistryOptions } from "@/hooks/useRegistryOptions";
 
 function nanoid() { return Math.random().toString(36).slice(2, 10); }
+
+function MultiCheckboxSelect({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: string; label: string }[];
+  value: string[];
+  onChange: (v: string[]) => void;
+}) {
+  const toggle = (key: string) =>
+    onChange(value.includes(key) ? value.filter(k => k !== key) : [...value, key]);
+  return (
+    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+      {options.map(opt => (
+        <label
+          key={opt.key}
+          className="flex items-start gap-2 cursor-pointer select-none group"
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5 shrink-0 rounded border-[#30363D] accent-cyan-500"
+            checked={value.includes(opt.key)}
+            onChange={() => toggle(opt.key)}
+          />
+          <span className="flex flex-col min-w-0">
+            <span className="text-xs text-[#E6EDF3] leading-tight">{opt.label}</span>
+            <code className="text-[10px] text-[#7D8590] leading-tight">{opt.key}</code>
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
 
 const ICON_MAP: Record<string, LucideIcon> = {
   Cloud, Bot, Shield, Zap, Server, Users, Layout: LayoutIcon, Sparkles,
@@ -86,6 +122,15 @@ const serviceSchema = z.object({
   triggeringSignalKeys: z.array(z.string()),
   customerAgreementTemplate: z.string().nullable(),
   isFreeOffering: z.boolean(),
+  // Monitoring Tier fields
+  tenantTierLabel: z.string().nullable(),
+  seatMin: z.number().nullable(),
+  seatMax: z.number().nullable(),
+  includedEngines: z.array(z.string()),
+  includedFeatures: z.array(z.string()),
+  pricePerUserMonth: z.string().nullable(),
+  seatCountFloor: z.number().nullable(),
+  minMspPlanTier: z.string().nullable(),
 });
 
 type ServiceFormValues = z.infer<typeof serviceSchema>;
@@ -246,6 +291,7 @@ interface Props {
 export default function ServiceEditor({ id, onClose, onSaved, panelMode = false, allCategoryPaths = [] }: Props) {
   const { fetchWithAuth } = useAuth();
   const { toast } = useToast();
+  const { engines: registryEngines, features: registryFeatures } = useRegistryOptions();
   const isNew = id === null;
 
   const { data: service, isLoading } = useService(id);
@@ -280,9 +326,9 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   const [discardOpen, setDiscardOpen] = useState(false);
 
   // New service creation state
+  const [createType, setCreateType] = useState<ProductTypeKey | null>(null);
   const [createName, setCreateName] = useState("");
   const [createSlug, setCreateSlug] = useState("");
-  const [createBilling, setCreateBilling] = useState<"one_time" | "recurring_monthly">("one_time");
   const [creating, setCreating] = useState(false);
 
   const defaultValues: ServiceFormValues = useMemo(() => ({
@@ -318,6 +364,14 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
     triggeringSignalKeys: service?.triggeringSignalKeys ?? [],
     customerAgreementTemplate: service?.customerAgreementTemplate ?? null,
     isFreeOffering: service?.isFreeOffering ?? false,
+    tenantTierLabel: service?.tenantTierLabel ?? null,
+    seatMin: service?.seatMin ?? null,
+    seatMax: service?.seatMax ?? null,
+    includedEngines: service?.includedEngines ?? [],
+    includedFeatures: service?.includedFeatures ?? [],
+    pricePerUserMonth: service?.pricePerUserMonth ?? null,
+    seatCountFloor: service?.seatCountFloor ?? null,
+    minMspPlanTier: service?.minMspPlanTier ?? null,
   }), [service]);
 
   const { register, handleSubmit, control, watch, reset, formState: { errors, isDirty } } = useForm<ServiceFormValues>({
@@ -383,22 +437,25 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
 
   const handleCreate = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createName.trim()) return;
+    if (!createName.trim() || !createType) return;
+    const typeConfig = PRODUCT_TYPE_CONFIGS[createType];
     setCreating(true);
     try {
       const created = await createService.mutateAsync({
         name: createName.trim(),
         slug: createSlug.trim() || createName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, ""),
-        billingType: createBilling,
+        billingType: typeConfig.defaultBillingType,
         visibility: "private",
         isPublic: false,
+        serviceClass: typeConfig.serviceClass ?? undefined,
+        deliveryType: typeConfig.deliveryType ?? undefined,
       });
       toast({ title: "Service created" });
       onSaved?.(created.id);
     } catch (err) {
       toast({ title: (err as Error).message, variant: "destructive" });
     } finally { setCreating(false); }
-  }, [createName, createSlug, createBilling, createService, toast, onSaved]);
+  }, [createName, createSlug, createType, createService, toast, onSaved]);
 
   const onSubmit = useCallback(async (values: ServiceFormValues): Promise<boolean> => {
     if (!id) return false;
@@ -418,6 +475,18 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
           triggeringSignalKeys: values.triggeringSignalKeys.length > 0 ? values.triggeringSignalKeys : null,
           customerAgreementTemplate: values.customerAgreementTemplate ?? null,
           isFreeOffering: values.isFreeOffering,
+          serviceClass: service?.serviceClass ?? null,
+          deliveryType: service?.deliveryType ?? null,
+          // Note: serviceClass/deliveryType are type-identity fields set at creation;
+          // they are preserved from the stored service record, not editable here.
+          tenantTierLabel: values.tenantTierLabel ?? null,
+          seatMin: values.seatMin ?? null,
+          seatMax: values.seatMax ?? null,
+          includedEngines: values.includedEngines.length > 0 ? values.includedEngines : null,
+          includedFeatures: values.includedFeatures.length > 0 ? values.includedFeatures : null,
+          pricePerUserMonth: values.pricePerUserMonth ?? null,
+          seatCountFloor: values.seatCountFloor ?? null,
+          minMspPlanTier: values.minMspPlanTier ?? null,
         },
       });
       toast({ title: "Service saved" });
@@ -428,7 +497,7 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
       toast({ title: (err as Error).message, variant: "destructive" });
       return false;
     }
-  }, [id, updateService, toast, reset, onSaved]);
+  }, [id, service, updateService, toast, reset, onSaved]);
 
   const handleSaveAndClose = useCallback(async () => {
     let succeeded = false;
@@ -564,18 +633,71 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
 
   // ---- New service creation form ----
   if (isNew) {
+    // Step 0: type picker
+    if (!createType) {
+      return (
+        <div className="flex h-full overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 max-w-2xl">
+            <div className="flex items-center gap-3 mb-6">
+              {!panelMode && (
+                <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+                  <ArrowLeft className="w-4 h-4" />
+                </button>
+              )}
+              <div>
+                <h2 className="text-xl font-bold text-[#E6EDF3]">New Product</h2>
+                <p className="text-xs text-[#7D8590] mt-0.5">Choose a product type to get started</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {PRODUCT_TYPE_LIST.map(cfg => (
+                <button
+                  key={cfg.key}
+                  type="button"
+                  onClick={() => setCreateType(cfg.key)}
+                  className="flex flex-col items-start gap-2 p-5 bg-[#161B22] border border-[#30363D] rounded-xl text-left hover:border-[#0078D4] hover:bg-[#0078D4]/5 transition-all group"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-sm font-bold text-[#E6EDF3] group-hover:text-[#58A6FF]">{cfg.label}</span>
+                    <span className="text-[10px] font-mono text-[#484F58] bg-[#21262D] px-2 py-0.5 rounded">
+                      {cfg.defaultBillingType === "recurring_monthly" ? "recurring" : cfg.defaultBillingType}
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#7D8590] leading-relaxed">{cfg.description}</p>
+                  {(cfg.showFields.assignToClient || cfg.showFields.genPdf || cfg.showFields.projectTemplate) && (
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {cfg.showFields.assignToClient && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">Assign to Client</span>}
+                      {cfg.showFields.projectTemplate && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">Project Template</span>}
+                      {cfg.showFields.genPdf && <span className="text-[10px] bg-[#21262D] text-[#7D8590] px-1.5 py-0.5 rounded">PDF Overview</span>}
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Step 1: name + slug form
+    const selectedTypeConfig = PRODUCT_TYPE_CONFIGS[createType];
     return (
       <div className="flex h-full overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 max-w-xl">
           <div className="flex items-center gap-3 mb-6">
-            {!panelMode && (
-              <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-            <h2 className="text-xl font-bold text-[#E6EDF3]">New Service</h2>
+            <button type="button" onClick={() => setCreateType(null)} className="p-1.5 rounded-lg text-[#7D8590] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors">
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div>
+              <h2 className="text-xl font-bold text-[#E6EDF3]">New {selectedTypeConfig.label}</h2>
+              <p className="text-xs text-[#7D8590] mt-0.5">{selectedTypeConfig.description}</p>
+            </div>
           </div>
           <form onSubmit={e => void handleCreate(e)} className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 space-y-5">
+            <div className="flex items-center gap-2 p-3 bg-[#0078D4]/10 border border-[#0078D4]/20 rounded-lg">
+              <span className="text-xs font-semibold text-[#0078D4]">Type: {selectedTypeConfig.label}</span>
+              <span className="text-xs text-[#7D8590] ml-auto font-mono">{selectedTypeConfig.defaultBillingType}</span>
+            </div>
             <div>
               <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Name <span className="text-red-500">*</span></label>
               <input type="text" required autoFocus value={createName} onChange={e => {
@@ -592,21 +714,10 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                 placeholder="url-friendly-slug"
                 className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm font-mono bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Billing Type</label>
-              <div className="flex gap-3">
-                {[{ v: "one_time" as const, label: "One-time charge" }, { v: "recurring_monthly" as const, label: "Monthly retainer" }].map(opt => (
-                  <label key={opt.v} className={`flex items-center gap-2.5 flex-1 border rounded-xl p-3 cursor-pointer transition-all ${createBilling === opt.v ? "border-[#0078D4] bg-[#0078D4]/10" : "border-[#30363D] hover:border-[#484F58]"}`}>
-                    <input type="radio" name="createBilling" value={opt.v} checked={createBilling === opt.v} onChange={() => setCreateBilling(opt.v)} className="text-[#0078D4]" />
-                    <span className="text-sm font-medium text-[#E6EDF3]">{opt.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-            <p className="text-xs text-[#7D8590]">Visibility defaults to <strong className="text-[#E6EDF3]">Private</strong>. You can change it after saving.</p>
+            <p className="text-xs text-[#7D8590]">Visibility defaults to <strong className="text-[#E6EDF3]">Private</strong>. You can change all other settings after saving.</p>
             <button type="submit" disabled={creating || !createName.trim()}
               className="w-full bg-[#0078D4] text-white rounded-lg px-5 py-2.5 text-sm font-semibold hover:bg-[#006CBE] transition-colors disabled:opacity-60">
-              {creating ? "Creating…" : "Create Service"}
+              {creating ? "Creating…" : `Create ${selectedTypeConfig.label}`}
             </button>
           </form>
         </div>
@@ -671,6 +782,16 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   }
 
   const saving = updateService.isPending;
+  const productType = detectProductType(service.serviceClass, service.deliveryType);
+  const typeConfig = PRODUCT_TYPE_CONFIGS[productType];
+
+  const TYPE_BADGE_COLORS: Record<string, string> = {
+    credit_pack: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
+    assessment: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+    project: "bg-purple-500/15 text-purple-400 border-purple-500/20",
+    retainer: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+    monitoring_tier: "bg-cyan-500/15 text-cyan-400 border-cyan-500/20",
+  };
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -685,8 +806,11 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
             </button>
           )}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-[#E6EDF3] truncate">{service.name}</h2>
+              <span className={`flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full border uppercase tracking-wide ${TYPE_BADGE_COLORS[productType]}`}>
+                {typeConfig.label}
+              </span>
               {isDirty && (
                 <span className="flex-shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/20 uppercase tracking-wide">
                   Unsaved
@@ -715,27 +839,35 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
 
         {/* Action bar */}
         <div className="flex items-center gap-2 px-6 py-2.5 border-b border-[#30363D] bg-[#0D1117] flex-shrink-0 flex-wrap">
-          <button type="button" onClick={() => { setShowAssign(p => !p); setShowWorkflow(false); setAssignForm(f => ({ ...f, serviceId: String(id) })); }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
-            Assign to Client
-          </button>
-          <button type="button" onClick={() => { setShowWorkflow(p => !p); setShowAssign(false); }}
-            className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
-            {service.orderWorkflow && service.orderWorkflow.length > 0
-              ? `Project Template (${service.orderWorkflow.length} step${service.orderWorkflow.length !== 1 ? "s" : ""})`
-              : "Project Template"}
-          </button>
-          <div className="flex items-center gap-1.5 ml-auto">
-            <button type="button" onClick={() => void handleGeneratePdf()} disabled={generatingPdf}
-              className="flex items-center gap-1.5 text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 transition-colors">
-              {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              {generatingPdf ? "Generating…" : "Gen PDF"}
+          {typeConfig.showFields.assignToClient && (
+            <button type="button" onClick={() => { setShowAssign(p => !p); setShowWorkflow(false); setAssignForm(f => ({ ...f, serviceId: String(id) })); }}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showAssign ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
+              Assign to Client
             </button>
-            {service.overviewPdfKey && (
-              <button type="button" onClick={() => void handleViewPdf()}
-                className="text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors">
-                View PDF
-              </button>
+          )}
+          {typeConfig.showFields.projectTemplate && (
+            <button type="button" onClick={() => { setShowWorkflow(p => !p); setShowAssign(false); }}
+              className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${showWorkflow ? "bg-[#0078D4] text-white border-[#0078D4]" : "border-[#30363D] text-[#7D8590] hover:border-[#0078D4] hover:text-[#0078D4]"}`}>
+              {service.orderWorkflow && service.orderWorkflow.length > 0
+                ? `Project Template (${service.orderWorkflow.length} step${service.orderWorkflow.length !== 1 ? "s" : ""})`
+                : "Project Template"}
+            </button>
+          )}
+          <div className="flex items-center gap-1.5 ml-auto">
+            {typeConfig.showFields.genPdf && (
+              <>
+                <button type="button" onClick={() => void handleGeneratePdf()} disabled={generatingPdf}
+                  className="flex items-center gap-1.5 text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 transition-colors">
+                  {generatingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                  {generatingPdf ? "Generating…" : "Gen PDF"}
+                </button>
+                {service.overviewPdfKey && (
+                  <button type="button" onClick={() => void handleViewPdf()}
+                    className="text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] transition-colors">
+                    View PDF
+                  </button>
+                )}
+              </>
             )}
             <button type="button" onClick={() => void handleGenerateAllPdfs()} disabled={bulkGenerating}
               className="flex items-center gap-1.5 text-xs border border-[#30363D] text-[#7D8590] px-3 py-1.5 rounded-lg hover:bg-[#1C2128] hover:text-[#E6EDF3] disabled:opacity-50 transition-colors">
@@ -821,32 +953,47 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                 <textarea {...register("description")} rows={3} className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4] resize-none" />
               </div>
 
-              {/* Pricing */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
-                  <input {...register("price", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+              {/* Pricing — type-conditional */}
+              {(typeConfig.showFields.priceFixed || typeConfig.showFields.priceRange) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {typeConfig.showFields.priceFixed && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Fixed Price ($)</label>
+                      <input {...register("price", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                  )}
+                  {typeConfig.showFields.priceRange && (
+                    <>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Base Price ($)</label>
+                        <input {...register("basePrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range min" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Price ($)</label>
+                        <input {...register("maxPrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range max" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Base Price ($)</label>
-                  <input {...register("basePrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range min" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Price ($)</label>
-                  <input {...register("maxPrice", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01" placeholder="Range max" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Duration (days)</label>
-                  <input {...register("durationDays", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+              {/* Duration / Turnaround — type-conditional */}
+              {(typeConfig.showFields.duration || typeConfig.showFields.turnaround) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {typeConfig.showFields.duration && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Duration (days)</label>
+                      <input {...register("durationDays", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                  )}
+                  {typeConfig.showFields.turnaround && (
+                    <div>
+                      <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Turnaround</label>
+                      <input {...register("turnaround")} placeholder="e.g. 5 business days" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Turnaround</label>
-                  <input {...register("turnaround")} placeholder="e.g. 5 business days" className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-                </div>
-              </div>
+              )}
 
               {/* Billing type */}
               <div>
@@ -1148,6 +1295,79 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
                 </div>
               </div>
             </div>
+
+            {/* Monitoring Tier fields — only shown for monitoring_tier type */}
+            {typeConfig.showFields.monitoringTier && (
+              <div className="bg-[#161B22] rounded-xl border border-cyan-600/30 p-6 mt-5 space-y-5">
+                <p className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-1">Monitoring Tier</p>
+                <p className="text-xs text-[#7D8590] mb-3">Platform subscription tier settings — used for seat-based billing and engine gating.</p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Tier Label</label>
+                    <input {...register("tenantTierLabel")} placeholder="e.g. Core, Pro, Enterprise"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                    <p className="text-[10px] text-[#484F58] mt-1">Human-readable tier name shown to MSPs.</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Min MSP Plan Tier</label>
+                    <input {...register("minMspPlanTier")} placeholder="e.g. starter, growth, enterprise"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                    <p className="text-[10px] text-[#484F58] mt-1">Minimum MSP plan level required to purchase this tier.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Min Seats</label>
+                    <input {...register("seatMin", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Max Seats</label>
+                    <input {...register("seatMax", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Seat Count Floor</label>
+                    <input {...register("seatCountFloor", { setValueAs: v => v === "" || v === null ? null : Number(v) })} type="number" min="1"
+                      className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                    <p className="text-[10px] text-[#484F58] mt-1">Minimum billable seat count.</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-1.5 uppercase tracking-wide">Price Per User / Month ($)</label>
+                  <input {...register("pricePerUserMonth", { setValueAs: v => v === "" || v === null || v === undefined ? null : String(v) })} type="number" min="0" step="0.01"
+                    className="w-full border border-[#30363D] rounded-lg px-3 py-2 text-sm bg-[#0D1117] text-[#E6EDF3] focus:outline-none focus:ring-2 focus:ring-cyan-500" />
+                  <p className="text-[10px] text-[#484F58] mt-1">Used for seat-based billing calculations.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Included Engines</label>
+                  <Controller name="includedEngines" control={control} render={({ field }) => (
+                    <MultiCheckboxSelect
+                      options={registryEngines}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )} />
+                  <p className="text-[10px] text-[#484F58] mt-1.5">Select Engine Registry keys available on this tier.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-[#7D8590] mb-2 uppercase tracking-wide">Included Features</label>
+                  <Controller name="includedFeatures" control={control} render={({ field }) => (
+                    <MultiCheckboxSelect
+                      options={registryFeatures}
+                      value={field.value}
+                      onChange={field.onChange}
+                    />
+                  )} />
+                  <p className="text-[10px] text-[#484F58] mt-1.5">Select plan-feature keys gated to this tier.</p>
+                </div>
+              </div>
+            )}
 
             {/* Product Catalog */}
             <div className="bg-[#161B22] rounded-xl border border-[#30363D] p-6 mt-5 space-y-5">

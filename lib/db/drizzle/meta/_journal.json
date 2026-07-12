@@ -1296,6 +1296,13 @@
       "when": 1752278400001,
       "tag": "0175_msp_suspended_at",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "7",
+      "when": 1752278400002,
+      "tag": "0176_monitoring_tier_fields",
+      "breakpoints": true
     }
   ]
 }

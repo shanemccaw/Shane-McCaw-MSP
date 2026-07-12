@@ -170,6 +170,107 @@ export async function checkTenantAllowance(mspId: number): Promise<{
 }
 
 /**
+ * Plan-feature registry.
+ *
+ * This is the single source of truth for every feature key that can be passed
+ * to requirePlanFeature(). Expose via GET /api/admin/plan-features so the
+ * Admin Panel can populate the Monitoring Tier "Included Features" multiselect
+ * from live data rather than hard-coded constants.
+ */
+export const PLAN_FEATURE_DEFS: { key: string; label: string; description: string }[] = [
+  {
+    key: "advanced_signals",
+    label: "Advanced Signals",
+    description: "Access to advanced tenant signal rules and priority scoring.",
+  },
+  {
+    key: "custom_workflows",
+    label: "Custom Workflows",
+    description: "Create and manage custom automation workflows.",
+  },
+  {
+    key: "sla_scope_creep_custom_rules",
+    label: "SLA / Scope-Creep Custom Rules",
+    description: "MSP-authored override rules for the SLA and Scope-Creep engines.",
+  },
+  {
+    key: "sales_offers",
+    label: "Sales Offers",
+    description: "Sales Offer Engine — rule-driven candidate offer generation.",
+  },
+  {
+    key: "custom_bundle_composition",
+    label: "Custom Bundle Composition",
+    description: "Compose custom multi-package monitoring bundles.",
+  },
+];
+
+/**
+ * Canonical numeric rank for MSP platform tier names (case-insensitive).
+ * Higher number = higher tier.
+ *
+ * IMPORTANT: only names present here are considered valid required tiers.
+ * An unknown required tier name causes compareTierRank() to fail closed.
+ */
+export const TIER_RANK: Record<string, number> = {
+  starter:      0,
+  basic:        0,
+  pro:          1,
+  professional: 1,
+  business:     2,
+  enterprise:   3,
+};
+
+/**
+ * Pure comparison of two tier name strings. Exported for unit testing.
+ *
+ * - `requiredTier` absent/null → ok: true (no gate).
+ * - `requiredTier` not in TIER_RANK → ok: false (fail closed — unknown tiers
+ *   must not silently pass; add the name to TIER_RANK when a new tier is
+ *   introduced to the platform).
+ * - `currentTierName` not in TIER_RANK → treated as "starter" (rank 0).
+ */
+export function compareTierRank(
+  currentTierName: string | null | undefined,
+  requiredTier: string | null | undefined,
+): { ok: true } | { ok: false; currentTier: string; requiredTier: string } {
+  if (!requiredTier) return { ok: true };
+
+  const normReq = requiredTier.toLowerCase();
+  const currentName = currentTierName ?? "starter";
+
+  if (!(normReq in TIER_RANK)) {
+    return { ok: false, currentTier: currentName, requiredTier };
+  }
+
+  const current = TIER_RANK[currentName.toLowerCase()] ?? 0;
+  const required = TIER_RANK[normReq];
+
+  if (current >= required) return { ok: true };
+  return { ok: false, currentTier: currentName, requiredTier };
+}
+
+/**
+ * Checks whether an MSP's current subscription tier satisfies a minimum
+ * tier requirement stored on a service record (`minMspPlanTier`).
+ *
+ * Returns { ok: true } when satisfied.
+ * Returns { ok: false, currentTier, requiredTier } when the MSP must upgrade
+ * or when requiredTier names an unrecognised tier (fail closed).
+ * Returns { ok: true } when there is no active subscription (no tier = treat as
+ * starter, but the caller can separately enforce subscription existence).
+ */
+export async function checkMspMinTierSatisfied(
+  mspId: number,
+  requiredTier: string | null | undefined,
+): Promise<{ ok: true } | { ok: false; currentTier: string; requiredTier: string }> {
+  if (!requiredTier) return { ok: true };
+
+  const tier = await loadTier(mspId);
+  return compareTierRank(tier?.tierName, requiredTier);
+}
+
+/**
  * Returns the dunning state for an MSP's subscription.
  * Returns null if no subscription or no dunning state is active.
  */

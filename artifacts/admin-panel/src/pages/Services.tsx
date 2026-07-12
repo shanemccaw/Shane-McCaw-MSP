@@ -6,6 +6,7 @@ import CatalogCategoryTree from "@/components/services/CatalogCategoryTree";
 import CatalogProductList from "@/components/services/CatalogProductList";
 import CatalogDetailPanel from "@/components/services/CatalogDetailPanel";
 import CatalogQuickJump from "@/components/services/CatalogQuickJump";
+import { PRODUCT_TYPE_LIST, type ProductTypeKey } from "@/lib/productTypeConfig";
 
 export default function ServicesPage() {
   const { data: services = [], isLoading, refetch } = useServices();
@@ -21,6 +22,19 @@ export default function ServicesPage() {
   const [importJson, setImportJson] = useState("");
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
+  const templateDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showTemplateDropdown) return;
+    function handleOutside(e: MouseEvent) {
+      if (templateDropdownRef.current && !templateDropdownRef.current.contains(e.target as Node)) {
+        setShowTemplateDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [showTemplateDropdown]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -56,18 +70,24 @@ export default function ServicesPage() {
     );
   }
 
-  async function handleDownloadTemplate() {
+  async function handleDownloadTemplate(type?: ProductTypeKey) {
     try {
-      const res = await fetchWithAuth("/api/admin/catalog/import-template");
+      const url = type
+        ? `/api/admin/catalog/import-template?type=${type}`
+        : "/api/admin/catalog/import-template";
+      const res = await fetchWithAuth(url);
       if (!res.ok) { toast({ title: "Download failed", variant: "destructive" }); return; }
       const data = await res.json() as unknown;
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
+      const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "services-import-template.json";
+      a.href = objUrl;
+      a.download = type
+        ? `services-template-${type}.json`
+        : "services-import-template.json";
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objUrl);
+      setShowTemplateDropdown(false);
     } catch {
       toast({ title: "Download failed", variant: "destructive" });
     }
@@ -128,15 +148,42 @@ export default function ServicesPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toolbar */}
       <div className="flex-shrink-0 flex items-center justify-end gap-2 px-4 py-2 border-b border-[#21262D] bg-[#0D1117]">
-        <button
-          onClick={() => void handleDownloadTemplate()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-          Download Template
-        </button>
+        <div className="relative" ref={templateDropdownRef}>
+          <button
+            onClick={() => setShowTemplateDropdown(v => !v)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Download Template
+            <svg className={`w-3 h-3 transition-transform ${showTemplateDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {showTemplateDropdown && (
+            <div className="absolute right-0 top-full mt-1 z-50 bg-[#161B22] border border-[#30363D] rounded-lg shadow-xl min-w-[180px] py-1">
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">All types</div>
+              <button
+                onClick={() => void handleDownloadTemplate()}
+                className="w-full text-left px-3 py-2 text-xs text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+              >
+                All 5 types (combined)
+              </button>
+              <div className="border-t border-[#21262D] my-1" />
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-[#484F58] uppercase tracking-wider">By type</div>
+              {PRODUCT_TYPE_LIST.map(cfg => (
+                <button
+                  key={cfg.key}
+                  onClick={() => void handleDownloadTemplate(cfg.key)}
+                  className="w-full text-left px-3 py-2 text-xs text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           onClick={handleExport}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#161B22] border border-[#30363D] text-[#8B949E] hover:text-[#E6EDF3] hover:bg-[#1C2128] transition-colors"

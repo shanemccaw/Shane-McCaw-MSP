@@ -10,6 +10,7 @@ import {
   buildEngineTestInputForTenant,
   buildEngineTestInputForPayload,
 } from "../lib/engine-registry";
+import { PLAN_FEATURE_DEFS } from "../lib/msp-entitlement";
 import {
   computeTenantSignals,
   evaluateRule,
@@ -59,6 +60,14 @@ router.get("/admin/engines", requireAdmin, (_req: Request, res: Response) => {
   res.json({
     engines: ENGINE_DEFS.map(e => ({ key: e.key, label: e.label, description: e.description, categoryPrefix: e.categoryPrefix, tenantScoped: e.tenantScoped })),
   });
+});
+
+// ── GET /api/admin/plan-features ─────────────────────────────────────────────
+// Returns the canonical plan-feature registry so the Admin Panel can build
+// the Monitoring Tier "Included Features" multiselect from live server data.
+
+router.get("/admin/plan-features", requireAdmin, (_req: Request, res: Response) => {
+  res.json({ features: PLAN_FEATURE_DEFS });
 });
 
 // ── POST /api/admin/engines/:key/test ───────────────────────────────────────

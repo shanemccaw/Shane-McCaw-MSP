@@ -6,6 +6,7 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
+import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, type ProductTypeKey } from "../lib/productTypeConfig";
 
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
@@ -73,6 +74,9 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       requiredAppPermissions,
       categoryPath, tags, customerAgreementTemplate, isFreeOffering,
       fulfillmentTypeKey, triggeringSignalKeys,
+      serviceClass, deliveryType,
+      tenantTierLabel, seatMin, seatMax, includedEngines, includedFeatures,
+      pricePerUserMonth, seatCountFloor, minMspPlanTier,
     } = body;
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
     const validVisibilities = ["public", "private", "landing_page_only"] as const;
@@ -81,6 +85,14 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
       : isPublic != null
         ? (Boolean(isPublic) ? "public" : "private")
         : undefined;
+    const validServiceClasses = ["project", "add_on", "subscription"] as const;
+    const resolvedServiceClass = validServiceClasses.includes(serviceClass as typeof validServiceClasses[number])
+      ? (serviceClass as "project" | "add_on" | "subscription")
+      : null;
+    const validDeliveryTypes = ["assessment", "bundle_subscription", "retainer", "document_generation", "none"] as const;
+    const resolvedDeliveryType = validDeliveryTypes.includes(deliveryType as typeof validDeliveryTypes[number])
+      ? (deliveryType as "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none")
+      : null;
     const [updated] = await db
       .update(servicesTable)
       .set({
@@ -119,6 +131,16 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         isFreeOffering: isFreeOffering != null ? Boolean(isFreeOffering) : false,
         fulfillmentTypeKey: (fulfillmentTypeKey as string | null) ?? null,
         triggeringSignalKeys: parseStringArray(triggeringSignalKeys),
+        serviceClass: resolvedServiceClass,
+        deliveryType: resolvedDeliveryType,
+        tenantTierLabel: (tenantTierLabel as string | null) ?? null,
+        seatMin: seatMin != null ? Number(seatMin) : null,
+        seatMax: seatMax != null ? Number(seatMax) : null,
+        includedEngines: Array.isArray(includedEngines) ? (includedEngines as string[]) : null,
+        includedFeatures: Array.isArray(includedFeatures) ? (includedFeatures as string[]) : null,
+        pricePerUserMonth: pricePerUserMonth != null ? String(pricePerUserMonth) : null,
+        seatCountFloor: seatCountFloor != null ? Number(seatCountFloor) : null,
+        minMspPlanTier: (minMspPlanTier as string | null) ?? null,
         updatedAt: new Date(),
       })
       .where(eq(servicesTable.id, id))
@@ -134,7 +156,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -147,17 +169,31 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
       : isPublic != null
         ? (Boolean(isPublic) ? "public" : "private")
         : "private";
+    const validServiceClassesCreate = ["project", "add_on", "subscription"] as const;
+    const resolvedCreateServiceClass = validServiceClassesCreate.includes(serviceClass as typeof validServiceClassesCreate[number])
+      ? (serviceClass as "project" | "add_on" | "subscription")
+      : null;
+    const validDeliveryTypesCreate = ["assessment", "bundle_subscription", "retainer", "document_generation", "none"] as const;
+    const resolvedCreateDeliveryType = validDeliveryTypesCreate.includes(deliveryType as typeof validDeliveryTypesCreate[number])
+      ? (deliveryType as "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none")
+      : null;
+    const validBillingTypes = ["one_time", "recurring_monthly", "recurring", "fixed"] as const;
+    const resolvedBillingType = validBillingTypes.includes(billingType as typeof validBillingTypes[number])
+      ? (billingType as typeof validBillingTypes[number])
+      : "one_time";
     const [created] = await db
       .insert(servicesTable)
       .values({
         name: name.trim(),
         slug: slug.trim(),
-        billingType: ((billingType as string) === "recurring_monthly" ? "recurring_monthly" : "one_time") as "one_time" | "recurring_monthly",
+        billingType: resolvedBillingType,
         visibility: resolvedCreateVisibility,
         isPublic: resolvedCreateVisibility === "public",
         deliverables: parseStringArray(deliverables),
         inclusions: parseStringArray(inclusions),
         features: parseStringArray(features),
+        serviceClass: resolvedCreateServiceClass,
+        deliveryType: resolvedCreateDeliveryType,
       })
       .returning();
     res.status(201).json(created);
@@ -523,105 +559,101 @@ router.post("/admin/services/publish-to-prod", requireAdmin, async (_req: Reques
   }
 });
 
-// ── Export catalog as JSON ─────────────────────────────────────────────────────
+// ── Export catalog as JSON (type-scoped) ──────────────────────────────────────
 
-router.get("/admin/catalog/export", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/admin/catalog/export", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const typeFilter = req.query.type as ProductTypeKey | undefined;
     const services = await db.select().from(servicesTable).orderBy(servicesTable.sortOrder, servicesTable.createdAt);
-    const records = services.map(s => ({
-      slug: s.slug,
-      name: s.name,
-      label: s.name,
-      description: s.description,
-      category: s.category,
-      categoryPath: s.categoryPath,
-      tagline: s.tagline,
-      serviceType: s.serviceType,
-      billingType: s.billingType,
-      price: s.price,
-      basePrice: s.basePrice,
-      maxPrice: s.maxPrice,
-      durationDays: s.durationDays,
-      turnaround: s.turnaround,
-      isPublic: s.isPublic,
-      isActive: s.isPublic,
-      visibility: s.visibility,
-      tier: s.tier,
-      highlighted: s.highlighted,
-      badge: s.badge,
-      iconName: s.iconName,
-      hoursPerMonth: s.hoursPerMonth,
-      sortOrder: s.sortOrder,
-      deliverables: s.deliverables,
-      inclusions: s.inclusions,
-      features: s.features,
-      targetAudience: s.targetAudience,
-      tags: s.tags,
-      requiredAppPermissions: s.requiredAppPermissions,
-      fulfillmentTypeKey: s.fulfillmentTypeKey,
-      triggeringSignalKeys: s.triggeringSignalKeys,
-      customerAgreementTemplate: s.customerAgreementTemplate,
-      isFreeOffering: s.isFreeOffering,
-    }));
+    const records = services
+      .filter(s => {
+        if (!typeFilter) return true;
+        return detectProductType(s.serviceClass, s.deliveryType) === typeFilter;
+      })
+      .map(s => {
+        const pType = detectProductType(s.serviceClass, s.deliveryType);
+        const allowedFields = new Set(PRODUCT_TYPE_EXPORT_FIELDS[pType]);
+        const raw: Record<string, unknown> = {
+          slug: s.slug,
+          name: s.name,
+          label: s.name,
+          description: s.description,
+          category: s.category,
+          categoryPath: s.categoryPath,
+          tagline: s.tagline,
+          serviceType: s.serviceType,
+          billingType: s.billingType,
+          price: s.price,
+          basePrice: s.basePrice,
+          maxPrice: s.maxPrice,
+          durationDays: s.durationDays,
+          turnaround: s.turnaround,
+          isPublic: s.isPublic,
+          isActive: s.isPublic,
+          visibility: s.visibility,
+          tier: s.tier,
+          highlighted: s.highlighted,
+          badge: s.badge,
+          iconName: s.iconName,
+          hoursPerMonth: s.hoursPerMonth,
+          sortOrder: s.sortOrder,
+          deliverables: s.deliverables,
+          inclusions: s.inclusions,
+          features: s.features,
+          targetAudience: s.targetAudience,
+          tags: s.tags,
+          requiredAppPermissions: s.requiredAppPermissions,
+          fulfillmentTypeKey: s.fulfillmentTypeKey,
+          triggeringSignalKeys: s.triggeringSignalKeys,
+          customerAgreementTemplate: s.customerAgreementTemplate,
+          isFreeOffering: s.isFreeOffering,
+          serviceClass: s.serviceClass,
+          deliveryType: s.deliveryType,
+          tenantTierLabel: s.tenantTierLabel,
+          seatMin: s.seatMin,
+          seatMax: s.seatMax,
+          includedEngines: s.includedEngines,
+          includedFeatures: s.includedFeatures,
+          pricePerUserMonth: s.pricePerUserMonth,
+          seatCountFloor: s.seatCountFloor,
+          minMspPlanTier: s.minMspPlanTier,
+        };
+        const record: Record<string, unknown> = { _productType: pType };
+        for (const [k, v] of Object.entries(raw)) {
+          if (k === "label") { record.label = v; continue; }
+          if (allowedFields.has(k)) record[k] = v;
+        }
+        return record;
+      });
     const payload = {
       version: 1,
       exportedAt: new Date().toISOString(),
+      typeFilter: typeFilter ?? null,
       records,
       services: records,
     };
-    res.setHeader("Content-Disposition", 'attachment; filename="services-export.json"');
+    const filename = typeFilter ? `services-${typeFilter}-export.json` : "services-export.json";
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.json(payload);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Export failed" });
   }
 });
 
-// ── Import template ────────────────────────────────────────────────────────────
+// ── Import template (all 5 types) ─────────────────────────────────────────────
 
-router.get("/admin/catalog/import-template", requireAdmin, (_req: Request, res: Response) => {
-  const template = {
-    version: 1,
-    services: [
-      {
-        slug: "example-service",
-        name: "Example Service",
-        description: "A short description of what this service delivers.",
-        category: "Advisory",
-        categoryPath: "Advisory/Strategy",
-        tagline: "One-line marketing hook shown on the pricing page.",
-        serviceType: "project",
-        billingType: "fixed",
-        price: 2500,
-        basePrice: null,
-        maxPrice: null,
-        durationDays: 14,
-        turnaround: "2 weeks",
-        isPublic: false,
-        visibility: "private",
-        tier: null,
-        highlighted: false,
-        badge: null,
-        iconName: null,
-        hoursPerMonth: null,
-        sortOrder: 0,
-        deliverables: ["Deliverable 1", "Deliverable 2"],
-        inclusions: ["Item included"],
-        features: ["Feature A", "Feature B"],
-        targetAudience: "Enterprise IT teams",
-        tags: ["m365", "strategy"],
-        requiredAppPermissions: [],
-        fulfillmentTypeKey: null,
-        triggeringSignalKeys: [],
-        customerAgreementTemplate: null,
-        isFreeOffering: false,
-      },
-    ],
-  };
-  res.setHeader("Content-Disposition", 'attachment; filename="services-import-template.json"');
+router.get("/admin/catalog/import-template", requireAdmin, (req: Request, res: Response) => {
+  const typeFilter = req.query.type as ProductTypeKey | undefined;
+  const allKeys: ProductTypeKey[] = ["credit_pack", "assessment", "project", "retainer", "monitoring_tier"];
+  const keys = typeFilter && allKeys.includes(typeFilter) ? [typeFilter] : allKeys;
+  const services = keys.map(k => ({ _productType: k, ...PRODUCT_TYPE_TEMPLATES[k] }));
+  const template = { version: 1, services };
+  const filename = typeFilter ? `services-${typeFilter}-template.json` : "services-import-template.json";
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.json(template);
 });
 
-// ── Import catalog from JSON ───────────────────────────────────────────────────
+// ── Import catalog from JSON (type-scoped validation) ─────────────────────────
 
 router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Response) => {
   try {
@@ -646,6 +678,23 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
       // Auto-derive slug from name if not provided so files using the minimal schema still import.
       const rawSlug = String(item.slug ?? "").trim();
       const slug = rawSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+      // Detect product type and reject foreign fields.
+      const pType = detectProductType(
+        item.serviceClass as string | null,
+        item.deliveryType as string | null,
+      );
+      const allowedFields = PRODUCT_TYPE_IMPORT_FIELDS[pType];
+      const foreignFields = Object.keys(item).filter(k => {
+        if (k === "_productType" || k === "label") return false;
+        return !allowedFields.has(k);
+      });
+      if (foreignFields.length > 0) {
+        errors.push(`Slug "${slug}" (${pType}): foreign fields not allowed for this type — ${foreignFields.join(", ")}. Skipped.`);
+        skipped++;
+        continue;
+      }
+
       try {
         await db.execute(sql`
           INSERT INTO services (
@@ -654,7 +703,10 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             is_public, visibility, tier, highlighted, badge, icon_name, hours_per_month,
             sort_order, deliverables, inclusions, features, target_audience, tags,
             required_app_permissions, fulfillment_type_key, triggering_signal_keys,
-            customer_agreement_template, is_free_offering
+            customer_agreement_template, is_free_offering,
+            service_class, delivery_type,
+            tenant_tier_label, seat_min, seat_max, included_engines, included_features,
+            price_per_user_month, seat_count_floor, min_msp_plan_tier
           ) VALUES (
             ${slug}, ${name}, ${item.description ?? null}, ${item.category ?? null},
             ${item.categoryPath ?? null}, ${item.tagline ?? null}, ${item.serviceType ?? null},
@@ -672,7 +724,13 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             ${item.fulfillmentTypeKey ?? null},
             ${item.triggeringSignalKeys ? JSON.stringify(item.triggeringSignalKeys) : null}::jsonb,
             ${item.customerAgreementTemplate ?? null},
-            ${item.isFreeOffering ?? false}
+            ${item.isFreeOffering ?? false},
+            ${item.serviceClass ?? null}, ${item.deliveryType ?? null},
+            ${item.tenantTierLabel ?? null}, ${item.seatMin ?? null}, ${item.seatMax ?? null},
+            ${item.includedEngines ? JSON.stringify(item.includedEngines) : null}::jsonb,
+            ${item.includedFeatures ? JSON.stringify(item.includedFeatures) : null}::jsonb,
+            ${item.pricePerUserMonth ?? null}, ${item.seatCountFloor ?? null},
+            ${item.minMspPlanTier ?? null}
           )
           ON CONFLICT (slug) DO UPDATE SET
             name = EXCLUDED.name,
@@ -705,6 +763,16 @@ router.post("/admin/catalog/import", requireAdmin, async (req: Request, res: Res
             triggering_signal_keys = EXCLUDED.triggering_signal_keys,
             customer_agreement_template = EXCLUDED.customer_agreement_template,
             is_free_offering = EXCLUDED.is_free_offering,
+            service_class = EXCLUDED.service_class,
+            delivery_type = EXCLUDED.delivery_type,
+            tenant_tier_label = EXCLUDED.tenant_tier_label,
+            seat_min = EXCLUDED.seat_min,
+            seat_max = EXCLUDED.seat_max,
+            included_engines = EXCLUDED.included_engines,
+            included_features = EXCLUDED.included_features,
+            price_per_user_month = EXCLUDED.price_per_user_month,
+            seat_count_floor = EXCLUDED.seat_count_floor,
+            min_msp_plan_tier = EXCLUDED.min_msp_plan_tier,
             updated_at = now()
         `);
         imported++;

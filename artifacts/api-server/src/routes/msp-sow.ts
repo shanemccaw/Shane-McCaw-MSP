@@ -46,6 +46,8 @@ import { eq, and, desc, count, or } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth.ts";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
+import { checkMspMinTierSatisfied } from "../lib/msp-entitlement.ts";
+import { detectProductType } from "../lib/productTypeConfig.ts";
 import { z } from "zod";
 
 const router: IRouter = Router();
@@ -178,8 +180,10 @@ router.post(
           name: servicesTable.name,
           description: servicesTable.description,
           serviceClass: servicesTable.serviceClass,
+          deliveryType: servicesTable.deliveryType,
           allowFreeCheckout: servicesTable.allowFreeCheckout,
           trialPeriodDays: servicesTable.trialPeriodDays,
+          minMspPlanTier: servicesTable.minMspPlanTier,
         })
         .from(servicesTable)
         .where(eq(servicesTable.id, offer.serviceId))
@@ -191,6 +195,16 @@ router.post(
         serviceDescription = svc.description ?? null;
         trialPeriodDays = svc.trialPeriodDays ?? null;
         allowFreeCheckout = svc.allowFreeCheckout;
+
+        // Gate Monitoring Tier services on minMspPlanTier
+        const pType = detectProductType(svc.serviceClass, svc.deliveryType);
+        if (pType === "monitoring_tier" && svc.minMspPlanTier) {
+          const tierCheck = await checkMspMinTierSatisfied(mspId, svc.minMspPlanTier);
+          if (!tierCheck.ok) {
+            apiErr(res, 402, `This Monitoring Tier service requires a "${tierCheck.requiredTier}" platform subscription or higher. Your current tier is "${tierCheck.currentTier}". Please upgrade to continue.`);
+            return;
+          }
+        }
       }
     }
 

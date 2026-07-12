@@ -56,10 +56,30 @@ export interface ServiceRow {
   isFreeOffering: boolean;
   fulfillmentTypeKey: string | null;
   triggeringSignalKeys: string[] | null;
+  // MSP Billing / Checkout Classification
+  serviceClass: "project" | "add_on" | "subscription" | null;
+  deliveryType: "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none" | null;
+  // Monitoring Tier fields
+  tenantTierLabel: string | null;
+  seatMin: number | null;
+  seatMax: number | null;
+  includedEngines: string[] | null;
+  includedFeatures: string[] | null;
+  pricePerUserMonth: string | null;
+  seatCountFloor: number | null;
+  minMspPlanTier: string | null;
 }
 
 export type ServiceUpdate = Omit<ServiceRow, "id" | "createdAt" | "orderWorkflow" | "overviewPdfKey" | "overviewPdfGeneratedAt">;
-export type ServiceCreate = { name: string; slug: string; billingType: "one_time" | "recurring_monthly" | "recurring" | "fixed"; visibility?: "public" | "private" | "landing_page_only"; isPublic?: boolean };
+export type ServiceCreate = {
+  name: string;
+  slug: string;
+  billingType: "one_time" | "recurring_monthly" | "recurring" | "fixed";
+  visibility?: "public" | "private" | "landing_page_only";
+  isPublic?: boolean;
+  serviceClass?: "project" | "add_on" | "subscription" | null;
+  deliveryType?: "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none" | null;
+};
 
 export const SERVICES_QUERY_KEY = ["services"] as const;
 
