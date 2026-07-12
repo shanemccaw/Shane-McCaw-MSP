@@ -313,6 +313,7 @@ export default function CustomersPage() {
       const url = `/api/msp/customers${params.toString() ? `?${params}` : ""}`;
       const res = await fetchWithAuth(url, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: createForm.name.trim(),
           domain: createForm.domain.trim() || undefined,

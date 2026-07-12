@@ -169,6 +169,7 @@ export default function MspsPage() {
     try {
       const res = await fetchWithAuth("/api/admin/msps", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name.trim(),
           slug: form.slug,
