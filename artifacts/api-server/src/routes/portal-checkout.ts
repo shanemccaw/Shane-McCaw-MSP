@@ -35,6 +35,8 @@ import {
   mspCustomersTable,
   mspEventStoreTable,
   freeCheckoutAttemptsTable,
+  platformAgreementsTable,
+  mspAgreementAcceptancesTable,
 } from "@workspace/db";
 import { eq, and, count, gte, or } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
@@ -364,6 +366,69 @@ router.post(
       return;
     }
 
+    // ── Agreement gate (paid paths only) ─────────────────────────────────────
+    // Validate clickwrap acceptance before creating any paid checkout (SOW or Stripe).
+    // The frontend must supply agreementVersion + checkboxConfirmed from the clickwrap step.
+    const body = req.body as {
+      agreementVersion?: string;
+      checkboxConfirmed?: boolean;
+      acceptedAt?: string;
+    };
+
+    const [currentAgreement] = await db
+      .select({
+        id: platformAgreementsTable.id,
+        version: platformAgreementsTable.version,
+        title: platformAgreementsTable.title,
+      })
+      .from(platformAgreementsTable)
+      .where(eq(platformAgreementsTable.isCurrentVersion, true))
+      .limit(1);
+
+    if (currentAgreement) {
+      if (body.checkboxConfirmed !== true) {
+        res.status(422).json({
+          code: "agreement_required",
+          error: "You must accept the platform agreement before proceeding to checkout.",
+          requiredVersion: currentAgreement.version,
+          agreementTitle: currentAgreement.title,
+        });
+        return;
+      }
+      if (!body.agreementVersion || body.agreementVersion !== currentAgreement.version) {
+        logger.warn(
+          { customerId, offerId, providedVersion: body.agreementVersion ?? null, currentVersion: currentAgreement.version },
+          "portal-checkout: agreement version mismatch — blocking checkout",
+        );
+        res.status(422).json({
+          code: "agreement_version_mismatch",
+          error: `You must accept the current platform agreement (version ${currentAgreement.version}) before proceeding.`,
+          requiredVersion: currentAgreement.version,
+        });
+        return;
+      }
+    } else {
+      logger.warn({ offerId, customerId }, "portal-checkout: no current platform agreement published — proceeding without agreement gate");
+    }
+
+    const agreementMeta = currentAgreement
+      ? {
+          agreement_accepted: "true" as const,
+          agreement_version: currentAgreement.version,
+          agreement_id: String(currentAgreement.id),
+          agreement_accepted_at: body.acceptedAt ?? new Date().toISOString(),
+          agreement_ip: getClientIp(req) ?? "",
+          actor_user_id: String(actorId ?? ""),
+        }
+      : {
+          agreement_accepted: "none" as const,
+          agreement_version: "",
+          agreement_id: "",
+          agreement_accepted_at: "",
+          agreement_ip: "",
+          actor_user_id: String(actorId ?? ""),
+        };
+
     // ── Branch 2: project → SOW pipeline ────────────────────────────────────
     if (serviceClass === "project") {
       // Resolve customer record
@@ -491,6 +556,7 @@ router.post(
         fulfillment_type: "portal_offer",
         fulfillmentTypeKey: fulfillmentTypeKey ?? "",
         serviceName,
+        ...agreementMeta,
       };
 
       const sessionParams: Record<string, unknown> = {
@@ -651,6 +717,35 @@ async function handleCheckoutCompleted(
   if (isNaN(offerId) || isNaN(customerId)) {
     logger.warn({ sessionId: session.id, meta }, "portal-checkout: missing required metadata fields — skipping");
     return;
+  }
+
+  // ── Agreement acceptance record ─────────────────────────────────────────
+  // Insert a clickwrap acceptance row matching the pattern in msp-billing-webhook.ts.
+  // ON CONFLICT DO NOTHING makes this safe to replay.
+  const agreementAccepted = meta["agreement_accepted"];
+  const agreementVersion = meta["agreement_version"] ?? "";
+  const agreementId = parseInt(meta["agreement_id"] ?? "", 10) || null;
+  const agreementIp = meta["agreement_ip"] ?? null;
+  const actorUserId = parseInt(meta["actor_user_id"] ?? "", 10) || null;
+
+  if (agreementAccepted === "true" && agreementVersion && actorUserId) {
+    try {
+      await db.insert(mspAgreementAcceptancesTable).values({
+        mspId: mspId ?? undefined,
+        userId: actorUserId,
+        agreementVersion,
+        agreementId: agreementId ?? undefined,
+        ipAddress: agreementIp ?? undefined,
+        checkboxConfirmed: true,
+      }).onConflictDoNothing();
+
+      logger.info(
+        { actorUserId, agreementVersion, agreementId, mspId, sessionId: session.id },
+        "portal-checkout: customer agreement acceptance recorded",
+      );
+    } catch (err) {
+      logger.warn({ err, sessionId: session.id }, "portal-checkout: failed to insert agreement acceptance (non-fatal)");
+    }
   }
 
   const idempotencyKey = `portal_offer_checkout:session:${session.id}`;

@@ -22,6 +22,7 @@ import { useAuth } from "@/lib/auth-context";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -45,9 +46,11 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
+  FileText,
   Gift,
   Loader2,
   RefreshCw,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -71,11 +74,23 @@ interface CustomerOffer {
   createdAt: string;
 }
 
+interface PlatformAgreement {
+  id: number;
+  version: string;
+  title: string;
+  body: string;
+}
+
 type CheckoutOutcome =
   | { outcome: "checkout_required"; checkoutUrl: string; trialPeriodDays: number | null }
   | { outcome: "free_activated"; message: string }
   | { outcome: "sow_created"; sowId: string; shareUrl: string; message: string }
-  | { error: string };
+  | { error: string; code?: string; requiredVersion?: string };
+
+interface AgreementGateState {
+  offer: CustomerOffer;
+  agreement: PlatformAgreement | null;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -131,6 +146,115 @@ function useCountdown(expiresAt: string | null | undefined): string | null {
   const m = Math.floor((remaining % 3_600_000) / 60_000);
   const s = Math.floor((remaining % 60_000) / 1_000);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ── Agreement Gate Dialog ─────────────────────────────────────────────────────
+
+interface AgreementGateDialogProps {
+  open: boolean;
+  state: AgreementGateState | null;
+  onConfirm: (offer: CustomerOffer, agreementVersion: string) => void;
+  onCancel: () => void;
+  submitting: boolean;
+}
+
+function AgreementGateDialog({ open, state, onConfirm, onCancel, submitting }: AgreementGateDialogProps) {
+  const [checked, setChecked] = useState(false);
+  const [showBody, setShowBody] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setChecked(false);
+      setShowBody(false);
+    }
+  }, [open]);
+
+  const agreement = state?.agreement ?? null;
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldCheck className="size-5 text-primary shrink-0" />
+            <DialogTitle>Review &amp; Accept Platform Agreement</DialogTitle>
+          </div>
+          <DialogDescription>
+            Before proceeding to payment, you must accept the platform agreement that governs
+            this service.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {agreement ? (
+            <>
+              <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-3">
+                <FileText className="size-5 text-primary shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{agreement.title}</p>
+                  <p className="text-xs text-muted-foreground">Version {agreement.version}</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs shrink-0"
+                  onClick={() => setShowBody((v) => !v)}
+                >
+                  {showBody ? "Hide" : "Read"}
+                </Button>
+              </div>
+
+              {showBody && (
+                <div className="max-h-48 overflow-y-auto rounded border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                  {agreement.body}
+                </div>
+              )}
+
+              <div className="flex items-start gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+                <Checkbox
+                  id="agreement-checkbox"
+                  checked={checked}
+                  onCheckedChange={(v) => setChecked(v === true)}
+                  className="mt-0.5 shrink-0"
+                />
+                <Label htmlFor="agreement-checkbox" className="text-sm leading-snug cursor-pointer">
+                  I have read and agree to the{" "}
+                  <span className="font-semibold text-foreground">{agreement.title}</span>{" "}
+                  (version {agreement.version}).
+                </Label>
+              </div>
+            </>
+          ) : (
+            <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm text-muted-foreground">
+              No platform agreement is currently published. You may proceed to checkout.
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onCancel} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              if (!state) return;
+              if (agreement && !checked) {
+                toast.error("Please check the box to confirm you have read and accept the agreement.");
+                return;
+              }
+              onConfirm(state.offer, agreement?.version ?? "");
+            }}
+            disabled={submitting || (!!agreement && !checked)}
+            className="gap-1.5"
+          >
+            {submitting && <Loader2 className="size-4 animate-spin" />}
+            {agreement ? "Accept & Proceed" : "Continue to Payment"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ── Reject Dialog ─────────────────────────────────────────────────────────────
@@ -315,6 +439,8 @@ export default function CustomerOffersPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<CustomerOffer | null>(null);
+  const [agreementGateState, setAgreementGateState] = useState<AgreementGateState | null>(null);
+  const [agreementLoading, setAgreementLoading] = useState(false);
   const sseRef = useRef<EventSource | null>(null);
 
   const loadOffers = useCallback(
@@ -377,20 +503,59 @@ export default function CustomerOffersPage() {
     return () => clearInterval(id);
   }, [loadOffers]);
 
+  /** Show the agreement gate dialog before paid checkout, or proceed directly for free offers. */
   async function handleCheckout(offer: CustomerOffer) {
+    if (offer.adjustedPriceCents === 0) {
+      // Free offer — bypass the agreement gate (server also skips the gate for this path)
+      await doCheckout(offer, null);
+      return;
+    }
+
+    // Paid offer — fetch the current agreement and show the clickwrap gate
+    setAgreementLoading(true);
+    try {
+      const res = await fetchWithAuth("/api/platform/agreement/current");
+      let agreement: PlatformAgreement | null = null;
+      if (res.ok) {
+        const data = (await res.json()) as { agreement: PlatformAgreement | null };
+        agreement = data.agreement ?? null;
+      }
+      setAgreementGateState({ offer, agreement });
+    } catch {
+      // If we can't fetch the agreement, show the gate with null — server will still
+      // pass through if no agreement is published.
+      setAgreementGateState({ offer, agreement: null });
+    } finally {
+      setAgreementLoading(false);
+    }
+  }
+
+  /** Execute the checkout API call with optional agreement acceptance payload. */
+  async function doCheckout(offer: CustomerOffer, agreementVersion: string | null) {
     setSubmitting(true);
     try {
+      const body: Record<string, unknown> = {};
+      if (agreementVersion) {
+        body["agreementVersion"] = agreementVersion;
+        body["checkboxConfirmed"] = true;
+        body["acceptedAt"] = new Date().toISOString();
+      }
+
       const res = await fetchWithAuth(`/api/portal/offers/${offer.id}/checkout`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as CheckoutOutcome;
 
       if (!res.ok || "error" in data) {
         const msg = "error" in data ? data.error : "Could not process your request.";
-        // 429 = rate limit reached
         if (res.status === 429) {
           toast.error(msg);
+        } else if (res.status === 422 && "error" in data && data.code === "agreement_required") {
+          // Server rejected because agreement wasn't accepted — re-open the gate
+          toast.error("Please accept the platform agreement before proceeding.");
+          setAgreementGateState((s) => s ?? { offer, agreement: null });
         } else {
           toast.error(msg ?? "Could not initiate checkout. Please try again.");
         }
@@ -399,7 +564,6 @@ export default function CustomerOffersPage() {
 
       if ("outcome" in data) {
         if (data.outcome === "checkout_required") {
-          // Redirect to Stripe
           window.location.href = data.checkoutUrl;
           return;
         }
@@ -413,7 +577,6 @@ export default function CustomerOffersPage() {
         if (data.outcome === "sow_created") {
           toast.success("Your Statement of Work is ready. Redirecting you to review and sign…");
           await loadOffers(true);
-          // Navigate to the SOW review page
           setTimeout(() => {
             window.location.href = data.shareUrl;
           }, 1500);
@@ -421,13 +584,13 @@ export default function CustomerOffersPage() {
         }
       }
 
-      // Fallback — treat as success
       toast.success("Offer accepted — your service team has been notified.");
       await loadOffers(true);
     } catch {
       toast.error("Something went wrong. Please try again.");
     } finally {
       setSubmitting(false);
+      setAgreementGateState(null);
     }
   }
 
@@ -510,7 +673,7 @@ export default function CustomerOffersPage() {
                     offer={offer}
                     onCheckout={handleCheckout}
                     onReject={(o) => setRejectTarget(o)}
-                    submitting={submitting}
+                    submitting={submitting || agreementLoading}
                   />
                 ))}
               </div>
@@ -532,6 +695,15 @@ export default function CustomerOffersPage() {
           </>
         )}
       </div>
+
+      {/* Agreement gate dialog — shown before paid checkout */}
+      <AgreementGateDialog
+        open={!!agreementGateState}
+        state={agreementGateState}
+        onConfirm={(offer, agreementVersion) => void doCheckout(offer, agreementVersion || null)}
+        onCancel={() => setAgreementGateState(null)}
+        submitting={submitting}
+      />
 
       {/* Reject dialog */}
       <RejectDialog
