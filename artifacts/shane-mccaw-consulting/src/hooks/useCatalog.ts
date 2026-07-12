@@ -21,6 +21,8 @@ export interface MonitoringTier {
   sortOrder: number;
   pageHref: string | null;
   fulfillmentTypeKey: string | null;
+  seatMin: number | null;
+  seatMax: number | null;
 }
 
 export interface RetainerTier {
@@ -73,16 +75,22 @@ export interface CatalogState {
 }
 
 function toMonitoringTier(s: PublicService): MonitoringTier {
+  const ta = (s.typeAttributes ?? {}) as {
+    pricePerUserMonth?: string | null;
+    seatMin?: number | null;
+    seatMax?: number | null;
+    includedFeatures?: string[];
+  };
   return {
     id: s.id,
     slug: s.slug,
     name: s.name,
     description: s.description,
     tagline: s.tagline,
-    price: s.price,
+    price: ta.pricePerUserMonth ?? s.price,
     basePrice: s.basePrice,
     maxPrice: s.maxPrice,
-    features: s.features,
+    features: (ta.includedFeatures?.length ? ta.includedFeatures : null) ?? s.features,
     inclusions: s.inclusions,
     badge: s.badge,
     highlighted: s.highlighted,
@@ -91,6 +99,8 @@ function toMonitoringTier(s: PublicService): MonitoringTier {
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
     fulfillmentTypeKey: s.fulfillmentTypeKey,
+    seatMin: ta.seatMin ?? null,
+    seatMax: ta.seatMax ?? null,
   };
 }
 

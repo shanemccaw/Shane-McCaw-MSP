@@ -32,6 +32,7 @@ export interface PublicService {
   fulfillmentTypeKey: string | null;
   workflowTasks: { title: string; description: string | null; order: number }[];
   workflowSummary: { title: string; description: string | null }[];
+  typeAttributes: Record<string, unknown> | null;
 }
 
 export function formatPrice(price: string | null): string | null {

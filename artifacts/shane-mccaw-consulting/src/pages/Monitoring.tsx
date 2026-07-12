@@ -171,6 +171,11 @@ export default function Monitoring() {
   const [seats, setSeats] = useState(25);
 
   const sorted = [...monitoringTiers].sort((a, b) => a.sortOrder - b.sortOrder);
+  const visible = sorted.filter((t) => {
+    const min = t.seatMin ?? 1;
+    const max = t.seatMax ?? Infinity;
+    return seats >= min && seats <= max;
+  });
 
   return (
     <Layout>
@@ -270,9 +275,13 @@ export default function Monitoring() {
             <div className="text-center py-16 text-muted-foreground">No monitoring packs available yet — check back soon.</div>
           )}
 
-          {!loading && !error && sorted.length > 0 && (
-            <div className={`grid gap-6 ${sorted.length === 1 ? "grid-cols-1 max-w-sm mx-auto" : sorted.length === 2 ? "grid-cols-1 md:grid-cols-2 max-w-2xl mx-auto" : "grid-cols-1 md:grid-cols-3"}`}>
-              {sorted.map((tier) => (
+          {!loading && !error && sorted.length > 0 && visible.length === 0 && (
+            <div className="text-center py-16 text-muted-foreground">No packs available for {seats} seats — <a href="/contact" className="underline text-[#0078D4]">contact us</a> for a custom quote.</div>
+          )}
+
+          {!loading && !error && visible.length > 0 && (
+            <div className={`grid gap-6 ${visible.length === 1 ? "grid-cols-1 max-w-sm mx-auto" : visible.length === 2 ? "grid-cols-1 md:grid-cols-2 max-w-2xl mx-auto" : "grid-cols-1 md:grid-cols-3"}`}>
+              {visible.map((tier) => (
                 <PackCard key={tier.id} tier={tier} seats={seats} />
               ))}
             </div>
