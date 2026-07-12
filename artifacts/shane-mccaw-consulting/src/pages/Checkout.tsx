@@ -247,7 +247,6 @@ export default function Checkout() {
   const [recoveredSeats, setRecoveredSeats] = useState<number | null>(null);
   const [consentGranted, setConsentGranted] = useState(false);
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
-  const [consentDeclined, setConsentDeclined] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
@@ -402,19 +401,6 @@ export default function Checkout() {
         variant: "destructive",
       });
     }
-  }
-
-  function handleConsentContinue() {
-    if (!consentGranted) {
-      toast({
-        title: "Please confirm admin consent",
-        description:
-          "Check the box confirming you have granted admin consent before continuing.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setStep("payment");
   }
 
   async function handlePay() {
@@ -700,94 +686,29 @@ export default function Checkout() {
                       </div>
                     </div>
 
-                    {consentDeclined ? (
-                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 space-y-3">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="size-5 text-amber-600 shrink-0 mt-0.5" />
-                          <div>
-                            <p className="font-semibold text-amber-900 text-sm">
-                              Admin consent needed to proceed
-                            </p>
-                            <p className="text-sm text-amber-700 mt-1">
-                              Shane needs access to monitor and optimize your M365 tenant. If your
-                              administrator is unavailable right now, you can still complete
-                              payment — Shane will follow up with consent instructions after
-                              purchase.
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 flex-wrap">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setConsentDeclined(false)}
-                          >
-                            Try consent again
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => {
-                              setConsentGranted(true);
-                              setConsentDeclined(false);
-                              setStep("payment");
-                            }}
-                          >
-                            Continue to payment <ArrowRight className="ml-1 size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
+                    {consentUrl ? (
+                      <a
+                        href={consentUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-[#0078D4] text-[#0078D4] font-semibold text-sm hover:bg-[#0078D4]/5 transition-colors"
+                      >
+                        Grant admin consent in Microsoft{" "}
+                        <ExternalLink className="size-4" />
+                      </a>
                     ) : (
-                      <>
-                        {consentUrl ? (
-                          <a
-                            href={consentUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-lg border border-[#0078D4] text-[#0078D4] font-semibold text-sm hover:bg-[#0078D4]/5 transition-colors"
-                          >
-                            Grant admin consent in Microsoft{" "}
-                            <ExternalLink className="size-4" />
-                          </a>
-                        ) : (
-                          <div className="rounded-xl bg-[#F7F9FC] border border-border p-4 text-sm text-muted-foreground">
-                            Your M365 administrator will receive consent instructions from Shane
-                            after purchase. You can skip this step for now.
-                          </div>
-                        )}
-
-                        <div className="flex items-start gap-3 pt-1">
-                          <Checkbox
-                            id="consent-check"
-                            checked={consentGranted}
-                            onCheckedChange={(v) => setConsentGranted(!!v)}
-                          />
-                          <label
-                            htmlFor="consent-check"
-                            className="text-sm text-foreground leading-snug cursor-pointer"
-                          >
-                            I confirm that our Microsoft 365 administrator has granted — or will
-                            grant — admin consent for Shane's service account.
-                          </label>
-                        </div>
-
-                        <div className="flex gap-3 flex-col sm:flex-row">
-                          <Button
-                            variant="outline"
-                            className="flex-1"
-                            onClick={() => setConsentDeclined(true)}
-                          >
-                            I'll arrange this separately
-                          </Button>
-                          <Button
-                            className="flex-1"
-                            onClick={handleConsentContinue}
-                            disabled={!consentGranted}
-                          >
-                            Continue to payment <ArrowRight className="ml-2 size-4" />
-                          </Button>
-                        </div>
-                      </>
+                      <div className="rounded-xl bg-[#F7F9FC] border border-border p-4 text-sm text-muted-foreground">
+                        Loading consent link…
+                      </div>
                     )}
+
+                    <div className="rounded-xl border border-[#0078D4]/20 bg-[#0078D4]/5 p-4 flex items-start gap-3">
+                      <Clock className="size-5 text-[#0078D4] shrink-0 mt-0.5" />
+                      <p className="text-sm text-[#0A2540]">
+                        Waiting for your Microsoft 365 administrator to complete consent — this
+                        page will continue automatically.
+                      </p>
+                    </div>
                   </div>
                 )}
 
