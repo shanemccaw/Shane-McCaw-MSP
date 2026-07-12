@@ -67,7 +67,7 @@ type CardType = "offer" | "project" | "retainer";
 
 function resolveCardType(svc: PublicService): CardType {
   if (svc.billingType === "recurring_monthly") return "retainer";
-  if (svc.serviceType === "project") return "project";
+  if (svc.tier?.toLowerCase() === "core") return "project";
   return "offer";
 }
 

@@ -106,10 +106,10 @@ export default function Pricing() {
     ? `${fmtPrice(Math.min(...microOfferPrices))} \u2013 ${fmtPrice(Math.max(...microOfferPrices))}`
     : "$3,000 \u2013 $18,000";
 
-  // Track 02 — project_engagement prices from DB
-  // Fallback constant used when no project_engagement services exist in the database yet
+  // Track 02 — core-tier (project) prices from DB
+  // Fallback constant used when no core-tier services exist in the database yet
   const TRACK02_FALLBACK_RANGE = "$7,500 \u2013 $35,000+";
-  const projectEngagements = allServices.filter((s) => s.serviceType === "project_engagement");
+  const projectEngagements = allServices.filter((s) => s.tier?.toLowerCase() === "core");
   const projectPrices = projectEngagements
     .flatMap((s) => [
       parseFloat(s.price ?? ""),

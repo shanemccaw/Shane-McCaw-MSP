@@ -16,12 +16,27 @@ interface MspTier {
   tenantAllowance: number | null;
   aiCreditAllowance: number | null;
   overageRateCents: number | null;
-  tierCapabilities: string[];
+  tierCapabilities: string[] | Record<string, boolean> | null;
   features: string[];
   inclusions: string[];
   badge: string | null;
   highlighted: boolean;
   fulfillmentTypeKey: string | null;
+}
+
+/**
+ * Normalize tierCapabilities regardless of whether the API returns a
+ * Record<string, boolean> (current schema) or a legacy string[].
+ * Returns only the capability keys whose value is truthy.
+ */
+function normalizeTierCapabilities(
+  raw: string[] | Record<string, boolean> | null | undefined,
+): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  return Object.entries(raw)
+    .filter(([, enabled]) => enabled)
+    .map(([key]) => key);
 }
 
 function formatPrice(cents: number, billingType: string | null): string {
@@ -107,10 +122,13 @@ export default function Msp() {
     fetch("/api/msp/signup/tiers")
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<MspTier[]>;
+        return r.json() as Promise<{ tiers: MspTier[] } | MspTier[]>;
       })
       .then((data) => {
-        setTiers(Array.isArray(data) ? data : []);
+        const tiersData = Array.isArray(data)
+          ? data
+          : (data as { tiers?: MspTier[] }).tiers ?? [];
+        setTiers(tiersData);
         setLoading(false);
       })
       .catch(() => {
