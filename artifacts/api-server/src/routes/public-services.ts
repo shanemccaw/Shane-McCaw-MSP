@@ -72,4 +72,17 @@ router.get("/services", async (req: Request, res: Response) => {
   }
 });
 
+router.get("/public/consent-url", (_req, res: Response) => {
+  const clientId = process.env.GRAPH_CLIENT_ID;
+  if (!clientId) {
+    res.json({ url: null });
+    return;
+  }
+  const redirectUri = encodeURIComponent(
+    "https://login.microsoftonline.com/common/oauth2/nativeclient",
+  );
+  const url = `https://login.microsoftonline.com/common/adminconsent?client_id=${clientId}&redirect_uri=${redirectUri}`;
+  res.json({ url });
+});
+
 export default router;

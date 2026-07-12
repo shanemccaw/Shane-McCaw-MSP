@@ -8663,6 +8663,8 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     returnUrl, startDate, couponCode,
     guestEmail: bodyGuestEmail,
     lpToken,
+    successUrl: bodySuccessUrl,
+    cancelUrl: bodyCancelUrl,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
@@ -8670,6 +8672,8 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     couponCode?: string;
     guestEmail?: string;
     lpToken?: string;
+    successUrl?: string;
+    cancelUrl?: string;
   };
 
   if (!resolvedUserId) {
@@ -8778,6 +8782,28 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
 
   const baseUrl = returnUrl ?? `${req.protocol}://${req.hostname}`;
 
+  // Validate custom redirect URLs — only same-origin allowed to prevent open-redirect abuse
+  if (bodySuccessUrl || bodyCancelUrl) {
+    const allowedOrigin = req.headers.origin ?? `${req.protocol}://${req.hostname}`;
+    const isSameOrigin = (url: string): boolean => {
+      try {
+        const parsed = new URL(url);
+        const allowed = new URL(allowedOrigin);
+        return parsed.origin === allowed.origin;
+      } catch {
+        return false;
+      }
+    };
+    if (bodySuccessUrl && !isSameOrigin(bodySuccessUrl)) {
+      res.status(400).json({ error: "successUrl must be same-origin" });
+      return;
+    }
+    if (bodyCancelUrl && !isSameOrigin(bodyCancelUrl)) {
+      res.status(400).json({ error: "cancelUrl must be same-origin" });
+      return;
+    }
+  }
+
   // Map serviceId → contractId for lookup
   const serviceToContract = new Map<number, number>();
   for (let i = 0; i < resolvedServiceIds.length; i++) {
@@ -8870,8 +8896,8 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
         })),
         mode: "payment",
         automatic_tax: { enabled: true },
-        success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
+        success_url: bodySuccessUrl ?? `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: bodyCancelUrl ?? `${baseUrl}/portal/onboarding/contract?serviceIds=${oneTimeServices.map(s => s.id).join(",")}&cancelled=1`,
         metadata: {
           type: "onboarding_purchase",
           ...(resolvedUserId !== null
@@ -8906,8 +8932,8 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
           quantity: 1,
         })),
         mode: "subscription",
-        success_url: `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
+        success_url: bodySuccessUrl ?? `${baseUrl}/portal/onboarding/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: bodyCancelUrl ?? `${baseUrl}/portal/onboarding/contract?serviceIds=${recurringServices.map(s => s.id).join(",")}&cancelled=1`,
         metadata: {
           type: "onboarding_purchase",
           ...(resolvedUserId !== null

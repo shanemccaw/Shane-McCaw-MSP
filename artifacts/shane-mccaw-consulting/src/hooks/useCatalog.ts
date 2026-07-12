@@ -7,6 +7,7 @@ export interface MonitoringTier {
   id: number;
   slug: string | null;
   name: string;
+  description: string | null;
   tagline: string | null;
   price: string | null;
   basePrice: string | null;
@@ -19,12 +20,14 @@ export interface MonitoringTier {
   tier: string | null;
   sortOrder: number;
   pageHref: string | null;
+  fulfillmentTypeKey: string | null;
 }
 
 export interface RetainerTier {
   id: number;
   slug: string | null;
   name: string;
+  description: string | null;
   tagline: string | null;
   price: string | null;
   basePrice: string | null;
@@ -38,12 +41,14 @@ export interface RetainerTier {
   tier: string | null;
   sortOrder: number;
   pageHref: string | null;
+  fulfillmentTypeKey: string | null;
 }
 
 export interface MspTier {
   id: number;
   slug: string | null;
   name: string;
+  description: string | null;
   tagline: string | null;
   price: string | null;
   basePrice: string | null;
@@ -56,6 +61,7 @@ export interface MspTier {
   tier: string | null;
   sortOrder: number;
   pageHref: string | null;
+  fulfillmentTypeKey: string | null;
 }
 
 export interface CatalogState {
@@ -71,6 +77,7 @@ function toMonitoringTier(s: PublicService): MonitoringTier {
     id: s.id,
     slug: s.slug,
     name: s.name,
+    description: s.description,
     tagline: s.tagline,
     price: s.price,
     basePrice: s.basePrice,
@@ -83,6 +90,7 @@ function toMonitoringTier(s: PublicService): MonitoringTier {
     tier: s.tier,
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
+    fulfillmentTypeKey: s.fulfillmentTypeKey,
   };
 }
 
@@ -91,6 +99,7 @@ function toRetainerTier(s: PublicService): RetainerTier {
     id: s.id,
     slug: s.slug,
     name: s.name,
+    description: s.description,
     tagline: s.tagline,
     price: s.price,
     basePrice: s.basePrice,
@@ -104,6 +113,7 @@ function toRetainerTier(s: PublicService): RetainerTier {
     tier: s.tier,
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
+    fulfillmentTypeKey: s.fulfillmentTypeKey,
   };
 }
 
@@ -112,6 +122,7 @@ function toMspTier(s: PublicService): MspTier {
     id: s.id,
     slug: s.slug,
     name: s.name,
+    description: s.description,
     tagline: s.tagline,
     price: s.price,
     basePrice: s.basePrice,
@@ -124,6 +135,7 @@ function toMspTier(s: PublicService): MspTier {
     tier: s.tier,
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
+    fulfillmentTypeKey: s.fulfillmentTypeKey,
   };
 }
 

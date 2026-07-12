@@ -29,6 +29,7 @@ export interface PublicService {
   hasPdf: boolean;
   bestFor: string | null;
   triggers: string[] | null;
+  fulfillmentTypeKey: string | null;
   workflowTasks: { title: string; description: string | null; order: number }[];
   workflowSummary: { title: string; description: string | null }[];
 }
