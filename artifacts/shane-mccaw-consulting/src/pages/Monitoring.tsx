@@ -150,7 +150,7 @@ function PackCard({ tier, seats }: PackCardProps) {
             Coming soon
           </Button>
         ) : (
-          <Link href={`/checkout?product=${tier.slug ?? ""}`}>
+          <Link href={`/checkout?product=${tier.slug ?? ""}&seats=${seats}`}>
             <Button className={`w-full ${hl ? "" : "bg-[#0A2540] hover:bg-[#0A2540]/90"}`}>
               Get Started <ArrowRight className="ml-2 size-4" />
             </Button>

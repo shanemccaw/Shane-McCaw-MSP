@@ -8127,7 +8127,7 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
   const {
     serviceId, serviceIds: rawServiceIds, signatureData, signerName, wizardSelections, couponCode: bodyCouponCode,
     guestName, guestCompany, guestPhone, guestAddress, guestCity, guestState, guestZip,
-    appRegPermissionsAgreed,
+    appRegPermissionsAgreed, seats: rawContractSeats,
   } = req.body as {
     serviceId?: number; serviceIds?: number[]; signatureData?: string; signerName?: string;
     wizardSelections?: Record<string, { stepId: string; stepTitle?: string; optionId: string; optionLabel?: string; priceAdjustment?: number }[]>;
@@ -8135,7 +8135,9 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     guestName?: string; guestCompany?: string; guestPhone?: string;
     guestAddress?: string; guestCity?: string; guestState?: string; guestZip?: string;
     appRegPermissionsAgreed?: boolean;
+    seats?: number;
   };
+  const contractSeats = Math.max(1, Number(rawContractSeats) || 1);
 
   // Support both single serviceId (legacy) and serviceIds array (multi-service)
   const resolvedServiceIds: number[] = rawServiceIds?.length
@@ -8149,15 +8151,7 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     return;
   }
 
-  if (!signatureData || signatureData.trim().length < 100) {
-    res.status(400).json({ error: "A drawn signature is required to sign the agreement" });
-    return;
-  }
-  if (!signatureData.startsWith("data:image/")) {
-    res.status(400).json({ error: "Invalid signature format" });
-    return;
-  }
-
+  // Fetch services first so we can gate signature validation on service type
   const fetchedSvcs = await db.select().from(servicesTable)
     .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
   if (fetchedSvcs.length !== resolvedServiceIds.length) {
@@ -8167,6 +8161,21 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
   // Preserve exact input order so contractIds[i] always pairs with serviceIds[i]
   const svcMap = new Map(fetchedSvcs.map(s => [s.id, s]));
   const services = resolvedServiceIds.map(id => svcMap.get(id)!);
+
+  // Only project and retainer service types require a drawn signature
+  const anyRequiresSignature = services.some(
+    s => s.serviceType === "project" || s.serviceType === "retainer"
+  );
+  if (anyRequiresSignature) {
+    if (!signatureData || signatureData.trim().length < 100) {
+      res.status(400).json({ error: "A drawn signature is required to sign the agreement" });
+      return;
+    }
+    if (!signatureData.startsWith("data:image/")) {
+      res.status(400).json({ error: "Invalid signature format" });
+      return;
+    }
+  }
 
   const ipAddress = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.ip ?? null;
   const userAgent = req.headers["user-agent"] ?? null;
@@ -8234,9 +8243,14 @@ router.post("/portal/onboarding/contract", async (req: Request, res: Response) =
     }
 
     const signedDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    const effectivePriceStr = computedFinalPrice != null
-      ? `$${computedFinalPrice.toLocaleString("en-US")}`
-      : svc.price ? `$${parseFloat(String(svc.price)).toLocaleString("en-US")}` : "—";
+    const effectivePriceStr = (() => {
+      if (computedFinalPrice != null) return `$${computedFinalPrice.toLocaleString("en-US")}`;
+      if (svc.price) return `$${parseFloat(String(svc.price)).toLocaleString("en-US")}`;
+      const ta = (svc.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
+      const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
+      const total = ppu * contractSeats;
+      return total > 0 ? `$${total.toLocaleString("en-US")}` : "—";
+    })();
 
     // Build a plain-text summary of wizard selections for the contract body/PDF
     let selectionsSummary = "";
@@ -8682,6 +8696,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     lpToken,
     successUrl: bodySuccessUrl,
     cancelUrl: bodyCancelUrl,
+    seats: rawSeats,
   } = req.body as {
     serviceId?: number; serviceIds?: number[];
     contractId?: number; contractIds?: number[];
@@ -8691,7 +8706,9 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
     lpToken?: string;
     successUrl?: string;
     cancelUrl?: string;
+    seats?: number;
   };
+  const resolvedSeats = Math.max(1, Number(rawSeats) || 1);
 
   if (!resolvedUserId) {
     if (!bodyGuestEmail?.trim()) {
@@ -8740,7 +8757,13 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
   const services = await db.select().from(servicesTable)
     .where(sql`${servicesTable.id} = ANY(ARRAY[${sql.join(resolvedServiceIds.map(id => sql`${id}`), sql`, `)}]::int[])`);
 
-  const missingPrices = services.filter(s => !s.price && contractFinalPrices.get(s.id) == null);
+  const missingPrices = services.filter(s => {
+    if (contractFinalPrices.get(s.id) != null) return false;
+    if (s.price) return false;
+    const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
+    if (ta.pricePerUserMonth) return false;
+    return true;
+  });
   if (missingPrices.length > 0) {
     res.status(400).json({ error: `Service "${missingPrices[0].name}" has no price configured` });
     return;
@@ -8836,10 +8859,20 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
   const startDateStr = startDate ?? new Date().toISOString();
 
   // ── Coupon: server-side re-validation ─────────────────────────────────────
-  // Build raw price map (before discount) for all services
+  // Build raw price map (before discount) for all services.
+  // Resolution order: contract wizard finalPrice → services.price → typeAttributes.pricePerUserMonth × seats
   const rawPriceCents = new Map<number, number>();
   for (const s of services) {
-    rawPriceCents.set(s.id, Math.round((contractFinalPrices.get(s.id) ?? parseFloat(String(s.price!))) * 100));
+    const contractFinal = contractFinalPrices.get(s.id);
+    if (contractFinal != null) {
+      rawPriceCents.set(s.id, Math.round(contractFinal * 100));
+    } else if (s.price) {
+      rawPriceCents.set(s.id, Math.round(parseFloat(String(s.price)) * 100));
+    } else {
+      const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
+      const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
+      rawPriceCents.set(s.id, Math.round(ppu * resolvedSeats * 100));
+    }
   }
   const totalCartCents = [...rawPriceCents.values()].reduce((a, b) => a + b, 0);
 
@@ -8924,7 +8957,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
           contractIds: otContractIds.join(","),
           serviceName: oneTimeServices.map(s => s.name).join(", "),
           startDate: startDateStr,
-          servicePrices: oneTimeServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
+          servicePrices: oneTimeServices.map(s => ((rawPriceCents.get(s.id) ?? 0) / 100).toFixed(2)).join(","),
           ...(validatedCouponCode ? { couponCode: validatedCouponCode } : {}),
         },
       });
@@ -8960,7 +8993,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
           contractIds: recContractIds.join(","),
           serviceName: recurringServices.map(s => s.name).join(", "),
           startDate: startDateStr,
-          servicePrices: recurringServices.map(s => (contractFinalPrices.get(s.id) ?? parseFloat(String(s.price ?? 0))).toFixed(2)).join(","),
+          servicePrices: recurringServices.map(s => ((rawPriceCents.get(s.id) ?? 0) / 100).toFixed(2)).join(","),
           // Only attach couponCode to this session if there is no one-time session.
           // In mixed carts the one-time session already carries the couponCode, so the
           // webhook only increments usesCount once (idempotency is also backed by

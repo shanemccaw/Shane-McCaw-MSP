@@ -43,6 +43,8 @@ function tierToService(t: AnyTier) {
     price: t.price,
     billingType: t.billingType,
     fulfillmentTypeKey: t.fulfillmentTypeKey,
+    serviceType: t.serviceType,
+    typeAttributes: t.typeAttributes,
   };
 }
 
@@ -229,6 +231,7 @@ export default function Checkout() {
   const checkoutStatus = params.get("checkout_status") as "success" | "canceled" | null;
   // `session` param is set by ConsentSuccessPage when redirecting back to checkout
   const sessionParam = params.get("session");
+  const seats = Math.max(1, parseInt(params.get("seats") ?? "1", 10) || 1);
 
   // Catalog data (all three service types)
   const { monitoringTiers, retainerTiers, mspTiers, loading: catalogLoading, error: catalogError } = useCatalog();
@@ -406,6 +409,8 @@ export default function Checkout() {
     try {
       let contractId = contractIdRef.current;
 
+      const requiresSignature = service.serviceType === "project" || service.serviceType === "retainer";
+
       if (!contractId) {
         const contractRes = await fetch("/api/portal/onboarding/contract", {
           method: "POST",
@@ -414,7 +419,8 @@ export default function Checkout() {
             serviceIds: [service.id],
             guestEmail: guestInfo.email,
             signerName: guestInfo.name,
-            signatureData: "data:image/png;base64,placeholder",
+            seats,
+            ...(requiresSignature ? { signatureData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } : {}),
           }),
         });
 
@@ -449,6 +455,7 @@ export default function Checkout() {
           guestEmail: guestInfo.email,
           successUrl,
           cancelUrl,
+          seats,
         }),
       });
 
@@ -475,11 +482,18 @@ export default function Checkout() {
     }
   }
 
-  const priceDisplay = service
-    ? service.billingType === "recurring_monthly"
-      ? `${fmtPrice(Number(service.price ?? 0) * 100)}/mo`
-      : fmtPrice(Number(service.price ?? 0) * 100)
-    : null;
+  const priceDisplay = (() => {
+    if (!service) return null;
+    const ta = (service.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
+    if (service.billingType === "recurring_monthly" && ta.pricePerUserMonth) {
+      const perSeat = Number(ta.pricePerUserMonth);
+      return `${fmtPrice(Math.round(perSeat * seats * 100))}/mo`;
+    }
+    if (service.billingType === "recurring_monthly") {
+      return `${fmtPrice(Number(service.price ?? 0) * 100)}/mo`;
+    }
+    return fmtPrice(Number(service.price ?? 0) * 100);
+  })();
 
   const isWizardStep = WIZARD_STEPS.includes(step);
 

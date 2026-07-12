@@ -23,6 +23,8 @@ export interface MonitoringTier {
   fulfillmentTypeKey: string | null;
   seatMin: number | null;
   seatMax: number | null;
+  serviceType: string | null;
+  typeAttributes: Record<string, unknown> | null;
 }
 
 export interface RetainerTier {
@@ -44,6 +46,8 @@ export interface RetainerTier {
   sortOrder: number;
   pageHref: string | null;
   fulfillmentTypeKey: string | null;
+  serviceType: string | null;
+  typeAttributes: Record<string, unknown> | null;
 }
 
 export interface MspTier {
@@ -64,6 +68,8 @@ export interface MspTier {
   sortOrder: number;
   pageHref: string | null;
   fulfillmentTypeKey: string | null;
+  serviceType: string | null;
+  typeAttributes: Record<string, unknown> | null;
 }
 
 export interface CatalogState {
@@ -101,6 +107,8 @@ function toMonitoringTier(s: PublicService): MonitoringTier {
     fulfillmentTypeKey: s.fulfillmentTypeKey,
     seatMin: ta.seatMin ?? null,
     seatMax: ta.seatMax ?? null,
+    serviceType: s.serviceType,
+    typeAttributes: s.typeAttributes,
   };
 }
 
@@ -124,6 +132,8 @@ function toRetainerTier(s: PublicService): RetainerTier {
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
     fulfillmentTypeKey: s.fulfillmentTypeKey,
+    serviceType: s.serviceType,
+    typeAttributes: s.typeAttributes,
   };
 }
 
@@ -146,6 +156,8 @@ function toMspTier(s: PublicService): MspTier {
     sortOrder: s.sortOrder,
     pageHref: s.pageHref,
     fulfillmentTypeKey: s.fulfillmentTypeKey,
+    serviceType: s.serviceType,
+    typeAttributes: s.typeAttributes,
   };
 }
 
