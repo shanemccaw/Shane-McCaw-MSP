@@ -21,7 +21,7 @@ import { autoFireFirstBacklogScript, autoFireDocumentCard, autoFireRunWorkflowCa
 import { isAzureConfigured } from "../lib/azure-automation.ts";
 import { ensureLeadForClient } from "../lib/crm-pipeline.ts";
 import { uploadInvoiceToSharePoint } from "../lib/invoice-sharepoint.ts";
-import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { fireWorkflowsForEvent, emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateM365ProfilePdf } from "../lib/m365-profile-pdf.ts";
 import { generateManualScriptPackage, injectCallbackVars } from "../lib/manual-script-package.ts";
@@ -5144,7 +5144,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
             // creates one — concurrent webhook + success-page calls produce exactly one.
             const { token: setupToken, isNew: tokenIsNew } = await ensureClientSetupToken(buyer.id);
             if (tokenIsNew) {
-              const setupUrl = `${clientBaseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+              const setupUrl = buildAccountSetupUrl(setupToken);
               void sendEmailFromTemplate(
                 "account-setup",
                 buyer.email,
@@ -5525,7 +5525,7 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
   try {
     const { token: setupToken } = await ensureClientSetupToken(client.id);
     const baseUrl = getPortalBaseUrl();
-    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${setupToken}`;
+    const setupUrl = buildAccountSetupUrl(setupToken);
     void sendEmailFromTemplate(
       "account-setup",
       client.email,
@@ -5559,8 +5559,7 @@ router.post("/admin/clients/:id/resend-invite", requireAdmin, async (req: Reques
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
     await db.insert(accountSetupTokensTable).values({ userId: id, token, expiresAt });
 
-    const baseUrl = getPortalBaseUrl();
-    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
+    const setupUrl = buildAccountSetupUrl(token);
 
     await sendEmailFromTemplate(
       "account-setup",
@@ -8562,7 +8561,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
       sentSetupEmail = tokenIsNew;
       if (tokenIsNew) {
         // Send setup link via email — token never leaves the server in the API response.
-        const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${activeToken}`;
+        const setupUrl = buildAccountSetupUrl(activeToken);
         void sendEmailFromTemplate(
           "account-setup",
           provUser.email,
@@ -12454,7 +12453,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       const { token: activeToken, isNew: tokenIsNew } = await ensureClientSetupToken(resolvedUserId);
       sentSetupEmail = tokenIsNew;
       if (tokenIsNew) {
-        const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${activeToken}`;
+        const setupUrl = buildAccountSetupUrl(activeToken);
         void sendEmailFromTemplate(
           "account-setup",
           buyer.email,

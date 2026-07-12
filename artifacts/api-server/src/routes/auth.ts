@@ -7,7 +7,7 @@ import { db, usersTable, mspUsersTable, mspsTable, mspRefreshTokensTable, passwo
 import { eq, and } from "drizzle-orm";
 import type { CookieOptions } from "express";
 import { sendEmailFromTemplate, passwordResetEmail, PORTAL_URL } from "../lib/mailer.ts";
-import { getPortalBaseUrl } from "../lib/portal-url.ts";
+import { getPortalBaseUrl, buildAccountSetupUrl } from "../lib/portal-url.ts";
 import { signMfaToken } from "./mfa.ts";
 import { dispatchEvent, EVENT_TYPES, systemActor, userActor, impersonationActor } from "../lib/event-bus.ts";
 import { requireRole } from "../middlewares/requireAuth.ts";
@@ -467,8 +467,7 @@ router.post("/auth/forgot-password", async (req: Request, res: Response) => {
 
     await db.insert(accountSetupTokensTable).values({ userId: user.id, token, expiresAt });
 
-    const baseUrl = getPortalBaseUrl();
-    const setupUrl = `${baseUrl}/portal/onboarding/success?setup_token=${token}`;
+    const setupUrl = buildAccountSetupUrl(token);
 
     void sendEmailFromTemplate(
       "account-setup",

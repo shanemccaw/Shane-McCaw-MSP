@@ -53,6 +53,7 @@ import CustomerOffersPage from "@/pages/customer-offers";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
+import AccountSetupPage from "@/pages/account-setup";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
@@ -513,6 +514,14 @@ function Router() {
       {/* Public invite accept — no auth required */}
       <Route path="/invite/:token">
         <AcceptInvitePage />
+      </Route>
+
+      {/* Account setup — public, no auth required.
+          Email links for new customer accounts land here. The setup_token
+          query param is validated server-side; on success the user is signed
+          in automatically and redirected to their portal landing page. */}
+      <Route path="/account-setup">
+        <AccountSetupPage />
       </Route>
 
       {/* Microsoft admin-consent declined — public, no auth required.
