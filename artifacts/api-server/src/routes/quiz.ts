@@ -3,9 +3,9 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
-import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable } from "@workspace/db";
+import { db, quizLeadsTable, quizAnalyticsEventsTable, notificationsTable, usersTable, servicesTable } from "@workspace/db";
 import { sendWebPushToAdmins } from "../lib/web-push";
-import { eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { generateQuizPdf } from "../lib/quiz-pdf";
@@ -509,7 +509,8 @@ ${cfg.services}
 Also write:
 - whatThisMeans: 2–3 sentence plain-English summary of what the scores mean for this organisation
 - whyThisFits: 2–3 sentences explaining why the recommended service is the right fit
-- roiProjection: 2–3 sentences projecting realistic ROI/value if they address the identified gaps
+- roiProjection: 2–3 sentences projecting realistic ROI/value if they address the identified gaps${quizType === "m365-health" ? `
+- detectedSeats: integer — if the respondent mentioned a specific number of users, seats, licences, employees, or staff at any point in the conversation, extract that number; otherwise use null` : ""}
 
 Respond ONLY with valid JSON in this exact shape:
 {
@@ -517,7 +518,8 @@ Respond ONLY with valid JSON in this exact shape:
   "recommendedService": "${cfg.defaultService}",
   "whatThisMeans": "...",
   "whyThisFits": "...",
-  "roiProjection": "..."
+  "roiProjection": "..."${quizType === "m365-health" ? `,
+  "detectedSeats": null` : ""}
 }`;
 
   const defaultCategoryScores = Object.fromEntries(
@@ -529,6 +531,7 @@ Respond ONLY with valid JSON in this exact shape:
   let whatThisMeans = "Your organisation has a solid foundation with some areas to strengthen.";
   let whyThisFits = "This service will address your key gaps and set you up for success.";
   let roiProjection = "Organisations at your maturity level typically achieve significant productivity and compliance gains within 6 months of a structured engagement.";
+  let detectedSeats: number | null = null;
 
   try {
     const scoringResponse = await anthropic.messages.create({
@@ -547,6 +550,9 @@ Respond ONLY with valid JSON in this exact shape:
       if (parsedScores.whatThisMeans) whatThisMeans = parsedScores.whatThisMeans as string;
       if (parsedScores.whyThisFits) whyThisFits = parsedScores.whyThisFits as string;
       if (parsedScores.roiProjection) roiProjection = parsedScores.roiProjection as string;
+      if (quizType === "m365-health" && typeof parsedScores.detectedSeats === "number" && parsedScores.detectedSeats > 0) {
+        detectedSeats = Math.round(parsedScores.detectedSeats);
+      }
     }
   } catch (err) {
     logger.warn({ err }, "quiz/submit: scoring AI call failed, using defaults");
@@ -572,6 +578,7 @@ Respond ONLY with valid JSON in this exact shape:
       analysisText: { whatThisMeans, whyThisFits, roiProjection },
       conversation,
       quizType,
+      detectedSeats,
     }).returning({ id: quizLeadsTable.id });
     leadId = inserted?.id ?? null;
   } catch (err) {
@@ -853,7 +860,37 @@ router.get("/quiz/results/:leadId", resultsLimiter, async (req, res) => {
     whyThisFits: analysis.whyThisFits ?? "",
     roiProjection: analysis.roiProjection ?? "",
     createdAt: lead.createdAt,
+    detectedSeats: lead.detectedSeats ?? null,
   });
+});
+
+// ─── GET /api/quiz/monitoring-tiers ───────────────────────────────────────────
+// Public endpoint used by the quiz results page to resolve a detected seat count
+// to the matching monitoring tier slug for deep-link CTA routing.
+// Returns only the fields needed for seat matching — no auth required.
+const monitoringTiersLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: "draft-8", legacyHeaders: false });
+
+router.get("/quiz/monitoring-tiers", monitoringTiersLimiter, async (_req, res) => {
+  try {
+    const tiers = await db
+      .select({
+        id: servicesTable.id,
+        slug: servicesTable.slug,
+        name: servicesTable.name,
+        sortOrder: servicesTable.sortOrder,
+        typeAttributes: servicesTable.typeAttributes,
+      })
+      .from(servicesTable)
+      .where(and(
+        eq(servicesTable.serviceType, "monitoring_tier"),
+      ))
+      .orderBy(asc(servicesTable.sortOrder), asc(servicesTable.id));
+
+    return res.json(tiers);
+  } catch (err) {
+    logger.warn({ err }, "quiz/monitoring-tiers: DB query failed");
+    return res.status(500).json({ error: "Failed to fetch monitoring tiers" });
+  }
 });
 
 const analyticsLimiter = rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false });

@@ -21,6 +21,15 @@ interface QuizResultsData {
   whyThisFits: string;
   roiProjection: string;
   createdAt: string;
+  detectedSeats?: number | null;
+}
+
+interface MonitoringTierRow {
+  id: number;
+  slug: string | null;
+  name: string;
+  sortOrder: number;
+  typeAttributes: Record<string, unknown> | null;
 }
 
 // ─── Tier colours ─────────────────────────────────────────────────────────────
@@ -31,6 +40,32 @@ const TIER_COLOURS: Record<string, string> = {
   Advanced: "bg-blue-500",
   Ready: "bg-teal-500",
 };
+
+// ─── Resolve monitoring CTA href from seat count ──────────────────────────────
+function resolveMonitoringHref(detectedSeats: number, tiers: MonitoringTierRow[]): string {
+  // Find all tiers whose seat range covers detectedSeats
+  const matching = tiers.filter((t) => {
+    const attrs = t.typeAttributes;
+    if (!attrs) return false;
+    const seatMin = typeof attrs.seatMin === "number" ? attrs.seatMin : null;
+    const seatMax = typeof attrs.seatMax === "number" ? attrs.seatMax : null;
+    return seatMin !== null && seatMax !== null && seatMin <= detectedSeats && detectedSeats <= seatMax;
+  });
+
+  if (matching.length === 0) return "/monitoring";
+
+  // Prefer a tier whose name contains "Enhanced" (case-insensitive)
+  let chosen = matching.find((t) => t.name.toLowerCase().includes("enhanced"));
+
+  // Fallback: pick the middle tier by sortOrder (the middle-of-road pack)
+  if (!chosen && matching.length > 0) {
+    const sorted = [...matching].sort((a, b) => a.sortOrder - b.sortOrder);
+    chosen = sorted[Math.floor(sorted.length / 2)];
+  }
+
+  if (!chosen?.slug) return "/monitoring";
+  return `/checkout?product=${encodeURIComponent(chosen.slug)}&seats=${detectedSeats}`;
+}
 
 // ─── Score bar ────────────────────────────────────────────────────────────────
 function ScoreBar({ score, label }: { score: number; label: string }) {
@@ -59,6 +94,7 @@ export default function QuizResultsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [monitoringHref, setMonitoringHref] = useState<string>("/monitoring");
 
   useEffect(() => {
     if (!leadId || !token) {
@@ -77,7 +113,24 @@ export default function QuizResultsPage() {
         }
         return res.json() as Promise<QuizResultsData>;
       })
-      .then((d) => { setData(d); import("@/lib/analytics").then(({ trackAssessmentCompleted }) => trackAssessmentCompleted({ quiz_type: d.quizType })).catch(() => {}); })
+      .then((d) => {
+        setData(d);
+        import("@/lib/analytics").then(({ trackAssessmentCompleted }) => trackAssessmentCompleted({ quiz_type: d.quizType })).catch(() => {});
+
+        // Resolve monitoring CTA when detectedSeats is available (m365-health quiz)
+        if (d.quizType === "m365-health" && d.detectedSeats && d.detectedSeats > 0) {
+          const seats = d.detectedSeats;
+          fetch(`${base}/api/quiz/monitoring-tiers`)
+            .then((r) => (r.ok ? r.json() : Promise.reject()))
+            .then((tiers: MonitoringTierRow[]) => {
+              const href = resolveMonitoringHref(seats, tiers);
+              setMonitoringHref(href);
+            })
+            .catch(() => {
+              // Fall back to generic monitoring page on any error
+            });
+        }
+      })
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load results."))
       .finally(() => setLoading(false));
   }, [leadId, token]);
@@ -214,7 +267,7 @@ export default function QuizResultsPage() {
                   </p>
                   <div className="flex flex-col sm:flex-row gap-2 pt-1">
                     <a
-                      href="/monitoring"
+                      href={monitoringHref}
                       className="flex-1 py-2.5 px-4 bg-[#0078D4] hover:bg-[#0078D4]/90 text-white font-semibold rounded-lg text-sm transition-colors flex items-center justify-center gap-1.5"
                     >
                       Keep this current — Start Monitoring <ArrowRight className="w-3.5 h-3.5" />

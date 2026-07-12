@@ -1310,6 +1310,13 @@
       "when": 1783837509907,
       "tag": "0177_services_typeattributes",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "7",
+      "when": 1752364800000,
+      "tag": "0178_quiz_leads_detected_seats",
+      "breakpoints": true
     }
   ]
 }

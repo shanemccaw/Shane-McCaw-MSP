@@ -984,6 +984,7 @@ export const quizLeadsTable = pgTable("quiz_leads", {
   analysisText: jsonb("analysis_text").$type<QuizAnalysisText>().default({ whatThisMeans: "", whyThisFits: "", roiProjection: "" }),
   conversation: jsonb("conversation").$type<QuizConversationEntry[]>().notNull().default([]),
   quizType: text("quiz_type").notNull().default("copilot"),
+  detectedSeats: integer("detected_seats"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   contactedAt: timestamp("contacted_at"),
 });
