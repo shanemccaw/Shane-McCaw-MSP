@@ -6,7 +6,7 @@ import { z } from "zod";
 import fs from "fs";
 import path from "path";
 import { generateServiceOverviewPdf } from "../lib/service-overview-pdf";
-import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, type ProductTypeKey } from "../lib/productTypeConfig";
+import { detectProductType, PRODUCT_TYPE_IMPORT_FIELDS, PRODUCT_TYPE_EXPORT_FIELDS, PRODUCT_TYPE_TEMPLATES, PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS, type ProductTypeKey } from "../lib/productTypeConfig";
 
 const UPLOADS_BASE = process.env.UPLOADS_DIR
   ? path.resolve(process.env.UPLOADS_DIR)
@@ -132,7 +132,8 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
         tags: parseStringArray(tags),
         customerAgreementTemplate: (customerAgreementTemplate as string | null) ?? null,
         isFreeOffering: isFreeOffering != null ? Boolean(isFreeOffering) : false,
-        fulfillmentTypeKey: (fulfillmentTypeKey as string | null) ?? null,
+        fulfillmentTypeKey: (fulfillmentTypeKey as string | null)
+          || (serviceType ? (PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS[serviceType as string] ?? null) : null),
         triggeringSignalKeys: parseStringArray(triggeringSignalKeys),
         serviceClass: resolvedServiceClass,
         deliveryType: resolvedDeliveryType,
@@ -153,7 +154,7 @@ router.put("/admin/services/:id", requireAdmin, async (req: Request, res: Respon
 router.post("/admin/services", requireAdmin, async (req: Request, res: Response) => {
   try {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes } = body;
+    const { name, slug, billingType, visibility, isPublic, deliverables, inclusions, features, serviceClass, deliveryType, fulfillmentType, typeAttributes, serviceType, fulfillmentTypeKey } = body;
     if (!name || typeof name !== "string" || !name.trim()) {
       res.status(400).json({ error: "name is required" }); return;
     }
@@ -192,6 +193,9 @@ router.post("/admin/services", requireAdmin, async (req: Request, res: Response)
         fulfillmentType: (["standard", "msp_monthly_subscription"] as const).includes(fulfillmentType as "standard" | "msp_monthly_subscription")
           ? (fulfillmentType as "standard" | "msp_monthly_subscription")
           : "standard",
+        serviceType: (serviceType as string | null) ?? null,
+        fulfillmentTypeKey: (fulfillmentTypeKey as string | null)
+          || (serviceType ? (PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS[serviceType as string] ?? null) : null),
         typeAttributes: (typeAttributes != null && typeof typeAttributes === "object" && !Array.isArray(typeAttributes))
           ? (typeAttributes as Record<string, unknown>)
           : undefined,

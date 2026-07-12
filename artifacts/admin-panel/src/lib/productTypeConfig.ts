@@ -60,6 +60,8 @@ export interface ProductTypeConfig {
   deliveryType: "assessment" | "bundle_subscription" | "retainer" | "document_generation" | "none" | null;
   defaultBillingType: "one_time" | "recurring_monthly";
   fulfillmentType?: "standard" | "msp_monthly_subscription";
+  /** Default fulfillmentTypeKey assigned automatically when this product type is saved */
+  defaultFulfillmentTypeKey?: string;
   /** Ordered list of editor sections; rendered top-to-bottom */
   sections: SectionDef[];
   showGenPdf: boolean;
@@ -232,6 +234,7 @@ export const PRODUCT_TYPE_CONFIGS: Record<ProductTypeKey, ProductTypeConfig> = {
     serviceClass: null,
     deliveryType: "retainer",
     defaultBillingType: "recurring_monthly",
+    defaultFulfillmentTypeKey: "retainer",
     showGenPdf: true,
     showWorkflowTemplate: false,
     showFields: { priceFixed: true, priceRange: false, duration: false, turnaround: false, assignToClient: true, projectTemplate: false, genPdf: true, monitoringTier: false },
@@ -258,6 +261,7 @@ export const PRODUCT_TYPE_CONFIGS: Record<ProductTypeKey, ProductTypeConfig> = {
     serviceClass: "subscription",
     deliveryType: "bundle_subscription",
     defaultBillingType: "recurring_monthly",
+    defaultFulfillmentTypeKey: "monitoring_subscription",
     showGenPdf: false,
     showWorkflowTemplate: false,
     showFields: { priceFixed: false, priceRange: false, duration: false, turnaround: false, assignToClient: false, projectTemplate: false, genPdf: false, monitoringTier: true },
@@ -368,6 +372,7 @@ export const PRODUCT_TYPE_CONFIGS: Record<ProductTypeKey, ProductTypeConfig> = {
     deliveryType: "bundle_subscription",
     defaultBillingType: "recurring_monthly",
     fulfillmentType: "msp_monthly_subscription",
+    defaultFulfillmentTypeKey: "msp_monthly_subscription",
     showGenPdf: false,
     showWorkflowTemplate: false,
     showFields: { priceFixed: true, priceRange: false, duration: false, turnaround: false, assignToClient: false, projectTemplate: false, genPdf: false, monitoringTier: false },

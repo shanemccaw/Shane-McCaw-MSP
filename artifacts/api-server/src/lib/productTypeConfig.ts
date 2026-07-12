@@ -15,6 +15,16 @@ export type ProductTypeKey =
 
 // ── Detection ─────────────────────────────────────────────────────────────────
 
+// ── Default fulfillmentTypeKey per serviceType ────────────────────────────────
+// When a service is saved without an explicit fulfillmentTypeKey the API derives
+// one from this map so every product type gets the right lifecycle handler
+// automatically. Add a new entry here whenever you add a new product type.
+export const PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS: Partial<Record<string, string>> = {
+  monitoring_tier: "monitoring_subscription",
+  retainer: "retainer",
+  platform_subscription_tier: "msp_monthly_subscription",
+};
+
 export function detectProductType(
   serviceClass: string | null | undefined,
   deliveryType: string | null | undefined,

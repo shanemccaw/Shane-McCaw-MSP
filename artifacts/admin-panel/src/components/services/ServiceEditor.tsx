@@ -24,7 +24,7 @@ import ServiceEditorSidePanel from "./ServiceEditorSidePanel";
 import CategoryPickerDropdown from "./CategoryPickerDropdown";
 import type { WizardStep, WizardOption } from "@/hooks/useServices";
 import {
-  detectProductType, PRODUCT_TYPE_CONFIGS, PRODUCT_TYPE_LIST,
+  detectProductType, PRODUCT_TYPE_CONFIGS, PRODUCT_TYPE_LIST, type ProductTypeConfig,
   type ProductTypeKey, type SectionDef, type FieldDef,
 } from "@/lib/productTypeConfig";
 import { useRegistryOptions } from "@/hooks/useRegistryOptions";
@@ -689,6 +689,21 @@ export default function ServiceEditor({ id, onClose, onSaved, panelMode = false,
   }, [service, reset, defaultValues]);
 
   const formWatch = watch();
+
+  // Auto-populate fulfillmentTypeKey when serviceType changes to a type that has a known default
+  const watchedServiceType = watch("serviceType");
+  useEffect(() => {
+    if (!watchedServiceType) return;
+    const cfg = Object.values(PRODUCT_TYPE_CONFIGS).find(
+      (c: ProductTypeConfig) => c.key === watchedServiceType,
+    );
+    if (!cfg?.defaultFulfillmentTypeKey) return;
+    const current = (formWatch as Record<string, unknown>).fulfillmentTypeKey as string | null;
+    if (!current) {
+      setValue("fulfillmentTypeKey", cfg.defaultFulfillmentTypeKey, { shouldDirty: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedServiceType]);
 
   useEffect(() => {
     void (async () => {

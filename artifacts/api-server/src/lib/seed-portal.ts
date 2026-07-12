@@ -118,6 +118,12 @@ export async function seedMarketingServices(): Promise<void> {
       .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
       .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
 
+    // Backfill fulfillmentTypeKey on any monitoring tier rows that are missing it.
+    await db
+      .update(servicesTable)
+      .set({ fulfillmentTypeKey: "monitoring_subscription" })
+      .where(and(eq(servicesTable.serviceType, "monitoring_tier"), isNull(servicesTable.fulfillmentTypeKey)));
+
     void sqlTag;
     return;
   }
@@ -570,6 +576,11 @@ export async function seedMarketingServices(): Promise<void> {
     .update(servicesTable)
     .set({ fulfillmentTypeKey: "msp_monthly_subscription" })
     .where(and(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"), isNull(servicesTable.fulfillmentTypeKey)));
+
+  await db
+    .update(servicesTable)
+    .set({ fulfillmentTypeKey: "monitoring_subscription" })
+    .where(and(eq(servicesTable.serviceType, "monitoring_tier"), isNull(servicesTable.fulfillmentTypeKey)));
 
   void sqlTag;
 }
