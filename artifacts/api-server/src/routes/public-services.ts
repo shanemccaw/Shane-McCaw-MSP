@@ -85,6 +85,7 @@ const createSessionSchema = z.object({
   productSlug: z.string().min(1, "productSlug is required"),
   fullName: z.string().min(1, "fullName is required"),
   email: z.string().email("email must be a valid email address"),
+  seats: z.number().int().min(1).default(1),
 });
 
 router.post("/public/checkout-session", async (req: Request, res: Response) => {
@@ -94,12 +95,12 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
     return;
   }
 
-  const { productSlug, fullName, email } = parsed.data;
+  const { productSlug, fullName, email, seats } = parsed.data;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   const [row] = await db
     .insert(checkoutSessionsTable)
-    .values({ productSlug, fullName, email, expiresAt })
+    .values({ productSlug, fullName, email, seats, expiresAt })
     .returning({ id: checkoutSessionsTable.id });
 
   res.json({ sessionId: row.id });
@@ -124,6 +125,7 @@ router.get("/public/checkout-session/:id", async (req: Request, res: Response) =
     .select({
       productSlug: checkoutSessionsTable.productSlug,
       status: checkoutSessionsTable.status,
+      seats: checkoutSessionsTable.seats,
     })
     .from(checkoutSessionsTable)
     .where(and(eq(checkoutSessionsTable.id, id), gte(checkoutSessionsTable.expiresAt, now)))

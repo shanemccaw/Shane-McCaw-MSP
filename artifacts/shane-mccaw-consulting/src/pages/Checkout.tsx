@@ -108,6 +108,7 @@ async function createCheckoutSession(opts: {
   productSlug: string;
   fullName: string;
   email: string;
+  seats: number;
 }): Promise<string> {
   const res = await fetch("/api/public/checkout-session", {
     method: "POST",
@@ -125,6 +126,7 @@ async function createCheckoutSession(opts: {
 interface CheckoutSessionInfo {
   productSlug: string;
   status: string;
+  seats: number;
 }
 
 async function fetchCheckoutSession(
@@ -240,6 +242,9 @@ export default function Checkout() {
   const [service, setService] = useState<ReturnType<typeof tierToService> | null>(null);
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // Seat count recovered from the server-side session when returning via the consent redirect.
+  // The URL param is stripped by navigate() so we hold the authoritative value in state.
+  const [recoveredSeats, setRecoveredSeats] = useState<number | null>(null);
   const [consentGranted, setConsentGranted] = useState(false);
   const [consentUrl, setConsentUrl] = useState<string | null>(null);
   const [consentDeclined, setConsentDeclined] = useState(false);
@@ -313,9 +318,9 @@ export default function Checkout() {
     // Handle return from consent success page — ?session=<uuid> means consent was granted.
     // sessionStorage may have been wiped during the cross-origin redirect, so we recover
     // the sessionId from the URL param and restore guestInfo from the localStorage cache
-    // (written at guest-info submit time by saveGuestInfoCache). No PII is fetched from
-    // the server — the GET /api/public/checkout-session/:id endpoint returns only
-    // productSlug + status by design.
+    // (written at guest-info submit time by saveGuestInfoCache). Seats are recovered from
+    // the server-side session (stored at session creation) since the URL param is stripped
+    // by navigate() below.
     if (sessionParam) {
       const storedSessionId = loadSessionId() ?? sessionParam;
       saveSessionId(storedSessionId);
@@ -329,6 +334,15 @@ export default function Checkout() {
       if (cachedInfo) {
         setGuestInfo(cachedInfo);
       }
+
+      // Recover seat count from the server-side session. The URL ?seats= param is read
+      // here but will be stripped by navigate() below, so we persist it in state.
+      // Seed with the URL value first so the price shows immediately, then confirm with server.
+      const urlSeats = Math.max(1, parseInt(params.get("seats") ?? "1", 10) || 1);
+      if (urlSeats > 1) setRecoveredSeats(urlSeats);
+      fetchCheckoutSession(storedSessionId).then((info) => {
+        if (info && info.seats > 1) setRecoveredSeats(info.seats);
+      }).catch(() => {});
 
       setStep("payment");
       navigate(`/checkout?product=${encodeURIComponent(slug)}`, { replace: true });
@@ -361,6 +375,10 @@ export default function Checkout() {
     defaultValues: { name: "", email: "" },
   });
 
+  // Use the recovered seat count when returning from consent (URL stripped by navigate).
+  // Falls back to URL param value on the fresh/direct path.
+  const effectiveSeats = recoveredSeats ?? seats;
+
   async function handleGuestInfo(data: GuestInfo) {
     if (!slug) return;
     try {
@@ -368,6 +386,7 @@ export default function Checkout() {
         productSlug: slug,
         fullName: data.name,
         email: data.email,
+        seats,
       });
       saveSessionId(newSessionId);
       // Cache guestInfo in localStorage so it survives the cross-origin consent redirect.
@@ -419,7 +438,7 @@ export default function Checkout() {
             serviceIds: [service.id],
             guestEmail: guestInfo.email,
             signerName: guestInfo.name,
-            seats,
+            seats: effectiveSeats,
             ...(requiresSignature ? { signatureData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==" } : {}),
           }),
         });
@@ -455,7 +474,7 @@ export default function Checkout() {
           guestEmail: guestInfo.email,
           successUrl,
           cancelUrl,
-          seats,
+          seats: effectiveSeats,
         }),
       });
 
@@ -487,7 +506,7 @@ export default function Checkout() {
     const ta = (service.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
     if (service.billingType === "recurring_monthly" && ta.pricePerUserMonth) {
       const perSeat = Number(ta.pricePerUserMonth);
-      return `${fmtPrice(Math.round(perSeat * seats * 100))}/mo`;
+      return `${fmtPrice(Math.round(perSeat * effectiveSeats * 100))}/mo`;
     }
     if (service.billingType === "recurring_monthly") {
       return `${fmtPrice(Number(service.price ?? 0) * 100)}/mo`;

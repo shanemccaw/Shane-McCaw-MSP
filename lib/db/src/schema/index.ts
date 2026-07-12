@@ -2445,6 +2445,7 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   productSlug: text("product_slug").notNull(),
   fullName: text("full_name").notNull(),
   email: text("email").notNull(),
+  seats: integer("seats").notNull().default(1),
   status: text("status", { enum: ["pending", "consented", "paid", "expired"] }).notNull().default("pending"),
   tenantId: text("tenant_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

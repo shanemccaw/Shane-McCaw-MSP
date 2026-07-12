@@ -6,6 +6,7 @@ import { ShieldCheck, ArrowRight, Loader2 } from "lucide-react";
 interface CheckoutSessionInfo {
   productSlug: string;
   status: string;
+  seats: number;
 }
 
 const PRODUCT_NAMES: Record<string, string> = {
@@ -46,7 +47,8 @@ export default function ConsentSuccessPage() {
   function handleContinueToPayment() {
     if (!sessionInfo) return;
     const base = window.location.origin;
-    window.location.href = `${base}/checkout?product=${encodeURIComponent(sessionInfo.productSlug)}&session=${encodeURIComponent(sessionId ?? "")}`;
+    const seatsParam = sessionInfo.seats > 1 ? `&seats=${sessionInfo.seats}` : "";
+    window.location.href = `${base}/checkout?product=${encodeURIComponent(sessionInfo.productSlug)}&session=${encodeURIComponent(sessionId ?? "")}${seatsParam}`;
   }
 
   return (
