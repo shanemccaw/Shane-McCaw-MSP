@@ -29,18 +29,25 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mtAppCredentialsPresent, REQUIRED_MT_SCOPES } from "../lib/graph.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { logger } from "../lib/logger.ts";
-import { getPortalBaseUrl } from "../lib/portal-url.ts";
 
 const router: IRouter = Router();
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-function getCallbackUrl(req: Request): string {
-  const base = getPortalBaseUrl();
-  if (base) return `${base}/api/consent/callback`;
+/** Returns the protocol+host base (e.g. "https://example.replit.app") from request headers. */
+function getHostBase(req: Request): string {
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
   const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-  return `${proto}://${host}/api/consent/callback`;
+  return `${proto}://${host}`;
+}
+
+/**
+ * The redirect_uri sent to Microsoft as part of the OAuth consent request.
+ * THIS VALUE MUST BE REGISTERED in the Azure App Registration → Authentication → Redirect URIs.
+ * Exact format: https://<your-domain>/api/consent/callback
+ */
+function getCallbackUrl(req: Request): string {
+  return `${getHostBase(req)}/api/consent/callback`;
 }
 
 // ── POST /api/consent/invite-link ──────────────────────────────────────────────
@@ -97,7 +104,7 @@ router.post("/consent/invite-link", requireAdmin, async (req: Request, res: Resp
 router.get("/consent/callback", async (req: Request, res: Response) => {
   const { tenant, admin_consent, state, error, error_subcode } = req.query as Record<string, string | undefined>;
 
-  const portalBase = getPortalBaseUrl();
+  const hostBase = getHostBase(req);
 
   // Microsoft declined callback — surface a clear message
   if (error === "access_denied" || error_subcode === "cancel") {
@@ -124,7 +131,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
         });
     }
 
-    res.redirect(`${portalBase}/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
+    res.redirect(`${hostBase}/portal/consent/declined${tenant ? `?tenant=${encodeURIComponent(tenant)}` : ""}`);
     return;
   }
 
@@ -192,7 +199,7 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
 
   logger.info({ tenant, customerId: inviteRecord?.customerId }, "Tenant admin consent granted");
 
-  res.redirect(`${portalBase}/consent/success?tenant=${encodeURIComponent(tenant)}`);
+  res.redirect(`${hostBase}/portal/consent/success?tenant=${encodeURIComponent(tenant)}`);
 });
 
 // ── GET /api/consent/declined ──────────────────────────────────────────────────

@@ -52,6 +52,7 @@ import OffersPage from "@/pages/offers";
 import CustomerOffersPage from "@/pages/customer-offers";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
+import ConsentSuccessPage from "@/pages/consent-success";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
@@ -520,6 +521,14 @@ function Router() {
           page explaining what happened and how to re-initiate the flow. */}
       <Route path="/consent/declined">
         <ConsentDeclinedPage />
+      </Route>
+
+      {/* Microsoft admin-consent success — public, no auth required.
+          The API consent callback redirects here when the Global Admin clicks
+          "Accept" at the Microsoft permission screen. Renders a confirmation
+          page explaining next steps. */}
+      <Route path="/consent/success">
+        <ConsentSuccessPage />
       </Route>
 
       {/* Root — redirect to last-used slug or flat login */}
