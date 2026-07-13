@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { Layout } from "@/components/Layout";
 import { SEOMeta } from "@/components/SEOMeta";
-import { useCatalog } from "@/hooks/useCatalog";
+import { useCatalog, type AssessmentOffer } from "@/hooks/useCatalog";
 import { Button } from "@/components/ui/button";
 import {
   Shield,
@@ -99,8 +99,8 @@ export default function Assessment() {
   );
 }
 
-function AssessmentCard({ offer }) {
-  const isFree = !offer.price;
+function AssessmentCard({ offer }: { offer: AssessmentOffer }) {
+  const isFree = offer.isFree;
 
   return (
     <div
@@ -135,9 +135,9 @@ function AssessmentCard({ offer }) {
         {offer.tagline ?? offer.description}
       </p>
 
-      {offer.features?.length > 0 && (
+      {(offer.features?.length ?? 0) > 0 && (
         <ul className="space-y-2 mb-6 flex-1">
-          {offer.features.map((f, i) => (
+          {offer.features!.map((f, i) => (
             <li
               key={i}
               className={`flex items-start gap-2 text-sm ${

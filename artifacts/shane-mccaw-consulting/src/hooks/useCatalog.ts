@@ -72,10 +72,27 @@ export interface MspTier {
   typeAttributes: Record<string, unknown> | null;
 }
 
+export interface AssessmentOffer {
+  id: number;
+  slug: string | null;
+  name: string;
+  tagline: string | null;
+  description: string | null;
+  badge: string | null;
+  highlighted: boolean;
+  price: string | null;
+  sortOrder: number;
+  features: string[] | null;
+  fulfillmentTypeKey: string | null;
+  isPublic: boolean;
+  isFree: boolean;
+}
+
 export interface CatalogState {
   monitoringTiers: MonitoringTier[];
   retainerTiers: RetainerTier[];
   mspTiers: MspTier[];
+  assessmentOffers: AssessmentOffer[];
   loading: boolean;
   error: string | null;
 }
@@ -165,6 +182,7 @@ export function useCatalog(): CatalogState {
   const [monitoringTiers, setMonitoringTiers] = useState<MonitoringTier[]>([]);
   const [retainerTiers, setRetainerTiers] = useState<RetainerTier[]>([]);
   const [mspTiers, setMspTiers] = useState<MspTier[]>([]);
+  const [assessmentOffers, setAssessmentOffers] = useState<AssessmentOffer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -176,12 +194,17 @@ export function useCatalog(): CatalogState {
       fetchServices("monitoring_tier"),
       fetchServices("retainer"),
       fetchServices("msp"),
+      fetch("/api/catalog/assessments").then((r) => {
+        if (!r.ok) throw new Error("catalog/assessments fetch failed");
+        return r.json() as Promise<AssessmentOffer[]>;
+      }),
     ])
-      .then(([monRaw, retRaw, mspRaw]) => {
+      .then(([monRaw, retRaw, mspRaw, assessRaw]) => {
         if (cancelled) return;
         setMonitoringTiers(monRaw.map(toMonitoringTier));
         setRetainerTiers(retRaw.map(toRetainerTier));
         setMspTiers(mspRaw.map(toMspTier));
+        setAssessmentOffers(assessRaw);
         setError(null);
       })
       .catch(() => {
@@ -196,5 +219,5 @@ export function useCatalog(): CatalogState {
     };
   }, []);
 
-  return { monitoringTiers, retainerTiers, mspTiers, loading, error };
+  return { monitoringTiers, retainerTiers, mspTiers, assessmentOffers, loading, error };
 }

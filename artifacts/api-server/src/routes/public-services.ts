@@ -187,4 +187,45 @@ router.get("/public/consent-url", async (req: Request, res: Response) => {
   res.json({ url });
 });
 
+// ── GET /api/catalog/assessments ──────────────────────────────────────────────
+// Public endpoint — no auth required. Returns services where serviceType =
+// 'assessment' AND isPublic = true, ordered by sortOrder ASC.
+
+router.get("/catalog/assessments", async (req: Request, res: Response) => {
+  try {
+    const rows = await db
+      .select({
+        id: servicesTable.id,
+        slug: servicesTable.slug,
+        name: servicesTable.name,
+        tagline: servicesTable.tagline,
+        description: servicesTable.description,
+        badge: servicesTable.badge,
+        highlighted: servicesTable.highlighted,
+        price: servicesTable.price,
+        sortOrder: servicesTable.sortOrder,
+        features: servicesTable.features,
+        fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
+        isPublic: servicesTable.isPublic,
+      })
+      .from(servicesTable)
+      .where(
+        and(
+          eq(servicesTable.serviceType, "assessment"),
+          eq(servicesTable.isPublic, true),
+        ),
+      )
+      .orderBy(asc(servicesTable.sortOrder));
+
+    const assessmentOffers = rows.map((r) => ({
+      ...r,
+      isFree: r.price == null || Number(r.price) === 0,
+    }));
+
+    res.json(assessmentOffers);
+  } catch {
+    res.status(500).json({ error: "Failed to fetch assessments" });
+  }
+});
+
 export default router;
