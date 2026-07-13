@@ -64,24 +64,151 @@ function buildFindingTitle(result: CheckResult): string {
   return "Check passed";
 }
 
+// ── Error-message helpers ─────────────────────────────────────────────────────
+
+/** Pull the Graph API error code out of a raw error string, e.g.
+ *  "Graph API error 403: {\"error\":{\"code\":\"Authentication_RequestFrom…\"}}"
+ */
+function extractGraphErrorCode(msg: string): string {
+  const m = msg.match(/"code"\s*:\s*"([^"]+)"/);
+  return m?.[1] ?? "";
+}
+
+const PREMIUM_LICENSE_CODES = new Set([
+  "Authentication_RequestFromNonPremiumTenantOrB2CTenant",
+  "RequestFromNonPremiumTenantOrB2CTenant",
+]);
+
+/** Convert a raw Graph API error message into a clean, customer-safe sentence. */
+function humanizeGraphError(raw: string | null | undefined): string {
+  if (!raw) return "An unexpected error occurred executing this check.";
+
+  const code = extractGraphErrorCode(raw);
+  const lower = raw.toLowerCase();
+
+  // Premium licensing
+  if (
+    PREMIUM_LICENSE_CODES.has(code) ||
+    lower.includes("doesn't have premium license") ||
+    lower.includes("nonpremiumtenant") ||
+    lower.includes("non premium tenant") ||
+    lower.includes("b2ctenant")
+  ) {
+    return "This check requires Azure AD Premium (P1/P2) licensing, which isn't present on this tenant.";
+  }
+
+  // Forbidden — check if it's a licensing gate first
+  if (lower.includes("forbidden") || lower.includes("403")) {
+    if (lower.includes("license") || lower.includes("premium") || lower.includes("subscription")) {
+      return "This check requires Azure AD Premium (P1/P2) licensing, which isn't present on this tenant.";
+    }
+    return "This check couldn't complete — a required permission is missing. Contact support if this persists.";
+  }
+
+  // Explicit "not licensed" phrasing
+  if (lower.includes("not licensed for this feature") || lower.includes("licens")) {
+    return "This check requires Azure AD Premium (P1/P2) licensing, which isn't present on this tenant.";
+  }
+
+  // Permission / authorization denied
+  if (
+    code === "Authorization_RequestDenied" ||
+    lower.includes("authorization_requestdenied") ||
+    lower.includes("insufficient privileges") ||
+    lower.includes("access denied") ||
+    lower.includes("accessdenied")
+  ) {
+    return "This check couldn't complete — a required permission is missing. Contact support if this persists.";
+  }
+
+  // Bad request / invalid input
+  if (lower.includes("badrequest") || lower.includes("bad request") || lower.includes("400")) {
+    return "This check couldn't complete — the request format needs adjustment. Contact support if this persists.";
+  }
+
+  // Rate limiting / throttling
+  if (lower.includes("throttl") || lower.includes("toomanyrequests") || lower.includes("429")) {
+    return "This check couldn't complete — the service is temporarily rate-limited. It will retry automatically.";
+  }
+
+  // Upstream service unavailable
+  if (lower.includes("serviceunavailable") || lower.includes("service unavailable") || lower.includes("503")) {
+    return "This check couldn't complete — the service was temporarily unavailable. It will retry automatically.";
+  }
+
+  // Generic safe fallback — never expose the raw error string to the customer
+  return "This check couldn't complete — an unexpected error occurred. Contact support if this persists.";
+}
+
+// ── Extracted-property description builder ────────────────────────────────────
+
+/** Render extractedProperties as clean prose.
+ *  Rules:
+ *  - Array values → summarised as "N <label> found requiring review" using
+ *    the sibling _count field (e.g. id_count) or the array's own length.
+ *    The raw contents (GUIDs, URLs, IDs) are never rendered.
+ *  - _count / _values suffix keys that back an array are skipped as raw values.
+ *  - Booleans, numbers, short strings are rendered with a human-friendly label.
+ */
+function describeExtractedProperties(props: Record<string, unknown>): string {
+  const parts: string[] = [];
+  // Keys whose value is an array — so we can suppress the sibling _count key
+  const arrayBases = new Set(
+    Object.entries(props)
+      .filter(([, v]) => Array.isArray(v))
+      .map(([k]) => k.replace(/_values?$/i, ""))
+  );
+
+  for (const [k, v] of Object.entries(props)) {
+    if (k.startsWith("_")) continue; // internal metadata
+
+    if (Array.isArray(v)) {
+      // Summarise instead of dumping contents
+      const base = k.replace(/_values?$/i, "");
+      const count =
+        (props[`${base}_count`] as number | undefined) ??
+        (props[`_count`] as number | undefined) ??
+        v.length;
+      const label = base.replace(/_/g, " ").trim() || "item";
+      const noun = count === 1 ? label : label;
+      parts.push(`${count} ${noun}${count === 1 ? "" : "s"} found requiring review`);
+      continue;
+    }
+
+    // Skip _count keys that correspond to a rendered array
+    if (k.endsWith("_count")) {
+      const base = k.slice(0, -"_count".length);
+      if (arrayBases.has(base)) continue;
+    }
+
+    // Scalar value — render cleanly
+    const label = k.replace(/_/g, " ").trim();
+    if (typeof v === "boolean") {
+      parts.push(`${label}: ${v ? "Yes" : "No"}`);
+    } else if (v !== null && v !== undefined) {
+      parts.push(`${label}: ${String(v)}`);
+    }
+  }
+
+  return parts.length > 0 ? parts.join(". ") : "No notable properties extracted.";
+}
+
+// ── Main description builder ──────────────────────────────────────────────────
+
 function buildFindingDescription(result: CheckResult): string {
   if (result.status === "consent_revoked") {
     return "Application consent has been revoked. No Graph API checks can run for this tenant until consent is re-established.";
   }
   if (result.status === "error") {
-    return result.errorMessage ?? "An unexpected error occurred executing this check.";
+    // humanizeGraphError returns clean customer-safe prose — never raw JSON
+    return humanizeGraphError(result.errorMessage);
   }
   if (result.status === "requires_script") {
     return "This check requires a PowerShell runbook to run in the customer's environment. Results will appear after the script is executed.";
   }
   const props = result.extractedProperties;
   if (props && Object.keys(props).length > 0) {
-    const items = Object.entries(props)
-      .filter(([k]) => !k.startsWith("_"))
-      .slice(0, 5)
-      .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
-      .join("; ");
-    return items || "No notable properties extracted.";
+    return describeExtractedProperties(props);
   }
   return "No issues detected for this check.";
 }
