@@ -70,7 +70,7 @@ These runbooks are written for the **Shane McCaw Consulting** platform. They ass
    |---|---|---|
    | Node `type: execute_runbook` stuck `running` | Azure Automation job hung or never started | See "Cancelling a hung runbook" below |
    | Node `type: generate_document` stuck | AI provider timeout / rate limit | Retry via `POST /api/admin/workflow-runs/:runId/retry-node` with the node ID |
-   | Node `type: send_email` failed | Resend API error | Check Resend dashboard; fix template if needed; retry |
+   | Node `type: send_email` failed | Exchange Online / Graph error (see `error` in node output) | Check `GRAPH_MAIL_USER_ID` and Graph app credentials are configured; check `failed_notifications` table for the specific recipient; retry |
    | Entire run `pending` for >10 min | Scheduler missed the run (server restart during execution) | Trigger the reconciler: `POST /api/admin/workflow-runs/reconcile` |
 
 4. **Manually advance a stuck run**

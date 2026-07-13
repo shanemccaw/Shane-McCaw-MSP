@@ -636,6 +636,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         return { dryRun: true, jobId: "dry-run-job", jobStatus: "Queued", runbookName: node.data.runbookName ?? "runbook" };
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
       if (at === "calculate_pricing")    return { dryRun: true, documentId: num("documentId"), totalPrice: 0, lineCount: 0 };
+      if (at === "send_email")           return { dryRun: true, sent: true, messageId: "dry-run", recipient: str("to", "test@example.com"), subject: str("subject", "Dry-run subject") };
       return { dryRun: true, actionType: at ?? "none", note: "dry run — action skipped" };
     }
 
@@ -2374,7 +2375,55 @@ async function executeNode(
                 }
               }
             }
-            } // end depth-check else
+             } // end depth-check else
+          }
+        } else if (actionType === "send_email") {
+          // Real send_email implementation. Spec/docs previously said "via Resend" —
+          // that was never built and is wrong; this uses the existing Graph-based
+          // mailer (mailer.ts), same transport as send_campaign_email.
+          const seTo = interp(node.data.to as string | undefined, payload)?.trim() || process.env.ADMIN_EMAIL || process.env.CRM_ADMIN_EMAIL || undefined;
+          const seTemplateSlug = (node.data.templateSlug as string | undefined)?.trim();
+          const seSubject = interp(node.data.subject as string | undefined, payload);
+          const seHtmlBody = interp(node.data.htmlBody as string | undefined, payload);
+          const seMspIdRaw = node.data.mspId as string | number | undefined;
+          const seMspId = seMspIdRaw != null ? parseInt(interp(String(seMspIdRaw), payload) ?? String(seMspIdRaw), 10) : NaN;
+
+          if (!seTo) {
+            nodeError = true;
+            output = { error: "send_email: 'to' resolved to empty — check the recipient expression" };
+          } else if (!seTemplateSlug && !(seSubject?.trim() && seHtmlBody?.trim())) {
+            nodeError = true;
+            output = { error: "send_email requires either templateSlug, or both subject and htmlBody" };
+          } else {
+            const { sendEmailOrThrow, sendEmailForMspOrThrow, getEmailTemplateOrFallback } = await import("./mailer");
+            const messageId = `wf-${runId}-${node.id}-${Date.now()}`;
+            try {
+              let finalSubject = seSubject ?? "";
+              let finalBody = seHtmlBody ?? "";
+              if (seTemplateSlug) {
+                const reserved = new Set(["nodeType", "actionType", "label", "to", "templateSlug", "subject", "htmlBody", "mspId"]);
+                const templateVars: Record<string, string> = {};
+                for (const [k, v] of Object.entries(node.data)) {
+                  if (!reserved.has(k) && v != null && typeof v !== "object") {
+                    templateVars[k] = interp(String(v), payload) ?? String(v);
+                  }
+                }
+                const resolved = await getEmailTemplateOrFallback(seTemplateSlug, templateVars, seSubject ?? "", seHtmlBody ?? "");
+                finalSubject = resolved.subject;
+                finalBody = resolved.bodyHtml;
+              }
+              if (!isNaN(seMspId)) {
+                await sendEmailForMspOrThrow(seMspId, seTo, finalSubject, finalBody);
+              } else {
+                await sendEmailOrThrow(seTo, finalSubject, finalBody, seTemplateSlug ? { templateName: seTemplateSlug } : undefined);
+              }
+              output = { sent: true, messageId, recipient: seTo, subject: finalSubject, sourceRef: seTemplateSlug ? `template:${seTemplateSlug}` : "inline" };
+            } catch (err) {
+              nodeError = true;
+              const errorMessage = err instanceof Error ? err.message : String(err);
+              logger.warn({ runId, nodeId: node.id, err, to: seTo }, "wf-executor: send_email failed");
+              output = { sent: false, error: errorMessage };
+            }
           }
         } else {
           output = { actionType: actionType ?? "none", note: "action executed (no-op in this environment)" };

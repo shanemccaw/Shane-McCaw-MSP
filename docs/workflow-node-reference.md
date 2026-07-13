@@ -737,6 +737,20 @@ Finds an existing DB or Stripe record by field value. Returns `found: false` wit
 
 ### `send_email`
 
+Sends a transactional email via Exchange Online / Microsoft Graph (`mailer.ts` — same transport as `send_campaign_email`, never Resend). Supports named template slugs or inline HTML + subject.
+
+| Config Field | Type | Description |
+|---|---|---|
+| `to` | string | Recipient email address (interpolated) |
+| `templateSlug` | string | Named template slug (mutually exclusive with `subject` + `htmlBody`) |
+| `subject` | string | Email subject (for inline mode) |
+| `htmlBody` | string | HTML email body (interpolated; for inline mode) |
+| `mspId` | string \| number | Optional. When set, routes through the MSP's own connected mailbox if configured (falls back to the platform mailbox). Omit for platform-admin-facing emails. |
+| Template vars | any | Additional keys in `node.data` are passed as template variables |
+| `label` | string | Display label |
+
+**Outputs:** `{ sent: boolean, messageId, recipient, subject, sourceRef, error? }`.
+
 Sends a transactional email via Resend. Supports named template slugs or inline HTML + subject.
 
 | Config Field | Type | Description |

@@ -1159,9 +1159,26 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
             nodeType: "create_notification",
             label: "Create Admin Notification",
             title: "Live Monitor: Critical Change Detected",
-            body:  "{{criticalCount}} critical audit event(s) found in the last cycle. Check Monitoring → Monitor Profiles for details.",
+            body:  "{{criticalCount}} critical audit event(s) found in the last cycle. Check Monitoring → Monitor Checks for details.",
             type:  "alert",
-            linkPath: "/delivery/engines/msp",
+            // TODO: swap to /delivery/monitor-profiles once the dedicated global
+            // Monitor Profiles page is built — /delivery/monitor-checks is an
+            // honest stopgap in the meantime, not the ideal destination.
+            linkPath: "/delivery/monitor-checks",
+          },
+        },
+        {
+          id: "send_alert_email",
+          type: "action",
+          position: { x: 600, y: 900 },
+          data: {
+            nodeType: "action",
+            actionType: "send_email",
+            label: "Email Critical Alert",
+            // 'to' omitted deliberately — falls back to process.env.ADMIN_EMAIL /
+            // CRM_ADMIN_EMAIL in the executor, matching the notify_major_changes convention.
+            subject: "Live Monitor: {{criticalCount}} Critical Change(s) Detected",
+            htmlBody: "<p><strong>{{criticalCount}}</strong> critical audit event(s) were found in the last monitoring cycle.</p><p>Check the Admin Panel → Delivery → Monitor Checks for details.</p>",
           },
         },
         {
@@ -1189,9 +1206,10 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
         // condition branches
         { id: "e7",  source: "cond",            target: "emit_ev",       sourceHandle: "yes" },
         { id: "e8",  source: "cond",            target: "end_noop",      sourceHandle: "no"  },
-        // post-alert
+       // post-alert
         { id: "e9",  source: "emit_ev",         target: "notify" },
-        { id: "e10", source: "notify",          target: "end" },
+        { id: "e10", source: "notify",          target: "send_alert_email" },
+        { id: "e11", source: "send_alert_email", target: "end" },
       ],
     },
   },
@@ -1731,6 +1749,19 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         logger.info({ defId }, "seed-system-workflows: patched On Purchase — added monitor_get_package between find_object and monitor_execute_package");
+      } else if (seed.name === "__system__: Live Activity Monitor") {
+        // Patch v2: fix the dead /delivery/engines/msp linkPath placeholder (Bug #1) and
+        // add a real send_alert_email node so critical alerts are also emailed, not just
+        // written to the in-app bell. Guard: fires when the old dead linkPath is still present.
+        await pool.query(
+          `UPDATE wf_versions
+              SET graph = $2::jsonb
+           WHERE definition_id = $1
+             AND version_number = 1
+             AND graph->'nodes' @> '[{"id":"notify","data":{"linkPath":"/delivery/engines/msp"}}]'`,
+          [defId, JSON.stringify(seed.graph)],
+        );
+        logger.info({ defId }, "seed-system-workflows: patched Live Activity Monitor — fixed dead linkPath, added send_alert_email node");
       }
 
       // 3. Ensure trigger exists (skip if any trigger already present for this def)
