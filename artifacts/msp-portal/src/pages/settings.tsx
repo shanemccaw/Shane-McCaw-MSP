@@ -100,8 +100,7 @@ const SETTINGS_LINKS: SettingsLink[] = [
     icon: Lock,
     title: "Security & MFA",
     description: "Manage multi-factor authentication settings.",
-    badge: "Upcoming",
-    href: "#",
+    href: "/settings/security",
   },
 ];
 

@@ -20,6 +20,7 @@ import SettingsBillingPage from "@/pages/settings-billing";
 import SettingsEmailTemplatesPage from "@/pages/settings-email-templates";
 import SettingsSessionsPage from "@/pages/settings-sessions";
 import SettingsCustomDomainPage from "@/pages/settings-custom-domain";
+import SecurityPage from "@/pages/security";
 import EventsPage from "@/pages/events";
 import AuditPage from "@/pages/audit";
 import OffboardingPage from "@/pages/offboarding";
@@ -238,6 +239,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/settings/custom-domain">
         <ProtectedRoute component={SettingsCustomDomainPage} />
+      </Route>
+      <Route path="/settings/security">
+        <ProtectedRoute component={SecurityPage} />
       </Route>
       <Route path="/settings">
         <ProtectedRoute component={SettingsPage} />
