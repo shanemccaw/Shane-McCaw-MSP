@@ -50,6 +50,8 @@ import ReportsPage from "@/pages/reports";
 import SalesBundlesPage from "@/pages/sales-bundles";
 import OffersPage from "@/pages/offers";
 import CustomerOffersPage from "@/pages/customer-offers";
+import CustomerPrivacyPage from "@/pages/customer-privacy";
+import CustomerBillingPage from "@/pages/customer-billing";
 import NotFound from "@/pages/not-found";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
@@ -326,6 +328,16 @@ function SlugInnerSwitch() {
       {/* Customer Offers — customer-facing */}
       <Route path="/customer-offers">
         <ProtectedRoute component={CustomerOffersPage} />
+      </Route>
+
+      {/* Customer Privacy & Data — customer-facing */}
+      <Route path="/customer-privacy">
+        <ProtectedRoute component={CustomerPrivacyPage} />
+      </Route>
+
+      {/* Customer Billing — customer-facing */}
+      <Route path="/customer-billing">
+        <ProtectedRoute component={CustomerBillingPage} />
       </Route>
 
       {/* Slug root — role-aware landing.
