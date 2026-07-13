@@ -552,6 +552,7 @@ function AssignDialog({ open, onClose, onAssigned, fetchWithAuth, bundle }: Assi
                 if (customer?.tenantId) setTenantIdOverride(customer.tenantId);
               }}
             />
+          </div>
           <div className="space-y-1.5">
             <Label htmlFor="tenant-id-override">M365 Tenant ID (optional override)</Label>
             <Input
