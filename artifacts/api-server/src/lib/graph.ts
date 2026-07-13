@@ -28,6 +28,9 @@ export const REQUIRED_MT_SCOPES = [
   "DeviceManagementConfiguration.Read.All",
   "AuditLog.Read.All",
   "ActivityFeed.Read",
+  "IdentityRiskyUser.Read.All",
+  "AccessReview.Read.All",
+  "TeamSettings.Read.All",
 ] as const;
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];

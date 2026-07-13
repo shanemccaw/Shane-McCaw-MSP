@@ -2,7 +2,7 @@
  * Consent Flow Tests (vitest)
  *
  * Covers:
- *   1. REQUIRED_MT_SCOPES — full union of 9 scopes
+ *   1. REQUIRED_MT_SCOPES — full union of 12 scopes
  *   2. buildAdminConsentUrl — URL structure
  *   3. ConsentRevokedError — instanceof, tenantId, message
  *   4. mtAppCredentialsPresent — env var checks
@@ -156,8 +156,8 @@ import {
 
 describe("graph.ts — multi-tenant helpers", () => {
   describe("REQUIRED_MT_SCOPES", () => {
-    it("contains exactly 9 scopes", () => {
-      expect(REQUIRED_MT_SCOPES).toHaveLength(9);
+    it("contains exactly 12 scopes", () => {
+      expect(REQUIRED_MT_SCOPES).toHaveLength(12);
     });
 
     it("includes all required scopes", () => {
@@ -171,6 +171,9 @@ describe("graph.ts — multi-tenant helpers", () => {
         "DeviceManagementConfiguration.Read.All",
         "AuditLog.Read.All",
         "ActivityFeed.Read",
+        "IdentityRiskyUser.Read.All",
+        "AccessReview.Read.All",
+        "TeamSettings.Read.All",
       ];
       for (const scope of required) {
         expect(REQUIRED_MT_SCOPES).toContain(scope);
