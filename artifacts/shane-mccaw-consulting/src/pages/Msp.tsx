@@ -39,8 +39,7 @@ function normalizeTierCapabilities(
     .map(([key]) => key);
 }
 
-function formatPrice(cents: number, billingType: string | null): string {
-  const dollars = cents / 100;
+function formatPrice(dollars: number, billingType: string | null): string {
   const formatted = dollars % 1 === 0
     ? `$${dollars.toLocaleString()}`
     : `$${dollars.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

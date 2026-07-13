@@ -44,6 +44,8 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
         highlighted: servicesTable.highlighted,
         sortOrder: servicesTable.sortOrder,
         typeAttributes: servicesTable.typeAttributes,
+        fulfillmentType: servicesTable.fulfillmentType,
+        fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
       })
       .from(servicesTable)
       .where(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"))
