@@ -99,6 +99,12 @@ export const mspUsersTable = pgTable("msp_users", {
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "restrict" }),
   mspRole: text("msp_role", { enum: MSP_ROLES }).notNull().default("Free"),
   isActive: boolean("is_active").notNull().default(true),
+  // Grants a non-MSPAdmin team member permission to approve/reject pending
+  // purchase-charge approvals for their MSP (e.g. an operations lead the
+  // MSPAdmin trusts, without making them a full admin). MSPAdmin can always
+  // approve regardless of this flag. Checked live (not cached in the JWT) so
+  // permission changes take effect immediately.
+  canApprovePurchases: boolean("can_approve_purchases").notNull().default(false),
   lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

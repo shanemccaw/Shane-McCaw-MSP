@@ -2215,6 +2215,10 @@ export const pendingApprovalsTable = pgTable("pending_approvals", {
   runId: integer("run_id").notNull().references(() => wfRunsTable.id, { onDelete: "cascade" }),
   nodeId: text("node_id").notNull(),
   approverRole: text("approver_role").notNull().default("admin"),
+  // Null for platform-internal approvals (e.g. publish_article). Set for
+  // MSP-scoped approvals (e.g. msp_approver role) so the MSP Portal's
+  // pending-approvals endpoint can filter to the requesting MSP only.
+  mspId: integer("msp_id"),
   timeoutSeconds: integer("timeout_seconds").notNull().default(3600),
   status: text("status", { enum: ["pending", "approved", "rejected", "timed_out"] }).notNull().default("pending"),
   decidedBy: text("decided_by"),
