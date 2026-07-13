@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable } from "@workspace/db";
+import { db, projectsTable, clientServicesTable, servicesTable, workflowStepsTable, kanbanTasksTable, documentsTable, reportsTable, invoicesTable, messagesTable, notificationsTable, projectUpdatesTable, usersTable, contractsTable, passwordResetTokensTable, workflowTemplateStepsTable, workflowTemplateStepTasksTable, workflowTemplatesTable, contractTemplatesTable, impersonationTokensTable, statusReportsTable, deviceTokensTable, projectClosuresTable, auditLogsTable, instructionSetsTable, checklistsTable, artifactSetsTable, deliverableSetsTable, emailsTable, emailDomainRulesTable, clientM365ProfilesTable, couponsTable, clientAppRegistrationsTable, accountSetupTokensTable, mfaEnrollmentsTable, mfaChallengesTable, webauthnCredentialsTable, webauthnChallengesTable, clientHealthHistoryTable, quizLeadsTable, scriptRunResultsTable, powershellScriptsTable, clientScoresTable, clientAutomationRunsTable, scriptPackagesTable, scriptModulesTable, azureTenantCredentialsTable, clientCallbackTokensTable, insightsGeneratedDocumentsTable, quickWinPresentationsTable, presentationDocViewsTable, quickWinResultSharesTable, clientDocumentsTable, fulfillmentQueueTable, fulfillmentSlaConfigTable, type FulfillmentDeliveryStatus, FULFILLMENT_DELIVERY_STATUSES, FULFILLMENT_SOURCE_TYPES, mspCustomersTable, mspUsersTable, mspAuditLogsTable, monitorChecksTable, checkoutSessionsTable, tenantConsentTable, mspDiagnosticRunsTable, mspsTable } from "@workspace/db";
 import { eq, and, ne, desc, asc, count, sql, inArray, gte, isNotNull, isNull, or, lt } from "drizzle-orm";
 import { requireAuth, requireAdmin, requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
@@ -112,6 +112,61 @@ async function ensureClientAccount(email: string, name?: string): Promise<{ id: 
     })
     .returning({ id: usersTable.id });
   return { id: upserted.id };
+}
+
+/**
+ * Ensures an active msp_customers row exists for a direct-business customer.
+ *
+ * Business rule: anyone who buys directly from the public website is always
+ * "active" immediately — there is no "onboarding" stage for direct customers.
+ * (Contrast with MSP-channel customers, who start "onboarding" and flip to
+ * "active" only once M365 consent is granted — see consent.ts.)
+ *
+ * Idempotent, in order:
+ *   1. If this user is already linked to a customer (msp_users.customerId), reuse it.
+ *   2. Else if tenantId is provided and a customer with that tenantId already exists
+ *      (e.g. from a retried/duplicate purchase attempt), reuse it.
+ *   3. Else create a new msp_customers row under the MSP flagged isDirectBusiness=true.
+ *
+ * Must be called BEFORE ensureClientMspUser so its own tenantId lookup finds this row.
+ */
+async function ensureDirectCustomerRecord(userId: number, tenantId?: string | null): Promise<void> {
+  const [existingLink] = await db
+    .select({ customerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+  if (existingLink?.customerId != null) return;
+
+  if (tenantId) {
+    const [existingByTenant] = await db
+      .select({ id: mspCustomersTable.id })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.tenantId, tenantId))
+      .limit(1);
+    if (existingByTenant) return;
+  }
+
+  const [directMsp] = await db
+    .select({ id: mspsTable.id })
+    .from(mspsTable)
+    .where(eq(mspsTable.isDirectBusiness, true))
+    .limit(1);
+  if (!directMsp) return; // no MSP flagged isDirectBusiness=true — nothing to attach to
+
+  const [buyer] = await db
+    .select({ name: usersTable.name, company: usersTable.company })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  await db.insert(mspCustomersTable).values({
+    mspId: directMsp.id,
+    name: buyer?.company?.trim() || buyer?.name?.trim() || "Direct Customer",
+    tenantId: tenantId ?? undefined,
+    status: "active",
+    ownerType: "customer",
+  });
 }
 
 /**
@@ -5130,6 +5185,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       // so the msp_customers row created during provisioning is available for tenantId lookup.
       if (webhookUserIdOverride !== null) {
         try {
+          await ensureDirectCustomerRecord(webhookUserIdOverride, purchaseTenantId ?? null);
           await ensureClientMspUser(webhookUserIdOverride, purchaseTenantId ?? null);
           req.log.info({ userId: webhookUserIdOverride, tenantId: purchaseTenantId }, "onboarding_purchase: ensured msp_users row");
         } catch (mspErr) {
@@ -5627,6 +5683,7 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
 
   // Ensure the manually-created client account has an msp_users row (mspId=1 default).
   try {
+    await ensureDirectCustomerRecord(client.id);
     await ensureClientMspUser(client.id);
   } catch (mspErr) {
     req.log.warn({ err: mspErr, clientId: client.id }, "admin-create-client: ensureClientMspUser failed (non-fatal)");
@@ -8670,6 +8727,7 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
           .limit(1);
         provisionTenantId = cs?.tenantId ?? null;
       }
+      await ensureDirectCustomerRecord(resolvedUserId, provisionTenantId);
       await ensureClientMspUser(resolvedUserId, provisionTenantId);
       req.log.info({ userId: resolvedUserId, tenantId: provisionTenantId }, "provision: ensured msp_users row");
     } catch (mspErr) {
@@ -12443,6 +12501,7 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
       }
       // Ensure the free-checkout client account has an msp_users row (no tenantId available here)
       try {
+        await ensureDirectCustomerRecord(resolvedUserId);
         await ensureClientMspUser(resolvedUserId);
       } catch (mspErr) {
         req.log.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
