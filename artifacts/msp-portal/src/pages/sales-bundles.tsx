@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CustomerPicker } from "@/components/customer-picker";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -500,21 +501,13 @@ interface AssignDialogProps {
 }
 
 function AssignDialog({ open, onClose, onAssigned, fetchWithAuth, bundle }: AssignDialogProps) {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [customersLoading, setCustomersLoading] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [tenantIdOverride, setTenantIdOverride] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    setCustomersLoading(true);
-    fetchWithAuth("/api/msp/v1/msps/0/customers?limit=200")
-      .then((r) => r.json())
-      .then((data: { customers?: Customer[] }) => setCustomers(data.customers ?? []))
-      .catch(() => setCustomers([]))
-      .finally(() => setCustomersLoading(false));
-  }, [open, fetchWithAuth]);
+    if (!open) { setSelectedCustomerId(""); setTenantIdOverride(""); }
+  }, [open]);
 
   async function handleAssign() {
     if (!selectedCustomerId) { toast.error("Select a customer"); return; }
@@ -552,23 +545,13 @@ function AssignDialog({ open, onClose, onAssigned, fetchWithAuth, bundle }: Assi
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>Customer</Label>
-            {customersLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : (
-              <Select value={selectedCustomerId} onValueChange={setSelectedCustomerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a customer…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {customers.filter((c) => c.status === "active").map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}{c.domain ? ` (${c.domain})` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
+            <CustomerPicker
+              value={selectedCustomerId}
+              onChange={(id, customer) => {
+                setSelectedCustomerId(id);
+                if (customer?.tenantId) setTenantIdOverride(customer.tenantId);
+              }}
+            />
           <div className="space-y-1.5">
             <Label htmlFor="tenant-id-override">M365 Tenant ID (optional override)</Label>
             <Input

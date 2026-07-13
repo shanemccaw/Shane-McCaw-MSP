@@ -57,6 +57,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { CustomerPicker } from "@/components/customer-picker";
 import {
   AlertCircle,
   CheckCircle2,
@@ -172,17 +173,17 @@ interface GenerateDialogProps {
 }
 
 function GenerateDialog({ open, onClose, onGenerated, fetchWithAuth }: GenerateDialogProps) {
-  const [tenantId, setTenantId] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<{ insertedOfferIds: number[]; candidateCount: number } | null>(null);
 
   useEffect(() => {
-    if (!open) { setTenantId(""); setResult(null); }
+    if (!open) { setSelectedCustomerId(""); setResult(null); }
   }, [open]);
 
   async function handleGenerate() {
-    const tid = parseInt(tenantId.trim(), 10);
-    if (isNaN(tid) || tid <= 0) { toast.error("Enter a valid tenant ID"); return; }
+    const tid = parseInt(selectedCustomerId, 10);
+    if (isNaN(tid) || tid <= 0) { toast.error("Select a customer"); return; }
     setGenerating(true);
     setResult(null);
     try {
@@ -216,18 +217,11 @@ function GenerateDialog({ open, onClose, onGenerated, fetchWithAuth }: GenerateD
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="tenant-id-input">Tenant ID</Label>
-            <Input
-              id="tenant-id-input"
-              placeholder="e.g. 42"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              type="number"
-              min="1"
+            <Label>Customer</Label>
+            <CustomerPicker
+              value={selectedCustomerId}
+              onChange={(id) => setSelectedCustomerId(id)}
             />
-            <p className="text-xs text-muted-foreground">
-              The MSP customer ID to generate offers for.
-            </p>
           </div>
 
           {result && (
@@ -249,7 +243,7 @@ function GenerateDialog({ open, onClose, onGenerated, fetchWithAuth }: GenerateD
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={generating}>Cancel</Button>
-          <Button onClick={handleGenerate} disabled={generating || !tenantId.trim()}>
+          <Button onClick={handleGenerate} disabled={generating || !selectedCustomerId}>
             {generating && <Loader2 className="size-4 animate-spin mr-2" />}
             Run Engine
           </Button>
