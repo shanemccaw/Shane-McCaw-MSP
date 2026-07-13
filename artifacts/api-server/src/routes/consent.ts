@@ -24,7 +24,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes } from "crypto";
-import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable } from "@workspace/db";
+import { db, tenantConsentTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, usersTable, mspCustomersTable } from "@workspace/db";
 import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -207,6 +207,28 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
     });
 
   logger.info({ tenant, customerId: inviteRecord?.customerId, isCheckoutSession }, "Tenant admin consent granted");
+
+  // MSP-channel customers start "onboarding" and flip to "active" exactly on
+  // consent granted (business rule, confirmed). Only applies to the invite-token
+  // path (inviteRecord set) — direct website checkout customers are already
+  // "active" from creation (see ensureDirectCustomerRecord in portal.ts) and
+  // never go through this branch since isCheckoutSession customers have no
+  // inviteRecord. Guarded to only flip customers currently "onboarding" so an
+  // admin's deliberate "inactive"/"archived" status is never silently overwritten.
+  if (inviteRecord?.customerId != null) {
+    await db
+      .update(mspCustomersTable)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(
+        and(
+          eq(mspCustomersTable.id, inviteRecord.customerId),
+          eq(mspCustomersTable.status, "onboarding"),
+        ),
+      )
+      .catch((err: unknown) => {
+        logger.warn({ err, customerId: inviteRecord?.customerId }, "Consent callback: failed to flip customer status to active (non-fatal)");
+      });
+  }
 
   // If the state was a checkout session UUID, mark it consented and thread it
   // into the redirect so ConsentSuccessPage can show the "Continue to payment" CTA.
