@@ -43,6 +43,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { AppShell } from "@/components/app-shell";
 
 interface Webhook {
   webhookId: string;
@@ -355,8 +356,8 @@ export default function WebhooksPage() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <main className="flex-1 p-6 max-w-4xl mx-auto space-y-6">
+    <AppShell title="Webhooks">
+      <div className="p-6 max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -501,7 +502,7 @@ export default function WebhooksPage() {
             ))}
           </div>
         )}
-      </main>
+      </div>
 
       {/* Create dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
@@ -636,7 +637,7 @@ export default function WebhooksPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AppShell>
   );
 }
 

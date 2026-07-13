@@ -57,6 +57,7 @@ import {
   Sparkles,
   Timer,
   Users,
+  Webhook,
   Zap,
 } from "lucide-react";
 
@@ -249,6 +250,12 @@ const NAV_SECTIONS: NavSection[] = [
         label: "Offboarding",
         href: "/offboarding",
         roles: ["PlatformAdmin", "MSPAdmin"],
+      },
+      {
+        icon: Webhook,
+        label: "Webhooks",
+        href: "/webhooks",
+        roles: ["MSPAdmin", "CustomerUser"],
       },
       {
         icon: Cog,
