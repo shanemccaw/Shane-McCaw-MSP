@@ -1554,7 +1554,7 @@ export const mspDiagnosticRunsTable = pgTable("msp_diagnostic_runs", {
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
   customerId: integer("customer_id").references(() => mspCustomersTable.id, { onDelete: "set null" }),
   tenantId: text("tenant_id"),
-  packageKey: text("package_key").notNull().default("default"),
+  packageKey: text("package_key").notNull().default("core:security-baseline"),
   status: text("status", { enum: MSP_DIAGNOSTIC_RUN_STATUS }).notNull().default("pending"),
   triggeredByUserId: integer("triggered_by_user_id"),
   startedAt: timestamp("started_at", { withTimezone: true }),

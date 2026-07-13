@@ -263,6 +263,12 @@ export interface DiagnosticsRunOpts {
   customerId?: number;
   packageKey?: string;
   triggeredByUserId?: number;
+  /**
+   * When provided by the trigger endpoint (which already inserted the pending
+   * row with correct mspId / packageKey / tenantId), skip the INSERT here and
+   * just UPDATE that row to "running".  Eliminates the duplicate-row bug.
+   */
+  existingRunId?: string;
 }
 
 export interface DiagnosticsRunResult {
@@ -277,7 +283,7 @@ export interface DiagnosticsRunResult {
 }
 
 export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<DiagnosticsRunResult> {
-  const { packageKey = "default", triggeredByUserId } = opts;
+  const { packageKey = "core:security-baseline", triggeredByUserId } = opts;
 
   if (opts.customerId == null && opts.tenantId == null) {
     throw new Error("runDiagnostics requires at least one of tenantId or customerId");
@@ -335,20 +341,27 @@ export async function runDiagnostics(opts: DiagnosticsRunOpts): Promise<Diagnost
     }
   }
 
-  // 2. Create run record
-  const [runRow] = await db
-    .insert(mspDiagnosticRunsTable)
-    .values({
-      mspId,
-      customerId,
-      tenantId: resolvedTenantId,
-      packageKey,
-      status: "pending",
-      triggeredByUserId: triggeredByUserId ?? null,
-    })
-    .returning({ runId: mspDiagnosticRunsTable.runId });
-
-  const runId = runRow!.runId;
+  // 2. Create (or reuse) run record
+  // When the trigger endpoint pre-created the row with correct values, skip the
+  // INSERT — just use the provided runId.  This eliminates the duplicate-row bug
+  // where the endpoint stub had mspId=0 / packageKey="default".
+  let runId: string;
+  if (opts.existingRunId) {
+    runId = opts.existingRunId;
+  } else {
+    const [runRow] = await db
+      .insert(mspDiagnosticRunsTable)
+      .values({
+        mspId,
+        customerId,
+        tenantId: resolvedTenantId,
+        packageKey,
+        status: "pending",
+        triggeredByUserId: triggeredByUserId ?? null,
+      })
+      .returning({ runId: mspDiagnosticRunsTable.runId });
+    runId = runRow!.runId;
+  }
 
   logger.info({ runId, mspId, customerId, resolvedTenantId, packageKey }, "diagnostics-runner: run started");
 

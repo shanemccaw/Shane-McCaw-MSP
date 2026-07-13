@@ -130,6 +130,8 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsT
   const [runs, setRuns] = useState<DiagnosticRun[]>([]);
   const [loadingRuns, setLoadingRuns] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  // undefined = loading, null = no subscription found, string = resolved packageKey
+  const [monitoringPackageKey, setMonitoringPackageKey] = useState<string | null | undefined>(undefined);
 
   // Active run SSE state
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -155,7 +157,24 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsT
     finally { setLoadingRuns(false); }
   }, [customerId, fetchWithAuth]);
 
-  useEffect(() => { void loadRuns(); }, [loadRuns]);
+  const loadMonitoringPackage = useCallback(async () => {
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${customerId}/monitoring-package`);
+      if (res.ok) {
+        const data = (await res.json()) as { packageKey: string | null };
+        setMonitoringPackageKey(data.packageKey);
+      } else {
+        setMonitoringPackageKey(null);
+      }
+    } catch {
+      setMonitoringPackageKey(null);
+    }
+  }, [customerId, fetchWithAuth]);
+
+  useEffect(() => {
+    void loadRuns();
+    void loadMonitoringPackage();
+  }, [loadRuns, loadMonitoringPackage]);
 
   const openSSE = useCallback((runId: string) => {
     sseRef.current?.close();
@@ -206,7 +225,7 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsT
       const res = await fetchWithAuth(`/api/msp/customers/${customerId}/diagnostics/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ packageKey: "default" }),
+        body: JSON.stringify({ packageKey: monitoringPackageKey ?? "" }),
       });
       if (!res.ok) {
         const err = (await res.json()) as { error?: string };
@@ -425,17 +444,22 @@ function DiagnosticsTab({ customerId, fetchWithAuth, accessToken }: DiagnosticsT
               Run a live Microsoft 365 environment health check for this customer.
             </p>
           </div>
-          <Button
-            size="sm"
-            className="gap-2"
-            onClick={() => { void handleRunDiagnostics(); }}
-            disabled={triggering || isRunning}
-          >
-            {triggering || isRunning
-              ? <Loader2 className="size-3.5 animate-spin" />
-              : <Play className="size-3.5" />}
-            Run Diagnostics
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={() => { void handleRunDiagnostics(); }}
+              disabled={triggering || isRunning || monitoringPackageKey == null}
+            >
+              {triggering || isRunning
+                ? <Loader2 className="size-3.5 animate-spin" />
+                : <Play className="size-3.5" />}
+              Run Diagnostics
+            </Button>
+            {monitoringPackageKey === null && (
+              <p className="text-[10px] text-muted-foreground">No monitoring package linked</p>
+            )}
+          </div>
         </div>
 
         {loadingRuns ? (

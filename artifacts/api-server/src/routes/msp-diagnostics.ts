@@ -28,14 +28,17 @@ import {
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
   mspCustomersTable,
+  mspUsersTable,
+  clientServicesTable,
+  servicesTable,
 } from "@workspace/db";
-import { eq, and, desc, count, or } from "drizzle-orm";
+import { eq, and, desc, count, or, sql } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-broadcast";
 import jwt from "jsonwebtoken";
+import { randomUUID } from "crypto";
 
 const router: IRouter = Router();
 
@@ -53,8 +56,8 @@ async function assertCustomerBelongsToMsp(customerId: number, mspId: number): Pr
 }
 
 // ── POST /api/msp/customers/:customerId/diagnostics/run ───────────────────────
-// Fire-and-forget: creates the run record and immediately returns the runId.
-// The actual execution runs async; the caller subscribes to SSE for progress.
+// Fire-and-forget: creates ONE run record (correct mspId + packageKey) and
+// immediately returns the runId so the caller can open the SSE stream.
 
 router.post(
   "/msp/customers/:customerId/diagnostics/run",
@@ -64,51 +67,132 @@ router.post(
       const customerId = parseInt(req.params["customerId"] as string, 10);
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = await resolveMspIdOrZero(req);
-      await assertCustomerBelongsToMsp(customerId, mspId);
-
-      const packageKey = String((req.body as Record<string, unknown>).packageKey ?? "default");
-      const triggeredByUserId = req.user!.id;
-
-      // Create the run row first so the UI can subscribe to SSE immediately
-      const { mspDiagnosticRunsTable: runTable, mspCustomersTable: custTable } = await import("@workspace/db");
+      // 1. Look up the customer record — mspId must come from here, NOT from the
+      //    caller's JWT (which is legitimately absent/zero for PlatformAdmin).
       const [customer] = await db
-        .select({ id: custTable.id })
-        .from(custTable)
-        .where(eq(custTable.id, customerId))
+        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId, tenantId: mspCustomersTable.tenantId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
         .limit(1);
       if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
 
-      const [pendingRun] = await db
-        .insert(runTable)
-        .values({ mspId, customerId, packageKey, status: "pending", triggeredByUserId })
-        .returning({ runId: runTable.runId });
+      // 2. Authorization: PlatformAdmin/admin can diagnose any customer.
+      //    MSPOperator/MSPAdmin must own this customer.
+      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
+      if (!isPlatformAdmin) {
+        await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      }
 
-      const runId = pendingRun!.runId;
+      // 3. Resolve packageKey.  Body override is accepted (useful for testing),
+      //    but "default" and empty strings are treated as "not provided".
+      //    Primary source: the customer's active monitoring subscription
+      //    (msp_users → client_services → services.type_attributes->>'packageKey').
+      //    Fallback: core:security-baseline (always exists, has real checks).
+      let packageKey = String((req.body as Record<string, unknown>).packageKey ?? "").trim();
+      if (!packageKey || packageKey === "default") {
+        const [pkgRow] = await db
+          .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
+          .from(mspUsersTable)
+          .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+          .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+          .where(
+            and(
+              eq(mspUsersTable.customerId, customerId),
+              eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
+              eq(clientServicesTable.status, "active"),
+            )
+          )
+          .limit(1);
+        packageKey = pkgRow?.packageKey ?? "core:security-baseline";
+      }
+
+      const triggeredByUserId = req.user!.id;
+      const runId = randomUUID();
+
+      // 4. Create ONE pending row with correct values, then respond immediately.
+      //    Pass existingRunId to runDiagnostics so it reuses this row instead of
+      //    inserting a duplicate (the old stub + runDiagnostics double-insert bug).
+      await db
+        .insert(mspDiagnosticRunsTable)
+        .values({
+          runId,
+          mspId: customer.mspId,
+          customerId,
+          tenantId: customer.tenantId ?? undefined,
+          packageKey,
+          status: "pending",
+          triggeredByUserId,
+        });
 
       res.status(202).json({ runId, status: "pending", message: "Diagnostics run started" });
 
-      // Fire-and-forget execution
-      void (async () => {
-        try {
-          // Update to running and execute
-          const { eq: eqFn } = await import("drizzle-orm");
-          await db
-            .update(runTable)
-            .set({ status: "running", startedAt: new Date(), updatedAt: new Date() })
-            .where(eqFn(runTable.runId, runId));
-
-          await runDiagnostics({ customerId, packageKey, triggeredByUserId });
-        } catch (err) {
+      // 5. Fire-and-forget: run the full diagnostics pipeline.
+      void runDiagnostics({ customerId, packageKey, existingRunId: runId, triggeredByUserId })
+        .catch((err: unknown) => {
           logger.error({ err, runId }, "msp-diagnostics: async run failed");
-        }
-      })();
+        });
 
     } catch (err) {
       const status = (err as { status?: number }).status ?? 500;
       const message = err instanceof Error ? err.message : String(err);
       logger.error({ err }, "POST /msp/customers/:id/diagnostics/run error");
       if (!res.headersSent) res.status(status).json({ error: message });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/monitoring-package ─────────────────────
+// Returns the resolved packageKey for a customer's active monitoring subscription
+// so the frontend can display the package name and gate the "Run Diagnostics" button.
+
+router.get(
+  "/msp/customers/:customerId/monitoring-package",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params["customerId"] as string, 10);
+      if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+
+      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
+      if (!isPlatformAdmin) {
+        await assertCustomerBelongsToMsp(customerId, customer.mspId);
+      }
+
+      const [pkgRow] = await db
+        .select({
+          packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'`,
+          serviceId: servicesTable.id,
+          serviceName: servicesTable.name,
+        })
+        .from(mspUsersTable)
+        .innerJoin(clientServicesTable, eq(clientServicesTable.clientUserId, mspUsersTable.userId))
+        .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+        .where(
+          and(
+            eq(mspUsersTable.customerId, customerId),
+            eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
+            eq(clientServicesTable.status, "active"),
+          )
+        )
+        .limit(1);
+
+      res.json({
+        packageKey: pkgRow?.packageKey ?? null,
+        serviceId: pkgRow?.serviceId ?? null,
+        serviceName: pkgRow?.serviceName ?? null,
+      });
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error({ err }, "GET /msp/customers/:id/monitoring-package error");
+      res.status(status).json({ error: message });
     }
   },
 );
@@ -123,8 +207,14 @@ router.get(
       const customerId = parseInt(req.params["customerId"] as string, 10);
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = await resolveMspIdOrZero(req);
-      await assertCustomerBelongsToMsp(customerId, mspId);
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
+      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
 
       const limit = Math.min(parseInt(String((req.query as Record<string, unknown>).limit ?? "20"), 10), 100);
       const offset = parseInt(String((req.query as Record<string, unknown>).offset ?? "0"), 10);
@@ -163,8 +253,14 @@ router.get(
       const runId = req.params["runId"] as string;
       if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
 
-      const mspId = await resolveMspIdOrZero(req);
-      await assertCustomerBelongsToMsp(customerId, mspId);
+      const [customer] = await db
+        .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+        .from(mspCustomersTable)
+        .where(eq(mspCustomersTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+      const isPlatformAdmin = req.user!.mspRole === "PlatformAdmin" || req.user!.role === "admin";
+      if (!isPlatformAdmin) await assertCustomerBelongsToMsp(customerId, customer.mspId);
 
       const [run] = await db
         .select()
