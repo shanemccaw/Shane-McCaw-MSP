@@ -38,6 +38,7 @@ const DEFAULT_INTELLIGENCE_FIELDS = {
   adoptionImpact: 0,
   copilotImpact: 0,
   architectureImpact: 0,
+  licensingImpact: 0,
   trendValue: 0,
   trendDirection: "flat" as const,
   decayRate: 0,
@@ -105,6 +106,7 @@ describe("getSignalHealthImpacts", () => {
       adoptionImpact: 0,
       copilotImpact: 0,
       architectureImpact: 3,
+      licensingImpact: 0,
     });
   });
 
@@ -134,8 +136,8 @@ describe("getSignalHealthImpacts", () => {
 describe("sumArchitectureHealth", () => {
   it("sums each pillar independently and the overall score as their total", () => {
     const impacts = new Map<string, SignalHealthImpactConfig>([
-      ["sigA", { signalKey: "sigA", governanceImpact: 5, securityImpact: 10, complianceImpact: 0, adoptionImpact: 2, copilotImpact: 0, architectureImpact: 1 }],
-      ["sigB", { signalKey: "sigB", governanceImpact: 3, securityImpact: 0, complianceImpact: 4, adoptionImpact: 0, copilotImpact: 6, architectureImpact: 0 }],
+      ["sigA", { signalKey: "sigA", governanceImpact: 5, securityImpact: 10, complianceImpact: 0, adoptionImpact: 2, copilotImpact: 0, architectureImpact: 1, licensingImpact: 0 }],
+      ["sigB", { signalKey: "sigB", governanceImpact: 3, securityImpact: 0, complianceImpact: 4, adoptionImpact: 0, copilotImpact: 6, architectureImpact: 0, licensingImpact: 0 }],
     ]);
 
     const { score, breakdown } = sumArchitectureHealth(["sigA", "sigB"], impacts);
@@ -148,6 +150,7 @@ describe("sumArchitectureHealth", () => {
       adoption: 2,     // 2 + 0
       copilot: 6,      // 0 + 6
       architecture: 1, // 1 + 0
+      licensing: 0,    // 0 + 0
     });
 
     // overall score is exactly the sum of the six pillar sums
@@ -158,7 +161,7 @@ describe("sumArchitectureHealth", () => {
 
   it("includes every pillar in the breakdown, even when a signal contributes zero", () => {
     const impacts = new Map<string, SignalHealthImpactConfig>([
-      ["sigA", { signalKey: "sigA", governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 0, copilotImpact: 0, architectureImpact: 0 }],
+      ["sigA", { signalKey: "sigA", governanceImpact: 0, securityImpact: 0, complianceImpact: 0, adoptionImpact: 0, copilotImpact: 0, architectureImpact: 0, licensingImpact: 0 }],
     ]);
     const { score, breakdown } = sumArchitectureHealth(["sigA"], impacts);
     expect(score).toBe(0);
@@ -212,6 +215,7 @@ describe("computeHealthEngine — end-to-end pure sum, no conditional logic", ()
       adoption: 3,
       copilot: 8,
       architecture: 0, // hasSharePointIssues never fired — its 100 must not leak in
+      licensing: 0,
     });
 
     const handComputedScore = 12 + 15 + 5 + 3 + 8 + 0;

@@ -53,6 +53,7 @@ const DEFAULT_INTELLIGENCE_FIELDS = {
   adoptionImpact: 0,
   copilotImpact: 0,
   architectureImpact: 0,
+  licensingImpact: 0,
   trendValue: 0,
   trendDirection: "flat" as const,
   decayRate: 0,

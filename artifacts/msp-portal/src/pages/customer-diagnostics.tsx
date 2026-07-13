@@ -28,6 +28,20 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface BenchmarkPillar {
+  pillar: string;
+  displayScore: number | null;
+  industryAvgPct: number | null;
+  msExcellencePct: number | null;
+  source: string | null;
+  asOfDate: string | null;
+}
+
+interface HealthBenchmarkData {
+  pillars: BenchmarkPillar[];
+  asOfDate: string | null;
+}
+
 interface DiagnosticRun {
   runId: string;
   status: string;
@@ -144,6 +158,99 @@ function FindingBadge({ severity }: { severity: DiagnosticFinding["severity"] })
   );
 }
 
+// ── Benchmark bar ─────────────────────────────────────────────────────────────
+
+const PILLAR_LABELS: Record<string, string> = {
+  governance: "Governance",
+  security: "Security",
+  compliance: "Compliance",
+  adoption: "Adoption",
+  copilot: "Copilot AI",
+  architecture: "Architecture",
+  licensing: "Licensing",
+};
+
+function benchmarkBadge(score: number, industryAvg: number | null, msExcellence: number | null): {
+  label: string;
+  color: string;
+  bg: string;
+} {
+  if (msExcellence !== null && score >= msExcellence) {
+    return { label: "Above Excellence", color: "text-primary", bg: "bg-primary/15 border-primary/30" };
+  }
+  if (industryAvg !== null && score >= industryAvg) {
+    return { label: "Above Industry Avg", color: "text-green-400", bg: "bg-green-500/15 border-green-500/30" };
+  }
+  if (industryAvg !== null && score >= industryAvg - 10) {
+    return { label: "Near Industry Avg", color: "text-amber-400", bg: "bg-amber-500/15 border-amber-500/30" };
+  }
+  return { label: "Below Industry Avg", color: "text-red-400", bg: "bg-red-500/15 border-red-500/30" };
+}
+
+function BenchmarkBar({ data }: { data: BenchmarkPillar }) {
+  const label = PILLAR_LABELS[data.pillar] ?? data.pillar;
+
+  // Show placeholder when either the engine score or the benchmark reference
+  // data is missing — a bar without any reference markers has no comparative value.
+  const hasBenchmarkRef = data.industryAvgPct !== null || data.msExcellencePct !== null;
+  if (data.displayScore === null || !hasBenchmarkRef) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-muted-foreground font-medium">{label}</span>
+          <span className="text-muted-foreground/50 text-[10px]">Not enough data yet</span>
+        </div>
+        <div className="h-2 bg-muted rounded-full" />
+      </div>
+    );
+  }
+
+  const score = data.displayScore;
+  const badge = benchmarkBadge(score, data.industryAvgPct, data.msExcellencePct);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
+        <span className="text-muted-foreground font-medium">{label}</span>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className={`text-[10px] px-1.5 py-0 h-4 border ${badge.bg} ${badge.color}`}
+          >
+            {badge.label}
+          </Badge>
+          <span className={`font-bold text-xs ${badge.color}`}>{score}%</span>
+        </div>
+      </div>
+
+      {/* Progress bar with optional benchmark markers */}
+      <div className="relative h-2 bg-muted rounded-full overflow-visible">
+        {/* Your score bar */}
+        <div
+          className="h-2 rounded-full bg-primary transition-all duration-700"
+          style={{ width: `${score}%` }}
+        />
+        {/* Industry average marker */}
+        {data.industryAvgPct !== null && (
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3.5 bg-amber-400 rounded-full"
+            style={{ left: `${data.industryAvgPct}%` }}
+            title={`Industry avg: ${data.industryAvgPct}%`}
+          />
+        )}
+        {/* MS Excellence marker */}
+        {data.msExcellencePct !== null && (
+          <div
+            className="absolute top-1/2 -translate-y-1/2 w-0.5 h-3.5 bg-green-400 rounded-full"
+            style={{ left: `${data.msExcellencePct}%` }}
+            title={`MS Excellence: ${data.msExcellencePct}%`}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Score bar ──────────────────────────────────────────────────────────────────
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -186,6 +293,10 @@ export default function CustomerDiagnosticsPage() {
   const [diagnosticFindings, setDiagnosticFindings] = useState<DiagnosticFinding[]>([]);
   const [loadingDiagnostics, setLoadingDiagnostics] = useState(true);
 
+  // Engine-backed health benchmark data
+  const [benchmark, setBenchmark] = useState<HealthBenchmarkData | null>(null);
+  const [loadingBenchmark, setLoadingBenchmark] = useState(true);
+
   useEffect(() => {
     let mounted = true;
 
@@ -226,6 +337,17 @@ export default function CustomerDiagnosticsPage() {
       .catch(() => {})
       .finally(() => {
         if (mounted) setLoadingDiagnostics(false);
+      });
+
+    fetchWithAuth("/api/portal/health-benchmark")
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json()) as HealthBenchmarkData;
+        if (mounted) setBenchmark(data);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (mounted) setLoadingBenchmark(false);
       });
 
     return () => {
@@ -550,6 +672,60 @@ export default function CustomerDiagnosticsPage() {
                 </Card>
               )}
             </div>
+          )}
+        </div>
+
+        {/* ── Health Benchmarking ── */}
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Health Benchmarking</h3>
+
+          {loadingBenchmark ? (
+            <Skeleton className="h-64 w-full rounded-xl" />
+          ) : !benchmark || benchmark.pillars.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-10 text-center gap-2">
+                <ShieldCheck className="size-7 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">Benchmarking unavailable</p>
+                <p className="text-xs text-muted-foreground/60 max-w-sm">
+                  Health benchmarking requires at least one completed diagnostic run with signal data.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Microsoft 365 Environment Health</CardTitle>
+                <CardDescription className="text-xs">
+                  Your environment scored against industry averages and Microsoft Excellence targets.
+                  {" "}
+                  <span className="inline-flex items-center gap-1.5 mt-1">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400" /> Industry avg
+                    <span className="inline-block w-2 h-2 rounded-full bg-green-400 ml-2" /> MS Excellence
+                  </span>
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                {benchmark.pillars.map(p => (
+                  <BenchmarkBar key={p.pillar} data={p} />
+                ))}
+                <div className="pt-1 space-y-0.5">
+                  {(() => {
+                    const sourced = benchmark.pillars.filter(p => p.source && p.asOfDate);
+                    const uniqueSources = [...new Map(sourced.map(p => [p.source, p])).values()];
+                    return uniqueSources.map(p => (
+                      <p key={p.source} className="text-[10px] text-muted-foreground/50">
+                        Industry benchmarks sourced from{" "}
+                        <span className="italic">{p.source}</span>
+                        {p.asOfDate ? `, as of ${p.asOfDate}` : ""}.
+                      </p>
+                    ));
+                  })()}
+                  <p className="text-[10px] text-muted-foreground/50">
+                    Health scores computed by the platform&apos;s Health Engine from live tenant signals.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
         </div>
 

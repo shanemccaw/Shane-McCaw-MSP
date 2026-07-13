@@ -1338,6 +1338,13 @@
       "when": 1752624000000,
       "tag": "0181_sales_offers_missing_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "7",
+      "when": 1752710400000,
+      "tag": "0182_licensing_pillar_benchmark",
+      "breakpoints": true
     }
   ]
 }

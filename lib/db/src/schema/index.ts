@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, type AnyPgColumn } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, boolean, numeric, jsonb, bigint, uniqueIndex, uuid, primaryKey, index, date, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { mspsTable } from "./msp";
@@ -577,6 +577,7 @@ const SIGNAL_INTELLIGENCE_FIELDS = {
   adoptionImpact: integer("adoption_impact").notNull().default(0),
   copilotImpact: integer("copilot_impact").notNull().default(0),
   architectureImpact: integer("architecture_impact").notNull().default(0),
+  licensingImpact: integer("licensing_impact").notNull().default(0),
   trendValue: integer("trend_value").notNull().default(0),
   trendDirection: text("trend_direction", { enum: ["up", "down", "flat"] }).notNull().default("flat"),
   decayRate: integer("decay_rate").notNull().default(0),
@@ -2477,5 +2478,21 @@ export const failedNotificationsTable = pgTable("failed_notifications", {
 
 export type InsertFailedNotification = typeof failedNotificationsTable.$inferInsert;
 export type FailedNotification = typeof failedNotificationsTable.$inferSelect;
+
+// ── Industry Benchmark Reference ───────────────────────────────────────────────
+// One row per health pillar. Populated once via migration seed; used by the
+// GET /api/portal/health-benchmark endpoint to annotate per-pillar display
+// scores with published industry average and Microsoft Excellence targets.
+// null values mean "not enough data" for that pillar/benchmark.
+
+export const industryBenchmarkReferenceTable = pgTable("industry_benchmark_reference", {
+  pillar: text("pillar").primaryKey(),
+  industryAvgPct: integer("industry_avg_pct"),
+  msExcellencePct: integer("ms_excellence_pct"),
+  source: text("source"),
+  asOfDate: date("as_of_date"),
+});
+
+export type IndustryBenchmarkReference = typeof industryBenchmarkReferenceTable.$inferSelect;
 
 export * from "./msp";

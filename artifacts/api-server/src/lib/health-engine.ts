@@ -3,16 +3,16 @@
  *
  * Architecture-health scoring engine. Reuses `computeTenantSignals` to
  * determine which signals are currently fired (and enabled) for a tenant,
- * then sums the six impact fields already stored on each fired signal's
+ * then sums the seven impact fields already stored on each fired signal's
  * rules/groups — `governanceImpact`, `securityImpact`, `complianceImpact`,
- * `adoptionImpact`, `copilotImpact`, `architectureImpact` — into an overall
- * `architectureHealthScore` plus a per-pillar breakdown.
+ * `adoptionImpact`, `copilotImpact`, `architectureImpact`, `licensingImpact`
+ * — into an overall `architectureHealthScore` plus a per-pillar breakdown.
  *
  * Scoring is intentionally a pure sum with zero conditional business logic:
  *
  *   architectureHealthScore =
  *     sum(governanceImpact + securityImpact + complianceImpact +
- *         adoptionImpact + copilotImpact + architectureImpact)
+ *         adoptionImpact + copilotImpact + architectureImpact + licensingImpact)
  *     over the tenant's currently-fired, enabled signals.
  *
  * Per-pillar values live on individual rule/group rows in the schema (not on
@@ -38,7 +38,7 @@ import {
 } from "./tenant-signals.ts";
 import { fetchSignalRulesAndGroups } from "./priority-engine.ts";
 
-/** The six architecture-health pillars, in the order the task spec lists them. */
+/** The seven architecture-health pillars, in the order the task spec lists them. */
 export const HEALTH_PILLARS = [
   "governance",
   "security",
@@ -46,18 +46,20 @@ export const HEALTH_PILLARS = [
   "adoption",
   "copilot",
   "architecture",
+  "licensing",
 ] as const;
 export type HealthPillar = typeof HEALTH_PILLARS[number];
 
 /** Maps each pillar to the intelligence field that carries its impact value. */
-const PILLAR_FIELD = {
+export const PILLAR_FIELD: Record<HealthPillar, string> = {
   governance: "governanceImpact",
   security: "securityImpact",
   compliance: "complianceImpact",
   adoption: "adoptionImpact",
   copilot: "copilotImpact",
   architecture: "architectureImpact",
-} as const satisfies Record<HealthPillar, keyof SignalDerivationRule>;
+  licensing: "licensingImpact",
+} as const;
 
 export interface HealthPillarContribution {
   signalKey: string;
@@ -80,7 +82,7 @@ export interface HealthEngineOutput {
   timestamp: string;
 }
 
-/** Per-signal impact configuration across all six pillars, as set by an admin. */
+/** Per-signal impact configuration across all seven pillars, as set by an admin. */
 export interface SignalHealthImpactConfig {
   signalKey: string;
   governanceImpact: number;
@@ -89,10 +91,11 @@ export interface SignalHealthImpactConfig {
   adoptionImpact: number;
   copilotImpact: number;
   architectureImpact: number;
+  licensingImpact: number;
 }
 
 /**
- * Derives, per fired signal, the representative value for each of the six
+ * Derives, per fired signal, the representative value for each of the seven
  * health pillars — the MAX configured anywhere across that signal's rules
  * and groups (see file header for why max, not sum-of-duplicates).
  *
@@ -105,25 +108,28 @@ export function getSignalHealthImpacts(
   const bySignal = new Map<string, SignalHealthImpactConfig>();
 
   const consider = (signalKey: string, source: SignalDerivationRule | SignalRuleGroup) => {
+    const s = source as unknown as Record<string, number>;
     const existing = bySignal.get(signalKey);
     if (!existing) {
       bySignal.set(signalKey, {
         signalKey,
-        governanceImpact: source.governanceImpact,
-        securityImpact: source.securityImpact,
-        complianceImpact: source.complianceImpact,
-        adoptionImpact: source.adoptionImpact,
-        copilotImpact: source.copilotImpact,
-        architectureImpact: source.architectureImpact,
+        governanceImpact: s["governanceImpact"] ?? 0,
+        securityImpact: s["securityImpact"] ?? 0,
+        complianceImpact: s["complianceImpact"] ?? 0,
+        adoptionImpact: s["adoptionImpact"] ?? 0,
+        copilotImpact: s["copilotImpact"] ?? 0,
+        architectureImpact: s["architectureImpact"] ?? 0,
+        licensingImpact: s["licensingImpact"] ?? 0,
       });
       return;
     }
-    existing.governanceImpact = Math.max(existing.governanceImpact, source.governanceImpact);
-    existing.securityImpact = Math.max(existing.securityImpact, source.securityImpact);
-    existing.complianceImpact = Math.max(existing.complianceImpact, source.complianceImpact);
-    existing.adoptionImpact = Math.max(existing.adoptionImpact, source.adoptionImpact);
-    existing.copilotImpact = Math.max(existing.copilotImpact, source.copilotImpact);
-    existing.architectureImpact = Math.max(existing.architectureImpact, source.architectureImpact);
+    existing.governanceImpact = Math.max(existing.governanceImpact, s["governanceImpact"] ?? 0);
+    existing.securityImpact = Math.max(existing.securityImpact, s["securityImpact"] ?? 0);
+    existing.complianceImpact = Math.max(existing.complianceImpact, s["complianceImpact"] ?? 0);
+    existing.adoptionImpact = Math.max(existing.adoptionImpact, s["adoptionImpact"] ?? 0);
+    existing.copilotImpact = Math.max(existing.copilotImpact, s["copilotImpact"] ?? 0);
+    existing.architectureImpact = Math.max(existing.architectureImpact, s["architectureImpact"] ?? 0);
+    existing.licensingImpact = Math.max(existing.licensingImpact, s["licensingImpact"] ?? 0);
   };
 
   for (const rule of rules) consider(rule.signalKey, rule);
@@ -135,7 +141,7 @@ export function getSignalHealthImpacts(
 /**
  * Pure core of the engine: given a set of currently-fired (and already
  * enabled-filtered) signal keys and the per-signal health impact
- * configuration, sums each of the six pillar fields independently plus the
+ * configuration, sums each of the seven pillar fields independently plus the
  * overall score. Nothing else is added, multiplied, or conditionally
  * applied — this is a plain per-pillar `reduce`.
  */
@@ -145,10 +151,10 @@ export function sumArchitectureHealth(
 ): { score: number; breakdown: HealthPillarBreakdown[] } {
   const breakdown: HealthPillarBreakdown[] = HEALTH_PILLARS.map(pillar => {
     const field = PILLAR_FIELD[pillar];
-    const contributions: HealthPillarContribution[] = firedSignalKeys.map(signalKey => ({
-      signalKey,
-      value: impacts.get(signalKey)?.[field] ?? 0,
-    }));
+    const contributions: HealthPillarContribution[] = firedSignalKeys.map(signalKey => {
+      const cfg = impacts.get(signalKey) as unknown as Record<string, number> | undefined;
+      return { signalKey, value: cfg?.[field] ?? 0 };
+    });
     const score = contributions.reduce((sum, c) => sum + c.value, 0);
     return { pillar, score, contributions };
   });

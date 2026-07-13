@@ -31,12 +31,16 @@ import {
   mspUsersTable,
   clientServicesTable,
   servicesTable,
+  industryBenchmarkReferenceTable,
 } from "@workspace/db";
 import { eq, and, desc, count, or, sql } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { runDiagnostics } from "../lib/diagnostics-runner";
 import { registerDiagnosticsRunSSEClient } from "../lib/sse-broadcast";
+import { calculateArchitectureHealthScore } from "../lib/health-engine";
+import { computeDisplayHealth } from "../lib/health-display";
+import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
 import jwt from "jsonwebtoken";
 import { randomUUID } from "crypto";
 
@@ -425,6 +429,70 @@ router.get(
       res.json({ run: latestRun, findings });
     } catch (err) {
       logger.error({ err }, "GET /portal/diagnostics/latest error");
+      res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ── GET /api/portal/health-benchmark ─────────────────────────────────────────
+// Customer-facing: returns per-pillar displayScore (0–100, higher = healthier)
+// plus industry benchmark reference data for the Benchmarking widget.
+//
+// Never exposes raw risk scores or breakdown.contributions.
+
+router.get(
+  "/portal/health-benchmark",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    try {
+      const user = req.user!;
+
+      let customerId = user.customerId ?? null;
+      if (!customerId) {
+        const { mspUsersTable: muTable } = await import("@workspace/db");
+        const [freshMu] = await db
+          .select({ customerId: muTable.customerId })
+          .from(muTable)
+          .where(eq(muTable.userId, user.id))
+          .limit(1);
+        customerId = freshMu?.customerId ?? null;
+      }
+
+      if (!customerId) {
+        res.json({ pillars: [], asOfDate: null });
+        return;
+      }
+
+      const [output, { rules, groups }, benchmarks] = await Promise.all([
+        calculateArchitectureHealthScore(customerId),
+        fetchSignalRulesAndGroups(),
+        db.select().from(industryBenchmarkReferenceTable),
+      ]);
+
+      const displayPillars = computeDisplayHealth(output, rules, groups);
+
+      const benchmarkMap = new Map(benchmarks.map(b => [b.pillar, b]));
+
+      const pillars = displayPillars.map(({ pillar, displayScore }) => {
+        const ref = benchmarkMap.get(pillar);
+        return {
+          pillar,
+          displayScore,
+          industryAvgPct: ref?.industryAvgPct ?? null,
+          msExcellencePct: ref?.msExcellencePct ?? null,
+          source: ref?.source ?? null,
+          asOfDate: ref?.asOfDate ?? null,
+        };
+      });
+
+      const asOfDate = benchmarks
+        .filter(b => b.asOfDate)
+        .sort((a, b) => (b.asOfDate! > a.asOfDate! ? 1 : -1))[0]
+        ?.asOfDate ?? null;
+
+      res.json({ pillars, asOfDate });
+    } catch (err) {
+      logger.error({ err }, "GET /portal/health-benchmark error");
       res.status(500).json({ error: "Internal server error" });
     }
   },
