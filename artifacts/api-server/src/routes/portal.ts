@@ -115,6 +115,50 @@ async function ensureClientAccount(email: string, name?: string): Promise<{ id: 
 }
 
 /**
+ * Ensures a msp_users row exists for the given client userId.
+ * Idempotent — if a row already exists for this userId, does nothing.
+ *
+ * mspId resolution order:
+ *   1. If tenantId is provided and an msp_customers row matches it, use that
+ *      customer's mspId and customerId.
+ *   2. Otherwise default to mspId=1 (Shane's own MSP) with no customerId.
+ *
+ * Should be called AFTER provisionOnboardingProject so that the msp_customers
+ * row created during provisioning is available for the tenantId lookup.
+ */
+async function ensureClientMspUser(
+  userId: number,
+  tenantId?: string | null,
+): Promise<void> {
+  // Check first to avoid the unnecessary INSERT on repeat purchases
+  const [existing] = await db
+    .select({ id: mspUsersTable.id })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+  if (existing) return;
+
+  let mspId = 1; // default: Shane's own MSP
+  let customerId: number | undefined = undefined;
+  if (tenantId) {
+    const [customer] = await db
+      .select({ id: mspCustomersTable.id, mspId: mspCustomersTable.mspId })
+      .from(mspCustomersTable)
+      .where(eq(mspCustomersTable.tenantId, tenantId))
+      .limit(1);
+    if (customer) {
+      mspId = customer.mspId;
+      customerId = customer.id;
+    }
+  }
+
+  await db
+    .insert(mspUsersTable)
+    .values({ userId, mspId, customerId, mspRole: "CustomerUser", isActive: true })
+    .onConflictDoNothing(); // race-safe: unique(user_id)
+}
+
+/**
  * Atomically finds or creates an account-setup token for a freshly-provisioned client.
  *
  * Uses a PostgreSQL advisory lock (namespace 0xACCT=43083, key=userId) scoped to the
@@ -5069,6 +5113,18 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
 
       await provisionOnboardingProject(req, session, subId, webhookUserIdOverride ?? undefined);
 
+      // Ensure every newly-provisioned client account has an msp_users row so the
+      // portal "no organisation" screen is never shown. Called AFTER provisionOnboardingProject
+      // so the msp_customers row created during provisioning is available for tenantId lookup.
+      if (webhookUserIdOverride !== null) {
+        try {
+          await ensureClientMspUser(webhookUserIdOverride, purchaseTenantId ?? null);
+          req.log.info({ userId: webhookUserIdOverride, tenantId: purchaseTenantId }, "onboarding_purchase: ensured msp_users row");
+        } catch (mspErr) {
+          req.log.warn({ err: mspErr, userId: webhookUserIdOverride }, "onboarding_purchase: ensureClientMspUser failed (non-fatal)");
+        }
+      }
+
       // Backfill any orphaned diagnostic runs (created at consent, before msp_customers row existed)
       // with the real customerId now that provisioning has created the customer record.
       if (purchaseTenantId) {
@@ -5556,6 +5612,13 @@ router.post("/admin/clients", requireAdmin, async (req: Request, res: Response) 
     entityId: client.id,
     entityLabel: client.name ?? client.email,
   });
+
+  // Ensure the manually-created client account has an msp_users row (mspId=1 default).
+  try {
+    await ensureClientMspUser(client.id);
+  } catch (mspErr) {
+    req.log.warn({ err: mspErr, clientId: client.id }, "admin-create-client: ensureClientMspUser failed (non-fatal)");
+  }
 
   // Generate a setup token and send the portal invite email
   try {
@@ -8577,6 +8640,29 @@ router.post("/portal/onboarding/provision/:sessionId", async (req: Request, res:
 
     await provisionOnboardingProject(req, session, subId, resolvedUserId);
     req.log.info({ sessionId: session.id, userId: resolvedUserId }, "onboarding provision: triggered from success page");
+
+    // Ensure the client account has an msp_users row. Look up tenantId from checkout_sessions
+    // (written by the consent flow) so we can resolve the real mspId/customerId when available.
+    try {
+      const buyerEmail =
+        (session.customer_details as { email?: string } | null)?.email ??
+        session.metadata?.guestEmail ??
+        null;
+      let provisionTenantId: string | null = null;
+      if (buyerEmail) {
+        const [cs] = await db
+          .select({ tenantId: checkoutSessionsTable.tenantId })
+          .from(checkoutSessionsTable)
+          .where(eq(checkoutSessionsTable.email, buyerEmail.toLowerCase().trim()))
+          .orderBy(desc(checkoutSessionsTable.updatedAt))
+          .limit(1);
+        provisionTenantId = cs?.tenantId ?? null;
+      }
+      await ensureClientMspUser(resolvedUserId, provisionTenantId);
+      req.log.info({ userId: resolvedUserId, tenantId: provisionTenantId }, "provision: ensured msp_users row");
+    } catch (mspErr) {
+      req.log.warn({ err: mspErr, userId: resolvedUserId }, "provision: ensureClientMspUser failed (non-fatal)");
+    }
 
     // If the user has no password yet, generate a setup token and deliver it via email.
     // We do NOT return the token in the JSON response (which is a public endpoint keyed
@@ -12342,6 +12428,12 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
         await db.update(contractsTable)
           .set({ userId: resolvedUserId })
           .where(and(inArray(contractsTable.id, contractIds), isNull(contractsTable.userId)));
+      }
+      // Ensure the free-checkout client account has an msp_users row (no tenantId available here)
+      try {
+        await ensureClientMspUser(resolvedUserId);
+      } catch (mspErr) {
+        req.log.warn({ err: mspErr, userId: resolvedUserId }, "free-checkout: ensureClientMspUser failed (non-fatal)");
       }
     }
 
