@@ -136,8 +136,13 @@ function validateMergeFields(key: string, body: string): string | null {
 // ── GET /api/msp/profile — alias consumed by app-shell.tsx ────────────────────
 // The frontend fetches /api/msp/profile; the canonical route is /api/msp/settings/profile.
 // This thin alias avoids a frontend change while keeping one source of truth.
+//
+// Role: CustomerUser (lowest paying role) — this endpoint returns purely cosmetic
+// branding data (name, logoUrl, primaryColor) needed by every authenticated page
+// for white-label display. No sensitive MSP-internal data is exposed here.
+// The write/management surface (PATCH /msp/settings/profile) remains MSPAdmin-gated.
 
-router.get("/msp/profile", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+router.get("/msp/profile", requireRole("CustomerUser"), async (req: Request, res: Response) => {
   const mspId = await resolveMspId(req);
   if (!mspId) { apiError(res, 400, "No MSP context"); return; }
 
