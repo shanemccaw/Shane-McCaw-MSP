@@ -4,6 +4,8 @@ import { SEOMeta } from "@/components/SEOMeta";
 import { CTAButton } from "@/components/CTAButton";
 import {
   CheckCircle,
+  CheckCircle2,
+  Eye,
   ArrowRight,
   Shield,
   Search,
@@ -217,6 +219,122 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {/* ── MONITORING PACK PREVIEW ─────────────────────────────── */}
+      <section className="bg-white py-20 px-6" data-testid="monitoring-preview">
+        <div className="max-w-[1200px] mx-auto">
+          <div className="text-center mb-12">
+            <p className="text-[#0078D4] text-sm font-semibold uppercase tracking-[0.1em] mb-3">
+              Monitoring Packs
+            </p>
+            <h2 className="text-3xl md:text-4xl font-extrabold text-[#0A2540] mb-4">
+              NASA-Informed Oversight, Sized to Your Tenant
+            </h2>
+            <p className="text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+              Choose the level of continuous monitoring that matches your risk profile.  
+              Every pack is powered by the same signal engine shaped by NASA’s Microsoft 365 architecture standards.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Basic Monitoring */}
+            <div className="bg-[#F7F9FC] rounded-xl border border-border p-6 flex flex-col">
+              <div className="flex items-center gap-2 mb-3">
+                <Shield className="w-5 h-5 text-[#0078D4]" />
+                <h3 className="font-extrabold text-[#0A2540] text-lg">Basic Monitoring</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                Scheduled checks against core security, identity, and configuration signals.  
+                Ideal for smaller tenants that need guardrails without full-time oversight.
+              </p>
+              <ul className="space-y-2 text-sm text-foreground/80 mb-5">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  Baseline security and configuration signals
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  Monthly signal summaries
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  NASA-informed architecture standards
+                </li>
+              </ul>
+              <Link
+                href="/monitoring"
+                className="mt-auto inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline underline-offset-2"
+              >
+                View monitoring packs <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {/* Enhanced Monitoring */}
+            <div className="bg-[#0A2540] rounded-xl border border-[#0078D4]/60 p-6 flex flex-col shadow-lg">
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-5 h-5 text-[#00B4D8]" />
+                <h3 className="font-extrabold text-white text-lg">Enhanced Monitoring</h3>
+              </div>
+              <p className="text-sm text-white/70 mb-4 leading-relaxed">
+                Continuous monitoring with a broader signal library — configuration drift, licence waste,
+                Copilot readiness, and governance risks tracked daily.
+              </p>
+              <ul className="space-y-2 text-sm text-white/80 mb-5">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#00B4D8] mt-0.5" />
+                  Daily evaluation of key signals
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#00B4D8] mt-0.5" />
+                  Weekly digests plus critical alerts
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#00B4D8] mt-0.5" />
+                  Copilot readiness and oversharing checks
+                </li>
+              </ul>
+              <Link
+                href="/monitoring"
+                className="mt-auto inline-flex items-center gap-1.5 text-[#00B4D8] font-semibold text-sm hover:underline underline-offset-2"
+              >
+                Explore Enhanced Monitoring <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            {/* Premium Monitoring */}
+            <div className="bg-[#F7F9FC] rounded-xl border border-border p-6 flex flex-col">
+              <div className="flex items-center gap-2 mb-3">
+                <Eye className="w-5 h-5 text-[#0078D4]" />
+                <h3 className="font-extrabold text-[#0A2540] text-lg">Premium Monitoring</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                For environments where drift, compliance, and Copilot safety are mission-critical.  
+                Adds richer reporting and tighter alignment to your governance model.
+              </p>
+              <ul className="space-y-2 text-sm text-foreground/80 mb-5">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  Expanded signal coverage and history
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  Governance and data access focus
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0078D4] mt-0.5" />
+                  Designed for higher-risk tenants
+                </li>
+              </ul>
+              <Link
+                href="/monitoring"
+                className="mt-auto inline-flex items-center gap-1.5 text-[#0078D4] font-semibold text-sm hover:underline underline-offset-2"
+              >
+                See full monitoring catalog <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── TRUST STRIP ─────────────────────────────────────────────────── */}
       <section className="bg-[#0A2540] py-20" data-testid="trust-strip">
         <div className="max-w-[1200px] mx-auto px-6">
