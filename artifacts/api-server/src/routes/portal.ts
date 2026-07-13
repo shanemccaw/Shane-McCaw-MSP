@@ -130,14 +130,7 @@ async function ensureClientMspUser(
   userId: number,
   tenantId?: string | null,
 ): Promise<void> {
-  // Check first to avoid the unnecessary INSERT on repeat purchases
-  const [existing] = await db
-    .select({ id: mspUsersTable.id })
-    .from(mspUsersTable)
-    .where(eq(mspUsersTable.userId, userId))
-    .limit(1);
-  if (existing) return;
-
+  // Resolve target mspId + customerId from the tenantId if supplied
   let mspId = 1; // default: Shane's own MSP
   let customerId: number | undefined = undefined;
   if (tenantId) {
@@ -150,6 +143,25 @@ async function ensureClientMspUser(
       mspId = customer.mspId;
       customerId = customer.id;
     }
+  }
+
+  // Check whether a row already exists
+  const [existing] = await db
+    .select({ id: mspUsersTable.id, existingCustomerId: mspUsersTable.customerId })
+    .from(mspUsersTable)
+    .where(eq(mspUsersTable.userId, userId))
+    .limit(1);
+
+  if (existing) {
+    // Row exists — patch customer_id if it is still null and we resolved one.
+    // This handles users created before the customer record was provisioned.
+    if (existing.existingCustomerId == null && customerId != null) {
+      await db
+        .update(mspUsersTable)
+        .set({ customerId, updatedAt: new Date() })
+        .where(eq(mspUsersTable.userId, userId));
+    }
+    return;
   }
 
   await db

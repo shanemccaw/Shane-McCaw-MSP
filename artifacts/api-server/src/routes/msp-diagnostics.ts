@@ -29,7 +29,7 @@ import {
   mspDiagnosticFindingsTable,
   mspCustomersTable,
 } from "@workspace/db";
-import { eq, and, desc, count } from "drizzle-orm";
+import { eq, and, desc, count, or } from "drizzle-orm";
 import { requireRole, requireAuth } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { resolveMspIdOrZero } from "../lib/resolve-msp-id.ts";
@@ -268,6 +268,12 @@ router.get(
 // ── GET /api/portal/diagnostics/latest ───────────────────────────────────────
 // Customer-facing: returns the customer's latest completed diagnostics run
 // and a summary of findings (no raw extracted_properties).
+//
+// customerId may be null in the JWT when:
+//   a) msp_users.customer_id was null at login time (stale JWT / data-gap window)
+//   b) The user is a pre-purchase orphaned tenant with no msp_customers row yet
+//
+// Fallback: do a fresh msp_users lookup so a stale JWT doesn't hide real data.
 
 router.get(
   "/portal/diagnostics/latest",
@@ -275,7 +281,19 @@ router.get(
   async (req: Request, res: Response) => {
     try {
       const user = req.user!;
-      const customerId = user.customerId;
+
+      // Primary: use customerId from JWT. Fallback: fresh DB read (stale-JWT window).
+      let customerId = user.customerId ?? null;
+      if (!customerId) {
+        const { mspUsersTable: muTable } = await import("@workspace/db");
+        const [freshMu] = await db
+          .select({ customerId: muTable.customerId })
+          .from(muTable)
+          .where(eq(muTable.userId, user.id))
+          .limit(1);
+        customerId = freshMu?.customerId ?? null;
+      }
+
       if (!customerId) { res.json({ run: null, findings: [] }); return; }
 
       const [latestRun] = await db
@@ -283,7 +301,10 @@ router.get(
         .from(mspDiagnosticRunsTable)
         .where(and(
           eq(mspDiagnosticRunsTable.customerId, customerId),
-          eq(mspDiagnosticRunsTable.status, "completed"),
+          or(
+            eq(mspDiagnosticRunsTable.status, "completed"),
+            eq(mspDiagnosticRunsTable.status, "partial"),
+          ),
         ))
         .orderBy(desc(mspDiagnosticRunsTable.createdAt))
         .limit(1);
