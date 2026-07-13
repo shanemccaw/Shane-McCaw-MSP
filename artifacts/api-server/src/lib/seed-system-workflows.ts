@@ -33,6 +33,67 @@ interface SystemWorkflowSeed {
 }
 
 const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
+  {
+    name: "__system__: MSP SOW Charge Approval",
+    description:
+      "Triggered when an MSP customer signs a SOW. Pauses for MSP approval " +
+      "(MSPAdmin or a team member with canApprovePurchases) before charging the " +
+      "MSP's card on file — SOWs can run $10-30k, so this never auto-fires. " +
+      "On approval, charges via charge_msp_card and emails the approver a confirmation.",
+    triggerType: "event",
+    eventNames: ["sow.signed"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 300, y: 80 }, data: { nodeType: "start", label: "SOW Signed" } },
+        {
+          id: "gate",
+          type: "approval_gate",
+          position: { x: 300, y: 220 },
+          data: {
+            nodeType: "approval_gate",
+            label: "MSP Charge Approval",
+            approverRole: "msp_approver",
+            timeoutSeconds: 259200,
+          },
+        },
+        {
+          id: "charge",
+          type: "action",
+          position: { x: 300, y: 380 },
+          data: {
+            nodeType: "action",
+            actionType: "charge_msp_card",
+            label: "Charge MSP Card",
+            sowId: "{{sowId}}",
+            mspId: "{{mspId}}",
+            amountCents: "{{amountCents}}",
+            actorUserId: "{{actorUserId}}",
+          },
+        },
+        {
+          id: "notify",
+          type: "action",
+          position: { x: 300, y: 520 },
+          data: {
+            nodeType: "action",
+            actionType: "send_email",
+            label: "Confirm Charge to MSP",
+            mspId: "{{mspId}}",
+            subject: "SOW charge processed",
+            htmlBody: "<p>The approved SOW charge for {{amountCents}} cents has been processed. Status: {{status}}.</p>",
+          },
+        },
+        { id: "end", type: "end", position: { x: 300, y: 660 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",  target: "gate" },
+        { id: "e2", source: "gate",   target: "charge", sourceHandle: "approved" },
+        { id: "e3", source: "charge", target: "notify" },
+        { id: "e4", source: "notify", target: "end" },
+      ],
+    },
+  },
   // ── On Purchase — Run Monitoring Package ──────────────────────────────────
   {
     name: "On Purchase — Run Monitoring Package",

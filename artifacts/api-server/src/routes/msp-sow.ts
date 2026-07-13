@@ -660,12 +660,17 @@ router.post(
 
     logger.info({ sowId, mspId: sow.mspId, signerName }, "msp-sow: SOW signed");
 
-    // Auto-trigger MSP charge after signature
-    void triggerMspCharge(sowId, sow.mspId, sow.amountCents, user.id).catch((err) => {
-      logger.warn({ err, sowId }, "msp-sow: auto-charge failed after signing (will retry on manual trigger)");
+    // Charge now requires MSP approval (spec: MSP_Full_Catalog_Purchase_Charging_Spec_v1,
+    // Phase 1) — no longer auto-fires here. Fires the "MSP SOW Charge Approval" seeded
+    // workflow instead, which pauses at an approval_gate before calling charge_msp_card.
+    const { emitWorkflowEvent } = await import("../lib/workflow-executor");
+    void emitWorkflowEvent("sow.signed", {
+      sowId, mspId: sow.mspId, amountCents: sow.amountCents, actorUserId: user.id,
+    }).catch((err) => {
+      logger.warn({ err, sowId }, "msp-sow: failed to fire sow.signed workflow event (charge approval will not trigger)");
     });
 
-    res.json({ ok: true, status: "signed", message: "SOW signed successfully. Initiating payment." });
+    res.json({ ok: true, status: "signed", message: "SOW signed successfully. Awaiting MSP approval to charge." });
   },
 );
 
@@ -988,12 +993,19 @@ router.post(
 
 // ── Internal: trigger MSP Stripe charge ───────────────────────────────────────
 
-async function triggerMspCharge(
+export interface MspChargeResult {
+  success: boolean;
+  status: "paid" | "pending_action" | "failed";
+  stripePaymentIntentId?: string;
+  error?: string;
+}
+
+export async function triggerMspCharge(
   sowId: string,
   mspId: number,
   amountCents: number,
   actorUserId: number | null,
-): Promise<void> {
+): Promise<MspChargeResult> {
   // Skip charge for free SOWs
   if (amountCents === 0) {
     await db.update(mspSowsTable).set({
@@ -1007,7 +1019,7 @@ async function triggerMspCharge(
 
     // Unlock fulfillment queue
     await unlockFulfillment(sowId, mspId);
-    return;
+    return { success: true, status: "paid" };
   }
 
   let stripeKey: string;
@@ -1020,7 +1032,7 @@ async function triggerMspCharge(
       failureReason: "Stripe not configured",
       updatedAt: new Date(),
     }).where(eq(mspSowsTable.sowId, sowId));
-    return;
+    return { success: false, status: "failed", error: "Stripe not configured" };
   }
 
   const { default: Stripe } = await import("stripe");
@@ -1084,15 +1096,17 @@ async function triggerMspCharge(
       await emitSowEvent(sowId, "sow.paid", actorUserId, "system", { stripePaymentIntentId: pi.id, amountCents });
       await emitMspEvent(mspId, null, "msp.sow.paid", { sowId, stripePaymentIntentId: pi.id, amountCents }, actorUserId);
       await unlockFulfillment(sowId, mspId);
+      logger.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
+      return { success: true, status: "paid", stripePaymentIntentId: pi.id };
     } else {
       // Requires further action (3DS, etc.) — surface as operator task
       await emitSowEvent(sowId, "sow.charge_pending", actorUserId, "system", {
         stripePaymentIntentId: pi.id, status: pi.status,
       });
       logger.warn({ sowId, piStatus: pi.status }, "msp-sow: charge requires action — operator task needed");
+      logger.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
+      return { success: false, status: "pending_action", stripePaymentIntentId: pi.id };
     }
-
-    logger.info({ sowId, piId: pi.id, mspId, status: pi.status }, "msp-sow: charge attempt completed");
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : "Unknown error";
     logger.error({ err, sowId, mspId }, "msp-sow: Stripe charge failed");
@@ -1116,6 +1130,7 @@ async function triggerMspCharge(
 
     await emitSowEvent(sowId, "sow.failed", actorUserId, "system", { error: errMsg });
     await emitMspEvent(mspId, null, "msp.sow.payment_failed", { sowId, error: errMsg }, actorUserId);
+    return { success: false, status: "failed", error: errMsg };
   }
 }
 

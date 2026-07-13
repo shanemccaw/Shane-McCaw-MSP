@@ -26,6 +26,7 @@ import {
   pendingApprovalsTable,
   leadsTable,
   usersTable,
+  mspUsersTable,
   projectsTable,
   opportunitiesTable,
   clientDocumentsTable,
@@ -637,6 +638,7 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
       if (at === "generate_document")    return { dryRun: true, documentId: 1, docType: node.data.docType ?? "report", name: str("docTitle", "Dry-run document") };
       if (at === "calculate_pricing")    return { dryRun: true, documentId: num("documentId"), totalPrice: 0, lineCount: 0 };
       if (at === "send_email")           return { dryRun: true, sent: true, messageId: "dry-run", recipient: str("to", "test@example.com"), subject: str("subject", "Dry-run subject") };
+      if (at === "charge_msp_card")      return { dryRun: true, success: true, status: "paid", stripePaymentIntentId: "pi_dry_run" };
       return { dryRun: true, actionType: at ?? "none", note: "dry run — action skipped" };
     }
 
@@ -2423,6 +2425,35 @@ async function executeNode(
               const errorMessage = err instanceof Error ? err.message : String(err);
               logger.warn({ runId, nodeId: node.id, err, to: seTo }, "wf-executor: send_email failed");
               output = { sent: false, error: errorMessage };
+            }
+          }
+        } else if (actionType === "charge_msp_card") {
+          const cmcSowId = interp(node.data.sowId as string | undefined, payload);
+          const cmcMspIdRaw = interp(node.data.mspId as string | undefined, payload);
+          const cmcAmountRaw = interp(node.data.amountCents as string | undefined, payload);
+          const cmcActorUserIdRaw = interp(node.data.actorUserId as string | undefined, payload);
+
+          const cmcMspId = parseInt(cmcMspIdRaw ?? "", 10);
+          const cmcAmountCents = parseInt(cmcAmountRaw ?? "", 10);
+          const cmcActorUserId = cmcActorUserIdRaw ? parseInt(cmcActorUserIdRaw, 10) : NaN;
+
+          if (!cmcSowId || isNaN(cmcMspId) || isNaN(cmcAmountCents)) {
+            nodeError = true;
+            output = { error: "charge_msp_card requires sowId, mspId, and amountCents to resolve" };
+          } else {
+            try {
+              const { triggerMspCharge } = await import("../routes/msp-sow");
+              const result = await triggerMspCharge(
+                cmcSowId, cmcMspId, cmcAmountCents,
+                isNaN(cmcActorUserId) ? null : cmcActorUserId,
+              );
+              if (!result.success && result.status === "failed") nodeError = true;
+              output = { ...result };
+            } catch (err) {
+              nodeError = true;
+              const errorMessage = err instanceof Error ? err.message : String(err);
+              logger.warn({ runId, nodeId: node.id, err, sowId: cmcSowId }, "wf-executor: charge_msp_card failed");
+              output = { success: false, status: "failed", error: errorMessage };
             }
           }
         } else {
@@ -6170,11 +6201,19 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           const timeoutSeconds = Number(node.data.timeoutSeconds ?? 3600);
           const expiresAt = new Date(Date.now() + timeoutSeconds * 1000);
           const label = (node.data.label as string | undefined) ?? "Approval Gate";
+          // MSP-scoped approvals (e.g. this run's payload carries an mspId, set by
+          // the triggering event) notify that MSP's admin/approvers instead of
+          // platform admins, and get an mspId written onto the row so the MSP
+          // Portal's pending-approvals endpoint can filter to it.
+          const gateMspIdRaw = payload.mspId;
+          const gateMspId = gateMspIdRaw != null ? parseInt(String(gateMspIdRaw), 10) : NaN;
+          const isMspScoped = !isNaN(gateMspId);
 
           const [approval] = await db.insert(pendingApprovalsTable).values({
             runId,
             nodeId: node.id,
             approverRole,
+            mspId: isMspScoped ? gateMspId : undefined,
             timeoutSeconds,
             status: "pending",
             context: payload,
@@ -6187,30 +6226,70 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
 
           const notifTitle = `Workflow approval required`;
           const notifBody = `Run #${runId} paused at "${label}" — admin action required.`;
-          const notifLink = `/admin-panel/workflows/runs/${runId}`;
 
-          try {
-            const admins = await db
-              .select({ id: usersTable.id })
-              .from(usersTable)
-              .where(eq(usersTable.role, "admin"));
+          if (isMspScoped) {
+            const notifLink = `/pending-approvals`;
+            try {
+              const approvers = await db
+                .select({ userId: mspUsersTable.userId, email: usersTable.email, name: usersTable.name })
+                .from(mspUsersTable)
+                .innerJoin(usersTable, eq(usersTable.id, mspUsersTable.userId))
+                .where(and(
+                  eq(mspUsersTable.mspId, gateMspId),
+                  eq(mspUsersTable.isActive, true),
+                  or(eq(mspUsersTable.mspRole, "MSPAdmin"), eq(mspUsersTable.canApprovePurchases, true)),
+                ));
 
-            if (admins.length > 0) {
-              await db.insert(notificationsTable).values(
-                admins.map(a => ({
-                  userId: a.id,
-                  title: notifTitle,
-                  body: notifBody,
-                  type: "general" as const,
-                  linkPath: notifLink,
-                })),
-              );
+              if (approvers.length > 0) {
+                await db.insert(notificationsTable).values(
+                  approvers.map(a => ({
+                    mspUserId: a.userId,
+                    mspId: gateMspId,
+                    recipientType: "msp_user" as const,
+                    title: notifTitle,
+                    body: notifBody,
+                    type: "general" as const,
+                    linkPath: notifLink,
+                    feedType: "personal" as const,
+                    category: "approval",
+                    severity: "warning" as const,
+                  })),
+                );
+                const { sendEmail } = await import("./mailer");
+                for (const a of approvers) {
+                  if (a.email) void sendEmail(a.email, notifTitle, `<p>${notifBody}</p><p>Log in to the MSP Portal to review.</p>`);
+                }
+              } else {
+                logger.warn({ runId, mspId: gateMspId }, "approval_gate: MSP-scoped approval with no eligible approver (no MSPAdmin, no canApprovePurchases user) — nobody notified");
+              }
+            } catch (notifErr) {
+              logger.warn({ notifErr, runId, mspId: gateMspId }, "approval_gate: failed to notify MSP approvers (non-fatal)");
             }
-          } catch (notifErr) {
-            logger.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
-          }
+          } else {
+            const notifLink = `/admin-panel/workflows/runs/${runId}`;
+            try {
+              const admins = await db
+                .select({ id: usersTable.id })
+                .from(usersTable)
+                .where(eq(usersTable.role, "admin"));
 
-          void sendWebPushToAdmins({ title: notifTitle, body: notifBody, linkPath: notifLink });
+              if (admins.length > 0) {
+                await db.insert(notificationsTable).values(
+                  admins.map(a => ({
+                    userId: a.id,
+                    title: notifTitle,
+                    body: notifBody,
+                    type: "general" as const,
+                    linkPath: notifLink,
+                  })),
+                );
+              }
+            } catch (notifErr) {
+              logger.warn({ notifErr, runId }, "approval_gate: failed to insert notifications (non-fatal)");
+            }
+
+            void sendWebPushToAdmins({ title: notifTitle, body: notifBody, linkPath: notifLink });
+          }
 
           output = { approvalId: approval.id, approverRole, expiresAt: expiresAt.toISOString(), label };
           // Record the node output before returning the sentinel
