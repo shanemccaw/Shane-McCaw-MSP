@@ -20,6 +20,29 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import {
   Activity,
   AlertCircle,
   AlertTriangle,
@@ -86,6 +109,8 @@ interface CustomerDetail {
   mspName?: string;
   createdAt: string;
   notes?: string;
+  industry?: string;
+  ownerType?: "customer" | "msp" | "platform";
 }
 
 // ── Finding severity helpers ───────────────────────────────────────────────────
@@ -561,6 +586,94 @@ export default function CustomerDetailPage() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
 
+  // Edit Customer state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    domain: "",
+    industry: "",
+    status: "onboarding" as CustomerDetail["status"],
+    ownerType: "customer" as "customer" | "msp" | "platform",
+  });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const handleOpenEditDialog = () => {
+    if (!customer) return;
+    setEditForm({
+      name: customer.name ?? "",
+      domain: customer.domain ?? "",
+      industry: customer.industry ?? "",
+      status: customer.status ?? "onboarding",
+      ownerType: customer.ownerType ?? "customer",
+    });
+    setEditError(null);
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editForm.name.trim()) {
+      setEditError("Name is required");
+      return;
+    }
+    setEditLoading(true);
+    setEditError(null);
+    try {
+      const res = await fetchWithAuth(`/api/msp/customers/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editForm.name.trim(),
+          domain: editForm.domain.trim() || null,
+          industry: editForm.industry.trim() || null,
+          status: editForm.status,
+          ownerType: editForm.ownerType,
+        }),
+      });
+      if (!res.ok) {
+        const errData = await res.json() as { error?: string };
+        setEditError(errData.error ?? "Failed to update customer");
+        return;
+      }
+      const updated = await res.json() as CustomerDetail;
+      setCustomer(updated);
+      setEditDialogOpen(false);
+      toast.success("Customer details updated");
+    } catch {
+      setEditError("Network error - please try again.");
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleImpersonate = async () => {
+    if (!customer || !customer.mspId) {
+      toast.error("Cannot impersonate this customer (missing MSP association)");
+      return;
+    }
+    try {
+      const res = await fetchWithAuth(`/api/msp/${customer.mspId}/customers/${customer.id}/impersonate`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        toast.error("Impersonation failed");
+        return;
+      }
+      const data = (await res.json()) as { token?: string };
+      if (data.token) {
+        const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+        window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+      }
+    } catch {
+      toast.error("Impersonation request failed");
+    }
+  };
+
+  const handleGenerateDocuments = () => {
+    toast.info("Document generation started... (not wired up yet)");
+  };
+
   useEffect(() => {
     let mounted = true;
     setLoading(true);
@@ -644,10 +757,28 @@ export default function CustomerDetailPage() {
                       </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" className="gap-1.5">
-                    <MoreHorizontal className="size-4" />
-                    Actions
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-1.5">
+                        <MoreHorizontal className="size-4" />
+                        Actions
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem className="text-sm gap-2 cursor-pointer" onSelect={handleImpersonate}>
+                        <Users className="size-4 text-muted-foreground" />
+                        <span>View as Customer</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-sm gap-2 cursor-pointer" onSelect={handleOpenEditDialog}>
+                        <Building2 className="size-4 text-muted-foreground" />
+                        <span>Edit Customer</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="text-sm gap-2 cursor-pointer" onSelect={handleGenerateDocuments}>
+                        <FileText className="size-4 text-muted-foreground" />
+                        <span>Generate Documents</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
 
                 <Separator className="my-4" />
@@ -850,6 +981,94 @@ export default function CustomerDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit Customer</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4 py-2">
+            {editError && (
+              <div className="p-3 text-xs bg-destructive/10 text-destructive border border-destructive/20 rounded-md">
+                {editError}
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label htmlFor="edit-name" className="text-xs">Company Name</Label>
+              <Input
+                id="edit-name"
+                value={editForm.name}
+                onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-domain" className="text-xs">Domain</Label>
+              <Input
+                id="edit-domain"
+                placeholder="example.com"
+                value={editForm.domain}
+                onChange={(e) => setEditForm(prev => ({ ...prev, domain: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="edit-industry" className="text-xs">Industry</Label>
+              <Input
+                id="edit-industry"
+                placeholder="e.g. Technology, Healthcare"
+                value={editForm.industry}
+                onChange={(e) => setEditForm(prev => ({ ...prev, industry: e.target.value }))}
+                className="h-9"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="edit-status" className="text-xs">Status</Label>
+                <Select
+                  value={editForm.status}
+                  onValueChange={(val: any) => setEditForm(prev => ({ ...prev, status: val }))}
+                >
+                  <SelectTrigger id="edit-status" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="onboarding">Onboarding</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-ownerType" className="text-xs">Owner Type</Label>
+                <Select
+                  value={editForm.ownerType}
+                  onValueChange={(val: any) => setEditForm(prev => ({ ...prev, ownerType: val }))}
+                >
+                  <SelectTrigger id="edit-ownerType" className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="customer">Customer</SelectItem>
+                    <SelectItem value="msp">MSP</SelectItem>
+                    <SelectItem value="platform">Platform</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setEditDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" disabled={editLoading}>
+                {editLoading ? <Loader2 className="size-4 animate-spin mr-1" /> : null}
+                Save Changes
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
