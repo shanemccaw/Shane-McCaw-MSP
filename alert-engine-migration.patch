@@ -1,0 +1,172 @@
+diff --git a/artifacts/api-server/src/index.ts b/artifacts/api-server/src/index.ts
+index 5eb60ed..ca6df04 100644
+--- a/artifacts/api-server/src/index.ts
++++ b/artifacts/api-server/src/index.ts
+@@ -1,6 +1,6 @@
+ import app from "./app";
+ import { logger } from "./lib/logger";
+-import { initAlertEngine } from "./lib/alert-engine";
++import { ensureAlertEngineReady } from "./lib/alert-engine";
+ import { validateStripeKeyOnStartup, checkWebhookHealthOnStartup } from "./lib/stripe";
+ import { initGraphSubscription } from "./lib/graph-subscription";
+ import { graphCredentialsPresent } from "./lib/graph";
+@@ -174,8 +174,10 @@ app.listen(port, (err) => {
+   });
+ 
+   // ── Platform Alert Engine ─────────────────────────────────────────────────
+-  // Ensures alert tables, seeds default rules, starts polling every 5 minutes.
+-  initAlertEngine(5 * 60 * 1000).catch((err: unknown) => {
++  // Ensures alert tables exist and default rules are seeded. Evaluation itself
++  // now runs via the "__system__: Alert Rule Evaluation" seeded Workflow (see
++  // seed-system-workflows.ts) instead of a setInterval poller.
++  ensureAlertEngineReady().catch((err: unknown) => {
+     logger.warn({ err }, "alert-engine: init failed (non-fatal)");
+   });
+ 
+diff --git a/artifacts/api-server/src/lib/alert-engine.ts b/artifacts/api-server/src/lib/alert-engine.ts
+index b862257..a570eb7 100644
+--- a/artifacts/api-server/src/lib/alert-engine.ts
++++ b/artifacts/api-server/src/lib/alert-engine.ts
+@@ -368,7 +368,7 @@ async function deliverAlert(opts: {
+ 
+ // ── Main evaluation loop ──────────────────────────────────────────────────────
+ 
+-async function evaluateRules(): Promise<void> {
++export async function evaluateRules(): Promise<void> {
+   const rulesRes = await pool.query<{
+     id: number;
+     rule_key: string;
+@@ -452,43 +452,19 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
+ 
+ // ── Public API ────────────────────────────────────────────────────────────────
+ 
+-let alertInterval: ReturnType<typeof setInterval> | null = null;
+-
+ /**
+- * Initialize the alert engine: ensure tables, seed default rules, start polling.
+- * Safe to call multiple times — only one interval is started.
++ * Ensure alert tables exist and default rules are seeded. Called once at server
++ * startup. Does NOT start any polling loop — evaluation is triggered by the
++ * "__system__: Alert Rule Evaluation" seeded Workflow (see seed-system-workflows.ts),
++ * which fires evaluateRules() via the alert_evaluate_rules workflow node every 5
++ * minutes on its own schedule trigger.
+  */
+-export async function initAlertEngine(pollIntervalMs = 5 * 60 * 1000): Promise<void> {
++export async function ensureAlertEngineReady(): Promise<void> {
+   try {
+     await ensureAlertTables();
+     await seedDefaultRules();
+-    logger.info({ pollIntervalMs }, "alert-engine: initialized");
++    logger.info("alert-engine: tables ensured, default rules seeded");
+   } catch (err) {
+-    logger.warn({ err }, "alert-engine: init failed (non-fatal)");
+-    return;
+-  }
+-
+-  if (alertInterval !== null) return;
+-
+-  alertInterval = setInterval(() => {
+-    evaluateRules().catch((err: unknown) => {
+-      logger.warn({ err }, "alert-engine: evaluation cycle failed (non-fatal)");
+-    });
+-  }, pollIntervalMs);
+-
+-  if (alertInterval.unref) alertInterval.unref();
+-
+-  // Run once immediately after a short delay to let DB pool warm up
+-  setTimeout(() => {
+-    evaluateRules().catch((err: unknown) => {
+-      logger.warn({ err }, "alert-engine: initial evaluation failed (non-fatal)");
+-    });
+-  }, 15_000);
+-}
+-
+-export function stopAlertEngine(): void {
+-  if (alertInterval !== null) {
+-    clearInterval(alertInterval);
+-    alertInterval = null;
++    logger.warn({ err }, "alert-engine: startup init failed (non-fatal)");
+   }
+ }
+diff --git a/artifacts/api-server/src/lib/seed-system-workflows.ts b/artifacts/api-server/src/lib/seed-system-workflows.ts
+index 60eb6db..f623dc0 100644
+--- a/artifacts/api-server/src/lib/seed-system-workflows.ts
++++ b/artifacts/api-server/src/lib/seed-system-workflows.ts
+@@ -520,6 +520,23 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
+       ],
+     },
+   },
++  {
++    name: "__system__: Alert Rule Evaluation",
++    description: "Runs every 5 minutes to evaluate platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate) and deliver alerts via Exchange Online email and browser push. Replaces the old alert-engine.ts setInterval poller.",
++    triggerType: "schedule",
++    cron: "*/5 * * * *",
++    graph: {
++      nodes: [
++        { id: "start", type: "start",               position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron */5 min" } },
++        { id: "act",   type: "alert_evaluate_rules", position: { x: 100, y: 230 }, data: { nodeType: "alert_evaluate_rules", label: "Evaluate Alert Rules" } },
++        { id: "end",   type: "end",                 position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
++      ],
++      edges: [
++        { id: "e1", source: "start", target: "act" },
++        { id: "e2", source: "act",   target: "end" },
++      ],
++    },
++  },
+   {
+     name: "__system__: Workflow Cleanup",
+     description: "Nightly job (03:00 UTC) that deletes workflow runs older than 90 days.",
+diff --git a/artifacts/api-server/src/lib/workflow-executor.ts b/artifacts/api-server/src/lib/workflow-executor.ts
+index 9b7beb0..11e1bd1 100644
+--- a/artifacts/api-server/src/lib/workflow-executor.ts
++++ b/artifacts/api-server/src/lib/workflow-executor.ts
+@@ -80,6 +80,7 @@ import path from "path";
+ import fs from "fs/promises";
+ import { randomUUID } from "crypto";
+ import { logger } from "./logger";
++import { evaluateRules as runAlertRuleEvaluation } from "./alert-engine";
+ import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
+ import { reconcileOrphanedRuns, reconcileStalledPhases, reconcileLateStuckQueuedCompletions } from "./kanban-auto-fire";
+ import { handleAutoFireKanban } from "./auto-fire-kanban-handler";
+@@ -864,6 +865,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
+     case "reconcile_orphaned_runs":
+       return { dryRun: true, reconciled: false, task: (node.data.task as string | undefined) ?? "reconcile_orphaned_runs", note: "dry run — reconciliation skipped" };
+ 
++    case "alert_evaluate_rules":
++      return { dryRun: true, evaluated: false, note: "dry run — alert rule evaluation skipped" };
++
+     case "kanban_auto_fire":
+       return { dryRun: true, fired: false, clientId: 0, action: (node.data.action as string | undefined) ?? "\", note: \"dry run — kanban auto-fire skipped" };
+ 
+@@ -5632,6 +5636,18 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
+         break;
+       }
+ 
++      case "alert_evaluate_rules": {
++        // Runs the platform Alert Engine's rule evaluation (DLQ backlog, billing
++        // failures, SLA breaches, event bus backlog, job failure rate). Delivery
++        // (Exchange Online email + browser push) happens inside evaluateRules()
++        // itself. This node is fired every 5 minutes by the seeded
++        // "__system__: Alert Rule Evaluation" schedule-triggered workflow.
++        await runAlertRuleEvaluation();
++        logger.info("wf-executor: alert_evaluate_rules completed");
++        output = { evaluated: true };
++        break;
++      }
++
+       case "kanban_auto_fire": {
+         // Fires the appropriate kanban auto-fire function based on the `action`
+         // field in the node data / payload (set by the upstream kanban.card_moved event).
+diff --git a/artifacts/api-server/src/routes/admin-observability.test.ts b/artifacts/api-server/src/routes/admin-observability.test.ts
+index a642e8d..8a6f496 100644
+--- a/artifacts/api-server/src/routes/admin-observability.test.ts
++++ b/artifacts/api-server/src/routes/admin-observability.test.ts
+@@ -20,7 +20,7 @@ vi.mock("../middlewares/requireAuth", () => ({
+ // ── alert-engine mock ────────────────────────────────────────────────────────
+ vi.mock("../lib/alert-engine", () => ({
+   evaluateAllRules: vi.fn().mockResolvedValue(undefined),
+-  initAlertEngine: vi.fn(),
++  ensureAlertEngineReady: vi.fn(),
+ }));
+ 
+ import adminObservabilityRouter from "./admin-observability";
