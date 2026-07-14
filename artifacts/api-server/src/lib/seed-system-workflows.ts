@@ -98,14 +98,18 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   {
     name: "On Purchase — Run Monitoring Package",
     description:
-      "Triggered when a client completes a purchase or grants monitoring consent. " +
-      "Expects the event payload to carry: clientId (user record ID), packageKey (monitoring package slug, published by the purchase/consent event), and tenantId (Azure AD tenant GUID). " +
+      "Triggered when a client grants monitoring consent (tenant admin OAuth consent, pre-payment). " +
+      "Gathers real M365 telemetry so the tenant can be advertised to and so document generation " +
+      "(a separate workflow, 'On Purchase — Generate Engagement Documents') has real signal data once " +
+      "payment completes. Expects the event payload to carry: clientId (user record ID), packageKey " +
+      "(monitoring package slug), and tenantId (Azure AD tenant GUID). " +
       "Graph: (1) find_object resolves the client record by clientId. " +
       "(2) find_object resolves and validates the monitoring_package record from the DB using the packageKey from the event payload — this is the package-resolution step that confirms the package is active and loads its metadata before execution. " +
       "(3) monitor_execute_package runs all checks for the resolved package against the tenant. " +
-      "Per-check progress is emitted to the run timeline via the SSE progress channel.",
+      "Per-check progress is emitted to the run timeline via the SSE progress channel. " +
+      "Deliberately does NOT generate any documents — see 'On Purchase — Generate Engagement Documents' for that, gated on actual payment so AI credits aren't spent on abandoned checkouts.",
     triggerType: "event",
-    eventNames: ["purchase.completed", "consent.granted"],
+    eventNames: ["consent.granted"],
     triggerEnabled: true,
     graph: {
       nodes: [
@@ -211,6 +215,108 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
         { id: "e7", source: "branch",      target: "notify_fail", sourceHandle: "false" },
         { id: "e8", source: "notify_ok",   target: "end"          },
         { id: "e9", source: "notify_fail", target: "end"          },
+      ],
+    },
+  },
+  // ── On Purchase — Generate Engagement Documents ────────────────────────────
+  {
+    name: "On Purchase — Generate Engagement Documents",
+    description:
+      "Triggered when purchase.completed fires (payment confirmed — see portal.ts processStripeEvent, " +
+      "onboarding_purchase branch). Deliberately separate from 'On Purchase — Run Monitoring Package', " +
+      "which now runs on consent.granted only. Split rationale: monitoring/telemetry runs at consent " +
+      "time (pre-payment) so the tenant has real data to advertise against; document generation runs " +
+      "only after payment confirms, since AI generation burns credits that shouldn't be spent on " +
+      "abandoned checkouts. Expects payload: clientId, packageKey, tenantId. " +
+      "KNOWN LIMITATION (tracked separately as item #3, signal derivation rules build-out): " +
+      "get_tenant_signals reads clientM365ProfilesTable + scriptRunResultsTable (legacy manual-script " +
+      "tables), not tenantMonitorProfilesTable (what monitor_execute_package actually writes). Until #3 " +
+      "ships, tenants onboarded purely via modern Graph-consent monitoring will only fire the " +
+      "'alwaysInclude' signal, so the generated SOW will only include alwaysInclude-tagged " +
+      "engagement_projects — a real but reduced-value baseline document, not a defect in this workflow.",
+    triggerType: "event",
+    eventNames: ["purchase.completed"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        {
+          id: "start",
+          type: "start",
+          position: { x: 300, y: 60 },
+          data: { nodeType: "start", label: "Purchase Completed" },
+        },
+        {
+          id: "get_signals",
+          type: "get_tenant_signals",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "get_tenant_signals",
+            label: "Get Tenant Signals",
+            clientId: "{{clientId}}",
+          },
+        },
+        {
+          // generate_document is dispatched via the generic "action" node type —
+          // actionType selects the branch. docCategory MUST be "consulting" or the
+          // executor silently falls through to the generic report path and ignores
+          // signalsOverride entirely (workflow-executor.ts:1878).
+          id: "gen_sow",
+          type: "action",
+          position: { x: 300, y: 340 },
+          data: {
+            nodeType: "action",
+            actionType: "generate_document",
+            label: "Generate Consolidated SOW",
+            docType: "consolidated_sow",
+            docCategory: "consulting",
+            clientId: "{{clientId}}",
+            signalsOverride: "{{signals}}",
+          },
+        },
+        {
+          id: "notify_ok",
+          type: "create_notification",
+          position: { x: 150, y: 480 },
+          data: {
+            nodeType: "create_notification",
+            label: "Document Generated",
+            title: "Engagement document generated",
+            body: "Consolidated SOW generated for client {{clientId}} using {{steps.get_signals.signalCount}} fired signal(s).",
+            type: "general",
+          },
+        },
+        {
+          id: "end_ok",
+          type: "end",
+          position: { x: 150, y: 620 },
+          data: { nodeType: "end", label: "Done" },
+        },
+        {
+          id: "notify_fail",
+          type: "create_notification",
+          position: { x: 450, y: 480 },
+          data: {
+            nodeType: "create_notification",
+            label: "Document Generation Failed",
+            title: "Engagement document generation failed",
+            body: "SOW generation failed for client {{clientId}}. Check run logs.",
+            type: "general",
+          },
+        },
+        {
+          id: "end_fail",
+          type: "end",
+          position: { x: 450, y: 620 },
+          data: { nodeType: "end", label: "Failed" },
+        },
+      ],
+      edges: [
+        { id: "e1", source: "start",       target: "get_signals" },
+        { id: "e2", source: "get_signals", target: "gen_sow"     },
+        { id: "e3", source: "gen_sow",     target: "notify_ok"   },
+        { id: "e4", source: "gen_sow",     target: "notify_fail", sourceHandle: "onError" },
+        { id: "e5", source: "notify_ok",   target: "end_ok"      },
+        { id: "e6", source: "notify_fail", target: "end_fail"    },
       ],
     },
   },
@@ -1827,6 +1933,21 @@ export async function seedSystemWorkflows(): Promise<void> {
           [defId, JSON.stringify(seed.graph)],
         );
         logger.info({ defId }, "seed-system-workflows: patched On Purchase — added monitor_get_package between find_object and monitor_execute_package");
+        // Patch v2: remove the purchase.completed trigger — document generation now lives in its
+        // own workflow ("On Purchase — Generate Engagement Documents"), gated on actual payment.
+        // This workflow should only run on consent.granted (telemetry, pre-payment).
+        // Guard: only deletes if a purchase.completed trigger still exists for this definition —
+        // safe to re-run, no-ops once already removed.
+        const purchaseTriggerDeleted = await pool.query(
+          `DELETE FROM wf_triggers
+            WHERE definition_id = $1
+              AND type = 'event'
+              AND config->>'eventName' = 'purchase.completed'`,
+          [defId],
+        );
+        if ((purchaseTriggerDeleted.rowCount ?? 0) > 0) {
+          logger.info({ defId }, "seed-system-workflows: removed purchase.completed trigger from On Purchase — Run Monitoring Package (now consent.granted-only)");
+        }
       } else if (seed.name === "__system__: Live Activity Monitor") {
         // Patch v2: fix the dead /delivery/engines/msp linkPath placeholder (Bug #1) and
         // add a real send_alert_email node so critical alerts are also emailed, not just

@@ -5197,6 +5197,50 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         }
       }
 
+      // ── Emit purchase.completed for the document-generation workflow ─────────
+      // Resolves packageKey/tenantId the same way consent.ts does (via checkout_sessions,
+      // matched by the Stripe-collected email — this table has no direct FK to the
+      // Stripe session or to userId). Non-fatal: never blocks provisioning, and if no
+      // packageKey is found this simply wasn't a monitoring-package purchase.
+      try {
+        const purchaseEmail = session.customer_details?.email ?? null;
+        const purchaseClientId = webhookUserIdOverride
+          ?? (session.metadata?.userId ? parseInt(session.metadata.userId, 10) : NaN);
+        if (purchaseEmail && !isNaN(purchaseClientId)) {
+          const [csRow] = await db
+            .select({ productSlug: checkoutSessionsTable.productSlug, tenantId: checkoutSessionsTable.tenantId })
+            .from(checkoutSessionsTable)
+            .where(eq(checkoutSessionsTable.email, purchaseEmail))
+            .orderBy(desc(checkoutSessionsTable.updatedAt))
+            .limit(1);
+          if (csRow?.productSlug) {
+            const [svcRow] = await db
+              .select({ pk: sql<string>`type_attributes->>'packageKey'` })
+              .from(servicesTable)
+              .where(eq(servicesTable.slug, csRow.productSlug))
+              .limit(1);
+            if (svcRow?.pk) {
+              void emitWorkflowEvent("purchase.completed", {
+                clientId: purchaseClientId,
+                packageKey: svcRow.pk,
+                tenantId: csRow.tenantId ?? undefined,
+              });
+              req.log.info(
+                { clientId: purchaseClientId, packageKey: svcRow.pk, tenantId: csRow.tenantId },
+                "onboarding_purchase: purchase.completed event emitted",
+              );
+            } else {
+              req.log.info(
+                { sessionId: session.id, productSlug: csRow.productSlug },
+                "onboarding_purchase: purchased product has no packageKey — not a monitoring package purchase, purchase.completed not emitted",
+              );
+            }
+          }
+        }
+      } catch (purchaseEventErr) {
+        req.log.warn({ err: purchaseEventErr, sessionId: session.id }, "onboarding_purchase: purchase.completed emission failed (non-fatal)");
+      }
+
       // Backfill any orphaned diagnostic runs (created at consent, before msp_customers row existed)
       // with the real customerId now that provisioning has created the customer record.
       if (purchaseTenantId) {
