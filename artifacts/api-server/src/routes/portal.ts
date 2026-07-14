@@ -5527,23 +5527,29 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
     }
   } else if (event.type === "customer.subscription.deleted") {
     const sub = event.data.object as import("stripe").Stripe.Subscription;
-    const [latestInvoice] = await db
+
+    const [cs] = await db
       .select()
-      .from(invoicesTable)
-      .where(eq(invoicesTable.stripeSubscriptionId, sub.id))
-      .orderBy(desc(invoicesTable.createdAt))
+      .from(clientServicesTable)
+      .where(eq(clientServicesTable.stripeSubscriptionId, sub.id))
       .limit(1);
 
-    if (!latestInvoice) {
-      req.log.warn({ subscriptionId: sub.id }, "processStripeEvent: customer.subscription.deleted — no invoice found for subscription, skipping");
-    } else {
-      // TODO before running: reuse whatever field/status the retainer_cancelled
-      // audit action (portal.ts ~line 3573) writes to on manual cancellation,
-      // instead of inventing a new one. Wire that same update here, scoped by
-      // latestInvoice.projectId / clientUserId.
+    if (!cs) {
+      req.log.warn({ subscriptionId: sub.id }, "processStripeEvent: customer.subscription.deleted — no client_services row found for subscription, skipping");
+    } else if (cs.status === "paused") {
       req.log.info(
-        { subscriptionId: sub.id, projectId: latestInvoice.projectId, clientUserId: latestInvoice.clientUserId },
-        "processStripeEvent: customer.subscription.deleted — TODO wire cancellation status update",
+        { subscriptionId: sub.id, clientServiceId: cs.id },
+        "processStripeEvent: customer.subscription.deleted — already paused, skipping (idempotency)",
+      );
+    } else {
+      await db
+        .update(clientServicesTable)
+        .set({ status: "paused" })
+        .where(eq(clientServicesTable.id, cs.id));
+
+      req.log.info(
+        { subscriptionId: sub.id, clientServiceId: cs.id, projectId: cs.projectId, clientUserId: cs.clientUserId },
+        "processStripeEvent: customer.subscription.deleted — client_services marked paused",
       );
     }
   } else if (event.type === "checkout.session.expired") {
