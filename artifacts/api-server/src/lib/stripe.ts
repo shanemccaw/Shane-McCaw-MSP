@@ -75,7 +75,7 @@ export async function checkWebhookHealthOnStartup(
   opts: { autoFix?: boolean } = {},
 ): Promise<void> {
   const WEBHOOK_PATH = "/api/portal/stripe/webhook";
-  const REQUIRED_EVENTS = ["checkout.session.completed", "invoice.paid", "customer.subscription.deleted"] as const;
+  const REQUIRED_EVENTS = ["checkout.session.completed", "invoice.paid", "customer.subscription.deleted", "invoice.payment_failed"] as const;
 
   let stripeKey: string;
   try {
