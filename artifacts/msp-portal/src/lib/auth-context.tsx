@@ -56,6 +56,8 @@ interface AuthState {
    * access token, which silently auto-renews without user intervention.
    */
   isExpiringSoon: boolean;
+  /** true when impersonating another user */
+  isImpersonating: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -65,6 +67,8 @@ interface AuthContextValue extends AuthState {
   logout: () => Promise<void>;
   extendSession: () => Promise<void>;
   fetchWithAuth: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  /** true while impersonating another user */
+  isImpersonating: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -111,12 +115,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isLoading: true,
     isRefreshing: false,
     isExpiringSoon: false,
+    isImpersonating: false,
   });
 
   /** Timer that fires 30 s before the refresh token expires */
   const warnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Periodic timer for silent access-token refresh */
   const silentRefreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Ref to track impersonation flag for timer decisions
+  const isImpersonatingRef = useRef(false);
   const refreshInFlightRef = useRef<Promise<string | null> | null>(null);
 
   // ── Timer management ─────────────────────────────────────────────────────
@@ -126,6 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (silentRefreshTimerRef.current) clearInterval(silentRefreshTimerRef.current);
     warnTimerRef.current = null;
     silentRefreshTimerRef.current = null;
+    isImpersonatingRef.current = false;
   }, []);
 
   // ── Apply tokens received from login/refresh response ────────────────────
@@ -149,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading: false,
         isRefreshing: false,
         isExpiringSoon: false,
+        isImpersonating: false,
       }));
 
       // Schedule the "are you still there?" warning 30 s before the REFRESH token expires
@@ -184,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (!res.ok) {
           // Refresh token has expired — truly log out
-          setState({ user: null, accessToken: null, isLoading: false, isRefreshing: false, isExpiringSoon: false });
+          setState({ user: null, accessToken: null, isLoading: false, isRefreshing: false, isExpiringSoon: false, isImpersonating: false });
           sessionStorage.removeItem(REFRESH_TOKEN_KEY);
           sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
           clearTimers();
@@ -245,6 +254,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Detect impersonation token in URL on mount and exchange it
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('impersonation_token');
+    if (!token) return;
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/impersonate', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        if (!res.ok) {
+          toast.error('Impersonation failed');
+          return;
+        }
+        const data = (await res.json()) as {
+          accessToken: string;
+          refreshToken?: string;
+          refreshExpiresAt?: string;
+        };
+        applyTokens(data.accessToken, data.refreshToken, data.refreshExpiresAt);
+        setState((s) => ({ ...s, isImpersonating: true }));
+        // Suspend background refresh timers while impersonating
+        clearTimers(); isImpersonatingRef.current = true;
+      } catch {
+        toast.error('Impersonation error');
+      }
+      // Clean the URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('impersonation_token');
+      window.history.replaceState({}, '', url.toString());
+    })();
   }, []);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
@@ -315,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearTimers();
     sessionStorage.removeItem(REFRESH_TOKEN_KEY);
     sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
-    setState({ user: null, accessToken: null, isLoading: false, isRefreshing: false, isExpiringSoon: false });
+    setState({ user: null, accessToken: null, isLoading: false, isRefreshing: false, isExpiringSoon: false, isImpersonating: false });
   }, [clearTimers]);
 
   const extendSession = useCallback(async () => {
@@ -382,6 +427,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     extendSession,
     fetchWithAuth,
+    isImpersonating: state.isImpersonating,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
