@@ -67,7 +67,7 @@ import { generateScriptFromService, generateScriptFromDocument } from "./ps-scri
 import { fetchNewsHeadlines, DEFAULT_NEWS_PROMPT, CAMPAIGN_BRIEF_PROMPT } from "./news-fetcher.js";
 import { sendWebPushToAdmins } from "./web-push";
 import { sendPushNotifications } from "./push";
-import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady } from "./sse-broadcast";
+import { broadcastAdminWorkflowEvent, broadcastPresentationPhaseGenProgress, broadcastPresentationPhaseGenComplete, broadcastPresentationPhaseGenError, broadcastPresentationDocsChange, broadcastPresentationProjectReady, broadcastPresentationEvent, broadcastProjectEvent } from "./sse-broadcast";
 import { generateConsolidatedSowDocument, broadcastSowChangeForProject, broadcastDocsChangeForProject } from "./consolidated-sow-generator";
 import { computeTenantSignals, resolveSignalsOverride, getDisabledSignalKeys } from "./tenant-signals";
 import { calculateCrmScore, type CrmScoreBreakdown } from "./crm-engine";
@@ -2168,6 +2168,33 @@ async function executeNode(
                 } else if (emitEventType === "presentation.phase_gen.error") {
                   broadcastPresentationPhaseGenError(presId, String(mergedPayload.message ?? "An error occurred"));
                 }
+              }
+            } else {
+              // ── Route other events to generic presentation/project SSE channels ──
+              const rawPresId = mergedPayload.presentationId;
+              const presId = typeof rawPresId === "number"
+                ? rawPresId
+                : typeof rawPresId === "string"
+                ? parseInt(rawPresId, 10)
+                : NaN;
+              if (!isNaN(presId)) {
+                broadcastPresentationEvent(presId, {
+                  type: emitEventType,
+                  ...mergedPayload,
+                });
+              }
+
+              const rawProjId = mergedPayload.projectId;
+              const projId = typeof rawProjId === "number"
+                ? rawProjId
+                : typeof rawProjId === "string"
+                ? parseInt(rawProjId, 10)
+                : NaN;
+              if (!isNaN(projId)) {
+                broadcastProjectEvent(projId, {
+                  type: emitEventType,
+                  ...mergedPayload,
+                });
               }
             }
           }
@@ -7177,6 +7204,39 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           message: progressMsg,
           ...(hasMeta ? { metadata: meta } : {}),
         }).catch(() => { /* non-fatal */ });
+
+        const rawPresId = payload.presentationId;
+        const presId = typeof rawPresId === "number"
+          ? rawPresId
+          : typeof rawPresId === "string"
+          ? parseInt(rawPresId, 10)
+          : NaN;
+        if (!isNaN(presId)) {
+          broadcastPresentationEvent(presId, {
+            type: "workflow_progress",
+            runId,
+            nodeId: node.id,
+            message: progressMsg,
+            ...meta,
+          });
+        }
+
+        const rawProjId = payload.projectId;
+        const projId = typeof rawProjId === "number"
+          ? rawProjId
+          : typeof rawProjId === "string"
+          ? parseInt(rawProjId, 10)
+          : NaN;
+        if (!isNaN(projId)) {
+          broadcastProjectEvent(projId, {
+            type: "workflow_progress",
+            runId,
+            nodeId: node.id,
+            message: progressMsg,
+            ...meta,
+          });
+        }
+
         output = {};
         break;
       }

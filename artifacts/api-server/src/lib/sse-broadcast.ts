@@ -386,3 +386,21 @@ export function broadcastCustomerOfferChange(customerId: number, event: Record<s
     try { res.write(line); } catch { }
   }
 }
+
+export function broadcastPresentationEvent(presentationId: number, event: Record<string, unknown>): void {
+  const clients = presentationSSEClients.get(presentationId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
+
+export function broadcastProjectEvent(projectId: number, event: Record<string, unknown>): void {
+  const clients = kanbanSSEClients.get(projectId);
+  if (!clients?.size) return;
+  const line = `data: ${JSON.stringify(event)}\n\n`;
+  for (const res of clients) {
+    try { res.write(line); } catch { }
+  }
+}
