@@ -61,6 +61,7 @@ import AccountSetupPage from "@/pages/account-setup";
 import ActivityFeedPage from "@/pages/activity-feed";
 import SupportChatPage from "@/pages/support-chat";
 import ProjectKanbanPage from "@/pages/project-kanban";
+import AssessmentDashboardPage from "@/pages/assessment-dashboard";
 import { Loader2, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -311,6 +312,13 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/project-kanban/:id">
         <ProtectedRoute component={ProjectKanbanPage} />
+      </Route>
+
+      {/* Assessment Results Dashboard — one page for all 13 assessment products.
+          Which modules render is driven by type_attributes.dashboardModules on the
+          services table row — no per-assessment page needed. */}
+      <Route path="/assessment-results/:serviceSlug">
+        <ProtectedRoute component={AssessmentDashboardPage} />
       </Route>
 
       {/* Reports */}
