@@ -657,7 +657,8 @@ export default function CustomerDetailPage() {
         method: "POST",
       });
       if (!res.ok) {
-        toast.error("Impersonation failed");
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        toast.error(`Impersonation failed: ${errData.error ?? "Unknown error"}`);
         return;
       }
       const data = (await res.json()) as { token?: string };
