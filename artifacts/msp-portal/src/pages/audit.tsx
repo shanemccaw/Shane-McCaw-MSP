@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ChevronLeft, ChevronRight, RefreshCw, Search, Shield } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Outcome = "success" | "failure" | "partial";
 
@@ -34,6 +35,7 @@ interface AuditEntry {
   action: string;
   resource: string;
   detail?: string;
+  metadata?: Record<string, unknown> | null;
   outcome: Outcome | null;
   createdAt: string;
 }
@@ -72,6 +74,7 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState<"all" | Outcome>("all");
+  const [detailEntry, setDetailEntry] = useState<AuditEntry | null>(null);
 
   const fetchEntries = useCallback(
     async (p = page, q = search, o = outcomeFilter) => {
@@ -193,7 +196,13 @@ export default function AuditPage() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{e.resource}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-48 truncate">
-                        {e.detail ?? "—"}
+                        {e.metadata ? (
+                          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setDetailEntry(e)}>
+                            View details
+                          </Button>
+                        ) : (
+                          e.detail ?? "—"
+                        )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(e.createdAt).toLocaleString()}
@@ -217,6 +226,18 @@ export default function AuditPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    {detailEntry && (
+  <Dialog open onOpenChange={(o) => !o && setDetailEntry(null)}>
+    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle className="text-base font-semibold">Audit Entry Detail</DialogTitle>
+      </DialogHeader>
+      <pre className="rounded bg-muted px-3 py-2 text-[11px] overflow-auto whitespace-pre-wrap max-h-96">
+        {JSON.stringify(detailEntry.metadata, null, 2)}
+      </pre>
+    </DialogContent>
+  </Dialog>
+)}
+</AppShell>
   );
 }

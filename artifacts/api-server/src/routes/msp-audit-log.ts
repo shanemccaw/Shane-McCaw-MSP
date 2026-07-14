@@ -131,8 +131,12 @@ router.get("/msp/audit", requireRole("MSPAdmin"), async (req: Request, res: Resp
       action: e.actionType,
       resource: e.entityLabel ?? e.entityType ?? null,
       detail,
+      metadata: e.metadata ?? null, // NEW: raw metadata for frontend dialog
       outcome: e.outcome,
-      createdAt: e.occurredAt instanceof Date ? e.occurredAt.toISOString() : String(e.occurredAt),
+      createdAt:
+        e.occurredAt instanceof Date
+          ? e.occurredAt.toISOString()
+          : String(e.occurredAt),
     };
   });
 
