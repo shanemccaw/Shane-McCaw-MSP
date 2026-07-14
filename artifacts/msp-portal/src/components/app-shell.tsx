@@ -427,8 +427,26 @@ function TenantSwitcher({
               key={`${t.type}-${t.id}`}
               className="text-sm gap-2"
               onSelect={() => {
-                if (t.type === "msp") navigate("/msps");
-                else navigate(`/customers/${t.id}`);
+                if (t.type === "msp") {
+                  navigate("/msps");
+                  return;
+                }
+                // Customer impersonation: issue a single-use token, then open
+                // the impersonated session in a NEW TAB so the current admin
+                // session in this tab is left completely untouched.
+                const mspId = profile?.id;
+                if (!mspId) return;
+                fetchWithAuth(`/api/msp/${mspId}/customers/${t.id}/impersonate`, {
+                  method: "POST",
+                })
+                  .then(async (res) => {
+                    if (!res.ok) return;
+                    const data = (await res.json()) as { token?: string };
+                    if (data.token) {
+                      window.open(`/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                    }
+                  })
+                  .catch(() => {});
               }}
             >
               {t.type === "msp" ? (
@@ -471,6 +489,38 @@ function TenantSwitcher({
     </DropdownMenu>
   );
 }
+function ImpersonationBanner({ email }: { email: string }) {
+  const handleExit = () => {
+    if (window.opener) {
+      window.close();
+    } else {
+      window.location.href = "/dashboard";
+    }
+  };
+
+  return (
+    <div className="fixed top-0 inset-x-0 z-[9999] bg-amber-500 text-white flex items-center justify-between px-4 py-2 shadow-lg">
+      <div className="flex items-center gap-2 text-sm font-semibold">
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+        </svg>
+        Admin Preview Mode — Viewing as <span className="underline underline-offset-2">{email}</span>
+        <span className="text-amber-200 font-normal">(session expires in 30 min)</span>
+      </div>
+      <button
+        onClick={handleExit}
+        className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition-colors flex-shrink-0"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        Exit Preview
+      </button>
+    </div>
+  );
+}
+
 
 // ── Main AppShell ─────────────────────────────────────────────────────────────
 
@@ -697,9 +747,11 @@ export function AppShell({ children, title, actions }: AppShellProps) {
   );
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Desktop sidebar */}
-      <div className="hidden md:flex flex-col">{sidebarContent}</div>
+    <>
+      {user?.impersonatedBy && <ImpersonationBanner email={user.email} />}
+      <div className={`flex min-h-screen bg-background ${user?.impersonatedBy ? "pt-[42px]" : ""}`}>
+        {/* Desktop sidebar */}
+        <div className="hidden md:flex flex-col">{sidebarContent}</div>
 
       {/* Mobile sidebar overlay */}
       {mobileOpen && (
@@ -795,5 +847,6 @@ export function AppShell({ children, title, actions }: AppShellProps) {
 
       <CommandPalette open={cmdOpen} onOpenChange={setCmdOpen} />
     </div>
+    </>
   );
 }

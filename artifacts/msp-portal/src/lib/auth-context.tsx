@@ -221,6 +221,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // ── Boot: attempt silent refresh ─────────────────────────────────────────
 
   useEffect(() => {
+    // Impersonation entry point: a tab opened via window.open() from the
+    // tenant switcher carries ?impersonation_token=... in the URL. Detect
+    // and consume it BEFORE any normal silent-refresh boot flow runs.
+    const params = new URLSearchParams(window.location.search);
+    const impersonationToken = params.get("impersonation_token");
+
+    if (impersonationToken) {
+      // This tab may have inherited the opener's sessionStorage (same-origin
+      // window.open copies it). Clear any stale refresh-token keys so this
+      // tab can never fall back to them.
+      sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+      sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
+
+      fetch("/api/auth/impersonate-exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: impersonationToken }),
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const data = (await res.json()) as { accessToken: string; user: AuthUser };
+            // Set state directly — do NOT call applyTokens(), which schedules
+            // a refresh-expiry warning and would start the periodic silent-
+            // refresh interval. An impersonation session has no refresh
+            // token and must expire naturally when its 30-min JWT expires.
+            setState({
+              user: data.user,
+              accessToken: data.accessToken,
+              isLoading: false,
+              isRefreshing: false,
+              isExpiringSoon: false,
+              isImpersonating: true,
+            });
+            const url = new URL(window.location.href);
+            url.searchParams.delete("impersonation_token");
+            window.history.replaceState({}, "", url.toString());
+          } else {
+            setState((s) => ({ ...s, isLoading: false }));
+          }
+        })
+        .catch(() => {
+          setState((s) => ({ ...s, isLoading: false }));
+        });
+      return;
+    }
+
     const BOOT_TIMEOUT_MS = 5_000;
     const timeout = new Promise<null>((resolve) =>
       setTimeout(() => resolve(null), BOOT_TIMEOUT_MS),
@@ -254,42 +300,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Detect impersonation token in URL on mount and exchange it
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('impersonation_token');
-    if (!token) return;
-    (async () => {
-      try {
-        const res = await fetch('/api/auth/impersonate', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token }),
-        });
-        if (!res.ok) {
-          toast.error('Impersonation failed');
-          return;
-        }
-        const data = (await res.json()) as {
-          accessToken: string;
-          refreshToken?: string;
-          refreshExpiresAt?: string;
-        };
-        applyTokens(data.accessToken, data.refreshToken, data.refreshExpiresAt);
-        setState((s) => ({ ...s, isImpersonating: true }));
-        // Suspend background refresh timers while impersonating
-        clearTimers(); isImpersonatingRef.current = true;
-      } catch {
-        toast.error('Impersonation error');
-      }
-      // Clean the URL
-      const url = new URL(window.location.href);
-      url.searchParams.delete('impersonation_token');
-      window.history.replaceState({}, '', url.toString());
-    })();
   }, []);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
@@ -377,8 +387,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       let res = await fetch(input, { ...init, headers });
 
-      if (res.status === 401) {
-        // Access token may have expired mid-request — try one silent refresh
+      if (res.status === 401 && !state.user?.impersonatedBy) {
+        // Access token may have expired mid-request — try one silent refresh.
+        // Skipped entirely during impersonation: doRefresh() would send the
+        // browser's shared refreshToken cookie, which belongs to the admin
+        // who opened this tab, not the impersonated session — that would
+        // silently swap identity back to the admin. An impersonation
+        // session on a 401 should just end; the caller sees the failed
+        // response and the banner's "Exit Preview" button is always there.
         const refreshed = await doRefresh();
         if (refreshed) {
           token = refreshed;
