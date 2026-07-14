@@ -232,6 +232,12 @@ const NAV_SECTIONS: NavSection[] = [
         roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
       },
       {
+        icon: Check,
+        label: "Approvals",
+        href: "/pending-approvals",
+        roles: ["PlatformAdmin", "MSPAdmin", "MSPOperator"],
+      },
+      {
         icon: Play,
         label: "Workflow Runs",
         href: "/runs",

@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -35,6 +36,7 @@ interface TeamMember {
   id: number;
   userId: number;
   mspRole: string;
+  canApprovePurchases: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
   createdAt: string;
@@ -57,6 +59,7 @@ export default function SettingsTeamPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [togglingApproveId, setTogglingApproveId] = useState<number | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
 
   const [invites, setInvites] = useState<PendingInvite[]>([]);
@@ -116,6 +119,26 @@ export default function SettingsTeamPage() {
       }
     } finally {
       setUpdatingId(null);
+    }
+  }
+
+  async function handleToggleApprove(userId: number, currentVal: boolean) {
+    setTogglingApproveId(userId);
+    try {
+      const res = await fetchWithAuth(`/api/msp/settings/users/${userId}/approve-purchases`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canApprovePurchases: !currentVal }),
+      });
+      if (res.ok) {
+        toast.success("Permissions updated");
+        setMembers((m) => m.map((mm) => mm.userId === userId ? { ...mm, canApprovePurchases: !currentVal } : mm));
+      } else {
+        const err = (await res.json()) as { error?: string };
+        toast.error(err.error ?? "Update failed");
+      }
+    } finally {
+      setTogglingApproveId(null);
     }
   }
 
@@ -261,7 +284,25 @@ export default function SettingsTeamPage() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-4 shrink-0">
+                        <div className="flex items-center gap-2 mr-2">
+                          <Label htmlFor={`approve-toggle-${m.id}`} className="text-xs text-muted-foreground font-normal whitespace-nowrap cursor-pointer">
+                            Approve Purchases
+                          </Label>
+                          <Switch
+                            id={`approve-toggle-${m.id}`}
+                            checked={m.mspRole === "MSPAdmin" || m.canApprovePurchases}
+                            disabled={
+                              m.mspRole === "MSPAdmin" || 
+                              updatingId === m.userId || 
+                              togglingApproveId === m.userId || 
+                              !isMspAdmin || 
+                              isSelf
+                            }
+                            onCheckedChange={() => void handleToggleApprove(m.userId, m.canApprovePurchases)}
+                          />
+                        </div>
+
                         {isSelf ? (
                           <Badge variant="outline" className={`text-[11px] ${roleColor(m.mspRole)}`}>
                             <Shield className="size-3 mr-1" />

@@ -527,6 +527,7 @@ router.get("/msp/settings/users", requireRole("MSPAdmin"), async (req: Request, 
       id: mspUsersTable.id,
       userId: mspUsersTable.userId,
       mspRole: mspUsersTable.mspRole,
+      canApprovePurchases: mspUsersTable.canApprovePurchases,
       isActive: mspUsersTable.isActive,
       lastLoginAt: mspUsersTable.lastLoginAt,
       createdAt: mspUsersTable.createdAt,
@@ -571,6 +572,41 @@ router.patch("/msp/settings/users/:userId/role", requireRole("MSPAdmin"), async 
     entityId: String(userId),
     mspId,
     metadata: { mspRole: parsed.data.mspRole },
+  });
+
+  res.json({ ok: true });
+});
+
+const updateApprovePurchasesSchema = z.object({
+  canApprovePurchases: z.boolean(),
+});
+
+router.patch("/msp/settings/users/:userId/approve-purchases", requireRole("MSPAdmin"), async (req: Request, res: Response) => {
+  const mspId = await resolveMspId(req);
+  const userId = parseInt(p(req.params["userId"]), 10);
+  if (!mspId || isNaN(userId)) { apiError(res, 400, "Invalid params"); return; }
+
+  const parsed = updateApprovePurchasesSchema.safeParse(req.body);
+  if (!parsed.success) {
+    apiError(res, 400, parsed.error.issues.map((i) => i.message).join("; "));
+    return;
+  }
+
+  const [updated] = await db
+    .update(mspUsersTable)
+    .set({ canApprovePurchases: parsed.data.canApprovePurchases, updatedAt: new Date() })
+    .where(and(eq(mspUsersTable.userId, userId), eq(mspUsersTable.mspId, mspId)))
+    .returning({ id: mspUsersTable.id });
+
+  if (!updated) { apiError(res, 404, "User not found in this MSP"); return; }
+
+  await writeAuditLog({
+    req,
+    actionType: "user.approve_purchases.update",
+    entityType: "msp_user",
+    entityId: String(userId),
+    mspId,
+    metadata: { canApprovePurchases: parsed.data.canApprovePurchases },
   });
 
   res.json({ ok: true });

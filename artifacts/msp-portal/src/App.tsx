@@ -38,6 +38,7 @@ import SignupPage from "@/pages/signup";
 import SignupSuccessPage from "@/pages/signup-success";
 import AcceptInvitePage from "@/pages/accept-invite";
 import OperatorTasksPage from "@/pages/operator-tasks";
+import PendingApprovalsPage from "@/pages/pending-approvals";
 import DlqPage from "@/pages/dlq";
 import RunsPage from "@/pages/runs";
 import RunDetailPage from "@/pages/run-detail";
@@ -269,6 +270,9 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/operator-tasks">
         <ProtectedRoute component={OperatorTasksPage} />
+      </Route>
+      <Route path="/pending-approvals">
+        <ProtectedRoute component={PendingApprovalsPage} />
       </Route>
       <Route path="/dlq">
         <ProtectedRoute component={DlqPage} />

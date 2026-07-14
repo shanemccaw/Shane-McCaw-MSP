@@ -22,12 +22,13 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspsTable, mspCustomersTable, mspJobQueueTable } from "@workspace/db";
+import { db, mspsTable, mspCustomersTable, mspJobQueueTable, pendingApprovalsTable, wfRunsTable, wfDefinitionsTable, mspUsersTable } from "@workspace/db";
 import { eq, and, desc, asc, count, sql } from "drizzle-orm";
 import { requireRole, requireMspScope } from "../middlewares/requireAuth.ts";
 import { mspRateLimit, mspMutatingRateLimit } from "../middlewares/mspRateLimit.ts";
 import { mspRequestLog } from "../middlewares/mspRequestLog.ts";
 import { withIdempotency } from "../lib/idempotency.ts";
+import { z } from "zod";
 import {
   apiError,
   ApiErrorCode,
@@ -40,6 +41,7 @@ import { cancelJob, requeueJob } from "../lib/msp-jobs.ts";
 import webhooksRouter from "./msp-webhooks.ts";
 import portalWfRouter from "./portal-wf-api.ts";
 import aiBillingRouter from "./ai-billing.ts";
+import { logger } from "../lib/logger.ts";
 
 /** Coerce Express 5 params (typed as string | string[]) to a plain string */
 function p(val: string | string[] | undefined): string {
@@ -208,7 +210,133 @@ router.post(
 
     const requeued = await requeueJob(jobId);
     if (!requeued) { apiError(res, 409, ApiErrorCode.CONFLICT, "Job is not in a requeueable state (must be failed)"); return; }
-    res.json({ ok: true, jobId, status: "pending" });
+// ── Pending Approvals: list ───────────────────────────────────────────────────
+router.get(
+  "/msps/:mspId/pending-approvals",
+  requireRole("MSPOperator"),
+  requireMspScope("params"),
+  async (req: Request, res: Response) => {
+    const mspId = parseInt(p(req.params["mspId"]), 10);
+    if (isNaN(mspId)) { apiError(res, 400, ApiErrorCode.VALIDATION, "mspId must be a number"); return; }
+
+    const statusFilter = parseStringFilter(req.query, "status") ?? "pending";
+
+    try {
+      const rows = await db
+        .select({
+          approval: pendingApprovalsTable,
+          defName: wfDefinitionsTable.name,
+        })
+        .from(pendingApprovalsTable)
+        .leftJoin(wfRunsTable, eq(pendingApprovalsTable.runId, wfRunsTable.id))
+        .leftJoin(wfDefinitionsTable, eq(wfRunsTable.definitionId, wfDefinitionsTable.id))
+        .where(
+          and(
+            eq(pendingApprovalsTable.mspId, mspId),
+            eq(pendingApprovalsTable.status, statusFilter)
+          )
+        )
+        .orderBy(desc(pendingApprovalsTable.createdAt));
+
+      res.json(rows.map(r => ({ ...r.approval, definitionName: r.defName })));
+    } catch (err) {
+      req.log.error({ err }, "pending-approvals (msp): list failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL_ERROR, "Failed to list pending approvals");
+    }
+  },
+);
+
+// ── Pending Approvals: decide ──────────────────────────────────────────────────
+router.post(
+  "/msps/:mspId/pending-approvals/:id/decide",
+  requireRole("MSPOperator"),
+  requireMspScope("params"),
+  mspMutatingRateLimit,
+  withIdempotency(),
+  async (req: Request, res: Response) => {
+    const mspId = parseInt(p(req.params["mspId"]), 10);
+    const id = parseInt(p(req.params["id"]), 10);
+    if (isNaN(mspId) || isNaN(id)) { apiError(res, 400, ApiErrorCode.VALIDATION, "mspId and id must be numbers"); return; }
+
+    const user = req.user!;
+
+    // Verify decision authorization:
+    // MSPAdmin and PlatformAdmin (legacy role: admin) can always decide.
+    // MSPOperator needs canApprovePurchases = true.
+    let isAuthorized = false;
+    if (user.role === "admin" || user.mspRole === "PlatformAdmin" || user.mspRole === "MSPAdmin") {
+      isAuthorized = true;
+    } else if (user.mspRole === "MSPOperator") {
+      const [dbUser] = await db
+        .select({ canApprovePurchases: mspUsersTable.canApprovePurchases })
+        .from(mspUsersTable)
+        .where(and(eq(mspUsersTable.userId, user.id), eq(mspUsersTable.mspId, mspId)))
+        .limit(1);
+      if (dbUser?.canApprovePurchases) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "You do not have permission to decide on approvals for this MSP");
+      return;
+    }
+
+    const body = z.object({
+      decision: z.enum(["approved", "rejected"]),
+      note: z.string().optional(),
+    }).safeParse(req.body);
+
+    if (!body.success) { apiError(res, 400, ApiErrorCode.VALIDATION, body.error.message); return; }
+
+    try {
+      const [approval] = await db
+        .select()
+        .from(pendingApprovalsTable)
+        .where(and(
+          eq(pendingApprovalsTable.id, id),
+          eq(pendingApprovalsTable.mspId, mspId),
+          eq(pendingApprovalsTable.status, "pending")
+        ))
+        .limit(1);
+
+      if (!approval) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Pending approval not found or already decided");
+        return;
+      }
+
+      await db.update(pendingApprovalsTable).set({
+        status: body.data.decision,
+        decidedAt: new Date(),
+        decisionNote: body.data.note ?? null,
+        decidedBy: user.email,
+      }).where(eq(pendingApprovalsTable.id, id));
+
+      if (body.data.decision === "approved") {
+        const resumePayload = (approval.context as Record<string, unknown>) ?? {};
+        const decisionNote = body.data.note;
+        const { resumeWorkflowRun } = await import("../lib/workflow-executor.ts");
+
+        setImmediate(() => {
+          resumeWorkflowRun(approval.runId, approval.nodeId, resumePayload, decisionNote).catch(err => {
+            logger.warn({ err, runId: approval.runId }, "pending-approvals (msp): resume failed (non-fatal)");
+          });
+        });
+        req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals (msp): approved, resuming run");
+      } else {
+        await db.update(wfRunsTable).set({
+          status: "failed",
+          finishedAt: new Date(),
+          errorMessage: `Rejected by MSP at approval gate: ${body.data.note ?? "(no reason given)"}`,
+        }).where(eq(wfRunsTable.id, approval.runId));
+        req.log.info({ approvalId: id, runId: approval.runId }, "pending-approvals (msp): rejected, run marked failed");
+      }
+
+      res.json({ ok: true, id, status: body.data.decision });
+    } catch (err) {
+      req.log.error({ err }, "pending-approvals (msp): decide failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL_ERROR, "Failed to register approval decision");
+    }
   },
 );
 
