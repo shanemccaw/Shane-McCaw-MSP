@@ -1,0 +1,18 @@
+{
+  "id": "evt_test_renewal_1",
+  "object": "event",
+  "api_version": "2024-06-20",
+  "created": 1752500000,
+  "type": "invoice.paid",
+  "data": {
+    "object": {
+      "id": "in_test_renewal_1",
+      "object": "invoice",
+      "subscription": "sub_1Tt7oHRQlCXtbN2mLkNKax2C",
+      "amount_paid": 600000,
+      "period_start": 1752500000,
+      "period_end": 1755092000,
+      "status": "paid"
+    }
+  }
+}

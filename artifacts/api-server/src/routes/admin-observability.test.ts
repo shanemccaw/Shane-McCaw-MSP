@@ -20,7 +20,7 @@ vi.mock("../middlewares/requireAuth", () => ({
 // ── alert-engine mock ────────────────────────────────────────────────────────
 vi.mock("../lib/alert-engine", () => ({
   evaluateAllRules: vi.fn().mockResolvedValue(undefined),
-  initAlertEngine: vi.fn(),
+  ensureAlertEngineReady: vi.fn(),
 }));
 
 import adminObservabilityRouter from "./admin-observability";

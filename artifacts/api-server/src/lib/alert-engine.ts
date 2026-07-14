@@ -368,7 +368,7 @@ async function deliverAlert(opts: {
 
 // ── Main evaluation loop ──────────────────────────────────────────────────────
 
-async function evaluateRules(): Promise<void> {
+export async function evaluateRules(): Promise<void> {
   const rulesRes = await pool.query<{
     id: number;
     rule_key: string;
@@ -452,43 +452,19 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-let alertInterval: ReturnType<typeof setInterval> | null = null;
-
 /**
- * Initialize the alert engine: ensure tables, seed default rules, start polling.
- * Safe to call multiple times — only one interval is started.
+ * Ensure alert tables exist and default rules are seeded. Called once at server
+ * startup. Does NOT start any polling loop — evaluation is triggered by the
+ * "__system__: Alert Rule Evaluation" seeded Workflow (see seed-system-workflows.ts),
+ * which fires evaluateRules() via the alert_evaluate_rules workflow node every 5
+ * minutes on its own schedule trigger.
  */
-export async function initAlertEngine(pollIntervalMs = 5 * 60 * 1000): Promise<void> {
+export async function ensureAlertEngineReady(): Promise<void> {
   try {
     await ensureAlertTables();
     await seedDefaultRules();
-    logger.info({ pollIntervalMs }, "alert-engine: initialized");
+    logger.info("alert-engine: tables ensured, default rules seeded");
   } catch (err) {
-    logger.warn({ err }, "alert-engine: init failed (non-fatal)");
-    return;
-  }
-
-  if (alertInterval !== null) return;
-
-  alertInterval = setInterval(() => {
-    evaluateRules().catch((err: unknown) => {
-      logger.warn({ err }, "alert-engine: evaluation cycle failed (non-fatal)");
-    });
-  }, pollIntervalMs);
-
-  if (alertInterval.unref) alertInterval.unref();
-
-  // Run once immediately after a short delay to let DB pool warm up
-  setTimeout(() => {
-    evaluateRules().catch((err: unknown) => {
-      logger.warn({ err }, "alert-engine: initial evaluation failed (non-fatal)");
-    });
-  }, 15_000);
-}
-
-export function stopAlertEngine(): void {
-  if (alertInterval !== null) {
-    clearInterval(alertInterval);
-    alertInterval = null;
+    logger.warn({ err }, "alert-engine: startup init failed (non-fatal)");
   }
 }

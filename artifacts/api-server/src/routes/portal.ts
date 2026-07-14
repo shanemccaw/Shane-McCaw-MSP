@@ -4435,6 +4435,10 @@ async function provisionOnboardingProject(
       stripeSessionId: i === 0 ? session.id : null,
       couponCode: onbCouponCode,
       discountAmount: onbInvoiceDiscount,
+      invoiceType: svc.billingType === "recurring_monthly" ? "retainer" : "instant",
+      stripeSubscriptionId: svc.billingType === "recurring_monthly" && typeof session.subscription === "string"
+        ? session.subscription
+        : null,
     }).returning({ id: invoicesTable.id });
     void uploadInvoiceToSharePoint(onbInvoice.id);
   }
@@ -5193,6 +5197,50 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
         }
       }
 
+      // ── Emit purchase.completed for the document-generation workflow ─────────
+      // Resolves packageKey/tenantId the same way consent.ts does (via checkout_sessions,
+      // matched by the Stripe-collected email — this table has no direct FK to the
+      // Stripe session or to userId). Non-fatal: never blocks provisioning, and if no
+      // packageKey is found this simply wasn't a monitoring-package purchase.
+      try {
+        const purchaseEmail = session.customer_details?.email ?? null;
+        const purchaseClientId = webhookUserIdOverride
+          ?? (session.metadata?.userId ? parseInt(session.metadata.userId, 10) : NaN);
+        if (purchaseEmail && !isNaN(purchaseClientId)) {
+          const [csRow] = await db
+            .select({ productSlug: checkoutSessionsTable.productSlug, tenantId: checkoutSessionsTable.tenantId })
+            .from(checkoutSessionsTable)
+            .where(eq(checkoutSessionsTable.email, purchaseEmail))
+            .orderBy(desc(checkoutSessionsTable.updatedAt))
+            .limit(1);
+          if (csRow?.productSlug) {
+            const [svcRow] = await db
+              .select({ pk: sql<string>`type_attributes->>'packageKey'` })
+              .from(servicesTable)
+              .where(eq(servicesTable.slug, csRow.productSlug))
+              .limit(1);
+            if (svcRow?.pk) {
+              void emitWorkflowEvent("purchase.completed", {
+                clientId: purchaseClientId,
+                packageKey: svcRow.pk,
+                tenantId: csRow.tenantId ?? undefined,
+              });
+              req.log.info(
+                { clientId: purchaseClientId, packageKey: svcRow.pk, tenantId: csRow.tenantId },
+                "onboarding_purchase: purchase.completed event emitted",
+              );
+            } else {
+              req.log.info(
+                { sessionId: session.id, productSlug: csRow.productSlug },
+                "onboarding_purchase: purchased product has no packageKey — not a monitoring package purchase, purchase.completed not emitted",
+              );
+            }
+          }
+        }
+      } catch (purchaseEventErr) {
+        req.log.warn({ err: purchaseEventErr, sessionId: session.id }, "onboarding_purchase: purchase.completed emission failed (non-fatal)");
+      }
+
       // Backfill any orphaned diagnostic runs (created at consent, before msp_customers row existed)
       // with the real customerId now that provisioning has created the customer record.
       if (purchaseTenantId) {
@@ -5403,38 +5451,150 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
   } else if (event.type === "invoice.paid") {
     const stripeInvoice = event.data.object as import("stripe").Stripe.Invoice;
     const stripeInvoiceId = stripeInvoice.id;
+    const stripeSubId = typeof stripeInvoice.subscription === "string"
+      ? stripeInvoice.subscription
+      : stripeInvoice.subscription?.id ?? null;
 
     if (!stripeInvoiceId) {
       req.log.warn({ eventId: event.id }, "processStripeEvent: invoice.paid event missing invoice id, skipping");
     } else {
-      // Idempotency: read current status before writing to prevent duplicate
-      // paid marks when Stripe retries an invoice.paid event (subscription renewals).
+      // 1. Exact match by stripeInvoiceId — existing idempotency path.
       const [existingInvoice] = await db
         .select({ id: invoicesTable.id, status: invoicesTable.status })
         .from(invoicesTable)
         .where(eq(invoicesTable.stripeInvoiceId, stripeInvoiceId))
         .limit(1);
 
-      if (!existingInvoice) {
+      if (existingInvoice) {
+        if (existingInvoice.status === "paid") {
+          req.log.info(
+            { stripeInvoiceId, invoiceId: existingInvoice.id },
+            "processStripeEvent: invoice.paid — already marked paid, skipping (idempotency)",
+          );
+        } else {
+          await db
+            .update(invoicesTable)
+            .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
+            .where(eq(invoicesTable.id, existingInvoice.id));
+          req.log.info(
+            { stripeInvoiceId, invoiceId: existingInvoice.id },
+            "processStripeEvent: invoice.paid — marked invoice as paid",
+          );
+        }
+      } else if (stripeSubId) {
+        // 2. No exact match — this is likely a renewal invoice (new Stripe
+        // invoice ID every cycle). Find the most recent invoice tied to the
+        // same subscription and clone it forward as a new row.
+        const [priorInvoice] = await db
+          .select()
+          .from(invoicesTable)
+          .where(eq(invoicesTable.stripeSubscriptionId, stripeSubId))
+          .orderBy(desc(invoicesTable.createdAt))
+          .limit(1);
+
+        if (!priorInvoice) {
+          req.log.warn(
+            { stripeInvoiceId, stripeSubId },
+            "processStripeEvent: invoice.paid — no invoice row found for this subscription (orphan renewal), needs manual review",
+          );
+        } else {
+          const periodStart = stripeInvoice.period_start ? new Date(stripeInvoice.period_start * 1000) : null;
+          const periodEnd = stripeInvoice.period_end ? new Date(stripeInvoice.period_end * 1000) : null;
+          const renewalAmount = ((stripeInvoice.amount_paid ?? 0) / 100).toFixed(2);
+
+          const [renewalInvoice] = await db.insert(invoicesTable).values({
+            clientUserId: priorInvoice.clientUserId,
+            projectId: priorInvoice.projectId,
+            invoiceNumber: `REN-${Date.now()}`,
+            description: `${priorInvoice.description?.replace(/\s*\(month \d+\)|\s*—.*renewal/i, "") ?? "Subscription"} — recurring renewal`,
+            amount: renewalAmount,
+            currency: "usd",
+            status: "paid",
+            paidAt: new Date(),
+            stripeInvoiceId,
+            stripeSubscriptionId: stripeSubId,
+            invoiceType: priorInvoice.invoiceType,
+            billingCycleStart: periodStart,
+            billingCycleEnd: periodEnd,
+          }).returning();
+
+          req.log.info(
+            { stripeInvoiceId, stripeSubId, newInvoiceId: renewalInvoice.id, clientUserId: priorInvoice.clientUserId },
+            "processStripeEvent: invoice.paid — created renewal invoice row",
+          );
+        }
+      } else {
         req.log.info(
           { stripeInvoiceId },
-          "processStripeEvent: invoice.paid — no matching invoice in DB, skipping",
+          "processStripeEvent: invoice.paid — no matching invoice and no subscription id, skipping",
         );
-      } else if (existingInvoice.status === "paid") {
+      }
+    }
+  } else if (event.type === "invoice.payment_failed") {
+    const failedInvoice = event.data.object as import("stripe").Stripe.Invoice;
+    const failedSubId = typeof failedInvoice.subscription === "string"
+      ? failedInvoice.subscription
+      : failedInvoice.subscription?.id ?? null;
+
+    if (!failedSubId) {
+      req.log.warn({ eventId: event.id }, "processStripeEvent: invoice.payment_failed — no subscription id on invoice, skipping");
+    } else {
+      const [priorInvoice] = await db
+        .select()
+        .from(invoicesTable)
+        .where(eq(invoicesTable.stripeSubscriptionId, failedSubId))
+        .orderBy(desc(invoicesTable.createdAt))
+        .limit(1);
+
+      if (!priorInvoice) {
+        req.log.warn({ failedSubId }, "processStripeEvent: invoice.payment_failed — no invoice row found for subscription, skipping");
+      } else if (priorInvoice.status === "overdue") {
         req.log.info(
-          { stripeInvoiceId, invoiceId: existingInvoice.id },
-          "processStripeEvent: invoice.paid — already marked paid, skipping (idempotency)",
+          { failedSubId, invoiceId: priorInvoice.id },
+          "processStripeEvent: invoice.payment_failed — already marked overdue, skipping (idempotency, Stripe retry)",
         );
       } else {
         await db
           .update(invoicesTable)
-          .set({ status: "paid", paidAt: new Date(), updatedAt: new Date() })
-          .where(eq(invoicesTable.id, existingInvoice.id));
-        req.log.info(
-          { stripeInvoiceId, invoiceId: existingInvoice.id },
-          "processStripeEvent: invoice.paid — marked invoice as paid",
+          .set({ status: "overdue", updatedAt: new Date() })
+          .where(eq(invoicesTable.id, priorInvoice.id));
+
+        req.log.warn(
+          { failedSubId, invoiceId: priorInvoice.id, clientUserId: priorInvoice.clientUserId, projectId: priorInvoice.projectId },
+          "processStripeEvent: invoice.payment_failed — marked invoice overdue",
+        );
+
+        void sendAdminSms(
+          `Payment failed: subscription renewal for client #${priorInvoice.clientUserId} failed. Stripe will retry per its own schedule — invoice marked overdue.`
         );
       }
+    }
+  } else if (event.type === "customer.subscription.deleted") {
+    const sub = event.data.object as import("stripe").Stripe.Subscription;
+
+    const [cs] = await db
+      .select()
+      .from(clientServicesTable)
+      .where(eq(clientServicesTable.stripeSubscriptionId, sub.id))
+      .limit(1);
+
+    if (!cs) {
+      req.log.warn({ subscriptionId: sub.id }, "processStripeEvent: customer.subscription.deleted — no client_services row found for subscription, skipping");
+    } else if (cs.status === "paused") {
+      req.log.info(
+        { subscriptionId: sub.id, clientServiceId: cs.id },
+        "processStripeEvent: customer.subscription.deleted — already paused, skipping (idempotency)",
+      );
+    } else {
+      await db
+        .update(clientServicesTable)
+        .set({ status: "paused" })
+        .where(eq(clientServicesTable.id, cs.id));
+
+      req.log.info(
+        { subscriptionId: sub.id, clientServiceId: cs.id, projectId: cs.projectId, clientUserId: cs.clientUserId },
+        "processStripeEvent: customer.subscription.deleted — client_services marked paused",
+      );
     }
   } else if (event.type === "checkout.session.expired") {
     const session = event.data.object as import("stripe").Stripe.Checkout.Session;

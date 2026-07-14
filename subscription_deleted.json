@@ -1,0 +1,14 @@
+{
+  "id": "evt_test_cancel_1",
+  "object": "event",
+  "api_version": "2024-06-20",
+  "created": 1752700000,
+  "type": "customer.subscription.deleted",
+  "data": {
+    "object": {
+      "id": "sub_1Tt7oHRQlCXtbN2mLkNKax2C",
+      "object": "subscription",
+      "status": "canceled"
+    }
+  }
+}
