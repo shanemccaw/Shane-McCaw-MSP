@@ -75,7 +75,7 @@ import { getEngineDef } from "./engine-registry.ts";
 import { scoreHealthFromScriptRun } from "./m365-health-ai-scorer";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { openai } from "@workspace/integrations-openai-ai-server/image";
-import { eq, and, count, desc, inArray, sql } from "drizzle-orm";
+import { eq, and, count, desc, inArray, or, sql } from "drizzle-orm";
 import path from "path";
 import fs from "fs/promises";
 import { randomUUID } from "crypto";

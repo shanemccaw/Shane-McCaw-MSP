@@ -210,6 +210,10 @@ router.post(
 
     const requeued = await requeueJob(jobId);
     if (!requeued) { apiError(res, 409, ApiErrorCode.CONFLICT, "Job is not in a requeueable state (must be failed)"); return; }
+    res.json({ ok: true, jobId, status: "queued" });
+  },
+);
+
 // ── Pending Approvals: list ───────────────────────────────────────────────────
 router.get(
   "/msps/:mspId/pending-approvals",
@@ -219,7 +223,7 @@ router.get(
     const mspId = parseInt(p(req.params["mspId"]), 10);
     if (isNaN(mspId)) { apiError(res, 400, ApiErrorCode.VALIDATION, "mspId must be a number"); return; }
 
-    const statusFilter = parseStringFilter(req.query, "status") ?? "pending";
+    const statusFilter = (parseStringFilter(req.query, "status") ?? "pending") as "pending" | "approved" | "rejected" | "timed_out";
 
     try {
       const rows = await db
@@ -241,7 +245,7 @@ router.get(
       res.json(rows.map(r => ({ ...r.approval, definitionName: r.defName })));
     } catch (err) {
       req.log.error({ err }, "pending-approvals (msp): list failed");
-      apiError(res, 500, ApiErrorCode.INTERNAL_ERROR, "Failed to list pending approvals");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to list pending approvals");
     }
   },
 );
@@ -335,7 +339,7 @@ router.post(
       res.json({ ok: true, id, status: body.data.decision });
     } catch (err) {
       req.log.error({ err }, "pending-approvals (msp): decide failed");
-      apiError(res, 500, ApiErrorCode.INTERNAL_ERROR, "Failed to register approval decision");
+      apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to register approval decision");
     }
   },
 );
