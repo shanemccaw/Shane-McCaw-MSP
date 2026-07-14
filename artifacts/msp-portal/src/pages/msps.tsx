@@ -284,7 +284,16 @@ export default function MspsPage() {
                         {new Date(m.createdAt).toLocaleDateString()}
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" className="size-7">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7"
+                          onClick={() => {
+                            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                            window.location.href = `${base}/${m.slug}/dashboard`;
+                          }}
+                          title={`Go to ${m.name} dashboard`}
+                        >
                           <ExternalLink className="size-3.5" />
                         </Button>
                       </TableCell>

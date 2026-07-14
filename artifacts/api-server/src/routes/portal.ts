@@ -6215,13 +6215,13 @@ router.post("/admin/impersonate/:userId", requireAdmin, async (req: Request, res
 });
 
 // ─── MSP: Impersonation ──────────────────────────────────────────────────────
-// MSPAdmin can impersonate a customer within their own MSP.
+// MSPAdmin and MSPOperator can impersonate a customer within their own MSP.
 // PlatformAdmin can impersonate any customer across any MSP.
 // The resulting token is 30-minute, single-use, and query-param based so that
 // the MSP Portal can open the customer's view without a separate login flow.
 router.post(
   "/msp/:mspId/customers/:customerId/impersonate",
-  requireRole("MSPAdmin"),
+  requireRole("MSPOperator"),
   requireMspScope("params"),
   async (req: Request, res: Response) => {
     const mspId = parseInt(String(req.params.mspId ?? ""), 10);

@@ -1047,6 +1047,92 @@ router.get(
   },
 );
 
+// ── PATCH /api/msp/customers/:id ──────────────────────────────────────────────
+// Edit an existing customer. Scoped to the authenticated MSP (unless PlatformAdmin).
+const editCustomerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters").max(200).optional(),
+  domain: z.string().max(253).nullable().optional(),
+  industry: z.string().max(120).nullable().optional(),
+  status: z.enum(["active", "inactive", "onboarding", "archived"]).optional(),
+  ownerType: z.enum(["customer", "msp", "platform"]).optional(),
+});
+
+router.patch(
+  "/msp/customers/:id",
+  requireRole("MSPAdmin"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(String(req.params.id ?? ""), 10);
+      if (isNaN(customerId)) {
+        res.status(400).json({ error: "Invalid customer id" });
+        return;
+      }
+      const mspId = await resolveMspIdOrZero(req);
+
+      const parsed = editCustomerSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+        return;
+      }
+      const data = parsed.data;
+
+      // Ensure customer exists and belongs to this MSP (if scoped)
+      const [existing] = await db
+        .select()
+        .from(mspCustomersTable)
+        .where(
+          and(
+            eq(mspCustomersTable.id, customerId),
+            ...(mspId ? [eq(mspCustomersTable.mspId, mspId)] : []),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        res.status(404).json({ error: "Customer not found" });
+        return;
+      }
+
+      const updateData: Partial<typeof mspCustomersTable.$inferInsert> = {
+        updatedAt: new Date(),
+      };
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.domain !== undefined) updateData.domain = data.domain;
+      if (data.industry !== undefined) updateData.industry = data.industry;
+      if (data.status !== undefined) updateData.status = data.status;
+      if (data.ownerType !== undefined) updateData.ownerType = data.ownerType;
+
+      const [updated] = await db
+        .update(mspCustomersTable)
+        .set(updateData)
+        .where(eq(mspCustomersTable.id, customerId))
+        .returning();
+
+      // Audit log
+      try {
+        await db.insert(mspAuditLogsTable).values({
+          actorUserId: req.user!.id,
+          actorRole: req.user!.mspRole ?? "MSPAdmin",
+          mspId: existing.mspId,
+          actionType: "customer.update",
+          entityType: "customer",
+          entityId: String(customerId),
+          entityLabel: updated.name,
+          outcome: "success",
+          metadata: updateData,
+        });
+      } catch {
+        // non-fatal
+      }
+
+      res.json(updated);
+    } catch (err) {
+      req.log.error({ err }, "msp-portal: customer update failed");
+      res.status(500).json({ error: "Failed to update customer" });
+    }
+  },
+);
+
 // ── GET /api/portal/msp-suspension ────────────────────────────────────────────
 // Customer-facing endpoint: returns whether the customer's parent MSP has been
 // suspended for 7+ days. Deliberately omits billing/payment specifics — only

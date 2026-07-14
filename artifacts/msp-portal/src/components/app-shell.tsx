@@ -335,6 +335,7 @@ interface TenantEntry {
   id: number;
   name: string;
   type: "msp" | "customer";
+  slug?: string;
 }
 
 function TenantSwitcher({
@@ -352,8 +353,8 @@ function TenantSwitcher({
   const [tenants, setTenants] = useState<TenantEntry[]>([]);
   const [open, setOpen] = useState(false);
 
-  // PlatformAdmin can switch between MSPs; MSPAdmin can switch customer context
-  const canSwitch = mspRole === "PlatformAdmin" || mspRole === "MSPAdmin";
+  // PlatformAdmin can switch between MSPs; MSPAdmin and MSPOperator can switch customer context
+  const canSwitch = mspRole === "PlatformAdmin" || mspRole === "MSPAdmin" || mspRole === "MSPOperator";
 
   useEffect(() => {
     if (!open || !canSwitch) return;
@@ -363,11 +364,11 @@ function TenantSwitcher({
       .then(async (res) => {
         if (!res.ok) return;
         const data = (await res.json()) as {
-          msps?: Array<{ id: number; name: string }>;
+          msps?: Array<{ id: number; name: string; slug: string }>;
           customers?: Array<{ id: number; name: string }>;
         };
         const items: TenantEntry[] = [
-          ...(data.msps ?? []).map((m) => ({ id: m.id, name: m.name, type: "msp" as const })),
+          ...(data.msps ?? []).map((m) => ({ id: m.id, name: m.name, type: "msp" as const, slug: m.slug })),
           ...(data.customers ?? []).map((c) => ({
             id: c.id,
             name: c.name,
@@ -428,7 +429,12 @@ function TenantSwitcher({
               className="text-sm gap-2"
               onSelect={() => {
                 if (t.type === "msp") {
-                  navigate("/msps");
+                  if (t.slug) {
+                    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                    window.location.href = `${base}/${t.slug}/dashboard`;
+                  } else {
+                    navigate("/msps");
+                  }
                   return;
                 }
                 // Customer impersonation: issue a single-use token, then open
@@ -443,7 +449,8 @@ function TenantSwitcher({
                     if (!res.ok) return;
                     const data = (await res.json()) as { token?: string };
                     if (data.token) {
-                      window.open(`/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
+                      const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+                      window.open(`${base}/?impersonation_token=${encodeURIComponent(data.token)}`, "_blank");
                     }
                   })
                   .catch(() => {});
@@ -473,7 +480,7 @@ function TenantSwitcher({
             </DropdownMenuItem>
           </>
         )}
-        {mspRole === "MSPAdmin" && (
+        {(mspRole === "MSPAdmin" || mspRole === "MSPOperator") && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
