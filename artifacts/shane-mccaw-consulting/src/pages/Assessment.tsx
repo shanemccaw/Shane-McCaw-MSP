@@ -153,7 +153,7 @@ function AssessmentCard({ offer }: { offer: AssessmentOffer }) {
 
       <div className="mt-auto pt-4">
         {isFree ? (
-          <Link href={`/assessment/start?product=${offer.slug}`}>
+          <Link href={`/checkout?product=${offer.slug}`}>
             <Button
               className={`w-full ${
                 offer.highlighted ? "" : "bg-[#0A2540] hover:bg-[#0A2540]/90"

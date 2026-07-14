@@ -5449,7 +5449,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       }
     }
   } else if (event.type === "invoice.paid") {
-    const stripeInvoice = event.data.object as import("stripe").Stripe.Invoice;
+    const stripeInvoice = event.data.object as any;
     const stripeInvoiceId = stripeInvoice.id;
     const stripeSubId = typeof stripeInvoice.subscription === "string"
       ? stripeInvoice.subscription
@@ -5531,7 +5531,7 @@ async function processStripeEvent(req: Request, event: import("stripe").Stripe.E
       }
     }
   } else if (event.type === "invoice.payment_failed") {
-    const failedInvoice = event.data.object as import("stripe").Stripe.Invoice;
+    const failedInvoice = event.data.object as any;
     const failedSubId = typeof failedInvoice.subscription === "string"
       ? failedInvoice.subscription
       : failedInvoice.subscription?.id ?? null;
@@ -9110,7 +9110,7 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
 
   const missingPrices = services.filter(s => {
     if (contractFinalPrices.get(s.id) != null) return false;
-    if (s.price) return false;
+    if (s.price || s.basePrice) return false;
     const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
     if (ta.pricePerUserMonth) return false;
     return true;
@@ -9219,6 +9219,8 @@ router.post("/portal/checkout/create-session", async (req: Request, res: Respons
       rawPriceCents.set(s.id, Math.round(contractFinal * 100));
     } else if (s.price) {
       rawPriceCents.set(s.id, Math.round(parseFloat(String(s.price)) * 100));
+    } else if (s.basePrice) {
+      rawPriceCents.set(s.id, Math.round(parseFloat(String(s.basePrice)) * 100));
     } else {
       const ta = (s.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
       const ppu = ta.pricePerUserMonth ? parseFloat(String(ta.pricePerUserMonth)) : 0;
@@ -12674,7 +12676,10 @@ router.post("/portal/onboarding/claim-free", async (req: Request, res: Response)
     if (fetchedServices.length === 0) { res.status(400).json({ error: "Services not found" }); return; }
     const serviceMap = new Map(fetchedServices.map(s => [s.id, s]));
     const orderedServices = serviceIds.map(id => serviceMap.get(id)).filter(Boolean) as typeof fetchedServices;
-    const totalPrice = orderedServices.reduce((sum, s) => sum + (s.price ? parseFloat(String(s.price)) : 0), 0);
+    const totalPrice = orderedServices.reduce((sum, s) => {
+      const priceVal = s.price ?? s.basePrice;
+      return sum + (priceVal ? parseFloat(String(priceVal)) : 0);
+    }, 0);
     if (totalPrice > 0) {
       res.status(400).json({ error: "This order has a non-zero price — use the standard checkout" }); return;
     }

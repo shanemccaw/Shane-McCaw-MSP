@@ -29,22 +29,24 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
-import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier } from "@/hooks/useCatalog";
+import { useCatalog, type MonitoringTier, type RetainerTier, type MspTier, type AssessmentOffer } from "@/hooks/useCatalog";
 import { trackCheckoutStarted, trackCheckoutCompleted } from "@/lib/analytics";
 
-type AnyTier = MonitoringTier | RetainerTier | MspTier;
+type AnyTier = MonitoringTier | RetainerTier | MspTier | AssessmentOffer;
 
 function tierToService(t: AnyTier) {
+  const isFree = "isFree" in t ? t.isFree : false;
   return {
     id: t.id,
     slug: t.slug,
     name: t.name,
     description: t.description,
-    price: t.price,
-    billingType: t.billingType,
+    price: "price" in t ? (t.price ?? ("basePrice" in t ? t.basePrice : null)) : null,
+    billingType: "billingType" in t ? t.billingType : ("isFree" in t ? "one_time" as const : "one_time" as const),
     fulfillmentTypeKey: t.fulfillmentTypeKey,
-    serviceType: t.serviceType,
-    typeAttributes: t.typeAttributes,
+    serviceType: "serviceType" in t ? t.serviceType : "assessment",
+    typeAttributes: "typeAttributes" in t ? t.typeAttributes : null,
+    isFree,
   };
 }
 
@@ -62,7 +64,7 @@ const WIZARD_STEPS: Step[] = ["guest-info", "consent", "payment", "confirmed"];
 const STEP_LABELS: Record<string, string> = {
   "guest-info": "Your info",
   consent: "M365 access",
-  payment: "Payment",
+  payment: "Confirm",
   confirmed: "Confirmed",
 };
 
@@ -235,8 +237,8 @@ export default function Checkout() {
   const sessionParam = params.get("session");
   const seats = Math.max(1, parseInt(params.get("seats") ?? "1", 10) || 1);
 
-  // Catalog data (all three service types)
-  const { monitoringTiers, retainerTiers, mspTiers, loading: catalogLoading, error: catalogError } = useCatalog();
+  // Catalog data (all four service types)
+  const { monitoringTiers, retainerTiers, mspTiers, assessmentOffers, loading: catalogLoading, error: catalogError } = useCatalog();
 
   const [step, setStep] = useState<Step>("loading");
   const [service, setService] = useState<ReturnType<typeof tierToService> | null>(null);
@@ -272,7 +274,7 @@ export default function Checkout() {
       return;
     }
 
-    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...mspTiers];
+    const allTiers: AnyTier[] = [...monitoringTiers, ...retainerTiers, ...mspTiers, ...assessmentOffers];
     const found = allTiers.find((t) => t.slug === slug);
 
     if (!found) {
@@ -352,7 +354,7 @@ export default function Checkout() {
     setStep("guest-info");
   // checkoutStatus and sessionParam deliberately excluded so we only evaluate once on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers]);
+  }, [catalogLoading, catalogError, slug, monitoringTiers, retainerTiers, mspTiers, assessmentOffers]);
 
   // Fetch (or refetch) the admin-consent URL whenever the sessionId changes.
   // This ensures the URL carries the correct `state` parameter even when
@@ -487,8 +489,71 @@ export default function Checkout() {
     }
   }
 
+  async function handleFreeCheckout() {
+    if (!service || !guestInfo || !termsAccepted) return;
+
+    setLaunching(true);
+    setPaymentError(null);
+
+    try {
+      let contractId = contractIdRef.current;
+
+      if (!contractId) {
+        const contractRes = await fetch("/api/portal/onboarding/contract", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            serviceIds: [service.id],
+            guestEmail: guestInfo.email,
+            signerName: guestInfo.name,
+            seats: effectiveSeats,
+          }),
+        });
+
+        if (!contractRes.ok) {
+          const err = (await contractRes.json().catch(() => ({}))) as { error?: string };
+          setPaymentError(err.error ?? "Unable to start checkout. Please try again.");
+          return;
+        }
+
+        const { contractIds } = (await contractRes.json()) as { contractIds: number[] };
+        contractId = contractIds[0] ?? null;
+        contractIdRef.current = contractId;
+      }
+
+      if (!contractId) {
+        setPaymentError("Failed to create contract. Please try again.");
+        return;
+      }
+
+      const freeRes = await fetch("/api/portal/checkout/free", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          serviceIds: [service.id],
+          contractIds: [contractId],
+          guestEmail: guestInfo.email,
+        }),
+      });
+
+      if (!freeRes.ok) {
+        const err = (await freeRes.json().catch(() => ({}))) as { error?: string };
+        setPaymentError(err.error ?? "Unable to complete registration. Please try again.");
+        return;
+      }
+
+      trackCheckoutCompleted("free_service", { service_id: String(service.id) });
+      setStep("confirmed");
+    } catch {
+      setPaymentError("Network error. Check your connection and try again.");
+    } finally {
+      setLaunching(false);
+    }
+  }
+
   const priceDisplay = (() => {
     if (!service) return null;
+    if (service.isFree) return "Free";
     const ta = (service.typeAttributes ?? {}) as { pricePerUserMonth?: string | null };
     if (service.billingType === "recurring_monthly" && ta.pricePerUserMonth) {
       const perSeat = Number(ta.pricePerUserMonth);
@@ -729,8 +794,12 @@ export default function Checkout() {
                     )}
 
                     <div>
-                      <h2 className="text-2xl font-semibold text-[#0A2540]">Review & pay</h2>
-                      <p className="text-muted-foreground mt-1">Confirm your order details below.</p>
+                      <h2 className="text-2xl font-semibold text-[#0A2540]">
+                        {service.isFree ? "Review & confirm" : "Review & pay"}
+                      </h2>
+                      <p className="text-muted-foreground mt-1">
+                        {service.isFree ? "Confirm your free request details below." : "Confirm your order details below."}
+                      </p>
                     </div>
 
                     {/* Order summary */}
@@ -816,29 +885,39 @@ export default function Checkout() {
                         <Link href="/legal/privacy" className="underline text-primary">
                           Privacy Policy
                         </Link>
-                        . I understand that clicking "Proceed to payment" will redirect me to
-                        Stripe to complete the purchase.
+                        . {service.isFree ? (
+                          'I understand that clicking "Confirm and Get Started" will register my free account and start onboarding.'
+                        ) : (
+                          'I understand that clicking "Proceed to payment" will redirect me to Stripe to complete the purchase.'
+                        )}
                       </label>
                     </div>
 
                     <div className="flex items-start gap-2 text-sm text-muted-foreground">
                       <ShieldCheck className="size-4 text-primary shrink-0 mt-0.5" />
                       <span>
-                        Payments are processed securely by Stripe. Your card details are never
-                        stored on our servers.
+                        {service.isFree ? (
+                          "Your M365 configuration snapshot will begin immediately. No credit card required."
+                        ) : (
+                          "Payments are processed securely by Stripe. Your card details are never stored on our servers."
+                        )}
                       </span>
                     </div>
 
                     <Button
-                      onClick={handlePay}
+                      onClick={service.isFree ? handleFreeCheckout : handlePay}
                       disabled={launching || !termsAccepted}
                       className="w-full"
                       size="lg"
                     >
                       {launching ? (
                         <>
-                          <Loader2 className="mr-2 size-4 animate-spin" /> Preparing secure
-                          checkout…
+                          <Loader2 className="mr-2 size-4 animate-spin" />{" "}
+                          {service.isFree ? "Setting up snapshot…" : "Preparing secure checkout…"}
+                        </>
+                      ) : service.isFree ? (
+                        <>
+                          Confirm and Get Started <ArrowRight className="ml-2 size-4" />
                         </>
                       ) : (
                         <>

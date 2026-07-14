@@ -203,10 +203,19 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
         badge: servicesTable.badge,
         highlighted: servicesTable.highlighted,
         price: servicesTable.price,
+        basePrice: servicesTable.basePrice,
+        maxPrice: servicesTable.maxPrice,
         sortOrder: servicesTable.sortOrder,
         features: servicesTable.features,
+        deliverables: servicesTable.deliverables,
+        inclusions: servicesTable.inclusions,
+        turnaround: servicesTable.turnaround,
+        targetAudience: servicesTable.targetAudience,
+        durationDays: servicesTable.durationDays,
+        category: servicesTable.category,
         fulfillmentTypeKey: servicesTable.fulfillmentTypeKey,
         isPublic: servicesTable.isPublic,
+        isFreeOffering: servicesTable.isFreeOffering,
       })
       .from(servicesTable)
       .where(
@@ -217,10 +226,14 @@ router.get("/catalog/assessments", async (req: Request, res: Response) => {
       )
       .orderBy(asc(servicesTable.sortOrder));
 
-    const assessmentOffers = rows.map((r) => ({
-      ...r,
-      isFree: r.price == null || Number(r.price) === 0,
-    }));
+    const assessmentOffers = rows.map((r) => {
+      const priceVal = r.price ?? r.basePrice;
+      const isFree = r.isFreeOffering || priceVal == null || Number(priceVal) === 0;
+      return {
+        ...r,
+        isFree,
+      };
+    });
 
     res.json(assessmentOffers);
   } catch {

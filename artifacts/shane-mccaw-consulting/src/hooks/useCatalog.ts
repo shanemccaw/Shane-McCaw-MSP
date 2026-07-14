@@ -81,8 +81,16 @@ export interface AssessmentOffer {
   badge: string | null;
   highlighted: boolean;
   price: string | null;
+  basePrice: string | null;
+  maxPrice: string | null;
   sortOrder: number;
   features: string[] | null;
+  deliverables: string[] | null;
+  inclusions: string[] | null;
+  turnaround: string | null;
+  targetAudience: string | null;
+  durationDays: number | null;
+  category: string | null;
   fulfillmentTypeKey: string | null;
   isPublic: boolean;
   isFree: boolean;

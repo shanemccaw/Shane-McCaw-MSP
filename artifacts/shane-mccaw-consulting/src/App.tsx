@@ -48,6 +48,7 @@ import Pricing from "@/pages/Pricing";
 import Privacy from "@/pages/Privacy";
 
 import Assessment from "@/pages/Assessment";
+import AssessmentDetail from "@/pages/AssessmentDetail";
 import Monitoring from "@/pages/Monitoring";
 import Projects from "@/pages/Projects";
 import Msp from "@/pages/Msp";
@@ -90,6 +91,7 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/about" component={About} />
         <Route path="/assessment" component={Assessment} />
+        <Route path="/assessment/details" component={AssessmentDetail} />
         <Route path="/monitoring" component={Monitoring} />
         <Route path="/retainers" component={RetainersOverview} />
         <Route path="/retainers/architect-essentials" component={ArchitectEssentials} />
